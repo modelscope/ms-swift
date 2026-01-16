@@ -28,6 +28,38 @@ def get_max_reserved_memory() -> float:
     return sum(mems) / 1024**3
 
 
+def _gather_total_tokens(state) -> int:
+    """Gather total_tokens from all processes in distributed training.
+    
+    Similar to DatasetProgressCallback._gather_counts(), only rank 0 gets the aggregated result.
+    
+    Args:
+        state: TrainerState object containing total_tokens attribute.
+        
+    Returns:
+        Total tokens across all processes (only on rank 0, others return 0).
+    """
+    local_tokens = getattr(state, 'total_tokens', 0)
+    
+    if not dist.is_initialized():
+        return local_tokens
+    
+    world_size = dist.get_world_size()
+    if world_size == 1:
+        return local_tokens
+    
+    # Gather all local token counts to rank 0
+    gathered = [None] * world_size
+    dist.gather_object(local_tokens, gathered if dist.get_rank() == 0 else None, dst=0)
+    
+    if dist.get_rank() != 0:
+        return 0  # Non-rank-0 processes don't need the result
+    
+    # Only rank 0 sums up the total
+    total_tokens = sum(gathered)
+    return total_tokens
+
+
 def add_train_message(logs, state, start_time) -> None:
     logs['global_step/max_steps'] = f'{state.global_step}/{state.max_steps}'
     train_percentage = state.global_step / state.max_steps if state.max_steps else 0.
@@ -44,6 +76,12 @@ def add_train_message(logs, state, start_time) -> None:
         logs['memory(GiB)'] = round(state.max_memory, 2)
 
     logs['train_speed(iter/s)'] = round(state.global_step / elapsed, 6)
+    
+    # Add token-level speed statistics (supports distributed training)
+    total_tokens = _gather_total_tokens(state)
+    if total_tokens > 0 and state.is_world_process_zero:
+        logs['train_speed(tokens/s)'] = round(total_tokens / elapsed, 2)
+        logs['total_tokens'] = total_tokens
 
 
 class ProgressCallbackNew(ProgressCallback):
@@ -53,6 +91,8 @@ class ProgressCallbackNew(ProgressCallback):
             self.training_bar = tqdm(desc='Train', total=state.max_steps, dynamic_ncols=True)
         self.current_step = 0
         self.start_time = time.time()
+        # Initialize token counter for speed statistics
+        state.total_tokens = 0
 
     def on_prediction_step(self, args, state: TrainerState, control, eval_dataloader=None, **kwargs):
         if state.is_world_process_zero and has_length(eval_dataloader):
@@ -103,6 +143,8 @@ class PrinterCallbackNew(PrinterCallback):
 
     def on_train_begin(self, args, state, control, **kwargs):
         self.start_time = time.time()
+        # Initialize token counter for speed statistics
+        state.total_tokens = 0
         return super().on_train_begin(args, state, control, **kwargs)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
@@ -166,6 +208,15 @@ class DatasetProgressCallback(TrainerCallback):
                 for source in batch_sources:
                     callback._dataset_progress_counts[source] = \
                         callback._dataset_progress_counts.get(source, 0) + 1
+            
+            # Extract and accumulate token counts
+            batch_lengths = inputs.pop('_batch_lengths', None)
+            if batch_lengths:
+                tokens_in_batch = sum(batch_lengths)
+                if not hasattr(trainer.state, 'total_tokens'):
+                    trainer.state.total_tokens = 0
+                trainer.state.total_tokens += tokens_in_batch
+            
             return original_training_step(model, inputs, *args, **kwargs)
 
         trainer.training_step = wrapped_training_step
