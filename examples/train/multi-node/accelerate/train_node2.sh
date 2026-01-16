@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 accelerate launch --config_file ./examples/train/multi-node/accelerate/multi_node.yaml --machine_rank 1 \
     swift/cli/sft.py \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --dataset 'swift/self-cognition#1000' \
     --num_train_epochs 1 \

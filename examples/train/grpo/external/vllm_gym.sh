@@ -14,7 +14,7 @@ NPROC_PER_NODE=6 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
-    --train_type full \
+    --tuner_type full \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \

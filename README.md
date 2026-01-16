@@ -161,7 +161,7 @@ For more optional dependencies, you can refer to [here](https://github.com/model
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -328,7 +328,7 @@ swift pt \
     --model Qwen/Qwen2.5-7B \
     --dataset swift/chinese-c4 \
     --streaming true \
-    --train_type full \
+    --tuner_type full \
     --deepspeed zero2 \
     --output_dir output \
     --max_steps 10000 \
@@ -340,7 +340,7 @@ Fine-tuning:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -351,7 +351,7 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -378,7 +378,7 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
     --load_safetensors true \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --train_type lora \
+    --tuner_type lora \
     --save output \
     ...
 ```
@@ -403,7 +403,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
     --dataset AI-MO/NuminaMath-TIR#10000 \

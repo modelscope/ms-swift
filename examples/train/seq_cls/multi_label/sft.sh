@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-0.5B \
-    --train_type lora \
+    --tuner_type lora \
     --dataset '<your-dataset>' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

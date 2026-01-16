@@ -18,7 +18,7 @@ CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2.5-Omni-3B \
-    --train_type lora \
+    --tuner_type lora \
     --cached_dataset 'seq_cls_cached_dataset/train' \
     --cached_val_dataset 'seq_cls_cached_dataset/val' \
     --load_from_cache_file true \

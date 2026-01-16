@@ -5,7 +5,7 @@ NPROC_PER_NODE=8 \
 CELOSS_PARALLEL_SIZE=2048 \
 swift sft \
     --model Qwen/QwQ-32B \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
