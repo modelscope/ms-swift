@@ -360,7 +360,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 ```
 --tuner_backend unsloth
---train_type full/lora
+--tuner_type full/lora
 --quant_bits 4
 ```
 

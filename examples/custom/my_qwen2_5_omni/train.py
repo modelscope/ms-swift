@@ -16,7 +16,7 @@ if __name__ == '__main__':
             template='my_qwen2_5_omni',
             load_from_cache_file=True,
             split_dataset_ratio=0.01,
-            tuner_type='lora',
+            train_type='lora',
             torch_dtype='bfloat16',
             attn_impl='flash_attn',
             padding_free=True,

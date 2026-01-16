@@ -83,7 +83,7 @@ Hyperparameters:
 - lam: Lambda coefficient in [GAE](https://arxiv.org/abs/1506.02438), default is 0.95.
 - num_sample_generations: Number of debugging samples generated during training, default is 10.
 
-Note: When training the base model, perform SFT first and then proceed to RLHF. Specify the chat template, and it is recommended to use `full` for `tuner_type`.
+Note: When training the base model, perform SFT first and then proceed to RLHF. Specify the chat template, and it is recommended to use `full` for `train_type`.
 
 Refer to the [documentation](https://huggingface.co/docs/trl/ppov2_trainer#explanation-of-the-logged-metrics) for metric explanations during training.
 

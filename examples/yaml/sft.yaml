@@ -1,6 +1,6 @@
 model: Qwen/Qwen2.5-7B-Instruct
 split_dataset_ratio: 0.0
-tuner_type: lora
+train_type: lora
 torch_dtype: bfloat16
 attn_impl: flash_attn
 num_train_epochs: 5
