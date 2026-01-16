@@ -311,7 +311,7 @@ class MegatronTunerMixin:
 
     def __post_init__(self):
         if self.train_type is not None:
-            logger.warning(f'`train_type` is deprecated, please use `tuner_type` instead.')
+            logger.warning('`train_type` is deprecated, please use `tuner_type` instead.')
             self.tuner_type = self.train_type
         if 0 < self.freeze_parameters_ratio < 1 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
