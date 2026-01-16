@@ -221,6 +221,14 @@ class TrainArgumentsMixin:
             except Exception:
                 pass
 
+    def _init_callbacks(self):
+        if self.lisa_activated_layers > 0:
+            self.callbacks.append('lisa')
+        if self.tuner_type == 'adalora':
+            self.callbacks.append('adalora')
+        if self.early_stop_interval is not None and self.early_stop_interval > 0:
+            self.callbacks.append('early_stop')
+
     def __post_init__(self):
         if hasattr(self, 'output_dir'):
             self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
@@ -230,6 +238,7 @@ class TrainArgumentsMixin:
 
         if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
             self.optimizer = 'multimodal'
+        self._init_callbacks()
         if self.gradient_accumulation_steps is None:
             world_size = get_dist_setting()[2]
             self.gradient_accumulation_steps = max(1, math.ceil(16 / self.per_device_train_batch_size / world_size))

@@ -146,19 +146,8 @@ class SwiftMixin:
         return partial(template.data_collator, padding_to=padding_to)
 
     def _add_callbacks(self):
-        args = self.args
-        callbacks_cls = []
-        if args.lisa_activated_layers > 0:
-            callbacks_cls.append(callbacks_map['lisa'])
-
-        if args.tuner_type == 'adalora':
-            callbacks_cls.append(callbacks_map['adalora'])
-        if args.early_stop_interval is not None and args.early_stop_interval > 0:
-            callbacks_cls.append(callbacks_map['early_stop'])
-        for callback in args.callbacks:
-            callbacks_cls.append(callbacks_map[callback])
-        for callback_cls in callbacks_cls:
-            self.add_callback(callback_cls(args, self))
+        for callback in self.args.callbacks:
+            self.add_callback(callbacks_map[callback](self.args, self))
 
     @contextmanager
     def _patch_timeout(self):
