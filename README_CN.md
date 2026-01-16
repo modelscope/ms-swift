@@ -251,10 +251,9 @@ val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_pr
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
-    data_collator=template.data_collator,
+    template=template,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
-    template=template,
 )
 trainer.train()
 ```

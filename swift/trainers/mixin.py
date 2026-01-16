@@ -67,8 +67,8 @@ FLASH_CKPT_WAIT_TIMEOUT = 1800
 class SwiftMixin:
 
     def __init__(self,
-                 args: TrainingArguments,
                  model: PreTrainedModel,
+                 args: TrainingArguments,
                  template: Template,
                  train_dataset: HfDataset,
                  eval_dataset: Optional[HfDataset] = None,

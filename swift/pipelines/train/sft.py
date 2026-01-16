@@ -190,9 +190,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         trainer = trainer_cls(
             model=self.model,
             args=self.args.training_args,
+            template=self.template,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            template=self.template,
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)
