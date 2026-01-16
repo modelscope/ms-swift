@@ -1,5 +1,5 @@
 # 2*20GiB
-# losses: plugin/loss.py
+# losses: swift/loss
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \

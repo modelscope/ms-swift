@@ -146,25 +146,17 @@ class SwiftMixin:
         return partial(template.data_collator, padding_to=padding_to)
 
     def _create_callbacks(self, args, model):
-        callbacks = []
+        callbacks_cls = []
         if args.lisa_activated_layers > 0:
-            assert args.tuner_type == 'full', 'LISA only supports full parameter training.'
-            lisa_callback = DynamicLayerActivationCallback(
-                n_layers=args.lisa_activated_layers,  # Number of layers to activate
-                step_interval=args.lisa_step_interval,  # Step interval to update active layers
-                model=model)
-            lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
-            callbacks.append(lisa_callback)
+            callbacks_cls.append(callbacks_map['lisa'])
 
         if args.tuner_type == 'adalora':
-            callbacks.append(TrainerAdapterCallback(args))
-        callbacks += extra_callbacks
-
+            callbacks_cls.append(callbacks_map['adalora'](args))
         if args.early_stop_interval is not None and args.early_stop_interval > 0:
-            callbacks.append(EarlyStopCallback(args.early_stop_interval))
-            logger.info('You are using the default early stop callback, this is a implementation of '
-                        'stopping training when the best metric showing no improvement within {} steps, '
-                        'you can write a new implementation in the plugin/callback.py.')
+            callbacks_cls.append(callbacks_map['early_stop'](args))
+        for callback in args.callbacks:
+            callbacks_cls.append(callbacks_map[callback])
+        callbacks = [callback_cls(args, self) for callback_cls in callbacks_cls]
         return callbacks
 
     @contextmanager

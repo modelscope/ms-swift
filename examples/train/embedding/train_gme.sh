@@ -1,6 +1,6 @@
 nproc_per_node=8
 
-# losses: plugin/loss.py
+# losses: swift/loss
 # 8*40G
 MAX_PIXELS=1003520 \
 NPROC_PER_NODE=$nproc_per_node \

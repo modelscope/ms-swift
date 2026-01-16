@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 class DynamicLayerActivationCallback(TrainerCallback):
 
     def __init__(self, args: 'TrainingArguments', trainer: 'Trainer'):
+        assert args.tuner_type == 'full', 'LISA only supports full parameter training.'
         super().__init__(args, trainer)
         self.n_layers = args.lisa_activated_layers
         self.step_interval = args.lisa_step_interval
@@ -31,6 +32,7 @@ class DynamicLayerActivationCallback(TrainerCallback):
         # Freeze all layers upon initialization
         self.freeze_all_layers()
         self.active_layers_indices = []
+        self.switch_active_layers()
 
     def freeze_all_layers(self):
         layers = self.model.get_submodule(self.layers_attribute)

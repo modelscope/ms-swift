@@ -76,7 +76,7 @@ class TrainArgumentsMixin:
             function is used. Defaults to None.
         metric (Optional[str]): The name of a custom metric from a plugin. If None, it defaults to 'nlg' when
             `predict_with_generate=True`. Defaults to None.
-        callback (List[str]) The TrainerCallback to use. Will be mapped via `swift.callbacks.callbacks_map`.
+        callbacks (List[str]) The TrainerCallback to use. Will be mapped via `swift.callbacks.callbacks_map`.
         early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
             `best_metric` does not improve for `early_stop_interval` evaluation periods (based on `save_steps`). It is
             recommended to set `eval_steps` and `save_steps` to the same value. The implementation can be found in the
@@ -158,7 +158,7 @@ class TrainArgumentsMixin:
     optimizer: Optional[str] = None
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_map.keys())}'})
     metric: Optional[str] = None
-    callback: List[str] = field(default_factory=list)
+    callbacks: List[str] = field(default_factory=list)
     # early_step
     early_stop_interval: Optional[int] = None
 

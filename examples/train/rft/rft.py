@@ -54,7 +54,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
 
     handlers = []
     # Sample again, this time to filter with ORM & PRM
-    # Provide your PRM model or PRM name(add PRM in plugin/prm.py first)
+    # Provide your PRM model or PRM name(add PRM in plugins/prm.py first)
     # You can define your custom PRM logic in the plugin
     # (like, split your steps, use the worst score/last score/avg score)
     for device in range(device_count):
@@ -69,7 +69,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
             f'Give the final answer wrapped with \\boxed{{}}" '
             f'--load_args false '
             f'--sampler_engine no '
-            f'--orm_model math '  # math defines in plugin/orm.py
+            f'--orm_model math '  # math defines in plugins/orm.py
             f'--prm_model Qwen/Qwen2.5-Math-PRM-7B '
             f'--prm_threshold {min(0.7 + 0.1*iter, 0.9)} '
             f'--max_new_tokens 768 '

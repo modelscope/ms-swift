@@ -1,5 +1,5 @@
 # 4*47G
-# losses: plugin/loss.py
+# losses: swift/loss
 # only support --padding_side left
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
