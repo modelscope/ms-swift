@@ -705,7 +705,7 @@ class SwiftMixin:
 
             model.forward = MethodType(forward_sentence_transformer, model)
         else:
-            task_type = getattr(self.args, 'task_type', None)
+            task_type = self.task_type
             sp_enabled = self.template.sequence_parallel_size > 1
             pf_enabled = bool(self.template.padding_free)
 
@@ -722,7 +722,7 @@ class SwiftMixin:
                     return get_lm_head_model(self.model, model_meta=self.model.model_meta)
                 return get_llm_model(self.model, model_meta=self.model.model_meta)
 
-            # --- seq_cls / reranker / generative_reranker unified pipeline ---
+            # --- seq_cls / reranker / generative_reranker / embedding unified pipeline ---
             if task_type in {'seq_cls', 'reranker', 'generative_reranker', 'embedding'}:
                 llm_model = _get_hook_target_model(task_type)
 
