@@ -236,11 +236,14 @@ ms-swift也支持使用python的方式进行训练和推理。下面给出训练
 
 训练：
 ```python
-from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
+from peft import LoraConfig, get_peft_model
+from swift import get_model_processor, get_template, load_dataset, EncodePreprocessor
+from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 # 获取模型和template，并加入可训练的LoRA模块
 model, tokenizer = get_model_processor(model_id_or_path, ...)
 template = get_template(tokenizer, ...)
-model = Swift.prepare_model(model, lora_config)
+lora_config = LoraConfig(...)
+model = get_peft_model(model, lora_config)
 
 # 下载并载入数据集，并将文本encode成tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
@@ -248,6 +251,7 @@ train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=nu
 val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
 
 # 进行训练
+training_args = Seq2SeqTrainingArguments(...)
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,

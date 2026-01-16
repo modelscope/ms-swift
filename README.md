@@ -248,11 +248,14 @@ ms-swift also supports training and inference using Python. Below is pseudocode 
 Training:
 
 ```python
-from swift import get_model_processor, get_template, Swift, load_dataset, EncodePreprocessor, Seq2SeqTrainer
+from peft import LoraConfig, get_peft_model
+from swift import get_model_processor, get_template, load_dataset, EncodePreprocessor
+from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 # Retrieve the model and template, and add a trainable LoRA module
 model, tokenizer = get_model_processor(model_id_or_path, ...)
 template = get_template(tokenizer, ...)
-model = Swift.prepare_model(model, lora_config)
+lora_config = LoraConfig(...)
+model = get_peft_model(model, lora_config)
 
 # Download and load the dataset, and encode the text into tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
@@ -260,6 +263,7 @@ train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=nu
 val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
 
 # Train the model
+training_args = Seq2SeqTrainingArguments(...)
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
