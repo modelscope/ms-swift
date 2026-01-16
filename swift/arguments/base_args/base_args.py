@@ -150,6 +150,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     def __post_init__(self):
         if self.train_type is not None:
+            logger.warning(f'`train_type` is deprecated, please use `tuner_type` instead.')
             self.tuner_type = self.train_type
         self.swift_version = swift.__version__
         if self.use_hf or use_hf_hub():
