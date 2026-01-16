@@ -88,7 +88,7 @@ ms-swift使用了分层式的设计思想，用户可以使用命令行界面、
 from swift import sft_main, SftArguments
 result = sft_main(SftArguments(
     model='Qwen/Qwen2.5-7B-Instruct',
-    train_type='lora',
+    tuner_type='lora',
     dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500',
              'AI-ModelScope/alpaca-gpt4-data-en#500',
              'swift/self-cognition#500'],

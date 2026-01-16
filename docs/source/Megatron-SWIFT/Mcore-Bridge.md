@@ -344,7 +344,7 @@ megatron_args = MegatronArguments(
     expert_model_parallel_size=2,
     sequence_parallel=True,
     torch_dtype=torch.bfloat16,
-    train_type='lora',
+    tuner_type='lora',
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()

@@ -85,7 +85,7 @@ RLHF中的PPO(proximal policy optimization)阶段, 涉及到四个模型
 - num_sample_generations: 训练过程中生成的调试样本数量, 默认为10
 
 
-注意: 训练base model时, 需要先sft后再进行rlhf, 指定chat template, `train_type` 建议使用full
+注意: 训练base model时, 需要先sft后再进行rlhf, 指定chat template, `tuner_type` 建议使用full
 
 训练中的指标解释参考[文档](https://huggingface.co/docs/trl/ppov2_trainer#explanation-of-the-logged-metrics)
 
