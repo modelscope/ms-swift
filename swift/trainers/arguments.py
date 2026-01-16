@@ -159,7 +159,7 @@ class TrainArgumentsMixin:
     # plugins
     optimizer: Optional[str] = None
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_map.keys())}'})
-    metric: Optional[str] = None
+    eval_metric: Optional[str] = None
     callbacks: List[str] = field(default_factory=list)
     # early_step
     early_stop_interval: Optional[int] = None
