@@ -1,5 +1,5 @@
 # 22GB
-# Change: https://github.com/modelscope/ms-swift/blob/main/swift/plugins/callback.py
+# Change: https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py
 # If you have custom implementations
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \

@@ -176,7 +176,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                     self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
         self._init_override()
-        TrainArgumentsMixin.__post_init__(self)
         TunerArguments.__post_init__(self)
         self._check_padding_free()
         if self.optimizer is None:
