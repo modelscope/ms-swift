@@ -11,7 +11,7 @@ megatron sft \
     --model 'Qwen/Qwen3-8B' \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#1000' \
     --save './SAVE' \
-    --tuner_type 'lora' \
+    --train_type 'lora' \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules 'all-linear' \

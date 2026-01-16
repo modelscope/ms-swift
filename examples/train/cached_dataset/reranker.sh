@@ -16,7 +16,7 @@ swift sft \
     --model Qwen/Qwen3-Reranker-4B \
     --task_type generative_reranker \
     --loss_type pointwise_reranker \
-    --tuner_type full \
+    --train_type full \
     --cached_dataset './qwen3_reranker_cached_dataset/train' \
     --cached_val_dataset './qwen3_reranker_cached_dataset/val' \
     --num_train_epochs 1 \

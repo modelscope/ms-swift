@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=0 \
 MAX_PIXELS=1003520 \
 swift sft \
     --model Qwen/Qwen2.5-Omni-3B \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'tany0699/garbage265#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

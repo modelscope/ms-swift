@@ -6,7 +6,7 @@ NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift sft \
     --model Qwen/Qwen2.5-14B \
-    --tuner_type full \
+    --train_type full \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

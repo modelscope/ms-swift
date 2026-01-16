@@ -367,7 +367,7 @@ Note: LISA only supports full parameters, i.e., `--tuner_type full`.
 
 ```
 --tuner_backend unsloth
---tuner_type full/lora
+--train_type full/lora
 --quant_bits 4
 ```
 

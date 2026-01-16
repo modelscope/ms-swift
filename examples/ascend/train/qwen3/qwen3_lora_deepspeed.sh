@@ -6,7 +6,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model 'Qwen/Qwen3-32B' \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 10 \

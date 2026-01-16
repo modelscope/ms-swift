@@ -25,7 +25,7 @@ megatron rlhf \
     --vllm_max_model_len 16384 \
     --max_length 8192 \
     --max_completion_length 8192 \
-    --tuner_type lora \
+    --train_type lora \
     --lr 5e-5 \
     --bf16 true \
     --beta 0.00 \

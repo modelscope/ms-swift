@@ -112,7 +112,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift sft \
     --model /path/to/new_vl_model \
     --model_type qwen2_5_vl \
-    --tuner_type full \
+    --train_type full \
     --dataset xxx  \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -149,7 +149,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift sft \
     --model /path/to/stage1_checkpoint \
     --model_type qwen2_5_vl \
-    --tuner_type full \
+    --train_type full \
     --dataset xxx \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

@@ -26,7 +26,7 @@ swift rlhf \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
     --vllm_server_port 8000 \
-    --tuner_type full \
+    --train_type full \
     --torch_dtype bfloat16 \
     --external_plugins examples/train/grpo/plugin/treepo/tree_rollout_plugin.py \
     --dataset AI-MO/NuminaMath-TIR#1000 \

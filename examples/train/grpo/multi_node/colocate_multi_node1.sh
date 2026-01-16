@@ -18,7 +18,7 @@ swift rlhf \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \
     --vllm_max_model_len 4096 \
-    --tuner_type full \
+    --train_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
     --load_from_cache_file true \

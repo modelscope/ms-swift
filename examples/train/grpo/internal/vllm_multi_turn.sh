@@ -6,7 +6,7 @@ NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
-    --tuner_type full \
+    --train_type full \
     --reward_funcs accuracy \
     --dataset AI-MO/NuminaMath-TIR#10000 \
     --load_from_cache_file true \

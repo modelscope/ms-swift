@@ -4,7 +4,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-8B \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:qwen3#600' \
     --torch_dtype bfloat16 \

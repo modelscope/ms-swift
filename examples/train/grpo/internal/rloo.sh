@@ -12,7 +12,7 @@ swift rlhf \
     --vllm_gpu_memory_utilization 0.4 \
     --vllm_tensor_parallel_size 1 \
     --vllm_max_model_len 16384 \
-    --tuner_type lora \
+    --train_type lora \
     --torch_dtype bfloat16 \
     --dataset 'AI-ModelScope/clevr_cogen_a_train' \
     --overlong_filter false \

@@ -10,7 +10,7 @@ swift rlhf \
     --dataset 'modelscope/coco_2014_caption:validation#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --tuner_type full \
+    --train_type full \
     --seq_kd true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

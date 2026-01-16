@@ -11,7 +11,7 @@ megatron rlhf \
     --dataset 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#20000' \
     --load_from_cache_file true \
     --packing true \
-    --tuner_type lora \
+    --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

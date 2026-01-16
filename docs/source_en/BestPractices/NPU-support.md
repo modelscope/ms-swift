@@ -145,7 +145,7 @@ Check the status of the NPU. For detailed information about the `npu-smi` comman
 ```
 
 ## Fine-tuning
-The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--tuner_type full`. For **more training scripts**, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
+The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--train_type full`. For **more training scripts**, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | Model Size | Number of NPUs | Deepspeed Type | Max Memory Usage   |
 |------|-------|-------------|-----------|
@@ -173,7 +173,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
@@ -195,7 +195,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     ...
 ```
@@ -214,7 +214,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     --deepspeed zero2 \
     ...
@@ -232,7 +232,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     --deepspeed zero3 \
     ...

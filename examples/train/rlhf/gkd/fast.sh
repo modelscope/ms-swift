@@ -22,7 +22,7 @@ swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen2.5-7B \
     --teacher_model $teacher_model \
-    --tuner_type full \
+    --train_type full \
     --dataset 'new_dataset.jsonl' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

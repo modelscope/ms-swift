@@ -21,7 +21,7 @@ NPROC_PER_NODE=2 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-1.7B \
-    --tuner_type full \
+    --train_type full \
     --external_plugins examples/train/grpo/plugin/plugin.py \
     --reward_funcs thinking_tips \
     --loss_scale last_round \

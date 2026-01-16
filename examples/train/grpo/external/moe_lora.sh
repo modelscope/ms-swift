@@ -16,7 +16,7 @@ swift rlhf \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \
     --vllm_server_port 8000 \
-    --tuner_type lora \
+    --train_type lora \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --max_length 12000 \

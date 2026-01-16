@@ -3,7 +3,7 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model ZhipuAI/GLM-4-9B-0414 \
-    --tuner_type full \
+    --train_type full \
     --dataset AI-ModelScope/function-calling-chatml \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

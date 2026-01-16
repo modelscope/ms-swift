@@ -5,7 +5,7 @@ swift sft \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --task_type reranker \
     --loss_type pointwise_reranker \
-    --tuner_type lora \
+    --train_type lora \
     --dataset swift/TextCaps:rerank \
     --split_dataset_ratio 0.05 \
     --eval_strategy steps \

@@ -596,7 +596,7 @@ swift sft \
               'swift/VideoChatGPT:all#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --tuner_type lora \
+    --train_type lora \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --padding_free true \

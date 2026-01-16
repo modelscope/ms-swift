@@ -11,7 +11,7 @@ megatron sft \
     --dataset 'DAMO_NLP/jd:cls' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --tuner_type lora \
+    --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear all-router \

@@ -5,7 +5,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 accelerate launch --config_file "./examples/ascend/train/qwen3_lora_fsdp/fsdp.json" \
     swift/cli/sft.py \
     --model 'Qwen/Qwen3-32B' \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 10 \

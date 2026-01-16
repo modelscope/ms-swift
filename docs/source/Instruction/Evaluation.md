@@ -113,7 +113,7 @@ SWIFT支持在训练过程中使用EvalScope对当前的模型进行评测，以
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
   --model "Qwen/Qwen2.5-0.5B-Instruct" \
-  --tuner_type "lora" \
+  --train_type "lora" \
   --dataset "AI-ModelScope/alpaca-gpt4-data-zh#100" \
   --torch_dtype "bfloat16" \
   --num_train_epochs "1" \

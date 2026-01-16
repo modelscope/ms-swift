@@ -28,7 +28,7 @@ megatron rlhf \
     --cached_dataset qwen3_vl_cached_dataset/train \
     --cached_val_dataset qwen3_vl_cached_dataset/val \
     --load_from_cache_file true \
-    --tuner_type full \
+    --train_type full \
     --tensor_model_parallel_size 4 \
     --expert_tensor_parallel_size 1 \
     --pipeline_model_parallel_size 2 \

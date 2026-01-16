@@ -4,7 +4,7 @@ NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --tuner_type full \
+    --train_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' \
               'AI-ModelScope/alpaca-gpt4-data-en#20000' \
     --load_from_cache_file true \

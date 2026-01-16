@@ -1,11 +1,11 @@
-# `--tuner_type dummy`
+# `--train_type dummy`
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model LLM-Research/Phi-4-multimodal-instruct \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --tuner_type dummy \
+    --train_type dummy \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

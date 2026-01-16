@@ -41,7 +41,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --reward_funcs accuracy \
-    --tuner_type full \
+    --train_type full \
     --torch_dtype bfloat16 \
     --use_vllm true \
     --vllm_mode server \

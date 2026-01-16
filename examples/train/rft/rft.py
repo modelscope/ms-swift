@@ -114,7 +114,7 @@ def do_train(model: str, model_type: str, datasets: List[str], iter, cmd='sft'):
                  f'--max_length 2048 '
                  f'--num_train_epochs 1 '
                  f'--load_args false '
-                 f'--tuner_type full '
+                 f'--train_type full '
                  f'{extra_args} '
                  f'--eval_strategy no '
                  f'--split_dataset_ratio 0 '

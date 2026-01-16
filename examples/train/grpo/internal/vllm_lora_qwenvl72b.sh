@@ -8,7 +8,7 @@ NPROC_PER_NODE=8 \
 swift rlhf \
   --rlhf_type grpo \
   --model Qwen/Qwen2.5-VL-72B-Instruct \
-  --tuner_type lora \
+  --train_type lora \
   --use_vllm true \
   --vllm_mode colocate \
   --vllm_gpu_memory_utilization 0.5 \

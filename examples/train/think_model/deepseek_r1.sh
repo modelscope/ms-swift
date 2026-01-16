@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model deepseek-ai/DeepSeek-R1-0528-Qwen3-8B \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'swift/DeepSeek-R1-Qwen3-8B-Distill#1800' \
               'swift/self-cognition:empty_think#600' \
     --loss_scale ignore_empty_think \

@@ -11,7 +11,7 @@ megatron sft \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
-    --tuner_type lora \
+    --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

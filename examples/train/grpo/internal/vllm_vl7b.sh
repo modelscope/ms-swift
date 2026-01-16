@@ -3,7 +3,7 @@ NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
-    --tuner_type lora \
+    --train_type lora \
     --dataset AI-ModelScope/chartqa_digit_r1v_format \
     --load_from_cache_file true \
     --use_vllm true \

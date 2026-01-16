@@ -4,7 +4,7 @@ swift sft \
     --external_plugins examples/custom/dataset.py \
                        examples/custom/model.py \
     --model AI-ModelScope/Nemotron-Mini-4B-Instruct \
-    --tuner_type lora \
+    --train_type lora \
     --dataset swift/stsb \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 3 \

@@ -8,7 +8,7 @@ swift sft \
     --model Qwen/Qwen3-Embedding-0.6B \
     --task_type embedding \
     --model_type qwen3_emb \
-    --tuner_type full \
+    --train_type full \
     --dataset sentence-transformers/stsb \
     --load_from_cache_file true \
     --split_dataset_ratio 0.05 \

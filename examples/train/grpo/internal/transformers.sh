@@ -9,7 +9,7 @@ swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
     --reward_funcs accuracy format \
-    --tuner_type lora \
+    --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

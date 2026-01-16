@@ -5,7 +5,7 @@ megatron rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3-8B-Base \
     --teacher_model Qwen/Qwen3-32B \
-    --tuner_type lora \
+    --train_type lora \
     --dataset AI-ModelScope/alpaca-gpt4-data-en#2000 AI-ModelScope/alpaca-gpt4-data-zh#2000 \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 1 \

@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift sft \
     --model Qwen/Qwen2.5-Math-1.5B \
-    --tuner_type full \
+    --train_type full \
     --dataset AI-MO/NuminaMath-CoT#100000 \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \

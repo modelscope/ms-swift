@@ -12,7 +12,7 @@ swift rlhf \
     --rlhf_type ppo \
     --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
     --reward_model 'AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2' \
-    --tuner_type full \
+    --train_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' 'AI-ModelScope/alpaca-gpt4-data-en#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

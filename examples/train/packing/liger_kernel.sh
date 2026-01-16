@@ -6,7 +6,7 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2.5-7B \
-    --tuner_type full \
+    --train_type full \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

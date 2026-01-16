@@ -1,7 +1,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
-    --tuner_type longlora \
+    --train_type longlora \
     --dataset 'AI-ModelScope/LongAlpaca-12k#1000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

@@ -11,7 +11,7 @@ NPROC_PER_NODE=7 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
-    --tuner_type full \
+    --train_type full \
     --dataset LLM-Research/xlam-function-calling-60k:grpo \
     --load_from_cache_file true \
     --use_vllm true \

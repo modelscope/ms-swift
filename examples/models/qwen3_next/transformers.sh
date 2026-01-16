@@ -3,7 +3,7 @@
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 nohup swift sft \
     --model Qwen/Qwen3-Next-80B-A3B-Instruct \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

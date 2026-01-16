@@ -40,7 +40,7 @@ megatron rlhf \
     --vllm_server_port 8000 \
     --max_length 8192 \
     --max_completion_length 2048 \
-    --tuner_type full \
+    --train_type full \
     --lr 1e-6 \
     --bf16 true \
     --beta 0.001 \

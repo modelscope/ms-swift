@@ -153,7 +153,7 @@ Legend:
 
 ## 微调
 
-以下介绍LoRA的微调, 全参数微调设置参数`--tuner_type full`即可. **更多训练脚本**参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
+以下介绍LoRA的微调, 全参数微调设置参数`--train_type full`即可. **更多训练脚本**参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | 模型大小 | NPU数量 | deepspeed类型 | 最大显存占用量 |
 | -------- | ------- | ------------- | -------------- |
@@ -181,7 +181,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
@@ -206,7 +206,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     ...
 ```
@@ -227,7 +227,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     --deepspeed zero2 \
     ...
@@ -246,7 +246,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --tuner_type lora \
+    --train_type lora \
     --output_dir output \
     --deepspeed zero3 \
     ...

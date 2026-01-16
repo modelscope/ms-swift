@@ -4,7 +4,7 @@ NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift sft \
     --model Qwen/Qwen2.5-32B \
-    --tuner_type full \
+    --train_type full \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --torch_dtype bfloat16 \
     --max_steps 2000 \

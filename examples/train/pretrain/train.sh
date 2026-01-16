@@ -7,7 +7,7 @@ NPROC_PER_NODE=$nproc_per_node \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift pt \
     --model Qwen/Qwen2.5-7B \
-    --tuner_type full \
+    --train_type full \
     --dataset swift/chinese-c4 \
     --torch_dtype bfloat16 \
     --streaming true \

@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

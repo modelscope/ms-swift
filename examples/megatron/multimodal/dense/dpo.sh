@@ -10,7 +10,7 @@ megatron rlhf \
     --save_safetensors true \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
-    --tuner_type full \
+    --train_type full \
     --tensor_model_parallel_size 4 \
     --sequence_parallel true \
     --freeze_llm false \

@@ -10,7 +10,7 @@ swift rlhf \
     --model Qwen/Qwen2.5-Omni-7B \
     --reward_funcs external_r1v_acc format \
     --reward_weights 1 0.5 \
-    --tuner_type lora \
+    --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

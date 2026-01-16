@@ -24,7 +24,7 @@ megatron rlhf \
     --vllm_max_model_len 16384 \
     --max_length 8192 \
     --max_completion_length 8192 \
-    --tuner_type full \
+    --train_type full \
     --lr 1e-6 \
     --bf16 true \
     --beta 0.00 \

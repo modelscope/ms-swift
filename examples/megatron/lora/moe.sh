@@ -10,7 +10,7 @@ megatron sft \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:empty_think#600' \
     --loss_scale ignore_empty_think \
-    --tuner_type lora \
+    --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

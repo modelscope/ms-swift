@@ -6,7 +6,7 @@ swift sft \
     --model Qwen/Qwen3-VL-Reranker-8B \
     --task_type generative_reranker \
     --loss_type pointwise_reranker \
-    --tuner_type lora \
+    --train_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --learning_rate 5e-6 \

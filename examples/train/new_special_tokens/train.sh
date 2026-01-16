@@ -4,7 +4,7 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --tuner_type lora \
+    --train_type lora \
     --dataset 'swift/new_special_tokens' \
     --split_dataset_ratio 0.01 \
     --new_special_tokens 'examples/train/new_special_tokens/tokens.txt' \
