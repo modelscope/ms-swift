@@ -2,11 +2,11 @@
 import asyncio
 import atexit
 import base64
+import concurrent.futures
 import inspect
 import os
 import uuid
 from collections import defaultdict
-import concurrent.futures
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
 from functools import partial
@@ -293,10 +293,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         max_workers = max(min(32, os.cpu_count(), len(infer_requests)), 1)
         error_list = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [
-                executor.submit(template.encode, infer_request, **kwargs)
-                for infer_request in infer_requests
-            ]
+            futures = [executor.submit(template.encode, infer_request, **kwargs) for infer_request in infer_requests]
             concurrent.futures.wait(futures)
             batched_inputs = []
             for i, future in enumerate(futures):
@@ -311,15 +308,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _get_encoded_batch(self, encoded_list, rollout_batch, template):
         args = get_args()
-        encoded_batch = to_device(
-                template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
+        encoded_batch = to_device(template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
 
         labels = encoded_batch['labels']
         batch_size = len(rollout_batch)
 
-        truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch],
-                                        dtype=torch.bool,
-                                        device=self.device)
+        truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch], dtype=torch.bool, device=self.device)
 
         if template.padding_free:
             # In padding_free mode, labels shape is [1, total_seq_len] (rmpad format)
@@ -375,8 +369,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 completion_count = int(completion_mask[i].sum().item())
                 if total_logprobs != completion_count:
                     logger.warning(f'Rollout logprobs count ({total_logprobs}) does not match '
-                                    f'completion tokens count ({completion_count}). '
-                                    f'Skipping rollout importance sampling for this batch.')
+                                   f'completion tokens count ({completion_count}). '
+                                   f'Skipping rollout importance sampling for this batch.')
                     valid_logprobs = False
                     break
 
@@ -391,7 +385,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                         # Check for None values in flat_lps
                         if any(lp is None for lp in flat_lps):
                             logger.warning('Found None values in rollout_logprobs. '
-                                            'Skipping rollout importance sampling for this batch.')
+                                           'Skipping rollout importance sampling for this batch.')
                             rollout_per_token_logps = None
                             break
                         # Get indices where completion_mask is True
@@ -406,7 +400,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _generate_and_score_completions(self, batch):
         # Get or create the rollout group (TP×PP×CP)
-        args = get_args()
 
         rollout_group = self._get_rollout_group()
 
@@ -435,7 +428,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Step 1: Encode batches and compute logps first (unified flow like GRPOTrainer)
         with self._template_context(template):
             encoded_list, error_list = self._batch_encode(total_batch, template, strict=True, return_length=True)
-            
+
             for idx in range(0, len(encoded_list), self.micro_batch_size):
                 encoded_batch_data = encoded_list[idx:idx + self.micro_batch_size]
                 micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
