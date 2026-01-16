@@ -48,12 +48,6 @@ pre-commit run --all-files # Fix the errors reported by pre-commit until all che
 ### Running CI Tests
 Before submitting the PR, please ensure that your development code is protected by test cases, such as smoke tests for new features, or unit tests for various edge cases. Reviewers will also pay attention to this during code review. At the same time, there will be dedicated services running CI Tests, running all test cases, and the code can only be merged after the test cases pass.
 
-Additionally, since some important tests have been skipped due to long running time, to ensure that your logic is correct, you can run the test locally:
-```shell
-python tests/llm/test_run.py
-```
-Please make sure this test can pass normally.
-
 ## ✅ Hardware support
 
 SWIFT will provide hardware support for developers, including free GPUs. If needed, please email us ([contact@modelscope.cn](mailto:contact@modelscope.cn)) or join our WeChat group:
