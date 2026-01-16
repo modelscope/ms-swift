@@ -10,7 +10,7 @@
 ## 基本参数
 
 - 🔥tuner_backend: 可选为'peft'，'unsloth'。默认为'peft'。
-- 🔥tuner_type: 可选为'lora'、'full'、'longlora'、'adalora'、'llamapro'、'adapter'、'vera'、'boft'、'fourierft'、'reft'。默认为'lora'。（在ms-swift3.x中参数名为`train_type`）
+- 🔥tuner_type: 可选为'lora'、'full'、'longlora'、'adalora'、'llamapro'、'adapter'、'vera'、'boft'、'fourierft'、'reft'。默认为'lora'。（**在ms-swift3.x中参数名为`train_type`**）
 - 🔥adapters: 用于指定adapter的id/path的list，默认为`[]`。该参数通常用于推理/部署命令，例如：`swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`。该参数偶尔也用于断点续训，该参数与`resume_from_checkpoint`的区别在于，**该参数只读取adapter权重**，而不加载优化器和随机种子，并不跳过已训练的数据集部分。
   - `--model`与`--adapters`的区别：`--model`后接完整权重的目录路径，内包含model/tokenizer/config等完整权重信息，例如`model.safetensors`。`--adapters`后接增量adapter权重目录路径的列表，内涵adapter的增量权重信息，例如`adapter_model.safetensors`。
 - 🔥external_plugins: 外部`plugin.py`文件列表，这些文件会被额外加载（即对模块进行`import`）。默认为`[]`。你可以传入自定义模型、对话模板和数据集注册的`.py`文件路径，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh)；或者自定义GRPO的组件，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)。

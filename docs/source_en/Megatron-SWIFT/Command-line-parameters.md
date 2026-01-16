@@ -257,7 +257,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 **Tuner Parameters**:
 
-- tuner_type: Options are `'lora'` and `'full'`. Default is `'full'`. (In ms-swift 3.x, the parameter name is `train_type`)
+- tuner_type: Options are `'lora'` and `'full'`. Default is `'full'`. (**In ms-swift 3.x, the parameter name is `train_type`**)
 - 🔥freeze_llm: This argument only takes effect for multimodal models and can be used in both full-parameter and LoRA training, but with different behaviors. In full-parameter training, setting `freeze_llm=True` freezes the LLM component's weights. In LoRA training with `target_modules=['all-linear']`, setting `freeze_llm=True` prevents LoRA modules from being added to the LLM part. Default is `False`.
 - 🔥freeze_vit: This argument only applies to multimodal models and behaves differently depending on the training mode. In full-parameter training, setting `freeze_vit=True` freezes the ViT (vision transformer) component's weights. In LoRA training with `target_modules=['all-linear']`, setting `freeze_vit=True` prevents LoRA modules from being added to the ViT part. Default is `True`.
   - Note: **Here, "vit" refers not only to `vision_tower`, but also to `audio_tower`**. For Omni models, if you want to apply LoRA only to `vision_tower` and not `audio_tower`, you can modify [this code](https://github.com/modelscope/ms-swift/blob/a5d4c0a2ce0658cef8332d6c0fa619a52afa26ff/swift/llm/model/model_arch.py#L544-L554).

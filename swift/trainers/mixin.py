@@ -78,9 +78,11 @@ class SwiftMixin:
             logger.warning('Using IterableDataset, setting args.dataloader_num_workers to 1.')
         self.compute_loss_func = None  # Compatible with the older version of transformers
         self.template = template
+        
         self.is_encoder_decoder = self.template.is_encoder_decoder
         self.padding_free = self.template.padding_free
-
+        self.task_type = self.template.task_type
+        self.problem_type = getattr(model.config, 'problem_type', None)
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), self._patch_timeout():
                 config_info = self._collect_config_info()
@@ -999,8 +1001,8 @@ class SwiftMixin:
         args = self.args
         logits = outputs.logits
         metrics = None
-        task_type = getattr(args, 'task_type', 'causal_lm')
-        problem_type = getattr(args, 'problem_type', 'single_label_classification')
+        task_type = self.task_type
+        problem_type = self.problem_type
         if task_type == 'embedding':
             return
         elif task_type == 'seq_cls':

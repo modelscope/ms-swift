@@ -93,7 +93,7 @@ class SwanlabArguments:
 
 
 @dataclass
-class SftArguments(SwanlabArguments, TunerArguments, Seq2SeqTrainingArguments, BaseArguments):
+class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingArguments):
     """Arguments pertaining to the training process.
 
     SftArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,

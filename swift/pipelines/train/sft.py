@@ -29,7 +29,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.train_msg = {}
         self._prepare_model_tokenizer()
         self._prepare_template()
-        self._prepare_callbacks()
         self._prepare_flash_ckpt()
 
     @RayHelper.function(group='default')
