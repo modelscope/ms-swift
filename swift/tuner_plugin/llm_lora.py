@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import safetensors.torch
 import torch
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, PeftModel, get_peft_model
 
 from swift.utils import deep_getattr, get_logger, get_multimodal_target_regex
 from .base import Tuner
