@@ -8,7 +8,7 @@ from packaging import version
 from transformers import TrainingArguments
 
 from swift.arguments import SftArguments
-from swift.plugins import Tuner, extra_tuners
+from swift.tuner_plugin import Tuner, tuners_map
 from swift.trainers import calculate_max_steps
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
@@ -327,21 +327,21 @@ class TunerMixin:
             apply_liger(args.model_type)
 
         if args.is_adapter:
-            if args.tuner_backend != 'unsloth' and args.tuner_type not in extra_tuners:
+            if args.tuner_backend != 'unsloth' and args.tuner_type not in tuners_map:
                 # Fix the name of the layer in xcomposer that contains Plora.
                 # Unsloth prepares and loads lora outside this function when
                 # resume_from_checkpoint, so do not disable grad here
                 model.requires_grad_(False)
             if args.resume_from_checkpoint or args.adapters:
-                if args.tuner_type in extra_tuners:
-                    tuner: Tuner = extra_tuners[args.tuner_type]
+                if args.tuner_type in tuners_map:
+                    tuner: Tuner = tuners_map[args.tuner_type]
                 else:
                     tuner = Swift
                 assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
                 model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
             else:
-                if args.tuner_type in extra_tuners:
-                    tuner: Tuner = extra_tuners[args.tuner_type]
+                if args.tuner_type in tuners_map:
+                    tuner: Tuner = tuners_map[args.tuner_type]
                     model = tuner.prepare_model(args, model)
                 else:
                     model = prepare_adapter(

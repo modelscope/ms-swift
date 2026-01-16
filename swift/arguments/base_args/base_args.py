@@ -9,7 +9,7 @@ from packaging import version
 import swift
 from swift.hub import get_hub
 from swift.model import get_ckpt_dir, get_model_processor, load_by_unsloth
-from swift.plugins import extra_tuners
+from swift.tuner_plugin import tuners_map
 from swift.ray import RayArguments
 from swift.template import Template, get_template
 from swift.utils import (Processor, check_json_format, get_dist_setting, get_logger, import_external_file, is_dist,
@@ -25,7 +25,7 @@ logger = get_logger()
 
 def get_supported_tuners():
     return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'
-            } | set(extra_tuners.keys())
+            } | set(tuners_map.keys())
 
 
 @dataclass
@@ -163,7 +163,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
-        if self.tuner_type not in extra_tuners:
+        if self.tuner_type not in tuners_map:  # build-in tuner
             for adapter in self.adapters:
                 assert self._check_is_adapter(adapter), (
                     f'`{adapter}` is not an adapter, please try using `--model` to pass it.')

@@ -5,7 +5,7 @@ import numpy as np
 from datasets import load_from_disk
 
 from swift.dataset import DatasetSyntax, sample_dataset
-from swift.plugins import extra_tuners
+from swift.tuner_plugin import tuners_map
 from swift.template import update_generation_config_eos_token
 from swift.tuners import Swift
 from swift.utils import get_logger
@@ -21,8 +21,8 @@ def prepare_adapter(args, model, adapters=None):
             from unsloth import FastLanguageModel as UnslothModel
         UnslothModel.for_inference(model)
         return model
-    if args.tuner_type in extra_tuners:
-        tuner = extra_tuners[args.tuner_type]
+    if args.tuner_type in tuners_map:
+        tuner = tuners_map[args.tuner_type]
     else:
         tuner = Swift
     # compat deploy

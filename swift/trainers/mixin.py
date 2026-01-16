@@ -364,8 +364,8 @@ class SwiftMixin:
                 # modelscope save_pretrained does not support safe_serialization
                 PreTrainedModel.save_pretrained(
                     self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
-        elif self.args.tuner_type in extra_tuners:
-            extra_tuners[self.args.tuner_type].save_pretrained(
+        elif self.args.tuner_type in tuners_map:
+            tuners_map[self.args.tuner_type].save_pretrained(
                 self.model, output_dir, state_dict=state_dict, safe_serialization=save_safetensors)
         else:
             if self.model.__class__.__name__ != 'SentenceTransformer':

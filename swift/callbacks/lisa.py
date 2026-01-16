@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from swift.trainers import TrainingArguments, Trainer
 
 
-class DynamicLayerActivationCallback(TrainerCallback):
+class LISACallback(TrainerCallback):
 
     def __init__(self, args: 'TrainingArguments', trainer: 'Trainer'):
         assert args.tuner_type == 'full', 'LISA only supports full parameter training.'
