@@ -3,7 +3,7 @@ from typing import List, Optional, Tuple
 
 import torch.nn as nn
 from peft import PeftModel
-from transformers import Trainer
+from transformers import Trainer as HfTrainer
 
 from swift.utils import get_logger
 from .base import OptimizerCallback
@@ -47,7 +47,7 @@ class MultimodalOptimizerCallback(OptimizerCallback):
         args = self.args
         model = self.trainer.model
         """ViT/Aligner/LLM use different learning rates."""
-        decay_parameters = set(Trainer.get_decay_parameter_names(None, model))
+        decay_parameters = set(HfTrainer.get_decay_parameter_names(None, model))
         model_arch = model.model_meta.model_arch
         vit_parameters = get_param_startswith(model, model_arch.vision_tower, model_arch.aligner)
         aligner_parameters = get_param_startswith(model, model_arch.aligner)
@@ -70,5 +70,5 @@ class MultimodalOptimizerCallback(OptimizerCallback):
                     'weight_decay': wd,
                     'lr': lr,
                 })
-        optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(args, model)
+        optimizer_cls, optimizer_kwargs = HfTrainer.get_optimizer_cls_and_kwargs(args, model)
         return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)

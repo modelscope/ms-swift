@@ -1,13 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import torch
 from torch import nn
 from torch.optim import Optimizer
-from transformers import Trainer, get_scheduler
+from transformers import Trainer as HfTrainer
+from transformers import get_scheduler
 
 from swift.trainers import calculate_max_steps
 from swift.utils import get_logger
@@ -17,6 +17,9 @@ try:
     from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 except ImportError:
     from torch.optim.lr_scheduler import LRScheduler
+
+if TYPE_CHECKING:
+    from swift.trainers import TrainingArguments
 
 logger = get_logger()
 
@@ -136,7 +139,7 @@ def _create_optimizer_and_scheduler(model: nn.Module, args: 'TrainingArguments',
 
         return GaloreOptimizerWrapper(optimizer_dict), GaloreSchedulerWrapper(scheduler_dict)
     else:
-        decay_parameters = Trainer.get_decay_parameter_names(Trainer, model)
+        decay_parameters = HfTrainer.get_decay_parameter_names(None, model)
         param_groups = [{
             'params': galore_params,
             **galore_defaults,

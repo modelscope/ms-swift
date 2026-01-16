@@ -285,7 +285,7 @@ class RLHFMegatronArgumentsMixin:
 @dataclass
 class MegatronTunerMixin:
     tuner_type: Literal['lora', 'full'] = 'full'
-    train_type: Optional[str] = None  # compat swift3.x
+    train_type: Optional[Literal['lora', 'full']] = None  # compat swift3.x
     freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True

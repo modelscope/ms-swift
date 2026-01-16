@@ -17,7 +17,7 @@ from modelscope import snapshot_download
 from peft.utils import CONFIG_NAME
 from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
-from transformers import Trainer
+from transformers import Trainer as HfTrainer
 
 from swift.utils import get_device_count, get_logger
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
@@ -270,7 +270,7 @@ class SwiftModel(nn.Module):
                     all_param_names.update(param_names)
                     param_groups.extend(param_group)
 
-        decay_parameters = Trainer.get_decay_parameter_names(None, self.model)
+        decay_parameters = HfTrainer.get_decay_parameter_names(None, self.model)
         param_groups.extend([
             {
                 'params': [

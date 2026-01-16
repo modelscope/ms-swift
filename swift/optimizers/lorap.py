@@ -1,5 +1,5 @@
 from torch.optim import Optimizer
-from transformers.trainer import Trainer
+from transformers.trainer import Trainer as HfTrainer
 
 from .base import OptimizerCallback
 
@@ -17,7 +17,7 @@ class LorapOptimizerCallback(OptimizerCallback):
 
         if optimizer_grouped_parameters is None:
             # Default parameter groups
-            decay_parameters = Trainer.get_decay_parameter_names(None, model)
+            decay_parameters = HfTrainer.get_decay_parameter_names(None, model)
             optimizer_grouped_parameters = [
                 {
                     'params': [p for n, p in model.named_parameters() if (n in decay_parameters and p.requires_grad)],
@@ -29,5 +29,5 @@ class LorapOptimizerCallback(OptimizerCallback):
                     'weight_decay': 0.0,
                 },
             ]
-        optimizer_cls, optimizer_kwargs = Trainer.get_optimizer_cls_and_kwargs(args)
+        optimizer_cls, optimizer_kwargs = HfTrainer.get_optimizer_cls_and_kwargs(args)
         return optimizer_cls(optimizer_grouped_parameters, **optimizer_kwargs)
