@@ -4,7 +4,8 @@ from contextlib import contextmanager
 from typing import Optional
 
 from torch.utils.data import DataLoader
-from transformers import PreTrainedModel, Trainer as HfTrainer
+from transformers import PreTrainedModel
+from transformers import Trainer as HfTrainer
 from trl import PPOTrainer as HFPPOTrainer
 
 from swift.utils import patch_getattr
