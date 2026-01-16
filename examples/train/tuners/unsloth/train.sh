@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_backend unsloth \
+    --tuner_backend unsloth \
     --tuner_type lora \
     --dataset 'swift/self-cognition#1000' \
     --num_train_epochs 1 \
