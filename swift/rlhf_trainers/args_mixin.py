@@ -63,7 +63,7 @@ class VllmArguments:
         self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def get_vllm_engine_kwargs(self):
-        # 部分参数由BaseArguments提供
+        # Some parameters are provided by BaseArguments
         adapters = self.adapters
         if hasattr(self, 'adapter_mapping'):
             adapters = adapters + list(self.adapter_mapping.values())
