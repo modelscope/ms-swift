@@ -22,7 +22,7 @@ def is_vit_aligner_param(model_arch, parameter_name: str) -> bool:
     return False
 
 
-class LLMLoraTuner(Tuner):
+class LoRALLMTuner(Tuner):
     """Full-parameter training of ViT/Aligner while LoRA training LLM"""
 
     @staticmethod

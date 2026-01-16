@@ -152,13 +152,13 @@ class SwiftMixin:
             callbacks_cls.append(callbacks_map['lisa'])
 
         if args.tuner_type == 'adalora':
-            callbacks_cls.append(callbacks_map['adalora'](args))
+            callbacks_cls.append(callbacks_map['adalora'])
         if args.early_stop_interval is not None and args.early_stop_interval > 0:
-            callbacks_cls.append(callbacks_map['early_stop'](args))
+            callbacks_cls.append(callbacks_map['early_stop'])
         for callback in args.callbacks:
             callbacks_cls.append(callbacks_map[callback])
         for callback_cls in callbacks_cls:
-            self.add_callback(callback_cls(args, cls))
+            self.add_callback(callback_cls(args, self))
 
     @contextmanager
     def _patch_timeout(self):
