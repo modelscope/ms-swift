@@ -93,10 +93,10 @@ register_model(
 
 class Gemma3TextLoader(ModelLoader):
 
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+    def get_config(self, model_dir):
         # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
         self.attn_impl = self.attn_impl or 'eager'
-        return super().get_model(model_dir, *args, **kwargs)
+        return super().get_config(model_dir)
 
 
 register_model(
@@ -121,11 +121,14 @@ register_model(
 
 class Gemma3VisionLoader(ModelLoader):
 
+    def get_config(self, model_dir):
+        # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
+        self.attn_impl = self.attn_impl or 'eager'
+        return super().get_config(model_dir)
+
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Gemma3ForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Gemma3ForConditionalGeneration
-        # It is strongly recommended to train Gemma3 models with the `eager` attention implementation instead of `sdpa`.
-        self.attn_impl = self.attn_impl or 'eager'
         return super().get_model(model_dir, *args, **kwargs)
 
 

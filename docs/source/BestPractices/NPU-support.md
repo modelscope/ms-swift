@@ -336,6 +336,30 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 ```
 
 ## 支持现状
+| 一级特性 | 特性                | 进展     |
+| -------- | ------------------- | -------- |
+| 训练范式 | CPT                 | 已支持   |
+|          | SFT                 | 已支持   |
+|          | DPO                 | 已支持   |
+|          | RM                  | 已支持   |
+| 分布式   | DDP                 | 已支持   |
+|          | FSDP                | 已支持   |
+|          | FSDP2               | 已支持   |
+|          | DeepSpeed           | 已支持   |
+|          | MindSpeed(Megatron) | 已支持   |
+| 低参微调 | FULL                | 已支持   |
+|          | LoRA                | 已支持   |
+|          | QLoRA               | 暂不支持 |
+| RLHF     | GRPO                | 已支持   |
+|          | PPO                 | 已支持   |
+| 性能优化 | FA 等融合算子       | 已支持   |
+|          | Liger-Kernel        | 暂不支持 |
+| 部署     | PT                  | 已支持   |
+|          | vLLM                | 已支持   |
+|          | SGLang              | 暂不支持 |
+
+------
+
 
 ### 表 1：SFT 类算法
 
@@ -371,11 +395,12 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 
 ### 表 3：当前 NPU 暂不支持 / 未完全验证的模块
 
-| item                   |
-| ---------------------- |
-| Liger-kernel           |
-| 量化/QLoRA相关         |
-| 使用sglang作为推理引擎 |
+| item                              |
+| --------------------------------- |
+| Liger-kernel                      |
+| 量化/QLoRA相关                    |
+| 使用sglang作为推理引擎            |
+| 使用megatron时开启ETP进行lora训练 |
 
 
 ## NPU微信群

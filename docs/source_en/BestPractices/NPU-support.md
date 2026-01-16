@@ -318,6 +318,30 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 
 ## Current Support Status
 
+| Primary Feature | Feature                | Status        |
+| --------------- | ---------------------- | ------------- |
+| Training Paradigm | CPT                   | Supported     |
+|                 | SFT                    | Supported     |
+|                 | DPO                    | Supported     |
+|                 | RM                     | Supported     |
+| Distributed     | DDP                    | Supported     |
+|                 | FSDP                   | Supported     |
+|                 | FSDP2                  | Supported     |
+|                 | DeepSpeed              | Supported     |
+|                 | MindSpeed (Megatron)   | Supported     |
+| PEFT            | FULL                   | Supported     |
+|                 | LoRA                   | Supported     |
+|                 | QLoRA                  | Not Supported |
+| RLHF            | GRPO                   | Supported     |
+|                 | PPO                    | Supported     |
+| Performance Optimization | Fused ops such as FA | Supported |
+|                 | Liger-Kernel           | Not Supported |
+| Deployment      | PT                     | Supported     |
+|                 | vLLM                   | Supported     |
+|                 | SGLang                 | Not Supported |
+
+---
+
 ### Table 1: SFT Algorithms
 
 | Algorithm | Model Families              | Strategy              | Hardware          |
@@ -356,7 +380,8 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 | ------------------------ |
 | Liger-kernel             |
 | Quantization/QLoRA       |
-| Using sglang as inference engine |
+| Using SGLang as inference engine |
+| Enable ETP for LoRA training when using Megatron |
 
 
 ## NPU WeChat Group
