@@ -50,5 +50,6 @@ def test_reranker():
             sequence_parallel=True,
             finetune=True))
 
+
 if __name__ == '__main__':
     test_embedding()
