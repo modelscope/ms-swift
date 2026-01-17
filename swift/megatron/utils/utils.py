@@ -172,7 +172,7 @@ def prepare_adapter(model):
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
     logger.info(f'lora_config: {lora_config}')
     with _patch_deepcopy():
-        model = get_peft_model(model, lora_config)
+        model = Swift.prepare_model(model, lora_config)
     if args.ref_adapter_load or args.ref_adapters:
         model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
