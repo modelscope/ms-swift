@@ -15,10 +15,10 @@ from megatron.core.transformer.transformer_layer import get_transformer_layer_of
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
 from packaging import version
-from peft import LoraConfig, get_peft_model
 from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
 
+from swift.tuners import LoraConfig, Swift
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
                          get_model_parameter_info)
 
