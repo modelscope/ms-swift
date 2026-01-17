@@ -76,12 +76,12 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_lm_head_model(module, model_meta=model_meta, lm_heads=lm_heads)
+    lm_head_model = get_lm_head_model(module, model_meta=model_meta, lm_heads=lm_heads)
 
     found = False
     for lm_head in lm_heads:
-        if hasattr(llm_model, lm_head):
-            getattr(llm_model, lm_head).forward = MethodType(lm_head_forward, getattr(llm_model, lm_head))
+        if hasattr(lm_head_model, lm_head):
+            getattr(lm_head_model, lm_head).forward = MethodType(lm_head_forward, getattr(lm_head_model, lm_head))
             found = True
             break
 
@@ -99,7 +99,7 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
             'last_hidden_state': embeddings.contiguous(),
         }
 
-    llm_model.register_forward_hook(_output_embedding_hook, with_kwargs=True)
+    lm_head_model.register_forward_hook(_output_embedding_hook, with_kwargs=True)
 
 
 def patch_output_to_input_device(module: torch.nn.Module):
