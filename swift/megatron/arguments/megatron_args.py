@@ -31,7 +31,6 @@ class RLHFMegatronArgumentsMixin:
     reference_free: bool = False
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'
-    loss_type: Optional[str] = None
 
     # kto
     desirable_weight: float = 1.
@@ -321,6 +320,8 @@ class MegatronTunerMixin:
 
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
+    loss_type: Optional[str] = None  # rlhf / plugins
+
     check_model: bool = True
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False

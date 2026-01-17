@@ -451,6 +451,8 @@ class GPTModel(McoreGPTModel):
                 hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
         if args.task_type == 'embedding':
             logits = hidden_states
+            if args.sequence_parallel and args.tensor_model_parallel_size > 1:
+                logits = gather_from_sequence_parallel_region(logits)
         else:
             logits, _ = self.output_layer(
                 hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)

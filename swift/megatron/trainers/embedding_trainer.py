@@ -1,7 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from functools import partial
+
 import torch.nn
 from megatron.training import get_args, get_timers
-from functools import partial
+
+from swift.loss import loss_map
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
 
@@ -10,14 +13,19 @@ logger = get_logger()
 
 class MegatronEmbeddingTrainer(BaseMegatronTrainer):
 
-    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
-        args = self.args
+    def __init__(self, args, template):
+        super().__init__(args, template)
         if not args.padding_free:
             raise ValueError('Currently, task_type embedding only supports padding_free.')
+        self._loss_func = loss_map[self.args.loss_type](args, self)
 
-        cu_seqlens_q = packed_seq_params.cu_seqlens_q
-        num_samples = packed_seq_params.num_samples
-        logits = cu_seqlens_q[1:num_samples + 1] - 1
+    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
+        args = self.args
+        last_hidden_state = self.get_last_tokens(output_tensor, packed_seq_params)
+        loss = self._loss_func({'last_hidden_state': last_hidden_state}, labels)
+        metric = {'loss': loss.detach().clone()}
+        metric = self._all_reduce_metric(metric)
+        return loss, metric
 
     def forward_step(self, data_iterator, model):
         timers = get_timers()
