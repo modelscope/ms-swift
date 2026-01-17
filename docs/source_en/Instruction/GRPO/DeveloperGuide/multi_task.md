@@ -16,7 +16,7 @@ We can set up different reward functions to handle math and code data separately
 Below are examples of reward functions tailored for different tasks:
 
 ```python
-from swift.plugins import ORM, orms
+from swift.rewards import ORM, orms
 import random
 
 # Math-specific reward function

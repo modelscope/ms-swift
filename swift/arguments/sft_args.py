@@ -3,11 +3,9 @@ import os
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from transformers import Seq2SeqTrainingArguments
 from transformers.utils.versions import require_version
 
-from swift.trainers import TrainerFactory
-from swift.trainers.arguments import TrainArgumentsMixin
+from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
                          is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
 from .base_args import BaseArguments
@@ -95,7 +93,7 @@ class SwanlabArguments:
 
 
 @dataclass
-class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumentsMixin, Seq2SeqTrainingArguments):
+class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrainingArguments):
     """Arguments pertaining to the training process.
 
     SftArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
@@ -131,11 +129,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
         deepspeed_autotp_size (Optional[int]): The tensor parallelism size for DeepSpeed AutoTP. To use this, the
             `--deepspeed` argument must be set to 'zero0', 'zero1', or 'zero2'. Note: This feature only supports
             full-parameter fine-tuning. Defaults to None.
-        early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
-            `best_metric` does not improve for `early_stop_interval` evaluation periods (based on `save_steps`). It is
-            recommended to set `eval_steps` and `save_steps` to the same value. The implementation can be found in the
-            callback plugin. For more complex requirements, you can directly override the implementation in
-            `callback.py`. Defaults to None.
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
@@ -161,9 +154,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
     # fsdp
     fsdp: Optional[str] = None
 
-    # early_step
-    early_stop_interval: Optional[int] = None
-
     def _check_padding_free(self):
         if self.padding_free or self.packing:
             if self.packing:
@@ -180,7 +170,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
             self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
             # The non-resume_only_model will have its weights loaded in the trainer.
             if self.resume_only_model:
-                if self.train_type == 'full':
+                if self.tuner_type == 'full':
                     self.model = self.resume_from_checkpoint
                 else:
                     self.adapters = [self.resume_from_checkpoint]
@@ -220,7 +210,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
         self._init_metric()
 
         if self.learning_rate is None:
-            if self.train_type == 'full':
+            if self.tuner_type == 'full':
                 self.learning_rate = 1e-5
             else:
                 self.learning_rate = 1e-4
@@ -384,13 +374,13 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, TrainArgumen
         self.evaluation_strategy = self.eval_strategy
 
     def _init_metric(self):
-        if self.metric is None:
+        if self.eval_metric is None:
             if self.task_type == 'causal_lm' and self.predict_with_generate:
-                self.metric = 'nlg'
+                self.eval_metric = 'nlg'
             elif self.task_type == 'embedding':
-                self.metric = 'infonce' if self.loss_type == 'infonce' else 'paired'
+                self.eval_metric = 'infonce' if self.loss_type == 'infonce' else 'paired'
             elif self.task_type in {'reranker', 'generative_reranker'}:
-                self.metric = 'reranker'
+                self.eval_metric = 'reranker'
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None and self.metric_for_best_model is not None:

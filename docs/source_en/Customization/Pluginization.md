@@ -7,7 +7,7 @@ Pluginization is a significant new feature introduced in SWIFT 3.0. We aim to ma
 
 ## Callback Mechanism
 
-An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/callback.py).
+An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks).
 
 The `callback` mechanism is a customization feature in the Transformers Trainer that allows developers to control the training process. Typically, customizing a callback looks like the following:
 
@@ -129,7 +129,7 @@ The example is [here](https://github.com/modelscope/ms-swift/blob/main/swift/age
 
 ## Customizing Tuners
 
-An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/tuner.py).
+An example can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/tuner_plugin).
 - For the multimodal model, full-parameter training is applied to the ViT part, while LoRA training is used for the LLM part. Refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit).
 - For Phi4-multimodal, train its existing LoRA directly without adding extra LoRA. Refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/tuner_phi4_mm.sh).
 

@@ -1,5 +1,5 @@
 # 4*47G
-# losses: plugin/loss.py
+# losses: swift/loss
 # only support --padding_side left
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
@@ -7,7 +7,7 @@ swift sft \
     --model Qwen/Qwen3-Reranker-4B \
     --task_type generative_reranker \
     --loss_type listwise_reranker \
-    --train_type full \
+    --tuner_type full \
     --dataset MTEB/scidocs-reranking \
     --load_from_cache_file true \
     --split_dataset_ratio 0.05 \

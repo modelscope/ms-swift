@@ -108,7 +108,7 @@ class Template(ProcessorMixin):
         from swift.loss_scale import LossScale, get_loss_scale
         from swift.agent_template import agent_template_map
         self._processor_inited = False
-        self._version = 'v5'  # Avoid compatibility issues caused by load_from_cache_file caching.
+        self._version = 'v6'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
         self.model = None
         self.dummy_model = None
@@ -576,7 +576,7 @@ class Template(ProcessorMixin):
             if return_length:
                 if not lengths:
                     raise ValueError(f'lengths should not be empty. batched: {batched}')
-                encoded['length'] = lengths[0] if len(lengths) == 1 else lengths
+                encoded['lengths'] = lengths
             else:
                 encoded.pop('length', None)
             if return_template_inputs:

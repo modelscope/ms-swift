@@ -419,7 +419,7 @@ class MegatronPretrainingRandomSampler:
         self.data_sharding = data_sharding
         self.shuffle = shuffle
         self.group_by_length = group_by_length
-        self.lengths = self.dataset['length'] if group_by_length else None
+        self.lengths = self.dataset['lengths'] if group_by_length else None
         if self.lengths is not None:
             self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
         self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size

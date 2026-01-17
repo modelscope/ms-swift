@@ -31,6 +31,7 @@ def infer_hf():
 
 
 def infer_swift():
+    from peft import PeftModel
     from swift import get_model_processor, get_template
     from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
     from modelscope import snapshot_download
@@ -39,6 +40,8 @@ def infer_swift():
     adapter_dir = snapshot_download('swift/test_lora')
     model, tokenizer = get_model_processor(model_dir, device_map='auto')
     model = Swift.from_pretrained(model, adapter_dir)
+    # You can also write it as:
+    # model = PeftModel.from_pretrained(model, adapter_dir)
     template = get_template(tokenizer)
     engine = TransformersEngine(model, template=template)
 

@@ -223,7 +223,7 @@ class LLMInfer(BaseUI):
             with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
-                kwargs['train_type'] = _json['train_type']
+                kwargs['tuner_type'] = _json['tuner_type']
         deploy_args = DeployArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value

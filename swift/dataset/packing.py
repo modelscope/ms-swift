@@ -14,7 +14,7 @@ from swift.utils import get_logger, is_dist, is_master, split_list
 logger = get_logger()
 
 
-def calculate_matched_group(template, sequences, packing_length: int, is_finished: bool = True):
+def calculate_matched_group(sequences, packing_length: int, is_finished: bool = True):
     if len(sequences) == 0:
         return [], []
     # https://arxiv.org/pdf/2404.10830
@@ -53,7 +53,7 @@ class PackingDataset(Dataset):
         self.packing_num_proc = min(packing_num_proc, math.ceil(len(dataset) / self.PACKING_BATCH_SIZE))
         self._out_queue = mp.Queue()
         if is_master():
-            lengths = self.dataset['length']
+            lengths = self.dataset['lengths']
             offset = 0
             chunked_lengths = split_list(lengths, self.packing_num_proc)
             for i in range(self.packing_num_proc):
@@ -98,8 +98,7 @@ class PackingDataset(Dataset):
                 break
             i += self.PACKING_BATCH_SIZE
             is_finished = i >= len(data)
-            sequences, input_data = calculate_matched_group(
-                self.template, input_data, self.packing_length, is_finished=is_finished)
+            sequences, input_data = calculate_matched_group(input_data, self.packing_length, is_finished=is_finished)
             self._out_queue.put((rank, sequences, len(new_data)))
         self._out_queue.put((rank, [], -1))
 
@@ -196,7 +195,7 @@ class IterablePackingDataset(IterableDataset):
             num_samples = self._put_data_in_queue(iterator)
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)
-            sequences, data = calculate_matched_group(self.template, data, self.packing_length, is_finished=finished)
+            sequences, data = calculate_matched_group(data, self.packing_length, is_finished=finished)
             res = []
             for row in sequences:
                 res.append([r[0] for r in row])

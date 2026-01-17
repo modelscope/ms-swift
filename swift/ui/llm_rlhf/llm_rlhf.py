@@ -104,14 +104,14 @@ class LLMRLHF(LLMTrain):
                 'en': 'RLHF type'
             },
         },
-        'train_type': {
+        'tuner_type': {
             'label': {
                 'zh': '训练方式',
                 'en': 'Train type'
             },
             'info': {
                 'zh': '选择训练的方式',
-                'en': 'Select the training type'
+                'en': 'Select the tuner type'
             }
         },
         'seed': {
@@ -242,7 +242,7 @@ class LLMRLHF(LLMTrain):
                 with gr.Accordion(elem_id='train_param', open=True):
                     with gr.Row():
                         gr.Dropdown(elem_id='rlhf_type', scale=2)
-                        gr.Dropdown(elem_id='train_type', scale=2, choices=list(get_supported_tuners()))
+                        gr.Dropdown(elem_id='tuner_type', scale=2, choices=list(get_supported_tuners()))
                         gr.Textbox(elem_id='seed', scale=2)
                         gr.Dropdown(elem_id='torch_dtype', scale=2)
                         gr.Checkbox(elem_id='use_liger_kernel', scale=2)
@@ -287,9 +287,9 @@ class LLMRLHF(LLMTrain):
                 base_tab.element('use_ddp').change(
                     cls.update_ddp_num,
                     [base_tab.element('gpu_id'), base_tab.element('use_ddp')], base_tab.element('ddp_num'))
-                cls.element('train_type').change(
+                cls.element('tuner_type').change(
                     RLHFHyper.update_lr,
-                    inputs=[base_tab.element('train_type')],
+                    inputs=[base_tab.element('tuner_type')],
                     outputs=[cls.element('learning_rate')])
                 cls.element('rlhf_type').change(
                     RLHF.update_beta, inputs=[base_tab.element('rlhf_type')], outputs=[base_tab.element('beta')])
@@ -318,7 +318,7 @@ class LLMRLHF(LLMTrain):
     def prepare_sub_to_filter(cls):
         tabs_relation_dict = {
             key: val
-            for key, val in zip(['train_type', 'optimizer'], [RLHFTuner.tabs_to_filter, RLHFOptimizer.tabs_to_filter])
+            for key, val in zip(['tuner_type', 'optimizer'], [RLHFTuner.tabs_to_filter, RLHFOptimizer.tabs_to_filter])
         }
         return tabs_relation_dict
 

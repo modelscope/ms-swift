@@ -96,7 +96,7 @@ class ModelArch(LLMModelArch, MLLMModelArch):
 
 @dataclass
 class ModelKeys:
-
+    """Used to support training of tuners such as llama-pro"""
     arch_name: str = None
 
     embedding: str = None
@@ -123,6 +123,7 @@ class ModelKeys:
 
 @dataclass
 class MultiModelKeys(ModelKeys):
+    """Used to support freeze_vit/freeze_aligner/freeze_llm"""
     language_model: Union[str, List[str]] = field(default_factory=list)
     aligner: Union[str, List[str]] = field(default_factory=list)
     vision_tower: Union[str, List[str]] = field(default_factory=list)

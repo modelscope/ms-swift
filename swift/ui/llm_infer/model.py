@@ -60,8 +60,8 @@ class Model(BaseUI):
                 'en': 'Merge LoRA'
             },
             'info': {
-                'zh': '仅在`sft_type=lora`时可用',
-                'en': 'Only available when `sft_type=lora`'
+                'zh': '仅在`tuner_type=lora`时可用',
+                'en': 'Only available when `tuner_type=lora`'
             }
         },
         'lora_modules': {

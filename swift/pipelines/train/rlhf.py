@@ -9,8 +9,8 @@ from packaging import version
 from swift.arguments import BaseArguments, RLHFArguments
 from swift.dataset import DatasetLoader, load_dataset
 from swift.model import get_model_info_meta
-from swift.plugins import Tuner, extra_tuners
 from swift.sequence_parallel import sequence_parallel
+from swift.tuner_plugin import Tuner, tuners_map
 from swift.tuners import Swift
 from swift.utils import (HfConfigFactory, disable_deepspeed_zero3, get_logger, get_model_parameter_info,
                          safe_snapshot_download)
@@ -165,8 +165,8 @@ class SwiftRLHF(SwiftSft):
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
         model = super().prepare_model(args, model, template=template, train_dataset=train_dataset, task_type=task_type)
         if args.ref_adapters:
-            if args.train_type in extra_tuners:
-                tuner: Tuner = extra_tuners[args.train_type]
+            if args.tuner_type in tuners_map:
+                tuner: Tuner = tuners_map[args.tuner_type]
             else:
                 tuner = Swift
             assert len(args.ref_adapters) == 1, f'args.ref_adapters: {args.ref_adapters}'

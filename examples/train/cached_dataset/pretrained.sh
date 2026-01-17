@@ -14,7 +14,7 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift pt \
     --model Qwen/Qwen2.5-7B \
-    --train_type full \
+    --tuner_type full \
     --cached_dataset './pretrain_cached_dataset/train' \
     --cached_val_dataset './pretrain_cached_dataset/val' \
     --num_train_epochs 3 \

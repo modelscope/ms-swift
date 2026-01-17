@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Optional
 
 import torch

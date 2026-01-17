@@ -5,8 +5,8 @@ import numpy as np
 from datasets import load_from_disk
 
 from swift.dataset import DatasetSyntax, sample_dataset
-from swift.plugins import extra_tuners
 from swift.template import update_generation_config_eos_token
+from swift.tuner_plugin import tuners_map
 from swift.tuners import Swift
 from swift.utils import get_logger
 
@@ -21,15 +21,15 @@ def prepare_adapter(args, model, adapters=None):
             from unsloth import FastLanguageModel as UnslothModel
         UnslothModel.for_inference(model)
         return model
-    if args.train_type in extra_tuners:
-        tuner = extra_tuners[args.train_type]
+    if args.tuner_type in tuners_map:
+        tuner = tuners_map[args.tuner_type]
     else:
         tuner = Swift
     # compat deploy
     adapters = adapters if adapters is not None else args.adapters
     for adapter in adapters:
         model = tuner.from_pretrained(model, adapter)
-    if args.train_type == 'bone':
+    if args.tuner_type == 'bone':
         # Bone has a problem of float32 matmul with bloat16 in `peft==0.14.0`
         model.to(model.dtype)
     return model
@@ -49,7 +49,7 @@ def prepare_model_template(args, **kwargs):
 
 def _select_dataset(dataset, max_length):
     idxs = [
-        i for i, length in enumerate(dataset['length'])
+        i for i, length in enumerate(dataset['lengths'])
         if (max(length) if isinstance(length, list) else length) <= max_length
     ]
     new_dataset = dataset.select(idxs)

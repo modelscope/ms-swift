@@ -267,7 +267,7 @@ examples下有[例子](https://github.com/modelscope/ms-swift/blob/main/examples
 ```shell
 --rlhf_type ppo \
 --model Qwen/Qwen2.5-14B-Instruct \
---reward_model /mnt/workspace/output/rm/model --train_type lora \
+--reward_model /mnt/workspace/output/rm/model --tuner_type lora \
 --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' --torch_dtype float32 --num_train_epochs 1 \
 --per_device_train_batch_size 1 --per_device_eval_batch_size 1 --learning_rate 1e-5 --lora_rank 8 --lora_alpha 32 \
 --target_modules all-linear \
@@ -302,7 +302,7 @@ CUDA_VISIBLE_DEVICES=01,2,3,4,5,6,7 \
 swift sft \
     --model Internlm3-8b \
     --dataset train.json \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --num_train_epochs 5 \
     --per_device_train_batch_size 1 \
@@ -339,7 +339,7 @@ swift sft \
 ### Q95: 训练为什么没有token_acc？
 有些模型`logits`和`labels`数量对不上，就不算的。
 
-### Q96: 微调Ovis2 使用lora参数不起作用？加不加--train_type lora \，好像都是全参数微调？显存没变化。
+### Q96: 微调Ovis2 使用lora参数不起作用？加不加--tuner_type lora \，好像都是全参数微调？显存没变化。
 `--max_length`限制一下，这个模型有点特殊，需要padding到max_length。
 
 ### Q97: 请问下用qwen2.5跑一个分类任务，抱下面的错误，是哪里配置的有问题呢？ValueError: The model did not return a loss from the inputs, only the following keys: logits. For reference, the inputs it received are input_ids,attention_mask.
@@ -554,7 +554,7 @@ all-router也加到target_modules。
 megatron sft \
     --load "$MODEL_PATH" \
     --dataset "$DATA_PATH"  \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 16 \
     --target_modules all-linear \
@@ -729,7 +729,7 @@ ValueError(f'assistant_message; {assistant_message}')
 ValueError: assistant_message: {'role' :'assistant', 'content': ''}
 ```
 ```shell
-CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwen/Qwen2.5-VL-7B-Instruct --train_type lora --dataset /mnt/workspace/data.json --deepspeed zero2 --max_length 16384
+CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwen/Qwen2.5-VL-7B-Instruct --tuner_type lora --dataset /mnt/workspace/data.json --deepspeed zero2 --max_length 16384
 ```
 数据集assistant字段为空，如果是推理，把这个空字符串删掉，因为这个会导致训练时nan，会做检查。
 

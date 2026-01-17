@@ -210,7 +210,7 @@ class BaseMegatronTrainer(ABC):
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
-        if self.args.train_type == 'full':
+        if self.args.tuner_type == 'full':
             for k in model_keys:
                 patch_merge_fn(sharded_state_dict[k])
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -262,7 +262,7 @@ class BaseMegatronTrainer(ABC):
             strict = False
             return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
 
-        if args.train_type != 'full':
+        if args.tuner_type != 'full':
             torch.nn.Module.load_state_dict = load_state_dict
             args.no_load_optim = True
             args.no_load_rng = True
@@ -437,9 +437,9 @@ class BaseMegatronTrainer(ABC):
     def _load_iteration(self):
         args = self.args
         ckpt_dir = None
-        if args.train_type == 'full':
+        if args.tuner_type == 'full':
             ckpt_dir = args.model
-        elif args.train_type == 'lora' and args.adapters:
+        elif args.tuner_type == 'lora' and args.adapters:
             ckpt_dir = args.adapters[0]
         if ckpt_dir is None:
             return 0, 0
@@ -479,7 +479,7 @@ class BaseMegatronTrainer(ABC):
                 self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
-            if args.train_type == 'lora':
+            if args.tuner_type == 'lora':
                 if args.adapters and args.adapter_load is None:
                     assert len(args.adapters) == 1, 'Currently only support one adapter.'
                     self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
@@ -502,7 +502,7 @@ class BaseMegatronTrainer(ABC):
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
-        if args.train_type != 'full' and args.modules_to_save:
+        if args.tuner_type != 'full' and args.modules_to_save:
             for m in self.unwrapped_models:
                 copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
@@ -1032,22 +1032,22 @@ class BaseMegatronTrainer(ABC):
         origin_save = args.save
         args.save = output_dir
         self._copy_args(output_dir)
-        save_peft_format = args.train_type == 'lora' and not args.merge_lora
+        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
-        with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
+        with adapter_state_dict_context(is_peft_format=args.tuner_type == 'lora'):
             self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
         args.save = origin_save
         # safetensors
         if args.save_safetensors:
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
-            if args.train_type == 'lora' and args.merge_lora:
+            if args.tuner_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
                 self._copy_args(output_dir)
             self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
-            if args.train_type == 'lora' and args.merge_lora:
+            if args.tuner_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
     def _patch_megatron(self):
@@ -1072,7 +1072,7 @@ class BaseMegatronTrainer(ABC):
     def _init_multimodal_full(self):
         args = get_args()
         visual_cls = self.args.megatron_model_meta.visual_cls
-        if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
+        if args.tuner_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
             aligner = [f'visual.{aligner}' for aligner in getattr(visual_cls, '_aligner', [])]
             generator = [f'visual.{generator}' for generator in getattr(visual_cls, '_generator', [])]

@@ -16,7 +16,7 @@ def test_llm():
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-1.5B-Instruct',
-            train_type='lora',
+            tuner_type='lora',
             num_labels=2,
             dataset=['DAMO_NLP/jd:cls#2000'],
             split_dataset_ratio=0.01,
@@ -32,7 +32,7 @@ def test_bert():
         SftArguments(
             model='answerdotai/ModernBERT-base',
             # model='iic/nlp_structbert_backbone_base_std',
-            train_type='full',
+            tuner_type='full',
             num_labels=2,
             dataset=['DAMO_NLP/jd:cls#2000'],
             split_dataset_ratio=0.01,
@@ -46,7 +46,7 @@ def test_mllm():
     result = sft_main(
         SftArguments(
             model='OpenGVLab/InternVL2-1B',
-            train_type='lora',
+            tuner_type='lora',
             num_labels=2,
             dataset=['DAMO_NLP/jd:cls#500'],
             split_dataset_ratio=0.01,

@@ -46,7 +46,7 @@ class AppArguments(WebUIArguments, DeployArguments):
         super()._init_torch_dtype()
 
     def __post_init__(self):
-        super().__post_init__()
+        DeployArguments.__post_init__(self)
         self.server_port = find_free_port(self.server_port)
         if self.model_meta:
             if self.system is None:

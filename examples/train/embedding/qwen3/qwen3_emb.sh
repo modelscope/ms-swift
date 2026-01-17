@@ -1,5 +1,5 @@
 # 2*10GiB
-# losses: plugin/loss.py
+# losses: swift/loss
 # data format: docs/source_en/BestPractices/Embedding.md
 # --dataloader_drop_last must be true or eval gather will throw error
 # --model iic/gte-modernbert-base iic/gte_Qwen2-7B-instruct also supported
@@ -9,7 +9,7 @@ NPROC_PER_NODE=2 \
 swift sft \
     --model Qwen/Qwen3-Embedding-4B \
     --task_type embedding \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --learning_rate 5e-6 \

@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import torch.distributed as dist
 from tqdm import tqdm
 

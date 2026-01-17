@@ -11,57 +11,80 @@ from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 
-from swift.trainers.arguments import SwiftArgumentsMixin
+from swift.trainers import TrainArgumentsMixin
 from .args_mixin import GRPOArgumentsMixin, RolloutTrainerArgumentsMixin
 
 
 @dataclass
-class DPOConfig(SwiftArgumentsMixin, HfDPOConfig):
+class DPOConfig(TrainArgumentsMixin, HfDPOConfig):
     ld_alpha: Optional[float] = None  # compat trl==0.15
 
-
-@dataclass
-class CPOConfig(SwiftArgumentsMixin, HfCPOConfig):
-    pass
-
-
-@dataclass
-class ORPOConfig(SwiftArgumentsMixin, HfORPOConfig):
-    pass
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfDPOConfig.__post_init__(self)
 
 
 @dataclass
-class KTOConfig(SwiftArgumentsMixin, HfKTOConfig):
-    pass
+class CPOConfig(TrainArgumentsMixin, HfCPOConfig):
+
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfCPOConfig.__post_init__(self)
 
 
 @dataclass
-class RewardConfig(SwiftArgumentsMixin, HfRewardConfig):
-    pass
+class ORPOConfig(TrainArgumentsMixin, HfORPOConfig):
+
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfORPOConfig.__post_init__(self)
 
 
 @dataclass
-class PPOConfig(SwiftArgumentsMixin, HfPPOConfig):
-    pass
+class KTOConfig(TrainArgumentsMixin, HfKTOConfig):
+
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfKTOConfig.__post_init__(self)
 
 
 @dataclass
-class GKDConfig(RolloutTrainerArgumentsMixin, SwiftArgumentsMixin, HfGKDConfig):
+class RewardConfig(TrainArgumentsMixin, HfRewardConfig):
+
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfRewardConfig.__post_init__(self)
+
+
+@dataclass
+class PPOConfig(TrainArgumentsMixin, HfPPOConfig):
+
+    def __post_init__(self):
+        TrainArgumentsMixin.__post_init__(self)
+        HfPPOConfig.__post_init__(self)
+
+
+@dataclass
+class GKDConfig(RolloutTrainerArgumentsMixin, TrainArgumentsMixin, HfGKDConfig):
+    sft_alpha: float = 0
+
     offload_teacher_model: bool = False
     max_completion_length: int = 512
     log_completions: bool = False
 
     def __post_init__(self):
         RolloutTrainerArgumentsMixin.__post_init__(self)
-        SwiftArgumentsMixin.__post_init__(self)
+        TrainArgumentsMixin.__post_init__(self)
+        HfGKDConfig.__post_init__(self)
 
 
 @dataclass
-class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
+class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
 
     def __post_init__(self):
         GRPOArgumentsMixin.__post_init__(self)
-        SwiftArgumentsMixin.__post_init__(self)
+        TrainArgumentsMixin.__post_init__(self)
+        HfGRPOConfig.__post_init__(self)
         if self.vllm_reasoning_parser is not None:
             raise ValueError('vllm_reasoning_parser is not supported for GRPO Training, please unset it.')
 
