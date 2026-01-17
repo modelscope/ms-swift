@@ -150,9 +150,16 @@ class GPTBridge:
                 elif key in {'linear_fc1'}:
                     return 1
 
-    def _split_tp(self, hf_weight, tp_dim, is_expert):
+    def _split_tp(self, hf_weight, tp_dim, is_expert, is_embedding: bool):
         tp_size = self.etp_size if is_expert else self.tp_size
         tp_rank = self.etp_rank if is_expert else self.tp_rank
+        if is_embedding:
+            padding_size = math.ceil(hf_weight.shape[0] / tp_size) * tp_size - hf_weight.shape[0]
+            if padding_size > 0:
+                new_size = hf_weight.shape[0] + padding_size
+                logger.warning(
+                    f'Padding embedding from {hf_weight.shape[0]} to {new_size} (padding size: {padding_size})')
+                hf_weight = F.pad(hf_weight, (0, 0, 0, padding_size))
         if tp_dim is not None and tp_size > 1:
             tensor = hf_weight.chunk(tp_size, dim=tp_dim)[tp_rank]
         else:
@@ -171,12 +178,13 @@ class GPTBridge:
     ):
         # tp/etp
         tp_dim = self._get_tp_split_dim(mg_key)
-        tensor = self._split_tp(hf_weight, tp_dim, is_expert)
+        is_embedding = mg_key in {'embedding.word_embeddings.weight', 'output_layer.weight'}
+        tensor = self._split_tp(hf_weight, tp_dim, is_expert, is_embedding=is_embedding)
         del hf_weight
         if not isinstance(mg_param, (list, tuple)):
             mg_param = [mg_param]
         if hf_scale_inv is not None:
-            hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert)
+            hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert, is_embedding=is_embedding)
             hf_scale_inv = hf_scale_inv.chunk(len(mg_param), dim=0)
         if offset:
             assert hf_scale_inv is None, f'mg_key: {mg_key}'

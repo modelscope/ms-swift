@@ -1,6 +1,6 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_embedding():
@@ -53,3 +53,4 @@ def test_reranker():
 
 if __name__ == '__main__':
     test_embedding()
+    # test_reranker()

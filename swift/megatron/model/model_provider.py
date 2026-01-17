@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
 from typing import TYPE_CHECKING, Optional, Union
 
 import megatron.core
@@ -149,7 +150,8 @@ def model_provider(pre_process=True,
         model = megatron_model_meta.model_cls(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
-            vocab_size=args.padded_vocab_size,
+            vocab_size=math.ceil(args.padded_vocab_size / args.tensor_model_parallel_size)
+            * args.tensor_model_parallel_size,
             max_sequence_length=args.max_position_embeddings,
             pre_process=pre_process,
             post_process=post_process,

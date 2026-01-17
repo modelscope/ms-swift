@@ -139,6 +139,8 @@ class GPTModel(McoreGPTModel):
                 parallel_mode=None,
                 skip_weight_param_allocation=False,
             )
+        elif args.task_type == 'embedding' and self.post_process:
+            self.output_layer = None
 
         if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
             config.apply_rope_fusion = False
@@ -447,8 +449,11 @@ class GPTModel(McoreGPTModel):
                 # state ([B, H]) → unsqueeze back to [1, B, H]
                 # (so that the output layer, which expects S×B×H, receives only the final token)
                 hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
-
-        logits, _ = self.output_layer(hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
+        if args.task_type == 'embedding':
+            logits = hidden_states
+        else:
+            logits, _ = self.output_layer(
+                hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
 
         # Restore sequence parallel execution to the output layer if necessary.
         if sequence_parallel_override:

@@ -1538,6 +1538,7 @@ class Template(ProcessorMixin):
                 res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
+            num_samples = res.pop('num_samples')
         elif self.task_type in {'reranker', 'generative_reranker'}:
             res = self._reranker_data_collator(batch, padding_to=padding_to)
         else:
@@ -1650,7 +1651,9 @@ class Template(ProcessorMixin):
                 for prefix in indexes:
                     new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', []))
+        num_samples = len(new_batch)
         res = self._data_collator(new_batch, padding_to=padding_to)
+        res['num_samples'] = num_samples
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
