@@ -10,11 +10,7 @@ logger = get_logger()
 
 class MegatronEmbeddingTrainer(BaseMegatronTrainer):
 
-    def loss_func(self,
-                  output_tensor: torch.Tensor,
-                  *,
-                  labels: torch.Tensor,
-                  packed_seq_params=None):
+    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
         pass
 
     def forward_step(self, data_iterator, model):
