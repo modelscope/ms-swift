@@ -48,9 +48,9 @@ class MinimaxM2SelfAttention(SelfAttention):
             eps=self.config.layernorm_epsilon,
         )
 
-    def get_query_key_value_tensors(self, *args, **kwargs):
+    def get_query_key_value_tensors(self, *_args, **kwargs):
         args = get_args()
-        query, key, value = super().get_query_key_value_tensors(*args, **kwargs)
+        query, key, value = super().get_query_key_value_tensors(*_args, **kwargs)
         if args.tensor_model_parallel_size > 1:
             query = gather_from_tensor_model_parallel_region(query)
             key = gather_from_tensor_model_parallel_region(key)
