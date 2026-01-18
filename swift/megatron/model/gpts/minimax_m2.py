@@ -36,15 +36,13 @@ class MinimaxM2SelfAttention(SelfAttention):
         submodules.k_layernorm = k_layernorm
         self.q_norm = build_module(
             submodules.q_layernorm,
-            hidden_size=self.hidden_size_per_attention_head * config.num_attention_heads
-            // self.config.tensor_model_parallel_size,
+            hidden_size=self.hidden_size_per_attention_head * config.num_attention_heads,
             config=self.config,
             eps=self.config.layernorm_epsilon,
         )
         self.k_norm = build_module(
             submodules.k_layernorm,
-            hidden_size=self.hidden_size_per_attention_head * config.num_query_groups
-            // self.config.tensor_model_parallel_size,
+            hidden_size=self.hidden_size_per_attention_head * config.num_query_groups,
             config=self.config,
             eps=self.config.layernorm_epsilon,
         )
@@ -59,12 +57,6 @@ class MinimaxM2SelfAttention(SelfAttention):
 
 
 class MinimaxM2Bridge(GPTBridge):
-
-    def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
-        if mg_key in {'q_norm.weight', 'k_norm.weight'}:
-            return 0
-        else:
-            return super()._get_tp_split_dim(mg_key)
 
     def _set_qk_layernorm(self, mg_attn, hf_attn, hf_state_dict, to_mcore):
         self._set_state_dict(mg_attn, 'q_norm.weight', hf_state_dict, 'q_norm.weight', to_mcore)
