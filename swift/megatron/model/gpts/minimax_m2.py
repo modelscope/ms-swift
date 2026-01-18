@@ -1,5 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+from typing import Optional
+
 import megatron.core
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
@@ -34,13 +36,15 @@ class MinimaxM2SelfAttention(SelfAttention):
         submodules.k_layernorm = k_layernorm
         self.q_norm = build_module(
             submodules.q_layernorm,
-            hidden_size=self.hidden_size_per_attention_head * config.num_attention_heads,
+            hidden_size=self.hidden_size_per_attention_head * config.num_attention_heads
+            // self.config.tensor_model_parallel_size,
             config=self.config,
             eps=self.config.layernorm_epsilon,
         )
         self.k_norm = build_module(
             submodules.k_layernorm,
-            hidden_size=self.hidden_size_per_attention_head * config.num_query_groups,
+            hidden_size=self.hidden_size_per_attention_head * config.num_query_groups
+            // self.config.tensor_model_parallel_size,
             config=self.config,
             eps=self.config.layernorm_epsilon,
         )
@@ -56,11 +60,15 @@ class MinimaxM2SelfAttention(SelfAttention):
 
 class MinimaxM2Bridge(GPTBridge):
 
+    def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
+        if mg_key in {'q_norm.weight', 'k_norm.weight'}:
+            return 0
+        else:
+            return super()._get_tp_split_dim(mg_key)
+
     def _set_qk_layernorm(self, mg_attn, hf_attn, hf_state_dict, to_mcore):
-        hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
-        hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
-        self._set_state_dict(mg_attn, 'q_norm.weight', hf_state_dict, hf_q_norm_key, to_mcore)
-        self._set_state_dict(mg_attn, 'k_norm.weight', hf_state_dict, hf_k_norm_key, to_mcore)
+        self._set_state_dict(mg_attn, 'q_norm.weight', hf_state_dict, 'q_norm.weight', to_mcore)
+        self._set_state_dict(mg_attn, 'k_norm.weight', hf_state_dict, 'k_norm.weight', to_mcore)
 
     def get_hf_mlp_prefix(self, layer_idx):
         return 'block_sparse_moe'
