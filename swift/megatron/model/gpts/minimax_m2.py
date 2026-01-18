@@ -1,13 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
-from typing import Optional
-
 import megatron.core
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron.core.tensor_parallel.mappings import (gather_from_tensor_model_parallel_region,
+                                                    scatter_to_sequence_parallel_region)
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_config import TransformerConfig
+from megatron.training import get_args
 from packaging import version
 
 from swift.model import ModelType
@@ -48,11 +49,18 @@ class MinimaxM2SelfAttention(SelfAttention):
         )
 
     def get_query_key_value_tensors(self, *args, **kwargs):
+        args = get_args()
         query, key, value = super().get_query_key_value_tensors(*args, **kwargs)
+        if args.tensor_model_parallel_size > 1:
+            query = gather_from_tensor_model_parallel_region(query)
+            key = gather_from_tensor_model_parallel_region(key)
         query_shape = query.shape
         key_shape = key.shape
         query = self.q_norm(query.reshape(*query_shape[:-2], -1)).view(query_shape)
         key = self.k_norm(key.reshape(*key_shape[:-2], -1)).view(key_shape)
+        if args.tensor_model_parallel_size > 1:
+            query = scatter_to_sequence_parallel_region(query)
+            key = scatter_to_sequence_parallel_region(key)
         return query, key, value
 
 
