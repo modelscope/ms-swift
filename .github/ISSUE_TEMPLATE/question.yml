@@ -1,0 +1,27 @@
+name: "🤔 Question & Discussion"
+description: Create an issue for questions and discussions
+labels: ["question"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for supporting ms-swift and taking the time to submit this issue.
+        感谢你对 ms-swift 的支持和抽出时间提交相关 issue。
+
+  - type: checkboxes
+    id: reminder
+    attributes:
+      options:
+        - label: I have searched existing issues, and this is a new question or discussion topic. / 我已经搜索过现有的 issues,确认这是一个新的问题与讨论。
+          required: true
+
+  - type: textarea
+    id: question-description
+    validations:
+      required: true
+    attributes:
+      label: Question Description / 问题描述
+      description: |
+        Please describe the question or topic you would like to discuss.
+        请描述你想要讨论的问题或话题。

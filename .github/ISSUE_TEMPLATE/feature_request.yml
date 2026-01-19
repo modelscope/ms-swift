@@ -1,0 +1,36 @@
+name: "🚀 Feature Request"
+description: Submit a request for a new feature
+labels: ["enhancement"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for supporting ms-swift and taking the time to submit this issue.
+        感谢你对 ms-swift 的支持和抽出时间提交相关 issue。
+
+  - type: checkboxes
+    id: reminder
+    attributes:
+      options:
+        - label: I have searched existing issues, and this is a new feature request. / 我已经搜索过现有的 issues，确认这是一个新的 Feature Request。
+          required: true
+
+  - type: textarea
+    id: feature-request-description
+    validations:
+      required: true
+    attributes:
+      label: Feature Request Description / Feature Request 描述
+      description: |
+        Please provide a detailed description of the new feature you would like to see added.
+        请详细描述您希望添加的新功能特性。
+
+
+  - type: textarea
+    id: pull-request
+    attributes:
+      label: Pull Request / Pull Request 信息
+      description: |
+        Have you already submitted or plan to submit a Pull Request? Please share your plans.
+        你是否已经提交或即将提交 Pull Request？请说明你的计划。
