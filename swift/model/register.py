@@ -76,7 +76,7 @@ def load_by_unsloth(args):
             model_name=args.adapters and args.adapters[0] or args.model_dir,
             dtype=args.torch_dtype,
             max_seq_length=args.max_length,
-            full_finetuning=args.train_type == 'full',
+            full_finetuning=args.tuner_type == 'full',
             load_in_4bit=args.quant_bits == 4,
             load_in_8bit=args.quant_bits == 8,
             device_map=args.device_map,

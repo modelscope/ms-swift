@@ -7,7 +7,7 @@ megatron sft \
     --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
-    --train_type lora \
+    --tuner_type lora \
     --dataset AI-ModelScope/function-calling-chatml#10000 \
     --load_from_cache_file true \
     --loss_scale hermes \

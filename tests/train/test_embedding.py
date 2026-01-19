@@ -33,7 +33,7 @@ def test_reranker():
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen3-Reranker-4B',
-            train_type='lora',
+            tuner_type='lora',
             load_from_cache_file=True,
             task_type='generative_reranker',
             dataset=['MTEB/scidocs-reranking#10000'],
@@ -60,7 +60,7 @@ def test_reranker2():
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-VL-3B-Instruct',
-            train_type='lora',
+            tuner_type='lora',
             load_from_cache_file=True,
             task_type='reranker',
             dataset=['MTEB/scidocs-reranking'],

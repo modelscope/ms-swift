@@ -12,7 +12,7 @@ megatron sft \
     --merge_lora false \
     --dataset 'tany0699/garbage265#20000' \
     --load_from_cache_file true \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

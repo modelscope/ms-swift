@@ -1,45 +1,48 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import time
+from typing import TYPE_CHECKING
 
-import numpy as np
 import torch
-from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
+from transformers import TrainerControl, TrainerState
 
 from swift.utils import empty_cache, get_logger
+from .base import TrainerCallback
+
+if TYPE_CHECKING:
+    from swift.trainers import TrainingArguments, Trainer
 
 logger = get_logger()
 
-
-class EarlyStopCallback(TrainerCallback):
-    """An early stop implementation"""
-
-    def __init__(self, total_interval=3):
-        self.best_metric = None
-        self.interval = 0
-        self.total_interval = total_interval
-
-    def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
-        operator = np.greater if args.greater_is_better else np.less
-        if self.best_metric is None or operator(state.best_metric, self.best_metric):
-            self.best_metric = state.best_metric
-            self.interval = 0
-        else:
-            self.interval += 1
-
-        if self.interval >= self.total_interval:
-            logger.info(f'Training stop because of eval metric is stable at step {state.global_step}')
-            control.should_training_stop = True
+device_flops_map = {
+    'GB200': 2.5e15,
+    'B200': 2.25e15,
+    'MI300X': 1336e12,
+    'H100': 312e12,
+    'H800': 312e12,
+    'H200': 989e12,
+    'A100': 312e12,
+    'A800': 312e12,
+    'L40S': 362.05e12,
+    'L40': 181.05e12,
+    'A40': 149.7e12,
+    'L20': 119.5e12,
+    'H20': 148e12,
+    '910B': 354e12,
+    'Ascend910': 354e12,
+    'RTX 3070 Ti': 21.75e12
+}
 
 
 class PerfMetricsLogCallback(TrainerCallback):
     """An callback for perf metrics (MFU etc) log implementation"""
 
-    def __init__(self):
+    def __init__(self, args: 'TrainingArguments', trainer: 'Trainer'):
+        super().__init__(args, trainer)
         self.device_tflops = None
         self.elapsed = 0.0
         self.step_start_time = None
 
-    def on_init_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_init_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
         from swift.utils import get_current_device, get_device_count, get_env_args
 
         # Top priority. Specify by ENV
@@ -58,13 +61,13 @@ class PerfMetricsLogCallback(TrainerCallback):
 
         self.device_tflops = tflops * device_count
 
-    def on_step_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_step_begin(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
         self.step_start_time = time.time()
 
-    def on_step_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+    def on_step_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
         self.elapsed += time.time() - self.step_start_time
 
-    def on_log(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, logs=None, **kwargs):
+    def on_log(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, logs=None, **kwargs):
         total_flos = getattr(state, 'total_flos', 0)
         actual_flops = total_flos / self.elapsed
         theoretical_max_flops = self.device_tflops * 1e12
@@ -137,27 +140,3 @@ class PerfMetricsLogCallback(TrainerCallback):
                 break
 
         return flops
-
-
-device_flops_map = {
-    'GB200': 2.5e15,
-    'B200': 2.25e15,
-    'MI300X': 1336e12,
-    'H100': 312e12,
-    'H800': 312e12,
-    'H200': 989e12,
-    'A100': 312e12,
-    'A800': 312e12,
-    'L40S': 362.05e12,
-    'L40': 181.05e12,
-    'A40': 149.7e12,
-    'L20': 119.5e12,
-    'H20': 148e12,
-    '910B': 354e12,
-    'Ascend910': 354e12,
-    'RTX 3070 Ti': 21.75e12
-}
-
-extra_callbacks = []
-# This example shows a simple example of EarlyStop Callback, uncomment this to use
-# extra_callbacks = [EarlyStopCallback()]

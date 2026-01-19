@@ -11,7 +11,7 @@ The command-line arguments will be introduced in four categories: basic argument
 ## Base Arguments
 
 - 🔥tuner_backend: Optional values are `'peft'` and `'unsloth'`. Default is `'peft'`.
-- 🔥train_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`.
+- 🔥tuner_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`. (**In ms-swift 3.x, the parameter name is `train_type`**)
 - 🔥adapters: A list specifying adapter IDs or paths. Default is `[]`. This parameter is typically used in inference/deployment commands, for example: `swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`. It can occasionally be used for resuming training from a checkpoint. The difference between this parameter and `resume_from_checkpoint` is that **this parameter only loads adapter weights**, without restoring the optimizer state or random seed, and does not skip already-trained portions of the dataset.
   - The difference between `--model` and `--adapters`: `--model` is followed by the directory path of the complete weights, which contains full weight information such as model/tokenizer/config, for example `model.safetensors`. `--adapters` is followed by a list of incremental adapter weight directory paths, which contain incremental weight information of the adapters, for example `adapter_model.safetensors`.
 - 🔥external_plugins: A list of external `plugin.py` files that will be additionally loaded (i.e., the modules will be imported). Defaults to `[]`. You can pass in `.py` file paths for custom model, template, and dataset registration, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh); or for custom GRPO components, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
@@ -99,7 +99,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - Note: For multimodal models, if `truncation_strategy` is set to `'left'` or `'right'` during training, **ms-swift preserves all image tokens and other modality-specific tokens**, which may lead to OOM.
 - 🔥max_pixels: Maximum pixel count (H×W) for input images in multimodal models. Images exceeding this limit will be resized to avoid OOM during training. Default is `None` (no restriction).
   - Note: This parameter applies to all multimodal models. The Qwen2.5-VL specific parameter `MAX_PIXELS` (see bottom of doc) only affects Qwen2.5-VL.
-- 🔥agent_template: Agent template that defines how the tool list `'tools'` is converted into the `'system'` message, how tool calls are extracted from model responses during inference/deployment, and the formatting of `{"role": "tool_call", "content": "xxx"}` and `{"role": "tool_response", "content": "xxx"}` in `messages`. Options include `'react_en'`, `'hermes'`, `'glm4'`, `'qwen_en'`, `'toolbench'`, etc. See [here](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/__init__.py) for more. Default is `None`, automatically selected based on model type. Refer to [Agent Documentation](./Agent-support.md).
+- 🔥agent_template: Agent template that defines how the tool list `'tools'` is converted into the `'system'` message, how tool calls are extracted from model responses during inference/deployment, and the formatting of `{"role": "tool_call", "content": "xxx"}` and `{"role": "tool_response", "content": "xxx"}` in `messages`. Options include `'react_en'`, `'hermes'`, `'glm4'`, `'qwen_en'`, `'toolbench'`, etc. See [here](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py) for more. Default is `None`, automatically selected based on model type. Refer to [Agent Documentation](./Agent-support.md).
 - norm_bbox: Controls how bounding boxes ("bbox" in dataset, containing absolute coordinates; see [Custom Dataset Documentation](../Customization/Custom-dataset.md#grounding)) are normalized. Options: `'norm1000'` (scale coordinates to thousandths), `'none'` (no scaling). Default is `None`, automatically chosen based on model.
   - This also works correctly when **images are resized during training** (e.g., when `max_pixels` is set).
 - use_chat_template: Whether to use a chat template or a generation template (the latter typically used in pretraining). Default is `True`.
@@ -356,7 +356,7 @@ Vera uses the three parameters `target_modules`, `target_regex`, and `modules_to
 
 #### LISA
 
-Note: LISA only supports full parameters, i.e., `--train_type full`.
+Note: LISA only supports full parameters, i.e., `--tuner_type full`.
 
 - 🔥lisa_activated_layers: Default value is `0`, representing LISA is not used. Setting to a non-zero value activates that many layers, it is recommended to set to 2 or 8.
 - lisa_step_interval: Default value is `20`, number of iter to switch to layers that can be backpropagated.
@@ -367,7 +367,7 @@ Note: LISA only supports full parameters, i.e., `--train_type full`.
 
 ```
 --tuner_backend unsloth
---train_type full/lora
+--tuner_type full/lora
 --quant_bits 4
 ```
 
@@ -378,7 +378,7 @@ Note: LISA only supports full parameters, i.e., `--train_type full`.
 
 #### AdaLoRA
 
-When the `train_type` parameter is set to `adalora`, the following parameters take effect. The `adalora` parameters such as `target_modules` inherit from the corresponding parameters of `lora`, but the `lora_dtype` parameter does not take effect.
+When the `tuner_type` parameter is set to `adalora`, the following parameters take effect. The `adalora` parameters such as `target_modules` inherit from the corresponding parameters of `lora`, but the `lora_dtype` parameter does not take effect.
 
 - adalora_target_r: Default value is `8`, average rank of AdaLoRA.
 - adalora_init_r: Default value is `12`, initial rank of AdaLoRA.
@@ -391,7 +391,7 @@ When the `train_type` parameter is set to `adalora`, the following parameters ta
 
 #### ReFT
 
-The following parameters are effective when `train_type` is set to `reft`.
+The following parameters are effective when `tuner_type` is set to `reft`.
 
 > 1. ReFT cannot merge tuners.
 > 2. ReFT is not compatible with gradient checkpointing.
@@ -485,17 +485,18 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
-- optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py).
-- loss_type: Custom loss function name defined in the plugin. Default is `None`, using the model's built-in loss function.
-- metric: Custom metric name defined in the plugin. Default is `None`. When `predict_with_generate=True`, it defaults to `'nlg'`.
+- optimizer: The optimizer plugin to use (takes priority over `--optim`), default is None. Available optimizers can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py).
+- loss_type: Custom loss_type name. Default is None, uses the model's built-in loss function. Available loss options can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
+- eval_metric: Custom eval metric name. Default is None. Available eval_metric options can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/eval_metric/mapping.py).
+  - Regarding default values: When `task_type` is 'causal_lm' and `predict_with_generate=True`, it defaults to 'nlg'. When `task_type` is 'embedding', the default value is 'infonce' or 'paired' based on loss_type. When `task_type` is 'reranker/generative_reranker', the default value is 'reranker'.
+- callbacks: Custom trainer callbacks, default is `[]`. Available callbacks can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py).
+- early_stop_interval: The interval for early stopping. Training will terminate when best_metric shows no improvement within early_stop_interval periods (based on `save_steps`; it's recommended to set `eval_steps` and `save_steps` to the same value). The specific implementation can be found in [early_stop.py](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py). Additionally, if you have more complex early stopping requirements, you can directly override the existing implementation in callback.py. When this parameter is set, the `early_stop` trainer callback is automatically added.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
 - eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
 - use_flash_ckpt: Whether to use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover). Default is `false`. If enabled, checkpoints are saved to memory synchronously, then persisted to storage asynchronously, the safetensors format is not supported currently. It's recommended to use this with the environment variable `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to avoid CUDA OOM.
-- early_stop_interval: The interval for early stopping. It will check if the best_metric has not improved within early_stop_interval periods (based on save_steps; it's recommended to set eval_steps and save_steps to the same value) and terminate training when this condition is met. The specific code implementation is in the callback plugin. Additionally, if you have more complex early stopping requirements, you can directly override the existing implementation in [callback.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/callback.py).
-
 
 #### SWANLAB
 

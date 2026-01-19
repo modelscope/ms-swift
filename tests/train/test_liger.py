@@ -29,7 +29,7 @@ def test_mllm_dpo():
         RLHFArguments(
             rlhf_type='dpo',
             model='Qwen/Qwen2.5-VL-3B-Instruct',
-            train_type='full',
+            tuner_type='full',
             dataset=['swift/RLAIF-V-Dataset#1000'],
             split_dataset_ratio=0.01,
             dataset_num_proc=8,

@@ -161,7 +161,7 @@ class ExpManager:
         if best_model_checkpoint is not None:
             if not os.path.exists(os.path.join(best_model_checkpoint, 'args.json')):
                 cmd = f'swift eval --ckpt_dir {best_model_checkpoint} ' \
-                      + f'--infer_backend transformers --train_type full --eval_dataset {" ".join(eval_dataset)}'
+                      + f'--infer_backend transformers --tuner_type full --eval_dataset {" ".join(eval_dataset)}'
         else:
             cmd = f'swift eval --model {exp.args.get("model")} --infer_backend transformers ' \
                   f'--eval_dataset {" ".join(eval_dataset)}'

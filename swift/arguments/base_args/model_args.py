@@ -114,7 +114,7 @@ class ModelArguments:
                     self.max_memory[k + local_rank] = self.max_memory.pop(k)
 
     def _init_torch_dtype(self) -> None:
-        """"If torch_dtype is None, find a proper dtype by the train_type/GPU"""
+        """"If torch_dtype is None, find a proper dtype by the config.json/GPU"""
         from ..sft_args import SftArguments
 
         self.torch_dtype: Optional[torch.dtype] = HfConfigFactory.to_torch_dtype(self.torch_dtype)

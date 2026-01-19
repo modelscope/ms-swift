@@ -9,9 +9,9 @@ from packaging import version
 import swift
 from swift.hub import get_hub
 from swift.model import get_ckpt_dir, get_model_processor, load_by_unsloth
-from swift.plugins import extra_tuners
 from swift.ray import RayArguments
 from swift.template import Template, get_template
+from swift.tuner_plugin import tuners_map
 from swift.utils import (Processor, check_json_format, get_dist_setting, get_logger, import_external_file, is_dist,
                          is_master, json_parse_to_dict, safe_snapshot_download, set_device, use_hf_hub)
 from .data_args import DataArguments
@@ -25,45 +25,20 @@ logger = get_logger()
 
 def get_supported_tuners():
     return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'
-            } | set(extra_tuners.keys())
+            } | set(tuners_map.keys())
 
 
 @dataclass
-class CompatArguments:
-    ckpt_dir: Optional[str] = None
-    lora_modules: List[str] = field(default_factory=list)
-
-    def _handle_ckpt_dir(self: 'BaseArguments'):
-        assert os.path.isdir(self.ckpt_dir), f'self.ckpt_dir: {self.ckpt_dir}'
-        if (os.path.exists(os.path.join(self.ckpt_dir, 'adapter_config.json'))
-                or os.path.exists(os.path.join(self.ckpt_dir, 'default', 'adapter_config.json'))
-                or os.path.exists(os.path.join(self.ckpt_dir, 'reft'))):
-            if self.ckpt_dir in self.adapters:
-                return
-            self.adapters.insert(0, self.ckpt_dir)
-        else:
-            self.model = self.ckpt_dir
-        self.ckpt_dir = None
-
-    def __post_init__(self: 'BaseArguments'):
-        if self.ckpt_dir is not None:
-            self._handle_ckpt_dir()
-
-        if len(self.lora_modules) > 0:
-            self.adapters += self.lora_modules
-
-
-@dataclass
-class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments,
-                    ModelArguments, RayArguments):
+class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments,
+                    RayArguments):
     """BaseArguments class is a dataclass that inherits from multiple argument classes.
 
-    This class consolidates arguments from CompatArguments, GenerationArguments, QuantizeArguments, DataArguments,
+    This class consolidates arguments from GenerationArguments, QuantizeArguments, DataArguments,
     TemplateArguments, ModelArguments, RayArguments.
 
     Args:
         tuner_backend (str): The tuner backend to use. Choices are 'peft' or 'unsloth'. Default is 'peft'.
-        train_type (str): The training type. Choices include 'lora', 'full', 'longlora', 'adalora', 'llamapro',
+        tuner_type (str): The tuner type. Choices include 'lora', 'full', 'longlora', 'adalora', 'llamapro',
             'adapter', 'vera', 'boft', 'fourierft', 'reft'. Default is 'lora'.
         adapters (List[str]): A list of adapter IDs or paths. This is typically used for inference or deployment.
             It can also resume training by only loading adapter weights, differing from `resume_from_checkpoint`
@@ -95,7 +70,8 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         use_swift_lora (bool): Whether to use swift lora. This is a compatible argument. Default is False.
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
-    train_type: str = field(default='lora', metadata={'help': f'train_type choices: {list(get_supported_tuners())}'})
+    tuner_type: str = field(default='lora', metadata={'help': f'tuner_type choices: {list(get_supported_tuners())}'})
+    train_type: Optional[str] = None  # compat swift3.x
     adapters: List[str] = field(default_factory=list)
     external_plugins: List[str] = field(default_factory=list)
     # This parameter is kept for swift3.x compatibility. Please use `external_plugins` as a replacement.
@@ -173,11 +149,13 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         ]
 
     def __post_init__(self):
+        if self.train_type is not None:
+            logger.warning('`train_type` is deprecated, please use `tuner_type` instead.')
+            self.tuner_type = self.train_type
         self.swift_version = swift.__version__
         if self.use_hf or use_hf_hub():
             self.use_hf = True
             os.environ['USE_HF'] = '1'
-        CompatArguments.__post_init__(self)
         self._init_adapters()
         self._init_ckpt_dir()
         self._import_external_plugins()
@@ -186,7 +164,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
         self.rank, self.local_rank, self.global_world_size, self.local_world_size = get_dist_setting()
         logger.info(f'rank: {self.rank}, local_rank: {self.local_rank}, '
                     f'world_size: {self.global_world_size}, local_world_size: {self.local_world_size}')
-        if self.train_type not in extra_tuners:
+        if self.tuner_type not in tuners_map:  # build-in tuner
             for adapter in self.adapters:
                 assert self._check_is_adapter(adapter), (
                     f'`{adapter}` is not an adapter, please try using `--model` to pass it.')
@@ -214,7 +192,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
 
     @property
     def is_adapter(self) -> bool:
-        return self.train_type not in {'full'}
+        return self.tuner_type not in {'full'}
 
     @property
     def supported_tuners(self):
@@ -254,7 +232,7 @@ class BaseArguments(CompatArguments, GenerationArguments, QuantizeArguments, Dat
             old_args = json.load(f)
         force_load_keys = [
             # base_args
-            'train_type',
+            'tuner_type',
             # model_args
             'task_type',
             # quant_args

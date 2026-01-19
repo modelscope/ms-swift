@@ -4,7 +4,7 @@ swift sft \
     --model iic/gte-reranker-modernbert-base \
     --task_type reranker \
     --loss_type pointwise_reranker \
-    --train_type full \
+    --tuner_type full \
     --dataset MTEB/scidocs-reranking \
     --load_from_cache_file true \
     --split_dataset_ratio 0.05 \

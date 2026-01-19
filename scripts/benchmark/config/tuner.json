@@ -30,7 +30,7 @@
       {
         "name": "lora",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32
         }
@@ -38,7 +38,7 @@
       {
         "name": "lora+packing",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "packing": true,
@@ -53,7 +53,7 @@
           "ddp": "2"
         },
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "packing": true,
@@ -64,7 +64,7 @@
       {
         "name": "lora+packing+lazytokenize",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "packing": true,
@@ -76,7 +76,7 @@
       {
         "name": "lora+",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "lorap_lr_ratio": 16.0
@@ -85,7 +85,7 @@
       {
         "name": "rslora",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "use_rslora": true
@@ -94,7 +94,7 @@
       {
         "name": "dora",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "use_dora": true
@@ -103,7 +103,7 @@
       {
         "name": "lora+neftune",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "lora_rank": 8,
           "lora_alpha": 32,
           "neftune_noise_alpha": 15.0
@@ -112,7 +112,7 @@
       {
         "name": "llamapro",
         "args": {
-          "train_type": "llamapro",
+          "tuner_type": "llamapro",
           "llamapro_num_new_blocks": "4"
         }
       },
@@ -123,7 +123,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full"
+          "tuner_type": "full"
         }
       },
       {
@@ -133,7 +133,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "reft",
+          "tuner_type": "reft",
           "gradient_checkpointing": "false",
           "loss_scale": "default"
         }
@@ -145,7 +145,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -161,7 +161,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -178,7 +178,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -193,7 +193,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "use_galore": "true",
           "galore_rank": "64",
           "galore_update_proj_gap": "200",
@@ -208,7 +208,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "use_galore": "true",
           "galore_rank": "32",
           "galore_update_proj_gap": "200",
@@ -223,7 +223,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -238,7 +238,7 @@
           "ddp": "1"
         },
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "use_galore": "true",
           "galore_rank": "128",
           "galore_update_proj_gap": "200",
@@ -249,7 +249,7 @@
       {
         "name": "adalora",
         "args": {
-          "train_type": "adalora",
+          "tuner_type": "adalora",
           "lora_rank": 8,
           "lora_alpha": 32
         }
@@ -257,14 +257,14 @@
       {
         "name": "adapter",
         "args": {
-          "train_type": "adapter"
+          "tuner_type": "adapter"
         }
       },
       {
         "name": "full+lisa_2",
         "info": "lisa 2layers + full",
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "lisa_activated_layers": 2,
           "lisa_step_interval": 20
         }
@@ -273,7 +273,7 @@
         "name": "full+lisa_4",
         "info": "lisa 4layers + full",
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "lisa_activated_layers": 4,
           "lisa_step_interval": 20
         }
@@ -282,7 +282,7 @@
         "name": "unsloth+lora+q4",
         "info": "unsloth lora quantization bit 4",
         "args": {
-          "train_type": "lora",
+          "tuner_type": "lora",
           "tuner_backend": "unsloth",
           "quantization_bit": 4,
           "model": "LLM-Research/Meta-Llama-3-8B-Instruct"
@@ -292,7 +292,7 @@
         "name": "unsloth+full",
         "info": "unsloth full",
         "args": {
-          "train_type": "full",
+          "tuner_type": "full",
           "tuner_backend": "unsloth",
           "model_type": "LLM-Research/Meta-Llama-3-8B-Instruct"
         }

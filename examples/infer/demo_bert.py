@@ -20,14 +20,14 @@ if __name__ == '__main__':
     # This is an example of BERT with LoRA.
     from swift import (InferEngine, InferRequest, TransformersEngine, load_dataset, safe_snapshot_download,
                        BaseArguments)
-    from swift.tuners import Swift
+    from peft import PeftModel
     adapter_path = safe_snapshot_download('swift/test_bert')
     args = BaseArguments.from_pretrained(adapter_path)
     args.max_length = 512
     args.truncation_strategy = 'right'
     # method1
     model, processor = args.get_model_processor()
-    model = Swift.from_pretrained(model, adapter_path)
+    model = PeftModel.from_pretrained(model, adapter_path)
     template = args.get_template(processor)
     engine = TransformersEngine(model, template=template, max_batch_size=64)
 

@@ -4,7 +4,8 @@ from contextlib import contextmanager
 from typing import Optional
 
 from torch.utils.data import DataLoader
-from transformers import PreTrainedModel, Trainer
+from transformers import PreTrainedModel
+from transformers import Trainer as HfTrainer
 from trl import PPOTrainer as HFPPOTrainer
 
 from swift.utils import patch_getattr
@@ -84,7 +85,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
         unwrapped_model = self.accelerator.unwrap_model(self.model)
         self.model = unwrapped_model.policy  # save only the policy
 
-        Trainer.save_model(self, output_dir, _internal_call)
+        HfTrainer.save_model(self, output_dir, _internal_call)
 
         self.model = backup_model
 

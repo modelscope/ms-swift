@@ -281,7 +281,7 @@ class MegatronRolloutMixin:
     @profiling_decorator
     def _move_model_to_vllm(self):
         """Synchronize model weights to vLLM engine."""
-        is_lora_training = self.args.train_type == 'lora'
+        is_lora_training = self.args.tuner_type == 'lora'
 
         try:
             if is_lora_training:

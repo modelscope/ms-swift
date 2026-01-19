@@ -267,7 +267,7 @@ FP16 does not support full-parameter training.
 ```shell
 --rlhf_type ppo \
 --model Qwen/Qwen2.5-14B-Instruct \
---reward_model /mnt/workspace/output/rm/model --train_type lora \
+--reward_model /mnt/workspace/output/rm/model --tuner_type lora \
 --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' --torch_dtype float32 --num_train_epochs 1 \
 --per_device_train_batch_size 1 --per_device_eval_batch_size 1 --learning_rate 1e-5 --lora_rank 8 --lora_alpha 32 \
 --target_modules all-linear \
@@ -302,7 +302,7 @@ CUDA_VISIBLE_DEVICES=01,2,3,4,5,6,7 \
 swift sft \
     --model Internlm3-8b \
     --dataset train.json \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --num_train_epochs 5 \
     --per_device_train_batch_size 1 \
@@ -339,7 +339,7 @@ Yes, it's necessary for math problems to calculate accuracy.
 ### Q95: Why is there no token_acc during training?
 Some models have mismatched `logits` and `labels` counts, so token accuracy isn't calculated.
 
-### Q96: When fine-tuning Ovis2, LoRA parameters don't seem to work? Memory usage doesn't change with or without --train_type lora.
+### Q96: When fine-tuning Ovis2, LoRA parameters don't seem to work? Memory usage doesn't change with or without --tuner_type lora.
 Limit `--max_length`, this model is special and needs padding to max_length.
 
 ### Q97: Getting ValueError when running classification task with Qwen2.5: The model did not return a loss from the inputs, only the following keys: logits. For reference, the inputs it received are input_ids,attention_mask.
@@ -554,7 +554,7 @@ Add all-router to target_modules as well.
 megatron sft \
     --load "$MODEL_PATH" \
     --dataset "$DATA_PATH"  \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 16 \
     --target_modules all-linear \
@@ -729,7 +729,7 @@ ValueError(f'assistant_message; {assistant_message}')
 ValueError: assistant_message: {'role' :'assistant', 'content': ''}
 ```
 ```shell
-CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwen/Qwen2.5-VL-7B-Instruct --train_type lora --dataset /mnt/workspace/data.json --deepspeed zero2 --max_length 16384
+CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwen/Qwen2.5-VL-7B-Instruct --tuner_type lora --dataset /mnt/workspace/data.json --deepspeed zero2 --max_length 16384
 ```
 The assistant field in the dataset is empty. If this is for inference, delete this empty string because it will cause NaN during training and will be checked.
 

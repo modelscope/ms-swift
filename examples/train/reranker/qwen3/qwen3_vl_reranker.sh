@@ -1,12 +1,12 @@
 # 2*70GiB
-# losses: plugin/loss.py
+# losses: swift/loss
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
     --model Qwen/Qwen3-VL-Reranker-8B \
     --task_type generative_reranker \
     --loss_type pointwise_reranker \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --learning_rate 5e-6 \

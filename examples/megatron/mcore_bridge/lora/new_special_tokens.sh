@@ -10,7 +10,7 @@ megatron sft \
     --dataset 'swift/new_special_tokens' \
     --load_from_cache_file true \
     --new_special_tokens 'examples/train/new_special_tokens/tokens.txt' \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

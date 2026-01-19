@@ -7,7 +7,7 @@
 
 ## callback回调
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/callback.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks).
 
 `callback`机制是transformers Trainer中的一种训练定制化机制。开发者可以在callback中控制训练流程。通常来说，callback的定制化类似下面的样子：
 ```python
@@ -114,7 +114,7 @@ example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_
 
 ## 定制化tuner
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugins/tuner.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/tuner_plugin).
 - 多模态模型对ViT部分使用全参数训练，LLM部分使用LoRA训练，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit)。
 - Phi4-multimodal，直接对其已有LoRA进行训练而不额外附加LoRA，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/tuner_phi4_mm.sh)。
 

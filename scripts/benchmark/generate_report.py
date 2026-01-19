@@ -65,9 +65,9 @@ class ModelOutput:
     def tuner_hyper_params(self):
         hyper_params = ''
         args = self.args
-        if 'sft_type' not in args:
+        if 'tuner_type' not in args:
             return ''
-        if args['sft_type'] in ('lora', 'adalora', 'longlora'):
+        if args['tuner_type'] in ('lora', 'adalora', 'longlora'):
             if 'lora_rank' in args:
                 hyper_params += f'rank={args["lora_rank"]}/' \
                                 f'target={args["lora_target_modules"]}/' \
@@ -77,12 +77,12 @@ class ModelOutput:
                                 f'use_dora={args.get("use_dora", False)}'
             else:
                 hyper_params = ''
-        if args['sft_type'] == 'full':
+        if args['tuner_type'] == 'full':
             if 'use_galore' in args and args['use_galore'] == 'true':
                 hyper_params += f'galore_rank={args["galore_rank"]}/' \
                                 f'galore_per_parameter={args["galore_optim_per_parameter"]}/' \
                                 f'galore_with_embedding={args["galore_with_embedding"]}/'
-        if args['sft_type'] == 'llamapro':
+        if args['tuner_type'] == 'llamapro':
             hyper_params += f'num_blocks={args["llamapro_num_new_blocks"]}/'
         if 'neftune_noise_alpha' in args and args['neftune_noise_alpha']:
             hyper_params += f'neftune_noise_alpha={args["neftune_noise_alpha"]}/'
@@ -193,7 +193,7 @@ def generate_sft_report(outputs: List[ModelOutput]):
                f'{output.args["model_type"]}|' \
                f'{output.args.get("dataset")}|' \
                f'{output.args.get("train_dataset_mix_ratio", 0.)}|' \
-               f'{output.args.get("sft_type")}|' \
+               f'{output.args.get("tuner_type")}|' \
                f'{output.tuner_hyper_params}|' \
                f'{output.num_trainable_parameters}({output.trainable_parameters_percentage})|' \
                f'{use_flash_attn}|' \

@@ -1,10 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Part of the implementation is borrowed from huggingface/transformers.
 import inspect
+import math
 import os
 from contextlib import contextmanager
 from types import FunctionType, MethodType
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
@@ -15,7 +16,10 @@ from transformers import PreTrainedModel
 
 from swift.model import ModelMeta
 from swift.sequence_parallel import ChunkedCrossEntropyLoss, GatherLoss, sequence_parallel
-from swift.utils import deep_getattr, get_logger
+from swift.utils import deep_getattr, get_dist_setting, get_logger
+
+if TYPE_CHECKING:
+    from .arguments import TrainingArguments
 
 logger = get_logger()
 
@@ -234,3 +238,16 @@ def gather_for_unpadded_tensors(input_data, use_gather_object=False):
     else:
         data = torch.concat(output, dim=0)
     return data
+
+
+def calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
+    if args.max_steps and args.max_steps > 0:
+        max_steps = args.max_steps
+    else:
+        len_dataset = len(dataset)
+        _, _, world_size, _ = get_dist_setting()
+        total_train_batch_size = args.per_device_train_batch_size * args.gradient_accumulation_steps * world_size
+        num_update_steps_per_epoch = len_dataset // total_train_batch_size
+        num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
+        max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
+    return max_steps

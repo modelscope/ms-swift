@@ -16,7 +16,7 @@ def test_reg_llm():
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-1.5B-Instruct',
-            train_type='lora',
+            tuner_type='lora',
             num_labels=1,
             dataset=['sentence-transformers/stsb:reg#200'],
             split_dataset_ratio=0.01,
@@ -31,7 +31,7 @@ def test_reg_mllm():
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-2B-Instruct',
-            train_type='lora',
+            tuner_type='lora',
             num_labels=1,
             dataset=['sentence-transformers/stsb:reg#200'],
             split_dataset_ratio=0.01,

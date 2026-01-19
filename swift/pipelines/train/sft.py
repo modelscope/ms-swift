@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from functools import partial
 from typing import List, Optional, Union
 
 from datasets import Dataset as HfDataset
@@ -9,7 +8,6 @@ from swift.arguments import SftArguments
 from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
                            LazyLLMDataset, PackingDataset, load_dataset)
 from swift.infer_engine import prepare_generation_config
-from swift.plugins import EarlyStopCallback, extra_callbacks
 from swift.ray import RayHelper
 from swift.sequence_parallel import sequence_parallel
 from swift.trainers import TrainerFactory
@@ -31,7 +29,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         self.train_msg = {}
         self._prepare_model_tokenizer()
         self._prepare_template()
-        self._prepare_callbacks()
         self._prepare_flash_ckpt()
 
     @RayHelper.function(group='default')
@@ -100,12 +97,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             logger.info(f'train_dataset: {train_dataset}')
             logger.info(f'val_dataset: {val_dataset}')
         return train_dataset, val_dataset
-
-    def _get_data_collator(self):
-        args = self.args
-        template = self.template
-        padding_to = args.max_length if args.train_type == 'longlora' else None
-        return partial(template.data_collator, padding_to=padding_to)
 
     def _save_val_dataset(self, val_dataset):
         args = self.args
@@ -188,7 +179,6 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             logger.info(f'args.problem_type: {args.problem_type}')
         args.save_args()
 
-        data_collator = self._get_data_collator()
         # Some tuners require train_dataset and data_collator for preparation: LoRA-GA
         self.model = self.prepare_model(self.args, self.model, template=self.template, train_dataset=train_dataset)
         logger.info(f'model: {self.model}')
@@ -200,11 +190,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         trainer = trainer_cls(
             model=self.model,
             args=self.args.training_args,
-            data_collator=data_collator,
+            template=self.template,
             train_dataset=train_dataset,
             eval_dataset=val_dataset,
-            callbacks=self.callbacks,
-            template=self.template,
             **self._get_trainer_kwargs(),
         )
         return self.train(trainer)
@@ -263,40 +251,16 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
         return res
 
-    @RayHelper.function(group='default')
-    def _prepare_callbacks(self):
-        from .callback import DynamicLayerActivationCallback, TrainerAdapterCallback
-        args = self.args
-        callbacks = []
-        if args.lisa_activated_layers > 0:
-            assert args.train_type == 'full', 'LISA only supports full parameter training.'
-            lisa_callback = DynamicLayerActivationCallback(
-                n_layers=args.lisa_activated_layers,  # Number of layers to activate
-                step_interval=args.lisa_step_interval,  # Step interval to update active layers
-                model=self.model)
-            lisa_callback.switch_active_layers()  # Make trainable parameters printing a correct value
-            callbacks.append(lisa_callback)
-
-        if args.is_adapter and args.train_type == 'adalora':
-            callbacks.append(TrainerAdapterCallback(args))
-        callbacks += extra_callbacks
-        self.callbacks = callbacks
-
-        if args.early_stop_interval is not None and args.early_stop_interval > 0:
-            self.callbacks.append(EarlyStopCallback(args.early_stop_interval))
-            logger.info('You are using the default early stop callback, this is a implementation of '
-                        'stopping training when the best metric showing no improvement within {} steps, '
-                        'you can write a new implementation in the plugin/callback.py.')
-
     @staticmethod
     def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):
         if isinstance(dataset, LazyLLMDataset):
             dataset = dataset.dataset
         if isinstance(dataset, HfDataset):
-            length = dataset['length']
+            lengths = dataset['lengths']
+            lengths = [max(length) if isinstance(length, list) else length for length in lengths]
         else:
-            length = dataset.packed_length
-        _, stat_str = stat_array(length)
+            lengths = dataset.packed_length
+        _, stat_str = stat_array(lengths)
         logger.info(f'Dataset Token Length: {stat_str}')
         return stat_str
 

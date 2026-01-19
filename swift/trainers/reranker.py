@@ -20,7 +20,7 @@ class RerankerTrainer(Trainer):
             # Get labels and compute outputs
             labels = inputs.pop('labels', None)
             outputs = model(**inputs)
-            if self.args.task_type == 'generative_reranker':
+            if self.task_type == 'generative_reranker':
                 outputs.logits = get_generative_reranker_logits(
                     self.tokenizer, outputs.logits, attention_mask=inputs.get('attention_mask'))
 

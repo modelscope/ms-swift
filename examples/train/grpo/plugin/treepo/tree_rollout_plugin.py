@@ -10,7 +10,7 @@ from tree_rollout import (DataSampleTree, DivergenceStrategyMapping, FinishedRea
 
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
-from swift.plugins import MultiTurnScheduler, multi_turns
+from swift.rewards import MultiTurnScheduler, multi_turns
 
 
 class TreeRolloutScheduler(MultiTurnScheduler):

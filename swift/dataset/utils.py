@@ -129,7 +129,7 @@ class AddLengthPreprocessor(EncodePreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         encoded = super().preprocess(row)
-        row['length'] = encoded['length']
+        row['lengths'] = encoded['lengths']
         return row
 
 

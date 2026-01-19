@@ -6,6 +6,7 @@ from .utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .version import __version__, __release_datetime__
     from .tuners import Swift
+    from .tuner_plugin import Tuner, PeftTuner, tuners_map
     from .infer_engine import (TransformersEngine, VllmEngine, SglangEngine, LmdeployEngine, InferRequest,
                                RequestConfig, AdapterRequest, InferEngine, InferClient, GRPOVllmEngine)
     from .trainers import TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer
@@ -20,13 +21,15 @@ if TYPE_CHECKING:
     from .utils import get_logger, safe_snapshot_download
     from .agent_template import agent_template_map, BaseAgentTemplate
     from .loss import loss_map, BaseLoss
-    from .metrics import metrics_map, InferStats, MeanMetric
+    from .metrics import eval_metrics_map, InferStats, MeanMetric
     from .optimizers import optimizers_map, OptimizerCallback
+    from .callbacks import callbacks_map, TrainerCallback
     from .loss_scale import loss_scale_map, LossScale, get_loss_scale, ALL_BASE_STRATEGY, ConfigLossScale
 else:
     _import_structure = {
         'version': ['__release_datetime__', '__version__'],
         'tuners': ['Swift'],
+        'tuner_plugin': ['Tuner', 'PeftTuner', 'tuners_map'],
         'infer_engine': [
             'TransformersEngine', 'VllmEngine', 'SglangEngine', 'LmdeployEngine', 'InferRequest', 'RequestConfig',
             'AdapterRequest', 'InferEngine', 'InferClient', 'GRPOVllmEngine'
@@ -46,8 +49,9 @@ else:
         'utils': ['get_logger', 'safe_snapshot_download'],
         'agent_template': ['agent_template_map', 'BaseAgentTemplate'],
         'loss': ['loss_map', 'BaseLoss'],
-        'metrics': ['metrics_map', 'InferStats', 'MeanMetric'],
+        'metrics': ['eval_metrics_map', 'InferStats', 'MeanMetric'],
         'optimizers': ['optimizers_map', 'OptimizerCallback'],
+        'callbacks': ['callbacks_map', 'TrainerCallback'],
         'loss_scale': ['loss_scale_map', 'LossScale', 'get_loss_scale', 'ALL_BASE_STRATEGY', 'ConfigLossScale'],
     }
 

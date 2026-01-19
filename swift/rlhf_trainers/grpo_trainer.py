@@ -33,7 +33,7 @@ import transformers
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from packaging import version
 from transformers import PreTrainedModel
-from transformers.trainer import Trainer
+from transformers.trainer import Trainer as HfTrainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
@@ -711,7 +711,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = next(self.dynamic_resample_iterator)
             if self.template.truncation_strategy == 'raise':
                 inputs = self.resample_encode_failed_inputs(inputs)
-            inputs = Trainer._prepare_inputs(self, inputs)
+            inputs = HfTrainer._prepare_inputs(self, inputs)
             inputs = self._generate_completions(inputs)
             rewards_per_func = self._score_completions(inputs)
             resample_count += 1

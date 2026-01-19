@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import dataclass
 
 from .sft_args import SftArguments

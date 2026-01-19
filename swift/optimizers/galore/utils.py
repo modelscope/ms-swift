@@ -1,24 +1,25 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 import torch
 from torch import nn
 from torch.optim import Optimizer
-from transformers import Trainer, get_scheduler
+from transformers import Trainer as HfTrainer
+from transformers import get_scheduler
 
-from swift.utils import get_dist_setting, get_logger
+from swift.trainers import calculate_max_steps
+from swift.utils import get_logger
 from ..base import OptimizerCallback
-
-if TYPE_CHECKING:
-    from swift.trainers import TrainingArguments
 
 try:
     from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
 except ImportError:
     from torch.optim.lr_scheduler import LRScheduler
+
+if TYPE_CHECKING:
+    from swift.trainers import TrainingArguments
 
 logger = get_logger()
 
@@ -138,7 +139,7 @@ def _create_optimizer_and_scheduler(model: nn.Module, args: 'TrainingArguments',
 
         return GaloreOptimizerWrapper(optimizer_dict), GaloreSchedulerWrapper(scheduler_dict)
     else:
-        decay_parameters = Trainer.get_decay_parameter_names(Trainer, model)
+        decay_parameters = HfTrainer.get_decay_parameter_names(None, model)
         param_groups = [{
             'params': galore_params,
             **galore_defaults,
@@ -219,33 +220,28 @@ def get_optimizer(args: 'TrainingArguments', config: GaLoreConfig) -> Tuple[Any,
     return optimizer_cls, optimizer_kwargs
 
 
-def calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
-    if args.max_steps and args.max_steps > 0:
-        max_steps = args.max_steps
-    else:
-        len_dataset = len(dataset)
-        _, _, world_size, _ = get_dist_setting()
-        total_train_batch_size = args.per_device_train_batch_size * args.gradient_accumulation_steps * world_size
-        num_update_steps_per_epoch = len_dataset // total_train_batch_size
-        num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
-        max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
-    return max_steps
-
-
 class GaloreOptimizerCallback(OptimizerCallback):
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         trainer = self.trainer
         args = self.args
         training_steps = calculate_max_steps(args, trainer.train_dataset)
+        galore_config = GaLoreConfig(
+            target_modules=args.galore_target_modules,
+            rank=args.galore_rank,
+            update_proj_gap=args.galore_update_proj_gap,
+            galore_scale=args.galore_scale,
+            proj_type=args.galore_proj_type,
+            optim_per_parameter=args.galore_optim_per_parameter,
+            quantize=args.galore_quantization,
+            proj_quant=args.galore_proj_quant,
+            proj_bits=args.galore_proj_bits,
+            proj_group_size=args.galore_proj_group_size,
+            cos_threshold=args.galore_cos_threshold,
+            gamma_proj=args.galore_gamma_proj,
+            queue_size=args.galore_queue_size,
+        )
         optimizer, lr_scheduler = _create_optimizer_and_scheduler(
-            trainer.model,
-            args,
-            args.galore_config,
-            training_steps,
-            lr=args.learning_rate,
-            weight_decay=args.weight_decay)
-        # trainer cannot serialize galore_config
-        args.galore_config = None
+            trainer.model, args, galore_config, training_steps, lr=args.learning_rate, weight_decay=args.weight_decay)
         trainer.optimizer = optimizer
         trainer.lr_scheduler = lr_scheduler
