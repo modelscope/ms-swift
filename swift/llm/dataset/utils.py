@@ -394,7 +394,7 @@ class GreedyPackingDataLoader:
                         packed['_batch_lengths'] = [len(s['input_ids']) for s in buffer]
                         sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
                         if sources:
-                            packed['_dataset_source'] = sources
+                            packed['_batch_sources'] = sources  # 使用 _batch_sources 以匹配 DatasetProgressCallback
                         yield packed
                     
                     buffer = [sample]
@@ -406,7 +406,7 @@ class GreedyPackingDataLoader:
             packed['_batch_lengths'] = [len(s['input_ids']) for s in buffer]
             sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
             if sources:
-                packed['_dataset_source'] = sources
+                packed['_batch_sources'] = sources  # 使用 _batch_sources 以匹配 DatasetProgressCallback
             yield packed
     
     def __len__(self):
