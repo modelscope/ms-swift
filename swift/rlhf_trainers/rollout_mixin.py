@@ -1204,27 +1204,23 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     @torch.no_grad()
     def offload_optimizer(self):
-
         if not self.optimizer.state:
             return
 
         if is_deepspeed_enabled():
             # DeepSpeed optimizer: param_groups may be empty
             for _, state in self.optimizer.state.items():
-                for key in ('exp_avg', 'exp_avg_sq'):
-                    if key not in state:
-                        continue
-
-                    value = state[key]
+                # Iterate over a copy to avoid dict size change errors
+                for key, value in list(state.items()):
                     if not isinstance(value, torch.Tensor):
+                        continue
+                    # Skip if already on CPU
+                    if value.device.type == 'cpu':
                         continue
 
                     offload_key = f'{key}_offload_buffer'
                     if offload_key not in state:
-                        state[offload_key] = torch.empty_like(
-                            value,
-                            device='cpu',
-                        )
+                        state[offload_key] = torch.empty_like(value, device='cpu')
 
                     state[offload_key].copy_(value, non_blocking=True)
                     value.data = state[offload_key]
@@ -1240,13 +1236,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 state = self.optimizer.state.get(param)
                 if not state:
                     continue
-                for key, value in state.items():
-                    if isinstance(value, torch.Tensor):
+                for key, value in list(state.items()):  # Iterate over a list copy
+                    if isinstance(value, torch.Tensor) and value.device.type != 'cpu':
                         state[key] = value.to('cpu', non_blocking=True)
 
     @torch.no_grad()
     def load_optimizer(self):
-
         if not self.optimizer.state:
             return
 
@@ -1254,15 +1249,13 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if is_deepspeed_enabled():
             for _, state in self.optimizer.state.items():
-                for key in ('exp_avg', 'exp_avg_sq'):
-                    offload_key = f'{key}_offload_buffer'
-                    if offload_key not in state:
+                for key, value in list(state.items()):
+                    if not isinstance(value, torch.Tensor):
                         continue
 
-                    state[key].data = state[offload_key].to(
-                        device,
-                        non_blocking=True,
-                    )
+                    offload_key = f'{key}_offload_buffer'
+                    if offload_key in state:
+                        value.data = state[offload_key].to(device, non_blocking=True)
             return
 
         # Original non-DeepSpeed logic
@@ -1275,8 +1268,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 state = self.optimizer.state.get(param)
                 if not state:
                     continue
-                for key, value in state.items():
-                    if isinstance(value, torch.Tensor):
+                for key, value in list(state.items()):  # Iterate over a list copy
+                    if isinstance(value, torch.Tensor) and value.device.type == 'cpu':
                         state[key] = value.to(device, non_blocking=True)
 
     @contextmanager
