@@ -12,6 +12,7 @@ from typing import Any, Mapping, Optional, Union
 import numpy as np
 import torch
 import torch.distributed as dist
+import torch.nn.functional as F
 from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
@@ -281,23 +282,11 @@ def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bo
         return data
 
 
-def get_generative_reranker_logits(tokenizer, logits, attention_mask=None):
+def get_generative_reranker_logits(module, tokenizer, hidden_states):
     positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
     negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
     positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
     negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
-
-    # Handle right padding by finding the last valid token position
-    if attention_mask is not None:
-        # Extract logits at the last valid (non-padding) token position for each sample
-        batch_size = logits.shape[0]
-        last_valid_indices = get_last_valid_indices(attention_mask)
-        batch_indices = torch.arange(batch_size, device=logits.device)
-        last_valid_logits = logits[batch_indices, last_valid_indices, :]
-        positive_logits = last_valid_logits[:, positive_token_id]
-        negative_logits = last_valid_logits[:, negative_token_id]
-    else:
-        # Fallback to original behavior if attention_mask is not available
-        positive_logits = logits[:, -1, positive_token_id]
-        negative_logits = logits[:, -1, negative_token_id]
-    return (positive_logits - negative_logits)[:, None]
+    weight = module.weight[[positive_token_id, negative_token_id]]
+    logits = F.linear(hidden_states, weight)
+    return logits[..., 0:1] - logits[..., 1:2]

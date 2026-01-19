@@ -252,25 +252,25 @@ def _patch_sequence_classification(model, model_meta):
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_lm_head_model(model, model_meta, lm_heads)
-    llm_model.num_labels = model.config.num_labels
+    lm_head_model = get_lm_head_model(model, model_meta, lm_heads)
+    lm_head_model.num_labels = model.config.num_labels
     for lm_head in lm_heads:
-        if hasattr(llm_model, lm_head):
-            hidden_size = getattr(llm_model, lm_head).in_features
-            setattr(llm_model, lm_head, nn.Identity())
+        if hasattr(lm_head_model, lm_head):
+            hidden_size = getattr(lm_head_model, lm_head).in_features
+            setattr(lm_head_model, lm_head, nn.Identity())
             break
-    llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
-    if llm_model.score.weight.device == torch.device('meta'):
-        llm_model.score.to_empty(device='cpu')
-    llm_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
+    lm_head_model.score = nn.Linear(hidden_size, lm_head_model.num_labels, bias=False, dtype=lm_head_model.dtype)
+    if lm_head_model.score.weight.device == torch.device('meta'):
+        lm_head_model.score.to_empty(device='cpu')
+    lm_head_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
 
-    origin_forward = llm_model.forward
+    origin_forward = lm_head_model.forward
 
     @wraps(origin_forward.__func__)
     def new_forward(self, *args, **kwargs):
         return transformers_seq_cls_forward(self, *args, origin_forward=origin_forward, **kwargs)
 
-    llm_model.forward = MethodType(new_forward, llm_model)
+    lm_head_model.forward = MethodType(new_forward, lm_head_model)
 
 
 @contextmanager
@@ -608,3 +608,14 @@ def patch_attach_align_device_hook_on_blocks():
         yield
     finally:
         big_modeling.attach_align_device_hook_on_blocks = origin_attach_align_device_hook_on_blocks
+
+
+def patch_module_forward(module, new_forward):
+    if getattr(module, '_patch', False):
+        return
+    module._patch = True
+    new_forward_wrapped = MethodType(new_forward, module)
+    if hasattr(module, '_old_forward'):  # device_map
+        module._old_forward = new_forward_wrapped
+    else:
+        module.forward = new_forward_wrapped

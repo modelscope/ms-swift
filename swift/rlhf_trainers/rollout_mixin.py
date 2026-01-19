@@ -33,7 +33,7 @@ from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import get_current_device, get_logger, is_vllm_available, remove_response
+from swift.utils import get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response
 from .arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
@@ -1177,7 +1177,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         # Default: iterate over parameters
         for param in model.parameters():
-            param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+            # After DeepSpeed distributed loading: param.data is empty and weights cannot be off-loaded.
+            # The real weights are stored in ds_tensor.
+            if is_deepspeed_enabled() and hasattr(param, 'ds_tensor'):
+                param.ds_tensor.data = param.ds_tensor.data.to('cpu', non_blocking=True)
+            else:
+                param.data = param.data.to(torch.device('cpu'), non_blocking=True)
         torch.cuda.empty_cache()
 
     @torch.no_grad()
@@ -1191,7 +1196,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         # Default: iterate over parameters
         for param in model.parameters():
-            param.data = param.data.to(device, non_blocking=True)
+            # Reverse logic of off-loading: move weights back to target device
+            if is_deepspeed_enabled() and hasattr(param, 'ds_tensor'):
+                param.ds_tensor.data = param.ds_tensor.data.to(device, non_blocking=True)
+            else:
+                param.data = param.data.to(device, non_blocking=True)
 
     @torch.no_grad()
     def offload_optimizer(self):

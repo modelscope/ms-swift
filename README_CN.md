@@ -130,7 +130,7 @@ pip install -e .
 | python       | >=3.9        | 3.10/3.11            |                    |
 | cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
 | torch        | >=2.0        | 2.8.0/2.9.0           |                    |
-| transformers | >=4.33       | 4.57.3              |                    |
+| transformers | >=4.33       | 4.57.6              |                    |
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
