@@ -613,6 +613,7 @@ def patch_attach_align_device_hook_on_blocks():
 def patch_module_forward(module, new_forward):
     if getattr(module, '_patch', False):
         return
+    module._patch = True
     new_forward_wrapped = MethodType(new_forward, module)
     if hasattr(module, '_old_forward'):  # device_map
         module._old_forward = new_forward_wrapped
