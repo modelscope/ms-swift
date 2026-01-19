@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
@@ -85,6 +86,25 @@ class HunYuanVLTemplate(Template):
             attention_mask = torch.tensor(input_ids).ne(processor.pad_id)
             encoded['attention_mask'] = attention_mask
         return encoded
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        image_grid_thw = inputs.get('image_grid_thw')
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.model.embed_tokens(input_ids)
+
+        if pixel_values is not None:
+            pixel_values = pixel_values.to(base_model.vit.dtype)
+            image_embeds = base_model.vit(pixel_values, image_grid_thw)
+            image_embeds = image_embeds.to(input_ids.device, non_blocking=True)
+            image_mask, _ = base_model.get_placeholder_mask(
+                input_ids, inputs_embeds=inputs_embeds, image_features=image_embeds)
+            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+        return {'inputs_embeds': inputs_embeds}
 
     def _pad_3d_position_ids(self,
                              position_ids: List[torch.Tensor],
