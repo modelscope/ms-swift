@@ -13,6 +13,7 @@ def test_embedding():
             split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,
             tuner_type='lora',
+            max_epochs=1,
             recompute_granularity='full',
             recompute_method='uniform',
             recompute_num_layers=1,
@@ -34,6 +35,7 @@ def test_reranker():
             model='Qwen/Qwen3-Reranker-4B',
             tuner_type='lora',
             load_from_cache_file=True,
+            max_epochs=1,
             task_type='generative_reranker',
             dataset=['MTEB/scidocs-reranking#10000'],
             loss_type='pointwise_reranker',
@@ -52,5 +54,5 @@ def test_reranker():
 
 
 if __name__ == '__main__':
-    test_embedding()
-    # test_reranker()
+    # test_embedding()
+    test_reranker()
