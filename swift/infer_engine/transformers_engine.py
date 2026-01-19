@@ -353,9 +353,9 @@ class TransformersEngine(InferEngine):
         elif task_type in ('reranker', 'generative_reranker'):
             if task_type == 'generative_reranker':
                 attention_mask = inputs.get('attention_mask')
-                last_valid_indices = get_last_valid_indices(attention_mask) if attention_mask is not None else -1
+                last_valid_indices = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
                 batch_indices = torch.arange(logits.shape[0], device=logits.device)
-                logits = logits[batch_indices, last_valid_indices, :]
+                logits = logits[batch_indices, last_valid_indices]
             preds = logits.float()
             if self.reranker_use_activation:
                 preds = F.sigmoid(preds)
