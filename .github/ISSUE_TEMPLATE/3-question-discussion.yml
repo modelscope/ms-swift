@@ -10,8 +10,9 @@ body:
         感谢你对 ms-swift 的支持和抽出时间提交相关 issue。
 
   - type: checkboxes
-    id: reminder
+    id: checklist
     attributes:
+      label: Checklist / 检查清单
       options:
         - label: I have searched existing issues, and this is a new question or discussion topic. / 我已经搜索过现有的 issues,确认这是一个新的问题与讨论。
           required: true
