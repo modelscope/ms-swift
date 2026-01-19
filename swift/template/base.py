@@ -2162,5 +2162,6 @@ class Template(ProcessorMixin):
         patch_module_forward(lm_head_model, lm_head_forward)
 
     def patch_model(self, model):
+        base_model = self.get_base_model(model)
         if self.task_type == 'generative_reranker':
-            self._patch_generative_reranker(model)
+            self._patch_generative_reranker(base_model)
