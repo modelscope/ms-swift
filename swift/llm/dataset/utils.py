@@ -390,11 +390,14 @@ class GreedyPackingDataLoader:
                 else:
                     # 当前包满了，输出
                     if buffer:
-                        packed = self.packing_collator(buffer)
-                        packed['_batch_lengths'] = [len(s['input_ids']) for s in buffer]
+                        # 注意：必须在调用 packing_collator 之前收集 sources 和 lengths，
+                        # 因为 packing_collator 会原地修改 buffer（batch[:] = [packing_row(batch)]）
+                        batch_lengths = [len(s['input_ids']) for s in buffer]
                         sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
+                        packed = self.packing_collator(buffer)
+                        packed['_batch_lengths'] = batch_lengths
                         if sources:
-                            packed['_batch_sources'] = sources  # 使用 _batch_sources 以匹配 DatasetProgressCallback
+                            packed['_batch_sources'] = sources
                         yield packed
                     
                     buffer = [sample]
@@ -402,11 +405,13 @@ class GreedyPackingDataLoader:
         
         # 输出最后一个 pack
         if buffer:
-            packed = self.packing_collator(buffer)
-            packed['_batch_lengths'] = [len(s['input_ids']) for s in buffer]
+            # 注意：必须在调用 packing_collator 之前收集 sources 和 lengths
+            batch_lengths = [len(s['input_ids']) for s in buffer]
             sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
+            packed = self.packing_collator(buffer)
+            packed['_batch_lengths'] = batch_lengths
             if sources:
-                packed['_batch_sources'] = sources  # 使用 _batch_sources 以匹配 DatasetProgressCallback
+                packed['_batch_sources'] = sources
             yield packed
     
     def __len__(self):
