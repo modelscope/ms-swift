@@ -23,7 +23,8 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
+from swift.utils import (Processor, ProcessorMixin, get_env_args, get_generative_reranker_logits, get_logger,
+                         remove_response, retry_decorator, to_device)
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
@@ -2150,3 +2151,16 @@ class Template(ProcessorMixin):
         seq_len = position_ids.shape[-1]
         text_position_ids = torch.arange(seq_len, device=position_ids.device).expand(1, *position_ids.shape[1:])
         return torch.concat([text_position_ids, position_ids], dim=0)
+
+    def _patch_generative_reranker(self, model):
+        from swift.model import get_lm_head_model, patch_module_forward
+        lm_head_model = get_lm_head_model(model).lm_head
+
+        def lm_head_forward(module, hidden_states):
+            return get_generative_reranker_logits(module, self.tokenizer, hidden_states)
+
+        patch_module_forward(lm_head_model, lm_head_forward)
+
+    def patch_model(self, model):
+        if self.task_type == 'generative_reranker':
+            self._patch_generative_reranker(model)
