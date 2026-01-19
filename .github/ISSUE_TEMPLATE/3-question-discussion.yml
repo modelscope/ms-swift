@@ -14,7 +14,7 @@ body:
     attributes:
       label: Checklist / 检查清单
       options:
-        - label: I have searched existing issues, and this is a new question or discussion topic. / 我已经搜索过现有的 issues,确认这是一个新的问题与讨论。
+        - label: I have searched existing issues, and this is a new question or discussion topic. / 我已经搜索过现有的 issues，确认这是一个新的问题与讨论。
           required: true
 
   - type: textarea
