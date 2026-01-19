@@ -41,15 +41,16 @@ from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoader
 from swift.hub import get_hub
 from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
-from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
+from swift.model import get_llm_model, get_lm_head_model, patch_module_forward, save_checkpoint
 from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
 from swift.optimizers import OptimizerCallback, optimizers_map
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
 from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
-from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
+from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device,
+                         get_generative_reranker_logits, get_logger, get_packed_seq_params, is_dist, is_mp, is_mp_ddp,
+                         ms_logger_context, seed_worker)
 from . import patcher
 from .arguments import TrainingArguments
 from .utils import can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, is_instance_of_ms_model
@@ -652,11 +653,23 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
+    def _patch_generative_reranker(self, model):
+        lm_head_model = get_lm_head_model(model).lm_head
+
+        def lm_head_forward(module, hidden_states):
+            return get_generative_reranker_logits(module, self.template.tokenizer, hidden_states)
+
+        patch_module_forward(lm_head_model, lm_head_forward)
+
     def _patch_tasks(self):
         if isinstance(self.model, PeftModel):
             model = self.model.model
         else:
             model = self.model
+
+        if self.task_type == 'generative_reranker':
+            self._patch_generative_reranker(model)
+
         padding_side = self.template.padding_side
         if 'SentenceTransformer' in model.__class__.__name__:
 

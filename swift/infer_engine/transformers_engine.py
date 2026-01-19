@@ -22,7 +22,7 @@ from swift.metrics import Metric
 from swift.model import get_model_processor
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import get_generative_reranker_logits, safe_snapshot_download, to_device
+from swift.utils import get_last_valid_indices, safe_snapshot_download, to_device
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
@@ -351,9 +351,10 @@ class TransformersEngine(InferEngine):
             logprobs = [None] * len(preds)
         elif task_type in ('reranker', 'generative_reranker'):
             if task_type == 'generative_reranker':
-                # Qwen3-reranker like
-                logits = get_generative_reranker_logits(
-                    self.template.tokenizer, logits, attention_mask=inputs.get('attention_mask'))
+                attention_mask = inputs.get('attention_mask')
+                last_valid_indices = get_last_valid_indices(attention_mask) if attention_mask is not None else -1
+                batch_indices = torch.arange(logits.shape[0], device=logits.device)
+                logits = logits[batch_indices, last_valid_indices, :]
             preds = logits.float()
             if self.reranker_use_activation:
                 preds = F.sigmoid(preds)

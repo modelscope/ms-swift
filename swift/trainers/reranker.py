@@ -1,5 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from swift.utils import get_generative_reranker_logits, get_logger
+import torch
+
+from swift.utils import get_last_valid_indices, get_logger
 from .trainer import Trainer
 from .utils import gather_for_unpadded_tensors
 
@@ -21,8 +23,11 @@ class RerankerTrainer(Trainer):
             labels = inputs.pop('labels', None)
             outputs = model(**inputs)
             if self.task_type == 'generative_reranker':
-                outputs.logits = get_generative_reranker_logits(
-                    self.tokenizer, outputs.logits, attention_mask=inputs.get('attention_mask'))
+                attention_mask = inputs.get('attention_mask')
+                last_valid_indices = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
+                logits = outputs.logits
+                batch_indices = torch.arange(logits.shape[0], device=logits.device)
+                outputs.logits = logits[batch_indices, last_valid_indices]
 
             if labels is not None:
                 # Call custom loss function
