@@ -57,7 +57,7 @@ class RLHFTrainerMixin:
 
         self.padding_value = self.tokenizer.pad_token_id
 
-    def create_loss_and_metric(self, args):
+    def create_loss_and_eval_metric(self, args):
         return {}
 
     def _prepare_inputs(self, inputs):
