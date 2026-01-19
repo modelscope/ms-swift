@@ -96,7 +96,11 @@ class LazyLLMDataset(Dataset):
                 self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
-                return self.encode_func(data, return_length=True)
+                result = self.encode_func(data, return_length=True)
+                # 保留 _dataset_source 用于 greedy_packing 进度统计
+                if '_dataset_source' in data:
+                    result['_dataset_source'] = data['_dataset_source']
+                return result
             except Exception:
                 if n_try == self.n_try_fetch - 1 or self.strict:
                     if self.strict:
@@ -375,29 +379,35 @@ class GreedyPackingDataLoader:
         buffer_length = 0
         
         for batch in self.dataloader:
-            # batch 是一个 list of encoded samples（来自 collator）
-            # 由于 batch_size=1，每次只有一个样本
             samples = batch if isinstance(batch, list) else [batch]
             
             for sample in samples:
-                # 获取样本长度
-                sample_length = len(sample['input_ids'])
+                sample_length = sample.get('length') or len(sample['input_ids'])
                 
-                # 贪心判断：能放下就放，放不下就输出
                 if buffer_length + sample_length <= self.packing_length:
                     buffer.append(sample)
                     buffer_length += sample_length
                 else:
                     # 当前包满了，输出
                     if buffer:
-                        yield self.packing_collator(buffer)
-                    # 开始新包
+                        packed = self.packing_collator(buffer)
+                        packed['_batch_lengths'] = [len(s['input_ids']) for s in buffer]
+                        sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
+                        if sources:
+                            packed['_dataset_source'] = sources
+                        yield packed
+                    
                     buffer = [sample]
                     buffer_length = sample_length
         
         # 输出最后一个 pack
         if buffer:
-            yield self.packing_collator(buffer)
+            packed = self.packing_collator(buffer)
+            packed['_batch_lengths'] = [len(s['input_ids']) for s in buffer]
+            sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
+            if sources:
+                packed['_dataset_source'] = sources
+            yield packed
     
     def __len__(self):
         # 估算长度（不精确，但足够用于进度条等）

@@ -1207,13 +1207,16 @@ class DataLoaderMixin:
                 # Wrap with GreedyPackingDataLoader if needed
                 if use_greedy_packing:
                     from swift.llm.dataset.utils import GreedyPackingDataLoader
-                    packing_length = getattr(args, 'packing_length', None) or self.template.max_length
+                    base_packing_length = getattr(args, 'packing_length', None) or self.template.max_length
+                    # packing_length = base_length * batch_size，使 batch_size 控制每个 pack 的 "逻辑 batch 数"
+                    packing_length = base_packing_length * args.per_device_train_batch_size
                     dataloader = GreedyPackingDataLoader(
                         dataloader=dataloader,
                         packing_length=packing_length,
                         packing_collator=partial(self.template.data_collator, padding_to=None),
                     )
-                    logger.info(f'GreedyPackingDataLoader enabled with packing_length={packing_length}')
+                    logger.info(f'GreedyPackingDataLoader enabled with packing_length={packing_length} '
+                               f'(base={base_packing_length} x batch_size={args.per_device_train_batch_size})')
             else:
                 # IterableDataset
                 if dist.is_initialized() and dataloader_params['prefetch_factor']:
