@@ -322,6 +322,7 @@ register_template(
         template_cls=GLM4_5Template,
         prompt=['<|user|>{{QUERY}}<|assistant|>'],
         system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
+        thinking_prefix='<think>',
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>',
         agent_template='glm4_7',
