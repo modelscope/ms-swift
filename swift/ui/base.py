@@ -8,7 +8,7 @@ from collections import OrderedDict
 from dataclasses import fields
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List, Type
+from typing import Any, Dict, List, Literal, Optional, Type, Union, get_args, get_origin
 
 import gradio as gr
 import json
@@ -270,12 +270,18 @@ class BaseUI:
         choice_dict = {}
         for f in fields(dataclass):
             default_value = f.default
+            type_orign = get_origin(f.type)
+            type_args = get_args(f.type)
             if 'MISSING_TYPE' in str(default_value):
                 default_value = None
             if 'choices' in f.metadata:
                 choice_dict[f.name] = list(f.metadata['choices'])
-            if 'Literal' in str(f.type) and typing.get_args(f.type):
-                choice_dict[f.name] = list(typing.get_args(f.type))
+            if type_orign is Literal:
+                choice_dict[f.name] = list(type_args)
+            elif type_orign is Union and type(None) in type_args:
+                for inner_type in type_args:
+                    if get_origin(inner_type) is Literal:
+                        choice_dict[f.name] = list(get_args(inner_type))
             if f.name in choice_dict and default_value not in choice_dict[f.name]:
                 choice_dict[f.name].insert(0, default_value)
         return choice_dict
