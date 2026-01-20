@@ -713,8 +713,9 @@ class GPTBridge:
             num_local_experts = args.num_experts // self.ep_size
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if version.parse(
-                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4v_moe':
+        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type in {
+                'glm4v_moe', 'glm4_moe_lite'
+        }:
             hf_grouped = False
             is_gate_up = False
         if to_mcore or hf_grouped:

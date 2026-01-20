@@ -20,7 +20,7 @@ config_mapping = {
     'swiglu': ['hidden_act'],
     'add_qkv_bias': ['attention_bias', 'qkv_bias', 'use_bias'],
     'disable_bias_linear': ['mlp_bias'],
-    'kv_channels': ['head_dim', 'v_head_dim'],
+    'kv_channels': ['head_dim'],
     'hf_model_type': ['model_type'],
     # moe
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
@@ -37,6 +37,7 @@ config_mapping = {
     'moe_router_bias_update_rate': ['aux_loss_alpha'],
     'qk_head_dim': ['qk_nope_head_dim'],
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
+    'v_head_dim': ['v_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
     # qwen3_next
@@ -149,7 +150,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
         else:
             window_attn_skip_freq = ','.join(['1' if lt == 'sliding_attention' else '0' for lt in layer_types])
             res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
-    elif llm_model_type == 'glm4_moe' or hf_model_type == 'glm4v_moe':
+    elif llm_model_type in {'glm4_moe', 'glm4_moe_lite'} or hf_model_type == 'glm4v_moe':
         res['moe_router_score_function'] = 'sigmoid'
     elif llm_model_type == 'qwen3_next':
         full_attention_interval = res.pop('full_attention_interval')

@@ -567,6 +567,7 @@ class MegatronArguments(ExtraMegatronArguments):
     kv_lora_rank: Optional[int] = None
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
+    v_head_dim: Optional[int] = None
 
     # mtp
     mtp_num_layers: Optional[int] = None
@@ -656,6 +657,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.qk_head_dim = 128
         if self.qk_pos_emb_head_dim is None:
             self.qk_pos_emb_head_dim = 64
+        if self.v_head_dim is None:
+            self.v_head_dim = 128
         if self.task_type is None:
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
