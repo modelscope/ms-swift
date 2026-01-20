@@ -51,9 +51,10 @@ class DataSource(str, Enum):
 class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
-        teacher_model = kwargs.pop('teacher_model')
+        teacher_model = kwargs.pop('teacher_model', None)
         teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
+        self.teacher_api_client = kwargs.pop('teacher_api_client', None)
         kwargs['data_collator'] = identity_data_collator
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
@@ -64,32 +65,47 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
 
+        # GKD top-k logits configuration
+        self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
+        self.use_teacher_api = self.teacher_api_client is not None
+
         # Initialize logging components
         self._prepare_logging()
 
-        # Initialize liger loss
-        self._prepare_liger_loss()
+        # Initialize liger loss (only when not using top-k mode)
+        if self.gkd_logits_topk is None:
+            self._prepare_liger_loss()
+        else:
+            self.use_liger_gkd_loss = False
+            logger.info(f'Using top-k logits (k={self.gkd_logits_topk}) for KL computation, liger loss disabled.')
 
         self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
         self.is_teacher_ds3 = None
-        # Initialize teacher model
-        if self.is_deepspeed_enabled:
-            if teacher_deepspeed_config is not None:
-                self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
-                if not self.is_teacher_ds3:
-                    self.teacher_ds3_gather_for_generation = False
-                self.teacher_model = prepare_deepspeed(
-                    teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
+        self.teacher_model = None
+
+        # Initialize teacher model (skip if using API)
+        if not self.use_teacher_api:
+            if teacher_model is None:
+                raise ValueError('teacher_model is required when not using teacher_model_server')
+            if self.is_deepspeed_enabled:
+                if teacher_deepspeed_config is not None:
+                    self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
+                    if not self.is_teacher_ds3:
+                        self.teacher_ds3_gather_for_generation = False
+                    self.teacher_model = prepare_deepspeed(
+                        teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
+                else:
+                    self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
+            elif self.is_fsdp_enabled:
+                from .utils import prepare_fsdp
+                self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
             else:
-                self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
-        elif self.is_fsdp_enabled:
-            from .utils import prepare_fsdp
-            self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
+                self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
+            self.teacher_model.eval()
+            if self.args.offload_teacher_model:
+                self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
         else:
-            self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
-        self.teacher_model.eval()
-        if self.args.offload_teacher_model:
-            self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+            logger.info(f'Using teacher model API for logprobs, top_logprobs={self.gkd_logits_topk}')
 
         # Initialize rollout infrastructure for vLLM support
         self.prepare_rollout()
@@ -151,6 +167,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Get data source: DataSource.STUDENT, DataSource.TEACHER, or DataSource.DATASET
         data_source = inputs.pop('_data_source', DataSource.DATASET)
+        # Get teacher logprobs from API if available (set in training_step)
+        teacher_api_logprobs = inputs.pop('_teacher_api_logprobs', None)
+        teacher_api_indices = inputs.pop('_teacher_api_indices', None)
+
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
@@ -220,8 +240,32 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     loss /= student_hidden.shape[1]
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
+            outputs_student = None
+        elif self.use_teacher_api:
+            assert teacher_api_logprobs is not None
+            # API mode: use teacher logprobs from external service
+            if self.args.sft_alpha > 0:
+                model_inputs['labels'] = inputs['labels']
+            outputs_student = model(**model_inputs)
+
+            shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+
+            # Compute top-k JSD loss with API logprobs
+            loss = self.generalized_jsd_loss(
+                student_logits=outputs_student.logits,
+                teacher_logits=None,  # Not used in API mode
+                labels=shifted_labels,
+                beta=self.beta,
+                temperature=self.temperature,
+                teacher_topk_logprobs=teacher_api_logprobs,
+                teacher_topk_indices=teacher_api_indices,
+            )
+
+            # Add SFT loss if enabled (skip for student-generated responses)
+            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
+                loss = loss + self.args.sft_alpha * outputs_student.loss
         else:
-            # Standard loss computation
+            # Standard loss computation (local teacher model)
             if self.args.sft_alpha > 0:
                 model_inputs['labels'] = inputs['labels']
             # compute student output
@@ -234,35 +278,47 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 outputs_teacher = self.teacher_model(**model_inputs)
 
             shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
-            mask = shifted_labels != -100
-            shifted_student_logits = outputs_student.logits[mask][None]
-            shifted_teacher_logits = outputs_teacher.logits[mask][None]
 
-            # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
-            stu_dim = shifted_student_logits.shape[-1]
-            tea_dim = shifted_teacher_logits.shape[-1]
-            if stu_dim < tea_dim:
-                shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
-                shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
-            elif stu_dim > tea_dim:
-                shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
-                shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
+            if self.gkd_logits_topk is not None:
+                # Top-k mode with local teacher
+                loss = self.generalized_jsd_loss(
+                    student_logits=outputs_student.logits,
+                    teacher_logits=outputs_teacher.logits,
+                    labels=shifted_labels,
+                    beta=self.beta,
+                    temperature=self.temperature,
+                    topk=self.gkd_logits_topk,
+                )
+            else:
+                # Full vocabulary mode
+                mask = shifted_labels != -100
+                shifted_student_logits = outputs_student.logits[mask][None]
+                shifted_teacher_logits = outputs_teacher.logits[mask][None]
 
-            # compute loss
-            loss = self.generalized_jsd_loss(
-                student_logits=shifted_student_logits,
-                teacher_logits=shifted_teacher_logits,
-                beta=self.beta,
-            )
+                # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
+                stu_dim = shifted_student_logits.shape[-1]
+                tea_dim = shifted_teacher_logits.shape[-1]
+                if stu_dim < tea_dim:
+                    shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
+                    shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
+                elif stu_dim > tea_dim:
+                    shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
+                    shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
+
+                # compute loss
+                loss = self.generalized_jsd_loss(
+                    student_logits=shifted_student_logits,
+                    teacher_logits=shifted_teacher_logits,
+                    beta=self.beta,
+                    temperature=self.temperature,
+                )
+
             # Add SFT loss if enabled (skip for student-generated responses)
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
 
         # Return loss
         if return_outputs:
-            if self.use_liger_gkd_loss:
-                # outputs has been released in liger loss computation to reduce peak memory
-                outputs_student = None
             return (loss, outputs_student)
         else:
             return loss
@@ -383,9 +439,68 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             # Mark data source for downstream processing (e.g., conditional SFT loss)
             encoded_inputs['_data_source'] = data_source
 
+            # Fetch teacher logprobs from API if using external teacher service
+            if self.use_teacher_api:
+                teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs)
+                encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
+                encoded_inputs['_teacher_api_indices'] = teacher_indices
+
         with self.template.forward_context(self.model, encoded_inputs):
             loss = HFSFTTrainer.training_step(self, model, encoded_inputs, num_items_in_batch)
         return loss
+
+    def _fetch_teacher_logprobs_from_api(self, encoded_inputs: Dict[str, torch.Tensor]):
+        """Fetch teacher logprobs from external API service.
+
+        Args:
+            encoded_inputs: Dictionary containing input_ids, attention_mask, labels, etc.
+
+        Returns:
+            Tuple of (teacher_logprobs, teacher_indices) tensors
+        """
+        import asyncio
+
+        input_ids = encoded_inputs['input_ids']
+        attention_mask = encoded_inputs['attention_mask']
+        batch_size, seq_len = input_ids.shape
+        topk = self.gkd_logits_topk
+
+        # Prepare requests for API
+        # We need logprobs for each position, so we send the full sequence
+        # and request prompt_logprobs
+        async def fetch_batch():
+            results = await self.teacher_api_client.get_logprobs_batch(
+                input_ids=input_ids.tolist(),
+                attention_mask=attention_mask.tolist(),
+                top_logprobs=topk,
+            )
+            return results
+
+        # Run async function
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If already in async context, create a new thread
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, fetch_batch())
+                api_results = future.result()
+        else:
+            api_results = loop.run_until_complete(fetch_batch())
+
+        # Parse API results into tensors
+        # api_results should be list of dicts with 'logprobs' and 'indices' for each sample
+        teacher_logprobs = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.float32)
+        teacher_indices = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.long)
+
+        for batch_idx, result in enumerate(api_results):
+            for pos_idx, pos_logprobs in enumerate(result.get('logprobs', [])):
+                if pos_idx >= seq_len:
+                    break
+                for k_idx, (token_id, logprob) in enumerate(pos_logprobs[:topk]):
+                    teacher_logprobs[batch_idx, pos_idx, k_idx] = logprob
+                    teacher_indices[batch_idx, pos_idx, k_idx] = token_id
+
+        return teacher_logprobs, teacher_indices
 
     def prediction_step(self, model, inputs, *args, **kwargs):
         # Prediction uses full messages
@@ -471,7 +586,89 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         beta=0.5,
         temperature=1.0,
         chunk_size=512,
+        topk=None,
+        teacher_topk_logprobs=None,
+        teacher_topk_indices=None,
     ):
+        """Compute generalized JSD loss with optional top-k support.
+
+        This method supports three modes:
+        1. Full vocabulary mode (default): Uses complete logits from both models
+        2. Top-k mode with local teacher: Extracts top-k from teacher_logits
+        3. Top-k mode with API logprobs: Uses pre-computed teacher_topk_logprobs and indices
+
+        For top-k mode, uses the teacher model's top-k tokens (following ROLL framework).
+        This reduces memory usage while maintaining training effectiveness.
+
+        Args:
+            student_logits: Student model logits [batch, seq_len, vocab_size] or [num_tokens, vocab_size]
+            teacher_logits: Teacher model logits (same shape as student_logits), can be None for API mode
+            labels: Token labels for masking, shape [batch, seq_len]
+            beta: JSD interpolation coefficient (0=Forward KL, 0.5=JSD, 1=Reverse KL)
+            temperature: Temperature for softmax scaling
+            chunk_size: Chunk size for memory-efficient processing (full vocab mode only)
+            topk: Number of top-k logits to use (teacher's top-k). None for full vocabulary mode.
+            teacher_topk_logprobs: Pre-computed teacher log probs [batch, seq_len, topk] (API mode)
+            teacher_topk_indices: Pre-computed teacher token indices [batch, seq_len, topk] (API mode)
+
+        Returns:
+            Scalar loss value
+        """
+        # Determine mode
+        use_api_mode = teacher_topk_logprobs is not None and teacher_topk_indices is not None
+        use_topk = topk is not None or use_api_mode
+
+        # ============== Top-K Mode ==============
+        if use_topk:
+            # Apply temperature scaling to student logits
+            student_logits_scaled = student_logits / temperature
+
+            if use_api_mode:
+                # API mode: teacher logprobs already computed (with temperature on server)
+                teacher_topk_log_probs = teacher_topk_logprobs
+                teacher_topk_probs = torch.exp(teacher_topk_logprobs)
+                topk_indices = teacher_topk_indices
+            else:
+                # Local mode: extract top-k from teacher logits
+                teacher_logits_scaled = teacher_logits / temperature
+                teacher_topk_logits, topk_indices = torch.topk(teacher_logits_scaled, k=topk, dim=-1)
+                teacher_topk_probs = F.softmax(teacher_topk_logits, dim=-1)
+                teacher_topk_log_probs = F.log_softmax(teacher_topk_logits, dim=-1)
+
+            # Gather student logits at teacher's top-k indices and renormalize
+            student_topk_logits = torch.gather(student_logits_scaled, dim=-1, index=topk_indices)
+            student_topk_log_probs = F.log_softmax(student_topk_logits, dim=-1)
+
+            # Compute JSD on top-k distribution
+            if beta == 0:
+                # Forward KL: KL(teacher || student)
+                jsd = (teacher_topk_probs * (teacher_topk_log_probs - student_topk_log_probs)).sum(dim=-1)
+            elif beta == 1:
+                # Reverse KL: KL(student || teacher)
+                student_topk_probs = F.softmax(student_topk_logits, dim=-1)
+                jsd = (student_topk_probs * (student_topk_log_probs - teacher_topk_log_probs)).sum(dim=-1)
+            else:
+                # Full JSD with mixture distribution
+                student_topk_probs = F.softmax(student_topk_logits, dim=-1)
+                mixture_probs = beta * teacher_topk_probs + (1 - beta) * student_topk_probs
+                mixture_log_probs = torch.log(mixture_probs + 1e-10)
+                kl_teacher = (teacher_topk_probs * (teacher_topk_log_probs - mixture_log_probs)).sum(dim=-1)
+                kl_student = (student_topk_probs * (student_topk_log_probs - mixture_log_probs)).sum(dim=-1)
+                jsd = beta * kl_teacher + (1 - beta) * kl_student
+
+            # Apply mask and compute mean
+            if labels is not None:
+                mask = labels != -100
+                jsd = jsd * mask.float()
+                num_valid = mask.sum()
+            else:
+                num_valid = jsd.numel()
+
+            if num_valid == 0:
+                return student_logits.new_zeros(())
+            return jsd.sum() / num_valid
+
+        # ============== Full Vocabulary Mode ==============
         # Apply temperature scaling
         student_logits = student_logits / temperature
         teacher_logits = teacher_logits / temperature

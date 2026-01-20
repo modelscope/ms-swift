@@ -227,8 +227,15 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
             if self.args.chord_sft_dataset:
                 trainer_kwargs['chord_sft_dataset'], _ = self._prepare_chord_sft_dataset()
-        if self.args.rlhf_type == 'gkd' and self.args.teacher_deepspeed:
-            trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
+        if self.args.rlhf_type == 'gkd':
+            if self.args.teacher_deepspeed:
+                trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
+            # Initialize teacher API client if using external teacher service
+            if self.args.teacher_model_server:
+                from swift.rlhf_trainers.utils import create_teacher_api_client
+                trainer_kwargs['teacher_api_client'] = create_teacher_api_client(
+                    self.args, check_health=False, timeout=60, use_last_rank=False
+                )
         return trainer_kwargs
 
 

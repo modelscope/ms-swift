@@ -1453,6 +1453,47 @@ def check_vllm_version_ge(min_version: str) -> bool:
     return version.parse(vllm_version) >= version.parse(min_version)
 
 
+def create_teacher_api_client(args, check_health: bool = True, timeout: int = 60, use_last_rank: bool = True):
+    """
+    Create and initialize TeacherAPIClient for external teacher model service.
+
+    Args:
+        args: Arguments object containing teacher_model_server and gkd_logits_topk
+        check_health: Whether to check server health after creation (default: True)
+        timeout: Timeout for health check in seconds (default: 60)
+        use_last_rank: Whether to use last rank (Megatron style) or first rank (Swift style) for initialization (default: True)
+
+    Returns:
+        TeacherAPIClient instance or None if teacher_model_server is not set
+    """
+    # Only prepare if teacher_model_server is set
+    teacher_model_server = getattr(args, 'teacher_model_server', None)
+    if not teacher_model_server:
+        return None
+
+    from swift.rlhf_trainers import TeacherAPIClient
+    from swift.utils import get_logger, is_last_rank, is_master
+
+    logger = get_logger()
+    gkd_logits_topk = getattr(args, 'gkd_logits_topk', None) or 20
+
+    # Choose rank check function based on context
+    rank_check_func = is_last_rank if use_last_rank else is_master
+
+    teacher_api_client = None
+    if rank_check_func():
+        logger.info(f'Initializing teacher API client for {teacher_model_server}')
+        teacher_api_client = TeacherAPIClient(
+            base_url=teacher_model_server,
+            top_logprobs=gkd_logits_topk,
+        )
+        if check_health:
+            # Check server health with timeout
+            teacher_api_client.check_server_health(timeout=timeout)
+        logger.info(f'Teacher API client initialized with top_logprobs={gkd_logits_topk}')
+    return teacher_api_client
+
+
 # ============================================================================
 # Padding-free utilities
 # ============================================================================

@@ -38,6 +38,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def __init__(self, args: MegatronArguments, template, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client', None)
+        self.teacher_api_client = kwargs.pop('teacher_api_client', None)
         super().__init__(args, template)
 
         # GKD-specific parameters
@@ -47,7 +48,18 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.seq_kd = args.seq_kd  # Sequential KD: use teacher-generated responses
         self.offload_teacher_model = args.offload_teacher_model  # Offload teacher to CPU
         self.sft_alpha = getattr(args, 'sft_alpha', 0.0)  # Weight for SFT loss
-        assert args.teacher_model is not None, 'Teacher model path is required for GKD training'
+
+        # GKD top-k logits configuration
+        self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
+        self.use_teacher_api = self.teacher_api_client is not None
+
+        # Validate teacher configuration
+        if not self.use_teacher_api:
+            assert args.teacher_model is not None, \
+                'Teacher model path is required for GKD training (or set teacher_model_server for API mode)'
+        else:
+            logger.info(f'Using teacher model API for logprobs, top_logprobs={self.gkd_logits_topk}')
+
         self.use_vllm = getattr(args, 'use_vllm', False)
 
         # Get device for data processing
@@ -86,12 +98,16 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         Teacher model uses the same parallel parameters (PP/TP/CP/EP) as student model,
         """
-        # Get teacher model path from Swift args
-        teacher_model_path = self.args.teacher_model
-        logger.info(f'Loading teacher model from: {teacher_model_path}')
+        # Skip teacher model loading if using API
+        if not self.use_teacher_api:
+            # Get teacher model path from Swift args
+            teacher_model_path = self.args.teacher_model
+            logger.info(f'Loading teacher model from: {teacher_model_path}')
 
-        # Load teacher model with same parallel config as student
-        self._load_teacher_model(teacher_model_path, model_type)
+            # Load teacher model with same parallel config as student
+            self._load_teacher_model(teacher_model_path, model_type)
+        else:
+            logger.info('Skipping local teacher model loading - using external API for teacher logprobs')
 
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
@@ -430,20 +446,76 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _compute_teacher_logits(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
         teacher_model = self.teacher_models[vp_stage or 0]
 
+        if self.use_teacher_api:
+            # API mode: fetch teacher logprobs from external service
+            self._compute_teacher_logits_from_api(encoded_batches)
+        else:
+            # Local teacher model mode
+            for encoded_batch in encoded_batches:
+                # Deep copy to avoid modifying original batch
+                teacher_batch = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in encoded_batch.items()}
+                teacher_batch.pop('data_source', None)
+                teacher_data = self._prepare_batch(teacher_batch)
+                teacher_data.pop('loss_scale', None)
+                # Remove labels so returns logits instead of loss
+                teacher_data.pop('labels', None)
+                # Teacher forward with args override for correct hidden_size
+                with self.load_teacher_model_context(), self._teacher_args_context(), torch.no_grad():
+                    teacher_logits = forward_step_helper(teacher_model, teacher_data)
+                    if teacher_logits is not None:
+                        teacher_logits = teacher_logits.detach()
+                encoded_batch['teacher_logits'] = teacher_logits
+
+    def _compute_teacher_logits_from_api(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
+        """Fetch teacher logprobs from external API service.
+
+        Args:
+            encoded_batches: List of encoded batch dictionaries
+            vp_stage: Virtual pipeline stage (unused in API mode)
+        """
+        import asyncio
+
+        topk = self.gkd_logits_topk
+
         for encoded_batch in encoded_batches:
-            # Deep copy to avoid modifying original batch
-            teacher_batch = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in encoded_batch.items()}
-            teacher_batch.pop('data_source', None)
-            teacher_data = self._prepare_batch(teacher_batch)
-            teacher_data.pop('loss_scale', None)
-            # Remove labels so returns logits instead of loss
-            teacher_data.pop('labels', None)
-            # Teacher forward with args override for correct hidden_size
-            with self.load_teacher_model_context(), self._teacher_args_context(), torch.no_grad():
-                teacher_logits = forward_step_helper(teacher_model, teacher_data)
-                if teacher_logits is not None:
-                    teacher_logits = teacher_logits.detach()
-            encoded_batch['teacher_logits'] = teacher_logits
+            input_ids = encoded_batch['input_ids']
+            attention_mask = encoded_batch.get('attention_mask', None)
+            batch_size, seq_len = input_ids.shape
+
+            # Prepare requests for API
+            async def fetch_batch():
+                results = await self.teacher_api_client.get_logprobs_batch(
+                    input_ids=input_ids.tolist(),
+                    attention_mask=attention_mask.tolist() if attention_mask is not None else None,
+                    top_logprobs=topk,
+                )
+                return results
+
+            # Run async function
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, fetch_batch())
+                    api_results = future.result()
+            else:
+                api_results = loop.run_until_complete(fetch_batch())
+
+            # Parse API results into tensors
+            teacher_logprobs = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.float32)
+            teacher_indices = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.long)
+
+            for batch_idx, result in enumerate(api_results):
+                for pos_idx, pos_logprobs in enumerate(result.get('logprobs', [])):
+                    if pos_idx >= seq_len:
+                        break
+                    for k_idx, (token_id, logprob) in enumerate(pos_logprobs[:topk]):
+                        teacher_logprobs[batch_idx, pos_idx, k_idx] = logprob
+                        teacher_indices[batch_idx, pos_idx, k_idx] = token_id
+
+            encoded_batch['teacher_api_logprobs'] = teacher_logprobs
+            encoded_batch['teacher_api_indices'] = teacher_indices
+            encoded_batch['teacher_logits'] = None  # Not used in API mode
 
     def _replace_data_iterator(self, data_iterator, model):
         num_microbatches = self._get_num_microbatches()
@@ -531,7 +603,30 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         labels: torch.Tensor,
         beta: float = 0.5,
         chunk_size: int = 512,
+        topk: int = None,
+        teacher_topk_logprobs: torch.Tensor = None,
+        teacher_topk_indices: torch.Tensor = None,
     ) -> torch.Tensor:
+        """Compute generalized JSD loss with optional top-k support.
+
+        This method supports three modes:
+        1. Full vocabulary mode (default): Uses complete logits with vocab-parallel
+        2. Top-k mode with local teacher: Extracts top-k from teacher_logits
+        3. Top-k mode with API logprobs: Uses pre-computed teacher_topk_logprobs and indices
+
+        Args:
+            student_logits: Student model logits [batch, seq_len, vocab_size]
+            teacher_logits: Teacher model logits, can be None for API mode
+            labels: Token labels for masking [batch, seq_len]
+            beta: JSD interpolation coefficient
+            chunk_size: Chunk size for memory-efficient processing (full vocab mode only)
+            topk: Number of top-k logits to use (teacher's top-k). None for full vocabulary mode.
+            teacher_topk_logprobs: Pre-computed teacher log probs [batch, seq_len, topk] (API mode)
+            teacher_topk_indices: Pre-computed teacher token indices [batch, seq_len, topk] (API mode)
+
+        Returns:
+            Scalar loss value
+        """
         args = get_args()
         mask = labels != -100
         local_num_valid = mask.sum()
@@ -545,6 +640,57 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if num_valid == 0:
             return (student_logits.sum() * 0).reshape(())
 
+        # Determine mode
+        use_api_mode = teacher_topk_logprobs is not None and teacher_topk_indices is not None
+        use_topk = topk is not None or use_api_mode
+
+        # ============== Top-K Mode ==============
+        if use_topk:
+            # Apply temperature scaling to student logits
+            student_logits_scaled = student_logits / self.temperature
+
+            if use_api_mode:
+                # API mode: teacher logprobs already computed
+                teacher_topk_probs = torch.exp(teacher_topk_logprobs)
+                teacher_topk_log_probs = teacher_topk_logprobs
+                topk_indices = teacher_topk_indices
+            else:
+                # Local mode: extract top-k from teacher logits
+                teacher_logits_scaled = teacher_logits / self.temperature
+                teacher_topk_logits, topk_indices = torch.topk(teacher_logits_scaled, k=topk, dim=-1)
+                teacher_topk_probs = F.softmax(teacher_topk_logits, dim=-1)
+                teacher_topk_log_probs = F.log_softmax(teacher_topk_logits, dim=-1)
+
+            # Gather student logits at teacher's top-k indices and renormalize
+            student_topk_logits = torch.gather(student_logits_scaled, dim=-1, index=topk_indices)
+            student_topk_log_probs = F.log_softmax(student_topk_logits, dim=-1)
+
+            # Compute JSD on top-k distribution
+            if beta == 0:
+                jsd = (teacher_topk_probs * (teacher_topk_log_probs - student_topk_log_probs)).sum(dim=-1)
+            elif beta == 1:
+                student_topk_probs = F.softmax(student_topk_logits, dim=-1)
+                jsd = (student_topk_probs * (student_topk_log_probs - teacher_topk_log_probs)).sum(dim=-1)
+            else:
+                student_topk_probs = F.softmax(student_topk_logits, dim=-1)
+                mixture_probs = beta * teacher_topk_probs + (1 - beta) * student_topk_probs
+                mixture_log_probs = torch.log(mixture_probs + 1e-10)
+                kl_teacher = (teacher_topk_probs * (teacher_topk_log_probs - mixture_log_probs)).sum(dim=-1)
+                kl_student = (student_topk_probs * (student_topk_log_probs - mixture_log_probs)).sum(dim=-1)
+                jsd = beta * kl_teacher + (1 - beta) * kl_student
+
+            # Apply mask and compute sum
+            jsd_masked = jsd * mask.float()
+            total_loss = jsd_masked.sum()
+
+            # All-reduce total_loss across CP group for correct sum
+            if args.context_parallel_size > 1:
+                torch.distributed.all_reduce(
+                    total_loss, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
+
+            return total_loss / num_valid
+
+        # ============== Full Vocabulary Mode (with vocab parallel) ==============
         # Align vocab size between student and teacher
         student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
 
@@ -576,23 +722,17 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             del s_chunk, t_chunk
 
             if beta == 0:
-                # JSD = KL(teacher || student)
                 jsd_chunk = vocab_parallel_kl_div(s_log_probs, t_log_probs)
             elif beta == 1:
-                # JSD = KL(student || teacher)
                 jsd_chunk = vocab_parallel_kl_div(t_log_probs, s_log_probs)
             else:
-                # Compute mixture log probabilities: m = beta * teacher + (1-beta) * student
-                # log(m) = logsumexp(log(student) + log(1-beta), log(teacher) + log(beta))
                 mixture_log_probs = torch.logsumexp(
                     torch.stack([s_log_probs + log_1_minus_beta, t_log_probs + log_beta]),
                     dim=0,
                 )
-
                 kl_teacher = vocab_parallel_kl_div(mixture_log_probs, t_log_probs)
                 kl_student = vocab_parallel_kl_div(mixture_log_probs, s_log_probs)
                 del mixture_log_probs
-
                 jsd_chunk = beta_t * kl_teacher + (1 - beta_t) * kl_student
                 del kl_teacher, kl_student
 
@@ -613,23 +753,31 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                   output_tensor: torch.Tensor,
                   *,
                   labels: torch.Tensor,
-                  teacher_logits: torch.Tensor,
+                  teacher_logits: torch.Tensor = None,
+                  teacher_api_logprobs: torch.Tensor = None,
+                  teacher_api_indices: torch.Tensor = None,
                   data_source: DataSource = DataSource.DATASET):
         """Compute GKD loss (JSD + optional SFT loss).
 
         Args:
             output_tensor: Student model logits [batch, seq_len, vocab_size]
             labels: Token labels for masking [batch, seq_len]
-            teacher_logits: Teacher model logits [batch, seq_len, vocab_size]
+            teacher_logits: Teacher model logits [batch, seq_len, vocab_size] (for local teacher)
+            teacher_api_logprobs: Teacher log probabilities [batch, seq_len, topk] (for API mode)
+            teacher_api_indices: Teacher token indices [batch, seq_len, topk] (for API mode)
             data_source: Data source (STUDENT/TEACHER/DATASET) for conditional SFT loss
         """
         student_logits = output_tensor
 
+        # Compute JSD loss using unified generalized_jsd_loss
         jsd_loss = self.generalized_jsd_loss(
             student_logits=student_logits,
             teacher_logits=teacher_logits,
             labels=labels,
             beta=self.beta,
+            topk=self.gkd_logits_topk,
+            teacher_topk_logprobs=teacher_api_logprobs,
+            teacher_topk_indices=teacher_api_indices,
         )
 
         loss = jsd_loss
@@ -680,6 +828,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             data = next(data_iterator)
             data_source = data.pop('data_source', DataSource.DATASET)
             teacher_logits = data.pop('teacher_logits', None)
+            teacher_api_logprobs = data.pop('teacher_api_logprobs', None)
+            teacher_api_indices = data.pop('teacher_api_indices', None)
             data = self._prepare_batch(data, vp_stage)
         timers('batch-generator').stop()
 
@@ -692,7 +842,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             student_output = model(**data)
 
         return student_output, partial(
-            self.loss_func, labels=labels, teacher_logits=teacher_logits, data_source=data_source)
+            self.loss_func,
+            labels=labels,
+            teacher_logits=teacher_logits,
+            teacher_api_logprobs=teacher_api_logprobs,
+            teacher_api_indices=teacher_api_indices,
+            data_source=data_source,
+        )
 
     def patched_validate_args(self, args, *_args, **kwargs):
         """Override patched_validate_args to adjust EP parameters for Dense student.
