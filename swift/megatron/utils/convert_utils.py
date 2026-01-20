@@ -192,10 +192,11 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     _param = next(mg_language_model.parameters())
     mg_dtype = _param.dtype
     mg_device = _param.device
-    # router to bfloat16
-    for n, m in mg_language_model.named_modules():
-        if n.endswith('router'):
-            m.to(mg_dtype)
+    if args.hf_model_type == 'minimax_m2':
+        # router to bfloat16
+        for n, m in mg_language_model.named_modules():
+            if n.endswith('router'):
+                m.to(mg_dtype)
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=torch_dtype)

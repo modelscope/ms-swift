@@ -248,6 +248,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - kv_lora_rank: Low-rank representation rank value of the Key and Value tensors. Default is None and will be automatically read from config.json.
 - qk_head_dim: Dimension of the head in the QK projection. `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`. Default is None and will be automatically read from config.json.
 - qk_pos_emb_head_dim: Dimension of the position embedding in the QK projection. Default is None and will be automatically read from config.json.
+- v_head_dim: The head dimension in the V projection. Defaults to None, automatically read from config.json.
 
 
 **MTP Parameters**
