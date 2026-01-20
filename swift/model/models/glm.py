@@ -431,7 +431,7 @@ register_model(
                 Model('ZhipuAI/GLM-4.7-Flash', 'zai-org/GLM-4.7-Flash'),
             ], TemplateType.glm4_7),
         ],
-        requires=['transformers>=4.54'],
+        requires=['transformers>=5.0.0.dev'],
         architectures=['Glm4MoeLiteForCausalLM'],
     ))
 

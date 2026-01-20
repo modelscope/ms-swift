@@ -409,7 +409,7 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/GLM-4.6-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6-FP8)|glm4_moe|glm4_5|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.6-FP8](https://huggingface.co/zai-org/GLM-4.6-FP8)|
 |[ZhipuAI/GLM-4.7](https://modelscope.cn/models/ZhipuAI/GLM-4.7)|glm4_moe|glm4_7|transformers>=4.54|&#x2714;|-|[zai-org/GLM-4.7](https://huggingface.co/zai-org/GLM-4.7)|
 |[ZhipuAI/GLM-4.7-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.7-FP8)|glm4_moe|glm4_7|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.7-FP8](https://huggingface.co/zai-org/GLM-4.7-FP8)|
-|[ZhipuAI/GLM-4.7-Flash](https://modelscope.cn/models/ZhipuAI/GLM-4.7-Flash)|glm4_moe_lite|glm4_7|transformers>=4.54|&#x2718;|-|[zai-org/GLM-4.7-Flash](https://huggingface.co/zai-org/GLM-4.7-Flash)|
+|[ZhipuAI/GLM-4.7-Flash](https://modelscope.cn/models/ZhipuAI/GLM-4.7-Flash)|glm4_moe_lite|glm4_7|transformers>=5.0.0.dev|&#x2718;|-|[zai-org/GLM-4.7-Flash](https://huggingface.co/zai-org/GLM-4.7-Flash)|
 |[ZhipuAI/glm-edge-1.5b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-1.5b-chat)|glm_edge|chatglm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-1.5b-chat](https://huggingface.co/zai-org/glm-edge-1.5b-chat)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge|chatglm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeGeeX2-6B)|codefuse_codegeex2|codefuse|transformers<4.34|&#x2718;|coding|[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://huggingface.co/codefuse-ai/CodeFuse-CodeGeeX2-6B)|
