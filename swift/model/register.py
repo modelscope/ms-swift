@@ -387,6 +387,9 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'glm4_moe':
                 from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
                 z3_leaf_modules = [Glm4MoeMoE]
+            elif hf_model_type == 'glm4_moe_lite':
+                from transformers.models.glm4_moe_lite.modeling_glm4_moe_lite import Glm4MoeLiteMoE
+                z3_leaf_modules = [Glm4MoeLiteMoE]
             elif hf_model_type == 'glm4v_moe':
                 from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
                 z3_leaf_modules = [Glm4vMoeTextMoE]
