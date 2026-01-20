@@ -314,7 +314,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
-- 🔥save_strategy: 保存策略，可选项为'steps'和'epochs'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重，'save_retain_interval'可设置为整数，代表多少个epoch存储保留检查点。
+- 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重，'save_retain_interval'可设置为整数，代表多少个epoch存储保留检查点。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**Megatron-SWIFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
 - train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。该参数需"ms-swift>=3.12"。
