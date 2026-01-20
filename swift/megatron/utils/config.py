@@ -152,6 +152,9 @@ def convert_hf_config(config) -> Dict[str, Any]:
             res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
     elif llm_model_type in {'glm4_moe', 'glm4_moe_lite'} or hf_model_type == 'glm4v_moe':
         res['moe_router_score_function'] = 'sigmoid'
+        if llm_model_type == 'glm4_moe_lite':
+            res['qk_layernorm'] = True
+            res.pop('num_query_groups', None)
     elif llm_model_type == 'qwen3_next':
         full_attention_interval = res.pop('full_attention_interval')
         num_layers = res['num_layers']
