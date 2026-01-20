@@ -48,6 +48,9 @@ def prepare_model_template(args, **kwargs):
 
 
 def _select_dataset(dataset, max_length):
+    if 'length' in dataset.column_names and 'lengths' not in dataset.column_names:
+        # Compatible with ms-swift 3.x cache_dataset
+        dataset = dataset.rename_column('length', 'lengths')
     idxs = [
         i for i, length in enumerate(dataset['lengths'])
         if (max(length) if isinstance(length, list) else length) <= max_length
