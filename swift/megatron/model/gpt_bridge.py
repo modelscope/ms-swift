@@ -62,7 +62,11 @@ class GPTBridge:
         self.pp_group = mpu.get_pipeline_model_parallel_group()
         self.etp_group = mpu.get_expert_tensor_parallel_group()
         self.ep_group = mpu.get_expert_model_parallel_group()
-
+        self.is_transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
+        if self.is_transformers_5 and self.hf_model.model_info.is_moe_model and not self.args.merge_lora:
+            logger.warning('In transformers 5.0, the weight organization of MoE model experts differs from Megatron. '
+                           'It is recommended to use `--merge_lora true`, otherwise the trained model may not be usable '
+                           'for inference with transformers.')
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_rank = mpu.get_pipeline_model_parallel_rank()
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
@@ -713,9 +717,7 @@ class GPTBridge:
             num_local_experts = args.num_experts // self.ep_size
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type in {
-                'glm4v_moe', 'glm4_moe_lite'
-        }:
+        if self.is_transformers_5 and self.args.hf_model_type in {'glm4v_moe', 'glm4_moe_lite'}:
             hf_grouped = False
             is_gate_up = False
         if to_mcore or hf_grouped:
