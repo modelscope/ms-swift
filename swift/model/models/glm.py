@@ -423,6 +423,18 @@ register_model(
         architectures=['Glm4MoeForCausalLM'],
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.glm4_moe_lite,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-4.7-Flash', 'zai-org/GLM-4.7-Flash'),
+            ], TemplateType.glm4_7),
+        ],
+        requires=['transformers>=4.54'],
+        architectures=['Glm4MoeLiteForCausalLM'],
+    ))
+
 
 class Glm4vMoeLoader(ModelLoader):
 

@@ -39,6 +39,7 @@
 - attn_impl: attention类型，可选项为'sdpa', 'eager', 'flash_attn', 'flash_attention_2', 'flash_attention_3'等。默认使用None，读取'config.json'。
   - 注意：这几种attention实现并不一定都支持，这取决于对应模型transformers实现的支持情况。
   - 若设置为'flash_attn'（兼容旧版本），则使用'flash_attention_2'。
+- experts_impl: 专家实现类型，可选项为'grouped_mm', 'batched_mm', 'eager'。默认为None。该特性需要"transformers>=5.0.0"。
 - new_special_tokens: 需要新增的特殊tokens。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens)。
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。

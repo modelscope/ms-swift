@@ -30,6 +30,7 @@ class LLMModelType:
     chatglm4 = 'chatglm4'
     glm4 = 'glm4'
     glm4_moe = 'glm4_moe'
+    glm4_moe_lite = 'glm4_moe_lite'
 
     glm_edge = 'glm_edge'
     codefuse_codegeex2 = 'codefuse_codegeex2'
