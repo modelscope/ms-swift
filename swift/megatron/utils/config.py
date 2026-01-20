@@ -105,6 +105,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     mlp_ffn_hidden_size = res.pop('mlp_ffn_hidden_size', None)
     interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
     window_size = res.pop('window_size', None)
+    rope_scaling = res.get('rope_scaling') or {}
     if llm_model_type in {'qwen3', 'qwen3_moe', 'qwen3_next'
                           } or hf_model_type in {'qwen3_omni_moe', 'qwen3_omni', 'qwen3_vl', 'qwen3_vl_moe'}:
         res['qk_layernorm'] = True
@@ -184,9 +185,10 @@ def convert_hf_config(config) -> Dict[str, Any]:
             res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
     elif hf_model_type == 'glm4v':
         res['rotary_interleaved'] = True
-    rope_scaling = res.get('rope_scaling') or {}
     if 'partial_rotary_factor' not in res and 'partial_rotary_factor' in rope_scaling:
         res['partial_rotary_factor'] = rope_scaling['partial_rotary_factor']
+    if 'rotary_base' not in res and 'rope_theta' in rope_scaling:
+        res['rotary_base'] = rope_scaling['rope_theta']
     if rope_scaling.get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = rope_scaling['mrope_section']
