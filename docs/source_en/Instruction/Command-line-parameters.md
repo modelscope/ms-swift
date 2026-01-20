@@ -39,6 +39,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - attn_impl: Attention implementation. Options include `'sdpa'`, `'eager'`, `'flash_attn'`, `'flash_attention_2'`, `'flash_attention_3'`, etc. Default is `None`, reading from config.json.
   - Note: Not all attention implementations may be supported, depending on the underlying Transformers library's support for the specific model.
   - If set to `'flash_attn'` (for backward compatibility), `'flash_attention_2'` will be used.
+- experts_impl: Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'. Defaults to None. This feature requires "transformers>=5.0.0".
 - new_special_tokens: List of additional special tokens to be added. Default is `[]`. Example usage can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a `.txt` file path where each line contains one special token.
 - num_labels: Required for classification models (`--task_type seq_cls`). Indicates the number of labels. Default is `None`.

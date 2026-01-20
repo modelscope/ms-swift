@@ -883,7 +883,10 @@ class GPTBridge:
             elif not is_expert and self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
-                assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                if hf_grouped:
+                    raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                     'weight organization methods, LoRA weight conversion is not supported. '
+                                     'You can solve this issue by setting `--merge_lora true`.')
                 if mg_mlp is None:
                     lora_A = None
                     lora_B = None
@@ -1103,7 +1106,10 @@ class GPTBridge:
                 elif not is_expert and self.pp_size > 1:
                     dist.all_reduce(is_lora, group=self.pp_group)
                 if is_lora:
-                    assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                    if hf_grouped:
+                        raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                         'weight organization methods, LoRA weight conversion is not supported. '
+                                         'You can solve this issue by setting `--merge_lora true`.')
                     if mg_mlp is None:
                         lora_A = None
                         lora_B = None

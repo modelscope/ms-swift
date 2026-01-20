@@ -1206,23 +1206,70 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def offload_optimizer(self):
         if not self.optimizer.state:
             return
+
+        if is_deepspeed_enabled():
+            # DeepSpeed optimizer: param_groups may be empty
+            for _, state in self.optimizer.state.items():
+                # Iterate over a copy to avoid dict size change errors
+                for key, value in list(state.items()):
+                    if not isinstance(value, torch.Tensor):
+                        continue
+                    # Skip if already on CPU
+                    if value.device.type == 'cpu':
+                        continue
+
+                    offload_key = f'{key}_offload_buffer'
+                    if offload_key not in state:
+                        state[offload_key] = torch.empty_like(value, device='cpu')
+
+                    state[offload_key].copy_(value, non_blocking=True)
+                    value.data = state[offload_key]
+            return
+
+        # Original non-DeepSpeed logic
         for param_group in self.optimizer.param_groups:
+            if not param_group.get('params'):
+                logger.warning("Empty param_group['params'] detected in non-DeepSpeed optimizer.")
+                continue
+
             for param in param_group['params']:
-                state = self.optimizer.state[param]
-                for key, value in state.items():
-                    if isinstance(value, torch.Tensor):
+                state = self.optimizer.state.get(param)
+                if not state:
+                    continue
+                for key, value in list(state.items()):  # Iterate over a list copy
+                    if isinstance(value, torch.Tensor) and value.device.type != 'cpu':
                         state[key] = value.to('cpu', non_blocking=True)
 
     @torch.no_grad()
     def load_optimizer(self):
-        device = get_current_device()
         if not self.optimizer.state:
             return
+
+        device = get_current_device()
+
+        if is_deepspeed_enabled():
+            for _, state in self.optimizer.state.items():
+                for key, value in list(state.items()):
+                    if not isinstance(value, torch.Tensor):
+                        continue
+
+                    offload_key = f'{key}_offload_buffer'
+                    if offload_key in state:
+                        value.data = state[offload_key].to(device, non_blocking=True)
+            return
+
+        # Original non-DeepSpeed logic
         for param_group in self.optimizer.param_groups:
+            if not param_group.get('params'):
+                logger.warning("Empty param_group['params'] detected in non-DeepSpeed optimizer.")
+                continue
+
             for param in param_group['params']:
-                state = self.optimizer.state[param]
-                for key, value in state.items():
-                    if isinstance(value, torch.Tensor):
+                state = self.optimizer.state.get(param)
+                if not state:
+                    continue
+                for key, value in list(state.items()):  # Iterate over a list copy
+                    if isinstance(value, torch.Tensor) and value.device.type == 'cpu':
                         state[key] = value.to(device, non_blocking=True)
 
     @contextmanager

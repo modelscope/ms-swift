@@ -56,6 +56,7 @@ class TransformersEngine(InferEngine):
             torch_dtype: Optional[torch.dtype] = None,
             model_type: Optional[str] = None,
             attn_impl: Optional[str] = None,
+            experts_impl: Optional[str] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             task_type: Optional[str] = None,
             quantization_config=None,
@@ -74,6 +75,7 @@ class TransformersEngine(InferEngine):
         self.torch_dtype = torch_dtype
         self.model_type = model_type
         self.attn_impl = attn_impl
+        self.experts_impl = experts_impl
         self.device_map = device_map
         self.task_type = task_type
         self.quantization_config = quantization_config
@@ -111,6 +113,7 @@ class TransformersEngine(InferEngine):
             device_map=self.device_map,
             quantization_config=self.quantization_config,
             attn_impl=self.attn_impl,
+            experts_impl=self.experts_impl,
             task_type=self.task_type,
             model_kwargs=self.model_kwargs,
             **kwargs)

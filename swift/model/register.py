@@ -165,6 +165,7 @@ class ModelLoader(BaseModelLoader):
         load_model: bool = False,
         # model kwargs
         attn_impl: Optional[str] = None,
+        experts_impl: Optional[str] = None,
         rope_scaling: Optional[Dict[str, Any]] = None,
         max_model_len: Optional[int] = None,
         auto_model_cls=None,
@@ -179,6 +180,8 @@ class ModelLoader(BaseModelLoader):
         attn_impl = attn_impl or kwargs.get('attn_implementation')
         self.attn_impl = attn_impl
         self.attn_impl_keys = None
+        experts_impl = experts_impl or kwargs.get('experts_implementation')
+        self.experts_impl = experts_impl
         self.rope_scaling = rope_scaling
         self.max_model_len = max_model_len
         self.auto_model_cls = auto_model_cls
@@ -253,6 +256,8 @@ class ModelLoader(BaseModelLoader):
 
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
                   model_kwargs) -> PreTrainedModel:
+        if self.experts_impl is not None:
+            model_kwargs['experts_implementation'] = self.experts_impl
         model_info = self.model_info
         model_meta = self.model_meta
         auto_model_cls = self.auto_model_cls
@@ -382,6 +387,9 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'glm4_moe':
                 from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
                 z3_leaf_modules = [Glm4MoeMoE]
+            elif hf_model_type == 'glm4_moe_lite':
+                from transformers.models.glm4_moe_lite.modeling_glm4_moe_lite import Glm4MoeLiteMoE
+                z3_leaf_modules = [Glm4MoeLiteMoE]
             elif hf_model_type == 'glm4v_moe':
                 from transformers.models.glm4v_moe.modeling_glm4v_moe import Glm4vMoeTextMoE
                 z3_leaf_modules = [Glm4vMoeTextMoE]
@@ -475,6 +483,7 @@ def get_model_processor(
     quantization_config=None,
     max_memory: Union[str, Dict[str, Any]] = None,
     attn_impl: Optional[str] = None,
+    experts_impl: Optional[str] = None,
     rope_scaling: Optional[Dict[str, Any]] = None,
     max_model_len: Optional[int] = None,
     auto_model_cls=None,
@@ -507,6 +516,8 @@ def get_model_processor(
         quantization_config: Configuration for model quantization.
         max_memory: Maximum memory allocation per device.
         attn_impl: Attention implementation. 'flash_attn' for Flash Attention, None for auto-select (sdpa/eager).
+        experts_impl: experts implementation. Options are 'grouped_mm', 'batched_mm', 'eager'. Defaults to None.
+            This feature requires "transformers>=5.0.0".
         rope_scaling: RoPE (Rotary Position Embedding) scaling configuration dictionary.
         max_model_len: Maximum sequence length the model can handle.
         auto_model_cls: Custom AutoModel class to use for loading (e.g., AutoModelForCausalLM).
@@ -562,6 +573,7 @@ def get_model_processor(
         model_meta,
         load_model=load_model,
         attn_impl=attn_impl,
+        experts_impl=experts_impl,
         rope_scaling=rope_scaling,
         max_model_len=max_model_len,
         auto_model_cls=auto_model_cls,

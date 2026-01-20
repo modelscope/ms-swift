@@ -36,6 +36,8 @@ class ModelArguments:
             'flash_attention_2', 'flash_attention_3', etc. Defaults to None, which means it will be read from
             'config.json'. Note: Support for these implementations depends on the model's transformers implementation.
             If set to 'flash_attn' (for backward compatibility), 'flash_attention_2' will be used.
+        experts_impl (Optional[str]): Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'.
+            Defaults to None. This feature requires "transformers>=5.0.0".
         new_special_tokens (List[str]): Additional special tokens to be added to the tokenizer. Can also be a path to
             a `.txt` file, where each line is a special token. Defaults to an empty list `[]`.
         num_labels (Optional[int]): The number of labels for classification tasks (when `--task_type` is 'seq_cls').
@@ -74,6 +76,7 @@ class ModelArguments:
     # None: It will be automatically selected between sdpa and eager.
     # 'flash_attn', 'sdpa', 'eager', 'flex_attention', 'flash_attention_2', 'flash_attention_3'
     attn_impl: Optional[str] = None
+    experts_impl: Optional[str] = None
     new_special_tokens: List[str] = field(default_factory=list)
 
     num_labels: Optional[int] = None
