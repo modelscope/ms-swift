@@ -98,7 +98,7 @@ class HunYuanVLTemplate(Template):
         inputs_embeds = base_model.model.embed_tokens(input_ids)
 
         if pixel_values is not None:
-            pixel_values = pixel_values.to(base_model.vit.dtype)
+            pixel_values = pixel_values.to(base_model.dtype)
             image_embeds = base_model.vit(pixel_values, image_grid_thw)
             image_embeds = image_embeds.to(input_ids.device, non_blocking=True)
             image_mask, _ = base_model.get_placeholder_mask(
