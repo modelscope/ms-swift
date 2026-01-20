@@ -65,8 +65,8 @@ class GPTBridge:
         self.is_transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
         if self.is_transformers_5 and self.hf_model.model_info.is_moe_model and not self.args.merge_lora:
             logger.warning('In transformers 5.0, the weight organization of MoE model experts differs from Megatron. '
-                           'It is recommended to use `--merge_lora true`, otherwise the trained model may not be usable '
-                           'for inference with transformers.')
+                           'It is recommended to use `--merge_lora true`, otherwise the trained model may not be '
+                           'usable for inference with transformers.')
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_rank = mpu.get_pipeline_model_parallel_rank()
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
