@@ -26,6 +26,7 @@ register_megatron_model(
             ModelType.ernie4_5,
             ModelType.ernie4_5_moe,
             ModelType.glm4_moe,
+            ModelType.glm4_moe_lite,
             ModelType.gpt_oss,
         ],
     ))
