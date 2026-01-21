@@ -9,7 +9,7 @@ def test_kto():
         MegatronRLHFArguments(
             load='Qwen2.5-7B-Instruct-mcore',
             rlhf_type='kto',
-            train_type='lora',
+            tuner_type='lora',
             load_from_cache_file=True,
             dataset=['AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#10000'],
             target_modules=['all-linear'],

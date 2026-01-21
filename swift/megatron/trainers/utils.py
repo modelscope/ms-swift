@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import functools
 import gc
 import time
@@ -15,11 +15,11 @@ from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.training import get_args, get_wandb_writer
 from packaging import version
+from transformers.utils import is_torch_npu_available
 
-from swift.llm import get_packed_seq_params as _get_packed_seq_params
-from swift.llm import to_device
-from swift.utils import get_logger
-from swift.utils.torch_utils import empty_cache, get_current_device
+from swift.utils import empty_cache, get_current_device, get_logger
+from swift.utils import get_packed_seq_params as _get_packed_seq_params
+from swift.utils import to_device
 
 try:
     from megatron.training.datasets.data_samplers import RandomSeedDataset
@@ -77,12 +77,18 @@ def get_batch_on_this_tp_rank(data, vp_stage=None):
 
 def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     params = _get_packed_seq_params(position_ids)
-    return PackedSeqParams(
+    packed = PackedSeqParams(
         cu_seqlens_q=params['cu_seq_lens_q'],
         cu_seqlens_kv=params['cu_seq_lens_k'],
         max_seqlen_q=params['max_length_q'],
         max_seqlen_kv=params['max_length_k'],
         qkv_format='thd')
+
+    if is_torch_npu_available():
+        packed.cu_seqlens_q_padded = params['cu_seq_lens_q']
+        packed.cu_seqlens_kv_padded = params['cu_seq_lens_k']
+
+    return packed
 
 
 def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: Optional[torch.Tensor], dim: int):
@@ -413,7 +419,7 @@ class MegatronPretrainingRandomSampler:
         self.data_sharding = data_sharding
         self.shuffle = shuffle
         self.group_by_length = group_by_length
-        self.lengths = self.dataset['length'] if group_by_length else None
+        self.lengths = self.dataset['lengths'] if group_by_length else None
         if self.lengths is not None:
             self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
         self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size

@@ -154,7 +154,7 @@ megatron sft \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
     --load_from_cache_file true \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -298,11 +298,11 @@ You need to create the following file (test.py), then run `CUDA_VISIBLE_DEVICES=
 import torch
 
 from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
-from swift.llm import get_model_tokenizer
+from swift.model import get_processor
 from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-4B-Instruct-2507'
-_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
+_, processor = get_processor(model_id, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
@@ -343,11 +343,11 @@ import torch
 from swift.megatron import (
     MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
 )
-from swift.llm import get_model_tokenizer
+from swift.model import get_processor
 from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
-_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
+_, processor = get_processor(model_id, download_model=True)
 model_info = processor.model_info
 megatron_model_meta = get_megatron_model_meta(model_info.model_type)
 config_kwargs = convert_hf_config(model_info.config)
@@ -358,7 +358,7 @@ megatron_args = MegatronArguments(
     expert_model_parallel_size=2,
     sequence_parallel=True,
     torch_dtype=torch.bfloat16,
-    train_type='lora',
+    tuner_type='lora',
     **config_kwargs,
 )
 extra_args = megatron_args.parse_to_megatron()

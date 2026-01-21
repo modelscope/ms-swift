@@ -2,11 +2,11 @@ import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 
-infer_backend = 'pt'
+infer_backend = 'transformers'
 
 
 def test_eval_native():
-    from swift.llm import EvalArguments, eval_main
+    from swift import EvalArguments, eval_main
     eval_main(
         EvalArguments(
             model='Qwen/Qwen2.5-0.5B-Instruct',
@@ -23,7 +23,7 @@ def test_eval_native():
 
 
 def test_eval_llm():
-    from swift.llm import EvalArguments, eval_main
+    from swift import EvalArguments, eval_main
     eval_main(
         EvalArguments(
             model='Qwen/Qwen2.5-0.5B-Instruct',
@@ -34,12 +34,12 @@ def test_eval_llm():
 
 
 def test_eval_mllm():
-    from swift.llm import EvalArguments, eval_main
+    from swift import EvalArguments, eval_main
     eval_main(
         EvalArguments(
             model='Qwen/Qwen2.5-VL-3B-Instruct',
             eval_dataset=['realWorldQA'],
-            infer_backend='pt',
+            infer_backend='transformers',
             eval_backend='VLMEvalKit',
             eval_limit=10,
             eval_generation_config={
@@ -49,7 +49,8 @@ def test_eval_mllm():
 
 
 def test_eval_url():
-    from swift.llm import EvalArguments, eval_main, DeployArguments, run_deploy
+    from swift import EvalArguments, eval_main, DeployArguments
+    from swift.pipelines import run_deploy
     deploy_args = DeployArguments(model='Qwen/Qwen2-VL-7B-Instruct', infer_backend=infer_backend, verbose=False)
 
     with run_deploy(deploy_args, return_url=True) as url:

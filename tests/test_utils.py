@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 
 import copy
 import os

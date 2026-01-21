@@ -7,7 +7,7 @@ import unittest
 import torch
 from modelscope import snapshot_download
 
-from swift import SCETuningConfig, Swift
+from swift.tuners import SCETuningConfig, Swift
 from swift.tuners.part import PartConfig
 
 

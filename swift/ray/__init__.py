@@ -1,4 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
+from .arguments import RayArguments
 from .base import RayHelper
 
 

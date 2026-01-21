@@ -6,7 +6,7 @@
 
 SWIFT的sample能力可以使用下面的例子进行：
 ```shell
-swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine pt --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
+swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine transformers --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```
 在当前文件夹的`sample_output`目录下，会生成以时间戳为文件名的jsonl文件，该文件应该包含25行，每一行都是一个完整`messages`格式的数据。
 

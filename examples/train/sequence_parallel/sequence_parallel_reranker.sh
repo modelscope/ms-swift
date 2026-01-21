@@ -3,8 +3,8 @@ NPROC_PER_NODE=4 \
 swift sft \
     --model Qwen/Qwen3-Reranker-0.6B \
     --task_type generative_reranker \
-    --loss_type generative_reranker \
-    --train_type full \
+    --loss_type pointwise_reranker \
+    --tuner_type full \
     --dataset MTEB/scidocs-reranking \
     --load_from_cache_file true \
     --split_dataset_ratio 0.05 \

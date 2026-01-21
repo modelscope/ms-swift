@@ -1,10 +1,13 @@
 # 插件化
 
+> [!WARNING]
+> 该文档待更新到ms-swift4.0
+
 插件化是SWIFT3.0中新增的重要能力。我们希望通过插件化的方式，让开发者对开发流程的定制更加自然。
 
 ## callback回调
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks).
 
 `callback`机制是transformers Trainer中的一种训练定制化机制。开发者可以在callback中控制训练流程。通常来说，callback的定制化类似下面的样子：
 ```python
@@ -27,7 +30,7 @@ extra_callbacks = [CustomCallback()]
 
 ## 定制化loss
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
 
 SWIFT支持在plugin中定制loss。如果不使用这个能力，默认会使用交叉熵Loss（CE Loss）。开发者可以在这个文件中编写代码，注册后在训练时设置`--loss_type custom_loss`使用你定制的loss方法。
 例如在plugin/loss.py中添加下面的代码：
@@ -36,13 +39,13 @@ def custom_loss_func(outputs, labels, loss_scale=None, num_items_in_batch=None) 
     # Write your own loss calculating here
     return loss
 
-loss_mapping['custom_loss'] = custom_loss_func
+loss_map['custom_loss'] = custom_loss_func
 ```
 需要注意的是，loss和trainer训练的任务是强相关的，目前的loss定制针对pt和sft任务，如果是人类对齐任务（例如DPO、PPO等）或分类任务（seq_cls）任务在插件中是无法定制的。
 
 ## 定制化loss_scale
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
 
 loss_scale机制在SWIFT中是非常重要的机制之一。在pt和sft任务中，可训练token的loss是均匀的，即每个token平等的进行bp。但在某些情况下，某些token的权重比较大，需要被额外关注，
 在这种情况下就需要更高的权重。loss_scale可以让开发者自由地定义自己的token权重。
@@ -66,7 +69,7 @@ class LastRoundLossScale(LossScale):
 
 ## 定制化metric
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/metric.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/metrics).
 
 metric可以定制训练时使用的评测参数：
 ```python
@@ -84,7 +87,7 @@ def get_metric(metric: str):
 
 ## 定制化optimizer
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py).
 - 对模型不同部分采用不同的学习率，例如：ViT和LLM分别使用不同的学习率，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/lora_llm_full_vit/custom_plugin.py)。
 
 用户可以在这里增加自己的optimizer和lr_scheduler实现：
@@ -107,11 +110,11 @@ optimizers_map = {
 
 ## 定制化agent template
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py).
 
 ## 定制化tuner
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/tuner.py).
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/tuner_plugin).
 - 多模态模型对ViT部分使用全参数训练，LLM部分使用LoRA训练，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/lora_llm_full_vit)。
 - Phi4-multimodal，直接对其已有LoRA进行训练而不额外附加LoRA，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/plugins/tuner_phi4_mm.sh)。
 
@@ -120,7 +123,7 @@ tuner定制也是swift中有特色的能力之一，开发者可以无视复杂�
 class IA3(Tuner):
 
     @staticmethod
-    def prepare_model(args: 'TrainArguments', model: torch.nn.Module) -> torch.nn.Module:
+    def prepare_model(args: 'SftArguments', model: torch.nn.Module) -> torch.nn.Module:
         model_arch: ModelKeys = model.model_meta.model_arch
         ia3_config = IA3Config(
             target_modules=find_all_linears(model), feedforward_modules='.*' + model_arch.mlp.split('{}.')[1] + '.*')
@@ -151,7 +154,7 @@ class IA3(Tuner):
 
 ## PRM
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/prm.py)。
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/prm.py)。
 
 PRM是过程奖励模型，PRM会在`swift sample`命令中使用。PRM需要支持的接口比较简单：
 ```python
@@ -165,7 +168,7 @@ class PRM:
         raise NotImplementedError
 ```
 
-其中的InferRequest来自于`swift.llm`，返回的`List[Union[float, List[float]]]`，列表中可能是reward也可能是若干reward。开发者可以在infer_requests中拿到queries和responses，并按照自己的方式进行切分，例如：
+其中的InferRequest来自于`swift.infer_engine`，返回的`List[Union[float, List[float]]]`，列表中可能是reward也可能是若干reward。开发者可以在infer_requests中拿到queries和responses，并按照自己的方式进行切分，例如：
 ```text
 Let's think step by step.
 
@@ -179,7 +182,7 @@ So, the answer is ...
 
 ## ORM
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/orm.py)。
+example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/orm.py)。
 
 ORM是结果奖励模型。ORM一般使用正则表达式来进行，ORM决定了response是否是正确的。例如：
 

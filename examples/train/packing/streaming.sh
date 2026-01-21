@@ -7,7 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 HF_ENDPOINT=https://hf-mirror.com \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'HF::linxy/LaTeX_OCR:full#20000' \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \

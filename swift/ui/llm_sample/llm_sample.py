@@ -1,12 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import re
 import sys
 import time
-from copy import deepcopy
 from datetime import datetime
 from functools import partial
-from subprocess import DEVNULL, PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
@@ -14,14 +12,14 @@ import json
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import SamplingArguments
-from swift.llm.dataset.register import get_dataset_list
-from swift.ui.base import BaseUI
-from swift.ui.llm_sample.model import Model
-from swift.ui.llm_sample.runtime import SampleRuntime
-from swift.ui.llm_sample.sample import Sample
-from swift.ui.llm_train.utils import run_command_in_background_with_popen
+from swift.arguments import SamplingArguments
+from swift.dataset import get_dataset_list
 from swift.utils import get_device_count, get_logger
+from ..base import BaseUI
+from ..llm_train import run_command_in_background_with_popen
+from .model import Model
+from .runtime import SampleRuntime
+from .sample import Sample
 
 logger = get_logger()
 
@@ -202,7 +200,7 @@ class LLMSample(BaseUI):
             with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
-                kwargs['train_type'] = _json['train_type']
+                kwargs['tuner_type'] = _json['tuner_type']
         sample_args = SamplingArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value

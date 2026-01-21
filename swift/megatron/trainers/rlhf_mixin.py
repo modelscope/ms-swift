@@ -1,13 +1,12 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from contextlib import contextmanager
 
 import torch
-import torch.distributed as dist
 from megatron.core import mpu
 from megatron.training import get_args, get_model
 from megatron.training.checkpointing import load_checkpoint
 from megatron.training.utils import unwrap_model
-from torch.distributed.nn import all_gather, all_reduce
+from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
 from swift.utils import get_logger
@@ -20,7 +19,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         args = get_args()
-        if args.train_type == 'full' and args.rlhf_type not in ['rm', 'gkd']:
+        if args.tuner_type == 'full' and args.rlhf_type not in ['rm', 'gkd']:
             ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
             args.ref_model = args.ref_model or args.model
             if args.ref_load is None:
@@ -40,7 +39,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         args = get_args()
         contexts = []
         has_ref_adapter = bool(args.ref_adapter_load or args.ref_adapters)
-        if args.train_type == 'full':
+        if args.tuner_type == 'full':
             ref_models = self.ref_models
         else:
             if not has_ref_adapter:

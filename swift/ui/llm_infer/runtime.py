@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
 import os.path
 import re
@@ -12,8 +12,8 @@ import gradio as gr
 import psutil
 from packaging import version
 
-from swift.ui.base import BaseUI
 from swift.utils import format_time, get_logger
+from ..base import BaseUI
 
 logger = get_logger()
 

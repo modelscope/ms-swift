@@ -5,7 +5,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def test_llm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             model='Qwen/Qwen2-7B-Instruct',
@@ -15,7 +15,7 @@ def test_llm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
 
 
 def test_vlm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
@@ -25,7 +25,7 @@ def test_vlm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
 
 
 def test_audio_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             model='Qwen/Qwen2-Audio-7B-Instruct',
@@ -35,14 +35,14 @@ def test_audio_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
 
 
 def test_vlm_bnb_quant():
-    from swift.llm import export_main, ExportArguments, infer_main, InferArguments
+    from swift import export_main, ExportArguments, infer_main, InferArguments
     export_main(ExportArguments(model='Qwen/Qwen2-VL-7B-Instruct', quant_bits=4, quant_method='bnb'))
 
     # infer_main(InferArguments(ckpt_dir='Qwen/Qwen2-VL-7B-Instruct-bnb-int4'))
 
 
 def test_bert():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     output_dir = 'output/swift_test_bert_merged'
     export_main(ExportArguments(adapters='swift/test_bert', merge_lora=True, output_dir=output_dir))
     export_main(
@@ -50,7 +50,7 @@ def test_bert():
 
 
 def test_reward_model():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
 
     export_main(
         ExportArguments(
@@ -61,7 +61,7 @@ def test_reward_model():
 
 
 def test_fp8():
-    from swift.llm import export_main, ExportArguments, infer_main, InferArguments
+    from swift import export_main, ExportArguments, infer_main, InferArguments
     export_main(ExportArguments(model='Qwen/Qwen2.5-3B-Instruct', quant_method='fp8'))
     infer_main(InferArguments(model='Qwen2.5-3B-Instruct-fp8'))
 

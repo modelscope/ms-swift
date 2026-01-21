@@ -1,7 +1,7 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from collections import namedtuple
 from functools import partial
-from typing import Any, Dict, Literal
+from typing import Any, Dict
 
 import torch
 from megatron.core import mpu

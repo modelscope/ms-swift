@@ -7,7 +7,7 @@ Sampling is one of the newly supported key capabilities of SWIFT. This feature c
 The sampling capability of SWIFT can be demonstrated with the following example:
 
 ```shell
-swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine pt --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
+swift sample --model LLM-Research/Meta-Llama-3.1-8B-Instruct --sampler_engine transformers --num_return_sequences 5 --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```
 
 A `jsonl` file with a timestamp as the filename will be generated in the `sample_output` directory of the current folder. This file should contain 25 lines, each representing a complete `messages` format data.

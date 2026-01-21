@@ -3,9 +3,9 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def _infer_model(pt_engine, system=None, messages=None):
+def _infer_model(engine, system=None, messages=None):
     from swift.utils import seed_everything, get_logger
-    from swift.llm import RequestConfig
+    from swift.infer_engine import RequestConfig
     logger = get_logger()
     seed_everything(42)
     request_config = RequestConfig(max_tokens=128, temperature=0)
@@ -14,17 +14,17 @@ def _infer_model(pt_engine, system=None, messages=None):
         if system is not None:
             messages += [{'role': 'system', 'content': system}]
         messages += [{'role': 'user', 'content': 'who are you?'}]
-        resp = pt_engine.infer([{'messages': messages}], request_config=request_config)
+        resp = engine.infer([{'messages': messages}], request_config=request_config)
         response = resp[0].choices[0].message.content
         messages += [{'role': 'assistant', 'content': response}, {'role': 'user', 'content': '<image>这是什么'}]
     else:
         messages = messages.copy()
-    resp = pt_engine.infer([{
+    resp = engine.infer([{
         'messages': messages,
     }], request_config=request_config)
     response = resp[0].choices[0].message.content
     messages += [{'role': 'assistant', 'content': response}]
-    logger.info(f'model: {pt_engine.model_info.model_name}, messages: {messages}')
+    logger.info(f'model: {engine.model_info.model_name}, messages: {messages}')
     return response
 
 
@@ -32,14 +32,14 @@ model_id = 'Qwen/Qwen2-7B-Instruct'
 
 
 def hf2mcore():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             model=model_id, to_mcore=True, torch_dtype='bfloat16', exist_ok=True, test_convert_precision=True))
 
 
 def mcore2hf():
-    from swift.llm import export_main, ExportArguments
+    from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
             mcore_model='Qwen2-7B-Instruct-mcore',
@@ -50,11 +50,11 @@ def mcore2hf():
 
 
 def infer_hf_align():
-    from swift.llm import PtEngine
-    pt_engine = PtEngine(model_id)
-    response = _infer_model(pt_engine)
-    pt_engine = PtEngine('Qwen2-7B-Instruct-mcore-hf')
-    response2 = _infer_model(pt_engine)
+    from swift.infer_engine import TransformersEngine
+    engine = TransformersEngine(model_id)
+    response = _infer_model(engine)
+    engine = TransformersEngine('Qwen2-7B-Instruct-mcore-hf')
+    response2 = _infer_model(engine)
     assert response == response2
 
 

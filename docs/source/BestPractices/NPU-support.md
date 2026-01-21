@@ -153,7 +153,7 @@ Legend:
 
 ## 微调
 
-以下介绍LoRA的微调, 全参数微调设置参数`--train_type full`即可. **更多训练脚本**参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
+以下介绍LoRA的微调, 全参数微调设置参数`--tuner_type full`即可. **更多训练脚本**参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | 模型大小 | NPU数量 | deepspeed类型 | 最大显存占用量 |
 | -------- | ------- | ------------- | -------------- |
@@ -181,7 +181,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
@@ -206,7 +206,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -227,7 +227,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero2 \
     ...
@@ -246,7 +246,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero3 \
     ...
@@ -281,7 +281,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 
 ## 部署
 
-### 使用原生pytorch进行部署
+### 使用原生transformers进行部署
 
 原始模型:
 
@@ -336,6 +336,30 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 ```
 
 ## 支持现状
+| 一级特性 | 特性                | 进展     |
+| -------- | ------------------- | -------- |
+| 训练范式 | CPT                 | 已支持   |
+|          | SFT                 | 已支持   |
+|          | DPO                 | 已支持   |
+|          | RM                  | 已支持   |
+| 分布式   | DDP                 | 已支持   |
+|          | FSDP                | 已支持   |
+|          | FSDP2               | 已支持   |
+|          | DeepSpeed           | 已支持   |
+|          | MindSpeed(Megatron) | 已支持   |
+| 低参微调 | FULL                | 已支持   |
+|          | LoRA                | 已支持   |
+|          | QLoRA               | 暂不支持 |
+| RLHF     | GRPO                | 已支持   |
+|          | PPO                 | 已支持   |
+| 性能优化 | FA 等融合算子       | 已支持   |
+|          | Liger-Kernel        | 暂不支持 |
+| 部署     | PT                  | 已支持   |
+|          | vLLM                | 已支持   |
+|          | SGLang              | 暂不支持 |
+
+------
+
 
 ### 表 1：SFT 类算法
 
@@ -371,11 +395,12 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 
 ### 表 3：当前 NPU 暂不支持 / 未完全验证的模块
 
-| item                   |
-| ---------------------- |
-| Liger-kernel           |
-| 量化/QLoRA相关         |
-| 使用sglang作为推理引擎 |
+| item                              |
+| --------------------------------- |
+| Liger-kernel                      |
+| 量化/QLoRA相关                    |
+| 使用sglang作为推理引擎            |
+| 使用megatron时开启ETP进行lora训练 |
 
 
 ## NPU微信群

@@ -135,7 +135,6 @@ swanlog/
 benchmarks/
 eval_output/
 eval_outputs/
-transformers/
 vlmeval/
 my_model/
 /data
@@ -146,6 +145,7 @@ megatron_output/
 /*-mcore/
 /*-hf/
 /*_cached_dataset/
+/sample_output/
 
 # Pytorch
 *.pth

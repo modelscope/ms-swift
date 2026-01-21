@@ -16,9 +16,8 @@ from modelscope import Model, MsDataset, snapshot_download
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
 
-from swift import Trainer, TrainingArguments, get_logger
-from swift.llm import (InferArguments, ModelType, RLHFArguments, TrainArguments, infer_main, merge_lora, rlhf_main,
-                       sft_main)
+from swift import (InferArguments, RLHFArguments, SftArguments, Trainer, TrainingArguments, get_logger, infer_main,
+                   rlhf_main, sft_main)
 
 NO_EVAL_HUMAN = True
 
@@ -49,9 +48,9 @@ class TestRun(unittest.TestCase):
             return
         torch.cuda.empty_cache()
         output = sft_main(
-            TrainArguments(
+            SftArguments(
                 model='Qwen/Qwen1.5-0.5B',
-                train_type='full',
+                tuner_type='full',
                 dataset='DAMO_NLP/jd',
                 val_dataset='DAMO_NLP/jd#20',
                 streaming=True,
@@ -77,8 +76,8 @@ class TestRun(unittest.TestCase):
             'shibing624/alpaca-zh#20',
         ] + [os.path.join(folder, fname) for fname in train_dataset_fnames]
         output = sft_main(
-            TrainArguments(
-                model='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', train_type='lora', dataset=dataset, use_hf=True, **kwargs))
+            SftArguments(
+                model='Qwen/Qwen1.5-0.5B-Chat-GPTQ-Int4', tuner_type='lora', dataset=dataset, use_hf=True, **kwargs))
         last_model_checkpoint = output['last_model_checkpoint']
         torch.cuda.empty_cache()
         infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, val_dataset_sample=2))
@@ -107,7 +106,7 @@ class TestRun(unittest.TestCase):
             else:
                 predict_with_generate = True
                 quant_method = 'bnb'
-            sft_args = TrainArguments(
+            sft_args = SftArguments(
                 model='Qwen/Qwen2-0.5B-Instruct',
                 quant_bits=quant_bits,
                 eval_steps=5,
@@ -151,7 +150,7 @@ class TestRun(unittest.TestCase):
             'modelscope/coco_2014_caption:validation#100', 'speech_asr/speech_asr_aishell1_trainsets:validation#100'
         ]
         for model, dataset in zip(model_type_list, dataset_list):
-            sft_args = TrainArguments(
+            sft_args = SftArguments(
                 model=model,
                 eval_steps=5,
                 dataset=[dataset],
@@ -198,7 +197,7 @@ class TestRun(unittest.TestCase):
         train_kwargs = kwargs.copy()
         train_kwargs.pop('num_train_epochs')
         for num_train_epochs in [1, 2]:
-            sft_args = TrainArguments(
+            sft_args = SftArguments(
                 model='Qwen/Qwen-7B-Chat',
                 dataset=['swift/self-cognition#20'] + [os.path.join(folder, fname) for fname in train_dataset_fnames],
                 val_dataset=[os.path.join(folder, fname) for fname in val_dataset_fnames],
@@ -322,7 +321,7 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        from swift.llm import sft_main, infer_main
+        from swift import sft_main, infer_main
         os.environ['PAI_TRAINING_JOB_ID'] = '123456'
         folder = os.path.join(os.path.dirname(__file__), 'config')
         tensorboard_dir = os.path.join('output/pai_test', 'pai_tensorboard')

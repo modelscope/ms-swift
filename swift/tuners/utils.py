@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 # Copyright 2023-present the HuggingFace Inc. team.
 
 import hashlib
@@ -20,10 +20,9 @@ from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
 
-from swift.llm import MODEL_ARCH_MAPPING, ModelKeys
-from swift.utils import gc_collect
+from swift.model import MODEL_ARCH_MAPPING, ModelKeys
+from swift.utils import gc_collect, get_logger
 from swift.utils.constants import BIN_EXTENSIONS
-from swift.utils.logger import get_logger
 
 logger = get_logger()
 

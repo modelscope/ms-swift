@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 from copy import copy
 from typing import List, Optional, Union
@@ -15,10 +15,10 @@ from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
-from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
+from swift.model import get_model_processor, save_checkpoint
+from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, get_logger,
+                         get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank, safe_snapshot_download)
 from ..tuners import LoraParallelLinear
-from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -62,7 +62,11 @@ class GPTBridge:
         self.pp_group = mpu.get_pipeline_model_parallel_group()
         self.etp_group = mpu.get_expert_tensor_parallel_group()
         self.ep_group = mpu.get_expert_model_parallel_group()
-
+        self.is_transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
+        if self.is_transformers_5 and self.hf_model.model_info.is_moe_model and not self.args.merge_lora:
+            logger.warning('In transformers 5.0, the weight organization of MoE model experts differs from Megatron. '
+                           'It is recommended to use `--merge_lora true`, otherwise the trained model may not be '
+                           'usable for inference with transformers.')
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_rank = mpu.get_pipeline_model_parallel_rank()
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
@@ -103,7 +107,7 @@ class GPTBridge:
 
     def _init_meta_hf_model(self):
         with torch.device('meta'):
-            self.hf_model, self.processor = get_model_tokenizer(
+            self.hf_model, self.processor = get_model_processor(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
     def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
@@ -282,6 +286,10 @@ class GPTBridge:
                     hf_state_dict[k] = v
             elif hf_state_dict is None:
                 return {}
+            else:
+                if self._target_device is not None:
+                    for k, v in hf_state_dict.items():
+                        hf_state_dict[k] = v.to(self._target_device)
             return self._add_prefix(hf_state_dict, hf_prefix)
 
     def _all_gather_tp(self, tensor, tp_dim, is_expert):
@@ -709,8 +717,7 @@ class GPTBridge:
             num_local_experts = args.num_experts // self.ep_size
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if version.parse(
-                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
+        if self.is_transformers_5 and self.args.hf_model_type in {'glm4v_moe', 'glm4_moe_lite'}:
             hf_grouped = False
             is_gate_up = False
         if to_mcore or hf_grouped:
@@ -797,7 +804,7 @@ class GPTBridge:
                                 gate_up_proj_bias = hf_state_dict['gate_up_proj_bias'].load()
                                 gate_up_proj_bias = gate_up_proj_bias[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
-                            if args.llm_architectures == 'GptOssForCausalLM':
+                            if args.llm_model_type == 'gpt_oss':
                                 gate_proj_weight = gate_up_proj_weight[:, ::2]
                                 up_proj_weight = gate_up_proj_weight[:, 1::2]
                                 gate_proj_bias, up_proj_bias = gate_up_proj_bias[:, ::2], gate_up_proj_bias[:, 1::2]
@@ -871,7 +878,10 @@ class GPTBridge:
             elif not is_expert and self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
-                assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                if hf_grouped:
+                    raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                     'weight organization methods, LoRA weight conversion is not supported. '
+                                     'You can solve this issue by setting `--merge_lora true`.')
                 if mg_mlp is None:
                     lora_A = None
                     lora_B = None
@@ -948,7 +958,7 @@ class GPTBridge:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
                                 is_last_ckpt = gate_up_proj_weight.shape[0] == args.num_experts
-                                if args.llm_architectures == 'GptOssForCausalLM' and is_last_ckpt:
+                                if args.llm_model_type == 'gpt_oss' and is_last_ckpt:
                                     gate_proj_weight, up_proj_weight = gate_up_proj_weight.chunk(2, dim=2)
                                     new_gate_up_proj_weight = torch.empty_like(gate_up_proj_weight)
                                     new_gate_up_proj_weight[..., ::2] = gate_proj_weight
@@ -967,7 +977,7 @@ class GPTBridge:
                                     if 'gate_up_proj_bias' in hf_state_dict:
                                         gate_up_proj_bias = torch.concat(
                                             [hf_state_dict['gate_up_proj_bias'], gate_up_proj_bias], dim=0)
-                                    if args.llm_architectures == 'GptOssForCausalLM' and is_last_ckpt:
+                                    if args.llm_model_type == 'gpt_oss' and is_last_ckpt:
                                         gate_proj_bias, up_proj_bias = gate_up_proj_bias.chunk(2, dim=1)
                                         new_gate_up_proj_bias = torch.empty_like(gate_up_proj_bias)
                                         new_gate_up_proj_bias[:, ::2] = gate_proj_bias
@@ -1091,7 +1101,10 @@ class GPTBridge:
                 elif not is_expert and self.pp_size > 1:
                     dist.all_reduce(is_lora, group=self.pp_group)
                 if is_lora:
-                    assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                    if hf_grouped:
+                        raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                         'weight organization methods, LoRA weight conversion is not supported. '
+                                         'You can solve this issue by setting `--merge_lora true`.')
                     if mg_mlp is None:
                         lora_A = None
                         lora_B = None
@@ -1431,6 +1444,7 @@ class GPTBridge:
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
+        torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(
@@ -1441,7 +1455,6 @@ class GPTBridge:
         args = self.args
         if is_last_rank():
             if is_peft_format:
-                from swift.llm import get_multimodal_target_regex
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
                 if args.task_type == 'seq_cls':
                     peft_config.task_type = 'SEQ_CLS'

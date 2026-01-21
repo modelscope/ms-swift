@@ -7,7 +7,7 @@ import torch
 from modelscope import Model
 from peft.utils import WEIGHTS_NAME
 
-from swift import LoRAConfig, SwiftModel
+from swift.tuners import LoRAConfig, SwiftModel
 
 
 @unittest.skip

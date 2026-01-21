@@ -22,7 +22,7 @@ swift rlhf \
     --rlhf_type gkd \
     --model OpenGVLab/InternVL3-2B-Pretrained \
     --teacher_model $teacher_model \
-    --train_type full \
+    --tuner_type full \
     --dataset 'new_coco_dataset.jsonl' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

@@ -8,6 +8,9 @@ SWIFT supports Reranker model training. Currently supported models include:
    - 0.6B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)
    - 4B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-4B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-4B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-8B)
+3. qwen3-vl-reranker model
+   - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B)
+   - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B)
 
 ## Implementation Methods
 
@@ -60,12 +63,15 @@ Environment variable configuration:
 - **Pointwise:** Independent relevance judgment, simple training, but ignores relative relationships between documents
 - **Listwise:** Learning relative ranking, better performance, more suitable for the essential needs of ranking tasks
 
-The loss function source code can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py).
+The loss function source code can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
 
 ## Dataset Format
 
 ```json lines
+# LLM
 {"messages": [{"role": "user", "content": "query"}], "positive_messages": [[{"role": "assistant", "content": "relevant_doc1"}],[{"role": "assistant", "content": "relevant_doc2"}]], "negative_messages": [[{"role": "assistant", "content": "irrelevant_doc1"}],[{"role": "assistant", "content": "irrelevant_doc2"}], ...]}
+# MLLM
+{"messages": [{"role": "user", "content": "<image>query"}], "images": ["/some/images.jpg"], "positive_messages": [[{"role": "assistant", "content": "<image>relevant_doc1"}]], "positive_images": [["/some/positive_images.jpg"]], "negative_messages": [[{"role": "assistant", "content": "<image><image>irrelevant_doc1"}], [{"role": "assistant", "content": "<image>irrelevant_doc2"}]], "negative_images": [["/some/negative_images1.jpg", "/some/negative_images2.jpg"], ["/some/negative_images3.jpg"]]}
 ```
 
 **Field Description:**
@@ -83,12 +89,15 @@ The loss function source code can be found [here](https://github.com/modelscope/
 
 ## Training Scripts
 
-SWIFT provides four training script templates:
+Training scripts provided by ms-swift:
 
+- [Qwen3-Reranker/Qwen3-VL-Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/qwen3)
 - [Pointwise Classification Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)
 - [Pointwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise Classification Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise Generative Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+
+For inference scripts, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py).
 
 ## Advanced
 

@@ -11,20 +11,19 @@ The command-line arguments will be introduced in four categories: basic argument
 ## Base Arguments
 
 - 🔥tuner_backend: Optional values are `'peft'` and `'unsloth'`. Default is `'peft'`.
-- 🔥train_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`.
+- 🔥tuner_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`. (**In ms-swift 3.x, the parameter name is `train_type`**)
 - 🔥adapters: A list specifying adapter IDs or paths. Default is `[]`. This parameter is typically used in inference/deployment commands, for example: `swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`. It can occasionally be used for resuming training from a checkpoint. The difference between this parameter and `resume_from_checkpoint` is that **this parameter only loads adapter weights**, without restoring the optimizer state or random seed, and does not skip already-trained portions of the dataset.
   - The difference between `--model` and `--adapters`: `--model` is followed by the directory path of the complete weights, which contains full weight information such as model/tokenizer/config, for example `model.safetensors`. `--adapters` is followed by a list of incremental adapter weight directory paths, which contain incremental weight information of the adapters, for example `adapter_model.safetensors`.
-- external_plugins: A list of external `plugin.py` files that will be registered into the plugin module (i.e., imported). See an example [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh). Default is `[]`.
+- 🔥external_plugins: A list of external `plugin.py` files that will be additionally loaded (i.e., the modules will be imported). Defaults to `[]`. You can pass in `.py` file paths for custom model, template, and dataset registration, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh); or for custom GRPO components, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
 - seed: Global random seed. Default is 42.
   - Note: This random seed is independent of `data_seed`, which controls randomness in the dataset.
 - model_kwargs: Additional arguments specific to certain models. This list of parameters will be logged during training/inference. For example: `--model_kwargs '{"fps_max_frames": 12}'`. You can also set it via environment variables, e.g., `FPS_MAX_FRAMES=12`. Default is None.
   - Note: **If you specify model-specific parameters during training, please also set the corresponding parameters during inference**—this helps maintain consistent performance.
   - The meaning of model-specific parameters can usually be found in the official repository or inference code of the corresponding model. MS-Swift includes these parameters to ensure alignment between trained models and official inference behavior.
-- load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` are specified, this flag controls whether to load `args.json` from the saved file. The loaded keys are defined in [base_args.py](https://github.com/modelscope/ms-swift/blob/main/swift/llm/argument/base_args/base_args.py). Default is `True` for inference and export, and `False` for training. Usually, this parameter does not need to be modified.
+- load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` are specified, this flag controls whether to load `args.json` from the saved file. The loaded keys are defined in [base_args.py](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/base_args/base_args.py). Default is `True` for inference and export, and `False` for training. Usually, this parameter does not need to be modified.
 - load_data_args: If set to `True`, additional data-related arguments from `args.json` will be loaded. Default is `False`. **This is typically used during inference to run inference on validation sets split during training**, for example: `swift infer --adapters xxx --load_data_args true --stream true --max_new_tokens 512`.
 - use_hf: Controls whether ModelScope or HuggingFace is used for model downloading, dataset downloading, and model uploading. Default is `False` (uses ModelScope).
 - hub_token: Hub authentication token. For ModelScope, see [here](https://modelscope.cn/my/myaccesstoken). Default is `None`.
-- custom_register_path: A list of `.py` file paths containing custom model, chat template, and dataset registrations. These files will be additionally loaded (i.e., imported). Default is `[]`.
 - ddp_timeout: Default is 18000000, in seconds.
 - ddp_backend: Optional values are `"nccl"`, `"gloo"`, `"mpi"`, `"ccl"`, `"hccl"`, `"cncl"`, `"mccl"`. Default is `None`, which enables automatic selection.
 - ignore_args_error: Used for compatibility with Jupyter Notebook. Default is `False`.
@@ -40,6 +39,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - attn_impl: Attention implementation. Options include `'sdpa'`, `'eager'`, `'flash_attn'`, `'flash_attention_2'`, `'flash_attention_3'`, etc. Default is `None`, reading from config.json.
   - Note: Not all attention implementations may be supported, depending on the underlying Transformers library's support for the specific model.
   - If set to `'flash_attn'` (for backward compatibility), `'flash_attention_2'` will be used.
+- experts_impl: Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'. Defaults to None. This feature requires "transformers>=5.0.0".
 - new_special_tokens: List of additional special tokens to be added. Default is `[]`. Example usage can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a `.txt` file path where each line contains one special token.
 - num_labels: Required for classification models (`--task_type seq_cls`). Indicates the number of labels. Default is `None`.
@@ -86,7 +86,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - Default value is `False` for GPRO.
 - 🔥model_name: **Used only for self-cognition tasks**, and only affects the `swift/self-cognition` dataset. Replaces the `{{NAME}}` placeholder in the dataset. Provide the model's Chinese and English names, separated by space, e.g., `--model_name 小黄 'Xiao Huang'`. Default is `None`.
 - 🔥model_author: Used only for self-cognition tasks, and only affects the `swift/self-cognition` dataset. Replaces the `{{AUTHOR}}` placeholder. Provide the model author's Chinese and English names, separated by space, e.g., `--model_author '魔搭' 'ModelScope'`. Default is `None`.
-- custom_dataset_info: Path to a JSON file for custom dataset registration. See [Custom Dataset Guide](../Customization/Custom-dataset.md) and the [built-in dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json). Default is `[]`.
+- custom_dataset_info: Path to a JSON file for custom dataset registration. See [Custom Dataset Guide](../Customization/Custom-dataset.md) and the [built-in dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json). Default is `[]`.
 
 
 ### Template Arguments
@@ -100,7 +100,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - Note: For multimodal models, if `truncation_strategy` is set to `'left'` or `'right'` during training, **ms-swift preserves all image tokens and other modality-specific tokens**, which may lead to OOM.
 - 🔥max_pixels: Maximum pixel count (H×W) for input images in multimodal models. Images exceeding this limit will be resized to avoid OOM during training. Default is `None` (no restriction).
   - Note: This parameter applies to all multimodal models. The Qwen2.5-VL specific parameter `MAX_PIXELS` (see bottom of doc) only affects Qwen2.5-VL.
-- 🔥agent_template: Agent template that defines how the tool list `'tools'` is converted into the `'system'` message, how tool calls are extracted from model responses during inference/deployment, and the formatting of `{"role": "tool_call", "content": "xxx"}` and `{"role": "tool_response", "content": "xxx"}` in `messages`. Options include `'react_en'`, `'hermes'`, `'glm4'`, `'qwen_en'`, `'toolbench'`, etc. See [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py) for more. Default is `None`, automatically selected based on model type. Refer to [Agent Documentation](./Agent-support.md).
+- 🔥agent_template: Agent template that defines how the tool list `'tools'` is converted into the `'system'` message, how tool calls are extracted from model responses during inference/deployment, and the formatting of `{"role": "tool_call", "content": "xxx"}` and `{"role": "tool_response", "content": "xxx"}` in `messages`. Options include `'react_en'`, `'hermes'`, `'glm4'`, `'qwen_en'`, `'toolbench'`, etc. See [here](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py) for more. Default is `None`, automatically selected based on model type. Refer to [Agent Documentation](./Agent-support.md).
 - norm_bbox: Controls how bounding boxes ("bbox" in dataset, containing absolute coordinates; see [Custom Dataset Documentation](../Customization/Custom-dataset.md#grounding)) are normalized. Options: `'norm1000'` (scale coordinates to thousandths), `'none'` (no scaling). Default is `None`, automatically chosen based on model.
   - This also works correctly when **images are resized during training** (e.g., when `max_pixels` is set).
 - use_chat_template: Whether to use a chat template or a generation template (the latter typically used in pretraining). Default is `True`.
@@ -110,7 +110,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥padding_free: Flattens data within a batch to avoid padding, reducing GPU memory usage and accelerating training (**sequences in the same batch remain invisible to each other**). Default is `False`. Currently supported in CPT/SFT/DPO/GRPO/KTO/GKD.
   - Note: Use `padding_free` together with `--attn_impl flash_attn` and `transformers>=4.44`. See [this PR](https://github.com/huggingface/transformers/pull/31629) for details. (Same as packing.)
   - **Compared to packing, padding_free avoids extra preprocessing time, but packing offers faster training and more stable memory usage**.
-- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py). ms-swift>=3.12 supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
+- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py). ms-swift>=3.12 supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
   - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are not included in loss calculation**). (**Default value for SFT**)
   - 'last_round': Only calculate loss for the last round response. In "ms-swift>=3.12", the last round means all content after the last "user", previously it only included the last "assistant". (**Default value for RLHF**)
   - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
@@ -273,10 +273,10 @@ Other important parameters:
 
 ### Tuner Arguments
 
-- 🔥freeze_llm: This argument only takes effect for multimodal models and can be used in both full-parameter and LoRA training, but with different behaviors. In full-parameter training, setting `freeze_llm=True` freezes the LLM component's weights. In LoRA training with `target_modules='all-linear'`, setting `freeze_llm=True` prevents LoRA modules from being added to the LLM part. Default is `False`.
-- 🔥freeze_vit: This argument only applies to multimodal models and behaves differently depending on the training mode. In full-parameter training, setting `freeze_vit=True` freezes the ViT (vision transformer) component's weights. In LoRA training with `target_modules='all-linear'`, setting `freeze_vit=True` prevents LoRA modules from being added to the ViT part. Default is `True`.
+- 🔥freeze_llm: This argument only takes effect for multimodal models and can be used in both full-parameter and LoRA training, but with different behaviors. In full-parameter training, setting `freeze_llm=True` freezes the LLM component's weights. In LoRA training with `target_modules=['all-linear']`, setting `freeze_llm=True` prevents LoRA modules from being added to the LLM part. Default is `False`.
+- 🔥freeze_vit: This argument only applies to multimodal models and behaves differently depending on the training mode. In full-parameter training, setting `freeze_vit=True` freezes the ViT (vision transformer) component's weights. In LoRA training with `target_modules=['all-linear']`, setting `freeze_vit=True` prevents LoRA modules from being added to the ViT part. Default is `True`.
   - Note: **Here, "vit" refers not only to `vision_tower`, but also to `audio_tower`**. For Omni models, if you want to apply LoRA only to `vision_tower` and not `audio_tower`, you can modify [this code](https://github.com/modelscope/ms-swift/blob/a5d4c0a2ce0658cef8332d6c0fa619a52afa26ff/swift/llm/model/model_arch.py#L544-L554).
-- 🔥freeze_aligner: This argument only affects multimodal models. In full-parameter training, setting `freeze_aligner=True` freezes the aligner (also known as projector) weights. In LoRA training with `target_modules='all-linear'`, setting `freeze_aligner=True` prevents LoRA modules from being added to the aligner component. Default is `True`.
+- 🔥freeze_aligner: This argument only affects multimodal models. In full-parameter training, setting `freeze_aligner=True` freezes the aligner (also known as projector) weights. In LoRA training with `target_modules=['all-linear']`, setting `freeze_aligner=True` prevents LoRA modules from being added to the aligner component. Default is `True`.
 - 🔥target_modules: Specifies which modules to apply LoRA to. Default is `['all-linear']`. You can also specify suffixes of modules, e.g., `--target_modules q_proj k_proj v_proj`. This argument is not limited to LoRA and can be used with other tuners.
   - Note: The behavior of `'all-linear'` differs between LLMs and multimodal LLMs. For standard LLMs, it automatically finds all linear layers except `lm_head` and attaches tuners. **For multimodal LLMs, tuners are by default only attached to the LLM component; this behavior can be controlled via `freeze_llm`, `freeze_vit`, and `freeze_aligner`**.
 - 🔥target_regex: A regular expression to specify LoRA modules. Default is `None`. If provided, `target_modules` is ignored. For example: `--target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'` applies LoRA to modules matching the pattern. This argument is not limited to LoRA and can be used with other tuners.
@@ -357,7 +357,7 @@ Vera uses the three parameters `target_modules`, `target_regex`, and `modules_to
 
 #### LISA
 
-Note: LISA only supports full parameters, i.e., `--train_type full`.
+Note: LISA only supports full parameters, i.e., `--tuner_type full`.
 
 - 🔥lisa_activated_layers: Default value is `0`, representing LISA is not used. Setting to a non-zero value activates that many layers, it is recommended to set to 2 or 8.
 - lisa_step_interval: Default value is `20`, number of iter to switch to layers that can be backpropagated.
@@ -368,7 +368,7 @@ Note: LISA only supports full parameters, i.e., `--train_type full`.
 
 ```
 --tuner_backend unsloth
---train_type full/lora
+--tuner_type full/lora
 --quant_bits 4
 ```
 
@@ -379,7 +379,7 @@ Note: LISA only supports full parameters, i.e., `--train_type full`.
 
 #### AdaLoRA
 
-When the `train_type` parameter is set to `adalora`, the following parameters take effect. The `adalora` parameters such as `target_modules` inherit from the corresponding parameters of `lora`, but the `lora_dtype` parameter does not take effect.
+When the `tuner_type` parameter is set to `adalora`, the following parameters take effect. The `adalora` parameters such as `target_modules` inherit from the corresponding parameters of `lora`, but the `lora_dtype` parameter does not take effect.
 
 - adalora_target_r: Default value is `8`, average rank of AdaLoRA.
 - adalora_init_r: Default value is `12`, initial rank of AdaLoRA.
@@ -392,7 +392,7 @@ When the `train_type` parameter is set to `adalora`, the following parameters ta
 
 #### ReFT
 
-The following parameters are effective when `train_type` is set to `reft`.
+The following parameters are effective when `tuner_type` is set to `reft`.
 
 > 1. ReFT cannot merge tuners.
 > 2. ReFT is not compatible with gradient checkpointing.
@@ -426,7 +426,7 @@ Parameter meanings can be found in the [vllm documentation](https://docs.vllm.ai
 - vllm_quantization: vllm is able to quantize model with this argument, supported values can be found [here](https://docs.vllm.ai/en/latest/serving/engine_args.html).
 - 🔥vllm_enable_prefix_caching: Enables vLLM's automatic prefix caching to save processing time for repeated prompt prefixes, improving inference efficiency. Default is `None`, following vLLM's default behavior.
   - The default value of this parameter is `False` in "ms-swift<3.9.1".
-- vllm_use_async_engine: Whether to use the async engine under the vLLM backend. The deployment status (swift deploy) defaults to True, and other statuses default to False.
+- vllm_use_async_engine: Whether to use the async engine under the vLLM backend. Default is None, which is automatically set based on the scenario: encode tasks (embedding, seq_cls, reranker, generative_reranker) default to True, deployment scenarios (swift deploy) default to True, and other scenarios default to False. Note: Encode tasks must use the async engine.
 - vllm_reasoning_parser: Reasoning parser type, used for parsing the chain of thought content of reasoning models. Default is `None`. Only used for the `swift deploy` command. Available types can be found in the [vLLM documentation](https://docs.vllm.ai/en/latest/features/reasoning_outputs.html#streaming-chat-completions).
 - vllm_engine_kwargs: Extra arguments for vllm, formatted as a JSON string. Default is `None`.
 
@@ -486,9 +486,12 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - acc_strategy: Strategy for calculating accuracy during training and validation. Options are `seq`-level and `token`-level accuracy, with `token` as the default.
 - max_new_tokens: Generation parameter override. The maximum number of tokens to generate when `predict_with_generate=True`, defaulting to 64.
 - temperature: Generation parameter override. The temperature setting when `predict_with_generate=True`, defaulting to 0.
-- optimizer: Custom optimizer name for the plugin, defaults to None. Optional optimizer reference: [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py).
-- loss_type: Custom loss function name defined in the plugin. Default is `None`, using the model's built-in loss function.
-- metric: Custom metric name defined in the plugin. Default is `None`. When `predict_with_generate=True`, it defaults to `'nlg'`.
+- optimizer: The optimizer plugin to use (takes priority over `--optim`), default is None. Available optimizers can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py).
+- loss_type: Custom loss_type name. Default is None, uses the model's built-in loss function. Available loss options can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
+- eval_metric: Custom eval metric name. Default is None. Available eval_metric options can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/eval_metric/mapping.py).
+  - Regarding default values: When `task_type` is 'causal_lm' and `predict_with_generate=True`, it defaults to 'nlg'. When `task_type` is 'embedding', the default value is 'infonce' or 'paired' based on loss_type. When `task_type` is 'reranker/generative_reranker', the default value is 'reranker'.
+- callbacks: Custom trainer callbacks, default is `[]`. Available callbacks can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py).
+- early_stop_interval: The interval for early stopping. Training will terminate when best_metric shows no improvement within early_stop_interval periods (based on `save_steps`; it's recommended to set `eval_steps` and `save_steps` to the same value). The specific implementation can be found in [early_stop.py](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py). Additionally, if you have more complex early stopping requirements, you can directly override the existing implementation in callback.py. When this parameter is set, the `early_stop` trainer callback is automatically added.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
 - eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
@@ -591,7 +594,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - num_generations: The number of samples generated per prompt (corresponding to the G value in the paper). The sampling batch size (generation_batch_size or steps_per_generation × per_device_batch_size × num_processes) must be divisible by num_generations. The default value is 8.
 - num_generations_eval: Number of generations to sample during evaluation. This allows using fewer generations during evaluation to save computation. If `None`, uses the value of `num_generations`. Default is None.
 - ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
-- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine`,`repetition` and `soft_overlong`, as seen in `swift/plugin/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
+- reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine`,`repetition` and `soft_overlong`, as seen in `swift/rewards/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
 - reward_weights: Weights for each reward function. The number should be equal to the sum of the number of reward functions and reward models. If `None`, all rewards are weighted equally with weight `1.0`.
   - Note: If `--reward_model` is included in GRPO training, it is added to the end of the reward functions.
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
@@ -640,7 +643,9 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - importance_sampling_level: Controls how the importance sampling ratio is computed. Options are `token` and `sequence`. In `token` mode, the raw per-token log-probability ratios are used. In `sequence` mode, the log-probability ratios of all valid tokens in the sequence are averaged to produce a single ratio per sequence. The [GSPO paper](https://arxiv.org/abs/2507.18071) uses sequence-level importance sampling to stabilize training. The default is `token`.
 - advantage_estimator: Advantage estimator. Default is `grpo` (group-relative advantage). Options: `grpo`, [`rloo`](./GRPO/AdvancedResearch/RLOO.md), [`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md).
 - kl_in_reward: Controls where the KL regularization is applied. `false`: KL is a separate loss term. `true`: KL is subtracted from the reward. The default is bound to `advantage_estimator`: `false` for `grpo`, and `true` for `rloo` and `reinforce_plus_plus`.
-- scale_rewards: Specifies the reward scaling strategy. Options: `group` (scale by intra-group std), `batch` (scale by batch-wide std), `none` (no scaling). In ms-swift < 3.10, this was a boolean where `true` corresponds to `group` and `false` to `none`. The default is bound to `advantage_estimator`: `group` for `grpo`, `none` for `rloo`, and `batch` for `reinforce_plus_plus`.
+- scale_rewards: Specifies the reward scaling strategy. Options: `group` (scale by intra-group std), `batch` (scale by batch-wide std), `none` (no scaling), `gdpo` (normalize each reward function separately within groups before weighted aggregation, see [GDPO paper](https://arxiv.org/abs/2601.05242)). In ms-swift < 3.10, this was a boolean where `true` corresponds to `group` and `false` to `none`. The default is bound to `advantage_estimator`: `group` for `grpo`, `none` for `rloo`, and `batch` for `reinforce_plus_plus`.
+  - Note: `gdpo` mode does not support `kl_in_reward=True`. If both are set, `kl_in_reward` will be automatically set to `False`.
+  - GDPO is designed for multi-reward optimization: When using multiple reward functions, GDPO normalizes each reward function separately within groups (subtract mean, divide by std), then performs weighted aggregation using `reward_weights`, and finally applies batch-level normalization. This approach better preserves the relative differences between rewards and prevents different reward combinations from collapsing into identical advantage values.
 - sync_ref_model: Whether to synchronize the reference model. Default is False.
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.
@@ -679,9 +684,9 @@ Soft overlong reward parameters:
 
 Inference arguments include the [base arguments](#base-arguments), [merge arguments](#merge-arguments), [vLLM arguments](#vllm-arguments), [LMDeploy arguments](#LMDeploy-arguments), and also contain the following:
 
-- 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'pt', 'vllm', 'sglang', and 'lmdeploy'. The default is 'pt'.
+- 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'transformers', 'vllm', 'sglang', and 'lmdeploy'. The default is 'transformers'.
   - Note: All four engines use SWIFT's template, controlled by `--template_backend`.
-- 🔥max_batch_size: Effective when infer_backend is set to 'pt'; used for batch inference, with a default value of 1. If set to -1, there is no restriction.
+- 🔥max_batch_size: Effective when infer_backend is set to 'transformers'; used for batch inference, with a default value of 1. If set to -1, there is no restriction.
 - 🔥result_path: Path to store inference results (jsonl). The default is None, meaning results are saved in the checkpoint directory (with args.json file) or './result' directory. The final storage path will be printed in the command line.
   - Note: If the `result_path` file already exists, it will be appended to.
 - write_batch_size: The batch size for writing results to result_path. Defaults to 1000. If set to -1, there is no restriction.
@@ -771,10 +776,10 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 
 ### Sampling Parameters
 
-- prm_model: The type of process reward model. It can be a model ID (triggered using `pt`) or a `prm` key defined in a plugin (for custom inference processes).
+- prm_model: The type of process reward model. It can be a model ID (triggered using `transformers`) or a `prm` key defined in a plugin (for custom inference processes).
 - orm_model: The type of outcome reward model, typically a wildcard or test case, usually defined in a plugin.
 - sampler_type: The type of sampling. Currently supports `sample` and `distill`.
-- sampler_engine: Supports `pt`, `lmdeploy`, `vllm`, `no`. Defaults to `pt`. Specifies the inference engine for the sampling model.
+- sampler_engine: Supports `transformers`, `lmdeploy`, `vllm`, `no`. Defaults to `transformers`. Specifies the inference engine for the sampling model.
 - output_dir: The output directory. Defaults to `sample_output`.
 - output_file: The name of the output file. Defaults to `None`, which uses a timestamp as the filename. When provided, only the filename should be passed without the directory, and only JSONL format is supported.
 - override_exist_file: Whether to overwrite if `output_file` already exists.
@@ -826,7 +831,8 @@ qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and q
 
 
 ### qwen3_vl
-The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values:
+The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values: (It is also compatible with environment variables used by `qwen2_5_vl`, such as: `MAX_PIXELS`, `VIDEO_MAX_PIXELS`, and will perform automatic conversion.)
+
 
 - SPATIAL_MERGE_SIZE: default 2.
 - IMAGE_MIN_TOKEN_NUM: default `4`, denotes the minimum number of image tokens per image.
@@ -839,6 +845,15 @@ The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library �
 - FPS: default 2.0.
 - FPS_MIN_FRAMES: default 4, denotes the minimum number of sampled frames for a video segment.
 - 🔥FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
+
+
+### qwen3_vl_emb, qwen3_vl_reranker
+
+The parameter meanings are the same as `qwen3_vl`, see the description above. The following are overrides to the default values:
+
+- IMAGE_MAX_TOKEN_NUM: Default is 1800 for qwen3_vl_emb, and 1280 for qwen3_vl_reranker. For details, please refer to: [qwen3_vl_embedding](https://modelscope.cn/models/Qwen/Qwen3-VL-Embedding-2B/file/view/master/scripts%2Fqwen3_vl_embedding.py?status=1#L26), [qwen3_vl_reranker](https://modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B/file/view/master/scripts%2Fqwen3_vl_reranker.py?status=1#L16).
+- FPS: Default is 1.
+- FPS_MAX_FRAMES: Default is 64.
 
 
 ### internvl, internvl_phi3
@@ -908,7 +923,7 @@ The meanings of the following parameters can be found in the example code [here]
 - NNODES: Pass-through for the `--nnodes` parameter in torchrun.
 - NODE_RANK: Pass-through for the `--node_rank` parameter in torchrun.
 - LOG_LEVEL: The log level, default is 'INFO'. You can set it to 'WARNING', 'ERROR', etc.
-- SWIFT_DEBUG: When set to `'1'` during `engine.infer(...)`, PtEngine will print the contents of `input_ids` and `generate_ids` to facilitate debugging and alignment.
+- SWIFT_DEBUG: When set to `'1'` during `engine.infer(...)`, TransformersEngine will print the contents of `input_ids` and `generate_ids` to facilitate debugging and alignment.
 - VLLM_USE_V1: Used to switch between V0 and V1 versions of vLLM.
 - SWIFT_TIMEOUT: (ms-swift >= 3.10) If the multimodal dataset contains image URLs, this parameter controls the timeout for fetching images, defaulting to 20 seconds.
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.

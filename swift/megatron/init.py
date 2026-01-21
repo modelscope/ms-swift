@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
 import importlib.metadata
 import inspect
@@ -20,9 +20,8 @@ from packaging import version
 from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import git_clone_github
-from swift.utils import (get_logger, is_flash_attn_3_available, is_megatron_available, safe_ddp_context, split_list,
-                         subprocess_run)
+from swift.utils import (get_logger, git_clone_github, is_flash_attn_3_available, is_megatron_available,
+                         safe_ddp_context, split_list, subprocess_run)
 
 logger = get_logger()
 
@@ -89,6 +88,7 @@ def _patch_mla_attention():
         sequence_len_offset=None,
         *,
         inference_params=None,
+        **kwargs,
     ):
         """Forward pass for multi-latent attention"""
         assert attention_bias is None, 'Attention bias should not be passed into MLA.'
@@ -862,6 +862,20 @@ def _patch_megatron_swanlab():
     wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
 
 
+def _patch_modelopt():
+    from megatron.training import checkpointing
+    if not hasattr(checkpointing, 'save_sharded_modelopt_state'):
+        return
+    save_sharded_modelopt_state = checkpointing.save_sharded_modelopt_state
+
+    def new_save_sharded_modelopt_state(model, *args, **kwargs):
+        if not model:
+            return
+        save_sharded_modelopt_state(model, *args, **kwargs)
+
+    checkpointing.save_sharded_modelopt_state = new_save_sharded_modelopt_state
+
+
 def _patch_megatron():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
@@ -881,6 +895,7 @@ def _patch_megatron():
     _patch_mtp()
     _patch_megatron_timeout()
     _patch_megatron_swanlab()
+    _patch_modelopt()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:
