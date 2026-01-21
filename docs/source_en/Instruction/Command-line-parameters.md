@@ -491,6 +491,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - eval_metric: Custom eval metric name. Default is None. Available eval_metric options can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/eval_metric/mapping.py).
   - Regarding default values: When `task_type` is 'causal_lm' and `predict_with_generate=True`, it defaults to 'nlg'. When `task_type` is 'embedding', the default value is 'infonce' or 'paired' based on loss_type. When `task_type` is 'reranker/generative_reranker', the default value is 'reranker'.
 - callbacks: Custom trainer callbacks, default is `[]`. Available callbacks can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py).
+- elastic: Enable elastic training by adding `deepspeed_elastic` (and optionally `graceful_exit`) in `callbacks`. See the [Elastic guide](../BestPractices/Elastic.md).
 - early_stop_interval: The interval for early stopping. Training will terminate when best_metric shows no improvement within early_stop_interval periods (based on `save_steps`; it's recommended to set `eval_steps` and `save_steps` to the same value). The specific implementation can be found in [early_stop.py](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py). Additionally, if you have more complex early stopping requirements, you can directly override the existing implementation in callback.py. When this parameter is set, the `early_stop` trainer callback is automatically added.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
 - eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
@@ -498,9 +499,6 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
 - use_flash_ckpt: Whether to use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover). Default is `false`. If enabled, checkpoints are saved to memory synchronously, then persisted to storage asynchronously, the safetensors format is not supported currently. It's recommended to use this with the environment variable `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to avoid CUDA OOM.
-elastic: Whether to enable elasticity, which depends on [DLRover](https://github.com/intelligent-machine-learning/dlrover), Install the required packages using `pip install dlrover && pip install tornado && pip install kubernetes`, For specific usage, refer to the [example](../BestPractices/Elastic.md)
-- early_stop_interval: The interval for early stopping. It will check if the best_metric has not improved within early_stop_interval periods (based on save_steps; it's recommended to set eval_steps and save_steps to the same value) and terminate training when this condition is met. The specific code implementation is in the callback plugin. Additionally, if you have more complex early stopping requirements, you can directly override the existing implementation in [callback.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py).
-
 
 #### SWANLAB
 

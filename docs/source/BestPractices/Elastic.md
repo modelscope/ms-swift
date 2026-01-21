@@ -13,6 +13,8 @@ pytorch 2.6.0
 
 
 ## 如何启动
+
+通过在`--callbacks`中添加`deepspeed_elastic`（可选`graceful_exit`）启用弹性训练，并配置DeepSpeed弹性参数。
 命令组成=dlrover-run +dlrover 命令参数+swift 启动命令 +swift参数,dlrover-run除自定义的参数外，其他参数与torchrun一致；
 dlrover-run 参数如下:
 ```
@@ -72,8 +74,8 @@ dlrover-run --nnodes 1:$NODE_NUM --nproc_per_node=1  \
 --target_modules all-linear \
 --dataset_num_proc 1 \
 --use_flash_ckpt true \
+--callbacks deepspeed_elastic graceful_exit \
 --deepspeed $deepspeed_config_or_type \
---elastic
 ```
 
 ## 配置文件示例

@@ -1,23 +1,24 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
-import types
-
-import numpy as np
 import torch
 import torch.distributed as dist
-from packaging import version
-from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments
+from transformers import TrainerControl, TrainerState, TrainingArguments
 
 from swift.utils import ShutdownManager, get_device
+from .base import TrainerCallback
 
 
 class DeepspeedElasticCallBack(TrainerCallback):
+
+    def __init__(self, args=None, trainer=None):
+        if args is not None and trainer is not None:
+            super().__init__(args, trainer)
 
     def on_init_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         """
         Event called at the beginning of training.
         """
 
-        if args.deepspeed and args.elastic:
+        if args.deepspeed:
             from deepspeed.elasticity import compute_elastic_config
             from deepspeed.git_version_info import version as __version__
             args.deepspeed['checkpoint'] = {'load_universal': True}
@@ -47,7 +48,9 @@ class DeepspeedElasticCallBack(TrainerCallback):
 
 class GracefulExitCallBack(TrainerCallback):
 
-    def __init__(self):
+    def __init__(self, args=None, trainer=None):
+        if args is not None and trainer is not None:
+            super().__init__(args, trainer)
         shutdown_manager = ShutdownManager()
         shutdown_manager.register()
         self.shutdown_manager = shutdown_manager

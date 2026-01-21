@@ -245,7 +245,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                     'To use `deepspeed_autotp_size`, you need to additionally set the `--deepspeed` argument.')
                 self.deepspeed['tensor_parallel'] = {'autotp_size': self.deepspeed_autotp_size}
                 self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
-
             logger.info(f'Using deepspeed: {self.deepspeed}')
 
     def _init_fsdp(self):

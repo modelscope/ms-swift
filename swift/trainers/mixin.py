@@ -53,8 +53,8 @@ from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, g
                          get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
 from . import patcher
 from .arguments import TrainingArguments
-from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, get_resume_dir, is_instance_of_ms_model,
-                    replace_index_file)
+from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, get_resume_dir,
+                    is_instance_of_ms_model, replace_index_file)
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -150,12 +150,6 @@ class SwiftMixin:
     def _add_callbacks(self):
         for callback in self.args.callbacks:
             self.add_callback(callbacks_map[callback](self.args, self))
-        if self.args.deepspeed and getattr(self.args, 'elastic', False):
-            from swift.callbacks.deepspeed_elastic import DeepspeedElasticCallBack, GracefulExitCallBack
-            if not any(isinstance(cb, DeepspeedElasticCallBack) for cb in self.callback_handler.callbacks):
-                self.add_callback(DeepspeedElasticCallBack())
-            if not any(isinstance(cb, GracefulExitCallBack) for cb in self.callback_handler.callbacks):
-                self.add_callback(GracefulExitCallBack())
 
     @contextmanager
     def _patch_timeout(self):

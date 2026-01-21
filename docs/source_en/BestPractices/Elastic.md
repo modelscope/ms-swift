@@ -12,6 +12,8 @@ pytorch 2.6.0
 
 ## How to Start
 
+Enable elastic training by adding the `deepspeed_elastic` callback (optionally `graceful_exit`) in `--callbacks`, and configure DeepSpeed elasticity settings.
+
 The command format is dlrover-run + DLrover command parameters + Swift startup command + Swift parameters.dlrover-run behaves like torchrun for most arguments, except for its custom parameters.
 
 The dlrover-run arguments are as follows:
@@ -75,8 +77,8 @@ dlrover-run --nnodes 1:$NODE_NUM --nproc_per_node=1  \
 --target_modules all-linear \
 --dataset_num_proc 1 \
 --use_flash_ckpt true \
+--callbacks deepspeed_elastic graceful_exit \
 --deepspeed $deepspeed_config_or_type \
---elastic
 ```
 
 ## Configuration

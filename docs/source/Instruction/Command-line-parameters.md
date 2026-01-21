@@ -481,6 +481,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - eval_metric: 自定义eval metric名称。默认为None。可选eval_metric参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/eval_metric/mapping.py)。
   - 关于默认值：当`task_type`为'causal_lm', 且`predict_with_generate=True`的情况下默认设置为'nlg'。`task_type` 为'embedding'，根据loss_type，默认值为'infonce' 或 'paired'。`task_type`为'reranker/generative_reranker'，默认值为'reranker'。
 - callbacks: 自定义trainer callback，默认为`[]`。可选callbacks参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py)。
+- elastic: 通过在`callbacks`中添加`deepspeed_elastic`（可选`graceful_exit`）来启用弹性训练。参考[Elastic示例](../BestPractices/Elastic.md)。
 - early_stop_interval: 早停的间隔，会检验best_metric在early_stop_interval个周期内（基于`save_steps`, 建议`eval_steps`和`save_steps`设为同值）没有提升时终止训练。具体代码在[early_stop.py](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py)中。同时，如果有较为复杂的早停需求，直接覆盖callback.py中的已有实现即可。设置该参数时，自动加入`early_stop`的trainer callback。
 - eval_use_evalscope: 是否使用evalscope进行训练时评测，需要设置该参数来开启评测，具体使用参考[示例](../Instruction/Evaluation.md#训练中评测)。
 - eval_dataset: 评测数据集，可设置多个数据集，用空格分割。
@@ -488,7 +489,6 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - eval_limit: 评测数据集采样数。
 - eval_generation_config: 评测时模型推理配置，json格式，默认为`{'max_tokens': 512}`。
 - use_flash_ckpt: 是否启用[DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover)的flash checkpoint。默认为`false`，启用后，权重会先保存至共享内存，之后异步持久化；建议搭配`PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` 一起使用，避免训练过程CUDA OOM。
-- elastic: 是否启用弹性，依赖[DLRover](https://github.com/intelligent-machine-learning/dlrover),`pip install dlrover && pip install tornado && pip install kubernetes `，具体使用参考[示例](../BestPractices/Elastic.md)
 
 #### SWANLAB
 

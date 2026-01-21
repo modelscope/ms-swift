@@ -246,7 +246,9 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             resume_checkpoint = None
             if self.args.use_flash_ckpt:
                 resume_checkpoint = trainer.get_resume_checkpoint()
-            if self.args.elastic and resume_checkpoint and not os.path.exists(
+            callbacks = set(getattr(self.args, 'callbacks', []))
+            elastic_enabled = 'deepspeed_elastic' in callbacks
+            if elastic_enabled and resume_checkpoint and not os.path.exists(
                     os.path.join(resume_checkpoint, 'latest_universal')):
                 resume_checkpoint = trainer.get_resume_checkpoint_until_find_ucp()
             if self.args.resume_from_checkpoint:
@@ -255,7 +257,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         finally:
             res = self._save_trainer_state(trainer)
             if self.args.use_flash_ckpt and hasattr(trainer, 'flash_checkpointer'):
-                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT, trainer.state.global_step)
+                wait_timeout = getattr(trainer, 'FLASH_CKPT_WAIT_TIMEOUT', 1800)
+                trainer.wait_latest_checkpoint(wait_timeout, trainer.state.global_step)
 
         return res
 
