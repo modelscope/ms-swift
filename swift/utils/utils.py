@@ -477,41 +477,6 @@ def get_modules_to_not_convert(model):
     return res if res else None
 
 
-def extract_version(name: str) -> Optional[int]:
-    if not name.startswith('v'):
-        return None
-    try:
-        num = name[1:].split('-', 1)[0]
-        return int(num)
-    except ValueError:
-        return None
-
-
-def get_previous_version_from_path(current_path: str) -> Optional[str]:
-    from pathlib import Path
-    current = Path(current_path)
-    parent = current.parent
-    current_name = current.name
-
-    candidates = [d for d in parent.iterdir() if d.is_dir()]
-
-    valid = [(d.name, extract_version(d.name)) for d in candidates]
-    valid = [(name, ver) for name, ver in valid if ver is not None]
-
-    valid.sort(key=lambda x: x[1])
-    names = [name for name, _ in valid]
-
-    if current_name not in names:
-        return None
-
-    idx = names.index(current_name)
-    if idx == 0:
-        return None
-
-    prev_name = names[idx - 1]
-    return str(parent / prev_name)
-
-
 def retry_decorator(retry=3):
 
     def _retry(func):

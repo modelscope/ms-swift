@@ -14,8 +14,6 @@ class DeepspeedElasticCallBack(TrainerCallback):
         """
         Event called at the beginning of training.
         """
-        # with self.template.forward_context(self.model, inputs),get_act_offloading_ctx_manager(model):
-        #
 
         if args.deepspeed and args.elastic:
             from deepspeed.elasticity import compute_elastic_config
@@ -32,13 +30,14 @@ class DeepspeedElasticCallBack(TrainerCallback):
                     'min_time': 20,
                     'version': 0.1
                 }
-                args.deepspeed['checkpoint'] = {'load_universal': True}
+                world_size = dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
                 final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
                     ds_config=args.deepspeed,
                     target_deepspeed_version=__version__,
-                    world_size=dist.get_world_size(),
+                    world_size=world_size,
                 )
-                gradient_accu_steps = final_batch_size // (micro_batch_size * dist.get_world_size())
+                denom = micro_batch_size * world_size
+                gradient_accu_steps = max(1, final_batch_size // denom)
                 args.per_device_train_batch_size = micro_batch_size
                 args.gradient_accumulation_steps = gradient_accu_steps
                 state.train_batch_size = args.per_device_train_batch_size * max(1, args.n_gpu)

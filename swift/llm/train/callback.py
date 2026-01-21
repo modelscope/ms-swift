@@ -87,6 +87,7 @@ class GracefulExitCallBack(TrainerCallback):
         shutdown_manager = ShutdownManager()
         shutdown_manager.register()
         self.shutdown_manager = shutdown_manager
+        self._pending_stop = False
 
     def on_step_end(self, args, state, control, **kwargs):
         device_type = get_device()
@@ -103,5 +104,11 @@ class GracefulExitCallBack(TrainerCallback):
 
         if any_req:
             control.should_save = True
+            self._pending_stop = True
+        return control
+
+    def on_save(self, args, state, control, **kwargs):
+        if self._pending_stop:
             control.should_training_stop = True
+            self._pending_stop = False
         return control
