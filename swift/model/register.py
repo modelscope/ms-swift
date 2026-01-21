@@ -606,7 +606,7 @@ def get_processor(
     download_model: Optional[bool] = None,
     # model kwargs
     model_type: Optional[str] = None,
-    task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker'] = None,
     num_labels: Optional[int] = None,
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     **kwargs,
