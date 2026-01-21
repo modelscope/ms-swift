@@ -132,7 +132,6 @@ class SwiftMixin:
         self.label_names = self.label_names or ['labels']
         self.start_time = time.time()
         self._fix_gradient_checkpointing()
-        self.template.patch_model(model)
         self._patch_tasks()
         update_generation_config_eos_token(self.model.generation_config, self.template)
         if getattr(self.model, 'origin_generation_config', None):

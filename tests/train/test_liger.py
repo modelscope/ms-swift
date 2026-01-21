@@ -37,7 +37,7 @@ def test_mllm_dpo():
             use_liger_kernel=True,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+    infer_main(InferArguments(model=last_model_checkpoint, load_data_args=True))
 
 
 if __name__ == '__main__':

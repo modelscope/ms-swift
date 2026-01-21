@@ -82,18 +82,9 @@ def prepare_config_args(argv):
             break
 
 
-def _compat_web_ui(argv):
-    # [compat]
-    method_name = argv[0]
-    if method_name in {'web-ui', 'web_ui'} and ('--model' in argv or '--adapters' in argv or '--ckpt_dir' in argv):
-        argv[0] = 'app'
-        logger.warning('Please use `swift app`.')
-
-
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
-    _compat_web_ui(argv)
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
