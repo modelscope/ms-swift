@@ -313,14 +313,22 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                         'you can write a new implementation in the plugin/callback.py.')
 
     def _register_dataset_progress_callback(self, train_dataset):
-        """Register DatasetProgressCallback for tracking per-dataset progress."""
+        """Register DatasetProgressCallback for tracking per-dataset training progress.
+        
+        This callback tracks how many samples from each original dataset have been consumed
+        during training. When using dataset mixing strategies (concat/interleave), it uses
+        the original dataset sizes (before resampling) as the denominator to calculate 
+        meaningful epoch-based progress metrics.
+        
+        Args:
+            train_dataset: The training dataset, possibly wrapped by LazyLLMDataset or PackingDataset
+        """
         from swift.trainers.callback import DatasetProgressCallback
         from swift.llm.dataset import LazyLLMDataset, PackingDataset
 
-        # Calculate dataset sizes from _dataset_source column
         dataset_sizes = {}
 
-        # Get the underlying HfDataset
+        # Unwrap to get the underlying HfDataset
         raw_dataset = train_dataset
         if isinstance(train_dataset, LazyLLMDataset):
             raw_dataset = train_dataset.dataset
@@ -329,25 +337,42 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if isinstance(raw_dataset, LazyLLMDataset):
                 raw_dataset = raw_dataset.dataset
 
-        column_names = getattr(raw_dataset, 'column_names', None)
-
-        # Count samples per source from raw dataset
-        if column_names is not None and '_dataset_source' in column_names:
-            has_dataset_name = 'dataset_name' in raw_dataset.column_names
-            if has_dataset_name:
-                dataset_names = raw_dataset['dataset_name']
-                for name in dataset_names:
-                    if name is not None:
-                        dataset_sizes[name] = dataset_sizes.get(name, 0) + 1
+        # Strategy 1: Use original dataset sizes (preferred for accurate epoch tracking)
+        # This is set by load_dataset() before any mixing/resampling operations
+        if hasattr(raw_dataset, '_original_dataset_sizes'):
+            dataset_sizes = dict(raw_dataset._original_dataset_sizes)  # Make a copy
+            if logger.isEnabledFor(20):  # INFO level
+                size_summary = ', '.join([f'{k.split("/")[-1]}: {v}' for k, v in dataset_sizes.items()])
+                logger.info(f'Progress tracking using original dataset sizes: {size_summary}')
+        else:
+            # Strategy 2: Fallback to counting from mixed dataset (legacy behavior)
+            # This counts resampled instances, which may not reflect true epoch progress
+            column_names = getattr(raw_dataset, 'column_names', None)
+            if column_names is not None and '_dataset_source' in column_names:
+                has_dataset_name = 'dataset_name' in raw_dataset.column_names
+                if has_dataset_name:
+                    dataset_names = raw_dataset['dataset_name']
+                    for name in dataset_names:
+                        if name is not None:
+                            dataset_sizes[name] = dataset_sizes.get(name, 0) + 1
+                else:
+                    sources = raw_dataset['_dataset_source']
+                    for source in sources:
+                        dataset_sizes[source] = dataset_sizes.get(source, 0) + 1
+                
+                if logger.isEnabledFor(20):  # INFO level
+                    logger.info(f'Progress tracking using mixed dataset sizes (fallback): '
+                              f'{len(dataset_sizes)} datasets')
             else:
-                sources = raw_dataset['_dataset_source']
-                for source in sources:
-                    dataset_sizes[source] = dataset_sizes.get(source, 0) + 1
-            logger.info(f'Dataset sizes for progress tracking: {dataset_sizes}')
+                logger.warning('No dataset source information found for progress tracking. '
+                             'Progress metrics will not be available.')
 
-        callback = DatasetProgressCallback(dataset_sizes)
-        self.callbacks.append(callback)
-        logger.info('DatasetProgressCallback registered for tracking per-dataset training progress.')
+        if dataset_sizes:
+            callback = DatasetProgressCallback(dataset_sizes)
+            self.callbacks.append(callback)
+            logger.info('DatasetProgressCallback registered successfully.')
+        else:
+            logger.warning('DatasetProgressCallback not registered: no dataset size information available.')
 
     @staticmethod
     def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):
