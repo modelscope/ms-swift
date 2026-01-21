@@ -15,12 +15,13 @@ from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import HfConfigFactory, Processor, get_logger, is_unsloth_available, patch_getattr
+from swift.utils import (HfConfigFactory, Processor, get_generative_reranker_logits, get_logger, is_unsloth_available,
+                         patch_getattr)
 from .constant import ModelType
 from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, get_model_info_meta
 from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,
-                      patch_automodel_for_sequence_classification, patch_get_dynamic_module, patch_mp_ddp,
-                      patch_tp_plan)
+                      patch_automodel_for_sequence_classification, patch_get_dynamic_module, patch_module_forward,
+                      patch_mp_ddp, patch_tp_plan)
 from .utils import AttnImpl, InitModelStrategy, get_default_device_map
 
 logger = get_logger()
@@ -305,7 +306,18 @@ class ModelLoader(BaseModelLoader):
         if model_info.task_type == 'embedding' and auto_model_cls.__name__ != 'AutoModel':
             from swift.model.patcher import patch_output_normalizer
             patch_output_normalizer(model, model_meta=model_meta)
+        elif model_info.task_type == 'generative_reranker':
+            self._patch_generative_reranker(model, processor)
         return model
+
+    def _patch_generative_reranker(self, model, processor):
+        tokenizer = self._get_tokenizer(processor)
+        lm_head_model = get_lm_head_model(model, self.model_meta).lm_head
+
+        def lm_head_forward(module, hidden_states):
+            return get_generative_reranker_logits(module.weight, tokenizer, hidden_states)
+
+        patch_module_forward(lm_head_model, lm_head_forward)
 
     def _postprocess_model(self, model_dir, model):
         model_info = self.model_info
