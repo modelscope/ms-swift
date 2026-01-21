@@ -144,6 +144,10 @@ class TreeRolloutScheduler(MultiTurnScheduler):
                             response=output,
                             messages=deepcopy(child_sample.messages),
                             response_token_ids=deepcopy(child_sample.all_response_ids),
+                            # If we use intermediate reasoning results when computing the reward,
+                            # but loss_mask is not explicitly set, only the loss of the final round of reasoning will be computed.
+                            response_loss_mask=[[1] * len(response_ids) for response_ids in
+                                                child_sample.all_response_ids],
                             rollout_infos={'num_turns': next_infer_step},
                         ))
                 else:
@@ -219,8 +223,8 @@ class TreeRolloutScheduler(MultiTurnScheduler):
         return sample.status == SampleStatus.FINISHED
 
     def roll_back_to_divergence(
-        self,
-        finished_samples: Dict[int, List[DataSampleTree]],
+            self,
+            finished_samples: Dict[int, List[DataSampleTree]],
     ) -> List[DataSampleTree]:
         """
         All nodes have completed inference, but there is still budget available, rollback.
