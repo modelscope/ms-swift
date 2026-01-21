@@ -5,6 +5,7 @@ from typing import Any, Dict, Literal, Optional, Tuple
 
 import megatron.core
 import torch
+import torch.nn.functional as F
 from megatron.core import parallel_state
 from megatron.core.config_logger import has_config_logger_enabled, log_config_to_disk
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
@@ -451,6 +452,7 @@ class GPTModel(McoreGPTModel):
             logits = hidden_states
             if args.sequence_parallel and args.tensor_model_parallel_size > 1:
                 logits = gather_from_sequence_parallel_region(logits)
+            logits = F.normalize(logits, p=2, dim=-1)
         elif args.task_type == 'generative_reranker':
             if output_weight is None:
                 output_weight = self.output_layer.weight
