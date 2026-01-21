@@ -93,6 +93,7 @@ register_model(
 class MinimaxTextLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        logger.warn('NOTE: minimax-text-01 model does not support training.')
         n_gpu = get_device_count()
         _, local_rank, _, local_world_size = get_dist_setting()
         device_ids = list(range(max(local_rank, 0), n_gpu, local_world_size))

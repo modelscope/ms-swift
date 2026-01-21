@@ -20,7 +20,7 @@ config_mapping = {
     'swiglu': ['hidden_act'],
     'add_qkv_bias': ['attention_bias', 'qkv_bias', 'use_bias'],
     'disable_bias_linear': ['mlp_bias'],
-    'kv_channels': ['head_dim', 'v_head_dim'],
+    'kv_channels': ['head_dim'],
     'hf_model_type': ['model_type'],
     # moe
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
@@ -37,6 +37,7 @@ config_mapping = {
     'moe_router_bias_update_rate': ['aux_loss_alpha'],
     'qk_head_dim': ['qk_nope_head_dim'],
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
+    'v_head_dim': ['v_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
     # qwen3_next
@@ -104,6 +105,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     mlp_ffn_hidden_size = res.pop('mlp_ffn_hidden_size', None)
     interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
     window_size = res.pop('window_size', None)
+    rope_scaling = res.get('rope_scaling') or {}
     if llm_model_type in {'qwen3', 'qwen3_moe', 'qwen3_next'
                           } or hf_model_type in {'qwen3_omni_moe', 'qwen3_omni', 'qwen3_vl', 'qwen3_vl_moe'}:
         res['qk_layernorm'] = True
@@ -149,8 +151,11 @@ def convert_hf_config(config) -> Dict[str, Any]:
         else:
             window_attn_skip_freq = ','.join(['1' if lt == 'sliding_attention' else '0' for lt in layer_types])
             res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
-    elif llm_model_type == 'glm4_moe' or hf_model_type == 'glm4v_moe':
+    elif llm_model_type in {'glm4_moe', 'glm4_moe_lite'} or hf_model_type == 'glm4v_moe':
         res['moe_router_score_function'] = 'sigmoid'
+        if llm_model_type == 'glm4_moe_lite':
+            res['qk_layernorm'] = True
+            res.pop('num_query_groups', None)
     elif llm_model_type == 'qwen3_next':
         full_attention_interval = res.pop('full_attention_interval')
         num_layers = res['num_layers']
@@ -180,9 +185,10 @@ def convert_hf_config(config) -> Dict[str, Any]:
             res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
     elif hf_model_type == 'glm4v':
         res['rotary_interleaved'] = True
-    rope_scaling = res.get('rope_scaling') or {}
     if 'partial_rotary_factor' not in res and 'partial_rotary_factor' in rope_scaling:
         res['partial_rotary_factor'] = rope_scaling['partial_rotary_factor']
+    if 'rotary_base' not in res and 'rope_theta' in rope_scaling:
+        res['rotary_base'] = rope_scaling['rope_theta']
     if rope_scaling.get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = rope_scaling['mrope_section']

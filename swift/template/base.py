@@ -2151,17 +2151,3 @@ class Template(ProcessorMixin):
         seq_len = position_ids.shape[-1]
         text_position_ids = torch.arange(seq_len, device=position_ids.device).expand(1, *position_ids.shape[1:])
         return torch.concat([text_position_ids, position_ids], dim=0)
-
-    def _patch_generative_reranker(self, model):
-        from swift.model import get_lm_head_model, patch_module_forward
-        lm_head_model = get_lm_head_model(model).lm_head
-
-        def lm_head_forward(module, hidden_states):
-            return get_generative_reranker_logits(module, self.tokenizer, hidden_states)
-
-        patch_module_forward(lm_head_model, lm_head_forward)
-
-    def patch_model(self, model):
-        base_model = self.get_base_model(model)
-        if self.task_type == 'generative_reranker':
-            self._patch_generative_reranker(base_model)

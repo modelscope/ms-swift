@@ -19,7 +19,7 @@ def test_sft():
 def test_infer():
     from swift import infer_main, InferArguments
     ckpt_dir = 'output/Qwen2-7B-Instruct/vx-xxx/checkpoint-xxx'
-    infer_main(InferArguments(ckpt_dir=ckpt_dir))
+    infer_main(InferArguments(adapters=[ckpt_dir]))
 
 
 if __name__ == '__main__':
