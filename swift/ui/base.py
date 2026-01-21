@@ -282,6 +282,7 @@ class BaseUI:
                 for inner_type in type_args:
                     if get_origin(inner_type) is Literal:
                         choice_dict[f.name] = list(get_args(inner_type))
+                        break
             if f.name in choice_dict and default_value not in choice_dict[f.name]:
                 choice_dict[f.name].insert(0, default_value)
         return choice_dict
