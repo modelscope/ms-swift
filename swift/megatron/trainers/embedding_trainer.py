@@ -37,9 +37,7 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
         with self.stimer(bdata=True):
             data = self.get_batch(data_iterator, vp_stage)
         timers('batch-generator').stop()
-        labels = data.get('labels')
-        if self.args.task_type == 'seq_cls':
-            data.pop('labels', None)
+        labels = data.pop('labels', None)
         with self.stimer:
             output_tensor = model(**data)
         packed_seq_params = data.get('packed_seq_params')

@@ -1,8 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-
-import megatron.core
-from packaging import version
-
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
