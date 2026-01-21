@@ -20,7 +20,6 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
         self._loss_func = loss_map[self.args.loss_type](args, self)
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
-        args = self.args
         last_hidden_state = self.get_last_tokens(output_tensor, packed_seq_params)
         loss = self._loss_func({'last_hidden_state': last_hidden_state}, labels)
         metric = {'loss': loss.detach().clone()}

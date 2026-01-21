@@ -12,6 +12,8 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Embedding](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/embedding) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/reranker) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [Sequence Classification](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls)    | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 ## Environment Setup
