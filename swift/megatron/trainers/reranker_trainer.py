@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from collections import namedtuple
 from functools import partial
 
 import torch.nn
@@ -9,19 +10,23 @@ from swift.utils import get_logger
 from .base import BaseMegatronTrainer
 
 logger = get_logger()
+ModelOutputs = namedtuple('ModelOutputs', ['logits'])
 
 
 class MegatronRerankerTrainer(BaseMegatronTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
+        if args.context_parallel_size > 1:
+            raise ValueError('Currently `task_type="reranker/generative_reranker"` does not support '
+                             'context parallelism.')
         if not args.padding_free:
             raise ValueError('Currently, task_type reranker/generative_reranker only supports padding_free.')
         self._loss_func = loss_map[self.args.loss_type](args, self)
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
-        last_hidden_state = self.get_last_tokens(output_tensor, packed_seq_params)
-        loss = self._loss_func({'last_hidden_state': last_hidden_state}, labels)
+        logits = self.get_last_tokens(output_tensor, packed_seq_params)
+        loss = self._loss_func(ModelOutputs(logits=logits), labels)
         metric = {'loss': loss.detach().clone()}
         metric = self._all_reduce_metric(metric)
         return loss, metric

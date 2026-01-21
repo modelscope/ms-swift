@@ -31,12 +31,6 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 
 class OutputLayerLinear(TELinear):
 
-    def forward(self, hidden_states, *args, **kwargs):
-        args = get_args()
-        if args.sequence_parallel and args.tensor_model_parallel_size > 1:
-            hidden_states = gather_from_sequence_parallel_region(hidden_states)
-        return super().forward(hidden_states)
-
     def sharded_state_dict(
             self,
             prefix: str = '',
@@ -449,6 +443,10 @@ class GPTModel(McoreGPTModel):
                 # state ([B, H]) → unsqueeze back to [1, B, H]
                 # (so that the output layer, which expects S×B×H, receives only the final token)
                 hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
+
+        if args.task_type != 'causal_lm' and args.sequence_parallel and args.tensor_model_parallel_size > 1:
+            hidden_states = gather_from_sequence_parallel_region(hidden_states)
+
         if args.task_type == 'embedding':
             logits = hidden_states
             if args.sequence_parallel and args.tensor_model_parallel_size > 1:
@@ -456,7 +454,8 @@ class GPTModel(McoreGPTModel):
         elif args.task_type == 'generative_reranker':
             if output_weight is None:
                 output_weight = self.output_layer.weight
-            logits = get_generative_reranker_logits(output_weight, self.tokenizer, hidden_states.transpose(0, 1))
+            logits = get_generative_reranker_logits(output_weight, self.tokenizer,
+                                                    hidden_states.transpose(0, 1)).transpose(0, 1)
         else:
             logits, _ = self.output_layer(
                 hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)

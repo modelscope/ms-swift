@@ -1539,7 +1539,6 @@ class Template(ProcessorMixin):
                 res = self._seq_cls_data_collator(batch, padding_to=padding_to)
         elif self.task_type == 'embedding':
             res = self._embedding_data_collator(batch, padding_to=padding_to)
-            num_samples = res.pop('num_samples')
         elif self.task_type in {'reranker', 'generative_reranker'}:
             res = self._reranker_data_collator(batch, padding_to=padding_to)
         else:
@@ -1548,6 +1547,8 @@ class Template(ProcessorMixin):
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
+        if 'num_samples' in res:
+            num_samples = res.pop('num_samples')
         if self.use_megatron:
             res['num_samples'] = num_samples
         return res
@@ -1685,8 +1686,9 @@ class Template(ProcessorMixin):
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
                         })
                         labels_list.append(0)
-
+            num_samples = len(new_batch)
             res = self._data_collator(new_batch, padding_to=padding_to)
+            res['num_samples'] = num_samples
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         else:

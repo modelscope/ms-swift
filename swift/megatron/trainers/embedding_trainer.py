@@ -15,6 +15,8 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
+        if args.context_parallel_size > 1:
+            raise ValueError('Currently `task_type="embedding"` does not support context parallelism.')
         if not args.padding_free:
             raise ValueError('Currently, task_type embedding only supports padding_free.')
         self._loss_func = loss_map[self.args.loss_type](args, self)
