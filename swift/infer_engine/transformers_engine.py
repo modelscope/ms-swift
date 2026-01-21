@@ -94,7 +94,6 @@ class TransformersEngine(InferEngine):
         super().__init__(template)
         for adapter in self.adapters:
             self._add_adapter(safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token))
-        self.template.patch_model(self.model)
         self.engine = self.model  # dummy
         self.generation_config = getattr(self.model, 'generation_config', None)
         self._queue = Queue()
