@@ -401,7 +401,7 @@ class MegatronArguments(ExtraMegatronArguments):
     # training
     micro_batch_size: int = 1
     global_batch_size: int = 16
-    recompute_granularity: Literal['selective', 'full'] = 'selective'
+    recompute_granularity: Literal['selective', 'full', 'none'] = 'selective'
     recompute_method: Literal['uniform', 'block'] = None
     recompute_num_layers: Optional[int] = None
     recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
@@ -717,6 +717,8 @@ class MegatronArguments(ExtraMegatronArguments):
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
+        if self.recompute_granularity == 'none':
+            self.recompute_granularity = None
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
