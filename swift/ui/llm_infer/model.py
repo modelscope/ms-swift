@@ -13,7 +13,7 @@ from .generate import Generate
 
 class Model(BaseUI):
 
-    llm_train = 'llm_infer'
+    group = 'llm_infer'
 
     sub_ui = [Generate]
 
