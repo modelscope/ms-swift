@@ -18,6 +18,8 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
         if not args.padding_free:
             raise ValueError('Currently, task_type reranker/generative_reranker only supports padding_free.')
         self._loss_func = loss_map[self.args.loss_type](args, self)
+        for model in self.unwrapped_models:
+            model.tokenizer = template.tokenizer
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
         args = self.args

@@ -2160,7 +2160,7 @@ class Template(ProcessorMixin):
         lm_head_model = get_lm_head_model(model).lm_head
 
         def lm_head_forward(module, hidden_states):
-            return get_generative_reranker_logits(module, self.tokenizer, hidden_states)
+            return get_generative_reranker_logits(module.weight, self.tokenizer, hidden_states)
 
         patch_module_forward(lm_head_model, lm_head_forward)
 
