@@ -350,7 +350,10 @@ class BaseUI:
                         else:
                             raise e
                 else:
-                    args = arg_cls(ckpt_dir=model, load_data_args=True)
+                    if os.path.exists(os.path.join(model, 'adapter_config.json')):
+                        args = arg_cls(adapters=model, load_data_args=True)
+                    else:
+                        args = arg_cls(model=model, load_data_args=True)
             except ValueError:
                 return [gr.update()] * (len(keys) + int(has_record))
             values = []

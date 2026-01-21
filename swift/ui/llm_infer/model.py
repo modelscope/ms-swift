@@ -64,10 +64,10 @@ class Model(BaseUI):
                 'en': 'Only available when `tuner_type=lora`'
             }
         },
-        'lora_modules': {
+        'adapters': {
             'label': {
-                'zh': '外部LoRA模块',
-                'en': 'More LoRA modules'
+                'zh': 'adapter id或路径',
+                'en': 'adapter id/path'
             },
             'info': {
                 'zh': '空格分割的name=/path1/path2键值对',
@@ -116,7 +116,7 @@ class Model(BaseUI):
         Generate.set_lang(cls.lang)
         Generate.build_ui(base_tab)
         with gr.Row(equal_height=True):
-            gr.Textbox(elem_id='lora_modules', lines=1, is_list=True, scale=40)
+            gr.Textbox(elem_id='adapters', lines=1, is_list=True, scale=40)
             gr.Textbox(elem_id='more_params', lines=1, scale=20)
             gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
 
