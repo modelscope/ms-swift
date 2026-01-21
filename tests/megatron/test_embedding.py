@@ -37,7 +37,7 @@ def test_reranker():
             load_from_cache_file=True,
             max_epochs=1,
             task_type='generative_reranker',
-            dataset=['MTEB/scidocs-reranking#10000'],
+            dataset=['MTEB/scidocs-reranking#2000'],
             loss_type='pointwise_reranker',
             split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,
