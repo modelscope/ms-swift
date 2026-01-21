@@ -150,6 +150,12 @@ class SwiftMixin:
     def _add_callbacks(self):
         for callback in self.args.callbacks:
             self.add_callback(callbacks_map[callback](self.args, self))
+        if self.args.deepspeed and getattr(self.args, 'elastic', False):
+            from swift.callbacks.deepspeed_elastic import DeepspeedElasticCallBack, GracefulExitCallBack
+            if not any(isinstance(cb, DeepspeedElasticCallBack) for cb in self.callback_handler.callbacks):
+                self.add_callback(DeepspeedElasticCallBack())
+            if not any(isinstance(cb, GracefulExitCallBack) for cb in self.callback_handler.callbacks):
+                self.add_callback(GracefulExitCallBack())
 
     @contextmanager
     def _patch_timeout(self):
