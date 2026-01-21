@@ -59,7 +59,7 @@ def test_mllm_mp():
             freeze_aligner=False,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True, merge_lora=True))
 
 
 def test_llm_streaming():
@@ -68,7 +68,7 @@ def test_llm_streaming():
         SftArguments(
             model='Qwen/Qwen2-7B-Instruct', dataset=['swift/chinese-c4'], streaming=True, max_steps=16, **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True, merge_lora=True))
 
 
 def test_mllm_streaming():
@@ -82,12 +82,12 @@ def test_mllm_streaming():
             split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True, merge_lora=True))
 
 
 def test_mllm_zero3():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
@@ -99,7 +99,7 @@ def test_mllm_zero3():
 
 def test_qwen_vl():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     sft_main(
         SftArguments(
             model='Qwen/Qwen-VL-Chat',
@@ -110,7 +110,7 @@ def test_qwen_vl():
 
 def test_qwen2_audio():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-Audio-7B-Instruct',
@@ -131,7 +131,7 @@ def test_llm_gptq():
             split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
 
 
 def test_llm_awq():
@@ -143,12 +143,12 @@ def test_llm_awq():
             split_dataset_ratio=0.01,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
 
 
 def test_mllm_streaming_zero3():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
@@ -161,7 +161,7 @@ def test_mllm_streaming_zero3():
 
 def test_mllm_streaming_mp_ddp():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
@@ -183,7 +183,7 @@ def test_llm_hqq():
             quant_bits=4,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
 
 
 def test_llm_bnb():
@@ -197,7 +197,7 @@ def test_llm_bnb():
             quant_bits=4,
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
 
 
 def test_moe():
@@ -236,7 +236,7 @@ def test_resume_from_checkpoint():
 
 
 def test_resume_only_model():
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2-0.5B',
@@ -263,7 +263,7 @@ def test_resume_only_model():
 
 def test_llm_transformers_4_33():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     sft_main(
         SftArguments(
             model='Qwen/Qwen-7B-Chat',
@@ -275,7 +275,7 @@ def test_llm_transformers_4_33():
 def test_predict_with_generate():
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     # 'modelscope/coco_2014_caption:validation#100',
     sft_main(
         SftArguments(
@@ -293,7 +293,7 @@ def test_predict_with_generate():
 def test_predict_with_generate_zero3():
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments
     # 'modelscope/coco_2014_caption:validation#100',
     sft_main(
         SftArguments(
@@ -320,7 +320,7 @@ def test_template():
             model_author=['swift'],
             **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
-    infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, merge_lora=True))
+    infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True, merge_lora=True))
 
 
 def test_emu3_gen():
@@ -333,7 +333,7 @@ def test_emu3_gen():
         SftArguments(model='BAAI/Emu3-Gen', dataset=['swift/TextCaps#2'], split_dataset_ratio=0.01, **kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     args = InferArguments(
-        ckpt_dir=last_model_checkpoint,
+        adapters=[last_model_checkpoint],
         infer_backend='transformers',
         stream=False,
         use_chat_template=False,
