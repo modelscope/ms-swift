@@ -81,6 +81,7 @@ def prepare_config_args(argv):
             argv.pop(i)
             break
 
+
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
