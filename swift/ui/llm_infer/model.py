@@ -70,8 +70,10 @@ class Model(BaseUI):
                 'en': 'adapter id/path'
             },
             'info': {
-                'zh': '空格分割的name=/path1/path2键值对',
-                'en': 'name=/path1/path2 split by blanks'
+                'zh':
+                '只有一个lora模块时填adapter路径或`name=/path`；多个lora模块时填键值对：`name1=/path1 name2=/path2`',
+                'en': ('Single LoRA: Use path or name=/path. '
+                       'Multiple LoRAs: Use key-value pairs, e.g., name1=/path1 name2=/path2.')
             }
         },
         'more_params': {
