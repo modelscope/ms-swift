@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Any, Dict, Literal, Optional, Tuple
@@ -14,7 +15,9 @@ from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
+from megatron.core.tensor_parallel.mappings import (gather_from_sequence_parallel_region,
+                                                    gather_from_tensor_model_parallel_region,
+                                                    reduce_from_tensor_model_parallel_region)
 from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler, MTPLossLoggingHelper, roll_tensor
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -22,7 +25,7 @@ from megatron.core.utils import WrappedTensor, deprecate_inference_params
 from megatron.training import get_args
 from packaging import version
 
-from swift.utils import get_generative_reranker_logits, get_logger
+from swift.utils import get_logger
 from .rope import dynamic_rope_update, get_rope_inv_freq
 
 logger = get_logger()
@@ -445,23 +448,22 @@ class GPTModel(McoreGPTModel):
                 # (so that the output layer, which expects S×B×H, receives only the final token)
                 hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
 
-        if args.task_type != 'causal_lm' and args.sequence_parallel and args.tensor_model_parallel_size > 1:
+        if args.task_type in {'seq_cls', 'embedding'
+                              } and args.sequence_parallel and args.tensor_model_parallel_size > 1:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
 
         if args.task_type == 'embedding':
-            logits = hidden_states
-            if args.sequence_parallel and args.tensor_model_parallel_size > 1:
-                logits = gather_from_sequence_parallel_region(logits)
-            logits = F.normalize(logits, p=2, dim=-1)
-        elif args.task_type == 'generative_reranker':
-            if output_weight is None:
-                output_weight = self.output_layer.weight
-            logits = get_generative_reranker_logits(output_weight, self.tokenizer,
-                                                    hidden_states.transpose(0, 1)).transpose(0, 1)
+            logits = F.normalize(hidden_states, p=2, dim=-1)
         else:
             logits, _ = self.output_layer(
                 hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
-
+            if args.task_type == 'generative_reranker':
+                logits = gather_from_tensor_model_parallel_region(logits)
+                positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+                negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+                positive_token_id = self.tokenizer.convert_tokens_to_ids(positive_token)
+                negative_token_id = self.tokenizer.convert_tokens_to_ids(negative_token)
+                logits = (logits[..., positive_token_id] - logits[..., negative_token_id])[..., None]
         # Restore sequence parallel execution to the output layer if necessary.
         if sequence_parallel_override:
             assert (in_inference_mode and inference_context.is_dynamic_batching()

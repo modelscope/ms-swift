@@ -22,12 +22,31 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
                              'context parallelism.')
         if not args.padding_free:
             raise ValueError('Currently, task_type reranker/generative_reranker only supports padding_free.')
-        self._loss_func = loss_map[self.args.loss_type](args, self)
+        self._loss_func = loss_map[args.loss_type](args, self)
+
+    @staticmethod
+    def _get_listwise_reranker_preds(logits, labels):
+        positive_indices = torch.nonzero(labels == 1, as_tuple=False).squeeze(-1).tolist()
+        positive_indices.append(labels.shape[0])
+        preds = []
+        for i in range(len(positive_indices) - 1):
+            start, end = positive_indices[i], positive_indices[i + 1]
+            preds.append(logits[start:end].argmax())
+        preds = torch.stack(preds)
+        labels = torch.tensor([0] * (len(positive_indices) - 1))
+        return preds, labels
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
         logits = self.get_last_tokens(output_tensor, packed_seq_params)
         loss = self._loss_func(ModelOutputs(logits=logits), labels)
-        metric = {'loss': loss.detach().clone()}
+        args = self.args
+        logits_detach = logits.detach().squeeze(-1)
+        if args.loss_type == 'listwise_reranker':
+            preds, labels = self._get_listwise_reranker_preds(logits_detach, labels)
+        else:
+            preds = (logits_detach.detach() > 0).long()
+        acc = (preds == labels).float().mean()
+        metric = {'loss': loss.detach().clone(), 'acc': acc}
         metric = self._all_reduce_metric(metric)
         return loss, metric
 
