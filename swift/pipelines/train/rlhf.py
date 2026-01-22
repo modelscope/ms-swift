@@ -60,6 +60,10 @@ class SwiftRLHF(SwiftSft):
         if model_id_or_path is None:
             return
 
+        if args.rlhf_type == 'ppo' and key == 'reward' and isinstance(model_id_or_path, (list, tuple)):
+            assert len(model_id_or_path) == 1, f'model_id_or_path: {model_id_or_path}'
+            model_id_or_path = model_id_or_path[0]
+
         if model_type is None:
             model_info, _ = get_model_info_meta(model_id_or_path)
             model_type = model_info.model_type
