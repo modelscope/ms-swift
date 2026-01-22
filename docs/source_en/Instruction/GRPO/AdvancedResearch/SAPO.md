@@ -35,13 +35,13 @@ The core of SAPO is using the sigmoid function to apply soft gating on the impor
 For positive advantages ($A > 0$), use positive gating:
 
 $$
-g^{+}_t = \sigma\left( \tau_{\mathrm{pos}} \cdot (r_t - 1) \right)
+g^{+}_t = \sigma\left( \tau_{\mathrm{pos}} \cdot (r_t - 1) \right) \cdot \frac{4}{\tau_{\mathrm{pos}}}
 $$
 
 For negative advantages ($A < 0$), use negative gating:
 
 $$
-g^{-}_t = \sigma\left( \tau_{\mathrm{neg}} \cdot (r_t - 1) \right)
+g^{-}_t = \sigma\left( \tau_{\mathrm{neg}} \cdot (r_t - 1) \right) \cdot \frac{4}{\tau_{\mathrm{neg}}}
 $$
 
 where:

@@ -1199,8 +1199,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
         elif self.loss_type == 'sapo':
             advantages_expanded = advantages.unsqueeze(1)
-            gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
-            gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+            gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1)) * (4.0 / self.tau_pos)
+            gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1)) * (4.0 / self.tau_neg)
             is_positive = advantages_expanded > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
 

@@ -1280,8 +1280,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
         elif self.loss_type == 'sapo':
-            gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1))
-            gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1))
+            gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1)) * (4.0 / self.tau_pos)
+            gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1)) * (4.0 / self.tau_neg)
             is_positive = advantages.unsqueeze(1) > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
             per_token_loss = -soft_gate * advantages.unsqueeze(1)
