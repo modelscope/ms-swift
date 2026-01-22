@@ -27,7 +27,7 @@ megatron sft \
     --min_lr 1e-7 \
     --max_epochs 5 \
     --save megatron_output/Qwen3-Embedding-4B \
-    --save_interval 100 \
+    --save_interval 200 \
     --eval_interval 100 \
     --max_length 8192 \
     --loss_type infonce \
