@@ -90,7 +90,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.is_multimodal = model.model_meta.is_multimodal
 
         model.warnings_issued['estimate_tokens'] = True
-        kwargs['data_collator'] = identity_data_collator  # No data collation is needed in GRPO
 
         self.model_kwarg_keys = (
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
@@ -157,6 +156,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = None
         self._current_train_step_time = 0.0
+
+    def _get_data_collator(self, args, template):
+        return identity_data_collator
 
     def _get_train_sampler(self, train_dataset=None):
         if self.template.sequence_parallel_size > 1:
