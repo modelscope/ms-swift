@@ -9,11 +9,11 @@ from typing import Any, Dict, Optional
 import torch
 from torch.distributed.fsdp import FSDPModule as FSDP2
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from transformers import TrainerCallback
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
 
 from swift.utils import get_logger
+from .base import TrainerCallback
 
 logger = get_logger()
 
@@ -587,6 +587,9 @@ def enable_activation_offloading(model, strategy, enable_ckpt=False):
 
 
 class ActivationCpuOffloadCallBack(TrainerCallback):
+
+    def __init__(self, args: TrainingArguments, trainer):
+        super().__init__(args, trainer)
 
     def on_train_begin(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         """
