@@ -17,7 +17,6 @@ class MegatronRLHF(MegatronSft):
 
     def prepare_trainer(self):
         args = self.args
-        module = importlib.import_module('swift.megatron.trainers')
         trainer_mapping = {
             'dpo': 'MegatronDPOTrainer',
             'gkd': 'MegatronGKDTrainer',
@@ -25,6 +24,7 @@ class MegatronRLHF(MegatronSft):
             'kto': 'MegatronKTOTrainer',
             'rm': 'MegatronRewardTrainer'
         }
+        module = importlib.import_module('swift.megatron.trainers')
         trainer_cls = getattr(module, trainer_mapping.get(args.rlhf_type))
         if trainer_cls is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
