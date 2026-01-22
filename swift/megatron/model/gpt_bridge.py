@@ -124,7 +124,7 @@ class GPTBridge:
             # mtp
             'eh_proj',
         }
-        if self.args.task_type == 'causal_lm':
+        if self.args.task_type in {'causal_lm', 'generative_reranker'}:
             dim0_keys.add('output_layer')
         if not self.mcore_014:
             # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
