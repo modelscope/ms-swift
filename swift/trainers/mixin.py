@@ -709,6 +709,7 @@ class SwiftMixin:
 
             model.forward = MethodType(forward_sentence_transformer, model)
         else:
+
             def _register_llm_hooks_in_order(llm_model: nn.Module, hooks: List[Callable]):
                 # hooks are provided in desired execution order.
                 # We use prepend=True and register in reverse to preserve the order.
