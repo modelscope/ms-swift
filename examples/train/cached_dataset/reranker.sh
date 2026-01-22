@@ -26,7 +26,6 @@ swift sft \
     --learning_rate 6e-6 \
     --gradient_accumulation_steps 8 \
     --packing true \
-    --padding_side left \
     --eval_steps 50 \
     --save_steps 200 \
     --logging_steps 5 \

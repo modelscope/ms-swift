@@ -657,7 +657,11 @@ class SwiftMixin:
             model = self.model.model
         else:
             model = self.model
-        padding_side = self.template.padding_side
+        task_type = self.task_type
+        sp_enabled = self.template.sequence_parallel_size > 1
+        pf_enabled = bool(self.template.padding_free)
+        padding_side = 'left' if pf_enabled else self.template.padding_side
+
         if 'SentenceTransformer' in model.__class__.__name__:
 
             def forward_transformer(transformer, features: Dict[str, torch.Tensor],
@@ -705,9 +709,6 @@ class SwiftMixin:
 
             model.forward = MethodType(forward_sentence_transformer, model)
         else:
-            task_type = self.task_type
-            sp_enabled = self.template.sequence_parallel_size > 1
-            pf_enabled = bool(self.template.padding_free)
 
             def _register_llm_hooks_in_order(llm_model: nn.Module, hooks: List[Callable]):
                 # hooks are provided in desired execution order.
@@ -986,7 +987,7 @@ class SwiftMixin:
         labels = torch.tensor([0] * (len(positive_indices) - 1))
         return preds, labels
 
-    def _compute_acc(self, outputs, labels, cu_seqlens=None, attention_mask=None) -> None:
+    def _compute_acc(self, outputs, labels, cu_seqlens=None) -> None:
         args = self.args
         logits = outputs.logits
         metrics = None
