@@ -236,7 +236,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         batch_encoded_inputs = self._prepare_batch_inputs(inputs)
 
-        total_advantages = self._compute_advantages(inputs, total_rewards_per_func, batch_encoded_inputs)
+        total_advantages, unique_rewards, unique_advantages = self._compute_advantages(
+            inputs, total_rewards_per_func, batch_encoded_inputs)
 
         local_advantages = get_even_process_data(self, total_advantages)
         assert len(local_advantages) == len(inputs)
@@ -244,6 +245,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs[i]['advantages'] = advantage
         # log metrics in inputs
         self._logs['advantages'].extend(total_advantages.tolist())
+        # log unique rewards and advantages (per request/group, not broadcast)
+        self._logs['unique_rewards'].extend(unique_rewards.tolist())
+        self._logs['unique_advantages'].extend(unique_advantages.tolist())
 
         # Add advantages to each batch in batch_encoded_inputs
         gas_chunks = self.split_by_mini_batches(inputs)
@@ -415,8 +419,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 Reward values for each reward function, shape `(N, num_reward_funcs)`.
 
         Returns:
-            **advantages** (torch.Tensor):
-                Computed advantages, shape `(N,)`.
+            Tuple of:
+                - **advantages** (torch.Tensor): Computed advantages, shape `(N,)`.
+                - **unique_rewards** (torch.Tensor): Unique rewards per request/group.
+                - **unique_advantages** (torch.Tensor): Unique advantages per request/group.
         """
 
         def normalize_advantages(advantages: torch.Tensor, rewards_std: torch.Tensor) -> torch.Tensor:
@@ -554,7 +560,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages
+            return advantages, rewards, advantages
 
         # --------------------------------------------------
         # Case 2: Request-aware mode
@@ -577,25 +583,25 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     raise ValueError(f'Inconsistent rewards detected for request_id={rid}.')
 
             # Step 3. Group rewards by prompt_id and compute prompt-level mean/std
-            unique_rewards = rewards[unique_indices]
+            request_rewards = rewards[unique_indices]
             prompt_to_indices = {}
             for idx, pid in enumerate(unique_prompt_ids):
                 prompt_to_indices.setdefault(pid, []).append(idx)
 
-            prompt_means = torch.zeros(len(unique_rewards), device=device)
+            prompt_means = torch.zeros(len(request_rewards), device=device)
             for pid, idxs in prompt_to_indices.items():
                 idx_tensor = torch.tensor(idxs, device=device)
-                r_group = unique_rewards[idx_tensor]
+                r_group = request_rewards[idx_tensor]
                 prompt_means[idx_tensor] = r_group.mean()
 
             # Step 4. Compute advantages
             if self.advantage_estimator == 'rloo':
                 # RLOO: Leave-One-Out baseline for dynamic mode
-                request_advantages = torch.zeros_like(unique_rewards)
+                request_advantages = torch.zeros_like(request_rewards)
                 for pid, idxs in prompt_to_indices.items():
                     K = len(idxs)
                     idx_tensor = torch.tensor(idxs, device=device)
-                    r_group = unique_rewards[idx_tensor]
+                    r_group = request_rewards[idx_tensor]
                     # A_i = r_i * K/(K-1) - mean * K/(K-1)
                     # Edge case: when K=1, fall back to simple advantage
                     if K > 1:
@@ -604,7 +610,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         request_advantages[idx_tensor] = r_group - r_group.mean()
             else:  # 'grpo' or 'reinforce_plus_plus'
                 # Both use group mean as baseline
-                request_advantages = unique_rewards - prompt_means
+                request_advantages = request_rewards - prompt_means
 
             # Step 5. Normalize advantages
             if self.advantage_estimator == 'reinforce_plus_plus':
@@ -619,7 +625,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     prompt_stds = torch.full_like(request_advantages, advantages_std)
                 elif self.scale_rewards == 'group':
                     # Group-level whitening on advantages
-                    prompt_stds = torch.zeros(len(unique_rewards), device=device)
+                    prompt_stds = torch.zeros(len(request_rewards), device=device)
                     for pid, idxs in prompt_to_indices.items():
                         idx_tensor = torch.tensor(idxs, device=device)
                         adv_group = request_advantages[idx_tensor]
@@ -632,16 +638,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             else:  # 'grpo' or 'rloo'
                 # GRPO/RLOO: Use std of original rewards
                 if self.scale_rewards == 'batch':
-                    if unique_rewards.numel() > 1:
-                        rewards_std = unique_rewards.std()
+                    if request_rewards.numel() > 1:
+                        rewards_std = request_rewards.std()
                     else:
                         rewards_std = torch.tensor(0.0, device=device)
-                    prompt_stds = torch.full_like(unique_rewards, rewards_std)
+                    prompt_stds = torch.full_like(request_rewards, rewards_std)
                 elif self.scale_rewards == 'group':
-                    prompt_stds = torch.zeros(len(unique_rewards), device=device)
+                    prompt_stds = torch.zeros(len(request_rewards), device=device)
                     for pid, idxs in prompt_to_indices.items():
                         idx_tensor = torch.tensor(idxs, device=device)
-                        r_group = unique_rewards[idx_tensor]
+                        r_group = request_rewards[idx_tensor]
                         # Edge case: when group size is 1
                         prompt_stds[idx_tensor] = r_group.std() if len(idxs) > 1 else 0.0
                 else:  # 'none'
@@ -655,12 +661,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             advantages = request_advantages[indices_in_unique]
 
             # Step 5. Log metrics for unique request_ids
-            log_rewards_metrics(rewards=unique_rewards, rewards_per_func_for_metrics=rewards_per_func[unique_indices])
+            log_rewards_metrics(rewards=request_rewards, rewards_per_func_for_metrics=rewards_per_func[unique_indices])
 
             # Step 6. Log all rewards
             log_rewards_all(rewards_per_func)
 
-            return advantages
+            # Return request-level unique rewards and advantages for logging
+            # Length = number of unique requests = gen_bsz (in dynamic mode)
+            return advantages, request_rewards, request_advantages
 
     @patch_profiling_decorator
     def _dynamic_sampling(self, inputs, rewards_per_func):
@@ -1199,6 +1207,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_token_loss1 = coef_1 * advantages.unsqueeze(1)
             per_token_loss2 = coef_2 * advantages.unsqueeze(1)
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+            
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
         if per_token_kl is not None:
@@ -2061,6 +2070,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         chunk_inputs = {}
         # for LLM, slice the inputs
         for key, val in inputs.items():
+            # Skip num_items_in_batch as it's a scalar tensor (used by DAPO), cannot be sliced
+            if key == 'num_items_in_batch':
+                continue
             if isinstance(val, torch.Tensor):
                 chunk_inputs[key] = val[start_idx:end_idx]
             else:
@@ -2106,6 +2118,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
+            'unique_rewards': deque(maxlen=args.generation_batch_size),
+            'unique_advantages': deque(maxlen=args.generation_batch_size),
         }
         self.compute_entropy = self.args.log_entropy or self.top_entropy_quantile < 1.0
         if self.args.log_entropy:

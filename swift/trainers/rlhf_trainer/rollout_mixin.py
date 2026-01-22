@@ -955,20 +955,40 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if not inputs:
             return inputs
 
-        all_messages = gather_object([inp['messages'] for inp in inputs])
-        messages_to_prompt_id = {}
-        prompt_id_counter = 0
+        if self.dynamic_num_samples:
+            # In dynamic mode, group by message content (same as normal mode)
+            # Inputs with the same messages share the same prompt_id (from same original prompt)
+            # Each input gets a unique request_id for trajectory tracking
+            all_messages = gather_object([inp['messages'] for inp in inputs])
+            messages_to_prompt_id = {}
+            prompt_id_counter = 0
 
-        for messages in all_messages:
-            key = json.dumps(messages)
-            if key not in messages_to_prompt_id:
-                messages_to_prompt_id[key] = f'prompt_{prompt_id_counter}'
-                prompt_id_counter += 1
+            for messages in all_messages:
+                key = json.dumps(messages)
+                if key not in messages_to_prompt_id:
+                    messages_to_prompt_id[key] = f'prompt_{prompt_id_counter}'
+                    prompt_id_counter += 1
 
-        for input_item in inputs:
-            messages = input_item.get('messages')
-            input_item['prompt_id'] = messages_to_prompt_id[json.dumps(messages)]
-            input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
+            for input_item in inputs:
+                messages = input_item.get('messages')
+                input_item['prompt_id'] = messages_to_prompt_id[json.dumps(messages)]
+                input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
+        else:
+            # Normal mode: group by message content
+            all_messages = gather_object([inp['messages'] for inp in inputs])
+            messages_to_prompt_id = {}
+            prompt_id_counter = 0
+
+            for messages in all_messages:
+                key = json.dumps(messages)
+                if key not in messages_to_prompt_id:
+                    messages_to_prompt_id[key] = f'prompt_{prompt_id_counter}'
+                    prompt_id_counter += 1
+
+            for input_item in inputs:
+                messages = input_item.get('messages')
+                input_item['prompt_id'] = messages_to_prompt_id[json.dumps(messages)]
+                input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
 
         return inputs
 
@@ -1151,7 +1171,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             request_id = output.response.id
             assert request_id in id2inputs, f'Request ID {request_id} not found in inputs'
             input_data = deepcopy(id2inputs[request_id])
-            results.append(merge_output_input_data(input_data, output))
+            result = merge_output_input_data(input_data, output)
+            results.append(result)
 
         return results
 
