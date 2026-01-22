@@ -13,7 +13,7 @@ from .generate import Generate
 
 class Model(BaseUI):
 
-    llm_train = 'llm_infer'
+    group = 'llm_infer'
 
     sub_ui = [Generate]
 
@@ -64,14 +64,16 @@ class Model(BaseUI):
                 'en': 'Only available when `tuner_type=lora`'
             }
         },
-        'lora_modules': {
+        'adapters': {
             'label': {
-                'zh': '外部LoRA模块',
-                'en': 'More LoRA modules'
+                'zh': 'adapter id或路径',
+                'en': 'adapter id/path'
             },
             'info': {
-                'zh': '空格分割的name=/path1/path2键值对',
-                'en': 'name=/path1/path2 split by blanks'
+                'zh':
+                '只有一个lora模块时填adapter路径或`name=/path`；多个lora模块时填键值对：`name1=/path1 name2=/path2`',
+                'en': ('Single LoRA: Use path or name=/path. '
+                       'Multiple LoRAs: Use key-value pairs, e.g., name1=/path1 name2=/path2.')
             }
         },
         'more_params': {
@@ -116,7 +118,7 @@ class Model(BaseUI):
         Generate.set_lang(cls.lang)
         Generate.build_ui(base_tab)
         with gr.Row(equal_height=True):
-            gr.Textbox(elem_id='lora_modules', lines=1, is_list=True, scale=40)
+            gr.Textbox(elem_id='adapters', lines=1, is_list=True, scale=40)
             gr.Textbox(elem_id='more_params', lines=1, scale=20)
             gr.Button(elem_id='load_checkpoint', scale=2, variant='primary')
 

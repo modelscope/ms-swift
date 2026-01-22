@@ -134,7 +134,8 @@ class LLMEval(BaseUI):
         kwargs.update(more_params)
         model = kwargs.get('model')
         if model and os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
-            kwargs['ckpt_dir'] = kwargs.pop('model')
+            if os.path.exists(os.path.join(model, 'adapter_config.json')):
+                kwargs['adapters'] = kwargs.pop('model')
 
         eval_args = EvalArguments(
             **{
