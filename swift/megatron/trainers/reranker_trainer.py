@@ -6,6 +6,7 @@ import torch.nn
 from megatron.training import get_args, get_timers
 
 from swift.loss import loss_map
+from swift.metrics import eval_metrics_map
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
 
@@ -23,6 +24,7 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
         if not args.padding_free:
             raise ValueError('Currently, task_type reranker/generative_reranker only supports padding_free.')
         self._loss_func = loss_map[args.loss_type](args, self)
+        self.eval_metrics = eval_metrics_map['reranker'](args, self)
 
     @staticmethod
     def _get_listwise_reranker_preds(logits, labels):
@@ -37,10 +39,13 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
         return preds, labels
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
+        training = self.unwrapped_models[0].training
         logits = self.get_last_tokens(output_tensor, packed_seq_params)
         loss = self._loss_func(ModelOutputs(logits=logits), labels)
         args = self.args
         logits_detach = logits.detach().squeeze(-1)
+        if not training:
+            self.eval_metrics.update(logits_detach, labels)
         if args.loss_type == 'listwise_reranker':
             preds, labels = self._get_listwise_reranker_preds(logits_detach, labels)
         else:
