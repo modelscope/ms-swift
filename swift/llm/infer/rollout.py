@@ -246,7 +246,7 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
     worker_seed = get_seed()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None), seed=worker_seed)
     rollout_engine = get_rollout_engine_type(args, engine)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
@@ -281,7 +281,7 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
     args._import_external_plugins()
     args._init_custom_register()
     worker_seed = get_seed()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(None), seed=worker_seed)
     rollout_engine = get_rollout_engine_type(args, engine)
 
     # Send ready signal to parent process
