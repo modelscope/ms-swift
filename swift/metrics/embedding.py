@@ -9,17 +9,39 @@ from transformers.utils import strtobool
 
 from swift.loss.embedding import _parse_multi_negative_sentences, _parse_pair_sentence
 from .base import EvalMetrics
+from .utils import Metric
 
 
-class PairedMetrics(EvalMetrics):
+class EmbedddingMetricMixin(Metric):
 
-    def compute_metrics(self, eval_prediction: EvalPrediction):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        Metric.__init__(self)
+        self.add_state('last_hidden_state', default_factory=list)
+        self.add_state('labels', default_factory=list)
+
+    def update(self, last_hidden_state, labels):
+        self.last_hidden_state.append(last_hidden_state.cpu().numpy())
+        self.labels.append(labels.cpu().numpy())
+
+    def compute(self):
+        predictions = np.concatenate(self.last_hidden_state)
+        labels = np.concatenate(self.labels)
+        return self._calculate_metrics(predictions, labels)
+
+
+class PairedMetrics(EvalMetrics, EmbedddingMetricMixin):
+
+    def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
+        predictions = eval_prediction.predictions
+        labels = eval_prediction.label_ids
+        return self._calculate_metrics(predictions, labels)
+
+    def _calculate_metrics(self, predictions, labels):
         from sklearn.metrics.pairwise import (paired_cosine_distances, paired_euclidean_distances,
                                               paired_manhattan_distances)
         from scipy.stats import pearsonr, spearmanr
-        embeddings = eval_prediction.predictions
-        labels = eval_prediction.label_ids
-        embeddings1, embeddings2 = _parse_pair_sentence(embeddings)
+        embeddings1, embeddings2 = _parse_pair_sentence(predictions)
         cosine_scores = 1 - (paired_cosine_distances(embeddings1, embeddings2))
         manhattan_distances = -paired_manhattan_distances(embeddings1, embeddings2)
         euclidean_distances = -paired_euclidean_distances(embeddings1, embeddings2)
@@ -49,16 +71,19 @@ class PairedMetrics(EvalMetrics):
         }
 
 
-class InfonceMetrics(EvalMetrics):
+class InfonceMetrics(EvalMetrics, EmbedddingMetricMixin):
 
     def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
-        embeddings = eval_prediction.predictions
+        predictions = eval_prediction.predictions
         labels = eval_prediction.label_ids
+        return self._calculate_metrics(predictions, labels)
+
+    def _calculate_metrics(self, predictions, labels):
         hard_negatives = os.environ.get('INFONCE_HARD_NEGATIVES', None)
         use_batch = strtobool(os.environ.get('INFONCE_USE_BATCH', 'True'))
         if hard_negatives is not None:
             hard_negatives = int(hard_negatives)
-        split_tensors = _parse_multi_negative_sentences(torch.tensor(embeddings), torch.tensor(labels), hard_negatives)
+        split_tensors = _parse_multi_negative_sentences(torch.tensor(predictions), torch.tensor(labels), hard_negatives)
         split_tensors = [t.numpy() for t in split_tensors]
         can_batched = hard_negatives is not None
         if hard_negatives is None and len(set([s.shape[0] for s in split_tensors])) == 1:
