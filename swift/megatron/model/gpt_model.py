@@ -36,6 +36,9 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 
 class OutputLayerLinear(TELinear):
 
+    def forward(self, hidden_states, *args, **kwargs):
+        return super().forward(hidden_states)
+
     def sharded_state_dict(
             self,
             prefix: str = '',
