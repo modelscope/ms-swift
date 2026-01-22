@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from swift.activation_cpu_offload import ActivationCpuOffloadCallBack
+from .activation_cpu_offload import ActivationCpuOffloadCallBack
 from .adalora import AdaloraCallback
 from .early_stop import EarlyStopCallback
 from .lisa import LISACallback
