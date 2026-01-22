@@ -1,17 +1,15 @@
-# 2 * 80GiB
+# 2 * 70GiB
+# For inference code, refer to: examples/infer/demo_embedding.py
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
-INFONCE_TEMPERATURE=0.1 \
 CUDA_VISIBLE_DEVICES=0,1 \
+INFONCE_TEMPERATURE=0.1 \
 megatron sft \
-    --model Qwen/Qwen3-Embedding-4B \
+    --model Qwen/Qwen3-Embedding-8B \
     --task_type embedding \
     --load_safetensors true \
     --save_safetensors true \
-    --tuner_type lora \
-    --lora_rank 8 \
-    --lora_alpha 32 \
-    --target_modules all-linear \
+    --tuner_type full \
     --dataset sentence-transformers/stsb:positive \
     --load_from_cache_file true \
     --split_dataset_ratio 0.02 \
@@ -26,11 +24,13 @@ megatron sft \
     --cross_entropy_loss_fusion true \
     --lr 5e-6 \
     --lr_warmup_fraction 0.05 \
-    --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
+    --min_lr 1e-7 \
+    --max_epochs 5 \
+    --save megatron_output/Qwen3-Embedding-4B \
     --save_interval 100 \
-    --max_length 2048 \
+    --eval_interval 100 \
+    --max_length 8192 \
+    --loss_type infonce \
     --num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \

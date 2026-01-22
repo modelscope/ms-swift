@@ -395,6 +395,9 @@ class GPTBridge:
         if offset:
             assert mg_scale_inv is None, f'mg_key: {mg_key}'
             tensor = tensor + offset
+        is_embedding = mg_key in {'embedding.word_embeddings.weight', 'output_layer.weight'}
+        if is_embedding and self.args.padded_vocab_size < tensor.shape[0]:
+            tensor = tensor[:self.args.padded_vocab_size]
         if self._target_device is not None:
             tensor = tensor.to(device=self._target_device)
             if mg_scale_inv is not None:
