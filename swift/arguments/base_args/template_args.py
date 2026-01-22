@@ -54,7 +54,7 @@ class TemplateArguments:
             is typically used for pre-training. Defaults to True.
             Note: Defaults to False for `swift pt`, which uses the generation template. This parameter is compatible
             with multimodal models.
-        padding_side (Literal['left', 'right', None]): The side to pad on when `batch_size >= 2` during training.
+        padding_side (Literal['left', 'right']): The side to pad on when `batch_size >= 2` during training.
             Options are 'left' or 'right'. Defaults to 'right'. For inference with `batch_size >= 2`, padding is always
             on the left.
             Note: Defaults to 'left' for PPO and GKD.
@@ -124,7 +124,7 @@ class TemplateArguments:
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
     use_chat_template: Optional[bool] = None
-    padding_side: Literal['left', 'right', None] = None
+    padding_side: Literal['left', 'right'] = 'right'
     # train
     padding_free: bool = False
     loss_scale: str = 'default'
@@ -152,12 +152,6 @@ class TemplateArguments:
             self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
-        if self.padding_side is None:
-            if getattr(self, 'task_type', None) in ('reranker', 'generative_reranker'):
-                self.padding_side = 'left'
-                logger.info(f'Setting args.padding_side to {self.padding_side} for task_type={self.task_type}')
-            else:
-                self.padding_side = 'right'
 
     def get_template_kwargs(self):
         from ..sft_args import SftArguments
