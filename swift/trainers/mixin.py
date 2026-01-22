@@ -986,7 +986,7 @@ class SwiftMixin:
         labels = torch.tensor([0] * (len(positive_indices) - 1))
         return preds, labels
 
-    def _compute_acc(self, outputs, labels, cu_seqlens=None, attention_mask=None) -> None:
+    def _compute_acc(self, outputs, labels, cu_seqlens=None) -> None:
         args = self.args
         logits = outputs.logits
         metrics = None
