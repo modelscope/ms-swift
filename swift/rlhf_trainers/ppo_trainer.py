@@ -8,8 +8,8 @@ from transformers import PreTrainedModel
 from transformers import Trainer as HfTrainer
 from trl import PPOTrainer as HFPPOTrainer
 
+from swift.trainers import SwiftMixin
 from swift.utils import patch_getattr
-from ..mixin import SwiftMixin
 
 ppo_trainer_init = HFPPOTrainer.__init__
 del HFPPOTrainer.__init__
@@ -34,6 +34,7 @@ class PPOTrainer(SwiftMixin, HFPPOTrainer):
 
     def __init__(self, model: PreTrainedModel, ref_model: PreTrainedModel, *_args, **kwargs):
         super().__init__(model, *_args, **{k: v for k, v in kwargs.items() if k not in {'reward_model', 'value_model'}})
+        kwargs['data_collator'] = self.data_collator
         with self._patch_dataloader(kwargs['data_collator']):
             new_kwargs = {
                 k: v
