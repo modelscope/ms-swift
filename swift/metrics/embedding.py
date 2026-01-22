@@ -14,9 +14,8 @@ from .utils import Metric
 
 class EmbedddingMetricMixin(Metric):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        Metric.__init__(self)
+    def __init__(self):
+        super().__init__()
         self.add_state('last_hidden_state', default_factory=list)
         self.add_state('labels', default_factory=list)
 
@@ -31,6 +30,10 @@ class EmbedddingMetricMixin(Metric):
 
 
 class PairedMetrics(EvalMetrics, EmbedddingMetricMixin):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        EmbedddingMetricMixin.__init__(self)
 
     def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         predictions = eval_prediction.predictions
@@ -72,6 +75,10 @@ class PairedMetrics(EvalMetrics, EmbedddingMetricMixin):
 
 
 class InfonceMetrics(EvalMetrics, EmbedddingMetricMixin):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        EmbedddingMetricMixin.__init__(self)
 
     def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         predictions = eval_prediction.predictions

@@ -5,6 +5,7 @@ import torch.nn
 from megatron.training import get_args, get_timers
 
 from swift.loss import loss_map
+from swift.metrics import eval_metrics_map
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
 
@@ -24,6 +25,7 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
         self.eval_metrics = eval_metrics_map[eval_metric](args, self)
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
+        training = self.unwrapped_models[0].training
         last_hidden_state = self.get_last_tokens(output_tensor, packed_seq_params)
         if not training:
             self.eval_metrics.update(last_hidden_state.detach(), labels)

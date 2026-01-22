@@ -127,7 +127,7 @@ class InfonceLoss(BaseLoss):
         infonce_include_dd = strtobool(os.environ.get('INFONCE_INCLUDE_DD', 'False'))
         if hard_negatives is not None:
             hard_negatives = int(hard_negatives)
-        if is_megatron:
+        if self.is_megatron:
             from megatron.core import mpu
             rank, world_size = mpu.get_data_parallel_rank(), mpu.get_data_parallel_world_size()
         else:
@@ -140,7 +140,7 @@ class InfonceLoss(BaseLoss):
                 all_sentences = sequence_parallel._gather_object_dp(sentences.unsqueeze(0))
                 labels = sequence_parallel._gather_object_dp(labels)
                 rank = sequence_parallel.dp_rank
-            elif is_megatron:
+            elif self.is_megatron:
                 from megatron.core import mpu
                 dp_group = mpu.get_data_parallel_group()
                 shapes = [sentences.new_empty((2, ), dtype=torch.long) for _ in range(world_size)]
