@@ -23,7 +23,6 @@ import numpy as np
 import torch
 import torch.distributed as dist
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
-from transformers.trainer import PREFIX_CHECKPOINT_DIR, TRAINER_STATE_NAME
 from transformers.utils import strtobool
 
 from .env import is_dist, is_master

@@ -63,10 +63,9 @@ except (ImportError, RuntimeError):
 
 logger = get_logger()
 
-FLASH_CKPT_WAIT_TIMEOUT = 1800
-
 
 class SwiftMixin:
+    FLASH_CKPT_WAIT_TIMEOUT = 1800
 
     def __init__(self,
                  model: PreTrainedModel,
@@ -517,6 +516,8 @@ class SwiftMixin:
 
     def get_resume_checkpoint_until_find_ucp(self):
         resume_dir = get_resume_dir(self.args.output_dir)
+        if resume_dir is None:
+            return None
         tracer_file = os.path.join(resume_dir, 'ucp.txt')
         if not os.path.exists(tracer_file):
             step = 0
@@ -528,7 +529,7 @@ class SwiftMixin:
         ckpt_dir = os.path.join(resume_dir, checkpoint_folder)
         return ckpt_dir
 
-    def wait_latest_checkpoint(self, timeout=FLASH_CKPT_WAIT_TIMEOUT, max_steps=None):
+    def wait_latest_checkpoint(self, timeout=None, max_steps=None):
         """
         Wait for the latest checkpoint.
         Args:

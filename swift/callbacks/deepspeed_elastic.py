@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 import torch.distributed as dist
 from transformers import TrainerControl, TrainerState, TrainingArguments
