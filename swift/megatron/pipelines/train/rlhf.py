@@ -25,9 +25,10 @@ class MegatronRLHF(MegatronSft):
             'rm': 'MegatronRewardTrainer'
         }
         module = importlib.import_module('swift.megatron.trainers')
-        trainer_cls = getattr(module, trainer_mapping.get(args.rlhf_type), None)
-        if trainer_cls is None:
+        trainer_cls_name = trainer_mapping.get(args.rlhf_type)
+        if trainer_cls_name is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
+        trainer_cls = getattr(module, trainer_cls_name)
         kwargs = {}
         if args.rlhf_type in ('grpo', 'gkd'):
             kwargs['vllm_client'] = self._prepare_vllm_client()
