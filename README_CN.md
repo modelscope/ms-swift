@@ -306,9 +306,9 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | [CPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅ | ✅            | ✅ | ✅ | ✅ | ✅                                                                                            |
 | [SimPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ | ✅          | ✅ | ✅| ✅ | ✅                                                                                            |
 | [ORPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ | ✅           | ✅ | ✅ | ✅ | ✅                                                                                            |
-| [序列分类](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [Embedding](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅  |
 | [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/train/reranker) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [序列分类](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 
 预训练：
@@ -360,6 +360,7 @@ ms-swift支持使用Megatron并行技术加速训练，包括大规模集群训�
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [Embedding](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/embedding) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [序列分类](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls) | ✅ | ✅| ✅ | ✅ | ✅ |
 
 

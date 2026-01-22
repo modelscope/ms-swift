@@ -315,7 +315,7 @@ class ModelLoader(BaseModelLoader):
         lm_head_model = get_lm_head_model(model, self.model_meta).lm_head
 
         def lm_head_forward(module, hidden_states):
-            return get_generative_reranker_logits(module, tokenizer, hidden_states)
+            return get_generative_reranker_logits(module.weight, tokenizer, hidden_states)
 
         patch_module_forward(lm_head_model, lm_head_forward)
 
@@ -606,7 +606,7 @@ def get_processor(
     download_model: Optional[bool] = None,
     # model kwargs
     model_type: Optional[str] = None,
-    task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker'] = None,
     num_labels: Optional[int] = None,
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     **kwargs,

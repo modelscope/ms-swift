@@ -23,8 +23,7 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import (Processor, ProcessorMixin, get_env_args, get_generative_reranker_logits, get_logger,
-                         remove_response, retry_decorator, to_device)
+from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
@@ -1547,6 +1546,8 @@ class Template(ProcessorMixin):
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
+        if 'num_samples' in res:
+            num_samples = res.pop('num_samples')
         if self.use_megatron:
             res['num_samples'] = num_samples
         return res
@@ -1651,7 +1652,9 @@ class Template(ProcessorMixin):
                 for prefix in indexes:
                     new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', []))
+        num_samples = len(new_batch)
         res = self._data_collator(new_batch, padding_to=padding_to)
+        res['num_samples'] = num_samples
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
@@ -1682,8 +1685,9 @@ class Template(ProcessorMixin):
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
                         })
                         labels_list.append(0)
-
+            num_samples = len(new_batch)
             res = self._data_collator(new_batch, padding_to=padding_to)
+            res['num_samples'] = num_samples
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         else:
