@@ -20,7 +20,6 @@
         "auto_wrap_policy": "TRANSFORMER_BASED_WRAP",
         "cpu_ram_efficient_loading": true,
         "state_dict_type": "SHARDED_STATE_DICT",
-        "activation_checkpointing": false,
-        "activation_cpu_offload": true
+        "activation_checkpointing": true
     }
 }
