@@ -11,6 +11,7 @@ def test_embedding():
             task_type='embedding',
             dataset=['sentence-transformers/stsb:positive'],
             split_dataset_ratio=0.01,
+            micro_batch_size=4,
             tensor_model_parallel_size=2,
             tuner_type='lora',
             max_epochs=1,
@@ -54,5 +55,5 @@ def test_reranker():
 
 
 if __name__ == '__main__':
-    # test_embedding()
-    test_reranker()
+    test_embedding()
+    # test_reranker()

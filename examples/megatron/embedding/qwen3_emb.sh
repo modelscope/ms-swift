@@ -1,0 +1,37 @@
+# 2 * 80GiB
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+NPROC_PER_NODE=2 \
+INFONCE_TEMPERATURE=0.1 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron sft \
+    --model Qwen/Qwen3-Embedding-4B \
+    --task_type embedding \
+    --load_safetensors true \
+    --save_safetensors true \
+    --tuner_type lora \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --target_modules all-linear \
+    --dataset sentence-transformers/stsb:positive \
+    --load_from_cache_file true \
+    --split_dataset_ratio 0.02 \
+    --tensor_model_parallel_size 2 \
+    --sequence_parallel true \
+    --micro_batch_size 16 \
+    --global_batch_size 16 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune true \
+    --cross_entropy_loss_fusion true \
+    --lr 5e-6 \
+    --lr_warmup_fraction 0.05 \
+    --min_lr 1e-5 \
+    --max_epochs 1 \
+    --save megatron_output/Qwen2.5-7B-Instruct \
+    --save_interval 100 \
+    --max_length 2048 \
+    --num_workers 4 \
+    --no_save_optim true \
+    --no_save_rng true \
+    --dataset_num_proc 4
