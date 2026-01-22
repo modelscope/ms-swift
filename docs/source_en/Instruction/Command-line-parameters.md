@@ -239,6 +239,7 @@ Other important parameters:
 - 🔥eval_strategy: Evaluation strategy. Default is `None`, following `save_strategy`.
   - If neither `val_dataset` nor `eval_dataset` is used and `split_dataset_ratio=0`, defaults to `'no'`.
 - 🔥eval_steps: Default is `None`. If evaluation dataset exists, follows `save_steps`.
+- eval_on_start: Whether to perform an evaluation step before training to ensure the validation steps work correctly. Defaults to False.
 - 🔥save_total_limit: Maximum number of checkpoints to keep. Older checkpoints are deleted. Default is `None` (keep all).
 - max_steps: Maximum number of training steps. Must be set when using streaming datasets. Default is -1.
 - 🔥warmup_ratio: Default is 0.

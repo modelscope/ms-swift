@@ -282,11 +282,11 @@ def to_device(data: Any, device: Union[str, torch.device, int], non_blocking: bo
         return data
 
 
-def get_generative_reranker_logits(module, tokenizer, hidden_states):
+def get_generative_reranker_logits(lm_head_weight, tokenizer, hidden_states):
     positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
     negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
     positive_token_id = tokenizer.convert_tokens_to_ids(positive_token)
     negative_token_id = tokenizer.convert_tokens_to_ids(negative_token)
-    weight = module.weight[[positive_token_id, negative_token_id]]
+    weight = lm_head_weight[[positive_token_id, negative_token_id]]
     logits = F.linear(hidden_states, weight)
     return logits[..., 0:1] - logits[..., 1:2]

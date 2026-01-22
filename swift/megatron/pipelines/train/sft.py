@@ -8,7 +8,7 @@ import torch
 from transformers.utils import is_torch_npu_available
 
 from swift.megatron.arguments import MegatronSftArguments
-from swift.megatron.trainers import MegatronTrainer
+from swift.megatron.trainers import MegatronEmbeddingTrainer, MegatronTrainer
 from swift.megatron.utils import get_padding_to
 from swift.pipelines import SwiftSft
 from swift.template import TEMPLATE_MAPPING
@@ -29,7 +29,11 @@ class MegatronSft(SwiftSft):
     args: args_class
 
     def prepare_trainer(self):
-        return MegatronTrainer(self.args, self.template)
+        args = self.args
+        if args.task_type == 'embedding':
+            return MegatronEmbeddingTrainer(self.args, self.template)
+        else:
+            return MegatronTrainer(self.args, self.template)
 
     def __init__(self, args: Optional[Union[List[str], MegatronSftArguments]] = None) -> None:
         self.train_msg = {}

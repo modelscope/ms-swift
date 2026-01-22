@@ -4,12 +4,15 @@ from enum import Enum
 
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from accelerate.utils import gather_object
 from torch import nn
 from torch.nn import MSELoss
 from transformers.utils import strtobool
 
+from swift.sequence_parallel import sequence_parallel
+from swift.utils import get_dist_setting
 from .base import BaseLoss
 
 
@@ -124,18 +127,34 @@ class InfonceLoss(BaseLoss):
         infonce_include_dd = strtobool(os.environ.get('INFONCE_INCLUDE_DD', 'False'))
         if hard_negatives is not None:
             hard_negatives = int(hard_negatives)
-        from swift.utils import get_dist_setting
-        rank, _, world_size, _ = get_dist_setting()
+        if self.is_megatron:
+            from megatron.core import mpu
+            rank, world_size = mpu.get_data_parallel_rank(), mpu.get_data_parallel_world_size()
+        else:
+            rank, _, world_size, _ = get_dist_setting()
         # repeat of anchor(1)+positive(1)+negatives(n)
         sentences = outputs['last_hidden_state']
 
         if world_size > 1 and use_batch:
-            from swift.sequence_parallel import sequence_parallel
-
             if getattr(sequence_parallel, 'dp_group', None) is not None:
                 all_sentences = sequence_parallel._gather_object_dp(sentences.unsqueeze(0))
                 labels = sequence_parallel._gather_object_dp(labels)
                 rank = sequence_parallel.dp_rank
+            elif self.is_megatron:
+                from megatron.core import mpu
+                dp_group = mpu.get_data_parallel_group()
+                shapes = [sentences.new_empty((2, ), dtype=torch.long) for _ in range(world_size)]
+                dist.all_gather(
+                    shapes,
+                    sentences.new_tensor(sentences.shape, dtype=torch.long),
+                    group=dp_group,
+                )
+                all_sentences = [sentences.new_empty(shape.tolist()) for shape in shapes]
+                dist.all_gather(
+                    all_sentences,
+                    sentences,
+                    group=dp_group,
+                )
             else:
                 # gather all the sentences and labels across the gpus when calculate loss across all batches of all gpus
                 all_sentences = gather_object(sentences.unsqueeze(0))
