@@ -23,7 +23,7 @@ swift sft \
     --output_dir output \
     --lazy_tokenize true \
     --warmup_ratio 0.05 \
-    --learning_rate 5e-6 \
+    --learning_rate 5e-5 \
     --deepspeed zero3 \
     --dataloader_num_workers 4 \
     --task_type embedding \
