@@ -1,4 +1,4 @@
-# 2 * 70GiB
+# 2 * 80GiB
 # For inference code, refer to: examples/infer/demo_embedding.py
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
@@ -25,7 +25,7 @@ megatron sft \
     --lr 5e-6 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-7 \
-    --max_epochs 5 \
+    --max_epochs 1 \
     --save megatron_output/Qwen3-VL-Embedding-8B \
     --save_interval 200 \
     --eval_interval 100 \

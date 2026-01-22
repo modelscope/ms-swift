@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+import math
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Any, Dict, Literal, Optional, Tuple
@@ -73,6 +74,7 @@ class GPTModel(McoreGPTModel):
         mtp_block_spec: Optional[ModuleSpec] = None,
         vp_stage: Optional[int] = None,
     ):
+        vocab_size = math.ceil(vocab_size / config.tensor_model_parallel_size) * config.tensor_model_parallel_size
         if config.multi_latent_attention and config.rope_type == 'yarn':
             config.rope_type = 'rope'  # use transformers implementation
             if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':

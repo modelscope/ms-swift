@@ -26,7 +26,7 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-7 \
     --max_epochs 5 \
-    --save megatron_output/Qwen3-Embedding-4B \
+    --save megatron_output/Qwen3-Embedding-8B \
     --save_interval 200 \
     --eval_interval 100 \
     --max_length 8192 \
