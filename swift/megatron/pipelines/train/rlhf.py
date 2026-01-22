@@ -25,7 +25,7 @@ class MegatronRLHF(MegatronSft):
             'kto': 'MegatronKTOTrainer',
             'rm': 'MegatronRewardTrainer'
         }
-        trainer_cls = getattr(module, trainer_mapping.get(args.rlhf_type))
+        trainer_cls = getattr(module, trainer_mapping.get(args.rlhf_type), None)
         if trainer_cls is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
         kwargs = {}
