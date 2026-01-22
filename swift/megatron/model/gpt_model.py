@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
+import math
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Any, Dict, Literal, Optional, Tuple
@@ -15,9 +15,7 @@ from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.tensor_parallel.mappings import (gather_from_sequence_parallel_region,
-                                                    gather_from_tensor_model_parallel_region,
-                                                    reduce_from_tensor_model_parallel_region)
+from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
 from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler, MTPLossLoggingHelper, roll_tensor
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -73,7 +71,7 @@ class GPTModel(McoreGPTModel):
         mtp_block_spec: Optional[ModuleSpec] = None,
         vp_stage: Optional[int] = None,
     ):
-        vocab_size = math.ceil(vocab_size / args.tensor_model_parallel_size) * args.tensor_model_parallel_size
+        vocab_size = math.ceil(vocab_size / config.tensor_model_parallel_size) * config.tensor_model_parallel_size
         if config.multi_latent_attention and config.rope_type == 'yarn':
             config.rope_type = 'rope'  # use transformers implementation
             if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
