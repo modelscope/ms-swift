@@ -707,6 +707,15 @@ def test_glm4_moe_lite():
     assert swift_response == jinja_response
 
 
+def test_olmoe():
+    engine = TransformersEngine('allenai/OLMoE-1B-7B-0924-Instruct')
+    # engine = TransformerEngine('allenai/OLMoE-1B-7B-0125-Instruct')
+    swift_response = _infer_model(engine)
+    engine.template.template_backend = 'jinja'
+    jinja_response = _infer_model(engine)
+    assert swift_response == jinja_response
+
+
 if __name__ == '__main__':
     from swift.infer_engine import TransformersEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -762,4 +771,5 @@ if __name__ == '__main__':
     # test_minimind()
     # test_medgemma3()
     # test_youtu_llm()
-    test_glm4_moe_lite()
+    # test_glm4_moe_lite()
+    test_olmoe()

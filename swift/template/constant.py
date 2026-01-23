@@ -115,6 +115,8 @@ class LLMTemplateType:
     minimind = 'minimind'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
+    olmoe = 'olmoe'
+    olmoe_0924 = 'olmoe_0924'
 
 
 class RMTemplateType:
