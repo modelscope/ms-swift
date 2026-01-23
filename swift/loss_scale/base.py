@@ -107,9 +107,8 @@ class LossScale:
                     context = context['token_ids']
                 is_assistant = context_type in {ContextType.RESPONSE, ContextType.SUFFIX}
                 if loss or loss is None and (self.base_strategy == 'all' or
-                                                     (self.base_strategy == 'default' and is_assistant) or
-                                                     (self.base_strategy == 'last_round' and is_assistant
-                                                      and is_last_round)):
+                                             (self.base_strategy == 'default' and is_assistant) or
+                                             (self.base_strategy == 'last_round' and is_assistant and is_last_round)):
                     new_context, loss_scale = self.get_loss_scale(context, query=query)
                 else:
                     new_context, loss_scale = [context], [0.]
