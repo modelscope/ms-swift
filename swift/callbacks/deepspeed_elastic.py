@@ -34,7 +34,7 @@ class DeepspeedElasticCallback(TrainerCallback):
                     'version': 0.1
                 }
                 world_size = dist.get_world_size() if dist.is_available() and dist.is_initialized() else 1
-                final_batch_size, valid_gpus, micro_batch_size = compute_elastic_config(
+                final_batch_size, _, micro_batch_size = compute_elastic_config(
                     ds_config=args.deepspeed,
                     target_deepspeed_version=__version__,
                     world_size=world_size,

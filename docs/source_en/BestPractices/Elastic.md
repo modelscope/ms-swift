@@ -158,7 +158,7 @@ If users need custom configurations, they can specify the path to the custom zer
 Calculation principle：
  global-training-batch-size = micro-batch-size * gradient-accumulation-steps * world-size
 - max_train_batch_size： Maximum batch size
-- micro_batch_sizes：Equivalent to train_micro_batch_size_per_gpu.
+- micro_batch_sizes：List of allowed per-GPU micro-batch sizes under elasticity; candidates for train_micro_batch_size_per_gpu.
 - min_gpus：Minimum number of GPUs.
 - max_gpus：Maximum number of GPUs.
 For more details, see: [Deepspeed](https://www.deepspeed.ai/docs/config-json/#elastic-training-config-v01-and-v02)

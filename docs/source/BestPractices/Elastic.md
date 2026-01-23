@@ -155,7 +155,7 @@ dlrover-run --nnodes 1:$NODE_NUM --nproc_per_node=1  \
 计算原则为：
  global-training-batch-size = micro-batch-size * gradient-accumulation-steps * world-size
 - max_train_batch_size：最大batch_size数
-- micro_batch_sizes：即train_micro_batch_size_per_gpu
+- micro_batch_sizes：elasticity下允许的每卡micro-batch size列表，相当于train_micro_batch_size_per_gpu的候选值
 - min_gpus：最小gpu数目
 - max_gpus：最大gpu数目
 更详细的内容见：[Deepspeed](https://www.deepspeed.ai/docs/config-json/#elastic-training-config-v01-and-v02)
