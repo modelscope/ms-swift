@@ -7,7 +7,7 @@ from swift.utils import ShutdownManager, get_device
 from .base import TrainerCallback
 
 
-class DeepspeedElasticCallBack(TrainerCallback):
+class DeepspeedElasticCallback(TrainerCallback):
 
     def __init__(self, args=None, trainer=None):
         if args is not None and trainer is not None:
