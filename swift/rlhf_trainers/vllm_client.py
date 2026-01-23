@@ -190,14 +190,6 @@ class VLLMClient:
 
             world_size = vllm_world_size + 1
             rank = vllm_world_size
-            kwargs = {}
-            if trl_verison >= version.parse('0.20.0'):
-                try:
-                    client_device_uuid = str(torch.cuda.get_device_properties(device).uuid)
-                except Exception:
-                    client_device_uuid = '42'
-                kwargs['client_device_uuid'] = client_device_uuid
-
             # Use '::' for IPv6 hosts, '0.0.0.0' for IPv4 hosts
             bind_host = '::' if is_valid_ipv6_address(self.hosts[i]) else '0.0.0.0'
             response = self.sessions[i].post(
@@ -206,7 +198,6 @@ class VLLMClient:
                     'host': bind_host,
                     'port': self.group_ports[i],
                     'world_size': world_size,
-                    **kwargs
                 })
             if response.status_code != 200:
                 raise Exception(f'Server {i} init failed: {response.text}')

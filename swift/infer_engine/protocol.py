@@ -572,7 +572,6 @@ class InitCommunicatorRequest(BaseModel):
     host: str
     port: int
     world_size: int
-    client_device_uuid: Optional[str] = None
 
 
 class UpdateWeightsRequest(BaseModel):

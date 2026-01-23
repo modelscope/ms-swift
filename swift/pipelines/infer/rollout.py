@@ -33,7 +33,6 @@ import torch.distributed.distributed_c10d as c10d
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
-from transformers import is_torch_xpu_available
 
 from swift.arguments import RolloutArguments
 from swift.infer_engine import GRPOVllmEngine, InferClient
@@ -90,7 +89,7 @@ class WeightSyncWorkerExtension():
     communicator = None  # Communicator for weight updates
     client_rank = None  # Source rank for broadcasting updated weights
 
-    def init_communicator(self, host: str, port: int, world_size: int, client_device_uuid: str) -> None:
+    def init_communicator(self, host: str, port: int, world_size: int) -> None:
         """
         Initializes the weight update communicator using a stateless process group.
 
@@ -104,50 +103,26 @@ class WeightSyncWorkerExtension():
                 Port number to be used for communication.
             world_size (`int`):
                 Total number of participating processes in the update group.
-            client_device_uuid (`str`):
-                UUID of the device of client main process. Used to assert that devices are different from vllm workers
-                devices.
         """
         if self.communicator is not None:
             raise RuntimeError('Weight update group already initialized. Call close_communicator first.')
 
-        # TODO: will remove after torch xpu 2.9 support uuid in get_device_properties
-        if torch.cuda.is_available() or (is_torch_xpu_available()
-                                         and hasattr(torch.xpu.get_device_properties(self.device), 'uuid')):
-            accelerator_module = torch.xpu if is_torch_xpu_available() else torch.cuda
-            if client_device_uuid == str(accelerator_module.get_device_properties(self.device).uuid):
-                raise RuntimeError(
-                    f'Attempting to use the same CUDA device (UUID: {client_device_uuid}) for multiple distinct '
-                    'roles/ranks within the same communicator. This setup is unsupported and will likely lead to program '  # noqa
-                    'hangs or incorrect behavior. Ensure that trainer is using different devices than vLLM server.')
         # Get the rank of the current worker in the global world group.
         rank = get_world_group().rank
 
-        if is_torch_xpu_available():
-            store = torch.distributed.TCPStore(host_name=host, port=port, world_size=world_size, is_master=(rank == 0))
-            prefixed_store = c10d.PrefixStore('client2server', store)
-            xccl_options = c10d.ProcessGroupXCCL.Options()
-            pg = c10d.ProcessGroupXCCL(
-                store=prefixed_store,
-                rank=rank,
-                size=world_size,
-                options=xccl_options,
-            )
-            self.communicator = pg
+        # Create a stateless process group to manage communication between training processes and vLLM workers.
+        # Initialize the NCCL-based communicator for weight synchronization.
+        pg = StatelessProcessGroup.create(host=host, port=port, rank=rank, world_size=world_size)
+
+        if is_vllm_ascend_available():
+            # https://github.com/modelscope/ms-swift/issues/5920
+            device = get_world_group().local_rank
+            import torch_npu
+            torch_npu.npu.set_device(device)
         else:
-            # Create a stateless process group to manage communication between training processes and vLLM workers.
-            # Initialize the NCCL-based communicator for weight synchronization.
-            pg = StatelessProcessGroup.create(host=host, port=port, rank=rank, world_size=world_size)
+            device = self.device
 
-            if is_vllm_ascend_available():
-                # https://github.com/modelscope/ms-swift/issues/5920
-                device = get_world_group().local_rank
-                import torch_npu
-                torch_npu.npu.set_device(device)
-            else:
-                device = self.device
-
-            self.communicator = PyNcclCommunicator(pg, device=device)
+        self.communicator = PyNcclCommunicator(pg, device=device)
 
         # The client process that sends updated weights has the highest rank (world_size - 1).
         self.client_rank = world_size - 1
@@ -519,12 +494,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # The function init_communicator is called this way: init_communicator(host, port, world_size)
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
-        kwargs = {
-            'method':
-            'init_communicator',
-            'args': (request.host, request.port, world_size, *(() if request.client_device_uuid is None else
-                                                               (request.client_device_uuid, )))
-        }
+        kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
