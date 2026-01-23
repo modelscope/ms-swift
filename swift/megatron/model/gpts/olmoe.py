@@ -8,7 +8,6 @@ from megatron.core.extensions.transformer_engine import SplitAlongDim, TENorm
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.transformer.attention import SelfAttention as SelfAttentionBase
 from megatron.core.transformer.attention import SelfAttentionSubmodules
-from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -98,6 +97,7 @@ def get_olmoe_decoder_block_spec(
     num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
 
     if config.pipeline_model_parallel_layout is not None:
+        from megatron.core.transformer.enums import LayerType
         local_layer_specs = [
             layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
                 layer_type=LayerType.decoder, vp_stage=vp_stage)
