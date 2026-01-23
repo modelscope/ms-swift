@@ -116,7 +116,6 @@ class LLMModelType:
     bge_reranker = 'bge_reranker'
 
     olmoe = 'olmoe'
-    olmoe_0924 = 'olmoe_0924'
 
 
 class BertModelType:
