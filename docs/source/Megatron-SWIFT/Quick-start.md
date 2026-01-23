@@ -9,9 +9,11 @@ ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数�
 | 预训练 | ✅ | ✅| ✅ | ✅ | ✅ |
 | [指令监督微调](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [GKD](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [Embedding](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/embedding) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [序列分类](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls) | ✅ | ✅| ✅ | ✅ | ✅ |
 
 
@@ -52,9 +54,14 @@ MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 
 或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
+
+# cu129 (fp8 training)
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
 ```
 
 推荐运行环境：
@@ -62,12 +69,12 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 |--------------|--------------|-------------|--------------------|
 | python       | >=3.9        | 3.10/3.11        |                    |
 | cuda         |              | cuda12      |                    |
-| torch        | >=2.0        | 2.7.1/2.8.0       |                    |
+| torch        | >=2.0        | 2.8.0       |                    |
 | transformer_engine    | >=2.3       |   2.10.0    |                  |
 | apex |   |  0.1 | |
 | megatron_core    |   >=0.12,<0.16    | 0.15      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.3      |                    |
+| transformers | >=4.33       | 4.57.6      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.25 |       |      RLHF        |
@@ -224,6 +231,7 @@ swift infer \
   - TP/EP通信量较大，尽量不跨节点（NVLink域内），跨节点建议使用PP/DP；专家层建议使用EP而不是ETP，ETP更节约显存，但速度较慢。
   - MoE 并行折叠：MoE 相关的并行组与 Dense 组分离。Attention使用 tp-cp-dp-pp 组，MoE 使用 etp-ep-dp-pp 组。
 - 权重转换并行数的选择：Megatron-SWIFT在mcore端使用torch_dist存储格式，训练时可以调整并行数，不需要在权重转化时指定并行数。
+- 关于日志打印：Megatron-SWIFT的日志在last rank进行打印，因为在PP并行中，只有last pp_rank拥有完整的信息。
 
 ## Benchmark
 

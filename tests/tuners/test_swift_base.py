@@ -14,7 +14,7 @@ from peft import PeftModel
 from peft.utils import SAFETENSORS_WEIGHTS_NAME
 from torch import nn
 
-from swift import AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig, SideConfig, Swift, SwiftModel
+from swift.tuners import AdapterConfig, LoRAConfig, PromptConfig, ResTuningConfig, SideConfig, Swift, SwiftModel
 from swift.tuners.part import PartConfig
 
 

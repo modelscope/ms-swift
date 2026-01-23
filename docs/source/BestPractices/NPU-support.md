@@ -22,15 +22,23 @@
 ## 环境准备
 
 实验环境：8 * 昇腾910B3 64G
-
+### 环境安装
 ```shell
 # 创建新的 conda 虚拟环境（可选）
 conda create -n swift-npu python=3.10 -y
 conda activate swift-npu
 
+# 注意进行后续操作前要先 source 激活 CANN 环境
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+
 # 设置 pip 全局镜像（可选，加速下载）
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip install ms-swift -U
+
+# 使用源码安装
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
 
 # 安装 torch-npu
 pip install torch-npu decorator
@@ -43,8 +51,20 @@ pip install evalscope[opencompass]
 # 如果需要使用 vllm-ascend 进行推理，请安装以下包
 pip install vllm==0.11.0
 pip install vllm-ascend==0.11.0rc3
+```
 
-# 如果需要使用 MindSpeed(Megatron-LM)，请按照下面引导安装必要依赖
+测试环境是否安装正确，NPU能否被正常加载：
+```python
+from transformers.utils import is_torch_npu_available
+import torch
+
+print(is_torch_npu_available())  # True
+print(torch.npu.device_count())  # 8
+print(torch.randn(10, device='npu:0'))
+```
+
+**如果需要使用 MindSpeed(Megatron-LM)，请按照下面引导安装必要依赖**
+```shell
 # 1. 获取并切换 Megatron-LM 至 core_v0.12.1 版本
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
@@ -63,16 +83,12 @@ export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 ```
 
-测试环境是否安装正确，NPU能否被正常加载：
-
-```python
-from transformers.utils import is_torch_npu_available
-import torch
-
-print(is_torch_npu_available())  # True
-print(torch.npu.device_count())  # 8
-print(torch.randn(10, device='npu:0'))
+执行如下命令验证 MindSpeed(Megatron-LM) 是否配置成功：
+```shell
+python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ NPU环境下的Megatron-SWIFT配置验证成功！')"
 ```
+
+### 环境查看
 
 查看NPU的P2P连接，这里看到每个NPU都通过7条HCCS与其他NPU互联
 
@@ -137,7 +153,7 @@ Legend:
 
 ## 微调
 
-以下介绍LoRA的微调, 全参数微调设置参数`--train_type full`即可. **更多训练脚本**参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
+以下介绍LoRA的微调, 全参数微调设置参数`--tuner_type full`即可. **更多训练脚本**参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | 模型大小 | NPU数量 | deepspeed类型 | 最大显存占用量 |
 | -------- | ------- | ------------- | -------------- |
@@ -165,7 +181,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
@@ -190,7 +206,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -211,7 +227,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero2 \
     ...
@@ -230,7 +246,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero3 \
     ...
@@ -265,7 +281,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 
 ## 部署
 
-### 使用原生pytorch进行部署
+### 使用原生transformers进行部署
 
 原始模型:
 
@@ -320,6 +336,30 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 ```
 
 ## 支持现状
+| 一级特性 | 特性                | 进展     |
+| -------- | ------------------- | -------- |
+| 训练范式 | CPT                 | 已支持   |
+|          | SFT                 | 已支持   |
+|          | DPO                 | 已支持   |
+|          | RM                  | 已支持   |
+| 分布式   | DDP                 | 已支持   |
+|          | FSDP                | 已支持   |
+|          | FSDP2               | 已支持   |
+|          | DeepSpeed           | 已支持   |
+|          | MindSpeed(Megatron) | 已支持   |
+| 低参微调 | FULL                | 已支持   |
+|          | LoRA                | 已支持   |
+|          | QLoRA               | 暂不支持 |
+| RLHF     | GRPO                | 已支持   |
+|          | PPO                 | 已支持   |
+| 性能优化 | FA 等融合算子       | 已支持   |
+|          | Liger-Kernel        | 暂不支持 |
+| 部署     | PT                  | 已支持   |
+|          | vLLM                | 已支持   |
+|          | SGLang              | 暂不支持 |
+
+------
+
 
 ### 表 1：SFT 类算法
 
@@ -355,11 +395,12 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 
 ### 表 3：当前 NPU 暂不支持 / 未完全验证的模块
 
-| item                   |
-| ---------------------- |
-| Liger-kernel           |
-| 量化/QLoRA相关         |
-| 使用sglang作为推理引擎 |
+| item                              |
+| --------------------------------- |
+| Liger-kernel                      |
+| 量化/QLoRA相关                    |
+| 使用sglang作为推理引擎            |
+| 使用megatron时开启ETP进行lora训练 |
 
 
 ## NPU微信群

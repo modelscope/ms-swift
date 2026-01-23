@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 # Part of the implementation is borrowed from dvlab-research/LongLoRA.
 import re
 from dataclasses import dataclass, field
@@ -6,9 +6,9 @@ from typing import List, Tuple, Union
 
 import torch.nn as nn
 
-from swift.tuners.lora import lora_state_dict, mark_lora_as_trainable
-from swift.tuners.lora_layers import LoraModel
-from .. import LoRA, LoRAConfig, SwiftOutput
+from ..lora import LoRA, LoRAConfig, lora_state_dict, mark_lora_as_trainable
+from ..lora_layers import LoraModel
+from ..utils import SwiftOutput
 
 
 class LongLoRAModelType:

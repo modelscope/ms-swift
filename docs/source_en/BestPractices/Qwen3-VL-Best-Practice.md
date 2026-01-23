@@ -5,7 +5,7 @@ Before starting inference and training, please ensure your environment is proper
 ```shell
 pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 
-pip install "ms-swift>=3.9.1"
+pip install "ms-swift>=4.0"
 # pip install "vllm>=0.11.0"  # If using the vLLM inference backend for inference
 ```
 - About slow training: When using PyTorch 2.9, you may encounter slow training issues with the conv3d operator. Please try using PyTorch 2.8 as a workaround. For more information, refer to [this issue](https://github.com/pytorch/pytorch/issues/166122). In ms-swift>=3.11.2, you can work around this issue by setting `SWIFT_PATCH_CONV3D=1`. For more details, see [this issue](https://github.com/modelscope/ms-swift/issues/7108).
@@ -69,7 +69,7 @@ print(output_text[0])
 # 'A baby wearing glasses sits on a bed, engrossed in reading a book. The baby turns the pages with both hands, occasionally looking up and smiling. The room is cozy, with a crib in the background and clothes scattered around. The baby's focus and curiosity are evident as they explore the book, creating a heartwarming scene of early learning and discovery.'
 ```
 
-Inference using ms-swift's PtEngine:
+Inference using ms-swift's TransformersEngine:
 
 ```python
 import os
@@ -79,8 +79,8 @@ os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
 os.environ['FPS_MAX_FRAMES'] = '16'
 
 
-from swift.llm import PtEngine, InferRequest, RequestConfig
-engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct', attn_impl='flash_attention_2')
+from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
+engine = TransformersEngine('Qwen/Qwen3-VL-4B-Instruct')  # attn_impl='flash_attention_2'
 infer_request = InferRequest(messages=[{
     "role": "user",
     "content": '<video>Describe this video.',
@@ -192,7 +192,7 @@ swift sft \
               'swift/VideoChatGPT:Generic#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

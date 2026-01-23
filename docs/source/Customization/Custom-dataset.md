@@ -2,8 +2,8 @@
 
 自定义数据集的接入方法有三种，对预处理函数的控制能力逐渐加强，但接入难度逐步增加。例如，方案一最为方便，但对预处理函数的控制能力最弱，需要预先对数据集进行转换，传入特定格式的数据集：
 1. 【推荐】直接使用命令行传参的方式接入，即`--dataset <dataset_path1> <dataset_path2>`。这将使用AutoPreprocessor将数据集转换为标准格式（支持4种数据集格式，具体查看下面对AutoPreprocessor的介绍）。你可以使用`--columns`进行列名转换。支持传入csv、json、jsonl、txt、文件夹（例如git clone开源数据集）。该方案不需要修改dataset_info.json，适合刚接触ms-swift的用户，下面两种方案适合对ms-swift进行拓展的开发者。
-2. 添加数据集到`dataset_info.json`中，可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案也将使用AutoPreprocessor将数据集转换为标准格式。dataset_info.json为数据集元信息的list，每一项元信息必填ms_dataset_id/hf_dataset_id/dataset_path中的一项，通过`columns`字段进行列名转换。添加到`dataset_info.json`或者注册的数据集在运行[run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py)时将自动产生[支持的数据集文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。此外，你可以采用外接`dataset_info.json`的方式，使用`--custom_dataset_info xxx.json`解析json文件（方便pip install而非git clone的用户），然后指定`--dataset <dataset_id/dataset_dir/dataset_path>`。
-3. 手动注册数据集，具有最灵活的预处理函数定制能力，支持使用函数对数据集进行预处理，但难度较高。可以参考[内置数据集](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)中的样例。你可以通过指定`--custom_register_path xxx.py`解析外置注册内容（方便pip install而非git clone的用户）。
+2. 添加数据集到`dataset_info.json`中，可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。该方案也将使用AutoPreprocessor将数据集转换为标准格式。dataset_info.json为数据集元信息的list，每一项元信息必填ms_dataset_id/hf_dataset_id/dataset_path中的一项，通过`columns`字段进行列名转换。添加到`dataset_info.json`或者注册的数据集在运行[run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py)时将自动产生[支持的数据集文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)。此外，你可以采用外接`dataset_info.json`的方式，使用`--custom_dataset_info xxx.json`解析json文件（方便pip install而非git clone的用户），然后指定`--dataset <dataset_id/dataset_dir/dataset_path>`。
+3. 手动注册数据集，具有最灵活的预处理函数定制能力，支持使用函数对数据集进行预处理，但难度较高。可以参考[内置数据集](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/dataset/llm.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)中的样例。你可以通过指定`--external_plugins xxx.py`解析外置注册内容（方便pip install而非git clone的用户）。
    - 方案一和二在实现中借助了方案三，只是注册的过程为自动发生。
 
 以下将对`AutoPreprocessor`可以处理的数据集格式进行介绍：
@@ -84,11 +84,12 @@ alpaca格式:
 ```
 
 多模态数据的格式参考[多模态数据集](#多模态), 额外加入如`images`的列表示其他模态输入。当需要为偏好对数据关联不同的图片信息时，可通过`rejected_images`字段标注拒绝回答对应的图片信息。
-对齐数据集中要求`rejected_images`和`rejected_response`至少提供一个
+对齐数据集中要求`rejected_images`和`rejected_response`至少提供一个。
 
 > 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/RLHF.md#rm)
 
 当然，你也可以直接使用`rejected_messages`，而不是只提供`rejected_response`/`rejected_images`（需ms-swift>=3.8），这将提供更大的灵活度（例如多模态/agent场景）。若使用rejected_messages，在多模态场景下，你需要额外传入"rejected_images"，"rejected_audios"，"rejected_videos"等内容；在Agent场景下，你需要额外传入"rejected_tools"等内容。多模态数据格式例子如下：
+- 若使用`rejected_response`，'rejected_images/rejected_audios/rejected_videos/rejected_tools'的默认值为'images/audios/videos/tools'；若使用`rejected_messages`，则需要额外传入。
 
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小狗。"}], "rejected_images": ["cat.png"]}
@@ -99,8 +100,15 @@ alpaca格式:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": "这是一只小狗。"}
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_images": ["dog.png"]}
+# 例子一也可写成：(ms-swift>=3.12)
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": [{"role": "assistant", "content": "这是一只小狗。"}]}
 ```
 
+ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
+```jsonl
+# 会寻找`messages`最后一个user的位置，并替换之后的内容为`rejected_response`组成`rejected_messages`
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"天气预报。获取实时空气质量。当前空气质量，PM2.5，PM10信息\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"城市名，例如：上海\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。"}], "rejected_response": [{"role": "assistant", "content": "我不知道。"}]}
+```
 
 #### KTO
 
@@ -166,7 +174,7 @@ alpaca格式:
 
 ### 多模态
 
-对于多模态数据集，和上述任务的格式相同。区别在于增加了`images`, `videos`, `audios`几个key，分别代表多模态资源的url或者path（推荐使用绝对路径），`<image>` `<video>` `<audio>`标签代表了插入图片/视频/音频的位置，ms-swift支持多图片/视频/音频的情况。这些特殊tokens将在预处理的时候进行替换，参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198)。下面给出的四条示例分别展示了纯文本，以及包含图像、视频和音频数据的数据格式。
+对于多模态数据集，和上述任务的格式相同。区别在于增加了`images`, `videos`, `audios`几个key，分别代表多模态资源的url或者path（推荐使用绝对路径），`<image>` `<video>` `<audio>`标签代表了插入图片/视频/音频的位置，ms-swift支持多图片/视频/音频的情况。这些特殊tokens将在预处理的时候进行替换，参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/template/templates/qwen.py#L198)。下面给出的四条示例分别展示了纯文本，以及包含图像、视频和音频数据的数据格式。
 
 预训练：
 ```
@@ -230,10 +238,10 @@ alpaca格式:
 ```python
 import os
 os.environ["MAX_PIXELS"] = "1003520"
-from swift.llm import get_model_tokenizer, get_template
+from swift import get_processor, get_template
 
-_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
-template = get_template(tokenizer.model_meta.template, tokenizer)
+processor = get_processor('Qwen/Qwen2.5-VL-7B-Instruct')
+template = get_template(processor)
 data = {...}
 template.set_mode('train')
 encoded = template.encode(data, return_template_inputs=True)
@@ -265,7 +273,7 @@ print(f'images: {encoded["template_inputs"].images}')
 
 ## dataset_info.json
 
-可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。该方案使用AutoPreprocessor预处理函数将数据集转换为标准格式。dataset_info.json文件中包含了数据集元信息的list，以下为一些例子：
+可以参考ms-swift内置的[dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。该方案使用AutoPreprocessor预处理函数将数据集转换为标准格式。dataset_info.json文件中包含了数据集元信息的list，以下为一些例子：
 
 ```json
 [
@@ -320,7 +328,7 @@ print(f'images: {encoded["template_inputs"].images}')
 register_dataset会在`DATASET_MAPPING`中注册数据集，调用函数`register_dataset(dataset_meta)`即可完成数据集注册，其中dataset_meta将存储模型的元信息。DatasetMeta的参数列表如下：
 - ms_dataset_id: ModelScope的dataset_id，默认为None。
 - hf_dataset_id: HuggingFace的dataset_id，默认为None。
-- dataset_path: dataset的本地路径（推荐使用绝对路径）。默认为None。
+- dataset_path: 数据集**文件/文件夹**的本地路径（推荐使用绝对路径）。默认为None。
 - dataset_name: 数据集别名，可以通过`--dataset <dataset_name>`指定数据集，这在dataset_path很长时很方便。默认为None。
 - subsets: 子数据集的名字列表或者`SubsetDataset`对象的列表，默认为`['default']`。（只有dataset_id或者dataset_dir（git clone开源数据集）有子数据集和split的概念）。
 - split: 默认为`['train']`。
@@ -331,7 +339,9 @@ register_dataset会在`DATASET_MAPPING`中注册数据集，调用函数`registe
 以下介绍注册数据集的例子：
 
 ```python
-from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from swift.dataset import (
+    ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+)
 from typing import Dict, Any
 
 class CustomPreprocessor(ResponsePreprocessor):

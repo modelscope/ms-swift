@@ -336,7 +336,7 @@ num_processes * per_device_eval_batch_size
 
 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
 
-**5. clip_ratio为什么总是1?**
+**5. clip_ratio为什么总是0?**
 
 Clip机制的核心目的是限制策略更新的幅度，防止因单次更新过大而导致策略性能崩溃（即策略更新后表现急剧下降）。
 Clip操作的具体公式如下：

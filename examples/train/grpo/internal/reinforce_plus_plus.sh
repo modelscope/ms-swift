@@ -18,7 +18,7 @@ swift rlhf \
     --vllm_gpu_memory_utilization 0.8 \
     --vllm_tensor_parallel_size 1 \
     --vllm_max_model_len 16384 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --overlong_filter false \
     --importance_sampling_level sequence \

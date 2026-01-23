@@ -10,7 +10,7 @@ megatron rlhf \
     --save_safetensors true \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
-    --train_type full \
+    --tuner_type full \
     --tensor_model_parallel_size 4 \
     --sequence_parallel true \
     --freeze_llm false \
@@ -38,5 +38,6 @@ megatron rlhf \
     --no_save_rng true \
     --dataset_num_proc 8 \
     --attention_backend flash \
+    --rpo_alpha 0.1 \
     --beta 0.1 \
     --loss_type sigmoid

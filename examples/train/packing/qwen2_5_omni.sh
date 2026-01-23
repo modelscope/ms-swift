@@ -14,7 +14,7 @@ swift sft \
               'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --packing true \

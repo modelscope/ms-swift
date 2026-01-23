@@ -1,7 +1,7 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from collections import namedtuple
 from functools import partial
-from typing import Literal
+from typing import Any, Dict
 
 import torch
 from megatron.core import mpu
@@ -40,17 +40,23 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        assert args.padding_free, 'Currently `rlhf_type="kto"` only supports padding_free.'
         self.dummy_kto_trainer = DummyKTOTrainer(args)
 
     def _kto_get_logps(self, output_tensor, data, is_KL: bool, is_ref: bool, length: int):
         labels = data['labels']
-        packed_seq_params = data['packed_seq_params']
+        packed_seq_params = data.get('packed_seq_params')
+        num_samples = output_tensor.shape[0] if packed_seq_params is None else packed_seq_params.num_samples
         output = self._get_input_tensor(output_tensor, is_KL, is_ref, length, dim=1)
-        return self.get_logps(output, labels, packed_seq_params, packed_seq_params.num_samples)
+        return self.get_logps(output, labels, packed_seq_params, num_samples)
+
+    def _get_kto_length(self, data: Dict[str, Any]) -> int:
+        if 'packed_seq_params' in data:
+            return data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
+        else:
+            return data['position_ids'].shape[-1]
 
     def loss_func(self, output_tensor, *, data, kl_data, label):
-        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
+        length = self._get_kto_length(data)
         policy_logps = self._kto_get_logps(output_tensor, data, False, False, length)
         ref_logps = self._kto_get_logps(output_tensor, data, False, True, length)
         if self.args.calculate_KL:
@@ -121,7 +127,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         data.pop('loss_scale', None)
         kl_data.pop('loss_scale', None)
 
-        length = data['packed_seq_params'].cu_seqlens_q[-1] // self.args.context_parallel_size
+        length = self._get_kto_length(data)
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if self.args.calculate_KL:
@@ -167,20 +173,19 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         res[0]['label'] = data['label']
         return res
 
-    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval']) -> None:
-        super().custom_log(total_loss_dict, mode)
-        res = {}
-        for k, v in total_loss_dict.items():
-            if k.startswith('count/') or k.endswith('_sum'):
-                continue
-            res[k] = v
+    def _get_metrics(self, total_loss_dict, mode):
+        metrics = super()._get_metrics(total_loss_dict, mode)
         for key in ['chosen', 'rejected']:
             count = total_loss_dict.get(f'count/{key}')
             if count is None or count.item() == 0:
                 continue
-            res[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
-            res[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
-        if 'rewards/chosen' in res and 'rewards/rejected' in res:
-            res['rewards/margins'] = res['rewards/chosen'] - res['rewards/rejected']
-        total_loss_dict.clear()
-        total_loss_dict.update(res)
+            metrics[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
+            metrics[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
+        if 'rewards/chosen' in metrics and 'rewards/rejected' in metrics:
+            metrics['rewards/margins'] = metrics['rewards/chosen'] - metrics['rewards/rejected']
+        return metrics
+
+    def _remove_log(self, total_loss_dict) -> None:
+        for k, v in total_loss_dict.copy().items():
+            if k.startswith('count/') or k.endswith('_sum'):
+                total_loss_dict.pop(k)

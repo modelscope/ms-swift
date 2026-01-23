@@ -6,7 +6,7 @@
 - 🔥micro_batch_size: 每个device的批次大小，默认为1。
 - 🔥global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
   - 其中，`数据并行大小 (DP) = 总GPU数 / (TP × PP × CP)`。
-- 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective'。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
+- 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective' and 'none'（其中'none'为 ms-swift>=3.12.3支持）。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
   - 当你设置为'selective'时，你可以通过指定`--recompute_modules`来选择对哪些部分进行重新计算。
 - 🔥recompute_method: 该参数需将recompute_granularity设置为'full'才生效，可选项为'uniform', 'block'。默认为None。
 - 🔥recompute_num_layers: 该参数需将recompute_granularity设置为'full'才生效，默认为None。若`recompute_method`设置为uniform，该参数含义为每个均匀划分的重新计算单元的transformer layers数量。例如你可以指定为`--recompute_granularity full --recompute_method uniform --recompute_num_layers 4`。recompute_num_layers越大，显存占用越小，计算成本越大。注意：当前进程中的模型层数需能被`recompute_num_layers`整除。默认为None。
@@ -139,9 +139,10 @@
 - log_validation_ppl_to_tensorboard: 将验证困惑度写入tensorboard。默认为True。
 - log_memory_to_tensorboard: 将内存日志写入tensorboard。默认为True。
 - logging_level: 日志级别。默认为None。
-- wandb_project: wandb 项目名称。默认为''，即忽略wandb。
-- wandb_exp_name: wandb 实验名称。默认为''。
-- wandb_save_dir: 本地保存 wandb 结果的路径。默认为''。
+- report_to: (ms-swift>=3.12) 启用的日志后端。默认为None。可选项为'wandb'和'swanlab'。（tensorboard会一直启动）。登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
+- wandb_project: wandb/swanlab 项目名称，取决于`report_to`。默认为'megatron-swift'。
+- wandb_exp_name: wandb/swanlab 实验名称。默认为`--save`的值。
+- wandb_save_dir: 本地保存 wandb/swanlab 结果的路径。默认为None，即存储在`f'{args.save}/wandb'`或`f'{args.save}/swanlab'`。
 
 **评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为`-1`，根据验证数据集的数量设置合适的值。**若验证集数量少于global_batch_size，则不进行评估**。若使用流式数据集，该值需要手动设置。
@@ -234,6 +235,7 @@
 - kv_lora_rank: Key 和 Value 张量低秩表示的秩（rank）值。默认为None，自动从config.json读取。
 - qk_head_dim: QK 投影中 head 的维度。 `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`。默认为None，自动从config.json读取。
 - qk_pos_emb_head_dim: QK 投影中位置嵌入的维度。默认为None，自动从config.json读取。
+- v_head_dim: V 投影中的 head 维度。默认为None，自动从config.json读取。
 
 **MTP参数**
 - mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。（需要"megatron-core>=0.14"）
@@ -241,7 +243,7 @@
 - mtp_loss_scaling_factor: 多token预测（MTP）损失的缩放因子。我们计算所有深度上MTP损失的平均值，然后乘以该缩放因子得到总体MTP损失，它将作为一个额外的训练目标。默认为0.1。
 
 **Tuner参数**:
-- train_type: 可选为'lora'和'full'。默认为'full'。
+- tuner_type: 可选为'lora'和'full'。默认为'full'。（**在ms-swift3.x中参数名为`train_type`**）
 - 🔥freeze_llm: 该参数只对多模态模型生效，可用于全参数训练和LoRA训练，但会产生不同的效果。若是全参数训练，将freeze_llm设置为True会将LLM部分权重进行冻结；若是LoRA训练且`target_modules`设置为'all-linear'，将freeze_llm设置为True将会取消在LLM部分添加LoRA模块。该参数默认为False。
 - 🔥freeze_vit: 该参数只对多模态模型生效，可用于全参数训练和LoRA训练，但会产生不同的效果。若是全参数训练，将freeze_vit设置为True会将vit部分权重进行冻结；若是LoRA训练且`target_modules`设置为'all-linear'，将freeze_vit设置为True将会取消在vit部分添加LoRA模块。该参数默认为True。
   - 注意：**这里的vit不仅限于vision_tower, 也包括audio_tower**。若是Omni模型，若你只希望对vision_tower加LoRA，而不希望对audio_tower加LoRA，你可以修改[这里的代码](https://github.com/modelscope/ms-swift/blob/a5d4c0a2ce0658cef8332d6c0fa619a52afa26ff/swift/llm/model/model_arch.py#L544-L554)。
@@ -299,7 +301,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 提示：在日志中打印的"learning rate"为llm的学习率。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
-- 🔥packing: 将不同长度的数据样本打包成统一长度的样本，实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见（除Qwen3-Next，因为含有linear-attention）。该参数默认为`False`。Megatron-SWIFT的所有训练任务都支持该参数。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
+- 🔥packing: 使用`padding_free`的方式将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见（除Qwen3-Next，因为含有linear-attention）。该参数默认为`False`。Megatron-SWIFT的所有训练任务都支持该参数。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
 - streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）
@@ -310,23 +312,23 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
 - new_special_tokens: 需要新增的特殊tokens。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora/new_special_tokens.sh)。
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
-- 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'。
+- 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'和'embedding'。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
-- 🔥save_strategy: 保存策略，可选项为'steps'和'epochs'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重，'save_retain_interval'可设置为整数，代表多少个epoch存储保留检查点。
+- 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重，'save_retain_interval'可设置为整数，代表多少个epoch存储保留检查点。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**Megatron-SWIFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
 - train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。该参数需"ms-swift>=3.12"。
   - 在"ms-swift>3.12"，将不再对val_dataset进行随机操作。
 - dataloader_pin_memory: 默认为True。使用该参数需"ms-swift>=3.12"。
 - dataloader_persistent_workers: 默认为True。使用该参数需"ms-swift>=3.12"。
-- dataloader_prefetch_factor: 默认为10。使用该参数需"ms-swift>=3.12"。
-- group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
+- dataloader_prefetch_factor: 默认为2。使用该参数需"ms-swift>=3.12"。
+- 🔥group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
 
 
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：
-- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'和'rm'。
+- 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'、'rm'和'gkd'。
 - loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。
 - calculate_per_token_loss: 覆盖Megatron参数，默认为False。
 
@@ -363,7 +365,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - generation_batch_size: 采样批量大小，需要是global_batch_size的倍数，默认等于global_batch_size*steps_per_generation。
 - num_generations: 每个prompt采样的数量，论文中的G值，默认为8。
 - num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
-- reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/plugin/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
+- reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/rewards/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
 - reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。默认为 None，即所有奖励的权重都相等，为`1.0`。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
 - truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`。注意对于多模态模型，
@@ -398,13 +400,30 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
 - delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
 - importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
-- scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
+- scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）、`gdpo`（对每个奖励函数分别进行组内归一化后加权聚合，参考 [GDPO 论文](https://arxiv.org/abs/2601.05242)）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
+  - 注意：`gdpo` 模式不支持 `kl_in_reward=True`，若同时设置会自动将 `kl_in_reward` 设为 `False`。
+  - GDPO 适用于多奖励优化场景：当使用多个奖励函数时，GDPO 会对每个奖励函数分别在组内进行标准化（减均值、除标准差），然后使用 `reward_weights` 进行加权求和，最后再进行批次级别的标准化。这种方式可以更好地保留各个奖励的相对差异，避免不同奖励组合坍塌成相同的 advantage 值。
 - rollout_importance_sampling_mode: 训推不一致校正模式，可选项为 `token_truncate`、`token_mask`、`sequence_truncate`、`sequence_mask`。默认为None，不启用校正。具体参考[文档](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md)。
 - rollout_importance_sampling_threshold: 重要性采样权重的阈值，用于截断或屏蔽极端权重。默认为2.0。
 - log_rollout_offpolicy_metrics: 当 `rollout_importance_sampling_mode` 未设置时，是否记录训推不一致诊断指标（KL、PPL、χ²等）。当设置了 `rollout_importance_sampling_mode` 时，指标会自动记录。默认为False。
 - off_policy_sequence_mask_delta: Off-Policy Sequence Masking 阈值，来自 DeepSeek-V3.2 论文。当设置此值时，会计算每个序列的 `mean(old_policy_logps - policy_logps)`，若该值大于阈值且该序列的优势为负，则 mask 掉该序列不参与损失计算。默认为None，不启用。具体参考[文档](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md#off-policy-sequence-masking)。
 
 内置奖励函数参数参考[文档](../Instruction/Command-line-parameters.md#奖励函数参数)
+
+### GKD参数
+- teacher_model: 教师模型的路径或模型 ID，必需参数。
+- teacher_model_type: 教师模型类型，默认为None，自动检测。
+- teacher_model_revision: 教师模型版本，默认为None。
+- beta: JSD 散度插值系数。0.0 代表 Forward KL，0.5 代表对称 JSD，1.0 代表 Reverse KL。默认为0.5。
+- lmbda: On-Policy 学习触发概率。0.0 代表纯 Off-Policy，1.0 代表纯 On-Policy。默认为0.5。
+- seq_kd: 是否使用教师生成的响应（Sequential KD），当前暂不支持。默认为False。
+- temperature: 用于采样和损失计算的温度参数。默认为0.9。
+- offload_teacher_model: 是否将教师模型卸载到 CPU 以节省 GPU 显存。默认为False。
+- sft_alpha: SFT 损失的混合系数，`loss = jsd_loss + sft_alpha * sft_loss`。当使用数据集响应（Off-Policy）时生效。默认为0。
+- max_completion_length: 生成时的最大 token 数。默认为512。
+- vllm_mode: 同 GRPO 参数，用于 On-Policy 生成。colocate 模式下在程序内部署 vLLM。
+  - 注意：On-Policy 生成需要启用 vLLM（`--use_vllm true --vllm_mode colocate/server`）。
+  - 当 `lmbda > 0` 但未启用 vLLM 时，将自动回退到 Off-Policy 模式。
 
 ## 导出参数
 这里介绍`megatron export`的参数（需"ms-swift>=3.10"），若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。

@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
 import os
 import re
@@ -17,9 +17,9 @@ import psutil
 from packaging import version
 from transformers import is_tensorboard_available
 
-from swift.ui.base import BaseUI
-from swift.ui.llm_train.utils import close_loop, run_command_in_subprocess
 from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, format_time, get_logger, read_tensorboard_file, tensorboard_smoothing
+from ..base import BaseUI
+from .utils import close_loop, run_command_in_subprocess
 
 logger = get_logger()
 
@@ -377,14 +377,14 @@ class Runtime(BaseUI):
             return cls.sft_plot
 
         args: dict = cls.parse_info_from_cmdline(task)[1]
-        train_type = args.get('rlhf_type', 'dpo')
-        if train_type in ('dpo', 'cpo', 'simpo'):
+        rlhf_type = args.get('rlhf_type', 'dpo')
+        if rlhf_type in ('dpo', 'cpo', 'simpo'):
             return cls.dpo_plot
-        elif train_type == 'kto':
+        elif rlhf_type == 'kto':
             return cls.kto_plot
-        elif train_type == 'orpo':
+        elif rlhf_type == 'orpo':
             return cls.orpo_plot
-        elif train_type == 'grpo':
+        elif rlhf_type == 'grpo':
             return cls.grpo_plot
 
     @classmethod

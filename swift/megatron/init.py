@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
 import importlib.metadata
 import inspect
@@ -8,6 +8,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from copy import copy
+from datetime import timedelta
 from functools import partial
 from typing import List, Optional, Tuple
 
@@ -19,9 +20,8 @@ from packaging import version
 from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import git_clone_github
-from swift.utils import (get_logger, is_flash_attn_3_available, is_megatron_available, safe_ddp_context, split_list,
-                         subprocess_run)
+from swift.utils import (get_logger, git_clone_github, is_flash_attn_3_available, is_megatron_available,
+                         safe_ddp_context, split_list, subprocess_run)
 
 logger = get_logger()
 
@@ -88,6 +88,7 @@ def _patch_mla_attention():
         sequence_len_offset=None,
         *,
         inference_params=None,
+        **kwargs,
     ):
         """Forward pass for multi-latent attention"""
         assert attention_bias is None, 'Attention bias should not be passed into MLA.'
@@ -669,10 +670,8 @@ def _patch__write_item():
 
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
-    from megatron.core import parallel_state
     import megatron.core
-    from megatron.core.models.common.embeddings.rope_utils import (get_pos_emb_on_this_cp_rank,
-                                                                   _apply_rotary_pos_emb_bshd)
+    from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
     from megatron.core.models.common.embeddings import rope_utils
     from megatron.training import get_args
 
@@ -728,10 +727,6 @@ def _patch_mrope():
 
         # shape (seq_length, bs, 1, 2 * dim)
         emb = emb[..., None, :].transpose(0, 1).contiguous()
-        if parallel_state.get_context_parallel_world_size() > 1 and not packed_seq:
-            # slice rotary_pos_emb along sequence dimension and select the parition of the current
-            # CP rank
-            emb = get_pos_emb_on_this_cp_rank(emb, 0, parallel_state.get_context_parallel_group())
         return emb
 
     MultimodalRotaryEmbedding.forward = forward
@@ -815,6 +810,72 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
+def _patch_megatron_timeout():
+    from megatron.training import get_args
+    from megatron.core import parallel_state
+
+    create_group_origin = parallel_state.create_group
+
+    def create_group(ranks=None, timeout=None, *_args, **kwargs):
+        args = get_args()
+        if timeout is None:
+            timeout = timedelta(minutes=args.distributed_timeout_minutes)
+        return create_group_origin(ranks, timeout, *_args, **kwargs)
+
+    parallel_state.create_group = create_group
+
+
+def _patch_megatron_swanlab():
+    from megatron.training import global_vars, is_last_rank, wandb_utils, get_args
+
+    def _set_wandb_writer(*_args, **kwargs):
+        args = get_args()
+        assert global_vars._GLOBAL_WANDB_WRITER is None
+        if args.report_to is None or not is_last_rank():
+            return
+        config = vars(args)
+        save_dir = args.wandb_save_dir
+        if save_dir is None:
+            save_dir = os.path.join(args.save, args.report_to)
+        if args.report_to == 'wandb':
+            import wandb
+            wandb.init(dir=save_dir, name=args.wandb_exp_name, project=args.wandb_project, config=config)
+            writer = wandb
+        elif args.report_to == 'swanlab':
+            import swanlab
+            swanlab.init(
+                logdir=save_dir, experiment_name=args.wandb_exp_name, project=args.wandb_project, config=config)
+            writer = swanlab
+
+        global_vars._GLOBAL_WANDB_WRITER = writer
+
+    global_vars._set_wandb_writer = _set_wandb_writer
+
+    origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
+
+    def on_save_checkpoint_success(*_args, **kwargs):
+        args = get_args()
+        if args.report_to == 'swanlab':
+            return
+        origin_on_save_checkpoint_success(*_args, **kwargs)
+
+    wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
+
+
+def _patch_modelopt():
+    from megatron.training import checkpointing
+    if not hasattr(checkpointing, 'save_sharded_modelopt_state'):
+        return
+    save_sharded_modelopt_state = checkpointing.save_sharded_modelopt_state
+
+    def new_save_sharded_modelopt_state(model, *args, **kwargs):
+        if not model:
+            return
+        save_sharded_modelopt_state(model, *args, **kwargs)
+
+    checkpointing.save_sharded_modelopt_state = new_save_sharded_modelopt_state
+
+
 def _patch_megatron():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
@@ -832,6 +893,9 @@ def _patch_megatron():
     _patch__write_item()
     _patch_megatron_tokenizer()
     _patch_mtp()
+    _patch_megatron_timeout()
+    _patch_megatron_swanlab()
+    _patch_modelopt()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:

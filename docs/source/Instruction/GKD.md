@@ -103,7 +103,7 @@ elif seq_kd:
     y = teacher.generate(x)
     source = "teacher"
 else:
-    # Mode 3: Off-Policy 学习，使用数据集中的输出序列
+    # Mode 3: 使用数据集中的输出序列
     y = y_ground_truth
     source = "dataset"
 
@@ -128,7 +128,7 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 **数据来源**：$y \sim P_{\text{teacher}}(\cdot | x)$
 
-### Mode 3: Off-Policy 学习（其他情况）
+### Mode 3: 离线学习（其他情况）
 
 **数据来源**：$y = y^* \sim \text{Dataset}$
 
@@ -143,9 +143,10 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 |------|------|--------|---------|------|
 | `--teacher_model` | str | 必需 | - | 教师模型路径或模型 ID |
 | `--beta` | float | 0.5 | [0.0, 1.0] | 散度插值系数<br>• 0.0: Forward KL <br>• 0.5: JSD (平衡)<br>• 1.0: Reverse KL |
-| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 纯 Off-Policy<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
+| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 离线学习<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
 | `--temperature` | float | 0.9 | > 0 | 生成采样温度，控制随机性 |
+| `--sft_alpha` | float | 0 | >= 0 | 混合一定比例的sft loss，对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | > 0 | 生成时的最大 token 数 |
 
 ## 采样加速
@@ -163,7 +164,7 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 使用 vLLM 作为推理后端来加速学生模型采样，支持两种部署模式，与 GRPO 一致，参考[GRPO文档](./GRPO/GetStarted/GRPO.md#集群支持), 相关参数参考[GRPO vLLM 参数](./Command-line-parameters.md#vllm_mode)
 
-> **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 PyTorch，建议使用预采样方案。
+> **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 Transformers，建议使用预采样方案。
 
 训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh)
 

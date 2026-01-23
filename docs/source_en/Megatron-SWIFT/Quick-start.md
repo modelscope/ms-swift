@@ -8,9 +8,11 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 | Pre-training           | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [Supervised Fine-Tuning](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [GKD](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Embedding](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/embedding) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [Sequence Classification](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls)    | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 ## Environment Setup
@@ -51,9 +53,14 @@ MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
+
+# cu129 (fp8 training)
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
 ```
 
 Recommended Operating Environment:
@@ -62,12 +69,12 @@ Recommended Operating Environment:
 |--------------|--------------|-------------|--------------------|
 | python       | >=3.9        | 3.10/3.11        |                    |
 | cuda         |              | cuda12      |                    |
-| torch        | >=2.0        | 2.7.1/2.8.0    |                    |
+| torch        | >=2.0        | 2.8.0    |                    |
 | transformer_engine    | >=2.3       |  2.10.0  |                  |
 | apex |   |  0.1 | |
 | megatron_core    |    >=0.12,<0.16    | 0.15      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.3      |                    |
+| transformers | >=4.33       | 4.57.6      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.25 |       |      RLHF        |
@@ -228,6 +235,7 @@ swift infer \
   - TP/EP involve heavy communication, so keep them within the NVLink domain when possible; for cross-domain setups prefer PP/DP. For expert layers, prefer EP over ETP — ETP saves memory but is slower.
   - MoE parallel folding: separate MoE parallel groups from Dense groups. Attention uses tp-cp-dp-pp groups, while MoE uses etp-ep-dp-pp groups.
 - Choosing parallelism for weight conversion: Megatron-SWIFT uses the torch_dist storage format on the MCore side; you can adjust parallelism at training time and do not need to specify it during weight conversion.
+- Regarding log printing: Megatron-SWIFT logs are printed on the last rank, because in PP parallelism, only the last pp_rank has complete information.
 
 
 ## Benchmark

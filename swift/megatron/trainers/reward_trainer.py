@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from functools import partial
 
 import torch
@@ -15,15 +15,13 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        assert args.padding_free, 'Currently `rlhf_type="rm"` only supports padding_free.'
         assert args.context_parallel_size == 1, 'Currently `rlhf_type="rm"` does not support context parallelism.'
 
     def loss_func(self, output_tensor, *, data):
         packed_seq_params = data.get('packed_seq_params')
         margin = data.pop('margin', None)
-        num_samples = packed_seq_params.num_samples
-        last_token = packed_seq_params.cu_seqlens_q[1:num_samples * 2 + 1] - 1
-        rewards = output_tensor[0, last_token]
+        num_samples = output_tensor.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
+        rewards = self.get_last_tokens(output_tensor, packed_seq_params, data.get('attention_mask'), 2 * num_samples)
         rewards_chosen, rewards_rejected = torch.split(rewards, num_samples, dim=0)
         if margin is not None:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - margin).mean()

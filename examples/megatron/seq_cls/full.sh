@@ -35,6 +35,6 @@ megatron sft \
     --num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
-    --dataset_num_proc 32 \
+    --dataset_num_proc 8 \
     --num_labels 265 \
     --task_type seq_cls \

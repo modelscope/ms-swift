@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import argparse
 import functools
 import inspect
@@ -8,10 +8,9 @@ from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 import json
 import numpy as np
 
-from swift.llm.argument.base_args.ray_args import RayArguments
-from swift.ray.resource_manager import ResourceManager
-from swift.utils import find_free_port
-from swift.utils.utils import find_node_ip
+from swift.utils import find_free_port, find_node_ip
+from .arguments import RayArguments
+from .resource_manager import ResourceManager
 
 T = TypeVar('T')
 

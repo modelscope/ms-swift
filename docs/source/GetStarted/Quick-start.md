@@ -19,7 +19,7 @@
 - 🍉 **强化学习**：内置**丰富GRPO族算法**，包括GRPO、DAPO、GSPO、SAPO、CISPO、CHORD、RLOO、Reinforce++等，支持同步和异步vLLM引擎推理加速，可使用插件拓展奖励函数、多轮推理调度器以及环境等。
 - **全链路能力**：覆盖训练、推理、评测、量化和部署全流程。
 - **界面训练**：提供使用Web-UI界面的方式进行训练、推理、评测、量化，完成大模型的全链路。
-- **推理加速**：支持PyTorch、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
+- **推理加速**：支持Transformers、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
 - **模型评测**：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
@@ -36,7 +36,7 @@ ms-swift的安装请参考[安装文档](./SWIFT-installation.md)。
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \

@@ -1,10 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 if __name__ == '__main__':
-    from swift.llm import AppArguments, app_main, DeployArguments, run_deploy
+    from swift import AppArguments, app_main, DeployArguments, run_deploy
     # Here's a runnable demo provided.
     # In a real scenario, you can simply remove the deployed context.
     with run_deploy(

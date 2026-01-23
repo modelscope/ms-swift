@@ -14,7 +14,7 @@ from peft.tuners.lora import Linear
 from peft.utils import WEIGHTS_NAME
 from torch import nn
 
-from swift import AdaLoraConfig, LoraConfig, LoRAConfig, Swift, get_peft_model
+from swift.tuners import AdaLoraConfig, LoraConfig, LoRAConfig, Swift, get_peft_model
 
 
 class TestPeft(unittest.TestCase):

@@ -1,9 +1,8 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import re
 import signal
 import sys
-import time
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
@@ -11,16 +10,16 @@ from typing import List, Type
 
 import gradio as gr
 import json
-import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import DeployArguments, InferArguments, InferClient, InferRequest, RequestConfig
-from swift.ui.base import BaseUI
-from swift.ui.llm_infer.model import Model
-from swift.ui.llm_infer.runtime import Runtime
-from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
+from swift.arguments import DeployArguments, InferArguments
+from swift.infer_engine import InferClient, InferRequest, RequestConfig
 from swift.utils import get_device_count, get_logger
+from ..base import BaseUI
+from ..llm_train import run_command_in_background_with_popen
+from .model import Model
+from .runtime import Runtime
 
 logger = get_logger()
 
@@ -220,11 +219,13 @@ class LLMInfer(BaseUI):
         kwargs.update(more_params)
         model = kwargs.get('model')
         if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
-            kwargs['ckpt_dir'] = kwargs.pop('model')
-            with open(os.path.join(kwargs['ckpt_dir'], 'args.json'), 'r', encoding='utf-8') as f:
+            args_path = os.path.join(model, 'args.json')
+            if os.path.exists(os.path.join(model, 'adapter_config.json')):
+                kwargs['adapters'] = kwargs.pop('model')
+            with open(args_path, 'r', encoding='utf-8') as f:
                 _json = json.load(f)
                 kwargs['model_type'] = _json['model_type']
-                kwargs['train_type'] = _json['train_type']
+                kwargs['tuner_type'] = _json['tuner_type']
         deploy_args = DeployArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value

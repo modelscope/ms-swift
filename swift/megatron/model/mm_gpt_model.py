@@ -1,6 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from contextlib import contextmanager
-from typing import Optional
 
 import megatron.core
 import torch
@@ -67,7 +66,7 @@ class MultimodalGPTModel(MegatronModule):
                     kwargs.update(res)
                     res = inputs_embeds
             if args.context_parallel_size > 1:
-                res = split_cp_inputs(res, packed_seq_params.cu_seqlens_q, 1)
+                res = split_cp_inputs(res, getattr(packed_seq_params, 'cu_seqlens_q', None), 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
                 group_kwargs = {'group': _self.tp_group} if mcore_013 else {}

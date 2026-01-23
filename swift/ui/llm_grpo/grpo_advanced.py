@@ -1,12 +1,12 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from functools import partial
 from typing import Type
 
 import gradio as gr
 
-from swift.llm import BaseArguments, ModelType
-from swift.llm.model.register import get_all_models
-from swift.ui.base import BaseUI
+from swift.arguments import BaseArguments
+from swift.model import ModelType, get_model_list
+from ..base import BaseUI
 
 
 class GrpoAdvanced(BaseUI):
@@ -213,7 +213,7 @@ class GrpoAdvanced(BaseUI):
 
             with gr.Row():
                 gr.Textbox(elem_id='reward_model_plugin', lines=1, scale=8)
-                gr.Dropdown(elem_id='reward_model', multiselect=True, choices=get_all_models(), scale=8)
+                gr.Dropdown(elem_id='reward_model', multiselect=True, choices=get_model_list(), scale=8)
                 gr.Dropdown(
                     elem_id='reward_model_type',
                     multiselect=True,
@@ -223,7 +223,7 @@ class GrpoAdvanced(BaseUI):
             with gr.Blocks():
                 with gr.Row():
                     gr.Dropdown(
-                        elem_id='ref_model', scale=12, value=None, choices=get_all_models(), allow_custom_value=True)
+                        elem_id='ref_model', scale=12, value=None, choices=get_model_list(), allow_custom_value=True)
                     gr.Dropdown(elem_id='ref_model_type', choices=ModelType.get_model_name_list(), value=None, scale=8)
 
     @classmethod

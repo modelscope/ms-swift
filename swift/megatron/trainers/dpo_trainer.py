@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from collections import namedtuple
 from functools import partial
 
@@ -7,7 +7,7 @@ from megatron.core import mpu
 from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
 
-from swift.trainers import DPOTrainer
+from swift.rlhf_trainers import DPOTrainer
 from swift.utils import get_current_device, get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
 
@@ -32,7 +32,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        assert args.padding_free, 'Currently `rlhf_type="dpo"` only supports padding_free.'
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
         self.ref_models = []
 
@@ -40,10 +39,10 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
         output_tensor = output_tensor[output_tensor.shape[0] // 2:]
         args = get_args()
-        num_samples = packed_seq_params.num_samples
+        num_samples = labels.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
 
-        logps = self.get_logps(output_tensor, labels, packed_seq_params)
-        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params)
+        logps = self.get_logps(output_tensor, labels, packed_seq_params, num_samples * 2)
+        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params, num_samples * 2)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
             logps[:num_samples],
             logps[num_samples:],
@@ -52,8 +51,11 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         )
         if args.rpo_alpha:
             loss_mask = labels != -100
-            num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
-            loss_mask[:, num_tokens:] = 0
+            if args.padding_free:
+                num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
+                loss_mask[:, num_tokens:] = 0
+            else:
+                loss_mask[num_samples:] = 0
             nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
             if args.context_parallel_size > 1:
                 nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())

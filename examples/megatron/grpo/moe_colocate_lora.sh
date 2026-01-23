@@ -25,7 +25,7 @@ megatron rlhf \
     --vllm_max_model_len 16384 \
     --max_length 8192 \
     --max_completion_length 8192 \
-    --train_type lora \
+    --tuner_type lora \
     --lr 5e-5 \
     --bf16 true \
     --beta 0.00 \
@@ -51,5 +51,4 @@ megatron rlhf \
     --padding_free true \
     --sequence_parallel true \
     --log_completions true \
-    --wandb_project megatron_swift \
-    --wandb_exp_name megatron_grpo \
+    --report_to wandb

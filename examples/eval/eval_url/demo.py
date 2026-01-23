@@ -1,10 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 if __name__ == '__main__':
-    from swift.llm import EvalArguments, eval_main, run_deploy, DeployArguments
+    from swift import EvalArguments, eval_main, run_deploy, DeployArguments
     # Here's a runnable demo provided. Use the eval_url method for evaluation.
     # In a real scenario, you can simply remove the deployed context.
     print(EvalArguments.list_eval_dataset())

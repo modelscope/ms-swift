@@ -1,6 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from contextlib import contextmanager
-from copy import deepcopy
 from typing import Optional, Tuple
 
 import megatron.core
@@ -19,6 +18,7 @@ from packaging import version
 from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
 
+from swift.tuners import LoraConfig, Swift
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
                          get_model_parameter_info)
 
@@ -156,7 +156,6 @@ def _patch_deepcopy():
 
 
 def prepare_adapter(model):
-    from swift.tuners import LoraConfig, Swift
     args = get_args()
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
@@ -185,11 +184,11 @@ def prepare_adapter(model):
 
 def prepare_mcore_model(model):
     args = get_args()
-    if args.train_type == 'full':
+    if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
-    elif args.train_type == 'lora':
+    elif args.tuner_type == 'lora':
         model.prepare_inputs_for_generation = None  # fix error
         model = prepare_adapter(model)
     logger.info(f'model: {model}')
@@ -287,6 +286,8 @@ def forward_step_helper(model, inputs, dtype=None):
     args = get_args()
     if mpu.is_pipeline_first_stage():
         micro_batch_size = 1  # use qkv_format 'thd'
+        if not args.padding_free:
+            micro_batch_size = args.micro_batch_size
         seq_length = inputs['position_ids'].shape[-1]
         if args.sequence_parallel:
             seq_length //= mpu.get_tensor_model_parallel_world_size()
@@ -344,3 +345,45 @@ def get_local_layer_specs(config, layer_specs, vp_stage=None):
         offset = get_transformer_layer_offset(config, **kwargs)
         local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
     return local_layer_specs
+
+
+class MegatronTrainerState:
+    """
+    A lightweight trainer state class for Megatron training, providing compatibility
+    with transformers TrainerState interface.
+
+    This class allows reward functions to access training progress information
+    (current step and total steps) in the same way as they would with
+    transformers Trainer.
+
+    Attributes:
+        global_step (int): The current training step (number of update steps completed).
+        max_steps (int): The total number of training steps.
+    """
+
+    def __init__(self, global_step: int = 0, max_steps: int = 0):
+        """
+        Initialize MegatronTrainerState.
+
+        Args:
+            global_step: The current training step. Defaults to 0.
+            max_steps: The total number of training steps. Defaults to 0.
+        """
+        self.global_step = global_step
+        self.max_steps = max_steps
+
+    def update(self, global_step: Optional[int] = None, max_steps: Optional[int] = None):
+        """
+        Update the trainer state.
+
+        Args:
+            global_step: The current training step. If None, keeps the current value.
+            max_steps: The total number of training steps. If None, keeps the current value.
+        """
+        if global_step is not None:
+            self.global_step = global_step
+        if max_steps is not None:
+            self.max_steps = max_steps
+
+    def __repr__(self) -> str:
+        return f'MegatronTrainerState(global_step={self.global_step}, max_steps={self.max_steps})'

@@ -3,8 +3,8 @@
 There are three methods for accessing custom datasets, each offering progressively greater control over preprocessing functions but also increasing in complexity. For example, Solution 1 is the most convenient but offers the least control over preprocessing functions, requiring prior conversion of the dataset into a specific format:
 
 1. **Recommended**: Directly use the command line parameter to access the dataset with `--dataset <dataset_path1> <dataset_path2>`. This will use `AutoPreprocessor` to convert your dataset into a standard format (supporting four dataset formats; see the introduction to AutoPreprocessor below). You can use `--columns` to transform column names. The supported input formats include csv, json, jsonl, txt, and folders (e.g. git clone open-source datasets). This solution does not require modifying `dataset_info.json` and is suitable for users new to ms-swift. The following two solutions are suitable for developers looking to extend ms-swift.
-2. Add the dataset to `dataset_info.json`, which you can refer to in the built-in [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json) of ms-swift. This solution also uses AutoPreprocessor to convert the dataset to a standard format. `dataset_info.json` is a list of metadata for datasets, and one of the fields ms_dataset_id/hf_dataset_id/dataset_path must be filled. Column name transformation can be done through the `columns` field. Datasets added to `dataset_info.json` or registered ones will automatically generate [supported dataset documentation](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html) when running [run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py). In addition, you can use the external `dataset_info.json` approach by parsing the JSON file with `--custom_dataset_info xxx.json` (to facilitate users who prefer `pip install` over `git clone`), and then specify `--dataset <dataset_id/dataset_dir/dataset_path>`.
-3. Manually register the dataset to have the most flexible customization capability for preprocessing functions, allowing the use of functions to preprocess datasets, but it is more difficult. You can refer to the [built-in datasets](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/dataset/llm.py) or [examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom). You can specify `--custom_register_path xxx.py` to parse external registration content (convenient for users who use pip install instead of git clone).
+2. Add the dataset to `dataset_info.json`, which you can refer to in the built-in [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json) of ms-swift. This solution also uses AutoPreprocessor to convert the dataset to a standard format. `dataset_info.json` is a list of metadata for datasets, and one of the fields ms_dataset_id/hf_dataset_id/dataset_path must be filled. Column name transformation can be done through the `columns` field. Datasets added to `dataset_info.json` or registered ones will automatically generate [supported dataset documentation](https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html) when running [run_dataset_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_dataset_info.py). In addition, you can use the external `dataset_info.json` approach by parsing the JSON file with `--custom_dataset_info xxx.json` (to facilitate users who prefer `pip install` over `git clone`), and then specify `--dataset <dataset_id/dataset_dir/dataset_path>`.
+3. Manually register the dataset to have the most flexible customization capability for preprocessing functions, allowing the use of functions to preprocess datasets, but it is more difficult. You can refer to the [built-in datasets](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/dataset/llm.py) or [examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom). You can specify `--external_plugins xxx.py` to parse external registration content (convenient for users who use pip install instead of git clone).
    - Solutions one and two leverage solution three under the hood, where the registration process occurs automatically.
 
 The following is an introduction to the dataset formats that `AutoPreprocessor` can handle:
@@ -89,6 +89,7 @@ The format of multimodal data should follow the specifications in [Multimodal Da
 > Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
 
 Sure, you can also directly use `rejected_messages` instead of only providing `rejected_response` / `rejected_images` (requires ms-swift>=3.8), which offers greater flexibility (e.g., for multimodal or agent scenarios). If you use "rejected_messages", then in multimodal scenarios you must also provide "rejected_images", "rejected_audios", "rejected_videos", etc.; in Agent scenarios you must also provide "rejected_tools", etc. An example of the multimodal data format is as follows:
+- If using `rejected_response`, the default values for 'rejected_images/rejected_audios/rejected_videos/rejected_tools' are 'images/audios/videos/tools'; if using `rejected_messages`, they need to be passed in additionally.
 
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a puppy."}], "rejected_images": ["kitten.png"]}
@@ -100,8 +101,16 @@ The above format is equivalent to:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": "This is a puppy."}
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_images": ["puppy.png"]}
+# Example 1 can also be written as: (ms-swift>=3.12)
+{"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": [{"role": "assistant", "content": "This is a puppy."}]}
 ```
 
+For ms-swift>=3.12, you can organize the Agent dataset in the following format:
+
+```jsonl
+# It will find the position of the last user in `messages`, and replace the subsequent content with `rejected_response` to form `rejected_messages`
+{"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"Weather forecast. Get real-time air quality, including current air quality, PM2.5, and PM10 information.\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"City name, e.g., Shanghai\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "What is the weather like in Beijing and Shanghai today?"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, {"role": "tool_response", "content": "{\"city\": \"Beijing\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"Shanghai\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "According to the weather forecast tool, the air quality index (AQI) in Beijing is 10, which indicates good air quality; whereas in Shanghai, the AQI is 72, indicating mild pollution."}], "rejected_response": [{"role": "assistant", "content": "I don't know."}]}
+```
 #### KTO
 
 ```jsonl
@@ -173,7 +182,7 @@ Please refer to [Reranker training document](../BestPractices/Reranker.md#datase
 
 ### Multimodal
 
-For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate where to insert images, videos, or audio. MS-Swift supports multiple images, videos, and audio files. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py#L198). The four examples below respectively demonstrate the data format for plain text, as well as formats containing image, video, and audio data.
+For multimodal datasets, the format is the same as the aforementioned tasks. The difference lies in the addition of several keys: `images`, `videos`, and `audios`, which represent the URLs or paths (preferably absolute paths) of multimodal resources. The tags `<image>`, `<video>`, and `<audio>` indicate where to insert images, videos, or audio. MS-Swift supports multiple images, videos, and audio files. These special tokens will be replaced during preprocessing, as referenced [here](https://github.com/modelscope/ms-swift/blob/main/swift/template/templates/qwen.py#L198). The four examples below respectively demonstrate the data format for plain text, as well as formats containing image, video, and audio data.
 
 
 Pre-training:
@@ -245,10 +254,10 @@ Testing the final format of the grounding data in ms-swift format:
 ```python
 import os
 os.environ["MAX_PIXELS"] = "1003520"
-from swift.llm import get_model_tokenizer, get_template
+from swift import get_processor, get_template
 
-_, tokenizer = get_model_tokenizer('Qwen/Qwen2.5-VL-7B-Instruct', load_model=False)
-template = get_template(tokenizer.model_meta.template, tokenizer)
+processor = get_processor('Qwen/Qwen2.5-VL-7B-Instruct')
+template = get_template(processor)
 data = {...}
 template.set_mode('train')
 encoded = template.encode(data, return_template_inputs=True)
@@ -281,7 +290,7 @@ Here are example data samples for a text-only Agent and a multimodal Agent:
 
 ## dataset_info.json
 
-You can refer to the ms-swift built-in [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json). This approach uses the AutoPreprocessor function to convert the dataset into a standard format. The dataset_info.json file contains a list of metadata about the dataset. Here are some examples:
+You can refer to the ms-swift built-in [dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json). This approach uses the AutoPreprocessor function to convert the dataset into a standard format. The dataset_info.json file contains a list of metadata about the dataset. Here are some examples:
 
 
 ```json
@@ -338,7 +347,7 @@ The following parameters are supported:
 
 - ms_dataset_id: The dataset_id for ModelScope, default is None.
 - hf_dataset_id: The dataset_id for HuggingFace, default is None.
-- dataset_path: The local path to the dataset (an absolute path is recommended), default is None.
+- dataset_path: Local path to the **dataset file/folder** (absolute path recommended). Default is None.
 - dataset_name: The alias of the dataset, which can be specified via `--dataset <dataset_name>`. This is very convenient when the dataset_path is long. The default value is None.
 - subsets: A list of subdataset names or a list of `SubsetDataset` objects, default is `['default']`. (The concepts of subdatasets and splits only exist for dataset_id or dataset_dir (open source datasets cloned via git)).
 - split: Defaults to `['train']`.
@@ -349,7 +358,9 @@ The following parameters are supported:
 Below are examples of registering datasets:
 
 ```python
-from swift.llm import ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+from swift.dataset import (
+    ResponsePreprocessor, DatasetMeta, register_dataset, SubsetDataset, load_dataset
+)
 from typing import Dict, Any
 
 class CustomPreprocessor(ResponsePreprocessor):

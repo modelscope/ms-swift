@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Any, Dict
 
 from swift.utils import get_logger
@@ -20,8 +20,8 @@ config_mapping = {
     'swiglu': ['hidden_act'],
     'add_qkv_bias': ['attention_bias', 'qkv_bias', 'use_bias'],
     'disable_bias_linear': ['mlp_bias'],
-    'kv_channels': ['head_dim', 'v_head_dim'],
-    'architectures': ['architectures'],
+    'kv_channels': ['head_dim'],
+    'hf_model_type': ['model_type'],
     # moe
     'moe_ffn_hidden_size': ['moe_intermediate_size'],
     'moe_shared_expert_intermediate_size': ['shared_expert_intermediate_size'],
@@ -37,6 +37,7 @@ config_mapping = {
     'moe_router_bias_update_rate': ['aux_loss_alpha'],
     'qk_head_dim': ['qk_nope_head_dim'],
     'qk_pos_emb_head_dim': ['qk_rope_head_dim'],
+    'v_head_dim': ['v_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
     # qwen3_next
@@ -75,9 +76,9 @@ def _convert_config(config, _internal_call=False) -> Dict[str, Any]:
                 else:
                     if k == 'kv_lora_rank':
                         megatron_config['multi_latent_attention'] = True
-                    elif k == 'architectures':
+                    elif k == 'hf_model_type':
                         if _internal_call:
-                            k = 'llm_architectures'
+                            k = 'llm_model_type'
                     megatron_config[k] = hf_v
                 break
     for key in ['text_config', 'llm_config', 'thinker_config']:
@@ -94,14 +95,9 @@ def _convert_config(config, _internal_call=False) -> Dict[str, Any]:
 
 def convert_hf_config(config) -> Dict[str, Any]:
     res = _convert_config(config)
-    architectures = res.get('architectures')
-    if isinstance(architectures, list) and architectures:
-        architectures = architectures[0]
-    res['architectures'] = architectures
-    llm_architectures = res.get('llm_architectures') or architectures
-    if isinstance(llm_architectures, list) and llm_architectures:
-        llm_architectures = llm_architectures[0]
-    res['llm_architectures'] = llm_architectures
+    hf_model_type = res.get('hf_model_type')
+    llm_model_type = res.get('llm_model_type') or hf_model_type
+    res['llm_model_type'] = llm_model_type
 
     first_k_dense_replace = res.pop('first_k_dense_replace', None)
     n_shared_experts = res.pop('n_shared_experts', None)
@@ -109,30 +105,28 @@ def convert_hf_config(config) -> Dict[str, Any]:
     mlp_ffn_hidden_size = res.pop('mlp_ffn_hidden_size', None)
     interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
     window_size = res.pop('window_size', None)
-    if llm_architectures in {'Qwen3ForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
-            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLForConditionalGeneration',
-            'Qwen3VLMoeForConditionalGeneration'
-    }:
+    rope_scaling = res.get('rope_scaling') or {}
+    if llm_model_type in {'qwen3', 'qwen3_moe', 'qwen3_next'
+                          } or hf_model_type in {'qwen3_omni_moe', 'qwen3_omni', 'qwen3_vl', 'qwen3_vl_moe'}:
         res['qk_layernorm'] = True
-    if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3MoeForCausalLM', 'Qwen3NextForCausalLM'} or architectures in {
-            'Qwen3OmniMoeForConditionalGeneration', 'Qwen3VLMoeForConditionalGeneration'
-    }:
+    if llm_model_type in {'qwen2_moe', 'qwen3_moe', 'qwen3_next'
+                          } or hf_model_type in {'qwen3_omni_moe', 'qwen3_vl_moe'}:
         res.pop('ffn_hidden_size', None)
-        if llm_architectures in {'Qwen2MoeForCausalLM', 'Qwen3NextForCausalLM'}:
+        if llm_model_type in {'qwen2_moe', 'qwen3_next'}:
             res['use_shared_expert_gate'] = True
-    if llm_architectures in {
-            'DeepseekForCausalLM',
-            'DeepseekV2ForCausalLM',
-            'DeepseekV3ForCausalLM',
-            'Dots1ForCausalLM',
-    } or architectures == 'KimiVLForConditionalGeneration':
-        if llm_architectures != 'DeepseekForCausalLM':
+    if llm_model_type in {
+            'deepseek',
+            'deepseek_v2',
+            'deepseek_v3',
+            'dots1',
+    } or hf_model_type == 'kimi_vl':
+        if llm_model_type != 'deepseek':
             res['qk_layernorm'] = True
         res['moe_router_load_balancing_type'] = 'seq_aux_loss'
         res.pop('num_query_groups', None)  # https://github.com/NVIDIA/Megatron-LM/issues/1475
-        if llm_architectures == 'Dots1ForCausalLM':
+        if llm_model_type == 'dots1':
             res['moe_router_score_function'] = 'sigmoid'
-    elif llm_architectures == 'HunYuanMoEV1ForCausalLM':
+    elif llm_model_type == 'hunyuan':
         # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
         # which is incompatible with megatron-core, support is not provided here.
         res['n_shared_experts'] = n_shared_experts
@@ -141,9 +135,9 @@ def convert_hf_config(config) -> Dict[str, Any]:
             if isinstance(val, list) and val and min(val) == max(val):
                 res[key] = val[0]
         n_shared_experts = res.pop('n_shared_experts')
-    elif llm_architectures in {'Ernie4_5_ForCausalLM', 'Ernie4_5_MoeForCausalLM', 'Glm4ForCausalLM'}:
+    elif llm_model_type in {'ernie4_5', 'ernie4_5_moe', 'glm4'}:
         res['rotary_interleaved'] = True
-    elif llm_architectures == 'GptOssForCausalLM':
+    elif llm_model_type == 'gpt_oss':
         res['disable_bias_linear'] = False
         res['no_bias_dropout_fusion'] = True
         res['softmax_type'] = 'learnable'
@@ -157,16 +151,21 @@ def convert_hf_config(config) -> Dict[str, Any]:
         else:
             window_attn_skip_freq = ','.join(['1' if lt == 'sliding_attention' else '0' for lt in layer_types])
             res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
-    elif llm_architectures == 'Glm4MoeForCausalLM' or architectures == 'Glm4vMoeForConditionalGeneration':
+    elif llm_model_type in {'glm4_moe', 'glm4_moe_lite'} or hf_model_type == 'glm4v_moe':
         res['moe_router_score_function'] = 'sigmoid'
-    elif llm_architectures == 'Qwen3NextForCausalLM':
+        if llm_model_type == 'glm4_moe_lite':
+            res['qk_layernorm'] = True
+            res.pop('num_query_groups', None)
+    elif llm_model_type == 'qwen3_next':
         full_attention_interval = res.pop('full_attention_interval')
         num_layers = res['num_layers']
         res['layer_types'] = [
             'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
             for i in range(num_layers)
         ]
-    elif llm_architectures == 'Llama4ForConditionalGeneration':
+    elif llm_model_type == 'minimax_m2':
+        res['add_qkv_bias'] = False
+    elif llm_model_type == 'llama4':
         qk_layernorm = res.pop('qk_layernorm', False)
         if qk_layernorm:
             res['qk_l2_norm'] = True
@@ -184,11 +183,12 @@ def convert_hf_config(config) -> Dict[str, Any]:
                 for i in range(res['num_layers'])
             ]
             res['moe_layer_freq'] = f"[{','.join(moe_layer_freq)}]"
-    elif architectures == 'Glm4vForConditionalGeneration':
+    elif hf_model_type == 'glm4v':
         res['rotary_interleaved'] = True
-    rope_scaling = res.get('rope_scaling') or {}
     if 'partial_rotary_factor' not in res and 'partial_rotary_factor' in rope_scaling:
         res['partial_rotary_factor'] = rope_scaling['partial_rotary_factor']
+    if 'rotary_base' not in res and 'rope_theta' in rope_scaling:
+        res['rotary_base'] = rope_scaling['rope_theta']
     if rope_scaling.get('mrope_section') is not None:
         res['position_embedding_type'] = 'mrope'
         res['mrope_section'] = rope_scaling['mrope_section']

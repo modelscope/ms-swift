@@ -5,7 +5,7 @@ import torch
 from modelscope import Model, Preprocessor
 from torch import nn
 
-from swift import LoRAConfig, Swift
+from swift.tuners import LoRAConfig, Swift
 
 
 class TestMergedLinear(unittest.TestCase):

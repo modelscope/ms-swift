@@ -11,7 +11,7 @@ megatron rlhf \
     --dataset 'AI-ModelScope/orpo-dpo-mix-40k' \
     --load_from_cache_file true \
     --packing true \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \

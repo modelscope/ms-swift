@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 from copy import copy
 from typing import List, Optional, Union
@@ -15,10 +15,10 @@ from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
-from swift.llm import deep_getattr, get_model_tokenizer, safe_snapshot_download, save_checkpoint
-from swift.utils import get_logger, get_modules_to_not_convert, is_last_rank
+from swift.model import get_model_processor, save_checkpoint
+from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, get_logger,
+                         get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank, safe_snapshot_download)
 from ..tuners import LoraParallelLinear
-from ..utils import MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 logger = get_logger()
 
@@ -62,7 +62,11 @@ class GPTBridge:
         self.pp_group = mpu.get_pipeline_model_parallel_group()
         self.etp_group = mpu.get_expert_tensor_parallel_group()
         self.ep_group = mpu.get_expert_model_parallel_group()
-
+        self.is_transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
+        if self.is_transformers_5 and self.hf_model.model_info.is_moe_model and not self.args.merge_lora:
+            logger.warning('In transformers 5.0, the weight organization of MoE model experts differs from Megatron. '
+                           'It is recommended to use `--merge_lora true`, otherwise the trained model may not be '
+                           'usable for inference with transformers.')
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_rank = mpu.get_pipeline_model_parallel_rank()
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
@@ -92,9 +96,18 @@ class GPTBridge:
                 self.ep_pp_group = group
                 self.ep_pp_rank = dist.get_rank(group)
 
+    def get_hf_mlp_prefix(self, layer_idx):
+        if hasattr(self.hf_layers[layer_idx], 'feed_forward'):
+            return 'feed_forward'
+        else:
+            return 'mlp'
+
+    def _get_hf_mlp(self, layer_idx):
+        return getattr(self.hf_layers[layer_idx], self.get_hf_mlp_prefix(layer_idx))
+
     def _init_meta_hf_model(self):
         with torch.device('meta'):
-            self.hf_model, self.processor = get_model_tokenizer(
+            self.hf_model, self.processor = get_model_processor(
                 self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
 
     def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
@@ -141,9 +154,16 @@ class GPTBridge:
                 elif key in {'linear_fc1'}:
                     return 1
 
-    def _split_tp(self, hf_weight, tp_dim, is_expert):
+    def _split_tp(self, hf_weight, tp_dim, is_expert, is_embedding: bool):
         tp_size = self.etp_size if is_expert else self.tp_size
         tp_rank = self.etp_rank if is_expert else self.tp_rank
+        if is_embedding:
+            padding_size = math.ceil(hf_weight.shape[0] / tp_size) * tp_size - hf_weight.shape[0]
+            if padding_size > 0:
+                new_size = hf_weight.shape[0] + padding_size
+                logger.warning(
+                    f'Padding embedding from {hf_weight.shape[0]} to {new_size} (padding size: {padding_size})')
+                hf_weight = F.pad(hf_weight, (0, 0, 0, padding_size))
         if tp_dim is not None and tp_size > 1:
             tensor = hf_weight.chunk(tp_size, dim=tp_dim)[tp_rank]
         else:
@@ -162,12 +182,13 @@ class GPTBridge:
     ):
         # tp/etp
         tp_dim = self._get_tp_split_dim(mg_key)
-        tensor = self._split_tp(hf_weight, tp_dim, is_expert)
+        is_embedding = mg_key in {'embedding.word_embeddings.weight', 'output_layer.weight'}
+        tensor = self._split_tp(hf_weight, tp_dim, is_expert, is_embedding=is_embedding)
         del hf_weight
         if not isinstance(mg_param, (list, tuple)):
             mg_param = [mg_param]
         if hf_scale_inv is not None:
-            hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert)
+            hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert, is_embedding=is_embedding)
             hf_scale_inv = hf_scale_inv.chunk(len(mg_param), dim=0)
         if offset:
             assert hf_scale_inv is None, f'mg_key: {mg_key}'
@@ -273,6 +294,10 @@ class GPTBridge:
                     hf_state_dict[k] = v
             elif hf_state_dict is None:
                 return {}
+            else:
+                if self._target_device is not None:
+                    for k, v in hf_state_dict.items():
+                        hf_state_dict[k] = v.to(self._target_device)
             return self._add_prefix(hf_state_dict, hf_prefix)
 
     def _all_gather_tp(self, tensor, tp_dim, is_expert):
@@ -370,6 +395,9 @@ class GPTBridge:
         if offset:
             assert mg_scale_inv is None, f'mg_key: {mg_key}'
             tensor = tensor + offset
+        is_embedding = mg_key in {'embedding.word_embeddings.weight', 'output_layer.weight'}
+        if is_embedding and self.args.padded_vocab_size < tensor.shape[0]:
+            tensor = tensor[:self.args.padded_vocab_size]
         if self._target_device is not None:
             tensor = tensor.to(device=self._target_device)
             if mg_scale_inv is not None:
@@ -601,15 +629,25 @@ class GPTBridge:
         if getattr(args, 'softmax_type', 'vanilla') == 'learnable':
             self._set_state_dict(mg_attn, 'core_attention.softmax_offset', hf_state_dict, 'sinks', to_mcore)
         if args.qk_layernorm:
-            hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
-            hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
-            self._set_state_dict(mg_attn, 'q_layernorm.weight', hf_state_dict, hf_q_norm_key, to_mcore)
-            self._set_state_dict(mg_attn, 'k_layernorm.weight', hf_state_dict, hf_k_norm_key, to_mcore)
+            self._set_qk_layernorm(mg_attn, hf_attn, hf_state_dict, to_mcore)
         if to_mcore:
             hf_state_dict = {}
         else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
+
+    def _set_qk_layernorm(self, mg_attn, hf_attn, hf_state_dict, to_mcore):
+        hf_q_norm_key = 'q_norm.weight' if hasattr(hf_attn, 'q_norm') else 'query_layernorm.weight'
+        hf_k_norm_key = 'k_norm.weight' if hasattr(hf_attn, 'k_norm') else 'key_layernorm.weight'
+        self._set_state_dict(mg_attn, 'q_layernorm.weight', hf_state_dict, hf_q_norm_key, to_mcore)
+        self._set_state_dict(mg_attn, 'k_layernorm.weight', hf_state_dict, hf_k_norm_key, to_mcore)
+
+    def get_e_score_correction_bias_key(self, hf_mlp):
+        if hasattr(hf_mlp, 'moe_statics'):
+            hf_bias_key = 'moe_statics.e_score_correction_bias'
+        else:
+            hf_bias_key = 'gate.e_score_correction_bias'
+        return hf_bias_key
 
     def _set_moe_state(
         self,
@@ -624,10 +662,7 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         args = self.args
-        if hasattr(self.hf_layers[layer_idx], 'feed_forward'):
-            hf_mlp = self.hf_layers[layer_idx].feed_forward
-        else:
-            hf_mlp = self.hf_layers[layer_idx].mlp
+        hf_mlp = self._get_hf_mlp(layer_idx)
         if hasattr(hf_mlp, 'router'):
             hf_gate_key = 'router.weight'
         elif hasattr(hf_mlp.gate, 'wg'):
@@ -638,10 +673,7 @@ class GPTBridge:
         if args.add_bias_linear:
             self._set_state_dict(mg_mlp, 'router.bias', hf_state_dict, hf_gate_key.replace('weight', 'bias'), to_mcore)
         if args.moe_router_enable_expert_bias:
-            if hasattr(hf_mlp, 'moe_statics'):
-                hf_bias_key = 'moe_statics.e_score_correction_bias'
-            else:
-                hf_bias_key = 'gate.e_score_correction_bias'
+            hf_bias_key = self.get_e_score_correction_bias_key(hf_mlp)
             self._set_state_dict(mg_mlp, 'router.expert_bias', hf_state_dict, hf_bias_key, to_mcore)
 
         if args.moe_shared_expert_intermediate_size:
@@ -685,10 +717,7 @@ class GPTBridge:
                        ep_rank: Optional[int] = None,
                        hf_mlp=None):
         if hf_mlp is None:
-            if hasattr(self.hf_layers[layer_idx], 'feed_forward'):
-                hf_mlp = self.hf_layers[layer_idx].feed_forward
-            else:
-                hf_mlp = self.hf_layers[layer_idx].mlp
+            hf_mlp = self._get_hf_mlp(layer_idx)
         is_expert = ep_rank is not None
         num_local_experts = 1
         hf_grouped = False
@@ -699,8 +728,7 @@ class GPTBridge:
             num_local_experts = args.num_experts // self.ep_size
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if version.parse(
-                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4_5v':
+        if self.is_transformers_5 and self.args.hf_model_type in {'glm4v_moe', 'glm4_moe_lite'}:
             hf_grouped = False
             is_gate_up = False
         if to_mcore or hf_grouped:
@@ -787,7 +815,7 @@ class GPTBridge:
                                 gate_up_proj_bias = hf_state_dict['gate_up_proj_bias'].load()
                                 gate_up_proj_bias = gate_up_proj_bias[ep_rank * num_local_experts:(ep_rank + 1)
                                                                       * num_local_experts]
-                            if args.llm_architectures == 'GptOssForCausalLM':
+                            if args.llm_model_type == 'gpt_oss':
                                 gate_proj_weight = gate_up_proj_weight[:, ::2]
                                 up_proj_weight = gate_up_proj_weight[:, 1::2]
                                 gate_proj_bias, up_proj_bias = gate_up_proj_bias[:, ::2], gate_up_proj_bias[:, 1::2]
@@ -861,7 +889,10 @@ class GPTBridge:
             elif not is_expert and self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
-                assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                if hf_grouped:
+                    raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                     'weight organization methods, LoRA weight conversion is not supported. '
+                                     'You can solve this issue by setting `--merge_lora true`.')
                 if mg_mlp is None:
                     lora_A = None
                     lora_B = None
@@ -938,7 +969,7 @@ class GPTBridge:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
                                 is_last_ckpt = gate_up_proj_weight.shape[0] == args.num_experts
-                                if args.llm_architectures == 'GptOssForCausalLM' and is_last_ckpt:
+                                if args.llm_model_type == 'gpt_oss' and is_last_ckpt:
                                     gate_proj_weight, up_proj_weight = gate_up_proj_weight.chunk(2, dim=2)
                                     new_gate_up_proj_weight = torch.empty_like(gate_up_proj_weight)
                                     new_gate_up_proj_weight[..., ::2] = gate_proj_weight
@@ -957,7 +988,7 @@ class GPTBridge:
                                     if 'gate_up_proj_bias' in hf_state_dict:
                                         gate_up_proj_bias = torch.concat(
                                             [hf_state_dict['gate_up_proj_bias'], gate_up_proj_bias], dim=0)
-                                    if args.llm_architectures == 'GptOssForCausalLM' and is_last_ckpt:
+                                    if args.llm_model_type == 'gpt_oss' and is_last_ckpt:
                                         gate_proj_bias, up_proj_bias = gate_up_proj_bias.chunk(2, dim=1)
                                         new_gate_up_proj_bias = torch.empty_like(gate_up_proj_bias)
                                         new_gate_up_proj_bias[:, ::2] = gate_proj_bias
@@ -1081,7 +1112,10 @@ class GPTBridge:
                 elif not is_expert and self.pp_size > 1:
                     dist.all_reduce(is_lora, group=self.pp_group)
                 if is_lora:
-                    assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                    if hf_grouped:
+                        raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                         'weight organization methods, LoRA weight conversion is not supported. '
+                                         'You can solve this issue by setting `--merge_lora true`.')
                     if mg_mlp is None:
                         lora_A = None
                         lora_B = None
@@ -1195,11 +1229,8 @@ class GPTBridge:
         return hf_state_dict
 
     def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
-        if hasattr(self.hf_layers[layer_idx], 'feed_forward'):
-            hf_mlp_prefix = 'feed_forward'
-        else:
-            hf_mlp_prefix = 'mlp'
-        hf_mlp = getattr(self.hf_layers[layer_idx], hf_mlp_prefix)
+        hf_mlp_prefix = self.get_hf_mlp_prefix(layer_idx)
+        hf_mlp = self._get_hf_mlp(layer_idx)
         is_moe = self._is_moe(hf_mlp.state_dict())
         mg_mlp = None if mg_layer is None else mg_layer.mlp
         if is_moe:
@@ -1249,14 +1280,15 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
-        if self.args.untie_embeddings_and_output_weights:
-            if not to_mcore or self.args.task_type == 'causal_lm':
-                hf_lm_head_key = self.hf_lm_head_key
-                if not to_mcore and self.args.task_type == 'seq_cls':
-                    hf_lm_head_key = self.hf_score_key
-                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
-        elif to_mcore and lm_model.output_layer.weight is not None:
-            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
+        if self.args.task_type != 'embedding':
+            if self.args.untie_embeddings_and_output_weights:
+                if not to_mcore or self.args.task_type == 'causal_lm':
+                    hf_lm_head_key = self.hf_lm_head_key
+                    if self.args.task_type == 'seq_cls':
+                        hf_lm_head_key = self.hf_score_key
+                    self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
+            elif to_mcore and lm_model.output_layer.weight is not None:
+                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
         self._set_state_dict(lm_model, 'decoder.final_layernorm.weight', hf_state_dict, self.hf_final_layernorm_key,
                              to_mcore)
         if to_mcore:
@@ -1385,7 +1417,9 @@ class GPTBridge:
         if not to_mcore and not self.args.hf_model_type.startswith('qwen3_next'):
             self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
                                  to_mcore)
-            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight', to_mcore)
+            if self.args.untie_embeddings_and_output_weights:
+                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight',
+                                     to_mcore)
         hf_state_dict.update(self._set_layer_attn(transformer_layer, hf_state_dict, -1, to_mcore))
         hf_state_dict.update(self._set_layer_mlp(transformer_layer, hf_state_dict, -1, to_mcore))
         if to_mcore:
@@ -1422,6 +1456,7 @@ class GPTBridge:
 
     def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
         """Save the mg_model checkpoint in HF format"""
+        torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(
@@ -1432,7 +1467,6 @@ class GPTBridge:
         args = self.args
         if is_last_rank():
             if is_peft_format:
-                from swift.llm import get_multimodal_target_regex
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
                 if args.task_type == 'seq_cls':
                     peft_config.task_type = 'SEQ_CLS'
@@ -1451,6 +1485,8 @@ class GPTBridge:
                 peft_config.modules_to_save = self._peft_modules_to_save
                 peft_config.save_pretrained(output_dir)
             else:
+                if args.mtp_num_layers:
+                    self.hf_model.config.num_nextn_predict_layers = args.mtp_num_layers
                 self.hf_model.config.vocab_size = args.padded_vocab_size
                 if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
                     if getattr(self.hf_model.config, 'quantization_config', None) is None:

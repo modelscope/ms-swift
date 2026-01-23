@@ -40,7 +40,7 @@ megatron rlhf \
     --vllm_server_port 8000 \
     --max_length 8192 \
     --max_completion_length 2048 \
-    --train_type full \
+    --tuner_type full \
     --lr 1e-6 \
     --bf16 true \
     --beta 0.001 \
@@ -66,8 +66,7 @@ megatron rlhf \
     --system examples/train/grpo/prompt.txt \
     --padding_free true \
     --log_completions true \
-    --wandb_project megatron_swift \
-    --wandb_exp_name megatron_grpo \
+    --report_to wandb \
     --train_iters 100 \
     --eval_interval 1000 \
     --save_interval 1000

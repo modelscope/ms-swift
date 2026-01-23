@@ -11,9 +11,9 @@ kwargs = {
 
 
 def test_llm():
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000', 'swift/self-cognition#1000'],
             split_dataset_ratio=0.01,
@@ -27,9 +27,9 @@ def test_llm():
 
 
 def test_streaming():
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2-7B-Instruct',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#10000'],
             packing=True,
@@ -44,9 +44,9 @@ def test_streaming():
 
 
 def test_mllm_streaming():
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     result = sft_main(
-        TrainArguments(
+        SftArguments(
             model='Qwen/Qwen2.5-VL-7B-Instruct',
             dataset=['AI-ModelScope/LaTeX_OCR#20000'],
             packing=True,
