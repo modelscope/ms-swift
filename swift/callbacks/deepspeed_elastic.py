@@ -46,7 +46,7 @@ class DeepspeedElasticCallback(TrainerCallback):
                 state.train_batch_size = args.per_device_train_batch_size * max(1, args.n_gpu)
 
 
-class GracefulExitCallBack(TrainerCallback):
+class GracefulExitCallback(TrainerCallback):
 
     def __init__(self, args=None, trainer=None):
         if args is not None and trainer is not None:
