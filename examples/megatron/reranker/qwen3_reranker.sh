@@ -1,5 +1,5 @@
-# 2 * 70GiB
-# For inference code, refer to: examples/infer/demo_embedding.py
+# 2 * 80GiB
+# For inference code, refer to: examples/infer/demo_reranker.py
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -14,7 +14,7 @@ megatron sft \
     --split_dataset_ratio 0.02 \
     --tensor_model_parallel_size 2 \
     --sequence_parallel true \
-    --micro_batch_size 16 \
+    --micro_batch_size 2 \
     --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \

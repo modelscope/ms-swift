@@ -35,7 +35,7 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
             start, end = positive_indices[i], positive_indices[i + 1]
             preds.append(logits[start:end].argmax())
         preds = torch.stack(preds)
-        labels = torch.tensor([0] * (len(positive_indices) - 1))
+        labels = torch.tensor([0] * (len(positive_indices) - 1), device=preds.device)
         return preds, labels
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
@@ -58,7 +58,8 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
     def setup_model_and_optimizer(self, *_args, **kwargs):
         res = super().setup_model_and_optimizer(*_args, **kwargs)
         for model in self.unwrapped_models:
-            model.tokenizer = self.template.tokenizer
+            lm_model = model.language_model if hasattr(model, 'language_model') else model
+            lm_model.tokenizer = self.template.tokenizer
         return res
 
     def forward_step(self, data_iterator, model):

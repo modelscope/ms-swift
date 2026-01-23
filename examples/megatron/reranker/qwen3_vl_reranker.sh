@@ -1,8 +1,8 @@
-# 2 * 80GiB
-# For inference code, refer to: examples/infer/demo_embedding.py
+# 4 * 50GiB
+# For inference code, refer to: examples/infer/demo_reranker.py
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --model Qwen/Qwen3-VL-Reranker-8B \
     --task_type generative_reranker \
@@ -12,9 +12,9 @@ megatron sft \
     --dataset swift/TextCaps:rerank \
     --load_from_cache_file true \
     --split_dataset_ratio 0.02 \
-    --tensor_model_parallel_size 2 \
+    --tensor_model_parallel_size 4 \
     --sequence_parallel true \
-    --micro_batch_size 16 \
+    --micro_batch_size 1 \
     --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
@@ -25,7 +25,7 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-7 \
     --max_epochs 1 \
-    --save megatron_output/Qwen3-Reranker-8B \
+    --save megatron_output/Qwen3-VL-Reranker-8B \
     --save_interval 200 \
     --eval_interval 50 \
     --max_length 4096 \
