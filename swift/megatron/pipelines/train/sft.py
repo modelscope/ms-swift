@@ -8,7 +8,7 @@ import torch
 from transformers.utils import is_torch_npu_available
 
 from swift.megatron.arguments import MegatronSftArguments
-from swift.megatron.trainers import MegatronEmbeddingTrainer, MegatronTrainer
+from swift.megatron.trainers import MegatronEmbeddingTrainer, MegatronRerankerTrainer, MegatronTrainer
 from swift.megatron.utils import get_padding_to
 from swift.pipelines import SwiftSft
 from swift.template import TEMPLATE_MAPPING
@@ -32,6 +32,8 @@ class MegatronSft(SwiftSft):
         args = self.args
         if args.task_type == 'embedding':
             return MegatronEmbeddingTrainer(self.args, self.template)
+        elif args.task_type in {'reranker', 'generative_reranker'}:
+            return MegatronRerankerTrainer(self.args, self.template)
         else:
             return MegatronTrainer(self.args, self.template)
 

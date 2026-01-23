@@ -14,6 +14,7 @@ register_megatron_model(
             ModelType.yi,
             ModelType.openbuddy_llama,
             ModelType.qwen3,
+            ModelType.qwen3_reranker,
             ModelType.qwen2_moe,
             ModelType.qwen3_moe,
             ModelType.internlm3,

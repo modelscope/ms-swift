@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
+import os
 from collections import OrderedDict
 from copy import deepcopy
 from typing import Any, Dict, Literal, Optional, Tuple
@@ -15,7 +16,9 @@ from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rotary_pos_embedding import RotaryEmbedding
 from megatron.core.models.gpt import GPTModel as McoreGPTModel
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
+from megatron.core.tensor_parallel.mappings import (gather_from_sequence_parallel_region,
+                                                    gather_from_tensor_model_parallel_region,
+                                                    reduce_from_tensor_model_parallel_region)
 from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler, MTPLossLoggingHelper, roll_tensor
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -32,6 +35,9 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 
 
 class OutputLayerLinear(TELinear):
+
+    def forward(self, hidden_states, *args, **kwargs):
+        return super().forward(hidden_states)
 
     def sharded_state_dict(
             self,
@@ -456,6 +462,13 @@ class GPTModel(McoreGPTModel):
         else:
             logits, _ = self.output_layer(
                 hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
+            if args.task_type == 'generative_reranker':
+                logits = gather_from_tensor_model_parallel_region(logits)
+                positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
+                negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')
+                positive_token_id = self.tokenizer.convert_tokens_to_ids(positive_token)
+                negative_token_id = self.tokenizer.convert_tokens_to_ids(negative_token)
+                logits = (logits[..., positive_token_id] - logits[..., negative_token_id])[..., None]
         # Restore sequence parallel execution to the output layer if necessary.
         if sequence_parallel_override:
             assert (in_inference_mode and inference_context.is_dynamic_batching()

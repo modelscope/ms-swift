@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from .reward_trainer import MegatronRewardTrainer
     from .rollout_mixin import MegatronRolloutMixin
     from .embedding_trainer import MegatronEmbeddingTrainer
+    from .reranker_trainer import MegatronRerankerTrainer
     from .trainer import MegatronTrainer
 else:
     _import_structure = {
@@ -21,6 +22,7 @@ else:
         'reward_trainer': ['MegatronRewardTrainer'],
         'rollout_mixin': ['MegatronRolloutMixin'],
         'embedding_trainer': ['MegatronEmbeddingTrainer'],
+        'reranker_trainer': ['MegatronRerankerTrainer'],
         'trainer': ['MegatronTrainer'],
     }
     import sys

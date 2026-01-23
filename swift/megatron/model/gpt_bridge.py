@@ -124,7 +124,7 @@ class GPTBridge:
             # mtp
             'eh_proj',
         }
-        if self.args.task_type == 'causal_lm':
+        if self.args.task_type in {'causal_lm', 'generative_reranker'}:
             dim0_keys.add('output_layer')
         if not self.mcore_014:
             # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
@@ -1282,7 +1282,7 @@ class GPTBridge:
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.task_type != 'embedding':
             if self.args.untie_embeddings_and_output_weights:
-                if not to_mcore or self.args.task_type == 'causal_lm':
+                if not to_mcore or self.args.task_type in {'causal_lm', 'generative_reranker'}:
                     hf_lm_head_key = self.hf_lm_head_key
                     if self.args.task_type == 'seq_cls':
                         hf_lm_head_key = self.hf_score_key

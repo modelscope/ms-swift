@@ -495,6 +495,7 @@ register_megatron_model(
             ModelType.qwen3_vl,
             ModelType.qwen3_vl_moe,
             ModelType.qwen3_vl_emb,
+            ModelType.qwen3_vl_reranker,
         ],
         model_cls=Qwen3VLGPTModel,
         bridge_cls=MultimodalGPTBridge,
