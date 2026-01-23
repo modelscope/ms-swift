@@ -346,8 +346,12 @@ class ModelLoader(BaseModelLoader):
             if model is not None and not self.return_dummy_model:
                 llm_model = get_lm_head_model(model, self.model_meta)
                 origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
-                if origin_vocab_size < len(tokenizer):
-                    vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                if hasattr(tokenizer, 'tokenizer'):
+                    _tokenizer = tokenizer.tokenizer
+                else:
+                    _tokenizer = tokenizer
+                if origin_vocab_size < len(_tokenizer):
+                    vocab_size = math.ceil(len(_tokenizer) / 128) * 128
                     llm_model.resize_token_embeddings(vocab_size)
                     # fix transformers==4.52.4 qwen2.5-vl
                     HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)

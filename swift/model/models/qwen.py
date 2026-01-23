@@ -719,7 +719,13 @@ class Qwen2VLLoader(ModelLoader):
         self.auto_model_cls = self.auto_model_cls or Qwen2VLForConditionalGeneration
         model = super().get_model(model_dir, config, processor, model_kwargs)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-        patch_get_input_embeddings(base_model.visual, 'patch_embed')
+        visual_module = None
+        if hasattr(base_model, 'model') and hasattr(base_model.model, 'visual'):
+            visual_module = base_model.model.visual
+        elif hasattr(base_model, 'visual'):
+            visual_module = base_model.visual    
+        if visual_module:
+            patch_get_input_embeddings(visual_module, 'patch_embed')
         return model
 
     def _check_qwen_vl_utils(self):
