@@ -709,7 +709,7 @@ def test_glm4_moe_lite():
 
 def test_olmoe():
     engine = TransformersEngine('allenai/OLMoE-1B-7B-0924-Instruct')
-    # engine = TransformerEngine('allenai/OLMoE-1B-7B-0125-Instruct')
+    # engine = TransformersEngine('allenai/OLMoE-1B-7B-0125-Instruct')
     swift_response = _infer_model(engine)
     engine.template.template_backend = 'jinja'
     jinja_response = _infer_model(engine)

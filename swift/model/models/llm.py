@@ -397,22 +397,14 @@ register_model(
             ModelGroup([
                 Model('allenai/OLMoE-1B-7B-0125', 'allenai/OLMoE-1B-7B-0125'),
                 Model('allenai/OLMoE-1B-7B-0125-Instruct', 'allenai/OLMoE-1B-7B-0125-Instruct'),
-            ])
-        ],
-        template=TemplateType.olmoe,
-        architectures=['OlmoeForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.olmoe_0924,
-        [
+            ],
+                       template=TemplateType.olmoe),
             ModelGroup([
                 Model('allenai/OLMoE-1B-7B-0924', 'allenai/OLMoE-1B-7B-0924'),
                 Model('allenai/OLMoE-1B-7B-0924-Instruct', 'allenai/OLMoE-1B-7B-0924-Instruct'),
                 Model('allenai/OLMoE-1B-7B-0924-SFT', 'allenai/OLMoE-1B-7B-0924-SFT'),
-            ])
+            ],
+                       template=TemplateType.olmoe_0924)
         ],
-        template=TemplateType.olmoe_0924,
         architectures=['OlmoeForCausalLM'],
     ))

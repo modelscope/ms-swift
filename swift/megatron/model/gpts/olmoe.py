@@ -8,7 +8,6 @@ from megatron.core.extensions.transformer_engine import SplitAlongDim, TENorm
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.transformer.attention import SelfAttention as SelfAttentionBase
 from megatron.core.transformer.attention import SelfAttentionSubmodules
-from megatron.core.transformer.enums import LayerType
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -98,6 +97,7 @@ def get_olmoe_decoder_block_spec(
     num_layers_to_build = get_num_layers_to_build(config, vp_stage=vp_stage)
 
     if config.pipeline_model_parallel_layout is not None:
+        from megatron.core.transformer.enums import LayerType
         local_layer_specs = [
             layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
                 layer_type=LayerType.decoder, vp_stage=vp_stage)
@@ -137,7 +137,7 @@ class OLMoEBridge(GPTBridge):
                                  'linear_qkv.lora_A.weight')
                 self._set_weight(mg_attn.linear_qkv.lora_B[self._adapter_name].weight, lora_B,
                                  'linear_qkv.lora_B.weight')
-            else:
+            elif not self._is_peft_format:
                 linear_qkv_weight = torch.cat([
                     hf_state_dict['q_proj.weight'].load(),
                     hf_state_dict['k_proj.weight'].load(),
@@ -220,7 +220,7 @@ class OLMoEBridge(GPTBridge):
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.olmoe,
-        [ModelType.olmoe, ModelType.olmoe_0924],
+        [ModelType.olmoe],
         get_transformer_layer_spec=get_olmoe_decoder_block_spec,
         bridge_cls=OLMoEBridge,
     ))
