@@ -220,7 +220,7 @@ class OLMoEBridge(GPTBridge):
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.olmoe,
-        [ModelType.olmoe, ModelType.olmoe_0924],
+        [ModelType.olmoe],
         get_transformer_layer_spec=get_olmoe_decoder_block_spec,
         bridge_cls=OLMoEBridge,
     ))
