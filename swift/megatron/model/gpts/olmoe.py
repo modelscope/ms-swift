@@ -137,7 +137,7 @@ class OLMoEBridge(GPTBridge):
                                  'linear_qkv.lora_A.weight')
                 self._set_weight(mg_attn.linear_qkv.lora_B[self._adapter_name].weight, lora_B,
                                  'linear_qkv.lora_B.weight')
-            else:
+            elif not self._is_peft_format:
                 linear_qkv_weight = torch.cat([
                     hf_state_dict['q_proj.weight'].load(),
                     hf_state_dict['k_proj.weight'].load(),
