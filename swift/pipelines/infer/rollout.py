@@ -47,10 +47,8 @@ from swift.utils import get_logger, get_seed, is_vllm_ascend_available
 from ..base import SwiftPipeline
 
 try:
-    if check_vllm_version_ge('0.11.0'):
+    if check_vllm_version_ge('0.11.1'):
         from vllm.utils.network_utils import get_open_port
-        import vllm.utils
-        vllm.utils.get_open_port = get_open_port  # patch for trl
     else:
         from vllm.utils import get_open_port
     from vllm.distributed.parallel_state import get_world_group
