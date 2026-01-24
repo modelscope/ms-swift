@@ -251,3 +251,66 @@ def calculate_max_steps(args: 'TrainingArguments', dataset) -> int:
         num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
         max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
     return max_steps
+
+
+def extract_version(name: str) -> Optional[int]:
+    if not name.startswith('v'):
+        return None
+    try:
+        num = name[1:].split('-', 1)[0]
+        return int(num)
+    except ValueError:
+        return None
+
+
+def get_previous_version_from_path(current_path: str) -> Optional[str]:
+    from pathlib import Path
+    current = Path(current_path)
+    parent = current.parent
+    current_name = current.name
+
+    candidates = [d for d in parent.iterdir() if d.is_dir()]
+
+    valid = [(d.name, extract_version(d.name)) for d in candidates]
+    valid = [(name, ver) for name, ver in valid if ver is not None]
+
+    valid.sort(key=lambda x: x[1])
+    names = [name for name, _ in valid]
+
+    if current_name not in names:
+        return None
+
+    idx = names.index(current_name)
+    if idx == 0:
+        return None
+
+    prev_name = names[idx - 1]
+    return str(parent / prev_name)
+
+
+def get_resume_dir(output_dir):
+    return get_previous_version_from_path(output_dir)
+
+
+def replace_index_file(output_dir: str):
+    from transformers.utils import WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_INDEX_NAME
+    import os
+    import json
+    index_file = os.path.join(output_dir, WEIGHTS_INDEX_NAME)
+
+    if not os.path.exists(index_file):
+        return
+    with open(index_file, 'r', encoding='utf-8') as f:
+        bin_data = json.load(f)
+    if 'weight_map' not in bin_data:
+        return
+    bin_data['weight_map'] = {
+        k: v.replace('pytorch_model', 'model').replace('.bin', '.safetensors')
+        for k, v in bin_data['weight_map'].items()
+    }
+    safe_path = os.path.join(output_dir, SAFE_WEIGHTS_INDEX_NAME)
+    with open(safe_path, 'w', encoding='utf-8') as f:
+        json.dump(bin_data, f, indent=2)
+    from contextlib import suppress
+    with suppress(FileNotFoundError):
+        os.remove(os.path.join(output_dir, WEIGHTS_INDEX_NAME))
