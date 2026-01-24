@@ -11,6 +11,7 @@ from dataclasses import asdict
 from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

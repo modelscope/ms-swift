@@ -193,6 +193,7 @@ def get_template(
         use_chat_template=use_chat_template,
         remove_unused_columns=remove_unused_columns,
         padding_side=padding_side,
+        seed=seed,
         # train
         padding_free=padding_free,
         loss_scale=loss_scale,
