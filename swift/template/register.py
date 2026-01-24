@@ -65,6 +65,7 @@ def get_template(
     use_chat_template: bool = True,
     remove_unused_columns: bool = True,
     padding_side: Literal['left', 'right'] = 'right',
+    seed: Optional[int] = 42,
     # train
     padding_free: bool = False,
     loss_scale: str = 'default',

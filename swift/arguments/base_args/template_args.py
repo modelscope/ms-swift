@@ -172,6 +172,7 @@ class TemplateArguments:
             'use_chat_template': self.use_chat_template,
             'remove_unused_columns': remove_unused_columns,
             'padding_side': self.padding_side,
+            'seed': self.data_seed,
             # train
             'padding_free': self.padding_free,
             'loss_scale': self.loss_scale,

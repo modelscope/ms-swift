@@ -3,7 +3,6 @@ import hashlib
 import inspect
 import math
 import os
-import random
 import re
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
@@ -85,6 +84,7 @@ class Template(ProcessorMixin):
         use_chat_template: bool = True,
         remove_unused_columns: bool = True,
         padding_side: Literal['left', 'right'] = 'right',
+        seed: Union[int, np.random.RandomState, None] = 42,
         # only for train
         padding_free: bool = False,
         loss_scale: str = 'default',
@@ -141,6 +141,10 @@ class Template(ProcessorMixin):
         self.loss_scale: LossScale = get_loss_scale(loss_scale)
         self.max_pixels = max_pixels
         self.padding_side = padding_side
+        if isinstance(seed, np.random.RandomState):
+            self.random_state = seed
+        else:
+            self.random_state = np.random.RandomState(seed)
         self.sequence_parallel_size = sequence_parallel_size
         self.padding_free = padding_free  # padding_free/packing
         self.packing = False
@@ -1674,12 +1678,12 @@ class Template(ProcessorMixin):
                 negative_num = len(labels) - positive_num
                 max_positive = min(positive_num, max_positive_samples)
                 max_negative = min(negative_num, max_negative_samples)
-                for i in random.sample(range(positive_num), max_positive):
+                for i in self.random_state.choice(positive_num, size=max_positive, replace=False):
                     new_batch.append(
                         {key: b[key][i]
                          for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
                     labels_list.append(1)
-                    for j in random.sample(range(negative_num), max_negative):
+                    for j in self.random_state.choice(negative_num, max_negative, replace=False):
                         new_batch.append({
                             key: b[key][j + positive_num]
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
