@@ -359,6 +359,7 @@ class ResponsePreprocessor(RowPreprocessor):
     def __init__(self, *, columns: Optional[Dict[str, str]] = None, **kwargs) -> None:
         super().__init__(columns=columns, **kwargs)
         system_keys = ['system', 'system_prompt']
+        # TODO
         query_keys = ['query', 'prompt', 'input', 'instruction', 'question', 'problem']
         response_keys = ['response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution'
                          ] + ['text', 'completion', 'content']
