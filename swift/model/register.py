@@ -308,6 +308,8 @@ class ModelLoader(BaseModelLoader):
             patch_output_normalizer(model, model_meta=model_meta)
         elif model_info.task_type == 'generative_reranker':
             self._patch_generative_reranker(model, processor)
+        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
+            self._compat_transformers5(model)
         return model
 
     def _patch_generative_reranker(self, model, processor):
@@ -328,17 +330,16 @@ class ModelLoader(BaseModelLoader):
         if self.leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
             self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
-        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
-            self._compat_transformers5(model)
         model.model_info = self.model_info
         model.model_meta = self.model_meta
         model.model_dir = model_dir
         self._init_generation_config(model, model_dir)
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
 
-    def _add_new_special_tokens(self, model, tokenizer):
+    def _add_new_special_tokens(self, model, processor):
         if not self.new_special_tokens:
             return
+        tokenizer = self._get_tokenizer(processor)
         num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': self.new_special_tokens})
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
