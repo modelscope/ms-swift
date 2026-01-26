@@ -632,6 +632,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
             self.rotary_base = 10000
+        else:
+            self.rotary_base = int(self.rotary_base)
         if self.rotary_interleaved is None:
             self.rotary_interleaved = False
         if self.attention_dropout is None:
