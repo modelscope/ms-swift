@@ -9,6 +9,7 @@ from .media import MediaResource
 from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
                            RowPreprocessor)
 from .register import DATASET_MAPPING, DatasetMeta, SubsetDataset, register_dataset, register_dataset_info
+from .collator import ProgressTrackingCollator
 from .utils import (AddLengthPreprocessor, EncodePreprocessor, IterablePackingDataset, LazyLLMDataset, PackingDataset,
                     sample_dataset)
 

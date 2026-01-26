@@ -145,6 +145,15 @@ class DatasetSyntax:
         return dataset_meta
 
 
+class _AddDatasetSource:
+    def __init__(self, source):
+        self.source = source
+
+    def __call__(self, example):
+        example['_dataset_source'] = self.source
+        return example
+
+
 class DatasetLoader:
 
     @staticmethod
@@ -192,6 +201,16 @@ class DatasetLoader:
         if len(datasets) == 1:
             return datasets[0]
         return interleave_datasets(datasets, *args, **kwargs)
+
+    @staticmethod
+    def _add_dataset_source(dataset, source: str, streaming: bool = False):
+        """Add _dataset_source column for progress tracking."""
+        if streaming:
+            # For IterableDataset, add source via map
+            return dataset.map(_AddDatasetSource(source))
+        else:
+            # For regular Dataset, add column directly
+            return dataset.add_column('_dataset_source', [source] * len(dataset))
 
     @staticmethod
     def _load_dataset_path(
@@ -519,6 +538,13 @@ def load_dataset(
     use_hf_default = use_hf
     if use_hf_default is None:
         use_hf_default = True if use_hf_hub() else False
+    
+    # Track original dataset sizes before mixing/resampling for accurate progress tracking
+    # This enables tracking of training progress relative to original dataset size,
+    # which is essential when using interleave_datasets with resampling strategies
+    original_train_dataset_sizes: Dict[str, int] = {}
+    original_val_dataset_sizes: Dict[str, int] = {}
+    
     for dataset in datasets:
         dataset_syntax = DatasetSyntax.parse(dataset)
         use_hf = dataset_syntax.use_hf or use_hf_default
@@ -542,9 +568,34 @@ def load_dataset(
             shuffle=shuffle,
             random_state=seed,
         )
+        # Inject dataset source identifier for progress tracking
+        dataset_source = dataset_syntax.get_raw()
         if train_dataset is not None:
+            # Record original dataset size before any mixing/resampling operations
+            # This size represents the actual number of unique samples in the dataset,
+            # which is crucial for calculating meaningful training progress (epochs)
+            if not streaming and hasattr(train_dataset, '__len__'):
+                try:
+                    original_size = len(train_dataset)
+                    if original_size > 0:
+                        original_train_dataset_sizes[dataset_source] = original_size
+                except Exception as e:
+                    logger.warning(f'Failed to get length of dataset {dataset_source}: {e}')
+            
+            train_dataset = DatasetLoader._add_dataset_source(train_dataset, dataset_source, streaming)
             train_datasets.append(train_dataset)
+        
         if val_dataset is not None:
+            # Record original validation dataset size
+            if not streaming and hasattr(val_dataset, '__len__'):
+                try:
+                    original_size = len(val_dataset)
+                    if original_size > 0:
+                        original_val_dataset_sizes[dataset_source] = original_size
+                except Exception as e:
+                    logger.warning(f'Failed to get length of val_dataset {dataset_source}: {e}')
+            
+            val_dataset = DatasetLoader._add_dataset_source(val_dataset, dataset_source, streaming)
             val_datasets.append(val_dataset)
 
     if interleave_prob is None:
@@ -563,4 +614,19 @@ def load_dataset(
         if val_datasets:
             val_datasets = DatasetLoader.shuffle_dataset(
                 val_datasets, seed=get_seed(seed), buffer_size=shuffle_buffer_size)
+    
+    # Attach original dataset sizes as metadata for accurate progress tracking
+    # When using interleave_datasets with resampling (e.g., all_exhausted strategy),
+    # the mixed dataset may contain duplicated samples. The original sizes allow
+    # progress callbacks to report training progress relative to unique sample counts,
+    # which provides more meaningful epoch-based progress metrics.
+    if original_train_dataset_sizes and train_datasets is not None:
+        train_datasets._original_dataset_sizes = original_train_dataset_sizes
+        if logger.isEnabledFor(20):  # INFO level
+            size_summary = ', '.join([f'{k.split("/")[-1]}: {v}' for k, v in original_train_dataset_sizes.items()])
+            logger.info(f'Attached original dataset sizes for progress tracking: {size_summary}')
+    
+    if original_val_dataset_sizes and val_datasets is not None:
+        val_datasets._original_dataset_sizes = original_val_dataset_sizes
+    
     return train_datasets, val_datasets

@@ -105,7 +105,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         args = self.args
         template = self.template
         padding_to = args.max_length if args.train_type == 'longlora' else None
-        return partial(template.data_collator, padding_to=padding_to)
+        collator = partial(template.data_collator, padding_to=padding_to)
+
+        # Wrap collator for dataset progress tracking if enabled
+        if args.track_dataset_progress:
+            from swift.llm.dataset import ProgressTrackingCollator
+            collator = ProgressTrackingCollator(collator)
+
+        return collator
 
     def _save_val_dataset(self, val_dataset):
         args = self.args
@@ -160,14 +167,19 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
                 packing_dataset_cls = IterablePackingDataset if args.streaming else PackingDataset
-                dataset = packing_dataset_cls(
-                    template,
-                    dataset,
-                    num_proc=args.dataset_num_proc,
-                    packing_length=args.packing_length,
-                    packing_num_proc=args.packing_num_proc,
-                    strict=args.strict,
-                    load_from_cache_file=args.load_from_cache_file)
+                origin_model = template.model
+                template.model = None
+                try:
+                    dataset = packing_dataset_cls(
+                        template,
+                        dataset,
+                        num_proc=args.dataset_num_proc,
+                        packing_length=args.packing_length,
+                        packing_num_proc=args.packing_num_proc,
+                        strict=args.strict,
+                        load_from_cache_file=args.load_from_cache_file)
+                finally:
+                    template.model = origin_model
             elif args.streaming:
                 preprocessor = EncodePreprocessor(template=template)
                 dataset = preprocessor(
@@ -182,6 +194,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
+
+        # Register DatasetProgressCallback if enabled
+        if args.track_dataset_progress and train_dataset is not None:
+            self._register_dataset_progress_callback(train_dataset)
 
         if args.task_type == 'seq_cls':
             args.problem_type = args.problem_type or getattr(self.model.config, 'problem_type', None)
@@ -207,6 +223,14 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             template=self.template,
             **self._get_trainer_kwargs(),
         )
+
+        # Set trainer reference for DatasetProgressCallback
+        from swift.trainers.callback import DatasetProgressCallback
+        for callback in self.callbacks:
+            if isinstance(callback, DatasetProgressCallback):
+                callback.set_trainer(trainer)
+                break
+
         return self.train(trainer)
 
     def _get_trainer_kwargs(self):
@@ -288,6 +312,68 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             logger.info('You are using the default early stop callback, this is a implementation of '
                         'stopping training when the best metric showing no improvement within {} steps, '
                         'you can write a new implementation in the plugin/callback.py.')
+
+    def _register_dataset_progress_callback(self, train_dataset):
+        """Register DatasetProgressCallback for tracking per-dataset training progress.
+        
+        This callback tracks how many samples from each original dataset have been consumed
+        during training. When using dataset mixing strategies (concat/interleave), it uses
+        the original dataset sizes (before resampling) as the denominator to calculate 
+        meaningful epoch-based progress metrics.
+        
+        Args:
+            train_dataset: The training dataset, possibly wrapped by LazyLLMDataset or PackingDataset
+        """
+        from swift.trainers.callback import DatasetProgressCallback
+        from swift.llm.dataset import LazyLLMDataset, PackingDataset
+
+        dataset_sizes = {}
+
+        # Unwrap to get the underlying HfDataset
+        raw_dataset = train_dataset
+        if isinstance(train_dataset, LazyLLMDataset):
+            raw_dataset = train_dataset.dataset
+        elif isinstance(train_dataset, PackingDataset):
+            raw_dataset = train_dataset.dataset
+            if isinstance(raw_dataset, LazyLLMDataset):
+                raw_dataset = raw_dataset.dataset
+
+        # Strategy 1: Use original dataset sizes (preferred for accurate epoch tracking)
+        # This is set by load_dataset() before any mixing/resampling operations
+        if hasattr(raw_dataset, '_original_dataset_sizes'):
+            dataset_sizes = dict(raw_dataset._original_dataset_sizes)  # Make a copy
+            if logger.isEnabledFor(20):  # INFO level
+                size_summary = ', '.join([f'{k.split("/")[-1]}: {v}' for k, v in dataset_sizes.items()])
+                logger.info(f'Progress tracking using original dataset sizes: {size_summary}')
+        else:
+            # Strategy 2: Fallback to counting from mixed dataset (legacy behavior)
+            # This counts resampled instances, which may not reflect true epoch progress
+            column_names = getattr(raw_dataset, 'column_names', None)
+            if column_names is not None and '_dataset_source' in column_names:
+                has_dataset_name = 'dataset_name' in raw_dataset.column_names
+                if has_dataset_name:
+                    dataset_names = raw_dataset['dataset_name']
+                    for name in dataset_names:
+                        if name is not None:
+                            dataset_sizes[name] = dataset_sizes.get(name, 0) + 1
+                else:
+                    sources = raw_dataset['_dataset_source']
+                    for source in sources:
+                        dataset_sizes[source] = dataset_sizes.get(source, 0) + 1
+                
+                if logger.isEnabledFor(20):  # INFO level
+                    logger.info(f'Progress tracking using mixed dataset sizes (fallback): '
+                              f'{len(dataset_sizes)} datasets')
+            else:
+                logger.warning('No dataset source information found for progress tracking. '
+                             'Progress metrics will not be available.')
+
+        if dataset_sizes:
+            callback = DatasetProgressCallback(dataset_sizes)
+            self.callbacks.append(callback)
+            logger.info('DatasetProgressCallback registered successfully.')
+        else:
+            logger.warning('DatasetProgressCallback not registered: no dataset size information available.')
 
     @staticmethod
     def _stat_dataset(dataset: Union[HfDataset, PackingDataset, LazyLLMDataset]):

@@ -570,6 +570,10 @@ class Template(ProcessorMixin):
                 encoded['template_inputs'] = chosen
             if not self.remove_unused_columns:
                 encoded['_extra_kwargs'] = chosen.extra_kwargs
+            # Preserve dataset source for progress tracking (priority: dataset_name > _dataset_source)
+            dataset_source = chosen.extra_kwargs.get('dataset_name') or chosen.extra_kwargs.get('_dataset_source')
+            if dataset_source:
+                encoded['_dataset_source'] = dataset_source
         return batched[0] if len(batched) == 1 else batched
 
     def packing_row(self, row: List[Dict[str, Any]]) -> Dict[str, Any]:
