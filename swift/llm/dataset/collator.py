@@ -4,7 +4,7 @@
 This module provides a wrapper collator that extracts dataset source information
 for progress tracking during training.
 """
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 class ProgressTrackingCollator:
@@ -32,6 +32,30 @@ class ProgressTrackingCollator:
         self.collator = collator
         self.track_progress = track_progress
 
+    def _extract_info(self, item: Any) -> Tuple[Optional[Any], Optional[int]]:
+        """Extract and remove _dataset_source, extract length from item."""
+        if isinstance(item, dict):
+            sources = item.pop('_dataset_source', None)
+            length = item.get('length')
+            return sources, length
+        return None, None
+
+    def _collect_sources_and_lengths(
+        self,
+        sources: Optional[Any],
+        length: Optional[int],
+        batch_sources: List[str],
+        batch_lengths: List[int],
+    ) -> None:
+        """Collect sources and lengths into batch lists."""
+        if self.track_progress and sources:
+            if isinstance(sources, str):
+                batch_sources.append(sources)
+            elif isinstance(sources, list):
+                batch_sources.extend(sources)
+        if length is not None:
+            batch_lengths.append(length)
+
     def __call__(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Process batch and extract dataset sources and token lengths.
 
@@ -43,41 +67,15 @@ class ProgressTrackingCollator:
         """
         # 1. Collect sources and lengths before calling original collator
         # (original collator may modify batch in place)
-        batch_sources = []
-        batch_lengths = []
-        
-        def _extract_info(item):
-            if isinstance(item, dict):
-                sources = item.get('_dataset_source')
-                if sources is not None:
-                    del item['_dataset_source']
-                # Extract length but don't delete it (may be needed later)
-                length = item.get('length')
-                return sources, length
-            return None, None
+        batch_sources: List[str] = []
+        batch_lengths: List[int] = []
 
         for b in batch:
-            # Handle Packing scenario where batch item is a list of samples
-            if isinstance(b, list):
-                for sub_item in b:
-                    sources, length = _extract_info(sub_item)
-                    if self.track_progress and sources:
-                        if isinstance(sources, str):
-                            batch_sources.append(sources)
-                        elif isinstance(sources, list):
-                            batch_sources.extend(sources)
-                    if length is not None:
-                        batch_lengths.append(length)
-            # Handle normal scenario where batch item is a single sample dict
-            elif isinstance(b, dict):
-                sources, length = _extract_info(b)
-                if self.track_progress and sources:
-                     if isinstance(sources, str):
-                        batch_sources.append(sources)
-                     elif isinstance(sources, list):
-                        batch_sources.extend(sources)
-                if length is not None:
-                    batch_lengths.append(length)
+            # Handle both Packing scenario (list) and normal scenario (dict)
+            items = b if isinstance(b, list) else [b]
+            for item in items:
+                sources, length = self._extract_info(item)
+                self._collect_sources_and_lengths(sources, length, batch_sources, batch_lengths)
 
         # 2. Call original collator
         result = self.collator(batch)
