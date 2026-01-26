@@ -221,25 +221,6 @@ class PackingDataset(Dataset):
         return len(self.packed_idx)
 
 
-def _packing_processor(in_queue, out_queue, template, strict):
-    """独立的处理函数，用于 spawn 子进程。
-    
-    使用独立函数而非实例方法，避免 pickle 整个 IterablePackingDataset 实例，
-    因为 Queue 对象在 spawn 模式下不能被 pickle。
-    """
-    while True:
-        i, data = in_queue.get()
-        encoded_data = {}
-        try:
-            encoded_data = template.encode(data, return_length=True)
-        except Exception as e:
-            import traceback
-            logger.error(f'Error encoding index {i}: {e}\n{traceback.format_exc()}')
-            if strict and not isinstance(e, MaxLengthError):
-                raise
-        out_queue.put((i, encoded_data))
-
-
 class IterablePackingDataset(IterableDataset):
 
     def __init__(
@@ -263,20 +244,25 @@ class IterablePackingDataset(IterableDataset):
         self.packing_length = packing_length or self.template.max_length
 
         self.packing_interval = packing_interval
-        ctx = mp.get_context('spawn')
-        self._in_queue = ctx.Queue()
-        self._out_queue = ctx.Queue()
+        self._in_queue = mp.Queue()
+        self._out_queue = mp.Queue()
         self.workers = []
         self.cyclic = cyclic
         for _ in range(self.num_proc):
-            # 使用独立函数和 args 传递参数，避免 pickle self（包含不可 pickle 的 Queue）
-            worker = ctx.Process(
-                target=_packing_processor,
-                args=(self._in_queue, self._out_queue, self.template, self.strict),
-                daemon=True
-            )
+            worker = mp.Process(target=self._processor, daemon=True)
             worker.start()
             self.workers.append(worker)
+
+    def _processor(self):
+        while True:
+            i, data = self._in_queue.get()
+            encoded_data = {}
+            try:
+                encoded_data = self.template.encode(data, return_length=True)
+            except Exception as e:
+                if self.strict and not isinstance(e, MaxLengthError):
+                    raise
+            self._out_queue.put((i, encoded_data))
 
     def _put_data_in_queue(self, iterator) -> int:
         for i in range(self.packing_interval):
