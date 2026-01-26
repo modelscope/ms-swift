@@ -711,9 +711,9 @@ class BaseMegatronTrainer(ABC):
             total_loss_dict[key] = numerator / denominator
         if self.eval_metrics is not None:
             metric = self.eval_metrics.compute()
-        for k, v in metric.items():
-            total_loss_dict[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
-        self.eval_metrics.reset()
+            for k, v in metric.items():
+                total_loss_dict[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
+            self.eval_metrics.reset()
         timers('evaluate').stop()
         timers.log(['evaluate'])
         self.custom_log(total_loss_dict, 'eval')
