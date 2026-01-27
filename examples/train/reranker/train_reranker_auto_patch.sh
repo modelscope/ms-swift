@@ -4,8 +4,8 @@ MAX_PIXELS=602112 \
 swift sft \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --task_type reranker \
-    --loss_type reranker \
-    --train_type lora \
+    --loss_type pointwise_reranker \
+    --tuner_type lora \
     --dataset swift/TextCaps:rerank \
     --split_dataset_ratio 0.05 \
     --eval_strategy steps \
@@ -19,7 +19,7 @@ swift sft \
     --padding_free true \
     --attn_impl flash_attn \
     --dataset_num_proc 8 \
-    --learning_rate 6e-6 \
+    --learning_rate 6e-5 \
     --label_names labels \
     --dataloader_drop_last true \
     --attn_impl flash_attn

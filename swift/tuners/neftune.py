@@ -1,10 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import dataclass, field
 
 import torch
 from torch import nn
 
-from swift.utils.logger import get_logger
+from swift.utils import get_logger
 from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()

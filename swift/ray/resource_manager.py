@@ -1,6 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 # Some code borrowed from ROLL: https://github.com/alibaba/ROLL
-import ast
 import math
 import os
 from dataclasses import dataclass, field

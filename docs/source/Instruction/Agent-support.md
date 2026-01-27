@@ -143,12 +143,12 @@ Action Input: {'city': '上海'}
 Observation:[-100 * 45]根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。<|im_end|>
 ```
 
-更多模型和agent_template的尝试可以使用以下代码，更多的agent template可选值参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py)。
+更多模型和agent_template的尝试可以使用以下代码，更多的agent template可选值参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/__init__.py)。
 ```python
-from swift.llm import get_model_tokenizer, get_template
+from swift import get_processor, get_template
 
-_, tokenizer = get_model_tokenizer('ZhipuAI/GLM-4-9B-0414', load_model=False)
-template = get_template(tokenizer.model_meta.template, tokenizer, agent_template='hermes')
+tokenizer = get_processor('ZhipuAI/GLM-4-9B-0414')
+template = get_template(tokenizer, agent_template='hermes')
 data = {...}
 template.set_mode('train')
 encoded = template.encode(data)
@@ -190,7 +190,7 @@ loss_scale参数可用于调节模型输出部分在训练过程中的损失权�
 
 1. 字符串匹配示例：ReACT 格式
 
-以 ReACT 格式为例，可通过 `--loss_scale react` 启用相应的 loss_scale 配置（配置文件详见 [react.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/react.json)）。该方式基于字符串精确匹配，配置中的字典映射需提供一个包含两个元素的列表，分别表示：当前匹配字符串本身的损失权重，
+以 ReACT 格式为例，可通过 `--loss_scale react` 启用相应的 loss_scale 配置（配置文件详见 [react.json](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/config/react.json)）。该方式基于字符串精确匹配，配置中的字典映射需提供一个包含两个元素的列表，分别表示：当前匹配字符串本身的损失权重，
 从该字符串之后到下一个指定字符串之前的内容的损失权重。该设置的具体效果如下：
 - 'Action:' 和 'Action Input:' 字段自身及其后续内容的损失权重均为 2；
 - 'Thought:' 和 'Final Answer:' 字段自身及其后续内容的损失权重均为 1；
@@ -198,12 +198,28 @@ loss_scale参数可用于调节模型输出部分在训练过程中的损失权�
 
 2. 正则匹配示例：忽略空思维块
 
-在训练推理模型时，我们可能需要忽略数据集中存在的形如 `'<think>\n\n</think>\n\n'`的空思维标记损失计算。此时可使用 `--loss_scale ignore_empty_think`（配置文件详见 [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/config/ignore_empty_think.json)）。该配置采用正则表达式匹配方式，字典映射的列表只需指定一个值，表示匹配内容的损失权重。该设置的具体效果如下：
+在训练推理模型时，我们可能需要忽略数据集中存在的形如 `'<think>\n\n</think>\n\n'`的空思维标记损失计算。此时可使用 `--loss_scale ignore_empty_think`（配置文件详见 [ignore_empty_think.json](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/config/ignore_empty_think.json)）。该配置采用正则表达式匹配方式，字典映射的列表只需指定一个值，表示匹配内容的损失权重。该设置的具体效果如下：
 
 - 所有与正则表达式`<think>\\s*</think>\\s*`匹配的字符串，loss_scale为0，即不计算损失。
 
-更多的loss_scale插件设计，请参考[插件化](../Customization/Pluginization.md)文档.
+使用代码测试loss_scale:
+```python
+from swift import get_processor, get_template
 
+data = {"messages": [
+    {"role": "user", "content": "aaaaa"},
+    {"role": "assistant", "content": "<think>\n\n</think>\n\nabc<think>\n\n</think>\n\n123"},
+]}
+
+template = get_template(get_processor('Qwen/Qwen3-8B'), loss_scale='ignore_empty_think')
+template.set_mode('train')
+inputs = template.encode(data)
+
+print(template.safe_decode(inputs['labels']))
+# '[-100 * 14]abc<think>\n\n</think>\n\n123<|im_end|>\n'
+```
+
+更多的loss_scale插件设计，请参考[插件化](../Customization/Pluginization.md)文档.
 
 ## 训练
 - 训练Base模型的Agent能力，通过修改`--model`切换不同模型，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/qwen2_5.sh)。

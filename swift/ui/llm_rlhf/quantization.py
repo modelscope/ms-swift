@@ -1,5 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.quantization import Quantization
+# Copyright (c) ModelScope Contributors. All rights reserved.
+from ..llm_train import Quantization
 
 
 class RLHFQuantization(Quantization):

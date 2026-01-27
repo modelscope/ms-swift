@@ -4,7 +4,7 @@ Below are the inference engines supported by Swift along with their correspondin
 
 | Inference Acceleration Engine                    | OpenAI API                                                   | Multimodal                                                   | Quantized Model | Multiple LoRAs                                               | QLoRA | Batch Inference                                              | Parallel Techniques |
 | ------------------------------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ | --------------- | ------------------------------------------------------------ | ----- | ------------------------------------------------------------ | ------------------- |
-| pytorch                                          | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/llm/chat/openai_client.py) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh) | ✅               | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) | ✅     | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/batch_ddp.sh) | DDP/device_map      |
+| transformers                               | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/llm/chat/openai_client.py) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh) | ✅               | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) | ✅     | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/batch_ddp.sh) | DDP/device_map      |
 | [vllm](https://github.com/vllm-project/vllm)     | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh) | ✅               | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/lora/server.sh) | ❌     | ✅                                                            | TP/PP/DP               |
 | [sglang](https://github.com/sgl-project/sglang)    | ✅          | ❌ |      ✅        | ❌      | ❌     | ✅ | TP/PP/DP/EP |
 | [lmdeploy](https://github.com/InternLM/lmdeploy) | ✅                                                            | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh) | ✅               | ❌                                                            | ❌     | ✅                                                            | TP/DP                  |
@@ -23,7 +23,7 @@ To view the inference of a model fine-tuned with LoRA, please refer to the [Pre-
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -34,7 +34,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -59,7 +59,7 @@ FPS_MAX_FRAMES=12 \
 swift infer \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -87,7 +87,7 @@ A baby wearing glasses is sitting on a bed and reading a book. The baby is holdi
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --val_dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --max_new_tokens 2048
 ```
@@ -95,18 +95,18 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 The above example provides streaming inference for both full parameters and LoRA, and below are more inference techniques available in SWIFT:
 
 - Interface Inference: You can change `swift infer` to `swift app`.
-- Batch Inference: For large models and multimodal models, you can specify `--max_batch_size` for batch inference by using `infer_backend=pt`. For specific details, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/batch_ddp.sh). Note that you cannot set `--stream true` when performing batch inference.
-- DDP/device_map Inference: `infer_backend=pt` supports parallel inference using DDP/device_map technology. For further details, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/mllm_device_map.sh).
+- Batch Inference: For large models and multimodal models, you can specify `--max_batch_size` for batch inference by using `infer_backend=transformers`. For specific details, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/batch_ddp.sh). Note that you cannot set `--stream true` when performing batch inference.
+- DDP/device_map Inference: `infer_backend=transformers` supports parallel inference using DDP/device_map technology. For further details, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/mllm_device_map.sh).
 - Inference Acceleration: Swift supports using vllm/sglang/lmdeploy for inference acceleration across the inference, deployment, and evaluation modules by simply adding `--infer_backend vllm/sglang/lmdeploy`. You can refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_ddp.sh).
-- Multimodal Models: We provide shell scripts for multi-GPU inference for multimodal models using [pt](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/mllm_device_map.sh), [vllm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh), and [lmdeploy](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh).
+- Multimodal Models: We provide shell scripts for multi-GPU inference for multimodal models using [transformers](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/mllm_device_map.sh), [vllm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh), and [lmdeploy](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh).
 - Quantized Models: You can directly select models that are quantized with GPTQ, AWQ, or BNB, for example: `--model Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4`.
-- More Model Types: We also provide inference scripts for [bert](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/bert.sh), [reward_model](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/reward_model.sh), and [prm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/prm.sh).
+- More Model Types: We also provide inference scripts for [bert](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/bert.sh), [reward_model](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/reward_model.sh), and [prm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/prm.sh).
 
 **Tips:**
 
 - SWIFT saves inference results, and you can specify the save path using `--result_path`.
 - To output log probabilities, simply specify `--logprobs true` during inference. SWIFT will save these results. Note that setting `--stream true` will prevent storage of results.
-- Using `infer_backend=pt` supports inference for all models supported by SWIFT, while `infer_backend=vllm/lmdeploy` supports only a subset of models. Please refer to the documentation for [vllm](https://docs.vllm.ai/en/latest/models/supported_models.html), [sglang](https://docs.sglang.ai/supported_models/generative_models.html) and [lmdeploy](https://lmdeploy.readthedocs.io/en/latest/supported_models/supported_models.html).
+- Using `infer_backend=transformers` supports inference for all models supported by SWIFT, while `infer_backend=vllm/lmdeploy` supports only a subset of models. Please refer to the documentation for [vllm](https://docs.vllm.ai/en/latest/models/supported_models.html), [sglang](https://docs.sglang.ai/supported_models/generative_models.html) and [lmdeploy](https://lmdeploy.readthedocs.io/en/latest/supported_models/supported_models.html).
 - If you encounter OOM when using `--infer_backend vllm`, you can lower `--vllm_max_model_len`, `--vllm_max_num_seqs`, choose an appropriate `--vllm_gpu_memory_utilization`, or set `--vllm_enforce_eager true`. Alternatively, you can address this by using tensor parallelism with `--vllm_tensor_parallel_size`.
 - When inferring multimodal models using `--infer_backend vllm`, you need to input multiple images. You can set `--vllm_limit_mm_per_prompt` to resolve this, for example: `--vllm_limit_mm_per_prompt '{"image": 10, "video": 5}'`.
 - If you encounter OOM issues while inferring qwen2-vl/qwen2.5-vl, you can address this by setting `MAX_PIXELS`, `VIDEO_MAX_PIXELS`, and `FPS_MAX_FRAMES`. For more information, refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh).
@@ -125,11 +125,11 @@ If you want to perform inference through a graphical interface, you can refer to
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import PtEngine, RequestConfig, InferRequest
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 model = 'Qwen/Qwen2.5-0.5B-Instruct'
 
 # Load the inference engine
-engine = PtEngine(model, max_batch_size=2)
+engine = TransformersEngine(model, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # Using 2 infer_requests to demonstrate batch inference
@@ -154,11 +154,11 @@ os.environ['MAX_PIXELS'] = '1003520'
 os.environ['VIDEO_MAX_PIXELS'] = '50176'
 os.environ['FPS_MAX_FRAMES'] = '12'
 
-from swift.llm import PtEngine, RequestConfig, InferRequest
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 model = 'Qwen/Qwen2.5-VL-3B-Instruct'
 
 # Load the inference engine
-engine = PtEngine(model, max_batch_size=2)
+engine = TransformersEngine(model, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # Using 3 infer_requests to demonstrate batch inference
@@ -301,8 +301,7 @@ print()
 **Method 3: Swift Client**
 
 ```python
-from swift.llm import InferRequest, InferClient, RequestConfig
-from swift.plugin import InferStats
+from swift import InferRequest, InferClient, RequestConfig, InferStats
 
 engine = InferClient(host='127.0.0.1', port=8000)
 print(f'models: {engine.models}')

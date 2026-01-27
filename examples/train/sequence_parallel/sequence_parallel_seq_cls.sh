@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
     --model Qwen/Qwen2.5-0.5B \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'DAMO_NLP/jd:cls#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

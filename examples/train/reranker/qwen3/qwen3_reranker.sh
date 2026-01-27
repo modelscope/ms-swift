@@ -1,15 +1,15 @@
 # 2*20GiB
-# losses: plugin/loss.py
+# losses: swift/loss
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
     --model Qwen/Qwen3-Reranker-4B \
     --task_type generative_reranker \
-    --loss_type generative_reranker \
-    --train_type lora \
+    --loss_type pointwise_reranker \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --learning_rate 5e-6 \
+    --learning_rate 5e-5 \
     --target_modules all-linear \
     --dataset MTEB/scidocs-reranking \
     --attn_impl flash_attn \

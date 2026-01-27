@@ -10,20 +10,19 @@
 ## 基本参数
 
 - 🔥tuner_backend: 可选为'peft'，'unsloth'。默认为'peft'。
-- 🔥train_type: 可选为'lora'、'full'、'longlora'、'adalora'、'llamapro'、'adapter'、'vera'、'boft'、'fourierft'、'reft'。默认为'lora'。
+- 🔥tuner_type: 可选为'lora'、'full'、'longlora'、'adalora'、'llamapro'、'adapter'、'vera'、'boft'、'fourierft'、'reft'。默认为'lora'。（**在ms-swift3.x中参数名为`train_type`**）
 - 🔥adapters: 用于指定adapter的id/path的list，默认为`[]`。该参数通常用于推理/部署命令，例如：`swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`。该参数偶尔也用于断点续训，该参数与`resume_from_checkpoint`的区别在于，**该参数只读取adapter权重**，而不加载优化器和随机种子，并不跳过已训练的数据集部分。
   - `--model`与`--adapters`的区别：`--model`后接完整权重的目录路径，内包含model/tokenizer/config等完整权重信息，例如`model.safetensors`。`--adapters`后接增量adapter权重目录路径的列表，内涵adapter的增量权重信息，例如`adapter_model.safetensors`。
-- external_plugins: 外部`plugin.py`文件列表，这些文件会被注册进plugin模块中（即对该模块进行`import`），例子请参见[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)。默认为`[]`。
+- 🔥external_plugins: 外部`plugin.py`文件列表，这些文件会被额外加载（即对模块进行`import`）。默认为`[]`。你可以传入自定义模型、对话模板和数据集注册的`.py`文件路径，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh)；或者自定义GRPO的组件，参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh)。
 - seed: 全局随机种子，默认为42。
   - 注意：该随机种子与控制数据集随机的`data_seed`互不影响。
 - model_kwargs: 特定模型可传入的额外参数，该参数列表会在训练/推理时打印日志进行提示。例如`--model_kwargs '{"fps_max_frames": 12}'`。你也可以通过环境变量的方式设置，例如`FPS_MAX_FRAMES=12`。默认为None。
   - 注意：**若你在训练时指定了特定模型参数，请在推理时也设置对应的参数**，这可以提高训练效果。
   - 特定模型参数的含义可以在对应模型官方repo或者其推理代码中找到相应含义。ms-swift引入这些参数以确保训练的模型与官方推理代码效果对齐。
-- load_args: 当指定`--resume_from_checkpoint`、`--model`、`--adapters`会读取保存文件中的`args.json`，读取的keys查看[base_args.py](https://github.com/modelscope/ms-swift/blob/main/swift/llm/argument/base_args/base_args.py)。推理和导出时默认为True，训练时默认为False。该参数通常不需要修改。
+- load_args: 当指定`--resume_from_checkpoint`、`--model`、`--adapters`会读取保存文件中的`args.json`，读取的keys查看[base_args.py](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/base_args/base_args.py)。推理和导出时默认为True，训练时默认为False。该参数通常不需要修改。
 - load_data_args: 如果将该参数设置为True，则会额外读取`args.json`中的数据参数。默认为False。**该参数通常用于推理时对训练中切分的验证集进行推理**，例如：`swift infer --adapters xxx --load_data_args true --stream true --max_new_tokens 512`。
 - use_hf: 控制模型下载、数据集下载、模型推送使用ModelScope还是HuggingFace。默认为False，使用ModelScope。
 - hub_token: hub token. modelscope的hub token可以查看[这里](https://modelscope.cn/my/myaccesstoken)。默认为None。
-- custom_register_path: 传入自定义模型、对话模板和数据集注册的`.py`文件路径的列表，这些文件会被额外加载（即对模块进行`import`）。默认为`[]`。
 - ddp_timeout: 默认为18000000，单位为秒。
 - ddp_backend: 可选为"nccl"、"gloo"、"mpi"、"ccl"、"hccl"、"cncl"、"mccl"。默认为None，进行自动选择。
 - ignore_args_error: 用于兼容jupyter notebook。默认为False。
@@ -40,6 +39,7 @@
 - attn_impl: attention类型，可选项为'sdpa', 'eager', 'flash_attn', 'flash_attention_2', 'flash_attention_3'等。默认使用None，读取'config.json'。
   - 注意：这几种attention实现并不一定都支持，这取决于对应模型transformers实现的支持情况。
   - 若设置为'flash_attn'（兼容旧版本），则使用'flash_attention_2'。
+- experts_impl: 专家实现类型，可选项为'grouped_mm', 'batched_mm', 'eager'。默认为None。该特性需要"transformers>=5.0.0"。
 - new_special_tokens: 需要新增的特殊tokens。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens)。
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
@@ -87,7 +87,7 @@
   - GPRO该参数的默认值为False。
 - 🔥model_name: **仅用于自我认知任务**，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{NAME}}`通配符。传入模型中文名和英文名，以空格分隔，例如：`--model_name 小黄 'Xiao Huang'`。默认为None。
 - 🔥model_author: 仅用于自我认知任务，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{AUTHOR}}`通配符。传入模型作者的中文名和英文名，以空格分隔，例如：`--model_author '魔搭' 'ModelScope'`。默认为None。
-- custom_dataset_info: 自定义数据集注册的json文件路径，参考[自定义数据集](../Customization/Custom-dataset.md)和[内置'dataset_info.json'文件](https://github.com/modelscope/ms-swift/blob/main/swift/llm/dataset/data/dataset_info.json)。默认为`[]`。
+- custom_dataset_info: 自定义数据集注册的json文件路径，参考[自定义数据集](../Customization/Custom-dataset.md)和[内置'dataset_info.json'文件](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。默认为`[]`。
 
 ### 模板参数
 - 🔥template: 对话模板类型。默认为None，自动选择对应model的template类型，对应关系参考[支持的模型列表](./Supported-models-and-datasets.md)。
@@ -100,7 +100,7 @@
   - 注意：若多模态模型的训练时将'truncation_strategy'设置为`left`或`right`，**ms-swift会保留所有的image_token等多模态tokens**，这可能会导致训练时OOM。
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。
-- 🔥agent_template: Agent模板，确定如何将工具列表'tools'转换成'system'、如何在推理/部署时从模型回复中提取toolcall部分，以及确定'messages'中`{"role": "tool_call", "content": "xxx"}`, `{"role": "tool_response", "content": "xxx"}`的模板格式。可选为"react_en", "hermes", "glm4", "qwen_en", "toolbench"等，更多请查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/agent_template/__init__.py)。默认为None，根据模型类型进行自动选择。可以参考[Agent文档](./Agent-support.md)。
+- 🔥agent_template: Agent模板，确定如何将工具列表'tools'转换成'system'、如何在推理/部署时从模型回复中提取toolcall部分，以及确定'messages'中`{"role": "tool_call", "content": "xxx"}`, `{"role": "tool_response", "content": "xxx"}`的模板格式。可选为"react_en", "hermes", "glm4", "qwen_en", "toolbench"等，更多请查看[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py)。默认为None，根据模型类型进行自动选择。可以参考[Agent文档](./Agent-support.md)。
 - norm_bbox: 控制如何缩放边界框（即数据集中的"bbox"，里面的数据为绝对坐标，参考[自定义数据集文档](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)）。选项为'norm1000'和'none'。'norm1000'表示将bbox坐标缩放至千分位坐标，而'none'表示不进行缩放。默认值为None，将根据模型自动选择。
   - 当**图片在训练中发生缩放时**（例如设置了max_pixels参数），该参数也能很好进行解决。
 - use_chat_template: 使用chat模板还是generation模板（generation模板通常用于预训练时）。默认为`True`。
@@ -110,7 +110,7 @@
 - 🔥padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练（**同一batch的不同序列之间依旧是不可见的**）。默认为False。当前支持CPT/SFT/DPO/GRPO/KTO/GKD。
   - 注意：使用padding_free请结合`--attn_impl flash_attn`使用且"transformers>=4.44"，具体查看[该PR](https://github.com/huggingface/transformers/pull/31629)。（同packing）
   - **相较于packing，padding_free不需要额外的预处理时间，但packing的训练速度更快且显存占用更稳定**。
-- 🔥loss_scale: 训练tokens的loss权重设置。默认为`'default'`。loss_scale包含3种基本策略：'default'、'last_round'、'all'，以及其他策略：'ignore_empty_think'以及agent需要的：'react'、'hermes'、'qwen'、'agentflan'、'alpha_umi'等，可选值参考[loss_scale.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss_scale/loss_scale.py)。ms-swift>=3.12 支持了基本策略和其他策略的混用，例如：`'default+ignore_empty_think'`，`'last_round+ignore_empty_think'`。若没有指定基本策略，则默认为'default'，例如：'hermes'与'default+hermes'等价。
+- 🔥loss_scale: 训练tokens的loss权重设置。默认为`'default'`。loss_scale包含3种基本策略：'default'、'last_round'、'all'，以及其他策略：'ignore_empty_think'以及agent需要的：'react'、'hermes'、'qwen'、'agentflan'、'alpha_umi'等，可选值参考[loss_scale模块](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py)。ms-swift>=3.12 支持了基本策略和其他策略的混用，例如：`'default+ignore_empty_think'`，`'last_round+ignore_empty_think'`。若没有指定基本策略，则默认为'default'，例如：'hermes'与'default+hermes'等价。
   - 'default': 所有response（含history）以权重1计算交叉熵损失（**messages中的system/user/多模态tokens以及Agent训练中`tool_response`部分不计算损失**）。（**SFT默认为该值**）
   - 'last_round': 只计算最后一轮response的损失。在"ms-swift>=3.12"，最后一轮含义为最后一个"user"之后的所有内容，之前的含义只包含最后一个"assistant"。（**RLHF默认为该值**）
   - 'all': 计算所有tokens的损失。（**`swift pt`默认为该值**）
@@ -236,6 +236,7 @@ gradient_checkpointing: true
 - 🔥eval_strategy: 评估策略。默认为None，跟随`save_strategy`的策略。
   - 若不使用`val_dataset`和`eval_dataset`且`split_dataset_ratio`为0，则默认为'no'。
 - 🔥eval_steps: 默认为None，如果存在评估数据集，则跟随`save_steps`的策略。
+- eval_on_start: 是否在训练前执行一次评估步骤，以确保验证步骤能正常工作。默认为False。
 - 🔥save_total_limit: 最多保存的checkpoint数，会将过期的checkpoint进行删除。默认为None，保存所有的checkpoint。
 - max_steps: 最大训练的steps数。在数据集为流式时需要被设置。默认为-1。
 - 🔥warmup_ratio: 默认为0.。
@@ -350,10 +351,10 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### LISA
 
-注意: LISA仅支持全参数，即`--train_type full`。
+注意: LISA仅支持全参数，即`--tuner_type full`。
 
-- 🔥lisa_activated_layers: 默认值`0`, 代表不使用LISA，改为非0代表需要激活的layers个数，建议设置为2或8.
-- lisa_step_interval: 默认值`20`, 多少iter切换可反向传播的layers.
+- 🔥lisa_activated_layers: 默认值`0`，代表不使用LISA，改为非0代表需要激活的layers个数，建议设置为2或8。
+- lisa_step_interval: 默认值`20`，多少iter切换可反向传播的layers。
 
 #### UNSLOTH
 
@@ -361,7 +362,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 ```
 --tuner_backend unsloth
---train_type full/lora
+--tuner_type full/lora
 --quant_bits 4
 ```
 
@@ -372,7 +373,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### AdaLoRA
 
-以下参数`train_type`设置为`adalora`时生效. adalora的`target_modules`等参数继承于lora的对应参数，但`lora_dtype`参数不生效。
+以下参数`tuner_type`设置为`adalora`时生效. adalora的`target_modules`等参数继承于lora的对应参数，但`lora_dtype`参数不生效。
 
 - adalora_target_r: 默认值`8`, adalora的平均rank.
 - adalora_init_r: 默认值`12`, adalora的初始rank.
@@ -385,7 +386,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 
 #### ReFT
 
-以下参数`train_type`设置为`reft`时生效.
+以下参数`tuner_type`设置为`reft`时生效.
 
 > 1. ReFT无法合并tuner
 > 2. ReFT和gradient_checkpointing不兼容
@@ -476,16 +477,18 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - acc_strategy: 训练和验证时计算acc的策略。可选为`seq`和`token`级别的acc，默认为`token`。
 - max_new_tokens: 覆盖生成参数。predict_with_generate=True时的最大生成token数量，默认64。
 - temperature: 覆盖生成参数。predict_with_generate=True时的temperature，默认0。
-- optimizer: plugin的自定义optimizer名称，默认为None。可选optimizer参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/optimizer.py)。
-- loss_type: plugin的自定义loss_type名称。默认为None，使用模型自带损失函数。
-- metric: plugin的自定义metric名称。默认为None，在predict_with_generate=True的情况下默认设置为'nlg'。
+- optimizer: 使用的optimizers插件（优先级高于`--optim`），默认为None。可选optimizers参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py)。
+- loss_type: 自定义的loss_type名称。默认为None，使用模型自带损失函数。可选loss参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)。
+- eval_metric: 自定义eval metric名称。默认为None。可选eval_metric参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/eval_metric/mapping.py)。
+  - 关于默认值：当`task_type`为'causal_lm', 且`predict_with_generate=True`的情况下默认设置为'nlg'。`task_type` 为'embedding'，根据loss_type，默认值为'infonce' 或 'paired'。`task_type`为'reranker/generative_reranker'，默认值为'reranker'。
+- callbacks: 自定义trainer callback，默认为`[]`。可选callbacks参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py)。例如：通过在`callbacks`中添加`deepspeed_elastic`（可选`graceful_exit`）可以来启用弹性训练。参考[Elastic示例](../BestPractices/Elastic.md)
+- early_stop_interval: 早停的间隔，会检验best_metric在early_stop_interval个周期内（基于`save_steps`, 建议`eval_steps`和`save_steps`设为同值）没有提升时终止训练。具体代码在[early_stop.py](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py)中。同时，如果有较为复杂的早停需求，直接覆盖callback.py中的已有实现即可。设置该参数时，自动加入`early_stop`的trainer callback。
 - eval_use_evalscope: 是否使用evalscope进行训练时评测，需要设置该参数来开启评测，具体使用参考[示例](../Instruction/Evaluation.md#训练中评测)。
 - eval_dataset: 评测数据集，可设置多个数据集，用空格分割。
 - eval_dataset_args: 评测数据集参数，json格式，可设置多个数据集的参数。
 - eval_limit: 评测数据集采样数。
 - eval_generation_config: 评测时模型推理配置，json格式，默认为`{'max_tokens': 512}`。
-- use_flash_ckpt: 是否启用[DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover)的flash checkpoint。默认为`false`，启用后，权重会先保存至共享内存，之后异步持久化，目前暂不支持safetensors格式；建议搭配`PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` 一起使用，避免训练过程CUDA OOM。
-- early_stop_interval: 早停的间隔，会检验best_metric在early_stop_interval个周期内（基于`save_steps`, 建议`eval_steps`和`save_steps`设为同值）没有提升时终止训练。具体代码在[callback plugin](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py)中。同时，如果有较为复杂的早停需求，直接覆盖callback.py中的已有实现即可。
+- use_flash_ckpt: 是否启用[DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover)的flash checkpoint。默认为`false`，启用后，权重会先保存至共享内存，之后异步持久化；建议搭配`PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` 一起使用，避免训练过程CUDA OOM。
 
 #### SWANLAB
 
@@ -576,7 +579,7 @@ reward模型参数将在PPO、GRPO中使用。
 - num_generations: 每个prompt采样的数量，论文中的G值，采样批量大小(generation_batch_size 或 steps_per_generation × per_device_batch_size × num_processes) 必须能被 num_generations 整除。默认为 8。
 - num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True。
-- reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/plugin/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
+- reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/rewards/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
 - reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。如果为 None，则所有奖励的权重都相等，为`1.0`。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
 - reward_model_plugin: 奖励模型逻辑，默认为orm逻辑, 详细见[自定义奖励模型](./GRPO/DeveloperGuide/reward_model.md#自定义奖励模型)。
@@ -622,7 +625,9 @@ reward模型参数将在PPO、GRPO中使用。
 - importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
 - advantage_estimator: 优势计算函数，默认为 `grpo`，即计算组内相对优势，可选项为 `grpo`、[`rloo`](./GRPO/AdvancedResearch/RLOO.md)、[`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md)。
 - kl_in_reward: 控制 KL 散度正则项的处理位置；`false`表示作为损失函数的独立正则项，`true`表示将 KL 直接并入奖励（从奖励中扣除）。默认情况与advantage_estimator绑定，`grpo`下默认为`false`，`rloo` 和 `reinforce_plus_plus` 下默认为 `true`。
-- scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
+- scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）、`gdpo`（对每个奖励函数分别进行组内归一化后加权聚合，参考 [GDPO 论文](https://arxiv.org/abs/2601.05242)）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
+  - 注意：`gdpo` 模式不支持 `kl_in_reward=True`，若同时设置会自动将 `kl_in_reward` 设为 `False`。
+  - GDPO 适用于多奖励优化场景：当使用多个奖励函数时，GDPO 会对每个奖励函数分别在组内进行标准化（减均值、除标准差），然后使用 `reward_weights` 进行加权求和，最后再进行批次级别的标准化。这种方式可以更好地保留各个奖励的相对差异，避免不同奖励组合坍塌成相同的 advantage 值。
 - sync_ref_model: 是否定期同步ref_model，默认为False。
   - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
   - ref_model_sync_steps：同步频率，默认为512。
@@ -657,9 +662,9 @@ soft overlong 奖励参数
 
 推理参数除包含[基本参数](#基本参数)、[合并参数](#合并参数)、[vLLM参数](#vllm参数)、[LMDeploy参数](#LMDeploy参数)外，还包含下面的部分：
 
-- 🔥infer_backend: 推理加速后端，支持'pt'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'pt'。
+- 🔥infer_backend: 推理加速后端，支持'transformers'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'transformers'。
   - 注意：这四种引擎使用的都是swift的template，使用`--template_backend`控制。
-- 🔥max_batch_size: 指定infer_backend为pt时生效，用于批量推理，默认为1。若设置为-1，则不受限制。
+- 🔥max_batch_size: 指定infer_backend为'transformers'时生效，用于批量推理，默认为1。若设置为-1，则不受限制。
 - 🔥result_path: 推理结果存储路径（jsonl），默认为None，保存在checkpoint目录（含args.json文件）或者'./result'目录，最终存储路径会在命令行中打印。
   - 注意：若已存在`result_path`文件，则会进行追加写入。
 - write_batch_size: 结果写入`result_path`的batch_size。默认为1000。若设置为-1，则不受限制。
@@ -749,10 +754,10 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 
 ### 采样参数
 
-- prm_model: 过程奖励模型的类型，可以是模型id（以pt方式拉起），或者plugin中定义的prm key（自定义推理过程）。
+- prm_model: 过程奖励模型的类型，可以是模型id（以'transformers'方式拉起），或者plugin中定义的prm key（自定义推理过程）。
 - orm_model: 结果奖励模型的类型，通常是通配符或测试用例等，一般定义在plugin中。
 - sampler_type：采样类型，目前支持 sample, distill
-- sampler_engine：支持`pt`, `lmdeploy`, `vllm`, `client`, `no`，默认为`pt`，采样模型的推理引擎。
+- sampler_engine：支持`transformers`, `lmdeploy`, `vllm`, `client`, `no`，默认为`transformers`，采样模型的推理引擎。
 - output_dir：输出目录，默认为`sample_output`。
 - output_file：输出文件名称，默认为`None`使用时间戳作为文件名。传入时不需要传入目录，仅支持jsonl格式。
 - override_exist_file：如`output_file`存在，是否覆盖。
@@ -888,7 +893,7 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - NNODES: torchrun中`--nnodes`的参数透传。
 - NODE_RANK: torchrun中`--node_rank`的参数透传。
 - LOG_LEVEL: 日志的level，默认为'INFO'，你可以设置为'WARNING', 'ERROR'等。
-- SWIFT_DEBUG: 在`engine.infer(...)`时，若设置为'1'，PtEngine将会打印input_ids和generate_ids的内容方便进行调试与对齐。
+- SWIFT_DEBUG: 在`engine.infer(...)`时，若设置为'1'，TransformersEngine将会打印input_ids和generate_ids的内容方便进行调试与对齐。
 - VLLM_USE_V1: 用于切换vLLM使用V0/V1版本。
 - SWIFT_TIMEOUT: (ms-swift>=3.10) 若多模态数据集中存在图像URL，该参数用于控制获取图片的timeout，默认为20s。
 - ROOT_IMAGE_DIR: (ms-swift>=3.8) 图像（多模态）资源的根目录。通过设置该参数，可以在数据集中使用相对于 `ROOT_IMAGE_DIR` 的相对路径。默认情况下，是相对于运行目录的相对路径。

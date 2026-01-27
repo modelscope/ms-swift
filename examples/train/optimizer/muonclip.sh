@@ -4,7 +4,7 @@ MASTER_PORT=29501 \
 NPROC_PER_NODE=$nproc_per_node
 swift sft \
     --model Qwen/Qwen2.5-1.5B-Instruct  \
-    --train_type lora  \
+    --tuner_type lora  \
     --optimizer muonclip \
     --optim_args "qk_clip_threshold=10000" \
     --dataset swift/self-cognition \

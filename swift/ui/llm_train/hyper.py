@@ -1,9 +1,9 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Type
 
 import gradio as gr
 
-from swift.ui.base import BaseUI
+from ..base import BaseUI
 
 
 class Hyper(BaseUI):
@@ -143,8 +143,8 @@ class Hyper(BaseUI):
                     gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=20)
 
     @staticmethod
-    def update_lr(sft_type):
-        if sft_type == 'full':
+    def update_lr(tuner_type):
+        if tuner_type == 'full':
             return 1e-5
         else:
             return 1e-4

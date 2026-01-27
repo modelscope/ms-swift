@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import functools
 import gc
 import time
@@ -17,10 +17,9 @@ from megatron.training import get_args, get_wandb_writer
 from packaging import version
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import get_packed_seq_params as _get_packed_seq_params
-from swift.llm import to_device
-from swift.utils import get_logger
-from swift.utils.torch_utils import empty_cache, get_current_device
+from swift.utils import empty_cache, get_current_device, get_logger
+from swift.utils import get_packed_seq_params as _get_packed_seq_params
+from swift.utils import to_device
 
 try:
     from megatron.training.datasets.data_samplers import RandomSeedDataset
@@ -420,7 +419,7 @@ class MegatronPretrainingRandomSampler:
         self.data_sharding = data_sharding
         self.shuffle = shuffle
         self.group_by_length = group_by_length
-        self.lengths = self.dataset['length'] if group_by_length else None
+        self.lengths = self.dataset['lengths'] if group_by_length else None
         if self.lengths is not None:
             self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
         self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size

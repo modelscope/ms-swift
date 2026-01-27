@@ -29,35 +29,36 @@ def calc_diff(infer_result, infer_result2):
 
 
 def test_llm():
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments, Template
+    from swift import sft_main, SftArguments, infer_main, InferArguments
     res = []
     for padding_side in ['left', 'right']:
         model = 'Qwen/Qwen2.5-0.5B-Instruct'
         dataset = ['damo/zh_cls_fudan-news#2000']
         result = sft_main(
-            TrainArguments(model=model, dataset=dataset, split_dataset_ratio=0.1, padding_side=padding_side, **kwargs))
+            SftArguments(model=model, dataset=dataset, split_dataset_ratio=0.1, padding_side=padding_side, **kwargs))
         last_model_checkpoint = result['last_model_checkpoint']
-        infer_result = infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+        infer_result = infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
         res.append(calc_acc(infer_result))
         infer_result2 = infer_main(
-            InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, max_batch_size=16))
+            InferArguments(adapters=[last_model_checkpoint], load_data_args=True, max_batch_size=16))
         res.append(calc_acc(infer_result2))
     pprint(res)
 
 
 def test_mllm():
-    from swift.llm import sft_main, TrainArguments, infer_main, InferArguments, Template
+    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift.template import Template
     res = []
     for padding_side in ['left', 'right']:
         model = 'Qwen/Qwen2-VL-2B-Instruct'
         dataset = ['AI-ModelScope/LaTeX_OCR#2000']
         result = sft_main(
-            TrainArguments(model=model, dataset=dataset, split_dataset_ratio=0.01, padding_side=padding_side, **kwargs))
+            SftArguments(model=model, dataset=dataset, split_dataset_ratio=0.01, padding_side=padding_side, **kwargs))
         last_model_checkpoint = result['last_model_checkpoint']
-        infer_result = infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+        infer_result = infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
         res.append(infer_result)
         infer_result2 = infer_main(
-            InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, max_batch_size=16))
+            InferArguments(adapters=[last_model_checkpoint], load_data_args=True, max_batch_size=16))
         res.append(infer_result2)
     print(calc_diff(res[0], res[1]))
     print(calc_diff(res[2], res[3]))

@@ -68,11 +68,12 @@
 - 🍉 **强化学习**：内置**丰富GRPO族算法**，包括GRPO、DAPO、GSPO、SAPO、CISPO、CHORD、RLOO、Reinforce++等，支持同步和异步vLLM引擎推理加速，可使用插件拓展奖励函数、多轮推理调度器以及环境等。
 - **全链路能力**：覆盖训练、推理、评测、量化和部署全流程。
 - **界面训练**：提供使用Web-UI界面的方式进行训练、推理、评测、量化，完成大模型的全链路。
-- **推理加速**：支持PyTorch、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
+- **推理加速**：支持Transformers、vLLM、SGLang和LmDeploy推理加速引擎，并提供OpenAI接口，为推理、部署和评测模块提供加速。
 - **模型评测**：以EvalScope作为评测后端，支持100+评测数据集对纯文本和多模态模型进行评测。
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🎁 2026.01.15: **ms-swift v4.0**大版本更新进行中，建议使用稳定分支[release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
 - 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
 - 🎁 2025.11.04: 支持[Mcore-Bridge](docs/source/Megatron-SWIFT/Mcore-Bridge.md)，使Megatron训练像transformers一样简单易用。
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
@@ -117,6 +118,8 @@ pip install ms-swift -U
 
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
+# main分支为swift4.x。若安装swift3.x，请运行以下命令
+# git checkout release/3.12
 pip install -e .
 ```
 
@@ -127,7 +130,7 @@ pip install -e .
 | python       | >=3.9        | 3.10/3.11            |                    |
 | cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
 | torch        | >=2.0        | 2.8.0/2.9.0           |                    |
-| transformers | >=4.33       | 4.57.3              |                    |
+| transformers | >=4.33       | 4.57.6              |                    |
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
@@ -152,7 +155,7 @@ pip install -e .
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -233,10 +236,14 @@ ms-swift也支持使用python的方式进行训练和推理。下面给出训练
 
 训练：
 ```python
+from peft import LoraConfig, get_peft_model
+from swift import get_model_processor, get_template, load_dataset, EncodePreprocessor
+from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 # 获取模型和template，并加入可训练的LoRA模块
-model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
-template = get_template(model.model_meta.template, tokenizer, ...)
-model = Swift.prepare_model(model, lora_config)
+model, tokenizer = get_model_processor(model_id_or_path, ...)
+template = get_template(tokenizer, ...)
+lora_config = LoraConfig(...)
+model = get_peft_model(model, lora_config)
 
 # 下载并载入数据集，并将文本encode成tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
@@ -244,21 +251,22 @@ train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=nu
 val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
 
 # 进行训练
+training_args = Seq2SeqTrainingArguments(...)
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
-    data_collator=template.data_collator,
+    template=template,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
-    template=template,
 )
 trainer.train()
 ```
 
 推理：
 ```python
-# 使用原生pytorch引擎进行推理
-engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
+from swift import TransformersEngine, InferRequest, RequestConfig
+# 使用原生 transformers 引擎进行推理
+engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
 request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
 
@@ -298,9 +306,9 @@ print(f'response: {resp_list[0].choices[0].message.content}')
 | [CPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅ | ✅            | ✅ | ✅ | ✅ | ✅                                                                                            |
 | [SimPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ | ✅          | ✅ | ✅| ✅ | ✅                                                                                            |
 | [ORPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ | ✅           | ✅ | ✅ | ✅ | ✅                                                                                            |
-| [序列分类](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [Embedding](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅  |
 | [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/train/reranker) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [序列分类](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 
 预训练：
@@ -312,7 +320,7 @@ swift pt \
     --model Qwen/Qwen2.5-7B \
     --dataset swift/chinese-c4 \
     --streaming true \
-    --train_type full \
+    --tuner_type full \
     --deepspeed zero2 \
     --output_dir output \
     --max_steps 10000 \
@@ -324,7 +332,7 @@ swift pt \
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -335,7 +343,7 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -352,6 +360,8 @@ ms-swift支持使用Megatron并行技术加速训练，包括大规模集群训�
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [Embedding](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/embedding) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/reranker) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [序列分类](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls) | ✅ | ✅| ✅ | ✅ | ✅ |
 
 
@@ -361,7 +371,7 @@ NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
     --load_safetensors true \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --train_type lora \
+    --tuner_type lora \
     --save output \
     ...
 ```
@@ -386,7 +396,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
     --dataset AI-MO/NuminaMath-TIR#10000 \
@@ -399,7 +409,7 @@ swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 
 # LoRA
@@ -407,7 +417,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -417,7 +427,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift app \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048 \
     --lang zh
 ```
@@ -433,7 +443,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sample \
     --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
-    --sampler_engine pt \
+    --sampler_engine transformers \
     --num_return_sequences 5 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```

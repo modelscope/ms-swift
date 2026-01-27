@@ -1,7 +1,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type reft \
+    --tuner_type reft \
     --dataset 'swift/self-cognition#1000' \
     --reft_intervention_type 'LoreftIntervention' \
     --num_train_epochs 1 \

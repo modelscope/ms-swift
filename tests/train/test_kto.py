@@ -11,7 +11,7 @@ kwargs = {
 
 
 def test_llm():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='kto',
@@ -24,7 +24,7 @@ def test_llm():
 
 
 def test_mllm():
-    from swift.llm import rlhf_main, RLHFArguments, infer_main, InferArguments
+    from swift import rlhf_main, RLHFArguments, infer_main, InferArguments
     result = rlhf_main(
         RLHFArguments(
             rlhf_type='kto',

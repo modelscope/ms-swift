@@ -1,12 +1,13 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import unittest
 from typing import Any, Dict, Optional
 
 import torch
 
-from swift.llm import (DatasetMeta, InferRequest, Model, ModelGroup, ModelMeta, PtEngine, RequestConfig,
-                       ResponsePreprocessor, TemplateMeta, get_model_tokenizer_with_flash_attn, load_dataset,
-                       register_dataset, register_model, register_template)
+from swift.dataset import DatasetMeta, ResponsePreprocessor, load_dataset, register_dataset
+from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
+from swift.model import Model, ModelGroup, ModelMeta, register_model
+from swift.template import TemplateMeta, register_template
 
 
 class CustomPreprocessor(ResponsePreprocessor):
@@ -43,7 +44,6 @@ register_model(
             ModelGroup([Model('AI-ModelScope/Nemotron-Mini-4B-Instruct', 'nvidia/Nemotron-Mini-4B-Instruct')])
         ],
         template='custom',
-        get_function=get_model_tokenizer_with_flash_attn,
         ignore_patterns=['nemo']))
 
 
@@ -52,11 +52,11 @@ class TestCustom(unittest.TestCase):
     def test_custom_model(self):
         infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
         request_config = RequestConfig(max_tokens=512, temperature=0)
-        engine = PtEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct', torch.float16)
+        engine = TransformersEngine('AI-ModelScope/Nemotron-Mini-4B-Instruct', torch_dtype=torch.float16)
         response = engine.infer([infer_request], request_config)
         swift_response = response[0].choices[0].message.content
 
-        engine.default_template.template_backend = 'jinja'
+        engine.template.template_backend = 'jinja'
         response = engine.infer([infer_request], request_config)
         jinja_response = response[0].choices[0].message.content
         assert swift_response == jinja_response, (f'swift_response: {swift_response}\njinja_response: {jinja_response}')

@@ -1,26 +1,23 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import re
 import sys
-import time
 from datetime import datetime
 from functools import partial
-from subprocess import DEVNULL, PIPE, STDOUT, Popen
 from typing import Type
 
 import gradio as gr
 import json
-import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 
-from swift.llm import ExportArguments
-from swift.ui.base import BaseUI
-from swift.ui.llm_export.export import Export
-from swift.ui.llm_export.model import Model
-from swift.ui.llm_export.runtime import ExportRuntime
-from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
+from swift.arguments import ExportArguments
 from swift.utils import get_device_count
+from ..base import BaseUI
+from ..llm_train import run_command_in_background_with_popen
+from .export import Export
+from .model import Model
+from .runtime import ExportRuntime
 
 
 class LLMExport(BaseUI):
@@ -134,7 +131,8 @@ class LLMExport(BaseUI):
         kwargs.update(more_params)
         model = kwargs.get('model')
         if os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
-            kwargs['ckpt_dir'] = kwargs.pop('model')
+            if os.path.exists(os.path.join(model, 'adapter_config.json')):
+                kwargs['adapters'] = kwargs.pop('model')
         export_args = ExportArguments(
             **{
                 key: value.split(' ') if key in kwargs_is_list and kwargs_is_list[key] else value

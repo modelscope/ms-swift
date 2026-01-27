@@ -64,7 +64,7 @@ Listwise方法将排序问题转化为多分类问题，从多个候选文档中
 - **Pointwise：** 独立判断相关性，训练简单，但忽略了文档间的相对关系
 - **Listwise：** 学习相对排序，性能更优，更适合排序任务的本质需求
 
-loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py)找到。
+loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)找到。
 
 ## 数据集格式
 

@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 
 from openai import OpenAI
@@ -32,10 +32,13 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 
 
 if __name__ == '__main__':
-    from swift.llm import run_deploy, DeployArguments
+    from swift import run_deploy, DeployArguments
     # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
     with run_deploy(
             DeployArguments(
-                model='Qwen/Qwen2.5-1.5B', verbose=False, log_interval=-1, infer_backend='pt',
+                model='Qwen/Qwen2.5-1.5B',
+                verbose=False,
+                log_interval=-1,
+                infer_backend='transformers',
                 use_chat_template=False)) as port:
         run_client(port=port)

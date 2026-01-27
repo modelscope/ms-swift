@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 # Copyright 2023-present the HuggingFace Inc. team.
 import os.path
 from dataclasses import asdict, dataclass, field
@@ -21,7 +21,7 @@ from peft.config import PeftConfigMixin
 from peft.tuners import lora
 from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
-from transformers import Trainer
+from transformers import Trainer as HfTrainer
 
 from swift.utils import get_logger
 
@@ -134,7 +134,7 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
         'embedding': {},
     }
 
-    decay_parameters = Trainer.get_decay_parameter_names(None, self.base_model)
+    decay_parameters = HfTrainer.get_decay_parameter_names(None, self.base_model)
     for name, param in self.base_model.named_parameters():
         if not param.requires_grad:
             continue

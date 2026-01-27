@@ -19,7 +19,7 @@ megatron sft \
     --merge_lora false \
     --cached_dataset './qwen3_cached_dataset/train' \
     --cached_val_dataset './qwen3_cached_dataset/val' \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 32 \
     --lora_alpha 64 \
     --target_modules all-linear \

@@ -145,7 +145,7 @@ Check the status of the NPU. For detailed information about the `npu-smi` comman
 ```
 
 ## Fine-tuning
-The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--train_type full`. For **more training scripts**, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
+The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--tuner_type full`. For **more training scripts**, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | Model Size | Number of NPUs | Deepspeed Type | Max Memory Usage   |
 |------|-------|-------------|-----------|
@@ -173,7 +173,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
@@ -195,7 +195,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -214,7 +214,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero2 \
     ...
@@ -232,7 +232,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero3 \
     ...
@@ -263,7 +263,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 
 ## Deployment
 
-### Deployment with native PyTorch
+### Deployment with native Transformers
 
 Original model:
 ```shell
@@ -318,6 +318,30 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 
 ## Current Support Status
 
+| Primary Feature | Feature                | Status        |
+| --------------- | ---------------------- | ------------- |
+| Training Paradigm | CPT                   | Supported     |
+|                 | SFT                    | Supported     |
+|                 | DPO                    | Supported     |
+|                 | RM                     | Supported     |
+| Distributed     | DDP                    | Supported     |
+|                 | FSDP                   | Supported     |
+|                 | FSDP2                  | Supported     |
+|                 | DeepSpeed              | Supported     |
+|                 | MindSpeed (Megatron)   | Supported     |
+| PEFT            | FULL                   | Supported     |
+|                 | LoRA                   | Supported     |
+|                 | QLoRA                  | Not Supported |
+| RLHF            | GRPO                   | Supported     |
+|                 | PPO                    | Supported     |
+| Performance Optimization | Fused ops such as FA | Supported |
+|                 | Liger-Kernel           | Not Supported |
+| Deployment      | PT                     | Supported     |
+|                 | vLLM                   | Supported     |
+|                 | SGLang                 | Not Supported |
+
+---
+
 ### Table 1: SFT Algorithms
 
 | Algorithm | Model Families              | Strategy              | Hardware          |
@@ -356,7 +380,8 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 | ------------------------ |
 | Liger-kernel             |
 | Quantization/QLoRA       |
-| Using sglang as inference engine |
+| Using SGLang as inference engine |
+| Enable ETP for LoRA training when using Megatron |
 
 
 ## NPU WeChat Group

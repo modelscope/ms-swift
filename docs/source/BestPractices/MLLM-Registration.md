@@ -6,7 +6,7 @@
 ## 环境准备
 ```shell
 # 避免未来出现与文档的不兼容情况
-pip install "ms-swift>=3.10.2,<3.11"
+pip install "ms-swift>=4.0"
 
 pip install "transformers==4.57.*" "qwen_omni_utils==0.0.8"
 ```
@@ -17,15 +17,14 @@ pip install "transformers==4.57.*" "qwen_omni_utils==0.0.8"
 第一步，我们需要注册模型，来获取模型和processor。
 
 ```python
-from swift.llm import (
-    register_model, ModelMeta, ModelGroup, Model, register_model_arch, MultiModelKeys,
-    get_model_tokenizer_with_flash_attn, get_model_tokenizer
-)
-from swift.llm.model.model.qwen import patch_qwen_vl_utils
-from swift.llm.model.utils import use_submodel_func
-from swift.llm.model.patcher import patch_get_input_embeddings
-from swift.utils import get_env_args
+from transformers import PretrainedConfig, PreTrainedModel
 
+from swift.model import (Model, ModelGroup, ModelMeta, MultiModelKeys, get_model_processor, register_model,
+                         register_model_arch, ModelLoader)
+from swift.model.models.qwen import patch_qwen_vl_utils
+from swift.model.patcher import patch_get_input_embeddings
+from swift.model.utils import use_submodel_func
+from swift.utils import get_env_args, Processor
 
 register_model_arch(
     MultiModelKeys(
@@ -41,33 +40,44 @@ register_model_arch(
         generator=['talker', 'token2wav'],
     ))
 
-def get_model_tokenizer_qwen2_5_omni(model_dir, *args, **kwargs):
-    from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor, Qwen2_5OmniConfig
-    from qwen_omni_utils import vision_process
-    print('Run my_qwen2_5_omni...')
-    kwargs['automodel_class'] = kwargs['automodel_class'] or Qwen2_5OmniForConditionalGeneration
-    # 自定义`get_model_tokenizer_with_flash_attn`中获取tokenizer和config的方式
-    processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
-    kwargs['tokenizer'] = processor.tokenizer
-    kwargs['model_config'] = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
-    enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
-    if enable_audio_output is not None:
-        kwargs['model_config'].enable_audio_output = enable_audio_output
-    # 可以通过环境变量来控制qwen_omni_utils库中的常量，例如：`MAX_PIXELS`等
-    patch_qwen_vl_utils(vision_process)
-    # 请尽量使用该函数来获取model和tokenizer。而避免直接使用AutoModelForCausalLM（会产生不兼容问题）。
-    model, _ = get_model_tokenizer_with_flash_attn(model_dir, *args, **kwargs)
-    if model:
-        # 为了多模态模型的统一性，我们将模型的forward/generate函数替换为其language_model的forward/generate函数。
-        # 自己处理额外的部分。
+class Qwen2_5OmniLoader(ModelLoader):
+
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        from transformers import Qwen2_5OmniConfig
+        config = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
+        enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
+        if enable_audio_output is not None:
+            config.enable_audio_output = enable_audio_output
+        return config
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        from transformers import Qwen2_5OmniProcessor
+        from qwen_omni_utils import vision_process
+        processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        # Control constants in qwen_omni_utils library via environment variables,
+        # e.g., `MAX_PIXELS`, etc.
+        patch_qwen_vl_utils(vision_process)
+        return processor
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen2_5OmniForConditionalGeneration
+        print('Run my_qwen2_5_omni...')
+        self.auto_model_cls = self.auto_model_cls or Qwen2_5OmniForConditionalGeneration
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        # For multimodal model consistency, we replace the model's forward/generate functions
+        # with those of its language_model.
+        # Handle additional parts separately.
         use_submodel_func(model, 'thinker')
-        # 一些对model/config的自定义（通常不需要设置，若训练/推理中出现报错，则根据特定模型进行配置）
+        # Avoid inplace operations on leaf_variable during training
+        # (replacing parts of input_embeds with images_embeds)
+        patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
+        # Some custom settings for model/config (usually not needed; configure based on
+        # specific model if errors occur during training/inference)
         model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         model.config.talker_config.pad_token_id = None
-        # 避免在训练时对leaf_variable进行inplace操作导致报错（将input_embeds中的部分内容替换为images_embeds的行为）
-        patch_get_input_embeddings(model.thinker.visual, 'patch_embed')
-    # 最终需要返回model和 processor（多模态）/tokenizer（纯文本）
-    return model, processor
+        return model
 
 
 register_model(
@@ -79,9 +89,9 @@ register_model(
                 Model('Qwen/Qwen2.5-Omni-7B', 'Qwen/Qwen2.5-Omni-7B'),
             ]),
         ],
-        'my_qwen2_5_omni',
         # 用来获取model和processor的函数。
-        get_model_tokenizer_qwen2_5_omni,
+        Qwen2_5OmniLoader,
+        template='my_qwen2_5_omni',
         is_multimodal=True,  # 是否是多模态模型
         model_arch='my_qwen2_5_omni',  # 通常只为多模态模型设置
         # 用于model_type的自动匹配
@@ -96,7 +106,7 @@ register_model(
 
 if __name__ == '__main__':
     # 测试与debug
-    model, processor = get_model_tokenizer('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
+    model, processor = get_model_processor('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
 ```
 
 ## 注册模板
@@ -110,18 +120,16 @@ template的功能如下：
 
 
 ```python
-from swift.llm import (
-    register_template, Template, get_packed_seq_params, to_float_dtype, TemplateMeta,
-    get_template, get_model_tokenizer
-)
-from transformers.integrations import is_deepspeed_zero3_enabled
-from swift.llm.template.template_inputs import StdTemplateInputs
-from swift.llm.template.utils import Context, findall
-from swift.llm.template.vision_utils import load_audio
-from swift.utils import get_env_args, get_logger, is_deepspeed_enabled
 from functools import partial
-from typing import Dict, List, Any, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
+
 import torch
+from transformers.integrations import is_deepspeed_zero3_enabled
+from swift import get_model_processor
+from swift.template import StdTemplateInputs, Template, TemplateMeta, get_template, register_template
+from swift.template.utils import Context, findall
+from swift.template.vision_utils import load_audio
+from swift.utils import Processor, get_env_args, get_logger, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
 
 logger = get_logger()
 
@@ -135,7 +143,7 @@ class Qwen2_5OmniTemplate(Template):
     # 并会使用简略方式打印（调用`template.safe_decode`）
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
 
-    def init_processor(self, processor) -> None:
+    def init_processor(self, processor: Processor) -> None:
         """在初始化processor时，额外初始化所需的一些常量"""
         if processor is None:
             return
@@ -416,7 +424,7 @@ class Qwen2_5OmniTemplate(Template):
         return res
 
     def generate(self, model, *args, **kwargs):
-        """`PtEngine`会调用template.generate方法进行文本生成，这里继承进行自定义。"""
+        """`TransformersEngine`会调用template.generate方法进行文本生成，这里继承进行自定义。"""
         if kwargs.get('video_grid_thw') is not None:
             kwargs['use_audio_in_video'] = self.use_audio_in_video
         return super().generate(model, *args, **kwargs)
@@ -432,8 +440,8 @@ register_template(
 
 if __name__ == '__main__':
     # 测试与debug
-    model, processor = get_model_tokenizer('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
-    template = get_template('my_qwen2_5_omni', processor)
+    model, processor = get_model_processor('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni')
+    template = get_template(processor, template_type='my_qwen2_5_omni')
     data = {
         'messages': [
             {'role': 'user', 'content': '描述视频<video>与图片<image>内容。'},
@@ -451,14 +459,14 @@ if __name__ == '__main__':
 
 
 ## 推理对齐
-接下来，你需要进行PtEngine与transformers的推理对齐。通常你需要对齐`input_ids`以及输出内容。你可以书写以下测试函数：
+接下来，你需要进行TransformersEngine与transformers的推理对齐。通常你需要对齐`input_ids`以及输出内容。你可以书写以下测试函数：
 
 ```python
 import os
 from transformers import Qwen2_5OmniForConditionalGeneration, Qwen2_5OmniProcessor
 from qwen_omni_utils import process_mm_info
 from modelscope import snapshot_download
-from swift.llm import PtEngine, InferRequest, RequestConfig
+from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
 import requests
 
 def infer_hf():
@@ -494,7 +502,7 @@ def infer_hf():
     return inputs['input_ids'][0].tolist(), text[0]
 
 def test_my_qwen2_5_omni():
-    engine = PtEngine('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni', attn_impl='flash_attention_2')
+    engine = TransformersEngine('Qwen/Qwen2.5-Omni-7B', model_type='my_qwen2_5_omni', attn_impl='flash_attention_2')
     infer_request = InferRequest(messages=[{
         "role": "user",
         "content": "<video><image>描述视频和图像。",
@@ -503,14 +511,14 @@ def test_my_qwen2_5_omni():
         images=["http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png"],
     )
     request_config = RequestConfig(temperature=0, max_tokens=512)
-    input_ids = engine.default_template.encode(infer_request)['input_ids']
+    input_ids = engine.template.encode(infer_request)['input_ids']
     resp_list = engine.infer([infer_request], request_config)
     resp = resp_list[0].choices[0].message.content
     return input_ids, resp
 
 
 if __name__ == '__main__':
-    # 开启debug模式，会打印`PtEngine.infer`的input_ids和generate_ids
+    # 开启debug模式，会打印`TransformersEngine.infer`的input_ids和generate_ids
     os.environ['SWIFT_DEBUG'] = '1'
     input_ids_hf, response_hf = infer_hf()
     input_ids_swift, response_swift = test_my_qwen2_5_omni()
@@ -524,18 +532,18 @@ if __name__ == '__main__':
 
 使用python代码训练，这通常更容易debug：
 ```python
-from swift.llm import sft_main, TrainArguments
+from swift import sft_main, SftArguments
 import os
 if __name__ == '__main__':
     os.environ['MAX_PIXELS'] = '1003520'
-    sft_main(TrainArguments(
+    sft_main(SftArguments(
         model='Qwen/Qwen2.5-Omni-7B',
-        dataset='AI-ModelScope/LaTeX_OCR#5000',
+        dataset=['AI-ModelScope/LaTeX_OCR#5000'],
         model_type='my_qwen2_5_omni',
         template='my_qwen2_5_omni',
         load_from_cache_file=True,
         split_dataset_ratio=0.01,
-        train_type='lora',
+        tuner_type='lora',
         torch_dtype='bfloat16',
         attn_impl='flash_attn',
         padding_free=True,
@@ -545,7 +553,7 @@ if __name__ == '__main__':
         learning_rate=1e-4,
         lora_rank=8,
         lora_alpha=32,
-        target_modules='all-linear',
+        target_modules=['all-linear'],
         freeze_vit=True,
         freeze_aligner=True,
         gradient_accumulation_steps=1,
@@ -574,19 +582,19 @@ swift sft \
     --model Qwen/Qwen2.5-Omni-7B \
     --model_type my_qwen2_5_omni \
     --template my_qwen2_5_omni \
-    --custom_register_path 'examples/custom/my_qwen2_5_omni/my_register.py' \
+    --external_plugins 'examples/custom/my_qwen2_5_omni/my_register.py' \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#2000' \
               'swift/VideoChatGPT:all#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --attn_impl flash_attn \
     --padding_free true \
     --packing true \
-    --num_train_epochs 1 \
+    --num_train_epochs 3 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
@@ -618,7 +626,7 @@ MAX_PIXELS=1003520 \
 swift infer \
    --adapters output/vx-xxx/checkpoint-xxx \
     --stream true \
-    --max_new_tokens 2048 \
+    --max_new_tokens 512 \
     --load_data_args true
 ```
 

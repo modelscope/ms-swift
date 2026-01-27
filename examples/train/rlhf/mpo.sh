@@ -12,7 +12,7 @@ swift rlhf \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --loss_type sigmoid bco_pair sft \
     --loss_weights 0.8 0.2 1.0 \

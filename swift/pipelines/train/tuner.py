@@ -1,0 +1,370 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
+from typing import List, Union
+
+import torch
+import transformers
+from packaging import version
+from transformers import TrainingArguments
+
+from swift.arguments import SftArguments
+from swift.trainers import calculate_max_steps
+from swift.tuner_plugin import Tuner, tuners_map
+from swift.tuners import Swift
+from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
+                         get_logger, get_multimodal_target_regex)
+
+logger = get_logger()
+
+
+def apply_liger(model_type: str):
+    try:
+        from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
+                                               apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
+                                               apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
+                                               apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
+                                               apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
+        from swift.model import ModelType
+        if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
+            apply_liger_kernel_to_llama()
+        elif model_type in (ModelType.mistral):
+            apply_liger_kernel_to_mistral()
+        elif model_type in (ModelType.mixtral):
+            apply_liger_kernel_to_mixtral()
+        elif model_type in (ModelType.gemma, ModelType.gemma2):
+            apply_liger_kernel_to_gemma()
+        elif model_type in (ModelType.gemma3_text):
+            from liger_kernel.transformers import apply_liger_kernel_to_gemma3_text
+            apply_liger_kernel_to_gemma3_text()
+        elif model_type in (ModelType.gemma3_vision, ModelType.gemma3n):
+            from liger_kernel.transformers import apply_liger_kernel_to_gemma3
+            apply_liger_kernel_to_gemma3()
+        elif model_type in (ModelType.qwen2, ModelType.qwen2_5):
+            apply_liger_kernel_to_qwen2()
+        elif model_type in (ModelType.qwen3, ModelType.qwen3_guard, ModelType.qwen3_thinking,
+                            ModelType.qwen3_nothinking, ModelType.qwen3_coder):
+            apply_liger_kernel_to_qwen3()
+        elif model_type in (ModelType.qwen3_moe, ModelType.qwen3_moe_thinking, ModelType.qwen3_coder):
+            from liger_kernel.transformers import apply_liger_kernel_to_qwen3_moe
+            apply_liger_kernel_to_qwen3_moe()
+        elif model_type in (ModelType.qwen3_next, ModelType.qwen3_next_thinking):
+            from liger_kernel.transformers import apply_liger_kernel_to_qwen3_next
+            apply_liger_kernel_to_qwen3_next()
+        elif model_type in (ModelType.phi3):
+            apply_liger_kernel_to_phi3()
+        elif model_type in (ModelType.llama3_2_vision):
+            apply_liger_kernel_to_mllama()
+        elif model_type in (ModelType.qwen2_vl):
+            apply_liger_kernel_to_qwen2_vl()
+        elif model_type in (ModelType.qwen2_5_vl, ModelType.qwen3_vl, ModelType.qwen3_vl_moe, ModelType.qvq):
+            apply_liger_kernel_to_qwen2_5_vl()
+        elif model_type in (ModelType.chatglm4, ModelType.glm4):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4
+            apply_liger_kernel_to_glm4()
+        elif model_type in (ModelType.chatglm4v, ModelType.glm4v):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4v
+            apply_liger_kernel_to_glm4v()
+        elif model_type in (ModelType.glm4v_moe):
+            from liger_kernel.transformers import apply_liger_kernel_to_glm4v_moe
+            apply_liger_kernel_to_glm4v_moe()
+        elif model_type in (ModelType.internvl_hf, ModelType.internvl_gpt_hf):
+            from liger_kernel.transformers import apply_liger_kernel_to_internvl
+            apply_liger_kernel_to_internvl()
+        elif model_type in (ModelType.llama4):
+            from liger_kernel.transformers import apply_liger_kernel_to_llama4
+            apply_liger_kernel_to_llama4()
+        elif model_type in (ModelType.llava1_5_hf, ModelType.llava_llama3_hf, ModelType.pixtral):
+            from liger_kernel.transformers import apply_liger_kernel_to_llava
+            apply_liger_kernel_to_llava()
+        elif model_type in (ModelType.paligemma):
+            from liger_kernel.transformers import apply_liger_kernel_to_paligemma
+            apply_liger_kernel_to_paligemma()
+        else:
+            raise ValueError(f'Unsupported liger model_type: {model_type}')
+    except ImportError:
+        raise ImportError('Please upgrade liger-kernel to apply liger kernel to this model '
+                          'by running `pip install -U liger-kernel`')
+
+
+def get_target_modules(args, model) -> Union[str, List[str]]:
+    """Replace all-linear to actual modules"""
+    if isinstance(args.target_modules, str):
+        return args.target_modules
+    target_modules = args.target_modules.copy()
+    if 'all-linear' in target_modules:
+        if model.model_meta.is_multimodal:
+            return get_multimodal_target_regex(
+                model,
+                freeze_llm=args.freeze_llm,
+                freeze_vit=args.freeze_vit,
+                freeze_aligner=args.freeze_aligner,
+                include_embedding='all-embedding' in target_modules)
+        else:
+            target_modules.remove('all-linear')
+            target_modules += find_all_linears(model)
+    if 'all-embedding' in target_modules:
+        target_modules.remove('all-embedding')
+        target_modules += find_embedding(model)
+    return target_modules
+
+
+def get_modules_to_save(args, model, task_type=None):
+    modules_to_save = args.modules_to_save.copy()
+    if 'all-embedding' in args.modules_to_save:
+        modules_to_save.remove('all-embedding')
+        modules_to_save += find_embedding(model)
+    if 'all-norm' in args.modules_to_save:
+        modules_to_save.remove('all-norm')
+        modules_to_save += find_norm(model)
+    if task_type and task_type.lower() == 'seq_cls':  # reward_model
+        modules_to_save.append('v_head')
+    return modules_to_save
+
+
+def get_vera_target_modules(model, config):
+    """This function is only useful on the vera tuner"""
+    target_modules = config.target_modules
+    modules_dict = {
+        name: module.weight.shape
+        for name, module in model.named_modules()
+        if isinstance(module, torch.nn.Linear) and any([t in name for t in target_modules])
+    }  # only Linear for now
+    if len(set(modules_dict.values())) > 1:
+        v = [t for t in target_modules if 'v' in t]
+        if not v:
+            raise ValueError('Please manually pass in `vera_target_modules`, do not use `all-linear`,'
+                             'because Vera need all target linears to be the same size.')
+        v = v[0]
+        shape = [shape for name, shape in modules_dict.items() if v in name][0]
+        names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
+        config.target_modules = [t for t in target_modules if any([t in name for name in names])]
+    return config
+
+
+def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=None, task_type=None):
+    from swift.tuners import (AdaLoraConfig, AdapterConfig, BOFTConfig, LLaMAProConfig, LongLoRAModelType, LoraConfig,
+                              LoRAConfig, ReftConfig, Swift, VeraConfig)
+    task_type = (task_type or args.task_type).upper()
+    target_modules = get_target_modules(args, model)
+    modules_to_save = get_modules_to_save(args, model, task_type)
+    lora_kwargs = {
+        'r': args.lora_rank,
+        'target_modules': target_modules,
+        'lora_alpha': args.lora_alpha,
+        'lora_dropout': args.lora_dropout,
+        'bias': args.lora_bias,
+        'modules_to_save': modules_to_save,
+        'use_rslora': args.use_rslora,
+        'use_dora': args.use_dora,
+        'lorap_lr_ratio': args.lorap_lr_ratio,
+        'init_lora_weights': args.init_weights,
+    }
+    if args.tuner_type in ('lora', 'longlora'):
+        if args.use_swift_lora:
+            lora_config = LoRAConfig(lora_dtype=args.lora_dtype, **lora_kwargs)
+            model = Swift.prepare_model(model, lora_config)
+            logger.info(f'lora_config: {lora_config}')
+        elif args.tuner_backend == 'peft':
+            if task_type == 'EMBEDDING':
+                task_type = None
+            elif task_type == 'RERANKER':
+                task_type = 'SEQ_CLS'
+            elif task_type == 'GENERATIVE_RERANKER':
+                task_type = 'CAUSAL_LM'
+            if args.target_parameters is not None:
+                lora_kwargs['target_parameters'] = args.target_parameters
+            lora_config = LoraConfig(task_type=task_type, lora_dtype=args.lora_dtype, **lora_kwargs)
+            if args.init_weights == 'lora-ga':
+                try:
+                    import lora_ga
+                except ImportError as e:
+                    error_message = """
+                    Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub.
+                    Command: 'pip install git+https://github.com/lxline/LoRA-GA.git'.
+                    """
+                    logger.info(error_message)
+                    raise RuntimeError(error_message) from e
+                model = lora_ga.entrypoint.get_lora_ga_model(
+                    model=model,
+                    data_collator=template.data_collator,
+                    dataset=train_dataset,
+                    batch_size=args.lora_ga_batch_size,
+                    num_iters=args.lora_ga_iters,
+                    max_length=args.lora_ga_max_length,
+                    direction=args.lora_ga_direction,
+                    dtype=args.lora_dtype,
+                    scale=args.lora_ga_scale,
+                    stable_gamma=args.lora_ga_stable_gamma,
+                )
+            else:
+                model = Swift.prepare_model(model, lora_config)
+            logger.info(f'lora_config: {lora_config}')
+        elif args.tuner_backend == 'unsloth':
+            if args.resume_from_checkpoint is None:
+                if args.model_meta.is_multimodal:
+                    from unsloth import FastVisionModel as UnslothModel
+                else:
+                    from unsloth import FastLanguageModel as UnslothModel
+                assert args.tuner_type == 'lora', 'Unsloth does not support LongLoRA'
+                lora_kwargs.pop('lorap_lr_ratio')
+                model = UnslothModel.get_peft_model(
+                    model,
+                    use_gradient_checkpointing='unsloth',
+                    max_seq_length=args.max_length or 2048,  # 2048 is the default value of unsloth
+                    **lora_kwargs,
+                )
+                logger.info(f'unsloth_config: {lora_kwargs}')
+        if args.tuner_type == 'longlora':
+            assert LongLoRAModelType.LLAMA in args.model_type
+            assert version.parse(transformers.__version__) >= version.parse('4.39.3')
+            from swift.tuners.longlora.llama import replace_llama_attn
+            replace_llama_attn(model)
+            model.config.group_size_ratio = 0.25
+    elif args.tuner_type == 'adalora':
+        lora_kwargs.pop('lorap_lr_ratio', None)
+        lora_kwargs['rank_pattern'] = None
+        adalora_config = AdaLoraConfig(
+            task_type=task_type,
+            **lora_kwargs,
+            target_r=args.adalora_target_r,
+            init_r=args.adalora_init_r,
+            tinit=args.adalora_tinit,
+            tfinal=args.adalora_tfinal,
+            deltaT=args.adalora_deltaT,
+            beta1=args.adalora_beta1,
+            beta2=args.adalora_beta2,
+            orth_reg_weight=args.adalora_orth_reg_weight,
+            total_step=calculate_max_steps(args.training_args, train_dataset),
+        )
+        model = Swift.prepare_model(model, adalora_config)
+        logger.info(f'adalora_config: {adalora_config}')
+    elif args.tuner_type == 'llamapro':
+        llamapro_config = LLaMAProConfig(
+            model_type=model.model_meta.model_arch.arch_name,
+            num_new_blocks=args.llamapro_num_new_blocks,
+            num_groups=args.llamapro_num_groups)
+        model = Swift.prepare_model(model, llamapro_config)
+        logger.info(f'llamapro_config: {llamapro_config}')
+    elif args.tuner_type == 'adapter':
+        model_arch = model.model_meta.model_arch
+        mlp_key = model_arch.mlp
+        mlp_key = mlp_key.split('.{}.')[1]
+        adapter_config = AdapterConfig(
+            dim=model.config.hidden_size,
+            target_modules=[mlp_key],
+            hidden_pos=0,
+            adapter_length=args.adapter_length,
+            act_layer=args.adapter_act)
+        model = Swift.prepare_model(model, adapter_config)
+        logger.info(f'adapter_config: {adapter_config}')
+    elif args.tuner_type == 'vera':
+        vera_config = VeraConfig(
+            r=args.vera_rank,
+            target_modules=target_modules,
+            projection_prng_key=args.vera_projection_prng_key,
+            vera_dropout=args.vera_dropout,
+            d_initial=args.vera_d_initial,
+            modules_to_save=args.modules_to_save,
+        )
+        vera_config = get_vera_target_modules(model, vera_config)
+        model = Swift.prepare_model(model, vera_config)
+        logger.info(f'vera_config: {vera_config}')
+    elif args.tuner_type == 'boft':
+        boft_config = BOFTConfig(
+            boft_block_size=args.boft_block_size,
+            boft_block_num=args.boft_block_num,
+            boft_n_butterfly_factor=args.boft_n_butterfly_factor,
+            target_modules=target_modules,
+            boft_dropout=args.boft_dropout,
+            modules_to_save=args.modules_to_save,
+        )
+        model = Swift.prepare_model(model, boft_config)
+        logger.info(f'boft_config: {boft_config}')
+    elif args.tuner_type == 'fourierft':
+        from peft import FourierFTConfig
+        fourier_config = FourierFTConfig(
+            target_modules=target_modules,
+            modules_to_save=args.modules_to_save,
+            n_frequency=args.fourier_n_frequency,
+            scaling=args.fourier_scaling,
+        )
+        model = Swift.prepare_model(model, fourier_config)
+        logger.info(f'fourier_config: {fourier_config}')
+    elif args.tuner_type == 'reft':
+        reft_config = ReftConfig(
+            model_type=model.model_meta.model_arch,
+            layer_key=args.reft_layer_key,
+            r=args.reft_rank,
+            layers=args.reft_layers,
+            intervention_type=args.reft_intervention_type,
+            args=args.reft_args,
+        )
+        logger.info(f'reft config: {reft_config}')
+        model = Swift.prepare_model(model, {'reft': reft_config})
+    elif args.tuner_type == 'bone':
+        # Version loosing
+        from peft import BoneConfig
+        bone_config = BoneConfig(
+            target_modules=target_modules,
+            r=args.reft_rank,
+            init_weights=args.init_weights,
+        )
+        logger.info(f'bone config: {bone_config}')
+        model = Swift.prepare_model(model, bone_config)
+    else:
+        raise ValueError(f'Unknown tuner_type: {args.tuner_type}')
+    return model
+
+
+class TunerMixin:
+
+    @classmethod
+    def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
+        # transformers >= 4.45.0, apply liger in transformers https://github.com/huggingface/transformers/pull/32860
+        # transformers < 4.45.0, apply liger in here
+        if args.use_liger_kernel and 'use_liger_kernel' not in inspect.signature(TrainingArguments).parameters:
+            # Apply liger
+            apply_liger(args.model_type)
+
+        if args.is_adapter:
+            if args.tuner_backend != 'unsloth' and args.tuner_type not in tuners_map:
+                # Fix the name of the layer in xcomposer that contains Plora.
+                # Unsloth prepares and loads lora outside this function when
+                # resume_from_checkpoint, so do not disable grad here
+                model.requires_grad_(False)
+            if args.resume_from_checkpoint or args.adapters:
+                if args.tuner_type in tuners_map:
+                    tuner: Tuner = tuners_map[args.tuner_type]
+                else:
+                    tuner = Swift
+                assert not args.adapters or len(args.adapters) == 1, f'args.adapters: {args.adapters}'
+                model = tuner.from_pretrained(model, args.resume_from_checkpoint or args.adapters[0], is_trainable=True)
+            else:
+                if args.tuner_type in tuners_map:
+                    tuner: Tuner = tuners_map[args.tuner_type]
+                    model = tuner.prepare_model(args, model)
+                else:
+                    model = prepare_adapter(
+                        args, model, template=template, train_dataset=train_dataset, task_type=task_type)
+            # fix bug: Attempting to unscale FP16 gradients.
+            #   peft: https://github.com/huggingface/peft/issues/1249
+            for p in model.parameters():
+                if p.requires_grad and p.dtype == torch.float16:
+                    logger.info_once('Convert trainable parameters from fp16 to fp32.')
+                    p.data = p.data.to(dtype=torch.float32)
+        elif args.tuner_type == 'full':
+            model.train()
+            model.requires_grad_(True)
+
+            freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
+            if args.trainable_parameters or args.trainable_parameters_regex:
+                activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
+        else:
+            raise ValueError(f'args.tuner_type: {args.tuner_type}')
+
+        if args.use_galore:
+            if args.galore_target_modules is None:
+                args.galore_target_modules = find_all_linears(model)
+            if args.galore_with_embedding:
+                args.galore_target_modules += find_embedding(model)
+        return model

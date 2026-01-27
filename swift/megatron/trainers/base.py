@@ -1,6 +1,7 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
 import logging
+import math
 import os
 import shutil
 import time
@@ -36,12 +37,13 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm
 
-from swift.llm import Template, dynamic_gradient_checkpointing
-from swift.plugin import MeanMetric
-from swift.trainers import SwiftMixin
+from swift.megatron.tuners import LoraParallelLinear
+from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, patch_merge_fn,
+                                  prepare_mcore_model)
+from swift.metrics import MeanMetric
+from swift.template import Template
+from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, ms_logger_context
-from ..tuners import LoraParallelLinear
-from ..utils import adapter_state_dict_context, copy_original_module_weight, patch_merge_fn, prepare_mcore_model
 from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
                     get_packed_seq_params, get_swift_datasets_provider)
 
@@ -68,6 +70,7 @@ class BaseMegatronTrainer(ABC):
         self.wrapped_models = []
         self.peft_models = []
         self._bridge = None
+        self.eval_metrics = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
@@ -209,7 +212,7 @@ class BaseMegatronTrainer(ABC):
         if sharded_state_dict is None:
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
         model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
-        if self.args.train_type == 'full':
+        if self.args.tuner_type == 'full':
             for k in model_keys:
                 patch_merge_fn(sharded_state_dict[k])
             return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
@@ -261,7 +264,7 @@ class BaseMegatronTrainer(ABC):
             strict = False
             return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
 
-        if args.train_type != 'full':
+        if args.tuner_type != 'full':
             torch.nn.Module.load_state_dict = load_state_dict
             args.no_load_optim = True
             args.no_load_rng = True
@@ -436,9 +439,9 @@ class BaseMegatronTrainer(ABC):
     def _load_iteration(self):
         args = self.args
         ckpt_dir = None
-        if args.train_type == 'full':
+        if args.tuner_type == 'full':
             ckpt_dir = args.model
-        elif args.train_type == 'lora' and args.adapters:
+        elif args.tuner_type == 'lora' and args.adapters:
             ckpt_dir = args.adapters[0]
         if ckpt_dir is None:
             return 0, 0
@@ -478,7 +481,7 @@ class BaseMegatronTrainer(ABC):
                 self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
             peft_model = prepare_mcore_model(model)
-            if args.train_type == 'lora':
+            if args.tuner_type == 'lora':
                 if args.adapters and args.adapter_load is None:
                     assert len(args.adapters) == 1, 'Currently only support one adapter.'
                     self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
@@ -501,7 +504,7 @@ class BaseMegatronTrainer(ABC):
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
-        if args.train_type != 'full' and args.modules_to_save:
+        if args.tuner_type != 'full' and args.modules_to_save:
             for m in self.unwrapped_models:
                 copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
@@ -706,7 +709,11 @@ class BaseMegatronTrainer(ABC):
         for key in total_loss_dict:
             numerator, denominator = total_loss_dict[key]
             total_loss_dict[key] = numerator / denominator
-
+        if self.eval_metrics is not None:
+            metric = self.eval_metrics.compute()
+            for k, v in metric.items():
+                total_loss_dict[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
+            self.eval_metrics.reset()
         timers('evaluate').stop()
         timers.log(['evaluate'])
         self.custom_log(total_loss_dict, 'eval')
@@ -717,6 +724,99 @@ class BaseMegatronTrainer(ABC):
                 logs[f'eval_{key}'] = round(val.item(), 8)
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
+
+    def evaluate_and_print_results(
+        self,
+        prefix,
+        forward_step_func,
+        data_iterator,
+        model,
+        iteration,
+        process_non_loss_data_func,
+        config,
+        verbose=False,
+        write_to_tensorboard=True,
+        non_loss_data_func=None,
+    ):
+        """Helper function to evaluate and dump results on screen."""
+
+        args = get_args()
+        if write_to_tensorboard:
+            writer = get_tensorboard_writer()
+        else:
+            writer = None
+
+        wandb_writer = get_wandb_writer()
+
+        data_iterators = data_iterator if args.multiple_validation_sets else [data_iterator]
+
+        if not args.multiple_validation_sets:
+            eval_iters = [args.eval_iters]
+        else:
+            eval_iters = args.eval_iters
+
+        if args.full_validation:
+            assert len(eval_iters) == len(data_iterators)
+
+            # with full validation we need to distribute eval_iters to all ranks
+            if mpu.get_tensor_model_parallel_rank() == 0:
+                eval_iters = torch.tensor(args.eval_iters, dtype=torch.long, device='cuda')
+            else:
+                eval_iters = torch.tensor([0] * len(eval_iters), dtype=torch.long, device='cuda')
+            torch.distributed.broadcast(eval_iters, 0)
+            eval_iters = eval_iters.tolist()
+            args.eval_iters = eval_iters[0] if not args.multiple_validation_sets else eval_iters
+        elif not args.multiple_validation_sets:
+            eval_iters = [args.eval_iters]
+        else:
+            eval_iters = args.eval_iters
+
+        for index, (iterator, iterations) in enumerate(zip(data_iterators, eval_iters)):
+            suffix = ''
+            if args.multiple_validation_sets:
+                suffix = f'-{index}'
+            total_loss_dict, collected_non_loss_data, timelimit = self.evaluate(
+                forward_step_func,
+                iterator,
+                model,
+                process_non_loss_data_func,
+                config,
+                verbose,
+                non_loss_data_func,
+                eval_iters=iterations,
+            )
+            # Timelimit hit during evaluation
+            if timelimit:
+                return
+            string = f' validation{suffix} loss at {prefix} | '
+            for key in total_loss_dict:
+                string += '{} value: {:.6E} | '.format(key, total_loss_dict[key].item())
+                ppl = None
+                if key == 'loss':
+                    ppl = math.exp(min(20, total_loss_dict[key].item()))
+                    string += '{} PPL: {:.6E} | '.format(key, ppl)
+                if writer:
+                    writer.add_scalar('{} validation{}'.format(key, suffix), total_loss_dict[key].item(), iteration)
+                    writer.add_scalar(
+                        '{} validation{} vs samples'.format(key, suffix),
+                        total_loss_dict[key].item(),
+                        args.consumed_train_samples,
+                    )
+                    if args.log_validation_ppl_to_tensorboard and ppl is not None:
+                        writer.add_scalar('{} validation{} ppl'.format(key, suffix), ppl, iteration)
+                        writer.add_scalar('{} validation{} ppl vs samples'.format(key, suffix), ppl,
+                                          args.consumed_train_samples)
+                    if wandb_writer and is_last_rank():
+                        wandb_writer.log({'{} validation{}'.format(key, suffix): total_loss_dict[key].item()},
+                                         iteration)
+
+            if process_non_loss_data_func is not None and writer and is_last_rank():
+                process_non_loss_data_func(collected_non_loss_data, iteration, writer)
+
+            length = len(string) + 1
+            print_rank_last('-' * length)
+            print_rank_last(string)
+            print_rank_last('-' * length)
 
     def _get_metrics(self, total_loss_dict, mode):
         advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
@@ -1031,22 +1131,22 @@ class BaseMegatronTrainer(ABC):
         origin_save = args.save
         args.save = output_dir
         self._copy_args(output_dir)
-        save_peft_format = args.train_type == 'lora' and not args.merge_lora
+        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
-        with adapter_state_dict_context(is_peft_format=args.train_type == 'lora'):
+        with adapter_state_dict_context(is_peft_format=args.tuner_type == 'lora'):
             self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
         args.save = origin_save
         # safetensors
         if args.save_safetensors:
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
-            if args.train_type == 'lora' and args.merge_lora:
+            if args.tuner_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
                 self._copy_args(output_dir)
             self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
-            if args.train_type == 'lora' and args.merge_lora:
+            if args.tuner_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
     def _patch_megatron(self):
@@ -1059,8 +1159,8 @@ class BaseMegatronTrainer(ABC):
         self._origin_training_log = training.training_log
         training.training_log = self.training_log
         # patch evaluate
-        self._origin_evaluate = training.evaluate
-        training.evaluate = self.evaluate
+        self._origin_evaluate_and_print_results = training.evaluate_and_print_results
+        training.evaluate_and_print_results = self.evaluate_and_print_results
         # patch model and optimizer
         self._origin_setup_model_and_optimizer = training.setup_model_and_optimizer
         training.setup_model_and_optimizer = self.setup_model_and_optimizer
@@ -1071,7 +1171,7 @@ class BaseMegatronTrainer(ABC):
     def _init_multimodal_full(self):
         args = get_args()
         visual_cls = self.args.megatron_model_meta.visual_cls
-        if args.train_type == 'full' and args.is_multimodal and visual_cls is not None:
+        if args.tuner_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
             aligner = [f'visual.{aligner}' for aligner in getattr(visual_cls, '_aligner', [])]
             generator = [f'visual.{generator}' for generator in getattr(visual_cls, '_generator', [])]

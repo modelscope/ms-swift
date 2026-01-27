@@ -8,7 +8,7 @@
 ```shell
 pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 
-pip install "ms-swift>=3.9.1"
+pip install "ms-swift>=4.0"
 # pip install "vllm>=0.11.0"  # 若使用vllm推理后端进行推理
 ```
 - 关于训练缓慢：使用torch2.9会遇到训练（conv3d算子）缓慢的问题，请使用torch2.8尝试，参考[这个issue](https://github.com/pytorch/pytorch/issues/166122)。在 ms-swift>=3.11.2，你可以通过设置`SWIFT_PATCH_CONV3D=1`规避该问题，具体查看[这个issue](https://github.com/modelscope/ms-swift/issues/7108)。
@@ -71,7 +71,7 @@ print(output_text[0])
 # 'A baby wearing glasses sits on a bed, engrossed in reading a book. The baby turns the pages with both hands, occasionally looking up and smiling. The room is cozy, with a crib in the background and clothes scattered around. The baby’s focus and curiosity are evident as they explore the book, creating a heartwarming scene of early learning and discovery.'
 ```
 
-使用 ms-swift 的 `PtEngine` 进行推理：
+使用 ms-swift 的 `TransformersEngine` 进行推理：
 ```python
 import os
 # os.environ['SWIFT_DEBUG'] = '1'
@@ -80,8 +80,8 @@ os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
 os.environ['FPS_MAX_FRAMES'] = '16'
 
 
-from swift.llm import PtEngine, InferRequest, RequestConfig
-engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct', attn_impl='flash_attention_2')
+from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
+engine = TransformersEngine('Qwen/Qwen3-VL-4B-Instruct')  # attn_impl='flash_attention_2'
 infer_request = InferRequest(messages=[{
     "role": "user",
     "content": '<video>Describe this video.',
@@ -192,7 +192,7 @@ swift sft \
               'swift/VideoChatGPT:Generic#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

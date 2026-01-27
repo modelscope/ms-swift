@@ -3,7 +3,7 @@ PYTORCH_CUDA_ALLOC_CONF='' \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B \
-    --train_type full \
+    --tuner_type full \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \

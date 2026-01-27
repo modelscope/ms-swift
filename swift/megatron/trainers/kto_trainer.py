@@ -1,7 +1,7 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from collections import namedtuple
 from functools import partial
-from typing import Any, Dict, Literal
+from typing import Any, Dict
 
 import torch
 from megatron.core import mpu
@@ -128,6 +128,8 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         kl_data.pop('loss_scale', None)
 
         length = self._get_kto_length(data)
+        if self.args.sequence_parallel:
+            length //= mpu.get_tensor_model_parallel_world_size()
         with torch.no_grad(), self.null_ref_context() as ref_models:
             ref_model = ref_models[vp_stage or 0]
             if self.args.calculate_KL:

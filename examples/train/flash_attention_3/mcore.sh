@@ -14,7 +14,7 @@ megatron sft \
     --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT' \
     --load_from_cache_file true \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 32 \
     --lora_alpha 64 \
     --target_modules all-linear \

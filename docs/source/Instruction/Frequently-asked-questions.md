@@ -1,5 +1,8 @@
 # 常见问题整理
 
+> [!WARNING]
+> 该文档待更新到ms-swift4.0
+
 下面是swift使用过程中遇到的一些常见问题。
 
 ## 训练
@@ -77,7 +80,7 @@ dataset_info.json格式见文档[自定义数据集](https://swift.readthedocs.i
 可以。参考[注册多模态模型最佳实践](https://swift.readthedocs.io/zh-cn/latest/BestPractices/MLLM-Registration.html)。
 
 ### Q26: 可以在python脚本里面用DPO去训练qwen2-vl吗？
-可以。从`swift.llm`中导入`rlhf_main` 和`RLHFArguments`。
+可以。从`swift.pipelines`中导入`rlhf_main` 和`RLHFArguments`。
 
 ### Q27: 请问训练MLLM时，可否先进行纯文本的预训练，然后接入VQA数据集进行微调呢？
 可以。也可以混着训练。
@@ -264,7 +267,7 @@ examples下有[例子](https://github.com/modelscope/ms-swift/blob/main/examples
 ```shell
 --rlhf_type ppo \
 --model Qwen/Qwen2.5-14B-Instruct \
---reward_model /mnt/workspace/output/rm/model --train_type lora \
+--reward_model /mnt/workspace/output/rm/model --tuner_type lora \
 --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' --torch_dtype float32 --num_train_epochs 1 \
 --per_device_train_batch_size 1 --per_device_eval_batch_size 1 --learning_rate 1e-5 --lora_rank 8 --lora_alpha 32 \
 --target_modules all-linear \
@@ -299,7 +302,7 @@ CUDA_VISIBLE_DEVICES=01,2,3,4,5,6,7 \
 swift sft \
     --model Internlm3-8b \
     --dataset train.json \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --num_train_epochs 5 \
     --per_device_train_batch_size 1 \
@@ -336,7 +339,7 @@ swift sft \
 ### Q95: 训练为什么没有token_acc？
 有些模型`logits`和`labels`数量对不上，就不算的。
 
-### Q96: 微调Ovis2 使用lora参数不起作用？加不加--train_type lora \，好像都是全参数微调？显存没变化。
+### Q96: 微调Ovis2 使用lora参数不起作用？加不加--tuner_type lora \，好像都是全参数微调？显存没变化。
 `--max_length`限制一下，这个模型有点特殊，需要padding到max_length。
 
 ### Q97: 请问下用qwen2.5跑一个分类任务，抱下面的错误，是哪里配置的有问题呢？ValueError: The model did not return a loss from the inputs, only the following keys: logits. For reference, the inputs it received are input_ids,attention_mask.
@@ -469,7 +472,7 @@ TypeError: __init__() got an unexpected keyword argument 'corda_config'
 加个环境变量`PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True'`。
 
 ### Q135: 如何在训练时使用focal loss？当前支持的loss种类哪里有？
-可以在这里添加新的[loss](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py)。
+可以在这里添加新的[loss](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)。
 
 ### Q136: rollout设置了pipeline parallel size，貌似trl和vllm里获取不到word size这个值。
 rollout应该是不兼容pipeline parallel。
@@ -551,7 +554,7 @@ all-router也加到target_modules。
 megatron sft \
     --load "$MODEL_PATH" \
     --dataset "$DATA_PATH"  \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 16 \
     --target_modules all-linear \
@@ -668,7 +671,7 @@ KeyError: 'architectures'
 尝试transformers==4.44.*版本。
 
 ### Q20: swift infer如何将评估的结果保存到指定文件呢 每次都不知道保存到哪里了
-设置`--result_path your_path`，详见[InferArguments](https://github.com/modelscope/ms-swift/blob/main/swift/llm/argument/infer_args.py)。
+设置`--result_path your_path`，详见[InferArguments](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/infer_args.py)。
 
 ### Q21: AWQ量化yi-vl-6b出错如下：
 ```text
@@ -726,7 +729,7 @@ ValueError(f'assistant_message; {assistant_message}')
 ValueError: assistant_message: {'role' :'assistant', 'content': ''}
 ```
 ```shell
-CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwen/Qwen2.5-VL-7B-Instruct --train_type lora --dataset /mnt/workspace/data.json --deepspeed zero2 --max_length 16384
+CUDA_VISIBLE_DEVICES=0 NPROC_PER_NODE=1 MAX_PIXELS=1003520 swift sft --model Qwen/Qwen2.5-VL-7B-Instruct --tuner_type lora --dataset /mnt/workspace/data.json --deepspeed zero2 --max_length 16384
 ```
 数据集assistant字段为空，如果是推理，把这个空字符串删掉，因为这个会导致训练时nan，会做检查。
 
@@ -775,8 +778,8 @@ topk设置成1就可以了。
 ### Q41: 请问下，swift做量化时，gptq/awq/fp8三种方法分别是针对activation和weight中的哪个做的量化呢？
 只有权重。
 
-### Q42: 请问用ms-swift推理时pt engine和vllm engine，推理结果差了很多，这个是什么原因呢？
-看看参数有没有对齐。此外，vllmengine和ptengine是有差异的，pt engine和transformers推理是对齐的。
+### Q42: 请问用ms-swift推理时transformers engine和vllm engine，推理结果差了很多，这个是什么原因呢？
+看看参数有没有对齐。此外，VllmEngine和TransformersEngine是有差异的，TransformersEngine和transformers推理是对齐的。
 
 ### Q43: 请问用swift做qwen2audio的推理，推理结果出现混乱，可能是啥原因呢？
 使用transformers4.48。
@@ -882,7 +885,7 @@ main分支应该默认使用V1 engine了，加一个`VLLM_USE_V1=1`试试，还�
 ### Q21: 通过--system参数指定system prompt与数据集中每个数据前加system prompt以及template的system prompt是不是有一个就行？这些方式对模型来说，是不是一样的？
 system优先级：数据集中的>命令行的>template中默认的。
 
-### Q22: swift pt engine部署模型后，推理无法并行，数据也没办法分配到其他显卡上，用的全是第一张卡。
+### Q22: swift transformers engine部署模型后，推理无法并行，数据也没办法分配到其他显卡上，用的全是第一张卡。
 尝试swift infer，deploy不支持DDP。
 
 ### Q23: swift deploy部署的模型，怎么在客户端禁止thinking？我在请求的时候加了extra body也不行。
@@ -1069,7 +1072,7 @@ task_cfg_dict = TaskConfig(
 NPROC_PER_NODE=8
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\ MAX_PIXELS=802816\ swift eval\
 --model "$MODEL_PATH” \$EXTRA_ARGS \
---eval_backend Native \ --infer_backend pt\ --device_map auto \
+--eval_backend Native \ --infer_backend transformers\ --device_map auto \
 --eval_limit"$EVAL_LIMIT"\ --eval_dataset general_qa\
 --dataset_args "{\"general_qa\": {\"local_path\": \"${DATA_PATH}\", \"subset_list\": [\"${SUBSET_NAME}\"]}}" \ --host 127.0.0.1\> "$LOG_FILE" 2>&1
 ```

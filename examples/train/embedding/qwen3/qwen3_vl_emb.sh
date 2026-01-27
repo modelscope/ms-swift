@@ -5,10 +5,10 @@ NPROC_PER_NODE=2 \
 swift sft \
     --model Qwen/Qwen3-VL-Embedding-8B \
     --task_type embedding \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --learning_rate 5e-6 \
+    --learning_rate 5e-5 \
     --target_modules all-linear \
     --dataset swift/TextCaps:emb \
     --attn_impl flash_attn \

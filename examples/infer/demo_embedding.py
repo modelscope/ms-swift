@@ -1,10 +1,10 @@
 import torch
 
-from swift.llm import InferRequest, PtEngine
+from swift.infer_engine import InferRequest, TransformersEngine
 
 
 def run_qwen3_emb():
-    engine = PtEngine(
+    engine = TransformersEngine(
         'Qwen/Qwen3-Embedding-4B', task_type='embedding', torch_dtype=torch.float16, attn_impl='flash_attention_2')
 
     infer_requests = [
@@ -31,7 +31,7 @@ def run_qwen3_emb():
 
 
 def run_qwen3_vl_emb():
-    engine = PtEngine(
+    engine = TransformersEngine(
         'Qwen/Qwen3-VL-Embedding-2B', task_type='embedding', max_batch_size=2, attn_impl='flash_attention_2')
 
     infer_requests = [

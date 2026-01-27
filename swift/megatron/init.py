@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
 import importlib.metadata
 import inspect
@@ -20,9 +20,8 @@ from packaging import version
 from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
 
-from swift.llm import git_clone_github
-from swift.utils import (get_logger, is_flash_attn_3_available, is_megatron_available, safe_ddp_context, split_list,
-                         subprocess_run)
+from swift.utils import (get_logger, git_clone_github, is_flash_attn_3_available, is_megatron_available,
+                         safe_ddp_context, split_list, subprocess_run)
 
 logger = get_logger()
 
