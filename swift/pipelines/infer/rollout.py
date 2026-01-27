@@ -40,8 +40,8 @@ from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig,
                                          UpdateWeightsRequest)
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
                                        UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
-                                       UpdateFlattenedParamsRequest, check_vllm_version_ge, patch_vllm_load_adapter,
-                                       patch_vllm_moe_model_weight_loader)
+                                       UpdateFlattenedParamsRequest, check_vllm_version_ge, chunk_list,
+                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader)
 from swift.rollout import RolloutScheduler, multi_turns
 from swift.utils import get_logger, get_seed, is_vllm_ascend_available
 from ..base import SwiftPipeline
@@ -56,8 +56,6 @@ try:
     from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
     if is_vllm_ascend_available():
         from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator as PyNcclCommunicator  # noqa
-
-    from trl.scripts.vllm_serve import chunk_list
 
 except ImportError:
     pass
