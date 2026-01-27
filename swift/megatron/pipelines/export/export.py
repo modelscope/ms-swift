@@ -52,10 +52,14 @@ class MegatronExport(SwiftPipeline):
             bridge.load_weights(mg_model, args.model_info.model_dir)
         else:
             raise ValueError('Please specify `--load` or `--model`.')
-        if args.adapter_load is not None:
+        if args.adapters or args.adapter_load is not None:
             peft_model = prepare_mcore_model(mg_model)
-            with adapter_state_dict_context():
-                load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+            if args.adapter_load is not None:
+                with adapter_state_dict_context():
+                    load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+            elif args.adapters:
+                assert len(args.adapters) == 1, 'Currently only support one adapter'
+                bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
