@@ -234,12 +234,14 @@ class SwiftRLHF(SwiftSft):
         if self.args.rlhf_type == 'gkd':
             if self.args.teacher_deepspeed:
                 trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
+            # Pass GKD-specific args to trainer
+            trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
+            trainer_kwargs['gkd_logits_topk'] = self.args.gkd_logits_topk
             # Initialize teacher API client if using external teacher service
             if self.args.teacher_model_server:
                 from swift.rlhf_trainers.utils import create_teacher_api_client
                 trainer_kwargs['teacher_api_client'] = create_teacher_api_client(
-                    self.args, check_health=False, timeout=60, use_last_rank=False
-                )
+                    self.args, check_health=False, timeout=60, use_last_rank=False)
         return trainer_kwargs
 
 

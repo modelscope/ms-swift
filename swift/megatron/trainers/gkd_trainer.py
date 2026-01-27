@@ -51,7 +51,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # GKD top-k logits configuration
         self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
-        self.use_teacher_api = self.teacher_api_client is not None
+        # Check use_teacher_api based on args, not client existence
+        # (API client is only created on last rank, but all ranks need to know the mode)
+        self.use_teacher_api = getattr(args, 'teacher_model_server', None) is not None
 
         # Validate teacher configuration
         if not self.use_teacher_api:
@@ -444,12 +446,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return get_num_microbatches()
 
     def _compute_teacher_logits(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
-        teacher_model = self.teacher_models[vp_stage or 0]
-
         if self.use_teacher_api:
             # API mode: fetch teacher logprobs from external service
             self._compute_teacher_logits_from_api(encoded_batches)
-        else:
+            return
+
+        # Local teacher model mode
+        teacher_model = self.teacher_models[vp_stage or 0]
+        if True:  # Maintain original indentation
             # Local teacher model mode
             for encoded_batch in encoded_batches:
                 # Deep copy to avoid modifying original batch
@@ -469,49 +473,71 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _compute_teacher_logits_from_api(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
         """Fetch teacher logprobs from external API service.
 
+        Only the last rank makes API calls, then broadcasts results to other ranks.
+
         Args:
             encoded_batches: List of encoded batch dictionaries
             vp_stage: Virtual pipeline stage (unused in API mode)
         """
         import asyncio
+        import torch.distributed as dist
+        from swift.utils import is_last_rank
 
         topk = self.gkd_logits_topk
+        is_distributed = dist.is_initialized()
+        is_api_rank = is_last_rank()
 
         for encoded_batch in encoded_batches:
             input_ids = encoded_batch['input_ids']
-            attention_mask = encoded_batch.get('attention_mask', None)
             batch_size, seq_len = input_ids.shape
+            device = input_ids.device
 
-            # Prepare requests for API
-            async def fetch_batch():
-                results = await self.teacher_api_client.get_logprobs_batch(
-                    input_ids=input_ids.tolist(),
-                    attention_mask=attention_mask.tolist() if attention_mask is not None else None,
-                    top_logprobs=topk,
-                )
-                return results
+            # Initialize tensors
+            teacher_logprobs = torch.zeros(batch_size, seq_len, topk, device=device, dtype=torch.float32)
+            teacher_indices = torch.zeros(batch_size, seq_len, topk, device=device, dtype=torch.long)
 
-            # Run async function
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, fetch_batch())
-                    api_results = future.result()
-            else:
-                api_results = loop.run_until_complete(fetch_batch())
+            # Only last rank fetches from API
+            if is_api_rank and self.teacher_api_client is not None:
+                # Prepare requests for API
+                async def fetch_batch():
+                    results = await self.teacher_api_client.get_logprobs_batch(
+                        input_ids=input_ids.tolist(),
+                        top_logprobs=topk,
+                    )
+                    return results
 
-            # Parse API results into tensors
-            teacher_logprobs = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.float32)
-            teacher_indices = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.long)
+                # Run async function
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        import concurrent.futures
+                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                            future = executor.submit(asyncio.run, fetch_batch())
+                            api_results = future.result()
+                    else:
+                        api_results = loop.run_until_complete(fetch_batch())
+                except RuntimeError:
+                    api_results = asyncio.run(fetch_batch())
 
-            for batch_idx, result in enumerate(api_results):
-                for pos_idx, pos_logprobs in enumerate(result.get('logprobs', [])):
-                    if pos_idx >= seq_len:
-                        break
-                    for k_idx, (token_id, logprob) in enumerate(pos_logprobs[:topk]):
-                        teacher_logprobs[batch_idx, pos_idx, k_idx] = logprob
-                        teacher_indices[batch_idx, pos_idx, k_idx] = token_id
+                # Parse API results into tensors
+                # api_results is list of dicts with 'values' (logprobs) and 'indices' for each sample
+                for batch_idx, result in enumerate(api_results):
+                    indices_list = result.get('indices', [])
+                    values_list = result.get('values', [])
+                    for pos_idx, (pos_indices, pos_values) in enumerate(zip(indices_list, values_list)):
+                        if pos_idx >= seq_len:
+                            break
+                        for k_idx in range(min(len(pos_indices), topk)):
+                            teacher_indices[batch_idx, pos_idx, k_idx] = pos_indices[k_idx]
+                            teacher_logprobs[batch_idx, pos_idx, k_idx] = pos_values[k_idx]
+
+            # Broadcast results to all ranks
+            if is_distributed:
+                # Get last rank for broadcast source
+                world_size = dist.get_world_size()
+                last_rank = world_size - 1
+                dist.broadcast(teacher_logprobs, src=last_rank)
+                dist.broadcast(teacher_indices, src=last_rank)
 
             encoded_batch['teacher_api_logprobs'] = teacher_logprobs
             encoded_batch['teacher_api_indices'] = teacher_indices

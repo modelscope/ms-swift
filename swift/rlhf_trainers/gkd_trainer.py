@@ -55,6 +55,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.teacher_api_client = kwargs.pop('teacher_api_client', None)
+        # Pop GKD-specific args from kwargs (passed from rlhf.py)
+        teacher_model_server = kwargs.pop('teacher_model_server', None)
+        gkd_logits_topk = kwargs.pop('gkd_logits_topk', None)
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
         self.lmbda = args.lmbda
@@ -64,9 +67,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
 
-        # GKD top-k logits configuration
-        self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
-        self.use_teacher_api = self.teacher_api_client is not None
+        # GKD top-k logits configuration (from kwargs, fallback to args for backward compatibility)
+        self.gkd_logits_topk = gkd_logits_topk if gkd_logits_topk is not None else getattr(
+            args, 'gkd_logits_topk', None)
+        # Check use_teacher_api based on kwargs (passed from rlhf.py)
+        # API client is only created on master rank, but all ranks need to know the mode
+        self.use_teacher_api = teacher_model_server is not None
+        logger.info(f'teacher_model_server={teacher_model_server}, use_teacher_api={self.use_teacher_api}')
 
         # Initialize logging components
         self._prepare_logging()
@@ -175,7 +182,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
         # If generate is used, then use_logits_to_keep must be set to False.
-        use_logits_to_keep = self.get_use_logits_to_keep(True)
+        # Also disable logits_to_keep when using teacher API to ensure sequence length alignment
+        use_logits_to_keep = self.get_use_logits_to_keep(True) and not self.use_teacher_api
         if use_logits_to_keep and not self.use_liger_gkd_loss:
             self.prepare_logits_to_keep(inputs)
             model_inputs['logits_to_keep'] = inputs['logits_to_keep']
@@ -454,6 +462,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def _fetch_teacher_logprobs_from_api(self, encoded_inputs: Dict[str, torch.Tensor]):
         """Fetch teacher logprobs from external API service.
 
+        Only the master rank makes API calls, then broadcasts results to other ranks.
+
         Args:
             encoded_inputs: Dictionary containing input_ids, attention_mask, labels, etc.
 
@@ -461,52 +471,72 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             Tuple of (teacher_logprobs, teacher_indices) tensors
         """
         import asyncio
+        import torch.distributed as dist
 
         input_ids = encoded_inputs['input_ids']
-        attention_mask = encoded_inputs['attention_mask']
         batch_size, seq_len = input_ids.shape
         topk = self.gkd_logits_topk
+        device = input_ids.device
 
-        # Prepare requests for API
-        # We need logprobs for each position, so we send the full sequence
-        # and request prompt_logprobs
-        async def fetch_batch():
-            results = await self.teacher_api_client.get_logprobs_batch(
-                input_ids=input_ids.tolist(),
-                attention_mask=attention_mask.tolist(),
-                top_logprobs=topk,
-            )
-            return results
+        # Initialize tensors
+        teacher_logprobs = torch.zeros(batch_size, seq_len, topk, device=device, dtype=torch.float32)
+        teacher_indices = torch.zeros(batch_size, seq_len, topk, device=device, dtype=torch.long)
 
-        # Run async function
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If already in async context, create a new thread
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, fetch_batch())
-                api_results = future.result()
-        else:
-            api_results = loop.run_until_complete(fetch_batch())
+        # Only master rank fetches from API
+        is_distributed = dist.is_initialized()
+        is_master = not is_distributed or dist.get_rank() == 0
 
-        # Parse API results into tensors
-        # api_results should be list of dicts with 'logprobs' and 'indices' for each sample
-        teacher_logprobs = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.float32)
-        teacher_indices = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.long)
+        if is_master and self.teacher_api_client is not None:
+            # Prepare requests for API
+            async def fetch_batch():
+                results = await self.teacher_api_client.get_logprobs_batch(
+                    input_ids=input_ids.tolist(),
+                    top_logprobs=topk,
+                )
+                return results
 
-        for batch_idx, result in enumerate(api_results):
-            for pos_idx, pos_logprobs in enumerate(result.get('logprobs', [])):
-                if pos_idx >= seq_len:
-                    break
-                for k_idx, (token_id, logprob) in enumerate(pos_logprobs[:topk]):
-                    teacher_logprobs[batch_idx, pos_idx, k_idx] = logprob
-                    teacher_indices[batch_idx, pos_idx, k_idx] = token_id
+            # Run async function
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                        future = executor.submit(asyncio.run, fetch_batch())
+                        api_results = future.result()
+                else:
+                    api_results = loop.run_until_complete(fetch_batch())
+            except RuntimeError:
+                api_results = asyncio.run(fetch_batch())
+
+            # Parse API results into tensors
+            # api_results is list of dicts with 'values' (logprobs) and 'indices' for each sample
+            for batch_idx, result in enumerate(api_results):
+                indices_list = result.get('indices', [])
+                values_list = result.get('values', [])
+                for pos_idx, (pos_indices, pos_values) in enumerate(zip(indices_list, values_list)):
+                    if pos_idx >= seq_len:
+                        break
+                    for k_idx in range(min(len(pos_indices), topk)):
+                        teacher_indices[batch_idx, pos_idx, k_idx] = pos_indices[k_idx]
+                        teacher_logprobs[batch_idx, pos_idx, k_idx] = pos_values[k_idx]
+
+        # Broadcast results to all ranks
+        if is_distributed:
+            dist.broadcast(teacher_logprobs, src=0)
+            dist.broadcast(teacher_indices, src=0)
 
         return teacher_logprobs, teacher_indices
 
     def prediction_step(self, model, inputs, *args, **kwargs):
         # Prediction uses full messages
         encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
+
+        # Fetch teacher logprobs from API if using external teacher service (for eval)
+        if self.use_teacher_api:
+            teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs)
+            encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
+            encoded_inputs['_teacher_api_indices'] = teacher_indices
+
         with self.template.forward_context(self.model, encoded_inputs):
             return super().prediction_step(model, encoded_inputs, *args, **kwargs)
 

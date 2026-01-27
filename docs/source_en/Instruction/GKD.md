@@ -251,6 +251,8 @@ Use vLLM as the inference backend to accelerate student model sampling. Supports
 
 Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh), for related parameters, please refer to [GRPO vLLM Parameters](./Command-line-parameters.md#vllm_mode).
 
+Training script using Teacher Server reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh).
+
 
 ### Solution 2: Teacher Model Pre-sampling
 

@@ -64,8 +64,8 @@ class TeacherAPIClient:
 
         try:
             async with session.get(
-                    f'{self.base_url}/v1/models', headers=self._get_headers(), timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
+                    f'{self.base_url}/v1/models', headers=self._get_headers(),
+                    timeout=aiohttp.ClientTimeout(total=10)) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     if data.get('data') and len(data['data']) > 0:
@@ -129,7 +129,14 @@ class TeacherAPIClient:
             return results
 
     def _parse_response(self, response: Dict[str, Any], seq_len: int, topk: int) -> Dict[str, Any]:
-        """Parse OpenAI-compatible completions API response to extract logprobs."""
+        """Parse vLLM completions API response to extract logprobs.
+
+        vLLM returns logprobs in two formats:
+        1. `prompt_logprobs`: List of dicts where keys are token IDs (as strings), values have 'logprob' field
+        2. `top_logprobs` in logprobs: List of dicts where keys are token text
+
+        We prefer `prompt_logprobs` because it has token IDs directly.
+        """
         result = {'indices': [], 'values': []}
 
         try:
@@ -137,30 +144,62 @@ class TeacherAPIClient:
                 return self._empty_result(seq_len, topk)
 
             choice = response['choices'][0]
-            logprobs_data = choice.get('logprobs', {})
 
+            # Try prompt_logprobs first (vLLM native format with token IDs as keys)
+            prompt_logprobs = choice.get('prompt_logprobs')
+            if prompt_logprobs is not None:
+                for pos_idx, pos_logprobs in enumerate(prompt_logprobs):
+                    pos_indices = []
+                    pos_values = []
+
+                    if pos_logprobs is not None:
+                        # vLLM format: {token_id_str: {logprob: float, ...}, ...}
+                        sorted_items = sorted(pos_logprobs.items(), key=lambda x: -self._get_logprob_value(x[1]))[:topk]
+
+                        for token_id_str, logprob_data in sorted_items:
+                            try:
+                                token_id = int(token_id_str)
+                                pos_indices.append(token_id)
+                                pos_values.append(self._get_logprob_value(logprob_data))
+                            except (ValueError, TypeError):
+                                continue
+
+                    # Pad if needed
+                    while len(pos_indices) < topk:
+                        pos_indices.append(0)
+                        pos_values.append(float('-inf'))
+
+                    result['indices'].append(pos_indices)
+                    result['values'].append(pos_values)
+
+                # Pad to seq_len if needed
+                while len(result['indices']) < seq_len:
+                    result['indices'].append([0] * topk)
+                    result['values'].append([float('-inf')] * topk)
+
+                return result
+
+            # Fallback to logprobs.top_logprobs (OpenAI format, keys are token text)
+            logprobs_data = choice.get('logprobs', {})
             if logprobs_data is None:
                 return self._empty_result(seq_len, topk)
 
-            # vLLM returns top_logprobs as list of dicts: [{token_id: Logprob, ...}, ...]
             top_logprobs_list = logprobs_data.get('top_logprobs', [])
-            token_logprobs = logprobs_data.get('token_logprobs', [])
-            tokens = logprobs_data.get('tokens', [])
 
             for pos_idx, pos_logprobs in enumerate(top_logprobs_list):
                 pos_indices = []
                 pos_values = []
 
                 if pos_logprobs is not None:
-                    # vLLM format: {token_id: Logprob object or float, ...}
                     sorted_items = sorted(pos_logprobs.items(), key=lambda x: -self._get_logprob_value(x[1]))[:topk]
 
-                    for token_id_str, logprob in sorted_items:
+                    for token_str, logprob in sorted_items:
                         try:
-                            token_id = int(token_id_str)
+                            token_id = int(token_str)
                             pos_indices.append(token_id)
                             pos_values.append(self._get_logprob_value(logprob))
                         except (ValueError, TypeError):
+                            # Token is text, not ID - skip (can't use without tokenizer)
                             continue
 
                 # Pad if needed
