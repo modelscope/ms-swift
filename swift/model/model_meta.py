@@ -87,12 +87,8 @@ class ModelMeta:
             self.loader = ModelLoader
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
-        self.candidate_templates = []
-        if self.template is not None:
-            self.candidate_templates.append(self.template)
-        for model_group in self.model_groups:
-            if model_group.template is not None and model_group.template not in self.candidate_templates:
-                self.candidate_templates.append(model_group.template)
+        self.candidate_templates = list(
+            dict.fromkeys(t for t in [self.template] + [mg.template for mg in self.model_groups] if t is not None))
         if self.model_type in MLLMModelType.__dict__:
             self.is_multimodal = True
         if self.model_type in RMModelType.__dict__:
