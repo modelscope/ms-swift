@@ -179,6 +179,12 @@ def prepare_adapter(model):
         for n, p in model.named_parameters():
             if '.ref_adapter.' in n:
                 p.requires_grad = False
+    # setting average_gradients_across_tp_domain
+    if args.is_multimodal:
+        visual_model = model.visual
+        for n, p in visual_model.named_parameters():
+            if p.requires_grad:
+                p.average_gradients_across_tp_domain = True
     return model
 
 
