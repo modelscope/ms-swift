@@ -74,6 +74,8 @@ if is_swanlab_available():
 
 class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    def _get_data_collator(self, args,tempLate):
+        return identity_data_collator
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
@@ -99,6 +101,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         reward_templates = kwargs.pop('reward_template', None)
         self._prepare_algorithm_params()
+        if 'data_collator' in kwargs:
+            del kwargs['data_collator']             
         super().__init__(model, ref_model, *_args, **kwargs)
         self._prepare_chord_dataset()
         self.prepare_rollout()
