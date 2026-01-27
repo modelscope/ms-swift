@@ -298,6 +298,7 @@ register_model(
 
 class DeepseekOCRLoader(ModelLoader):
     visual_name = 'vision_model'
+
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         self.auto_model_cls = self.auto_model_cls or AutoModel
         model = super().get_model(model_dir, *args, **kwargs)
@@ -319,8 +320,10 @@ class DeepseekOCRLoader(ModelLoader):
             processor = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
         return processor
 
+
 class DeepseekOCR2Loader(DeepseekOCRLoader):
     visual_name = 'qwen2_model'
+
 
 register_model(
     ModelMeta(

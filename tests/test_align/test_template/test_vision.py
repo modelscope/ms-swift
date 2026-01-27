@@ -992,13 +992,22 @@ def test_deepseek_ocr():
                         '\nSWIFT具有丰富的文档体系，如有使用问题请查看这里。\n\n可以在Huggingface space 和 ModelScope'
                         '创空间 中体验SWIFT web-ui功能了。')
 
+
 def test_deepseek_ocr_2():
     engine = TransformersEngine('deepseek-ai/DeepSeek-OCR-2', attn_impl='flash_attention_2')
     query = 'Free OCR.'
     messages = [{'role': 'user', 'content': query}]
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
     response = _infer_model(engine, messages=messages, images=images, max_tokens=256)
-    assert response == ('# 简介\n\nSWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持PEFT提供的轻量训练方案外，也提供了一个完整的Adapters库以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。\n\n为方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入门。\n\n此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练。\n\nSWIFT具有丰富的文档体系，如有使用问题请查看这里。\n\n可以在Huggingface space 和 ModelScope创空间 中体验SWIFT web-ui功能了。')
+    assert response == ('# 简介\n\nSWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、评测和部署。开发者可以直接'
+                        '将我们的框架应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持PEFT提'
+                        '供的轻量训练方案外，也提供了一个完整的Adapters库以支持最新的训练技术，如NEFTune、LoRA+、'
+                        'LLaMA-PRO等，这个适配器库可以脱离训练脚本直接使用在自己的自定流程中。\n\n为方便不熟悉深度学习的'
+                        '用户使用，我们提供了一个Gradio的web-ui用于控制训练和推理，并提供了配套的深度学习课程和最佳实践供'
+                        '新手入门。\n\n此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的全参数训练和LoRA训练'
+                        '。\n\nSWIFT具有丰富的文档体系，如有使用问题请查看这里。\n\n可以在Huggingface space 和 '
+                        'ModelScope创空间 中体验SWIFT web-ui功能了。')
+
 
 def test_llava_onevision1_5():
     engine = TransformersEngine('lmms-lab/LLaVA-OneVision-1.5-4B-Instruct')

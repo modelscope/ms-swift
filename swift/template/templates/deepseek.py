@@ -255,18 +255,18 @@ class DeepseekOCR(Template):
     def image_size(self):
         if self._image_size_override is not None:
             return self._image_size_override
-        return 768 if self.version=='v2' else 640
+        return 768 if self.version == 'v2' else 640
 
     @property
     def crop_threshold(self):
         # v1: 640, v2: 768
-        return 768 if self.version=='v2' else 640
+        return 768 if self.version == 'v2' else 640
 
     def _load_dynamic_modules(self):
         """Lazily load dynamic modules from model repository."""
         if self._BasicImageTransform is None:
             model_dir = self.model_info.model_dir
-            model_type_name = 'deepseekocr2' if self.version=='v2' else 'deepseekocr'
+            model_type_name = 'deepseekocr2' if self.version == 'v2' else 'deepseekocr'
             self._BasicImageTransform = get_class_from_dynamic_module(f'modeling_{model_type_name}.BasicImageTransform',
                                                                       model_dir)
             self._dynamic_preprocess = get_class_from_dynamic_module(f'modeling_{model_type_name}.dynamic_preprocess',
@@ -336,7 +336,7 @@ class DeepseekOCR(Template):
                 num_queries_base = math.ceil((self.base_size // patch_size) / downsample_ratio)
                 """add image tokens"""
                 # v1: adds newline token after each row, v2: no newline tokens in rows
-                if self.version=='v2':
+                if self.version == 'v2':
                     tokenized_image = ([image_token_id] * num_queries_base) * num_queries_base
                     tokenized_image += [image_token_id]
                     if width_crop_num > 1 or height_crop_num > 1:
@@ -375,7 +375,7 @@ class DeepseekOCR(Template):
                 num_queries = math.ceil((image_size // patch_size) / downsample_ratio)
 
                 # v1: adds newline token after each row, v2: no newline tokens in rows
-                if self.version=='v2':
+                if self.version == 'v2':
                     tokenized_image = ([image_token_id] * num_queries) * num_queries
                     tokenized_image += [image_token_id]
                 else:
@@ -443,8 +443,10 @@ register_template(
         chat_sep=None,
         template_cls=DeepseekOCR))
 
+
 class DeepseekOCR2(DeepseekOCR):
     version = 'v2'
+
 
 register_template(
     TemplateMeta(
@@ -453,6 +455,7 @@ register_template(
         prompt=['{{QUERY}}'],
         chat_sep=None,
         template_cls=DeepseekOCR2))
+
 
 @dataclass
 class DeepseekV2_5TemplateMeta(TemplateMeta):
