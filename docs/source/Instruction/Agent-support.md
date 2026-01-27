@@ -202,8 +202,24 @@ loss_scale参数可用于调节模型输出部分在训练过程中的损失权�
 
 - 所有与正则表达式`<think>\\s*</think>\\s*`匹配的字符串，loss_scale为0，即不计算损失。
 
-更多的loss_scale插件设计，请参考[插件化](../Customization/Pluginization.md)文档.
+使用代码测试loss_scale:
+```python
+from swift import get_processor, get_template
 
+data = {"messages": [
+    {"role": "user", "content": "aaaaa"},
+    {"role": "assistant", "content": "<think>\n\n</think>\n\nabc<think>\n\n</think>\n\n123"},
+]}
+
+template = get_template(get_processor('Qwen/Qwen3-8B'), loss_scale='ignore_empty_think')
+template.set_mode('train')
+inputs = template.encode(data)
+
+print(template.safe_decode(inputs['labels']))
+# '[-100 * 14]abc<think>\n\n</think>\n\n123<|im_end|>\n'
+```
+
+更多的loss_scale插件设计，请参考[插件化](../Customization/Pluginization.md)文档.
 
 ## 训练
 - 训练Base模型的Agent能力，通过修改`--model`切换不同模型，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/qwen2_5.sh)。

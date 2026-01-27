@@ -30,11 +30,11 @@ def test_llm():
         result = sft_main(SftArguments(model=model, dataset=dataset, split_dataset_ratio=0.1, **kwargs))
         last_model_checkpoint = result['last_model_checkpoint']
         infer_result = infer_main(
-            InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, truncation_strategy='right'))
+            InferArguments(adapters=[last_model_checkpoint], load_data_args=True, truncation_strategy='right'))
         res.append(calc_acc(infer_result))
         infer_result2 = infer_main(
             InferArguments(
-                ckpt_dir=last_model_checkpoint, load_data_args=True, max_batch_size=16, truncation_strategy='right'))
+                adapters=[last_model_checkpoint], load_data_args=True, max_batch_size=16, truncation_strategy='right'))
         res.append(calc_acc(infer_result2))
 
     model = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -45,11 +45,11 @@ def test_llm():
     result = sft_main(SftArguments(model=model, dataset=dataset, split_dataset_ratio=0.1, **train_kwargs))
     last_model_checkpoint = result['last_model_checkpoint']
     infer_result = infer_main(
-        InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, truncation_strategy='right'))
+        InferArguments(adapters=[last_model_checkpoint], load_data_args=True, truncation_strategy='right'))
     res.append(calc_acc(infer_result))
     infer_result2 = infer_main(
         InferArguments(
-            ckpt_dir=last_model_checkpoint, load_data_args=True, max_batch_size=16, truncation_strategy='right'))
+            adapters=[last_model_checkpoint], load_data_args=True, max_batch_size=16, truncation_strategy='right'))
     res.append(calc_acc(infer_result2))
     pprint(res)
 

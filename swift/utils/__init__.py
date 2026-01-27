@@ -13,6 +13,7 @@ from .logger import get_logger, ms_logger_context
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .processor_utils import Processor, ProcessorMixin
 from .safetensors import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
+from .shutdown_manager import ShutdownManager
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
 from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_context_use_barrier, empty_cache, gc_collect,
                           get_current_device, get_device, get_device_count, get_generative_reranker_logits,

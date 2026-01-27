@@ -62,7 +62,11 @@ class GPTBridge:
         self.pp_group = mpu.get_pipeline_model_parallel_group()
         self.etp_group = mpu.get_expert_tensor_parallel_group()
         self.ep_group = mpu.get_expert_model_parallel_group()
-
+        self.is_transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
+        if self.is_transformers_5 and self.hf_model.model_info.is_moe_model and not self.args.merge_lora:
+            logger.warning('In transformers 5.0, the weight organization of MoE model experts differs from Megatron. '
+                           'It is recommended to use `--merge_lora true`, otherwise the trained model may not be '
+                           'usable for inference with transformers.')
         self.tp_rank = mpu.get_tensor_model_parallel_rank()
         self.pp_rank = mpu.get_pipeline_model_parallel_rank()
         self.etp_rank = mpu.get_expert_tensor_parallel_rank()
@@ -120,7 +124,7 @@ class GPTBridge:
             # mtp
             'eh_proj',
         }
-        if self.args.task_type == 'causal_lm':
+        if self.args.task_type in {'causal_lm', 'generative_reranker'}:
             dim0_keys.add('output_layer')
         if not self.mcore_014:
             # https://github.com/NVIDIA/Megatron-LM/commit/720c8b40d8e7e2de1dd303d792f29093101c5e72
@@ -150,9 +154,16 @@ class GPTBridge:
                 elif key in {'linear_fc1'}:
                     return 1
 
-    def _split_tp(self, hf_weight, tp_dim, is_expert):
+    def _split_tp(self, hf_weight, tp_dim, is_expert, is_embedding: bool):
         tp_size = self.etp_size if is_expert else self.tp_size
         tp_rank = self.etp_rank if is_expert else self.tp_rank
+        if is_embedding:
+            padding_size = math.ceil(hf_weight.shape[0] / tp_size) * tp_size - hf_weight.shape[0]
+            if padding_size > 0:
+                new_size = hf_weight.shape[0] + padding_size
+                logger.warning(
+                    f'Padding embedding from {hf_weight.shape[0]} to {new_size} (padding size: {padding_size})')
+                hf_weight = F.pad(hf_weight, (0, 0, 0, padding_size))
         if tp_dim is not None and tp_size > 1:
             tensor = hf_weight.chunk(tp_size, dim=tp_dim)[tp_rank]
         else:
@@ -171,12 +182,13 @@ class GPTBridge:
     ):
         # tp/etp
         tp_dim = self._get_tp_split_dim(mg_key)
-        tensor = self._split_tp(hf_weight, tp_dim, is_expert)
+        is_embedding = mg_key in {'embedding.word_embeddings.weight', 'output_layer.weight'}
+        tensor = self._split_tp(hf_weight, tp_dim, is_expert, is_embedding=is_embedding)
         del hf_weight
         if not isinstance(mg_param, (list, tuple)):
             mg_param = [mg_param]
         if hf_scale_inv is not None:
-            hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert)
+            hf_scale_inv = self._split_tp(hf_scale_inv, tp_dim, is_expert, is_embedding=is_embedding)
             hf_scale_inv = hf_scale_inv.chunk(len(mg_param), dim=0)
         if offset:
             assert hf_scale_inv is None, f'mg_key: {mg_key}'
@@ -383,6 +395,9 @@ class GPTBridge:
         if offset:
             assert mg_scale_inv is None, f'mg_key: {mg_key}'
             tensor = tensor + offset
+        is_embedding = mg_key in {'embedding.word_embeddings.weight', 'output_layer.weight'}
+        if is_embedding and self.args.padded_vocab_size < tensor.shape[0]:
+            tensor = tensor[:self.args.padded_vocab_size]
         if self._target_device is not None:
             tensor = tensor.to(device=self._target_device)
             if mg_scale_inv is not None:
@@ -713,8 +728,7 @@ class GPTBridge:
             num_local_experts = args.num_experts // self.ep_size
         # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if version.parse(
-                transformers.__version__) >= version.parse('5.0.0.dev') and self.args.hf_model_type == 'glm4v_moe':
+        if self.is_transformers_5 and self.args.hf_model_type in {'glm4v_moe', 'glm4_moe_lite'}:
             hf_grouped = False
             is_gate_up = False
         if to_mcore or hf_grouped:
@@ -875,7 +889,10 @@ class GPTBridge:
             elif not is_expert and self.pp_size > 1:
                 dist.all_reduce(is_lora, group=self.pp_group)
             if is_lora:
-                assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                if hf_grouped:
+                    raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                     'weight organization methods, LoRA weight conversion is not supported. '
+                                     'You can solve this issue by setting `--merge_lora true`.')
                 if mg_mlp is None:
                     lora_A = None
                     lora_B = None
@@ -1095,7 +1112,10 @@ class GPTBridge:
                 elif not is_expert and self.pp_size > 1:
                     dist.all_reduce(is_lora, group=self.pp_group)
                 if is_lora:
-                    assert not hf_grouped, 'Currently, hf_grouped with LoRA is not supported.'
+                    if hf_grouped:
+                        raise ValueError('Since this model\'s transformers and megatron have different expert '
+                                         'weight organization methods, LoRA weight conversion is not supported. '
+                                         'You can solve this issue by setting `--merge_lora true`.')
                     if mg_mlp is None:
                         lora_A = None
                         lora_B = None
@@ -1260,14 +1280,15 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
-        if self.args.untie_embeddings_and_output_weights:
-            if not to_mcore or self.args.task_type == 'causal_lm':
-                hf_lm_head_key = self.hf_lm_head_key
-                if not to_mcore and self.args.task_type == 'seq_cls':
-                    hf_lm_head_key = self.hf_score_key
-                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
-        elif to_mcore and lm_model.output_layer.weight is not None:
-            self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
+        if self.args.task_type != 'embedding':
+            if self.args.untie_embeddings_and_output_weights:
+                if not to_mcore or self.args.task_type in {'causal_lm', 'generative_reranker'}:
+                    hf_lm_head_key = self.hf_lm_head_key
+                    if self.args.task_type == 'seq_cls':
+                        hf_lm_head_key = self.hf_score_key
+                    self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
+            elif to_mcore and lm_model.output_layer.weight is not None:
+                self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
         self._set_state_dict(lm_model, 'decoder.final_layernorm.weight', hf_state_dict, self.hf_final_layernorm_key,
                              to_mcore)
         if to_mcore:

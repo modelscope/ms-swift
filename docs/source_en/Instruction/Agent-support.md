@@ -215,6 +215,25 @@ In such cases, use `--loss_scale ignore_empty_think` (see configuration file [ig
 The specific effect of this setting is:
 - Any string matching the regular expression `<think>\\s*</think>\\s*` is assigned a `loss_scale` of 0, meaning no loss is computed for these segments.
 
+
+Testing loss_scale using code:
+```python
+from swift import get_processor, get_template
+
+data = {"messages": [
+    {"role": "user", "content": "aaaaa"},
+    {"role": "assistant", "content": "<think>\n\n</think>\n\nabc<think>\n\n</think>\n\n123"},
+]}
+
+template = get_template(get_processor('Qwen/Qwen3-8B'), loss_scale='ignore_empty_think')
+template.set_mode('train')
+inputs = template.encode(data)
+
+print(template.safe_decode(inputs['labels']))
+# '[-100 * 14]abc<think>\n\n</think>\n\n123<|im_end|>\n'
+```
+
+
 For more `loss_scale` plugin designs, please refer to the [Pluginization](../Customization/Pluginization.md) documentation.
 
 ## Training

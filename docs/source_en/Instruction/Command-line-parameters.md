@@ -39,6 +39,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - attn_impl: Attention implementation. Options include `'sdpa'`, `'eager'`, `'flash_attn'`, `'flash_attention_2'`, `'flash_attention_3'`, etc. Default is `None`, reading from config.json.
   - Note: Not all attention implementations may be supported, depending on the underlying Transformers library's support for the specific model.
   - If set to `'flash_attn'` (for backward compatibility), `'flash_attention_2'` will be used.
+- experts_impl: Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'. Defaults to None. This feature requires "transformers>=5.0.0".
 - new_special_tokens: List of additional special tokens to be added. Default is `[]`. Example usage can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a `.txt` file path where each line contains one special token.
 - num_labels: Required for classification models (`--task_type seq_cls`). Indicates the number of labels. Default is `None`.
@@ -238,6 +239,7 @@ Other important parameters:
 - 🔥eval_strategy: Evaluation strategy. Default is `None`, following `save_strategy`.
   - If neither `val_dataset` nor `eval_dataset` is used and `split_dataset_ratio=0`, defaults to `'no'`.
 - 🔥eval_steps: Default is `None`. If evaluation dataset exists, follows `save_steps`.
+- eval_on_start: Whether to perform an evaluation step before training to ensure the validation steps work correctly. Defaults to False.
 - 🔥save_total_limit: Maximum number of checkpoints to keep. Older checkpoints are deleted. Default is `None` (keep all).
 - max_steps: Maximum number of training steps. Must be set when using streaming datasets. Default is -1.
 - 🔥warmup_ratio: Default is 0.
@@ -489,14 +491,14 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - loss_type: Custom loss_type name. Default is None, uses the model's built-in loss function. Available loss options can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py).
 - eval_metric: Custom eval metric name. Default is None. Available eval_metric options can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/eval_metric/mapping.py).
   - Regarding default values: When `task_type` is 'causal_lm' and `predict_with_generate=True`, it defaults to 'nlg'. When `task_type` is 'embedding', the default value is 'infonce' or 'paired' based on loss_type. When `task_type` is 'reranker/generative_reranker', the default value is 'reranker'.
-- callbacks: Custom trainer callbacks, default is `[]`. Available callbacks can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py).
+- callbacks: Custom trainer callbacks, default is `[]`. Available callbacks can be found [here](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py).For example,enable elastic training by adding `deepspeed_elastic` (and optionally `graceful_exit`) in `callbacks`. See the [Elastic guide](../BestPractices/Elastic.md).
 - early_stop_interval: The interval for early stopping. Training will terminate when best_metric shows no improvement within early_stop_interval periods (based on `save_steps`; it's recommended to set `eval_steps` and `save_steps` to the same value). The specific implementation can be found in [early_stop.py](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py). Additionally, if you have more complex early stopping requirements, you can directly override the existing implementation in callback.py. When this parameter is set, the `early_stop` trainer callback is automatically added.
 - eval_use_evalscope: Whether to use evalscope for evaluation, this parameter needs to be set to enable evaluation, refer to [example](../Instruction/Evaluation.md#evaluation-during-training). Default is False.
 - eval_dataset: Evaluation datasets, multiple datasets can be set, separated by spaces
 - eval_dataset_args: Evaluation dataset parameters in JSON format, parameters for multiple datasets can be set
 - eval_limit: Number of samples from the evaluation dataset
 - eval_generation_config: Model inference configuration during evaluation, in JSON format, default is `{'max_tokens': 512}`
-- use_flash_ckpt: Whether to use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover). Default is `false`. If enabled, checkpoints are saved to memory synchronously, then persisted to storage asynchronously, the safetensors format is not supported currently. It's recommended to use this with the environment variable `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to avoid CUDA OOM.
+- use_flash_ckpt: Whether to use [DLRover Flash Checkpoint](https://github.com/intelligent-machine-learning/dlrover). Default is `false`. If enabled, checkpoints are saved to memory synchronously, then persisted to storage asynchronously. It's recommended to use this with the environment variable `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to avoid CUDA OOM.
 
 #### SWANLAB
 

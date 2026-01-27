@@ -148,6 +148,15 @@ def test_minimax_m2():
     _test_model('MiniMax/MiniMax-M2.1')
 
 
+def test_glm4_moe_lite():
+    _test_model('ZhipuAI/GLM-4.7-Flash')
+
+
+def test_olmoe():
+    # _test_model('allenai/OLMoE-1B-7B-0924-Instruct')
+    _test_model('allenai/OLMoE-1B-7B-0125-Instruct')
+
+
 if __name__ == '__main__':
     # test_qwen2()
     # test_llama2()
@@ -178,4 +187,6 @@ if __name__ == '__main__':
     # test_ernie_thinking()
     # test_tongyi_deepresearch()
     # test_glm4()
-    test_minimax_m2()
+    # test_minimax_m2()
+    # test_glm4_moe_lite()
+    test_olmoe()

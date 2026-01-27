@@ -2,7 +2,7 @@
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..register import MegatronModelMeta, register_megatron_model
-from . import glm4, minimax_m2, qwen3_next
+from . import glm4, minimax_m2, olmoe, qwen3_emb, qwen3_next
 
 register_megatron_model(
     MegatronModelMeta(
@@ -14,6 +14,7 @@ register_megatron_model(
             ModelType.yi,
             ModelType.openbuddy_llama,
             ModelType.qwen3,
+            ModelType.qwen3_reranker,
             ModelType.qwen2_moe,
             ModelType.qwen3_moe,
             ModelType.internlm3,
@@ -25,6 +26,7 @@ register_megatron_model(
             ModelType.ernie4_5,
             ModelType.ernie4_5_moe,
             ModelType.glm4_moe,
+            ModelType.glm4_moe_lite,
             ModelType.gpt_oss,
         ],
     ))

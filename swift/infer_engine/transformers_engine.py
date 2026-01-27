@@ -22,7 +22,7 @@ from swift.metrics import Metric
 from swift.model import get_model_processor
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import get_generative_reranker_logits, safe_snapshot_download, to_device
+from swift.utils import get_last_valid_indices, safe_snapshot_download, to_device
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
@@ -56,6 +56,7 @@ class TransformersEngine(InferEngine):
             torch_dtype: Optional[torch.dtype] = None,
             model_type: Optional[str] = None,
             attn_impl: Optional[str] = None,
+            experts_impl: Optional[str] = None,
             device_map: Optional[Union[str, Dict[str, Any]]] = None,
             task_type: Optional[str] = None,
             quantization_config=None,
@@ -74,6 +75,7 @@ class TransformersEngine(InferEngine):
         self.torch_dtype = torch_dtype
         self.model_type = model_type
         self.attn_impl = attn_impl
+        self.experts_impl = experts_impl
         self.device_map = device_map
         self.task_type = task_type
         self.quantization_config = quantization_config
@@ -110,6 +112,7 @@ class TransformersEngine(InferEngine):
             device_map=self.device_map,
             quantization_config=self.quantization_config,
             attn_impl=self.attn_impl,
+            experts_impl=self.experts_impl,
             task_type=self.task_type,
             model_kwargs=self.model_kwargs,
             **kwargs)
@@ -351,9 +354,10 @@ class TransformersEngine(InferEngine):
             logprobs = [None] * len(preds)
         elif task_type in ('reranker', 'generative_reranker'):
             if task_type == 'generative_reranker':
-                # Qwen3-reranker like
-                logits = get_generative_reranker_logits(
-                    self.template.tokenizer, logits, attention_mask=inputs.get('attention_mask'))
+                attention_mask = inputs.get('attention_mask')
+                last_valid_indices = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
+                batch_indices = torch.arange(logits.shape[0], device=logits.device)
+                logits = logits[batch_indices, last_valid_indices]
             preds = logits.float()
             if self.reranker_use_activation:
                 preds = F.sigmoid(preds)

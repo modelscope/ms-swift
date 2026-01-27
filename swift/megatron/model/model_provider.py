@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
 from typing import TYPE_CHECKING, Optional, Union
 
 import megatron.core
@@ -143,13 +144,14 @@ def model_provider(pre_process=True,
                 config, transformer_layer_spec_for_mtp, use_transformer_engine=use_te, **kwargs)
 
         if args.use_shared_expert_gate and args.num_experts and args.moe_shared_expert_intermediate_size:
-            # qwen2_moe
             for layer_spec in transformer_layer_spec.layer_specs:
-                layer_spec.submodules.mlp.submodules.shared_experts.params = {'gate': True}
+                if hasattr(layer_spec.submodules.mlp.submodules, 'shared_experts'):
+                    layer_spec.submodules.mlp.submodules.shared_experts.params = {'gate': True}
         model = megatron_model_meta.model_cls(
             config=config,
             transformer_layer_spec=transformer_layer_spec,
-            vocab_size=args.padded_vocab_size,
+            vocab_size=math.ceil(args.padded_vocab_size / args.tensor_model_parallel_size)
+            * args.tensor_model_parallel_size,
             max_sequence_length=args.max_position_embeddings,
             pre_process=pre_process,
             post_process=post_process,

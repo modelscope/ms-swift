@@ -37,10 +37,10 @@ def test_llm():
         result = sft_main(
             SftArguments(model=model, dataset=dataset, split_dataset_ratio=0.1, padding_side=padding_side, **kwargs))
         last_model_checkpoint = result['last_model_checkpoint']
-        infer_result = infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+        infer_result = infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
         res.append(calc_acc(infer_result))
         infer_result2 = infer_main(
-            InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, max_batch_size=16))
+            InferArguments(adapters=[last_model_checkpoint], load_data_args=True, max_batch_size=16))
         res.append(calc_acc(infer_result2))
     pprint(res)
 
@@ -55,10 +55,10 @@ def test_mllm():
         result = sft_main(
             SftArguments(model=model, dataset=dataset, split_dataset_ratio=0.01, padding_side=padding_side, **kwargs))
         last_model_checkpoint = result['last_model_checkpoint']
-        infer_result = infer_main(InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True))
+        infer_result = infer_main(InferArguments(adapters=[last_model_checkpoint], load_data_args=True))
         res.append(infer_result)
         infer_result2 = infer_main(
-            InferArguments(ckpt_dir=last_model_checkpoint, load_data_args=True, max_batch_size=16))
+            InferArguments(adapters=[last_model_checkpoint], load_data_args=True, max_batch_size=16))
         res.append(infer_result2)
     print(calc_diff(res[0], res[1]))
     print(calc_diff(res[2], res[3]))

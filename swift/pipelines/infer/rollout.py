@@ -44,7 +44,7 @@ from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMet
                                        UpdateFlattenedParamsRequest, check_vllm_version_ge, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader)
 from swift.rollout import RolloutScheduler, multi_turns
-from swift.utils import get_logger
+from swift.utils import get_logger, get_seed
 from ..base import SwiftPipeline
 
 try:
@@ -244,7 +244,8 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
     os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
     os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
     os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template())
+    worker_seed = get_seed()
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
     rollout_engine = get_rollout_engine_type(args, engine)
     # Send ready signal to parent process
     connection.send({'status': 'ready'})
@@ -277,8 +278,8 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
                            connection: Connection) -> None:
     # Set required environment variables for DP to work with vLLM
     args._import_external_plugins()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template())
-
+    worker_seed = get_seed()
+    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
     rollout_engine = get_rollout_engine_type(args, engine)
 
     # Send ready signal to parent process
@@ -601,9 +602,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
             # with vLLM's requirement, and we later ignore the result.
             if not requests:
                 requests = [RolloutInferRequest(messages=[{'role': 'user', 'content': '<placeholder>'}])]
-            # different seed bewteen vLLM Engine
-            if request_config.seed:
-                request_config.seed += i * len(requests)
             kwargs = {'infer_requests': requests, 'request_config': request_config, 'use_tqdm': use_tqdm}
             method = 'infer' if not self.use_async_engine else 'async_infer'
             connection.send({'type': 'call', 'method': method, 'kwargs': kwargs})

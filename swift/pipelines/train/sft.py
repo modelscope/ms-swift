@@ -243,11 +243,29 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
         try:
-            trainer.train(trainer.args.resume_from_checkpoint)
+
+            resume_checkpoint = None
+            callbacks = set(getattr(self.args, 'callbacks', []))
+            elastic_enabled = 'deepspeed_elastic' in callbacks
+            # If flash checkpoint is enabled, try to resume from the last complete checkpoint.
+            # If the previous training finished, resume_checkpoint stays None.
+            if self.args.use_flash_ckpt:
+                # resume_checkpoint = <resume_dir>/checkpoint-<step>
+                resume_checkpoint = trainer.get_resume_checkpoint()
+            # Elastic runs require a universal checkpoint; fall back when missing or incomplete.
+            if elastic_enabled and (resume_checkpoint is None
+                                    or not os.path.exists(os.path.join(resume_checkpoint, 'latest_universal'))):
+                # get_resume_checkpoint_until_find_ucp returns <resume_dir>/checkpoint-<step> with latest_universal,
+                # or None; when None, no universal checkpoint exists and training starts from scratch.
+                resume_checkpoint = trainer.get_resume_checkpoint_until_find_ucp()
+            # Explicit user override always wins.
+            if self.args.resume_from_checkpoint:
+                resume_checkpoint = self.args.resume_from_checkpoint
+            trainer.train(resume_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
-            if self.args.use_flash_ckpt:
-                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT)
+            if self.args.use_flash_ckpt and hasattr(trainer, 'flash_checkpointer'):
+                trainer.wait_latest_checkpoint(trainer.FLASH_CKPT_WAIT_TIMEOUT, trainer.state.global_step)
 
         return res
 

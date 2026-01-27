@@ -1546,6 +1546,8 @@ class Template(ProcessorMixin):
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
+        if 'num_samples' in res:
+            num_samples = res.pop('num_samples')
         if self.use_megatron:
             res['num_samples'] = num_samples
         return res
@@ -1650,7 +1652,9 @@ class Template(ProcessorMixin):
                 for prefix in indexes:
                     new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', []))
+        num_samples = len(new_batch)
         res = self._data_collator(new_batch, padding_to=padding_to)
+        res['num_samples'] = num_samples
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
@@ -1681,8 +1685,9 @@ class Template(ProcessorMixin):
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
                         })
                         labels_list.append(0)
-
+            num_samples = len(new_batch)
             res = self._data_collator(new_batch, padding_to=padding_to)
+            res['num_samples'] = num_samples
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         else:
@@ -2107,6 +2112,8 @@ class Template(ProcessorMixin):
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            if hasattr(image_embeds, 'pooler_output'):
+                image_embeds = image_embeds.pooler_output
             inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         else:
             if pixel_values is None:
@@ -2120,6 +2127,8 @@ class Template(ProcessorMixin):
                 grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
             pixel_values_mixed = pixel_values_mixed.type(dtype)
             mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if hasattr(mixed_embeds, 'pooler_output'):
+                mixed_embeds = mixed_embeds.pooler_output
             if pixel_values is None:
                 image_embeds = None
                 video_embeds = mixed_embeds

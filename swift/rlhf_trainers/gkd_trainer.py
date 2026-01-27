@@ -55,7 +55,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.teacher_api_client = kwargs.pop('teacher_api_client', None)
-        kwargs['data_collator'] = identity_data_collator
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
         self.lmbda = args.lmbda
@@ -122,6 +121,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Initialize resample data iterator for truncation_strategy 'raise'('delete')
         if self.template.truncation_strategy == 'raise':
             self._prepare_resample_data_iterator()
+
+    def _get_data_collator(self, args, template):
+        return identity_data_collator
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):

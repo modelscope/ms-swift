@@ -31,7 +31,6 @@ class RLHFMegatronArgumentsMixin:
     reference_free: bool = False
     label_smoothing: float = 0.
     f_divergence_type: str = 'reverse_kl'
-    loss_type: Optional[str] = None
 
     # kto
     desirable_weight: float = 1.
@@ -351,6 +350,8 @@ class MegatronTunerMixin:
 
 @dataclass
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
+    loss_type: Optional[str] = None  # rlhf / plugins
+
     check_model: bool = True
     padded_vocab_size: Optional[int] = None
     initialize_embedding: bool = False
@@ -385,7 +386,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
-    task_type: Literal['causal_lm', 'seq_cls'] = None
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'generative_reranker'] = None
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
@@ -437,7 +438,7 @@ class MegatronArguments(ExtraMegatronArguments):
     # training
     micro_batch_size: int = 1
     global_batch_size: int = 16
-    recompute_granularity: Literal['selective', 'full'] = 'selective'
+    recompute_granularity: Literal['selective', 'full', 'none'] = 'selective'
     recompute_method: Literal['uniform', 'block'] = None
     recompute_num_layers: Optional[int] = None
     recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
@@ -597,6 +598,7 @@ class MegatronArguments(ExtraMegatronArguments):
     kv_lora_rank: Optional[int] = None
     qk_head_dim: Optional[int] = None
     qk_pos_emb_head_dim: Optional[int] = None
+    v_head_dim: Optional[int] = None
 
     # mtp
     mtp_num_layers: Optional[int] = None
@@ -660,6 +662,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
             self.rotary_base = 10000
+        else:
+            self.rotary_base = int(self.rotary_base)
         if self.rotary_interleaved is None:
             self.rotary_interleaved = False
         if self.attention_dropout is None:
@@ -686,6 +690,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.qk_head_dim = 128
         if self.qk_pos_emb_head_dim is None:
             self.qk_pos_emb_head_dim = 64
+        if self.v_head_dim is None:
+            self.v_head_dim = 128
         if self.task_type is None:
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
@@ -752,6 +758,8 @@ class MegatronArguments(ExtraMegatronArguments):
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
+        if self.recompute_granularity == 'none':
+            self.recompute_granularity = None
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
@@ -767,7 +775,7 @@ class MegatronArguments(ExtraMegatronArguments):
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
-        if self.task_type != 'causal_lm':
+        if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)

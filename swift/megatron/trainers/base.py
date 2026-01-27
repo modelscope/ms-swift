@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
 import logging
+import math
 import os
 import shutil
 import time
@@ -69,6 +70,7 @@ class BaseMegatronTrainer(ABC):
         self.wrapped_models = []
         self.peft_models = []
         self._bridge = None
+        self.eval_metrics = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
@@ -707,7 +709,11 @@ class BaseMegatronTrainer(ABC):
         for key in total_loss_dict:
             numerator, denominator = total_loss_dict[key]
             total_loss_dict[key] = numerator / denominator
-
+        if self.eval_metrics is not None:
+            metric = self.eval_metrics.compute()
+            for k, v in metric.items():
+                total_loss_dict[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
+            self.eval_metrics.reset()
         timers('evaluate').stop()
         timers.log(['evaluate'])
         self.custom_log(total_loss_dict, 'eval')
@@ -718,6 +724,99 @@ class BaseMegatronTrainer(ABC):
                 logs[f'eval_{key}'] = round(val.item(), 8)
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
+
+    def evaluate_and_print_results(
+        self,
+        prefix,
+        forward_step_func,
+        data_iterator,
+        model,
+        iteration,
+        process_non_loss_data_func,
+        config,
+        verbose=False,
+        write_to_tensorboard=True,
+        non_loss_data_func=None,
+    ):
+        """Helper function to evaluate and dump results on screen."""
+
+        args = get_args()
+        if write_to_tensorboard:
+            writer = get_tensorboard_writer()
+        else:
+            writer = None
+
+        wandb_writer = get_wandb_writer()
+
+        data_iterators = data_iterator if args.multiple_validation_sets else [data_iterator]
+
+        if not args.multiple_validation_sets:
+            eval_iters = [args.eval_iters]
+        else:
+            eval_iters = args.eval_iters
+
+        if args.full_validation:
+            assert len(eval_iters) == len(data_iterators)
+
+            # with full validation we need to distribute eval_iters to all ranks
+            if mpu.get_tensor_model_parallel_rank() == 0:
+                eval_iters = torch.tensor(args.eval_iters, dtype=torch.long, device='cuda')
+            else:
+                eval_iters = torch.tensor([0] * len(eval_iters), dtype=torch.long, device='cuda')
+            torch.distributed.broadcast(eval_iters, 0)
+            eval_iters = eval_iters.tolist()
+            args.eval_iters = eval_iters[0] if not args.multiple_validation_sets else eval_iters
+        elif not args.multiple_validation_sets:
+            eval_iters = [args.eval_iters]
+        else:
+            eval_iters = args.eval_iters
+
+        for index, (iterator, iterations) in enumerate(zip(data_iterators, eval_iters)):
+            suffix = ''
+            if args.multiple_validation_sets:
+                suffix = f'-{index}'
+            total_loss_dict, collected_non_loss_data, timelimit = self.evaluate(
+                forward_step_func,
+                iterator,
+                model,
+                process_non_loss_data_func,
+                config,
+                verbose,
+                non_loss_data_func,
+                eval_iters=iterations,
+            )
+            # Timelimit hit during evaluation
+            if timelimit:
+                return
+            string = f' validation{suffix} loss at {prefix} | '
+            for key in total_loss_dict:
+                string += '{} value: {:.6E} | '.format(key, total_loss_dict[key].item())
+                ppl = None
+                if key == 'loss':
+                    ppl = math.exp(min(20, total_loss_dict[key].item()))
+                    string += '{} PPL: {:.6E} | '.format(key, ppl)
+                if writer:
+                    writer.add_scalar('{} validation{}'.format(key, suffix), total_loss_dict[key].item(), iteration)
+                    writer.add_scalar(
+                        '{} validation{} vs samples'.format(key, suffix),
+                        total_loss_dict[key].item(),
+                        args.consumed_train_samples,
+                    )
+                    if args.log_validation_ppl_to_tensorboard and ppl is not None:
+                        writer.add_scalar('{} validation{} ppl'.format(key, suffix), ppl, iteration)
+                        writer.add_scalar('{} validation{} ppl vs samples'.format(key, suffix), ppl,
+                                          args.consumed_train_samples)
+                    if wandb_writer and is_last_rank():
+                        wandb_writer.log({'{} validation{}'.format(key, suffix): total_loss_dict[key].item()},
+                                         iteration)
+
+            if process_non_loss_data_func is not None and writer and is_last_rank():
+                process_non_loss_data_func(collected_non_loss_data, iteration, writer)
+
+            length = len(string) + 1
+            print_rank_last('-' * length)
+            print_rank_last(string)
+            print_rank_last('-' * length)
 
     def _get_metrics(self, total_loss_dict, mode):
         advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
@@ -1060,8 +1159,8 @@ class BaseMegatronTrainer(ABC):
         self._origin_training_log = training.training_log
         training.training_log = self.training_log
         # patch evaluate
-        self._origin_evaluate = training.evaluate
-        training.evaluate = self.evaluate
+        self._origin_evaluate_and_print_results = training.evaluate_and_print_results
+        training.evaluate_and_print_results = self.evaluate_and_print_results
         # patch model and optimizer
         self._origin_setup_model_and_optimizer = training.setup_model_and_optimizer
         training.setup_model_and_optimizer = self.setup_model_and_optimizer

@@ -76,12 +76,12 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         return hidden_states
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_lm_head_model(module, model_meta=model_meta, lm_heads=lm_heads)
+    lm_head_model = get_lm_head_model(module, model_meta=model_meta, lm_heads=lm_heads)
 
     found = False
     for lm_head in lm_heads:
-        if hasattr(llm_model, lm_head):
-            getattr(llm_model, lm_head).forward = MethodType(lm_head_forward, getattr(llm_model, lm_head))
+        if hasattr(lm_head_model, lm_head):
+            getattr(lm_head_model, lm_head).forward = MethodType(lm_head_forward, getattr(lm_head_model, lm_head))
             found = True
             break
 
@@ -89,17 +89,15 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
 
     def _output_embedding_hook(module, args, kwargs, output):
         attention_mask = kwargs.get('attention_mask', None)
-        if attention_mask is None:
-            attention_mask = output.get('attention_mask', None)
         hidden_states = output.logits
-        sequence_lengths = get_last_valid_indices(attention_mask)
+        sequence_lengths = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
         embeddings = hidden_states[torch.arange(hidden_states.shape[0], device=hidden_states.device), sequence_lengths]
         embeddings = F.normalize(embeddings, p=2, dim=1)
         return {
             'last_hidden_state': embeddings.contiguous(),
         }
 
-    llm_model.register_forward_hook(_output_embedding_hook, with_kwargs=True)
+    lm_head_model.register_forward_hook(_output_embedding_hook, with_kwargs=True)
 
 
 def patch_output_to_input_device(module: torch.nn.Module):
@@ -194,11 +192,7 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
         if self.config.pad_token_id is None:
             sequence_lengths = -1
         else:
-            if output.get('attention_mask') is not None:
-                # When use padding_free in seq_cls tasks, `revert_padding_free` will add a attention_mask in the output
-                batch_size = output.get('attention_mask').shape[0]
-                sequence_lengths = output.get('attention_mask').sum(dim=1) - 1
-            elif input_ids is not None:
+            if input_ids is not None:
                 # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
                 sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
                 sequence_lengths = sequence_lengths % input_ids.shape[-1]
@@ -252,25 +246,25 @@ def _patch_sequence_classification(model, model_meta):
     initializer_range = HfConfigFactory.get_config_attr(model.config, 'initializer_range')
 
     lm_heads = ['lm_head', 'output', 'embed_out', 'output_layer']
-    llm_model = get_lm_head_model(model, model_meta, lm_heads)
-    llm_model.num_labels = model.config.num_labels
+    lm_head_model = get_lm_head_model(model, model_meta, lm_heads)
+    lm_head_model.num_labels = model.config.num_labels
     for lm_head in lm_heads:
-        if hasattr(llm_model, lm_head):
-            hidden_size = getattr(llm_model, lm_head).in_features
-            setattr(llm_model, lm_head, nn.Identity())
+        if hasattr(lm_head_model, lm_head):
+            hidden_size = getattr(lm_head_model, lm_head).in_features
+            setattr(lm_head_model, lm_head, nn.Identity())
             break
-    llm_model.score = nn.Linear(hidden_size, llm_model.num_labels, bias=False, dtype=llm_model.dtype)
-    if llm_model.score.weight.device == torch.device('meta'):
-        llm_model.score.to_empty(device='cpu')
-    llm_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
+    lm_head_model.score = nn.Linear(hidden_size, lm_head_model.num_labels, bias=False, dtype=lm_head_model.dtype)
+    if lm_head_model.score.weight.device == torch.device('meta'):
+        lm_head_model.score.to_empty(device='cpu')
+    lm_head_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
 
-    origin_forward = llm_model.forward
+    origin_forward = lm_head_model.forward
 
     @wraps(origin_forward.__func__)
     def new_forward(self, *args, **kwargs):
         return transformers_seq_cls_forward(self, *args, origin_forward=origin_forward, **kwargs)
 
-    llm_model.forward = MethodType(new_forward, llm_model)
+    lm_head_model.forward = MethodType(new_forward, lm_head_model)
 
 
 @contextmanager
@@ -545,28 +539,20 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
 
     max_length = max(seq_lengths)
     unpacked_logits = []
-    attention_mask = []
 
     start = 0
     for length in seq_lengths:
         seq_state = last_hidden_state[start:start + length]
-        mask = torch.ones((seq_state.shape[0])).to(last_hidden_state.device)
         padding = torch.zeros(
             (max_length - length, last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
-        attention_padding = torch.zeros((max_length - length)).to(last_hidden_state.device)
         # re-padding
         if padding_side == 'left':
             seq_state = torch.cat((padding, seq_state), dim=0)
-            mask = torch.cat((attention_padding, mask), dim=0)
         else:
             seq_state = torch.cat((seq_state, padding), dim=0)
-            mask = torch.cat((mask, attention_padding), dim=0)
         unpacked_logits.append(seq_state)
-        attention_mask.append(mask)
         start += length
     outputs[hidden_state_key] = torch.stack(unpacked_logits, dim=0)
-    inputs['attention_mask'] = torch.stack(attention_mask, dim=0).to(torch.int64)
-    outputs['attention_mask'] = inputs['attention_mask']
     return outputs
 
 
@@ -608,3 +594,14 @@ def patch_attach_align_device_hook_on_blocks():
         yield
     finally:
         big_modeling.attach_align_device_hook_on_blocks = origin_attach_align_device_hook_on_blocks
+
+
+def patch_module_forward(module, new_forward):
+    if getattr(module, '_patched', False):
+        return
+    module._patched = True
+    new_forward_wrapped = MethodType(new_forward, module)
+    if hasattr(module, '_old_forward'):  # device_map
+        module._old_forward = new_forward_wrapped
+    else:
+        module.forward = new_forward_wrapped
