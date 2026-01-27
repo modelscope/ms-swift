@@ -430,39 +430,35 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         def _compute_step_advantages(inputs, trajectory_advantages):
             # Extract step-level reward information from inputs
             # Store (prompt_id, step) -> [rewards] mapping
-            step_rewards_dict = {}
-            for idx, input_data in enumerate(inputs):
+            step_rewards_dict = defaultdict(list)
+            for input_data in inputs:
                 prompt_id = input_data['prompt_id']
                 rollout_info = input_data['rollout_infos']
-
-                # Collect all step rewards for current trajectory
                 for traj_info in rollout_info.get('trajectory_info', []):
                     step = traj_info.get('step', 0)
                     reward = traj_info.get('reward', 0.0)
+                    step_rewards_dict[(prompt_id, step)].append(reward)
 
-                    # Group rewards by prompt_id and step
-                    key = (prompt_id, step)
-                    if key not in step_rewards_dict:
-                        step_rewards_dict[key] = []
-                    step_rewards_dict[key].append(reward)
+            # Pre-calculate mean rewards for each step
+            step_mean_rewards = {key: np.mean(rewards) for key, rewards in step_rewards_dict.items()}
+
             # Calculate step-level advantage and aggregate
             aggregated_step_advantages = torch.zeros_like(trajectory_advantages)
             for idx, input_data in enumerate(inputs):
                 prompt_id = input_data['prompt_id']
                 rollout_info = input_data['rollout_infos']
 
-                # Calculate aggregated step-level advantage for current trajectory
                 step_advantages = []
                 for traj_info in rollout_info.get('trajectory_info', []):
                     step = traj_info.get('step', 0)
                     reward = traj_info.get('reward', 0.0)
 
-                    # Get all rewards for same prompt and step
+                    # Get pre-calculated mean reward for the same prompt and step
                     key = (prompt_id, step)
-                    all_rewards = step_rewards_dict.get(key, [reward])
+                    # The key should always exist, but we use .get for safety.
+                    mean_reward = step_mean_rewards.get(key, reward)
 
-                    # Calculate step advantage (compared to group average)
-                    mean_reward = np.mean(all_rewards)
+                    # Calculate step advantage
                     step_advantage = reward - mean_reward
                     step_advantages.append(step_advantage)
 
@@ -554,12 +550,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
                 else:
                     advantages = rewards - group_rewards_mean
-            elif self.advantage_estimator == 'gigpo' and self.use_gym_env:
+            elif self.advantage_estimator == 'gigpo':
+                assert self.use_gym_env
                 # Get trajectory-level advantage (original GRPO advantage)
                 trajectory_advantages = rewards - group_rewards_mean
                 aggregated_step_advantages = _compute_step_advantages(inputs, trajectory_advantages)
                 # Weighted sum of trajectory-level advantage and aggregated step-level advantage
-                advantages = trajectory_advantages + self.step_advantage_w * aggregated_step_advantages
+                advantages = trajectory_advantages + self.gigpo_step_advantage_weight * aggregated_step_advantages
             else:  # 'grpo' or 'reinforce_plus_plus'
                 # Both use group mean as baseline
                 advantages = rewards - group_rewards_mean
@@ -729,7 +726,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 trajectory_advantages = advantages
                 aggregated_step_advantages = _compute_step_advantages(inputs, trajectory_advantages)
                 # Weighted sum of trajectory-level advantage and aggregated step-level advantage
-                advantages = trajectory_advantages + self.step_advantage_w * aggregated_step_advantages
+                advantages = trajectory_advantages + self.gigpo_step_advantage_weight * aggregated_step_advantages
 
             # Step 5. Log metrics for unique request_ids
             log_rewards_metrics(rewards=unique_rewards, rewards_per_func_for_metrics=rewards_per_func[unique_indices])
@@ -2227,8 +2224,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             logger.warning('GDPO mode does not support kl_in_reward=True. Setting kl_in_reward=False.')
             self.kl_in_reward = False
 
-        # GiGPO, https://arxiv.org/abs/2405.06708
-        self.step_advantage_w = args.step_advantage_w
+        # GiGPO, https://arxiv.org/abs/2505.10978
+        self.gigpo_step_advantage_weight = args.gigpo_step_advantage_weight
 
         # Rollout Importance Sampling Correction
         self.rollout_importance_sampling_mode = args.rollout_importance_sampling_mode

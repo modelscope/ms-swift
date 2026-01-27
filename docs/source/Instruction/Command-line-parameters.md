@@ -623,8 +623,9 @@ reward模型参数将在PPO、GRPO中使用。
 - overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
 - delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
 - importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
-- advantage_estimator: 优势计算函数，默认为 `grpo`，即计算组内相对优势，可选项为 `grpo`、[`rloo`](./GRPO/AdvancedResearch/RLOO.md)、[`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md)。
+- advantage_estimator: 优势计算函数，默认为 `grpo`，即计算组内相对优势，可选项为 `grpo`、[`rloo`](./GRPO/AdvancedResearch/RLOO.md)、[`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md)、[`gigpo`](./GRPO/AdvancedResearch/GIGPO.md)。
 - kl_in_reward: 控制 KL 散度正则项的处理位置；`false`表示作为损失函数的独立正则项，`true`表示将 KL 直接并入奖励（从奖励中扣除）。默认情况与advantage_estimator绑定，`grpo`下默认为`false`，`rloo` 和 `reinforce_plus_plus` 下默认为 `true`。
+- gigpo_step_advantage_weight: GiGPO 算法中步骤级优势（A^S）的权重。默认值为 1.0。
 - scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）、`gdpo`（对每个奖励函数分别进行组内归一化后加权聚合，参考 [GDPO 论文](https://arxiv.org/abs/2601.05242)）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
   - 注意：`gdpo` 模式不支持 `kl_in_reward=True`，若同时设置会自动将 `kl_in_reward` 设为 `False`。
   - GDPO 适用于多奖励优化场景：当使用多个奖励函数时，GDPO 会对每个奖励函数分别在组内进行标准化（减均值、除标准差），然后使用 `reward_weights` 进行加权求和，最后再进行批次级别的标准化。这种方式可以更好地保留各个奖励的相对差异，避免不同奖励组合坍塌成相同的 advantage 值。

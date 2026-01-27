@@ -273,6 +273,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             `False`, it's an independent term in the loss function. If `True`, KL is directly incorporated into the
             reward (subtracted from it). The default is tied to `advantage_estimator`: `False` for 'grpo', `True` for
             'rloo' and 'reinforce_plus_plus'.
+        gigpo_step_advantage_weight (float): The weight for the step-level advantage (A^S) in the GiGPO algorithm.
+            The default value is 1.0.
         generation_batch_size (Optional[int]): The batch size for sampling completions. It should be a
             multiple of `num_processes * per_device_train_batch_size`. Defaults to `per_device_batch_size *
             gradient_accumulation_steps * num_processes`.
@@ -356,10 +358,12 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     tau_pos: float = 1.0
     tau_neg: float = 1.05
 
-    # RLOO, REINFORCE++
-    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
+    # RLOO, REINFORCE++, GiGPO
+    advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus', 'gigpo'] = 'grpo'
     # If false, add KL into loss, otherwise add into reward
     kl_in_reward: Optional[bool] = None  # rloo/reinforce_plus_plus: true, grpo: false (default)
+    # GiGPO, https://arxiv.org/abs/2505.10978
+    gigpo_step_advantage_weight = 1.0
 
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
