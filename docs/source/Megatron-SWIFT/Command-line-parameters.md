@@ -308,7 +308,9 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 注意：因为流式数据集无法获得其长度，因此需要设置`--train_iters`参数。设置`max_epochs`参数确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。
-- enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
+- enable_dft_loss: 是否在SFT训练中启用 [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认值为 `False`。
+  - [DFT](https://arxiv.org/abs/2508.05629) 采用基于 token 概率的**软门控机制**
+  - [Profit](https://arxiv.org/abs/2601.09195) 则提出了基于 token 概率的**硬门控机制** 当`enable_dft_loss`参数设置为 `True` 时，可额外通过配置环境变量 `HARD_GATING_PROBABILITY_THRESHOLD` 指定概率阈值（浮点数）。概率低于该阈值的 token 将被排除在 loss 计算之外，以硬门控机制进行监督微调。
 - enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
 - new_special_tokens: 需要新增的特殊tokens。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora/new_special_tokens.sh)。
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。

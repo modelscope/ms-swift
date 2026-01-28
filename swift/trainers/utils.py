@@ -85,6 +85,14 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
     if enable_dft_loss:
         with torch.no_grad():
             target_probs = torch.exp(-loss)
+            # https://arxiv.org/pdf/2601.09195
+            if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
+                try:
+                    mask = (target_probs > float(hard_gating_probability_threshold)).float()
+                    target_probs = mask * (labels != -100).float()
+                except ValueError:
+                    logger.warning_once('The configured environment variable HARD_GATING_PROBABILITY_THRESHOLD cannot '
+                                        'be converted to a float, so training will proceed using the default DFT mode.')
         loss *= target_probs
     position_ids = sequence_parallel.real_position_ids
     if position_ids is not None:
@@ -111,6 +119,14 @@ def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs
     if enable_dft_loss:
         with torch.no_grad():
             target_probs = torch.exp(-loss)
+            # https://arxiv.org/pdf/2601.09195
+            if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
+                try:
+                    mask = (target_probs > float(hard_gating_probability_threshold)).float()
+                    target_probs = mask * (labels != -100).float()
+                except ValueError:
+                    logger.warning_once('The configured environment variable HARD_GATING_PROBABILITY_THRESHOLD cannot '
+                                        'be converted to a float, so training will proceed using the default DFT mode.')
         loss *= target_probs
     return loss
 
@@ -130,7 +146,6 @@ def _kwargs_to_args(func, args, kwargs) -> Optional[List[Any]]:
 
 
 def _add_gradient_checkpointing(module_list):
-
     requires_grad = None
 
     def _new_forward(self, *args, **kwargs):

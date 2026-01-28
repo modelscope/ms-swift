@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 from functools import partial
 from typing import List, Optional
 
@@ -59,7 +60,17 @@ class MegatronTrainer(BaseMegatronTrainer):
         losses = output_tensor.float()
         loss_mask = labels != -100
         if args.enable_dft_loss:
-            losses = losses * torch.exp(-losses.detach())
+            target_probs = torch.exp(-losses.detach())
+            # https://arxiv.org/pdf/2601.09195
+            if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
+                try:
+                    mask = (target_probs > float(hard_gating_probability_threshold)).float()
+                    target_probs = mask * loss_mask.float()
+                except ValueError:
+                    logger.warning_once('The configured environment variable HARD_GATING_PROBABILITY_THRESHOLD cannot '
+                                        'be converted to a float, so training will proceed using the default DFT mode.')
+
+            losses = losses * target_probs
         if loss_scale is not None:
             losses = losses * loss_scale
         if args.enable_channel_loss and channels is not None:

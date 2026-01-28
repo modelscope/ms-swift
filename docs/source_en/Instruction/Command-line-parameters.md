@@ -223,7 +223,9 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 - logging_steps: Interval for logging. Default is 5.
 - router_aux_loss_coef: Used in MoE model training to set the weight of auxiliary loss. Default is `0.`.
   - Note: In "ms-swift==3.7.0", the default was `None` (read from `config.json`), which changed in "ms-swift>=3.7.1".
-- enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss during SFT training. Default is `False`.
+- enable_dft_loss: Whether to enable [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss during SFT training. Default value is `False`.
+  - [DFT](https://arxiv.org/abs/2508.05629) employs a **soft gating mechanism** based on token probabilities
+  - [Profit](https://arxiv.org/abs/2601.09195) proposes a **hard gating mechanism** based on token probabilities. When the `enable_dft_loss` parameter is set to `True`, you can additionally configure the environment variable `HARD_GATING_PROBABILITY_THRESHOLD` to specify a probability threshold (float). Tokens with probabilities below this threshold will be excluded from loss calculation, performing supervised fine-tuning with a hard gating mechanism.
 - enable_channel_loss: Enable channel-based loss. Default is `False`. Requires a `"channel"` field in the dataset. ms-swift groups and computes loss by this field (samples without `"channel"` are grouped into the default `None` channel). Dataset format reference: [channel loss](../Customization/Custom-dataset.md#channel-loss).  Channel loss is compatible with packing, padding_free, and loss_scale techniques.
   - Note: This argument is new in "ms-swift>=3.8". For "ms-swift<3.8", refer to v3.7 documentation.
 - logging_dir: Directory for TensorBoard logs. Default is `None`, automatically set to `f'{self.output_dir}/runs'`.
