@@ -13,6 +13,7 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
+from ...trainers.utils import get_dft_gating_factor
 
 logger = get_logger()
 
@@ -60,17 +61,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         losses = output_tensor.float()
         loss_mask = labels != -100
         if args.enable_dft_loss:
-            target_probs = torch.exp(-losses.detach())
-            # https://arxiv.org/pdf/2601.09195
-            if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
-                try:
-                    mask = (target_probs > float(hard_gating_probability_threshold)).float()
-                    target_probs = mask * loss_mask.float()
-                except ValueError:
-                    logger.warning_once('The configured environment variable HARD_GATING_PROBABILITY_THRESHOLD cannot '
-                                        'be converted to a float, so training will proceed using the default DFT mode.')
-
-            losses = losses * target_probs
+            losses = losses * get_dft_gating_factor(losses, labels)
         if loss_scale is not None:
             losses = losses * loss_scale
         if args.enable_channel_loss and channels is not None:

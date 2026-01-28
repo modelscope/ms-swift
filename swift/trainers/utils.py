@@ -64,6 +64,26 @@ def is_instance_of_ms_model(model: Module) -> bool:
             return True
     return False
 
+def get_dft_gating_factor(loss: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
+    """
+    Computes the gating factor for Dynamic Fine-Tuning (DFT) loss.
+    Supports soft-gating (original DFT) and hard-gating (ProFit).
+    """
+    with torch.no_grad():
+        target_probs = torch.exp(-loss)
+        # https://arxiv.org/pdf/2601.09195
+        if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
+            try:
+                threshold = float(hard_gating_probability_threshold)
+                mask = (target_probs > threshold).float()
+                return mask * (labels != -100).float()
+            except ValueError:
+                logger.warning_once(
+                    'The configured environment variable HARD_GATING_PROBABILITY_THRESHOLD cannot '
+                    'be converted to a float, so training will proceed using the default DFT mode.'
+                )
+        return target_probs
+
 
 def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> torch.Tensor:
     """Common loss function for sequence parallel training"""
@@ -83,17 +103,7 @@ def per_token_loss_func_sp(outputs, labels, enable_dft_loss=False, **kwargs) -> 
         loss_fct = CrossEntropyLoss(reduction='none')
         loss = loss_fct(logits, labels)
     if enable_dft_loss:
-        with torch.no_grad():
-            target_probs = torch.exp(-loss)
-            # https://arxiv.org/pdf/2601.09195
-            if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
-                try:
-                    mask = (target_probs > float(hard_gating_probability_threshold)).float()
-                    target_probs = mask * (labels != -100).float()
-                except ValueError:
-                    logger.warning_once('The configured environment variable HARD_GATING_PROBABILITY_THRESHOLD cannot '
-                                        'be converted to a float, so training will proceed using the default DFT mode.')
-        loss *= target_probs
+        loss *= get_dft_gating_factor(loss, labels)
     position_ids = sequence_parallel.real_position_ids
     if position_ids is not None:
         position_ids = sequence_parallel.pad(position_ids, padding_value=-1, position_ids=position_ids)
@@ -117,17 +127,7 @@ def per_token_loss_func(outputs, labels, enable_dft_loss: bool = False, **kwargs
     labels = labels.to(logits.device)
     loss = F.cross_entropy(logits, labels, ignore_index=-100, reduction='none')
     if enable_dft_loss:
-        with torch.no_grad():
-            target_probs = torch.exp(-loss)
-            # https://arxiv.org/pdf/2601.09195
-            if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
-                try:
-                    mask = (target_probs > float(hard_gating_probability_threshold)).float()
-                    target_probs = mask * (labels != -100).float()
-                except ValueError:
-                    logger.warning_once('The configured environment variable HARD_GATING_PROBABILITY_THRESHOLD cannot '
-                                        'be converted to a float, so training will proceed using the default DFT mode.')
-        loss *= target_probs
+        loss *= get_dft_gating_factor(loss, labels)
     return loss
 
 
