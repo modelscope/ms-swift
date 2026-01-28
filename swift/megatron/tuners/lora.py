@@ -16,7 +16,6 @@ from megatron.core.extensions.transformer_engine import (TEColumnParallelGrouped
                                                          TERowParallelGroupedLinear, TERowParallelLinear)
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.parallel_state import get_expert_tensor_parallel_world_size, get_tensor_model_parallel_world_size
-from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.router import TopKRouter
