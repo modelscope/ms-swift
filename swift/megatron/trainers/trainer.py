@@ -13,7 +13,7 @@ from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
-from ...trainers.utils import get_dft_gating_factor
+from swift.trainers.utils import get_dft_gating_factor
 
 logger = get_logger()
 
