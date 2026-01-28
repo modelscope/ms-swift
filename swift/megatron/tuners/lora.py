@@ -198,15 +198,13 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     **kwargs,
                 )
                 lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
-        # https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/core/transformer/moe/shared_experts.py#L93
         for lora in [lora_a, lora_b]:
-            if isinstance(lora, (TERowParallelLinear, TEColumnParallelLinear)) and lora.parallel_mode is None:
-                lora.ub_overlap_rs_fprop = False
-                lora.ub_overlap_ag_dgrad = False
-                lora.ub_overlap_ag_fprop = False
-                lora.ub_overlap_rs_dgrad = False
-        lora_a.sequence_parallel = False
-        lora_b.sequence_parallel = False
+            if getattr(lora, 'parallel_mode', None) is None:
+                if hasattr(lora, 'weight'):
+                    lora.weight.sequence_parallel = self.sequence_parallel
+                else:
+                    for i in range(self.base_layer.num_gemms):
+                        getattr(lora, f'weight{i}').sequence_parallel = self.sequence_parallel
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
         if hasattr(self, 'lora_bias'):
@@ -308,8 +306,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         else:
             raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
         if not isinstance(self.base_layer, TopKRouter) and not self.disable_adapters and not self.merged:
-            if self.sequence_parallel and self.base_layer.parallel_mode == 'column':
-                x = gather_from_sequence_parallel_region(x)
             for active_adapter in self.active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue
@@ -329,8 +325,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
                 lora_result = lora_result * scaling
-                if self.sequence_parallel and self.base_layer.parallel_mode == 'row':
-                    lora_result = scatter_to_sequence_parallel_region(lora_result)
                 result = result + lora_result
 
         result = result.to(previous_dtype)
