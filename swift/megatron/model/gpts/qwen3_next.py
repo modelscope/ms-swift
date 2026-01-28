@@ -471,7 +471,7 @@ class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
             res = res.transpose(0, 1)
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             # Quick fix for dropout issue
-            res = reduce_scatter_to_sequence_parallel_region(res)
+            res = reduce_scatter_to_sequence_parallel_region(res) / args.tensor_model_parallel_size
         return res, None
 
 
