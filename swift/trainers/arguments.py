@@ -228,6 +228,9 @@ class TrainArgumentsMixin:
             self.callbacks.append('adalora')
         if self.early_stop_interval is not None and self.early_stop_interval > 0:
             self.callbacks.append('early_stop')
+        fsdp_config = getattr(self, 'fsdp_config', {})
+        if isinstance(fsdp_config, dict) and fsdp_config.get('activation_cpu_offload', False):
+            self.callbacks.append('activation_cpu_offload')
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):
