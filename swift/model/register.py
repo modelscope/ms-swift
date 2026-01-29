@@ -26,6 +26,8 @@ from .utils import AttnImpl, InitModelStrategy, get_default_device_map
 
 logger = get_logger()
 
+transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
+
 
 def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
@@ -218,7 +220,11 @@ class ModelLoader(BaseModelLoader):
         HfConfigFactory.compat_zero3(config)
 
         if self.rope_scaling:
-            HfConfigFactory.set_config_attr(config, 'rope_scaling', self.rope_scaling)
+            if transformers_5:
+                config.rope_parameters.update(self.rope_scaling)
+                HfConfigFactory.set_config_attr(config, 'rope_parameters', config.rope_parameters)
+            else:
+                HfConfigFactory.set_config_attr(config, 'rope_scaling', self.rope_scaling)
         if self.max_model_len:
             HfConfigFactory.set_max_model_len(config, self.max_model_len)
         num_labels = self.model_info.num_labels or getattr(config, 'num_labels', None)
@@ -308,7 +314,7 @@ class ModelLoader(BaseModelLoader):
             patch_output_normalizer(model, model_meta=model_meta)
         elif model_info.task_type == 'generative_reranker':
             self._patch_generative_reranker(model, processor)
-        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
+        if transformers_5:
             self._compat_transformers5(model)
         return model
 
