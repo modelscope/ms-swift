@@ -140,8 +140,8 @@
 - log_memory_to_tensorboard: 将内存日志写入tensorboard。默认为True。
 - logging_level: 日志级别。默认为None。
 - report_to: (ms-swift>=3.12) 启用的日志后端。默认为None。可选项为'wandb'和'swanlab'。（tensorboard会一直启动）。登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
-- wandb_project: wandb/swanlab 项目名称，取决于`report_to`。默认为'megatron-swift'。
-- wandb_exp_name: wandb/swanlab 实验名称。默认为`--save`的值。
+- wandb_project: wandb/swanlab 项目名称（共用参数），取决于`report_to`。默认为'megatron-swift'。
+- wandb_exp_name: wandb/swanlab 实验名称（共用参数）。默认为`--save`的值。
 - wandb_save_dir: 本地保存 wandb/swanlab 结果的路径。默认为None，即存储在`f'{args.save}/wandb'`或`f'{args.save}/swanlab'`。
 
 **评估参数**:

@@ -146,8 +146,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - log_memory_to_tensorboard: Writes memory logs to TensorBoard. Default is True.
 - logging_level: Logging level. Default is None.
 - report_to: (ms-swift>=3.12) The logging backend to enable. Defaults to None. Options are 'wandb' and 'swanlab'. (TensorBoard will always be started). Login can be done using the `WANDB_API_KEY` or `SWANLAB_API_KEY` environment variables.
-- wandb_project: The wandb/swanlab project name, depending on `report_to`. Defaults to 'megatron-swift'.
-- wandb_exp_name: The wandb/swanlab experiment name. Defaults to the value of `--save`.
+- wandb_project: The wandb/swanlab project name (shared parameters), depending on `report_to`. Defaults to 'megatron-swift'.
+- wandb_exp_name: The wandb/swanlab experiment name (shared parameters). Defaults to the value of `--save`.
 - wandb_save_dir: The path to save wandb/swanlab results locally. Default is None, which means it will be stored in `f'{args.save}/wandb'` or `f'{args.save}/swanlab'`.
 
 **Evaluation Parameters**:
