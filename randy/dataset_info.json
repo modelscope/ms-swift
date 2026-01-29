@@ -1,5 +1,14 @@
-{
-  "med_mcqa": {
-    "file_name": "randy/med_mcqa.jsonl"
+[
+  {
+    "dataset_name": "med_mcqa",
+    "dataset_path": "randy/med_mcqa.jsonl"
+  },
+  {
+    "dataset_name": "topo_sel_sft",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/cxmt/sft/topo_sel_sft_v2.jsonl"
+  },
+  {
+    "dataset_name": "topo_sel_rlhf",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/cxmt/rlhf/topo_sel_rlhf_v1.jsonl"
   }
-}
+]

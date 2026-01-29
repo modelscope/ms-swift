@@ -1,26 +1,24 @@
 ### model
-model: ${oc.env:WORK_DIR}/models/Qwen2.5-7B-Instruct
+model: ${oc.env:WORK_DIR}/models/Qwen3-0.6B
 
 ### method
 stage: sft
-train_type: lora
+train_type: full
 tuner_backend: peft
-lora_rank: 16
-lora_alpha: 32
-deepspeed: zero3
+deepspeed: zero0
 attn_impl: flash_attn
 use_liger_kernel: true
 
 ### dataset
 custom_register_path: randy/register.py
-dataset: med_mcqa
+dataset: topo_sel_sft
 packing: false
 max_length: 2048
 dataset_num_proc: 16
 split_dataset_ratio: 0.1
 
 ### output
-output_dir: ${oc.env:WORK_DIR}/train/sft/lora/Qwen2.5-7B-Instruct
+output_dir: ${oc.env:WORK_DIR}/train/sft/full/Qwen3-0.6B
 logging_steps: 10
 save_strategy: steps
 save_steps: 100
@@ -28,9 +26,9 @@ save_total_limit: 10
 report_to: tensorboard
 
 ### train
-per_device_train_batch_size: 1
+per_device_train_batch_size: 16
 gradient_accumulation_steps: 1
-warmup_ratio: 0.1
-learning_rate: 1e-4
-num_train_epochs: 3.0
+warmup_ratio: 0.01
+learning_rate: 1e-5
+num_train_epochs: 1.0
 lr_scheduler_type: cosine
