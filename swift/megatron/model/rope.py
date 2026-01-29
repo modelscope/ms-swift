@@ -18,6 +18,7 @@ if transformers_5:
 else:
     RotaryEmbeddingConfigMixin = object
 
+
 class DummyConfig(RotaryEmbeddingConfigMixin):
 
     def __init__(self, **kwargs):

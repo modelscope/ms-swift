@@ -1454,7 +1454,12 @@ class GPTBridge:
         with torch.no_grad():
             yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
 
-    def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
+    def save_weights(self,
+                     mg_models,
+                     output_dir: str,
+                     is_peft_format: bool = False,
+                     processor=None,
+                     config=None) -> None:
         """Save the mg_model checkpoint in HF format"""
         torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
@@ -1465,6 +1470,9 @@ class GPTBridge:
             saver.add_tensor(k, v)
         saver.finalize()
         args = self.args
+        processor = processor if processor is not None else self.processor
+        if config is None:
+            config = copy(self.hf_model.config)
         if is_last_rank():
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
@@ -1486,25 +1494,24 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 if args.mtp_num_layers:
-                    self.hf_model.config.num_nextn_predict_layers = args.mtp_num_layers
-                self.hf_model.config.vocab_size = args.padded_vocab_size
+                    config.num_nextn_predict_layers = args.mtp_num_layers
+                config.vocab_size = args.padded_vocab_size
                 if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
-                    if getattr(self.hf_model.config, 'quantization_config', None) is None:
+                    if getattr(config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
                         modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
-                        self.hf_model.config.quantization_config = FineGrainedFP8Config(
-                            modules_to_not_convert=modules_to_not_convert)
-                elif hasattr(self.hf_model.config, 'quantization_config'):
-                    del self.hf_model.config.quantization_config
-                self.hf_model.config.save_pretrained(output_dir)
+                        config.quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
+                elif hasattr(config, 'quantization_config'):
+                    del config.quantization_config
+                config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
                     try:
-                        custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
+                        custom_object_save(self.hf_model, output_dir, config=config)
                     except FileNotFoundError as e:
                         logger.error(f'custom_object_save Error: {e}')
                 save_checkpoint(
                     None,
-                    self.processor,
+                    processor,
                     output_dir,
                     model_dirs=[args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
