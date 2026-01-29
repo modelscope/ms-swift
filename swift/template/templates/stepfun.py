@@ -322,7 +322,6 @@ class Step3VLTemplate(Template):
         if images:
             processor = self.processor
             idx_list = findall(input_ids, self.image_token_id)
-            processor = self.processor
             splitted_images_data = processor._split_images(images)
             pixel_values_lst = []
             patch_pixel_values_lst = []

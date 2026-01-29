@@ -149,7 +149,7 @@ class Step3VLLoader(ModelLoader):
             r'^model(?!\.(language_model|vision_model))': 'model.language_model',
             'vit_large_projector': 'model.vit_large_projector',
         }
-        model_kwargs = model_kwargs
+        model_kwargs = model_kwargs.copy()
         model_kwargs['key_mapping'] = key_mapping
         return super().get_model(model_dir, config, processor, model_kwargs)
 
@@ -157,9 +157,12 @@ class Step3VLLoader(ModelLoader):
 register_model(
     ModelMeta(
         MLLMModelType.step3_vl,
-        [ModelGroup([
-            Model('stepfun-ai/Step3-VL-10B', 'stepfun-ai/Step3-VL-10B'),
-        ])],
+        [
+            ModelGroup([
+                Model('stepfun-ai/Step3-VL-10B-Base', 'stepfun-ai/Step3-VL-10B-Base'),
+                Model('stepfun-ai/Step3-VL-10B', 'stepfun-ai/Step3-VL-10B'),
+            ])
+        ],
         Step3VLLoader,
         template=TemplateType.step3_vl,
         model_arch=ModelArch.step3_vl,
