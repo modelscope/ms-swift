@@ -1150,7 +1150,7 @@ class BaseMegatronTrainer(ABC):
                 output_dir,
                 is_peft_format=save_peft_format,
                 processor=self.template.processor,
-                config=args.args.model_info.config)
+                config=self.template.config)
             if args.tuner_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
