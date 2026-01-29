@@ -32,6 +32,8 @@ class MegatronRLHF(MegatronSft):
         kwargs = {}
         if args.rlhf_type in ('grpo', 'gkd'):
             kwargs['vllm_client'] = self._prepare_vllm_client()
+        if args.rlhf_type == 'gkd':
+            kwargs['teacher_api_client'] = self._prepare_teacher_api_client()
         return trainer_cls(args, self.template, **kwargs)
 
     def _prepare_template(self) -> None:
@@ -73,6 +75,11 @@ class MegatronRLHF(MegatronSft):
             vllm_client.init_communicator(device=get_current_device())
             logger.info('Connected to vLLM server')
         return vllm_client
+
+    def _prepare_teacher_api_client(self):
+        """Prepare teacher API client for external teacher model service."""
+        from swift.rlhf_trainers.utils import create_teacher_api_client
+        return create_teacher_api_client(self.args, check_health=True, timeout=60, use_last_rank=True)
 
 
 def megatron_rlhf_main(args: Optional[Union[List[str], MegatronRLHFArguments]] = None):

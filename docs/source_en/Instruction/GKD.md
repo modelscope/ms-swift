@@ -139,15 +139,98 @@ Set parameter `seq_kd=True`, when on-policy is not triggered, use teacher model 
 
 We can perform GKD training by setting the following parameters:
 
+### Basic Parameters
+
 | Parameter | Type | Default | Range | Description |
 |------|------|--------|---------|------|
-| `--teacher_model` | str | Required | - | Teacher model path or model ID |
+| `--teacher_model` | str | None | - | Teacher model path or model ID<br>*Can be omitted when using `teacher_model_server` |
 | `--beta` | float | 0.5 | [0.0, 1.0] | Divergence interpolation coefficient<br>• 0.0: Forward KL <br>• 0.5: JSD (balanced)<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy learning trigger probability<br>• 0.0: Pure Offline<br>• 0.5: Mixed strategy (**recommended**)<br>• 1.0: Pure On-Policy |
 | `--seq_kd` | bool | False | True/False | Whether to use teacher-generated sequences<br>• False: Use dataset when not on-policy<br>• True: Use teacher generation when not on-policy |
 | `--temperature` | float | 0.9 | > 0 | Generation sampling temperature, controls randomness |
 | `--sft_alpha` | float | 0 | >= 0 | Mix in a proportion of SFT loss; applied to non-student-generated completions |
 | `--max_completion_length` | int | 512 | > 0 | Maximum number of tokens during generation |
+
+### Top-K KL Computation
+
+By default, GKD computes KL divergence over the full vocabulary. For models with large vocabularies, you can use **Top-K** mode to reduce memory usage and computation.
+
+| Parameter | Type | Default | Description |
+|------|------|--------|------|
+| `--gkd_logits_topk` | int | None | Number of Top-K logits<br>• None: Use full vocabulary (default)<br>• Positive integer: Only use the K tokens with highest teacher probability for KL computation |
+
+**Top-K Mode Principle**:
+
+In Top-K mode, the top-K token indices are selected from the **teacher model**, and the KL divergence is computed on both models' logits at these positions. It use the teacher model's top-k indices to gather logits from both models, then renormalize over the top-k subset before computing JSD.
+
+$$
+D_{\text{JSD}(\beta)}^{\text{top-k}}(P_T, P_S) = \beta \cdot \text{KL}(\tilde{P}_T \| \tilde{M}) + (1-\beta) \cdot \text{KL}(\tilde{P}_S \| \tilde{M})
+$$
+
+Where the Top-K indices come from the teacher model: $\text{Top-K} = \text{argtop}_K(P_T)$, and $\tilde{P}_T$ and $\tilde{P}_S$ are the probability distributions **renormalized** over the Top-K subset:
+
+$$
+\tilde{P}_T(v) = \frac{P_T(v)}{\sum_{v' \in \text{Top-K}} P_T(v')}, \quad \tilde{P}_S(v) = \frac{P_S(v)}{\sum_{v' \in \text{Top-K}} P_S(v')}, \quad v \in \text{Top-K}
+$$
+
+**Usage Example**:
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2-7B-Instruct \
+    --teacher_model Qwen/Qwen2-72B-Instruct \
+    --gkd_logits_topk 64 \
+    --dataset your_dataset \
+    ...
+```
+
+> **Note**: Top-K mode cannot be used with liger kernel (`--use_liger_kernel`).
+
+### External Teacher Model API
+
+When `gkd_logits_topk` is set, you can use an external teacher model API service to fetch logprobs, which avoids loading the teacher model in the training process.
+
+| Parameter | Type | Default | Description |
+|------|------|--------|------|
+| `--teacher_model_server` | str | None | Teacher model service URL<br>e.g., `http://localhost:8000` |
+| `--gkd_logits_topk` | int | **Required** | Must be set when using external API; corresponds to the top_logprobs returned by the API |
+
+**Supported Backends**:
+- `swift deploy` (vLLM backend)
+- Standalone vLLM server (`vllm serve`)
+
+**Step 1: Deploy Teacher Model Service**
+
+```bash
+# Deploy teacher model with swift deploy (recommended)
+CUDA_VISIBLE_DEVICES=0,1 swift deploy \
+    --model Qwen/Qwen2-72B-Instruct \
+    --infer_backend vllm \
+    --port 8000 \
+    --vllm_engine_kwargs '{"max_logprobs": 64}'
+
+# Or use standalone vLLM server
+vllm serve Qwen/Qwen2-72B-Instruct --max-logprobs 64 --port 8000
+```
+
+**Step 2: Start GKD Training**
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2-7B-Instruct \
+    --teacher_model_server http://localhost:8000 \
+    --gkd_logits_topk 20 \
+    --dataset your_dataset \
+    --lmbda 1.0 \
+    --beta 0.5 \
+    ...
+```
+
+> **vLLM max_logprobs Limitation**:
+> - vLLM default `max_logprobs=20`, adjustable via `--vllm_engine_kwargs '{"max_logprobs": N}'` parameter
+> - `gkd_logits_topk` cannot exceed the server's `max_logprobs` setting
 
 ## Sampling Acceleration
 
@@ -167,6 +250,8 @@ Use vLLM as the inference backend to accelerate student model sampling. Supports
 > **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses Transformers. Pre-sampling scheme is recommended.
 
 Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh), for related parameters, please refer to [GRPO vLLM Parameters](./Command-line-parameters.md#vllm_mode).
+
+Training script using Teacher Server reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh).
 
 
 ### Solution 2: Teacher Model Pre-sampling
