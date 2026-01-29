@@ -1472,7 +1472,8 @@ class GPTBridge:
         args = self.args
         processor = processor if processor is not None else self.processor
         if config is None:
-            config = copy(self.hf_model.config)
+            config = self.hf_model.config
+        config = copy(config)
         if is_last_rank():
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
