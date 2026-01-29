@@ -14,7 +14,6 @@ try:
 except ImportError:
     pass
 # fmt: on
-
 import asyncio
 import inspect
 import multiprocessing
@@ -30,10 +29,10 @@ from multiprocessing.connection import Connection
 from typing import Dict, List, Optional, Union
 
 import torch
+import torch.distributed.distributed_c10d as c10d
 import uvicorn
 from aiohttp import ClientConnectorError
 from fastapi import FastAPI
-from trl.scripts.vllm_serve import WeightSyncWorkerExtension as HFWeightSyncWorkerExtension
 
 from swift.arguments import RolloutArguments
 from swift.infer_engine import GRPOVllmEngine, InferClient
@@ -41,15 +40,22 @@ from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig,
                                          UpdateWeightsRequest)
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
                                        UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
-                                       UpdateFlattenedParamsRequest, check_vllm_version_ge, patch_vllm_load_adapter,
-                                       patch_vllm_moe_model_weight_loader)
+                                       UpdateFlattenedParamsRequest, check_vllm_version_ge, chunk_list,
+                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader)
 from swift.rollout import RolloutScheduler, multi_turns
-from swift.utils import get_logger, get_seed
+from swift.utils import get_logger, get_seed, is_vllm_ascend_available
 from ..base import SwiftPipeline
 
 try:
-    from vllm.utils import get_open_port
-    from trl.scripts.vllm_serve import chunk_list
+    if check_vllm_version_ge('0.11.1'):
+        from vllm.utils.network_utils import get_open_port
+    else:
+        from vllm.utils import get_open_port
+    from vllm.distributed.parallel_state import get_world_group
+    from vllm.distributed.utils import StatelessProcessGroup
+    from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
+    if is_vllm_ascend_available():
+        from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator as PyNcclCommunicator  # noqa
 
 except ImportError:
     pass
@@ -73,7 +79,49 @@ Note:
 patch_vllm_load_adapter()
 
 
-class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
+class WeightSyncWorkerExtension():
+
+    # The following attributes are initialized when `init_communicator` method is called.
+    communicator = None  # Communicator for weight updates
+    client_rank = None  # Source rank for broadcasting updated weights
+
+    def init_communicator(self, host: str, port: int, world_size: int) -> None:
+        """
+        Initializes the weight update communicator using a stateless process group.
+
+        This method creates a `StatelessProcessGroup` that allows external training processes to communicate with vLLM
+        workers without interfering with the global torch distributed group.
+
+        Args:
+            host (`str`):
+                Hostname or IP address of the master node.
+            port (`int`):
+                Port number to be used for communication.
+            world_size (`int`):
+                Total number of participating processes in the update group.
+        """
+        if self.communicator is not None:
+            raise RuntimeError('Weight update group already initialized. Call close_communicator first.')
+
+        # Get the rank of the current worker in the global world group.
+        rank = get_world_group().rank
+
+        # Create a stateless process group to manage communication between training processes and vLLM workers.
+        # Initialize the NCCL-based communicator for weight synchronization.
+        pg = StatelessProcessGroup.create(host=host, port=port, rank=rank, world_size=world_size)
+
+        if is_vllm_ascend_available():
+            # https://github.com/modelscope/ms-swift/issues/5920
+            device = get_world_group().local_rank
+            import torch_npu
+            torch_npu.npu.set_device(device)
+        else:
+            device = self.device
+
+        self.communicator = PyNcclCommunicator(pg, device=device)
+
+        # The client process that sends updated weights has the highest rank (world_size - 1).
+        self.client_rank = world_size - 1
 
     def update_named_param(self, name: str, dtype: str, shape: Sequence[int]) -> None:
         """
@@ -87,16 +135,16 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             shape (`Sequence[int]`):
                 Shape of the weight tensor.
         """
-        if self._comm is None:
+        if self.communicator is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
 
         dtype = getattr(torch, dtype.split('.')[-1])
         # Allocate memory for the incoming weight tensor on the correct device.
-        weight = torch.empty(shape, dtype=dtype, device=self._comm.device)
+        weight = torch.empty(shape, dtype=dtype, device=self.communicator.device)
 
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
-        self._comm.broadcast(weight, src=self.client_rank)
-        self._comm.group.barrier()
+        self.communicator.broadcast(weight, src=self.client_rank)
+        self.communicator.group.barrier()
 
         # Patch MoE weight_loader if needed
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
@@ -109,13 +157,13 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         Receives and applies a flattened LoRA adapter to the model.
         """
         metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
-        if self._comm is None:
+        if self.communicator is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
         flatten_tensor_length = metadatas[-1].end_idx
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
-        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self._comm.device)
-        self._comm.broadcast(flatten_tensor, src=self.client_rank)
-        self._comm.group.barrier()
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
+        self.communicator.broadcast(flatten_tensor, src=self.client_rank)
+        self.communicator.group.barrier()
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
         lora_request = TensorLoRARequest(
@@ -136,7 +184,7 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             peft_config: PEFT configuration dictionary.
             lora_tensors_metadata: List of metadata dictionaries for each tensor.
         """
-        if self._comm is None:
+        if self.communicator is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
 
         # Receive each tensor individually
@@ -145,11 +193,11 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             name = metadata['name']
             dtype = getattr(torch, metadata['dtype'].split('.')[-1])
             shape = tuple(metadata['shape'])
-            tensor = torch.empty(shape, dtype=dtype, device=self._comm.device)
-            self._comm.broadcast(tensor, src=self.client_rank)
+            tensor = torch.empty(shape, dtype=dtype, device=self.communicator.device)
+            self.communicator.broadcast(tensor, src=self.client_rank)
             named_params[name] = tensor
 
-        self._comm.group.barrier()
+        self.communicator.group.barrier()
 
         lora_request = TensorLoRARequest(
             lora_name=f'{lora_int_id}',
@@ -167,15 +215,15 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
             metadatas (list[Dict]): List of metadata dictionaries for the flattened tensors.
         """
         metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
-        if self._comm is None:
+        if self.communicator is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
 
         flatten_tensor_length = metadatas[-1].end_idx
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
-        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self._comm.device)
+        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
 
-        self._comm.broadcast(flatten_tensor, src=self.client_rank)
-        self._comm.group.barrier()
+        self.communicator.broadcast(flatten_tensor, src=self.client_rank)
+        self.communicator.group.barrier()
 
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
@@ -185,23 +233,17 @@ class WeightSyncWorkerExtension(HFWeightSyncWorkerExtension):
         # Load the reconstructed parameters into the model
         self.model_runner.model.load_weights(weights=list(named_params.items()))
 
-    @property
-    def _comm(self):
+    def close_communicator(self) -> None:
         """
-        Compatibility wrapper for communicator access across TRL versions.
+        Closes the communicator when weight synchronization is no longer needed.
 
-        Returns the appropriate communicator attribute based on the TRL version:
-        - trl < 0.24.0: self.pynccl_comm
-        - trl >= 0.24.0: self.communicator
+        This method deletes the NCCL communicator to release associated resources.
         """
-        # Try new version first
-        if hasattr(self, 'communicator'):
-            return self.communicator
-        # Fall back to old version
-        elif hasattr(self, 'pynccl_comm'):
-            return self.pynccl_comm
-        else:
-            return None
+
+        if self.communicator is not None:
+            del self.communicator
+            self.communicator = None  # Ensure attribute is reset to None
+            self.client_rank = None  # Ensure attribute is reset to None
 
 
 logger = get_logger()
@@ -448,12 +490,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # The function init_communicator is called this way: init_communicator(host, port, world_size)
         # So with collective_rpc we need to call it this way:
         # llm.collective_rpc(method="init_communicator", args=(host, port, world_size))
-        kwargs = {
-            'method':
-            'init_communicator',
-            'args': (request.host, request.port, world_size, *(() if request.client_device_uuid is None else
-                                                               (request.client_device_uuid, )))
-        }
+        kwargs = {'method': 'init_communicator', 'args': (request.host, request.port, world_size)}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
