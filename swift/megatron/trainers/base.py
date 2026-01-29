@@ -1045,7 +1045,12 @@ class BaseMegatronTrainer(ABC):
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
                 self._copy_args(output_dir)
-            self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
+            self.bridge.save_weights(
+                self.unwrapped_models,
+                output_dir,
+                is_peft_format=save_peft_format,
+                processor=self.template.processor,
+                config=self.template.config)
             if args.train_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 

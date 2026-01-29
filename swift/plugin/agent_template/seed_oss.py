@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import re
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
