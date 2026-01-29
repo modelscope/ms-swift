@@ -1,15 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from functools import partial
-from typing import List, Optional
-
 import torch
 import torch.nn
+from functools import partial
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import get_rerun_state_machine
 from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from typing import List, Optional
 
+from swift.trainers.utils import get_dft_gating_factor
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
 
@@ -59,7 +59,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         losses = output_tensor.float()
         loss_mask = labels != -100
         if args.enable_dft_loss:
-            losses = losses * torch.exp(-losses.detach())
+            losses = losses * get_dft_gating_factor(losses, labels)
         if loss_scale is not None:
             losses = losses * loss_scale
         if args.enable_channel_loss and channels is not None:
