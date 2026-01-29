@@ -142,6 +142,7 @@ class GPTModel(McoreGPTModel):
                 parallel_mode=None,
                 skip_weight_param_allocation=False,
             )
+            self.output_layer.weight.average_gradients_across_tp_domain = True
         elif args.task_type == 'embedding' and self.post_process:
             self.output_layer = None
 
