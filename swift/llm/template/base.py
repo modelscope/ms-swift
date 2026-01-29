@@ -664,14 +664,14 @@ class Template(ProcessorMixin):
         return model.generate(*args, **kwargs)
 
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
-        # Do not print template_meta.suffix[-1] and eos_token.
+        # Do not print template_meta.suffix_stop and eos_token.
         # However, other stop_words will be printed.
         tokenizer = self.tokenizer
 
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
             generate_ids = generate_ids[:-1]
         # skip suffix and eos_token
-        template_suffix = self.template_meta.suffix[-1]
+        template_suffix = self.template_meta.suffix_stop
         if isinstance(template_suffix, str):
             # [-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
             template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)[-1:]
