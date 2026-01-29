@@ -221,7 +221,7 @@ class ModelLoader(BaseModelLoader):
 
         if self.rope_scaling:
             if transformers_5:
-                rope_parameters = HfConfigFactory.get_config_attr(config, 'rope_parameters')
+                rope_parameters = HfConfigFactory.get_config_attr(config, 'rope_parameters') or {}
                 for key in ['rope_theta', 'partial_rotary_factor']:
                     if self.rope_scaling.get(key) is None and rope_parameters.get(key) is not None:
                         self.rope_scaling[key] = rope_parameters[key]
