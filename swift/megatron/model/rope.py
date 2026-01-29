@@ -26,7 +26,7 @@ class DummyConfig(RotaryEmbeddingConfigMixin):
 
 
 def _get_dummy_config(args):
-    dummy_config: DummyConfig = DummyConfig(
+    dummy_config = DummyConfig(
         rope_scaling=args.rope_scaling,
         rope_theta=args.rotary_base,
         max_position_embeddings=args.max_position_embeddings,
