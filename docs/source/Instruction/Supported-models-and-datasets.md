@@ -789,9 +789,9 @@
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|chatglm4v|chatglm4v|transformers>=4.42|&#x2718;|-|[zai-org/cogagent-9b-20241220](https://huggingface.co/zai-org/cogagent-9b-20241220)|
 |[ZhipuAI/GLM-4.1V-9B-Base](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Base)|glm4v|glm4v|transformers>=4.53|&#x2714;|-|[zai-org/GLM-4.1V-9B-Base](https://huggingface.co/zai-org/GLM-4.1V-9B-Base)|
 |[ZhipuAI/GLM-4.1V-9B-Thinking](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Thinking)|glm4v|glm4v|transformers>=4.53|&#x2714;|-|[zai-org/GLM-4.1V-9B-Thinking](https://huggingface.co/zai-org/GLM-4.1V-9B-Thinking)|
-|[ZhipuAI/Glyph](https://modelscope.cn/models/ZhipuAI/Glyph)|glm4v|glm4v|transformers>=4.57|&#x2714;|-|[zai-org/Glyph](https://huggingface.co/zai-org/Glyph)|
-|[ZhipuAI/GLM-4.6V-Flash](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-Flash)|glm4v|glm4v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V-Flash](https://huggingface.co/zai-org/GLM-4.6V-Flash)|
-|[ZhipuAI/AutoGLM-Phone-9B](https://modelscope.cn/models/ZhipuAI/AutoGLM-Phone-9B)|glm4v|glm4v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/AutoGLM-Phone-9B](https://huggingface.co/zai-org/AutoGLM-Phone-9B)|
+|[ZhipuAI/AutoGLM-Phone-9B](https://modelscope.cn/models/ZhipuAI/AutoGLM-Phone-9B)|glm4v|glm4v|transformers>=4.53|&#x2714;|-|[zai-org/AutoGLM-Phone-9B](https://huggingface.co/zai-org/AutoGLM-Phone-9B)|
+|[ZhipuAI/Glyph](https://modelscope.cn/models/ZhipuAI/Glyph)|glm4v|glm4_5v|transformers>=4.57|&#x2714;|-|[zai-org/Glyph](https://huggingface.co/zai-org/Glyph)|
+|[ZhipuAI/GLM-4.6V-Flash](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-Flash)|glm4v|glm4_5v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V-Flash](https://huggingface.co/zai-org/GLM-4.6V-Flash)|
 |[ZhipuAI/GLM-4.5V](https://modelscope.cn/models/ZhipuAI/GLM-4.5V)|glm4v_moe|glm4_5v|transformers>=4.56|&#x2714;|-|[zai-org/GLM-4.5V](https://huggingface.co/zai-org/GLM-4.5V)|
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4v_moe|glm4_5v|transformers>=4.56|&#x2718;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
 |[ZhipuAI/GLM-4.6V](https://modelscope.cn/models/ZhipuAI/GLM-4.6V)|glm4v_moe|glm4_5v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V](https://huggingface.co/zai-org/GLM-4.6V)|
