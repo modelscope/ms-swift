@@ -11,8 +11,14 @@ from swift.utils import get_logger
 
 logger = get_logger()
 
+transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
 
-class DummyConfig:
+if transformers_5:
+    from transformers.modeling_rope_utils import RotaryEmbeddingConfigMixin
+else:
+    RotaryEmbeddingConfigMixin = object
+
+class DummyConfig(RotaryEmbeddingConfigMixin):
 
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
@@ -20,7 +26,7 @@ class DummyConfig:
 
 
 def _get_dummy_config(args):
-    dummy_config = DummyConfig(
+    dummy_config: DummyConfig = DummyConfig(
         rope_scaling=args.rope_scaling,
         rope_theta=args.rotary_base,
         max_position_embeddings=args.max_position_embeddings,
@@ -34,6 +40,10 @@ def _get_dummy_config(args):
         dummy_config.original_max_position_embeddings = original_max_position_embeddings
     if args.partial_rotary_factor is not None:
         dummy_config.partial_rotary_factor = args.partial_rotary_factor
+    if transformers_5:
+        rope_parameters = getattr(dummy_config, 'rope_parameters', None) or {}
+        rope_parameters.update(dummy_config.rope_scaling)
+        dummy_config.rope_parameters = rope_parameters
     return dummy_config
 
 
@@ -84,7 +94,7 @@ def _compute_default_rope_parameters(
     return inv_freq, attention_factor
 
 
-if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
+if transformers_5:
     EXTENDED_ROPE_INIT_FUNCTIONS['default'] = _compute_default_rope_parameters
 
 
