@@ -43,7 +43,7 @@ def _get_dummy_config(args):
         dummy_config.partial_rotary_factor = args.partial_rotary_factor
     if transformers_5:
         rope_parameters = getattr(dummy_config, 'rope_parameters', None) or {}
-        rope_parameters.update(dummy_config.rope_scaling)
+        rope_parameters.update(args.rope_scaling or {})
         dummy_config.rope_parameters = rope_parameters
     return dummy_config
 
