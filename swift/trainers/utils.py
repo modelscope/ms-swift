@@ -64,6 +64,7 @@ def is_instance_of_ms_model(model: Module) -> bool:
             return True
     return False
 
+
 def get_dft_gating_factor(loss: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
     """
     Computes the gating factor for Dynamic Fine-Tuning (DFT) loss.
@@ -72,7 +73,7 @@ def get_dft_gating_factor(loss: torch.Tensor, labels: torch.Tensor) -> torch.Ten
     with torch.no_grad():
         target_probs = torch.exp(-loss)
         # https://arxiv.org/pdf/2601.09195
-        if hard_gating_probability_threshold := os.getenv("HARD_GATING_PROBABILITY_THRESHOLD"):
+        if hard_gating_probability_threshold := os.getenv('HARD_GATING_PROBABILITY_THRESHOLD'):
             try:
                 threshold = float(hard_gating_probability_threshold)
                 mask = (target_probs > threshold).float()
