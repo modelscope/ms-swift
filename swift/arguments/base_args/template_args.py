@@ -137,7 +137,7 @@ class TemplateArguments:
     add_non_thinking_prefix: bool = True
 
     def __post_init__(self):
-        if self.model_meta is not None:
+        if getattr(self, 'model_meta', None) is not None:
             self.template_meta = get_template_meta(self.model_info, self.model_meta, template_type=self.template)
             self.template = self.template_meta.template_type
         if self.use_chat_template is None:
