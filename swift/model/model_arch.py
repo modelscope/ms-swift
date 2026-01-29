@@ -59,6 +59,7 @@ class MLLMModelArch:
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
     deepseek_ocr = 'deepseek_ocr'
+    deepseek_ocr2 = 'deepseek_ocr2'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
@@ -446,6 +447,14 @@ register_model_arch(
         MLLMModelArch.deepseek_ocr,
         language_model='model.layers',
         vision_tower=['model.sam_model', 'model.vision_model'],
+        aligner='model.projector',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.deepseek_ocr2,
+        language_model='model.layers',
+        vision_tower=['model.sam_model', 'model.qwen2_model'],
         aligner='model.projector',
     ))
 

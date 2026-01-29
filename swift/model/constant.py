@@ -206,6 +206,7 @@ class MLLMModelType:
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
+    deepseek_ocr2 = 'deepseek_ocr2'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
