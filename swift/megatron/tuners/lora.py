@@ -321,12 +321,10 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                                     'Cannot reconstruct the post-RMSNorm activation for LoRA.')
                             x = self.base_layer._rmsnorm(inp)
                     else:
-                        raise RuntimeError(
-                            'NPU LoRA path requires base_layer to expose post-norm activations (LayerNorm/RMSNorm output). '
-                            'Expected base_layer to have `config` and either `_layernorm` or `_rmsnorm`. '
-                            f'Got base_layer type: {type(self.base_layer)}. '
-                            'Please update MindSpeedTELayerNormColumnParallelLinear to expose the post-norm output '
-                            '(e.g., return it when `return_layernorm_output=True` or cache it on `self`).')
+                        raise RuntimeError('NPU LoRA path requires base_layer to expose post-norm activations '
+                                           '(LayerNorm/RMSNorm output). Expected base_layer to have `config` '
+                                           'and either `_layernorm` or `_rmsnorm`. '
+                                           f'Got base_layer type: {type(self.base_layer)}. ')
                 else:
                     (result, x), bias = self.base_layer(x, *args, **kwargs)
         elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
