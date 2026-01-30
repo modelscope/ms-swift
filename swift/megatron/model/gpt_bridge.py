@@ -708,6 +708,16 @@ class GPTBridge:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
+    def _get_hf_grouped(self):
+        if self.hf_model_type in {
+                'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'dots1', 'ernie4_5_moe', 'glm4_moe',
+                'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
+                'qwen3_vl_moe'
+        }:
+            return False, False
+        elif self.hf_model_type in {}:
+            pass
+
     def _set_mlp_state(self,
                        mg_mlp,
                        hf_state_dict,
@@ -726,11 +736,15 @@ class GPTBridge:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = args.num_experts // self.ep_size
-        # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if self.is_transformers_5 and self.args.hf_model_type in {'glm4v_moe', 'glm4_moe_lite'}:
-            hf_grouped = False
-            is_gate_up = False
+        # transformers 5.0 compatibility
+        if self.is_transformers_5:
+            _hf_grouped, _is_gate_up = self._get_hf_grouped()
+            if _hf_grouped is not None:
+                hf_grouped = _hf_grouped
+            if _is_gate_up is not None:
+                is_gate_up = _is_gate_up
+
         if to_mcore or hf_grouped:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
