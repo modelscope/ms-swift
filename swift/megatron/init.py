@@ -876,7 +876,7 @@ def _patch_modelopt():
     checkpointing.save_sharded_modelopt_state = new_save_sharded_modelopt_state
 
 
-def _patch_megatron():
+def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_flash_attn()
@@ -917,16 +917,3 @@ def _patch_megatron():
 
     import megatron.core
     logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
-
-
-def init_megatron_env() -> None:
-    if 'MEGATRON_LM_PATH' not in os.environ:
-        # TODO: Synchronization issues may occur in DDP scenarios
-        # if the distributed environment has not been initialized.
-        os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.15.0')
-    with safe_ddp_context(hash_id='megatron-lm'):
-        if not is_megatron_available():
-            subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])
-    sys.path.insert(0, os.environ['MEGATRON_LM_PATH'])
-    _patch_megatron()
