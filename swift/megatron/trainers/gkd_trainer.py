@@ -184,7 +184,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # which is required by gpt_bridge weight loading logic.
             if megatron_args.moe_grouped_gemm is None:
                 megatron_args.moe_grouped_gemm = True
-            # Apply MoE initialization (bypassed when loading teacher via setattr)
             MegatronArguments._init_moe(megatron_args)
 
             # Restore original EP settings if student is Dense.
