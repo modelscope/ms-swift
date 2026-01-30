@@ -19,21 +19,23 @@ class GLMTemplateMeta(TemplateMeta):
 
 
 class GLM4Template(Template):
+    strip_newline = True
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
-        for i, res_context in enumerate(res_context_list):
-            # The last round or is tool_call.
-            if isinstance(res_context,
-                          str) and (res_context.endswith('<|assistant|>\n')
-                                    or res_context.endswith('<think></think>\n')) and (
-                                        i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
-                res_context_list[i] = res_context_list[i][:-len('\n')]
+        if self.strip_newline:
+            for i, res_context in enumerate(res_context_list):
+                # The last round or is tool_call.
+                if isinstance(res_context, str) and (res_context.endswith('<|assistant|>\n')
+                                                     or res_context.endswith('<think></think>\n')) and (
+                                                         i + 1 >= len(res_context_list)
+                                                         or '<|observation|>' in res_context_list[i + 1]):
+                    res_context_list[i] = res_context_list[i][:-len('\n')]
         return res_context_list, loss_scale_list, answer_len
 
     def decode(self, *args, **kwargs):
         response = super().decode(*args, **kwargs)
-        return response.lstrip('\n')
+        return response.lstrip('\n') if self.strip_newline else response
 
 
 register_template(
@@ -69,10 +71,6 @@ class GLM4_5TemplateMeta(GLM4TemplateMeta):
     is_thinking: bool = True
     non_thinking_prefix: str = '<think></think>\n'
     history_thinking_prefix: str = '<think></think>\n'
-
-
-class GLM4VTemplateMeta(GLM4TemplateMeta):
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
 
 
 class ChatGLM4VTemplate(Template):
@@ -303,7 +301,7 @@ class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
 
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template, thinking_prefix='<think>'))
-register_template(GLM4VTemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, agent_template='glm4_5'))
+register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
 
 
 class GLM4_5Template(GLM4Template):
@@ -333,6 +331,7 @@ register_template(
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
     placeholder_tokens = ['<|image|>', '<|video|>']
+    strip_newline = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:

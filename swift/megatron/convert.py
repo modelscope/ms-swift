@@ -88,7 +88,8 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = convert_hf_config(processor.model_info.config)
+    hf_config = processor.model_info.config
+    kwargs = convert_hf_config(hf_config)
     logger.info(f'megatron_config: {kwargs}')
     _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
@@ -126,7 +127,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.to_hf:
         bridge = megatron_model_meta.bridge_cls()
         logger.info('Converting weights and saving the model...')
-        bridge.save_weights([mg_model], args.output_dir)
+        bridge.save_weights([mg_model], args.output_dir, processor=processor, config=hf_config)
         if is_master():
             args_path = os.path.join(megatron_args.adapter_load or megatron_args.load or args.model, 'args.json')
             if os.path.exists(args_path):
