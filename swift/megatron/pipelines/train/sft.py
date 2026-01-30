@@ -11,7 +11,6 @@ from swift.megatron.arguments import MegatronSftArguments
 from swift.megatron.trainers import MegatronEmbeddingTrainer, MegatronRerankerTrainer, MegatronTrainer
 from swift.megatron.utils import get_padding_to
 from swift.pipelines import SwiftSft
-from swift.template import TEMPLATE_MAPPING
 from swift.utils import get_logger, is_last_rank, plot_images
 from .utils import build_streaming_dataloader
 
@@ -48,7 +47,7 @@ class MegatronSft(SwiftSft):
                 args.use_flash_attn = True
             megatron_args = asdict(self.args)
             repatch(megatron_args)
-        template_cls = TEMPLATE_MAPPING[args.template].template_cls
+        template_cls = args.template_meta.template_cls
         if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
             kwargs = {'return_dummy_model': True}
         else:

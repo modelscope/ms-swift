@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from swift.template import TEMPLATE_MAPPING
+from swift.template import TEMPLATE_MAPPING, get_template_meta
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -137,8 +137,9 @@ class TemplateArguments:
     add_non_thinking_prefix: bool = True
 
     def __post_init__(self):
-        if self.template is None and getattr(self, 'model_meta', None):
-            self.template = self.model_meta.template
+        if getattr(self, 'model_meta', None) is not None:
+            self.template_meta = get_template_meta(self.model_info, self.model_meta, template_type=self.template)
+            self.template = self.template_meta.template_type
         if self.use_chat_template is None:
             self.use_chat_template = True
         if self.system is not None:

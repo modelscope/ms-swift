@@ -237,25 +237,27 @@ register_model(
                 [
                     Model('ZhipuAI/GLM-4.1V-9B-Base', 'zai-org/GLM-4.1V-9B-Base'),
                     Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'zai-org/GLM-4.1V-9B-Thinking'),
+                    Model('ZhipuAI/AutoGLM-Phone-9B', 'zai-org/AutoGLM-Phone-9B')
                 ],
+                template=TemplateType.glm4v,
                 requires=['transformers>=4.53'],
             ),
             ModelGroup(
                 [
                     Model('ZhipuAI/Glyph', 'zai-org/Glyph'),
                 ],
+                template=TemplateType.glm4_5v,
                 requires=['transformers>=4.57'],
             ),
             ModelGroup(
                 [
                     Model('ZhipuAI/GLM-4.6V-Flash', 'zai-org/GLM-4.6V-Flash'),
-                    Model('ZhipuAI/AutoGLM-Phone-9B', 'zai-org/AutoGLM-Phone-9B')
                 ],
+                template=TemplateType.glm4_5v,
                 requires=['transformers>=5.0.0.dev'],
             ),
         ],
         GLM4vLoader,
-        template=TemplateType.glm4v,
         model_arch=ModelArch.glm4v,
         architectures=['Glm4vForConditionalGeneration'],
     ))

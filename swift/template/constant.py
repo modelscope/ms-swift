@@ -244,6 +244,7 @@ class MLLMTemplateType:
     mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
+    step3_vl = 'step3_vl'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):
