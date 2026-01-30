@@ -198,13 +198,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     **kwargs,
                 )
                 lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
-        # https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/core/transformer/moe/shared_experts.py#L93
-        for lora in [lora_a, lora_b]:
-            if isinstance(lora, (TERowParallelLinear, TEColumnParallelLinear)) and lora.parallel_mode is None:
-                lora.ub_overlap_rs_fprop = False
-                lora.ub_overlap_ag_dgrad = False
-                lora.ub_overlap_ag_fprop = False
-                lora.ub_overlap_rs_dgrad = False
         lora_a.sequence_parallel = False
         lora_b.sequence_parallel = False
         self.lora_A[adapter_name] = lora_a
