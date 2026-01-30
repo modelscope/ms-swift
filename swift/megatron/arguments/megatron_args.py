@@ -700,6 +700,7 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.apply_query_key_layer_scaling:
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
+    @staticmethod
     def _init_moe(self):
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
@@ -774,7 +775,7 @@ class MegatronArguments(ExtraMegatronArguments):
                 logger.info('Setting args.tuner_type: lora')
         if self.adapters:
             self._load_adapter_config()
-        self._init_moe()
+        MegatronArguments._init_moe(self)
         self._init_mixed_precision()
 
         self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
