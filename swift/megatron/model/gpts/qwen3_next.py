@@ -470,7 +470,7 @@ class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
         else:
             res = res.transpose(0, 1)
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
-            # Quick fix for dropout issue
+            # Quick fix for dropout issue, awaiting ms-swift 4.0 refactor
             res = reduce_scatter_to_sequence_parallel_region(res) / args.tensor_model_parallel_size
         return res, None
 
