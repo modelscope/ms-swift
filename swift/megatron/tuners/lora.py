@@ -2,7 +2,7 @@
 # Code borrowed from huggingface/peft
 import math
 import warnings
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, List, Optional, Tuple
 
 import megatron.core
@@ -66,6 +66,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.sequence_parallel = getattr(base_layer, 'sequence_parallel', False)
         if self.is_expert:
             self.tp_size = get_expert_tensor_parallel_world_size()
+            if self.tp_size > 1:
+                raise ValueError('Currently, LoRA does not support ETP.')  # TODO: init/all-reduce
         else:
             self.tp_size = get_tensor_model_parallel_world_size()
         self.update_layer(
@@ -214,6 +216,15 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self._move_adapter_to_device_of_base_layer(adapter_name)
         self.set_adapter(self.active_adapters)
 
+    def _get_rng_context(self, lora):
+        if self.is_expert:
+            rng_context = get_cuda_rng_tracker().fork(get_expert_parallel_rng_tracker_name())
+        elif getattr(lora, 'parallel_mode', None) is None:
+            rng_context = nullcontext()
+        else:
+            rng_context = get_cuda_rng_tracker().fork()
+        return rng_context
+
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:
             return
@@ -229,15 +240,16 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 weights_b = [getattr(lora_b, f'weight{i}') for i in range(lora_b.num_gemms)]
             else:
                 weights_b = [lora_b.weight]
-            for weight_a in weights_a:
-                if init_lora_weights is True:
-                    # initialize A the same way as the default for nn.Linear and B to zero
-                    # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
-                    nn.init.kaiming_uniform_(weight_a, a=math.sqrt(5))
-                elif init_lora_weights.lower() == 'gaussian':
-                    nn.init.normal_(weight_a, std=1 / self.r[adapter_name])
-                else:
-                    raise ValueError(f'Unknown initialization {init_lora_weights=}')
+            with self._get_rng_context(lora_a):
+                for weight_a in weights_a:
+                    if init_lora_weights is True:
+                        # initialize A the same way as the default for nn.Linear and B to zero
+                        # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
+                        nn.init.kaiming_uniform_(weight_a, a=math.sqrt(5))
+                    elif init_lora_weights.lower() == 'gaussian':
+                        nn.init.normal_(weight_a, std=1 / self.r[adapter_name])
+                    else:
+                        raise ValueError(f'Unknown initialization {init_lora_weights=}')
             for weight_b in weights_b:
                 nn.init.zeros_(weight_b)
         if adapter_name in self.lora_embedding_A.keys():
