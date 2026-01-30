@@ -715,8 +715,7 @@ class GPTBridge:
                 'qwen3_vl_moe'
         }:
             return False, False
-        elif self.hf_model_type in {}:
-            pass
+        return None, None
 
     def _set_mlp_state(self,
                        mg_mlp,
