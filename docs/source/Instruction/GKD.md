@@ -139,15 +139,97 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 我们可以通过设置以下参数进行 GKD 训练：
 
+### 基础参数
+
 | 参数 | 类型 | 默认值 | 取值范围 | 说明 |
 |------|------|--------|---------|------|
-| `--teacher_model` | str | 必需 | - | 教师模型路径或模型 ID |
+| `--teacher_model` | str | None | - | 教师模型路径或模型 ID<br>*使用 `teacher_model_server` 时可省略 |
 | `--beta` | float | 0.5 | [0.0, 1.0] | 散度插值系数<br>• 0.0: Forward KL <br>• 0.5: JSD (平衡)<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 离线学习<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
 | `--temperature` | float | 0.9 | > 0 | 生成采样温度，控制随机性 |
 | `--sft_alpha` | float | 0 | >= 0 | 混合一定比例的sft loss，对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | > 0 | 生成时的最大 token 数 |
+
+### Top-K KL 计算
+
+默认情况下，GKD 使用完整词表计算 KL 散度，容易造成 OOM，这种情况下可以使用 **Top-K** 模式来减少显存占用和计算量。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--gkd_logits_topk` | int | None | Top-K logits 数量<br>• None: 使用完整词表（默认）<br>• 正整数: 仅使用教师模型概率最高的 K 个 token 计算 KL |
+
+**Top-K 模式原理**：
+
+在 Top-K 模式下，选取**教师模型**输出概率最高的 K 个 token，在这个子集上计算两个模型分布的 KL 散度。
+$$
+D_{\text{JSD}(\beta)}^{\text{top-k}}(P_T, P_S) = \beta \cdot \text{KL}(\tilde{P}_T \| \tilde{M}) + (1-\beta) \cdot \text{KL}(\tilde{P}_S \| \tilde{M})
+$$
+
+其中 Top-K 索引来自教师模型：$\text{Top-K} = \text{argtop}_K(P_T)$，$\tilde{P}_T$ 和 $\tilde{P}_S$ 是在 Top-K 子集上**重新归一化**的概率分布：
+
+$$
+\tilde{P}_T(v) = \frac{P_T(v)}{\sum_{v' \in \text{Top-K}} P_T(v')}, \quad \tilde{P}_S(v) = \frac{P_S(v)}{\sum_{v' \in \text{Top-K}} P_S(v')}, \quad v \in \text{Top-K}
+$$
+
+**使用示例**：
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --teacher_model Qwen/Qwen2.5-72B-Instruct \
+    --gkd_logits_topk 64 \
+    --dataset your_dataset \
+    ...
+```
+
+> **注意**：Top-K 模式不能与 liger kernel 同时使用（`--use_liger_kernel`）。
+
+### 外部教师模型 API
+
+当设置 `gkd_logits_topk` 时，可以使用外部教师模型 API 服务来获取 logprobs，这样可以避免在训练进程中加载教师模型。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--teacher_model_server` | str | None | 教师模型服务地址<br>如：`http://localhost:8000` |
+| `--gkd_logits_topk` | int | **必需** | 使用外部 API 时必须设置，对应 API 返回的 top_logprobs 数量 |
+
+**支持的后端**：
+- `swift deploy`（vLLM backend）
+- 独立 vLLM 服务（`vllm serve`）
+
+**步骤 1：部署教师模型服务**
+
+```bash
+# 使用 swift deploy 部署教师模型
+CUDA_VISIBLE_DEVICES=0,1 swift deploy \
+    --model Qwen/Qwen2-72B-Instruct \
+    --infer_backend vllm \
+    --port 8000 \
+    --vllm_engine_kwargs '{"max_logprobs": 64}'
+
+# 或使用独立 vLLM 服务
+vllm serve Qwen/Qwen2-72B-Instruct --max-logprobs 64 --port 8000
+```
+
+**步骤 2：启动 GKD 训练**
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2-7B-Instruct \
+    --teacher_model_server http://localhost:8000 \
+    --gkd_logits_topk 20 \
+    --dataset your_dataset \
+    --lmbda 1.0 \
+    --beta 0.5 \
+    ...
+```
+
+> **vLLM max_logprobs 限制**：
+> - vLLM 默认 `max_logprobs=20`，可通过 `--vllm_engine_kwargs '{"max_logprobs": N}'` 参数调整
+> - `gkd_logits_topk` 不能超过服务端的 `max_logprobs` 设置
 
 ## 采样加速
 
@@ -167,6 +249,8 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 > **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 Transformers，建议使用预采样方案。
 
 训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh)
+
+使用 Teacher Server 的训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh)
 
 ### 方案 2：教师模型预采样
 
