@@ -789,9 +789,9 @@
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|chatglm4v|chatglm4v|transformers>=4.42|&#x2718;|-|[zai-org/cogagent-9b-20241220](https://huggingface.co/zai-org/cogagent-9b-20241220)|
 |[ZhipuAI/GLM-4.1V-9B-Base](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Base)|glm4v|glm4v|transformers>=4.53|&#x2714;|-|[zai-org/GLM-4.1V-9B-Base](https://huggingface.co/zai-org/GLM-4.1V-9B-Base)|
 |[ZhipuAI/GLM-4.1V-9B-Thinking](https://modelscope.cn/models/ZhipuAI/GLM-4.1V-9B-Thinking)|glm4v|glm4v|transformers>=4.53|&#x2714;|-|[zai-org/GLM-4.1V-9B-Thinking](https://huggingface.co/zai-org/GLM-4.1V-9B-Thinking)|
-|[ZhipuAI/Glyph](https://modelscope.cn/models/ZhipuAI/Glyph)|glm4v|glm4v|transformers>=4.57|&#x2714;|-|[zai-org/Glyph](https://huggingface.co/zai-org/Glyph)|
-|[ZhipuAI/GLM-4.6V-Flash](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-Flash)|glm4v|glm4v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V-Flash](https://huggingface.co/zai-org/GLM-4.6V-Flash)|
-|[ZhipuAI/AutoGLM-Phone-9B](https://modelscope.cn/models/ZhipuAI/AutoGLM-Phone-9B)|glm4v|glm4v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/AutoGLM-Phone-9B](https://huggingface.co/zai-org/AutoGLM-Phone-9B)|
+|[ZhipuAI/AutoGLM-Phone-9B](https://modelscope.cn/models/ZhipuAI/AutoGLM-Phone-9B)|glm4v|glm4v|transformers>=4.53|&#x2714;|-|[zai-org/AutoGLM-Phone-9B](https://huggingface.co/zai-org/AutoGLM-Phone-9B)|
+|[ZhipuAI/Glyph](https://modelscope.cn/models/ZhipuAI/Glyph)|glm4v|glm4_5v|transformers>=4.57|&#x2714;|-|[zai-org/Glyph](https://huggingface.co/zai-org/Glyph)|
+|[ZhipuAI/GLM-4.6V-Flash](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-Flash)|glm4v|glm4_5v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V-Flash](https://huggingface.co/zai-org/GLM-4.6V-Flash)|
 |[ZhipuAI/GLM-4.5V](https://modelscope.cn/models/ZhipuAI/GLM-4.5V)|glm4v_moe|glm4_5v|transformers>=4.56|&#x2714;|-|[zai-org/GLM-4.5V](https://huggingface.co/zai-org/GLM-4.5V)|
 |[ZhipuAI/GLM-4.5V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.5V-FP8)|glm4v_moe|glm4_5v|transformers>=4.56|&#x2718;|-|[zai-org/GLM-4.5V-FP8](https://huggingface.co/zai-org/GLM-4.5V-FP8)|
 |[ZhipuAI/GLM-4.6V](https://modelscope.cn/models/ZhipuAI/GLM-4.6V)|glm4v_moe|glm4_5v|transformers>=5.0.0.dev|&#x2714;|-|[zai-org/GLM-4.6V](https://huggingface.co/zai-org/GLM-4.6V)|
@@ -1012,6 +1012,8 @@
 |[stepfun-ai/GOT-OCR-2.0-hf](https://modelscope.cn/models/stepfun-ai/GOT-OCR-2.0-hf)|got_ocr2_hf|got_ocr2_hf|-|&#x2718;|vision|[stepfun-ai/GOT-OCR-2.0-hf](https://huggingface.co/stepfun-ai/GOT-OCR-2.0-hf)|
 |[stepfun-ai/Step-Audio-Chat](https://modelscope.cn/models/stepfun-ai/Step-Audio-Chat)|step_audio|step_audio|funasr, sox, conformer, openai-whisper, librosa|&#x2718;|audio|[stepfun-ai/Step-Audio-Chat](https://huggingface.co/stepfun-ai/Step-Audio-Chat)|
 |[stepfun-ai/Step-Audio-2-mini](https://modelscope.cn/models/stepfun-ai/Step-Audio-2-mini)|step_audio2_mini|step_audio2_mini|transformers==4.53.3, torchaudio, librosa|&#x2718;|audio|[stepfun-ai/Step-Audio-2-mini](https://huggingface.co/stepfun-ai/Step-Audio-2-mini)|
+|[stepfun-ai/Step3-VL-10B-Base](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B-Base)|step3_vl|step3_vl|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B-Base](https://huggingface.co/stepfun-ai/Step3-VL-10B-Base)|
+|[stepfun-ai/Step3-VL-10B](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B)|step3_vl|step3_vl|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B](https://huggingface.co/stepfun-ai/Step3-VL-10B)|
 |[moonshotai/Kimi-VL-A3B-Instruct](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Instruct)|kimi_vl|kimi_vl|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-VL-A3B-Instruct](https://huggingface.co/moonshotai/Kimi-VL-A3B-Instruct)|
 |[moonshotai/Kimi-VL-A3B-Thinking](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking)|kimi_vl|kimi_vl|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-VL-A3B-Thinking](https://huggingface.co/moonshotai/Kimi-VL-A3B-Thinking)|
 |[moonshotai/Kimi-VL-A3B-Thinking-2506](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking-2506)|kimi_vl|kimi_vl|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-VL-A3B-Thinking-2506](https://huggingface.co/moonshotai/Kimi-VL-A3B-Thinking-2506)|

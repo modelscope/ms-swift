@@ -2,10 +2,10 @@
 import sys
 from functools import wraps
 
-from transformers import AutoModel, PreTrainedModel
+from transformers import AutoModel, AutoProcessor, PretrainedConfig, PreTrainedModel
 
 from swift.template import TemplateType
-from swift.utils import git_clone_github, safe_snapshot_download
+from swift.utils import Processor, git_clone_github, safe_snapshot_download
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -128,4 +128,45 @@ register_model(
         architectures=['StepAudio2ForCausalLM'],
         requires=['transformers==4.53.3', 'torchaudio', 'librosa'],
         tags=['audio'],
+    ))
+
+
+class Step3VLLoader(ModelLoader):
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        config = super().get_config(model_dir)
+        config.vocab_size = config.text_config.vocab_size
+        return config
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        processor = AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+        return processor
+
+    def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
+                  model_kwargs) -> PreTrainedModel:
+        key_mapping = {
+            '^vision_model': 'model.vision_model',
+            r'^model(?!\.(language_model|vision_model))': 'model.language_model',
+            'vit_large_projector': 'model.vit_large_projector',
+        }
+        model_kwargs = model_kwargs.copy()
+        model_kwargs['key_mapping'] = key_mapping
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.step3_vl,
+        [
+            ModelGroup([
+                Model('stepfun-ai/Step3-VL-10B-Base', 'stepfun-ai/Step3-VL-10B-Base'),
+                Model('stepfun-ai/Step3-VL-10B', 'stepfun-ai/Step3-VL-10B'),
+            ])
+        ],
+        Step3VLLoader,
+        template=TemplateType.step3_vl,
+        model_arch=ModelArch.step3_vl,
+        architectures=['StepVLForConditionalGeneration'],
+        requires=['transformers>=4.57.0'],
+        tags=['vision'],
     ))
