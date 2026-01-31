@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from .activation_cpu_offload import ActivationCpuOffloadCallBack
 from .adalora import AdaloraCallback
 from .deepspeed_elastic import DeepspeedElasticCallback, GracefulExitCallback
 from .early_stop import EarlyStopCallback
@@ -6,6 +7,7 @@ from .lisa import LISACallback
 from .perf_log import PerfMetricsLogCallback
 
 callbacks_map = {
+    'activation_cpu_offload': ActivationCpuOffloadCallBack,
     'adalora': AdaloraCallback,
     'deepspeed_elastic': DeepspeedElasticCallback,
     'early_stop': EarlyStopCallback,
