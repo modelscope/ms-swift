@@ -220,7 +220,9 @@ gradient_checkpointing: true
 - logging_steps: 日志打印间隔，默认为5。
 - router_aux_loss_coef: 用于moe模型训练时，设置 aux_loss 的权重，默认为`0.`。
   - 注意：在"ms-swift==3.7.0"，其默认为None，从config.json中读取，该行为在"ms-swift>=3.7.1"被修改。
-- enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
+- enable_dft_loss:是否在SFT训练中启用 [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认值为 `False`。
+  - [DFT](https://arxiv.org/abs/2508.05629) 采用基于 token 概率的**软门控机制**
+  - [Profit](https://arxiv.org/abs/2601.09195) 则提出了基于 token 概率的**硬门控机制** 当`enable_dft_loss`参数设置为 `True` 时，可额外通过配置环境变量 `HARD_GATING_PROBABILITY_THRESHOLD` 指定概率阈值（浮点数）。概率低于该阈值的 token 将被排除在 loss 计算之外，以硬门控机制进行监督微调。
 - enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
   - 注意：该参数为"ms-swift>=3.8"新增，若要在"ms-swift<3.8"使用channel loss，请查看v3.7文档。
 - logging_dir: tensorboard日志保存路径。默认为None，即设置为`f'{self.output_dir}/runs'`。
