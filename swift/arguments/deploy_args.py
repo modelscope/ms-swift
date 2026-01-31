@@ -114,18 +114,10 @@ class RolloutArguments(DeployArguments):
     context_manager: Optional[str] = None
 
     def __post_init__(self):
-        self._check_trl_version()
         self._set_default_engine_type()
         super().__post_init__()
         self._check_args()
         self._check_device_count()
-
-    def _check_trl_version(self):
-        try:
-            from trl.scripts.vllm_serve import WeightSyncWorkerExtension
-        except ImportError as e:
-            raise ImportError("Could not import 'WeightSyncWorkerExtension' from 'trl.scripts.vllm_serve'. "
-                              "Please upgrade your 'trl' package by 'pip install -U trl'") from e
 
     def _set_default_engine_type(self):
         if self.vllm_use_async_engine is None:
