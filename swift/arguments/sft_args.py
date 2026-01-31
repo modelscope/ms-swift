@@ -93,10 +93,9 @@ class SwanlabArguments:
             if self.swanlab_notification_method == 'email':
                 if not (self.swanlab_sender_email and self.swanlab_receiver_email and self.swanlab_smtp_server
                         and self.swanlab_smtp_port):
-                    raise ValueError(
-                        "When 'swanlab_notification_method' is 'email', both 'swanlab_sender_email' "
-                        "and 'swanlab_receiver_email' and 'swanlab_smtp_server' and 'swanlab_smtp_port' must be provided."
-                    )
+                    raise ValueError("When 'swanlab_notification_method' is 'email', both 'swanlab_sender_email' "
+                                     "and 'swanlab_receiver_email' and 'swanlab_smtp_server' and 'swanlab_smtp_port' "
+                                     'must be provided.')
                 callback = EmailCallback(
                     sender_email=self.swanlab_sender_email,
                     receiver_email=self.swanlab_receiver_email,
