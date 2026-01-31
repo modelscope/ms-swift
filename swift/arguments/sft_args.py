@@ -44,6 +44,7 @@ class SwanlabArguments:
             `swanlab_notification_method` is 'email'.
         swanlab_smtp_server (Optional[str]): The SMTP server address for email notification (e.g., 'smtp.qq.com').
         swanlab_smtp_port (Optional[int]): The SMTP server port for email notification (e.g., 465).
+        swanlab_email_language (Optional[str]): email messages language. Supports 'zh', 'en'. The default is "zh".
         swanlab_mode (Literal['cloud', 'local']): The operation mode, either 'cloud' for cloud-based logging or 'local'
             for local-only logging.
     """
@@ -58,6 +59,7 @@ class SwanlabArguments:
     swanlab_receiver_email: Optional[str] = None
     swanlab_smtp_server: Optional[str] = None
     swanlab_smtp_port: Optional[int] = None
+    swanlab_email_language: Optional[str] = "zh"
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
 
     def _init_swanlab(self):
@@ -89,10 +91,10 @@ class SwanlabArguments:
                     f' are: {list(notification_mapping.keys())}')
             
             if self.swanlab_notification_method == 'email':
-                if not (self.swanlab_sender_email and self.swanlab_receiver_email):
+                if not (self.swanlab_sender_email and self.swanlab_receiver_email and self.swanlab_smtp_server and self.swanlab_smtp_port):
                     raise ValueError(
                         "When 'swanlab_notification_method' is 'email', both 'swanlab_sender_email' "
-                        "and 'swanlab_receiver_email' must be provided."
+                        "and 'swanlab_receiver_email' and 'swanlab_smtp_server' and 'swanlab_smtp_port' must be provided."
                     )
                 callback = EmailCallback(
                     sender_email=self.swanlab_sender_email,
@@ -100,6 +102,7 @@ class SwanlabArguments:
                     password=self.swanlab_secret,
                     smtp_server=self.swanlab_smtp_server,
                     port=self.swanlab_smtp_port,
+                    language=self.swanlab_email_language
                 )
             else:
                 callback = callback_cls(
