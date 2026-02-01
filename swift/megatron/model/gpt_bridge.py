@@ -1296,7 +1296,6 @@ class GPTBridge:
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.task_type != 'embedding':
             if self.args.untie_embeddings_and_output_weights:
-                # if not to_mcore or self.args.task_type in {'causal_lm', 'generative_reranker'}:
                 hf_lm_head_key = self.hf_lm_head_key
                 if self.args.task_type == 'seq_cls':
                     hf_lm_head_key = self.hf_score_key
