@@ -182,7 +182,7 @@ def prepare_adapter(model):
                 p.requires_grad = False
     # setting average_gradients_across_tp_domain
     for m in model.modules():
-        if m.__class__ is LoraLinear:
+        if isinstance(m, LoraLinear):
             assert args.is_multimodal or args.hf_model_type == 'qwen3_next'  # just check
             for p in m.parameters():
                 if p.requires_grad:

@@ -1300,7 +1300,7 @@ class GPTBridge:
                 hf_lm_head_key = self.hf_lm_head_key
                 if self.args.task_type == 'seq_cls':
                     hf_lm_head_key = self.hf_score_key
-                if not to_mcore or to_mcore and hf_lm_head_key in hf_state_dict:
+                if not to_mcore or hf_lm_head_key in hf_state_dict:
                     self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
             elif to_mcore and lm_model.output_layer.weight is not None:
                 self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
