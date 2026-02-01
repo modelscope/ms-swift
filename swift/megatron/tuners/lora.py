@@ -67,7 +67,7 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         if self.is_expert:
             self.tp_size = get_expert_tensor_parallel_world_size()
             if self.tp_size > 1:
-                raise ValueError('Currently, LoRA does not support ETP.')  # TODO: all-reduce
+                raise ValueError('Currently, LoRA does not support ETP.')  # TODO: init/all-reduce
         else:
             self.tp_size = get_tensor_model_parallel_world_size()
         self.update_layer(
@@ -201,13 +201,9 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 )
                 lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
         for lora in [lora_a, lora_b]:
-            if getattr(lora, 'parallel_mode', None) is None:
+            if getattr(lora, 'parallel_mode', None) is None and hasattr(lora, 'weight'):  # TODO: experts
                 sequence_parallel = True if isinstance(self.base_layer, TopKRouter) else self.sequence_parallel
-                if hasattr(lora, 'weight'):
-                    lora.weight.sequence_parallel = sequence_parallel
-                else:
-                    for i in range(self.base_layer.num_gemms):
-                        getattr(lora, f'weight{i}').sequence_parallel = sequence_parallel
+                lora.weight.sequence_parallel = sequence_parallel
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
         if hasattr(self, 'lora_bias'):
@@ -308,7 +304,34 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             else:
                 self.base_layer.return_layernorm_output = True
                 if is_torch_npu_available():
-                    result, bias = self.base_layer(x, *args, **kwargs)
+                    # NPU: base_layer only returns (output, bias); it does not expose the LayerNorm/RMSNorm output.
+                    inp = x  # Keep the original pre-norm input.
+                    result, bias = self.base_layer(inp, *args, **kwargs)
+
+                    # Key: For LoRA we need the same "x" as in the non-NPU branch, i.e. the post-norm activation
+                    # (LayerNorm/RMSNorm output, which is the actual input to the fused linear).
+                    if hasattr(self.base_layer, 'config') and (hasattr(self.base_layer, '_layernorm')
+                                                               or hasattr(self.base_layer, '_rmsnorm')):
+                        norm_type = getattr(self.base_layer.config, 'normalization', None)
+
+                        if norm_type == 'LayerNorm':
+                            if not hasattr(self.base_layer, '_layernorm'):
+                                raise RuntimeError(
+                                    'NPU LoRA path expects base_layer to provide `_layernorm`, but it is missing. '
+                                    'Cannot reconstruct the post-LayerNorm activation for LoRA.')
+                            x = self.base_layer._layernorm(inp)
+                        else:
+                            # Default to RMSNorm path when normalization is not LayerNorm.
+                            if not hasattr(self.base_layer, '_rmsnorm'):
+                                raise RuntimeError(
+                                    'NPU LoRA path expects base_layer to provide `_rmsnorm`, but it is missing. '
+                                    'Cannot reconstruct the post-RMSNorm activation for LoRA.')
+                            x = self.base_layer._rmsnorm(inp)
+                    else:
+                        raise RuntimeError('NPU LoRA path requires base_layer to expose post-norm activations '
+                                           '(LayerNorm/RMSNorm output). Expected base_layer to have `config` '
+                                           'and either `_layernorm` or `_rmsnorm`. '
+                                           f'Got base_layer type: {type(self.base_layer)}. ')
                 else:
                     (result, x), bias = self.base_layer(x, *args, **kwargs)
         elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):

@@ -251,6 +251,7 @@ class MLLMModelType:
     mistral3_2506 = 'mistral3_2506'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
+    step3_vl = 'step3_vl'
 
     jina_reranker_m0 = 'jina_reranker_m0'
 
