@@ -5,7 +5,7 @@ import megatron.core
 import torch
 from megatron.core import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.tensor_parallel import VocabParallelEmbedding, scatter_to_sequence_parallel_region
+from megatron.core.tensor_parallel import VocabParallelEmbedding, reduce_scatter_to_sequence_parallel_region
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -70,7 +70,7 @@ class MultimodalGPTModel(MegatronModule):
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
                 group_kwargs = {'group': _self.tp_group} if mcore_013 else {}
-                res = scatter_to_sequence_parallel_region(res, **group_kwargs)
+                res = reduce_scatter_to_sequence_parallel_region(res, **group_kwargs) / args.tensor_model_parallel_size
             return res
 
         VocabParallelEmbedding.forward = forward

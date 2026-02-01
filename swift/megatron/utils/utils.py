@@ -15,6 +15,7 @@ from megatron.core.transformer.transformer_layer import get_transformer_layer_of
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
 from packaging import version
+from peft.tuners.lora import Linear as LoraLinear
 from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
 
@@ -156,6 +157,7 @@ def _patch_deepcopy():
 
 
 def prepare_adapter(model):
+    from swift.megatron.tuners import LoraParallelLinear
     args = get_args()
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
@@ -179,6 +181,15 @@ def prepare_adapter(model):
         for n, p in model.named_parameters():
             if '.ref_adapter.' in n:
                 p.requires_grad = False
+    # setting average_gradients_across_tp_domain
+    for m in model.modules():
+        if isinstance(m, LoraLinear):
+            # just check
+            assert args.is_multimodal or args.hf_model_type == 'qwen3_next'
+            assert not isinstance(m, LoraParallelLinear)
+            for p in m.parameters():
+                if p.requires_grad:
+                    p.average_gradients_across_tp_domain = True
     return model
 
 
