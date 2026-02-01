@@ -1,8 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import math
-import os
-import shutil
 from contextlib import contextmanager
 from typing import Any, Dict
 
