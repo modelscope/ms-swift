@@ -140,6 +140,7 @@ class GPTModel(McoreGPTModel):
                 parallel_mode=None,
                 skip_weight_param_allocation=False,
             )
+            self.output_layer.weight.average_gradients_across_tp_domain = True
 
         if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
             config.apply_rope_fusion = False

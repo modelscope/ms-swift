@@ -454,8 +454,9 @@ class GPTBridge:
             if to_mcore:
                 assert mg_param is not None, f'mg_module: {mg_module}, mg_key: {mg_key}'
                 hf_weight = hf_state_dict[hf_key].load()
-                if module_key in {'embedding.word_embeddings', 'output_layer'
-                                  } and hf_weight.shape[0] < self.args.padded_vocab_size:
+                if module_key in {
+                        'embedding.word_embeddings', 'output_layer'
+                } and hf_weight.shape[0] < self.args.padded_vocab_size and self.args.task_type != 'seq_cls':
                     hf_weight = F.pad(hf_weight, (0, 0, 0, self.args.padded_vocab_size - hf_weight.shape[0]))
                 hf_scale_inv = None
                 if f'{hf_key}_scale_inv' in hf_state_dict:
@@ -1267,10 +1268,10 @@ class GPTBridge:
             hf_state_dict = {}
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.untie_embeddings_and_output_weights:
-            if not to_mcore or self.args.task_type == 'causal_lm':
-                hf_lm_head_key = self.hf_lm_head_key
-                if not to_mcore and self.args.task_type == 'seq_cls':
-                    hf_lm_head_key = self.hf_score_key
+            hf_lm_head_key = self.hf_lm_head_key
+            if self.args.task_type == 'seq_cls':
+                hf_lm_head_key = self.hf_score_key
+            if not to_mcore or hf_lm_head_key in hf_state_dict:
                 self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
         elif to_mcore and lm_model.output_layer.weight is not None:
             self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
