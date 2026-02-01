@@ -157,6 +157,7 @@ def _patch_deepcopy():
 
 
 def prepare_adapter(model):
+    from swift.megatron.tuners import LoraParallelLinear
     args = get_args()
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
@@ -183,7 +184,9 @@ def prepare_adapter(model):
     # setting average_gradients_across_tp_domain
     for m in model.modules():
         if isinstance(m, LoraLinear):
-            assert args.is_multimodal or args.hf_model_type == 'qwen3_next'  # just check
+            # just check
+            assert args.is_multimodal or args.hf_model_type == 'qwen3_next'
+            assert not isinstance(m, LoraParallelLinear)
             for p in m.parameters():
                 if p.requires_grad:
                     p.average_gradients_across_tp_domain = True
