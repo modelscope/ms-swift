@@ -337,8 +337,8 @@ class BaseMegatronTrainer(ABC):
 
                 if no_weight_decay_cond is not None:
                     no_wd: bool = no_weight_decay_cond(name, param)
-                elif args.apply_wd_to_qk_layernorm and any(name.endswith(k) for k in ['q_layernorm.weight', 'k_layernorm.weight']):
-                    # assert args.hf_model_type == 'qwen3_next', 'currently only support qwen3_next'
+                elif args.apply_wd_to_qk_layernorm and any(
+                        name.endswith(k) for k in ['q_layernorm.weight', 'k_layernorm.weight']):
                     no_wd = False
                 else:
                     # Do not regularize biases and norm parameters.

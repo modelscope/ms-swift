@@ -731,6 +731,8 @@ class MegatronArguments(ExtraMegatronArguments):
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
+        if self.apply_wd_to_qk_layernorm and args.hf_model_type != 'qwen3_next':
+            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
