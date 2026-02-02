@@ -6,7 +6,6 @@ import torch
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_decoder_block_spec
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
-from megatron.training import get_args
 from packaging import version
 
 from swift.model import ModelType

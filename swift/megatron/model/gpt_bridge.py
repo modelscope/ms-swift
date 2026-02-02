@@ -9,7 +9,6 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import transformers
 from megatron.core import mpu
-from megatron.training import get_args
 from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm

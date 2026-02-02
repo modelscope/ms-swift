@@ -20,8 +20,7 @@ from packaging import version
 from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
 
-from swift.utils import (get_logger, git_clone_github, is_flash_attn_3_available, is_megatron_available,
-                         safe_ddp_context, split_list, subprocess_run)
+from swift.utils import get_logger, is_flash_attn_3_available, is_last_rank, split_list
 
 logger = get_logger()
 
@@ -384,15 +383,6 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
-def _patch_megatron_tokenizer():
-    from megatron.training import global_vars
-
-    def build_tokenizer(args):
-        return 'dummy_tokenizer'
-
-    global_vars.build_tokenizer = build_tokenizer
-
-
 def _patch_mtp():
     from megatron.core import InferenceParams
     from megatron.core.transformer.multi_token_prediction import MultiTokenPredictionLayer
@@ -527,7 +517,6 @@ def _patch_peft_ModulesToSaveWrapper():
 
 def _patch_TransformerLayer():
     import megatron.core
-    from megatron.training import get_args
     from megatron.core.transformer import TransformerLayer
     _origin_forward = TransformerLayer.forward
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
@@ -673,7 +662,6 @@ def _patch_mrope():
     import megatron.core
     from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
     from megatron.core.models.common.embeddings import rope_utils
-    from megatron.training import get_args
 
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -811,7 +799,6 @@ def _patch_unified_memory():
 
 
 def _patch_megatron_timeout():
-    from megatron.training import get_args
     from megatron.core import parallel_state
 
     create_group_origin = parallel_state.create_group
@@ -826,7 +813,7 @@ def _patch_megatron_timeout():
 
 
 def _patch_megatron_swanlab():
-    from megatron.training import global_vars, is_last_rank, wandb_utils, get_args
+    from megatron.training import global_vars, wandb_utils, get_args
 
     def _set_wandb_writer(*_args, **kwargs):
         args = get_args()
@@ -888,14 +875,13 @@ def init_megatron_env():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
-    _patch_build_train_valid_test_datasets()
+    # _patch_build_train_valid_test_datasets()
     _patch_mrope()
     _patch__write_item()
-    _patch_megatron_tokenizer()
     _patch_mtp()
     _patch_megatron_timeout()
-    _patch_megatron_swanlab()
-    _patch_modelopt()
+    # _patch_megatron_swanlab()
+    # _patch_modelopt()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:

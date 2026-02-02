@@ -9,7 +9,6 @@ from megatron.core.tensor_parallel import VocabParallelEmbedding, reduce_scatter
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.training import get_args
 from packaging import version
 
 from .gpt_model import GPTModel

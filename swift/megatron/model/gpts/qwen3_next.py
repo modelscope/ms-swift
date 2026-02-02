@@ -17,7 +17,6 @@ from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
-from megatron.training import get_args
 from packaging import version
 
 from swift.megatron.utils import get_local_layer_specs

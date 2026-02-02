@@ -10,9 +10,6 @@ from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec
                                                       get_gpt_mtp_block_spec)
 from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import get_gpt_heterogeneous_layer_spec
 from megatron.core.transformer.spec_utils import import_module
-from megatron.training import get_args, print_rank_0
-from megatron.training.arguments import core_transformer_config_from_args
-from megatron.training.yaml_arguments import core_transformer_config_from_yaml
 from packaging import version
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
@@ -74,6 +71,9 @@ def model_provider(pre_process=True,
     Returns:
         Union[GPTModel, megatron.legacy.model.GPTModel]: The returned model
     """
+    from megatron.training import get_args, print_rank_0
+    from megatron.training.arguments import core_transformer_config_from_args
+    from megatron.training.yaml_arguments import core_transformer_config_from_yaml
     from .register import get_megatron_model_meta
     args = get_args()
     use_te = args.transformer_impl == 'transformer_engine'

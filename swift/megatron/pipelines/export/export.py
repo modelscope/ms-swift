@@ -5,9 +5,9 @@ from typing import List, Optional, Union
 
 import torch.distributed as dist
 from megatron.core import mpu
-from megatron.training import initialize_megatron
-from megatron.training.checkpointing import load_checkpoint
-from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
+# from megatron.training import initialize_megatron
+# from megatron.training.checkpointing import load_checkpoint
+# from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from transformers.utils import strtobool
 
 from swift.megatron.arguments import MegatronExportArguments

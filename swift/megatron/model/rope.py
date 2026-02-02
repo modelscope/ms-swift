@@ -3,7 +3,6 @@ from typing import Any, Dict, Optional, Tuple
 
 import torch
 import transformers
-from megatron.training import get_args
 from packaging import version
 from transformers import PretrainedConfig
 

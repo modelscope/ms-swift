@@ -23,7 +23,6 @@ from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler, 
 from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import WrappedTensor, deprecate_inference_params
-from megatron.training import get_args
 from packaging import version
 
 from swift.utils import get_logger

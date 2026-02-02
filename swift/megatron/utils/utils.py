@@ -13,7 +13,6 @@ from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.transformer_block import get_num_layers_to_build
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
-from megatron.training import checkpointing, get_args
 from packaging import version
 from peft.tuners.lora import Linear as LoraLinear
 from peft.utils.other import ModulesToSaveWrapper
@@ -165,9 +164,8 @@ def _patch_deepcopy():
         copy.deepcopy = _origin_deepcopy
 
 
-def prepare_adapter(model):
+def prepare_adapter(args, model):
     from swift.megatron.tuners import LoraParallelLinear
-    args = get_args()
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
     modules_to_save = get_modules_to_save(args, model)
@@ -202,8 +200,7 @@ def prepare_adapter(model):
     return model
 
 
-def prepare_mcore_model(model):
-    args = get_args()
+def prepare_mcore_model(args, model):
     if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
@@ -302,8 +299,7 @@ def copy_ref_adapter_weight(model, ref_adapter_name: str):
                 sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
 
 
-def forward_step_helper(model, inputs, dtype=None):
-    args = get_args()
+def forward_step_helper(args, model, inputs, dtype=None):
     if mpu.is_pipeline_first_stage():
         micro_batch_size = 1  # use qkv_format 'thd'
         if not args.padding_free:

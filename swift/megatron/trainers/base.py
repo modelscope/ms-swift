@@ -25,14 +25,14 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector
-from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
-                               get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
-                               print_rank_last, training)
-from megatron.training.checkpointing import check_checkpoint_args, load_checkpoint, set_checkpoint_version
-from megatron.training.dist_signal_handler import DistributedSignalHandler
-from megatron.training.theoretical_memory_usage import report_theoretical_memory
-from megatron.training.training import num_floating_point_operations
-from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
+# from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
+#                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
+#                                print_rank_last, training)
+# from megatron.training.checkpointing import check_checkpoint_args, load_checkpoint, set_checkpoint_version
+# from megatron.training.dist_signal_handler import DistributedSignalHandler
+# from megatron.training.theoretical_memory_usage import report_theoretical_memory
+# from megatron.training.training import num_floating_point_operations
+# from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm

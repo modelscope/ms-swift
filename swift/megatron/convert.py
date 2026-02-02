@@ -6,9 +6,6 @@ import shutil
 from dataclasses import fields
 
 import torch
-from megatron.training.checkpointing import load_checkpoint
-from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
-from megatron.training.initialize import initialize_megatron
 from transformers.utils import strtobool
 
 from swift.arguments import ExportArguments

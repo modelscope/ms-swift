@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
-from megatron.training import get_args
 from PIL import Image
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 

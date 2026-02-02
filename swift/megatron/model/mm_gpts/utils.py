@@ -4,7 +4,6 @@ from contextlib import contextmanager
 
 import torch
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
-from megatron.training import get_args
 from transformers import PreTrainedModel
 from transformers.utils import ContextManagers
 

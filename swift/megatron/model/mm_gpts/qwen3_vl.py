@@ -10,7 +10,6 @@ from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.gpt import gpt_model
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import WrappedTensor, deprecate_inference_params, make_viewless_tensor
-from megatron.training import get_args
 from PIL import Image
 
 from swift.model import ModelType
