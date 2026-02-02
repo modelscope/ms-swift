@@ -202,7 +202,10 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
         for lora in [lora_a, lora_b]:
             if getattr(lora, 'parallel_mode', None) is None and hasattr(lora, 'weight'):  # TODO: experts
-                sequence_parallel = True if isinstance(self.base_layer, TopKRouter) else self.sequence_parallel
+                if isinstance(self.base_layer, TopKRouter):
+                    sequence_parallel = self.base_layer.weight.sequence_parallel
+                else:
+                    sequence_parallel = self.sequence_parallel
                 lora.weight.sequence_parallel = sequence_parallel
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
