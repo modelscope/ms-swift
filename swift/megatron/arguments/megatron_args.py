@@ -421,6 +421,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_masked_softmax_fusion: bool = False
     no_bias_dropout_fusion: Optional[bool] = None
     no_bias_swiglu_fusion: bool = False
+    no_bias_gelu_fusion: bool = False
     no_rope_fusion: Optional[bool] = None
     no_gradient_accumulation_fusion: bool = False
     cross_entropy_loss_fusion: bool = False
