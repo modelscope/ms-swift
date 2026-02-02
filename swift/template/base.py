@@ -677,14 +677,14 @@ class Template(ProcessorMixin):
         return model.generate(*args, **kwargs)
 
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
-        # Do not print template_meta.suffix[-1] and eos_token.
+        # Do not print template_meta.suffix_stop and eos_token.
         # However, other stop_words will be printed.
         tokenizer = self.tokenizer
 
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
             generate_ids = generate_ids[:-1]
         # skip suffix and eos_token
-        template_suffix = self.template_meta.suffix[-1]
+        template_suffix = self.template_meta.suffix_stop
         if isinstance(template_suffix, str):
             # [-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
             template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)[-1:]
@@ -2112,6 +2112,8 @@ class Template(ProcessorMixin):
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            if hasattr(image_embeds, 'pooler_output'):
+                image_embeds = image_embeds.pooler_output
             inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         else:
             if pixel_values is None:
@@ -2125,6 +2127,8 @@ class Template(ProcessorMixin):
                 grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
             pixel_values_mixed = pixel_values_mixed.type(dtype)
             mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if hasattr(mixed_embeds, 'pooler_output'):
+                mixed_embeds = mixed_embeds.pooler_output
             if pixel_values is None:
                 image_embeds = None
                 video_embeds = mixed_embeds

@@ -207,6 +207,7 @@ class MLLMTemplateType:
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
+    deepseek_ocr2 = 'deepseek_ocr2'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
@@ -243,6 +244,7 @@ class MLLMTemplateType:
     mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
+    step3_vl = 'step3_vl'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

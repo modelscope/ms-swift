@@ -206,6 +206,7 @@ class MLLMModelType:
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
+    deepseek_ocr2 = 'deepseek_ocr2'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
@@ -250,6 +251,7 @@ class MLLMModelType:
     mistral3_2506 = 'mistral3_2506'
     paddle_ocr = 'paddle_ocr'
     hunyuan_ocr = 'hunyuan_ocr'
+    step3_vl = 'step3_vl'
 
     jina_reranker_m0 = 'jina_reranker_m0'
 

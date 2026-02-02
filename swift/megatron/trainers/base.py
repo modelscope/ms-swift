@@ -6,7 +6,7 @@ import os
 import shutil
 import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
 from functools import partial
 from typing import Callable, Dict, List, Literal, Optional
@@ -317,7 +317,9 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
+        args = get_args()
         if self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            assert self.args.megatron_model_meta.is_multimodal
             vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
             aligner_lr = self.args.aligner_lr if self.args.aligner_lr is not None else self.args.lr
             logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {self.args.lr}')
@@ -335,6 +337,9 @@ class BaseMegatronTrainer(ABC):
 
                 if no_weight_decay_cond is not None:
                     no_wd: bool = no_weight_decay_cond(name, param)
+                elif args.apply_wd_to_qk_layernorm and any(
+                        name.endswith(k) for k in ['q_layernorm.weight', 'k_layernorm.weight']):
+                    no_wd = False
                 else:
                     # Do not regularize biases and norm parameters.
                     #  optionally, also skip weight decay for embedding parameters if requested
@@ -423,10 +428,6 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_get_param_groups(self):
-        if not self.args.megatron_model_meta.is_multimodal or (self.args.vit_lr is None
-                                                               and self.args.aligner_lr is None):
-            yield
-            return
         from megatron.core import optimizer
 
         _get_param_groups = optimizer._get_param_groups
@@ -497,7 +498,12 @@ class BaseMegatronTrainer(ABC):
         # read iteration
         if not args.finetune:
             args.iteration, args.num_floating_point_operations_so_far = self._load_iteration()
-        with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
+
+        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            param_groups_context = self._patch_get_param_groups()
+        else:
+            param_groups_context = nullcontext()
+        with self._patch_load_state_dict(self._load_base_checkpoint), param_groups_context:
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         self.wrapped_models = model
@@ -711,9 +717,9 @@ class BaseMegatronTrainer(ABC):
             total_loss_dict[key] = numerator / denominator
         if self.eval_metrics is not None:
             metric = self.eval_metrics.compute()
-        for k, v in metric.items():
-            total_loss_dict[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
-        self.eval_metrics.reset()
+            for k, v in metric.items():
+                total_loss_dict[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
+            self.eval_metrics.reset()
         timers('evaluate').stop()
         timers.log(['evaluate'])
         self.custom_log(total_loss_dict, 'eval')
@@ -1118,11 +1124,19 @@ class BaseMegatronTrainer(ABC):
                         module.unmerge()
 
     @staticmethod
-    def _copy_args(output_dir):
-        if is_last_rank():
-            args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
-            if os.path.exists(args_path):
-                shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+    def copy_path(src_path: str, tgt_path: str):
+        if not is_last_rank():
+            return
+        if not os.path.exists(src_path):
+            raise FileNotFoundError(f'Source path does not exist: {src_path}')
+
+        if os.path.isfile(src_path):
+            os.makedirs(os.path.dirname(tgt_path), exist_ok=True)
+            shutil.copy(src_path, tgt_path)
+        elif os.path.isdir(src_path):
+            shutil.copytree(src_path, tgt_path, dirs_exist_ok=True)
+        else:
+            raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
     def save_checkpoint(self, iteration, model, *_args, **kwargs):
         args = get_args()
@@ -1130,7 +1144,8 @@ class BaseMegatronTrainer(ABC):
         os.makedirs(output_dir, exist_ok=True)
         origin_save = args.save
         args.save = output_dir
-        self._copy_args(output_dir)
+        args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+        self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
@@ -1142,10 +1157,23 @@ class BaseMegatronTrainer(ABC):
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.tuner_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
+                origin_output_dir = output_dir
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
-                self._copy_args(output_dir)
-            self.bridge.save_weights(self.unwrapped_models, output_dir, is_peft_format=save_peft_format)
+                for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
+                    src_path = os.path.join(origin_output_dir, fname)
+                    self.copy_path(src_path, os.path.join(output_dir, fname))
+                # common.pt
+                common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
+                tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
+                os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
+                self.copy_path(common_path, tgt_common_path)
+            self.bridge.save_weights(
+                self.unwrapped_models,
+                output_dir,
+                is_peft_format=save_peft_format,
+                processor=self.template.processor,
+                config=self.template.config)
             if args.tuner_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 

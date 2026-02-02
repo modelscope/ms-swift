@@ -469,8 +469,9 @@ class GPTBridge:
             if to_mcore:
                 assert mg_param is not None, f'mg_module: {mg_module}, mg_key: {mg_key}'
                 hf_weight = hf_state_dict[hf_key].load()
-                if module_key in {'embedding.word_embeddings', 'output_layer'
-                                  } and hf_weight.shape[0] < self.args.padded_vocab_size:
+                if module_key in {
+                        'embedding.word_embeddings', 'output_layer'
+                } and hf_weight.shape[0] < self.args.padded_vocab_size and self.args.task_type != 'seq_cls':
                     hf_weight = F.pad(hf_weight, (0, 0, 0, self.args.padded_vocab_size - hf_weight.shape[0]))
                 hf_scale_inv = None
                 if f'{hf_key}_scale_inv' in hf_state_dict:
@@ -708,6 +709,15 @@ class GPTBridge:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
+    def _get_hf_grouped(self):
+        if self.args.hf_model_type in {
+                'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'dots1', 'ernie4_5_moe', 'glm4_moe',
+                'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
+                'qwen3_vl_moe'
+        }:
+            return False, False
+        return None, None
+
     def _set_mlp_state(self,
                        mg_mlp,
                        hf_state_dict,
@@ -726,11 +736,15 @@ class GPTBridge:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = args.num_experts // self.ep_size
-        # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if self.is_transformers_5 and self.args.hf_model_type in {'glm4v_moe', 'glm4_moe_lite'}:
-            hf_grouped = False
-            is_gate_up = False
+        # transformers 5.0 compatibility
+        if self.is_transformers_5:
+            _hf_grouped, _is_gate_up = self._get_hf_grouped()
+            if _hf_grouped is not None:
+                hf_grouped = _hf_grouped
+            if _is_gate_up is not None:
+                is_gate_up = _is_gate_up
+
         if to_mcore or hf_grouped:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
@@ -1282,10 +1296,10 @@ class GPTBridge:
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.task_type != 'embedding':
             if self.args.untie_embeddings_and_output_weights:
-                if not to_mcore or self.args.task_type in {'causal_lm', 'generative_reranker'}:
-                    hf_lm_head_key = self.hf_lm_head_key
-                    if self.args.task_type == 'seq_cls':
-                        hf_lm_head_key = self.hf_score_key
+                hf_lm_head_key = self.hf_lm_head_key
+                if self.args.task_type == 'seq_cls':
+                    hf_lm_head_key = self.hf_score_key
+                if not to_mcore or hf_lm_head_key in hf_state_dict:
                     self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
             elif to_mcore and lm_model.output_layer.weight is not None:
                 self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)
@@ -1454,7 +1468,12 @@ class GPTBridge:
         with torch.no_grad():
             yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
 
-    def save_weights(self, mg_models, output_dir: str, is_peft_format: bool = False) -> None:
+    def save_weights(self,
+                     mg_models,
+                     output_dir: str,
+                     is_peft_format: bool = False,
+                     processor=None,
+                     config=None) -> None:
         """Save the mg_model checkpoint in HF format"""
         torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
@@ -1465,6 +1484,10 @@ class GPTBridge:
             saver.add_tensor(k, v)
         saver.finalize()
         args = self.args
+        processor = processor if processor is not None else self.processor
+        if config is None:
+            config = self.hf_model.config
+        config = copy(config)
         if is_last_rank():
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
@@ -1486,25 +1509,24 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 if args.mtp_num_layers:
-                    self.hf_model.config.num_nextn_predict_layers = args.mtp_num_layers
-                self.hf_model.config.vocab_size = args.padded_vocab_size
+                    config.num_nextn_predict_layers = args.mtp_num_layers
+                config.vocab_size = args.padded_vocab_size
                 if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
-                    if getattr(self.hf_model.config, 'quantization_config', None) is None:
+                    if getattr(config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
                         modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
-                        self.hf_model.config.quantization_config = FineGrainedFP8Config(
-                            modules_to_not_convert=modules_to_not_convert)
-                elif hasattr(self.hf_model.config, 'quantization_config'):
-                    del self.hf_model.config.quantization_config
-                self.hf_model.config.save_pretrained(output_dir)
+                        config.quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
+                elif hasattr(config, 'quantization_config'):
+                    del config.quantization_config
+                config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
                     try:
-                        custom_object_save(self.hf_model, output_dir, config=self.hf_model.config)
+                        custom_object_save(self.hf_model, output_dir, config=config)
                     except FileNotFoundError as e:
                         logger.error(f'custom_object_save Error: {e}')
                 save_checkpoint(
                     None,
-                    self.processor,
+                    processor,
                     output_dir,
                     model_dirs=[args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)

@@ -859,7 +859,12 @@ def _forward_qwen3_vl_or_qwen3_omni(
         media_inputs = processor.image_processor(images=images, return_tensors='pt')
         media_inputs = to_device(media_inputs, input_ids.device)
         pixel_values = media_inputs['pixel_values'].type(dtype)
-        image_embeds, deepstack_visual_embeds = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+        visual_res = self.visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+        if hasattr(visual_res, 'pooler_output'):
+            image_embeds = visual_res.pooler_output
+            deepstack_visual_embeds = visual_res.deepstack_features
+        else:
+            image_embeds, deepstack_visual_embeds = visual_res
         inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         visual_pos_masks = None
     else:
@@ -873,7 +878,12 @@ def _forward_qwen3_vl_or_qwen3_omni(
             pixel_values_mixed = torch.concat([pixel_values, pixel_values_videos], dim=0)
             grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
         pixel_values_mixed = pixel_values_mixed.type(dtype)
-        mixed_embeds, deepstack_visual_embeds = self.visual(pixel_values_mixed, grid_thw=grid_thw)
+        visual_res = self.visual(pixel_values_mixed, grid_thw=grid_thw)
+        if hasattr(visual_res, 'pooler_output'):
+            mixed_embeds = visual_res.pooler_output
+            deepstack_visual_embeds = visual_res.deepstack_features
+        else:
+            mixed_embeds, deepstack_visual_embeds = visual_res
         if pixel_values is None:
             image_embeds = None
             video_embeds = mixed_embeds

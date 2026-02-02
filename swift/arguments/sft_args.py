@@ -38,6 +38,13 @@ class SwanlabArguments:
             SwanLab's `swanlab_notification_method`.
         swanlab_secret (Optional[str]): Defaults to None. The secret corresponding to
             SwanLab's `swanlab_notification_method`.
+        swanlab_sender_email (Optional[str]): The email address of the sender. Required when
+            `swanlab_notification_method` is 'email'.
+        swanlab_receiver_email (Optional[str]): The email address of the receiver. Required when
+            `swanlab_notification_method` is 'email'.
+        swanlab_smtp_server (Optional[str]): The SMTP server address for email notification (e.g., 'smtp.qq.com').
+        swanlab_smtp_port (Optional[int]): The SMTP server port for email notification (e.g., 465).
+        swanlab_email_language (Optional[str]): email messages language. Supports 'zh', 'en'. The default is "zh".
         swanlab_mode (Literal['cloud', 'local']): The operation mode, either 'cloud' for cloud-based logging or 'local'
             for local-only logging.
     """
@@ -48,6 +55,11 @@ class SwanlabArguments:
     swanlab_notification_method: Optional[str] = None
     swanlab_webhook_url: Optional[str] = None
     swanlab_secret: Optional[str] = None
+    swanlab_sender_email: Optional[str] = None
+    swanlab_receiver_email: Optional[str] = None
+    swanlab_smtp_server: Optional[str] = None
+    swanlab_smtp_port: Optional[int] = None
+    swanlab_email_language: Optional[str] = 'zh'
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
 
     def _init_swanlab(self):
@@ -77,10 +89,25 @@ class SwanlabArguments:
                 raise ValueError(
                     f'Unsupported swanlab_notification_method: "{self.swanlab_notification_method}". Supported methods'
                     f' are: {list(notification_mapping.keys())}')
-            callback = callback_cls(
-                webhook_url=self.swanlab_webhook_url,
-                secret=self.swanlab_secret,
-            )
+
+            if self.swanlab_notification_method == 'email':
+                if not (self.swanlab_sender_email and self.swanlab_receiver_email and self.swanlab_smtp_server
+                        and self.swanlab_smtp_port):
+                    raise ValueError("When 'swanlab_notification_method' is 'email', both 'swanlab_sender_email' "
+                                     "and 'swanlab_receiver_email' and 'swanlab_smtp_server' and 'swanlab_smtp_port' "
+                                     'must be provided.')
+                callback = EmailCallback(
+                    sender_email=self.swanlab_sender_email,
+                    receiver_email=self.swanlab_receiver_email,
+                    password=self.swanlab_secret,
+                    smtp_server=self.swanlab_smtp_server,
+                    port=self.swanlab_smtp_port,
+                    language=self.swanlab_email_language)
+            else:
+                callback = callback_cls(
+                    webhook_url=self.swanlab_webhook_url,
+                    secret=self.swanlab_secret,
+                )
             swanlab.register_callbacks([callback])
 
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(

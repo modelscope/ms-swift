@@ -26,6 +26,8 @@ from .utils import AttnImpl, InitModelStrategy, get_default_device_map
 
 logger = get_logger()
 
+transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
+
 
 def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
@@ -218,6 +220,11 @@ class ModelLoader(BaseModelLoader):
         HfConfigFactory.compat_zero3(config)
 
         if self.rope_scaling:
+            if transformers_5:
+                rope_parameters = HfConfigFactory.get_config_attr(config, 'rope_parameters') or {}
+                for key in ['rope_theta', 'partial_rotary_factor']:
+                    if self.rope_scaling.get(key) is None and rope_parameters.get(key) is not None:
+                        self.rope_scaling[key] = rope_parameters[key]
             HfConfigFactory.set_config_attr(config, 'rope_scaling', self.rope_scaling)
         if self.max_model_len:
             HfConfigFactory.set_max_model_len(config, self.max_model_len)
@@ -308,6 +315,8 @@ class ModelLoader(BaseModelLoader):
             patch_output_normalizer(model, model_meta=model_meta)
         elif model_info.task_type == 'generative_reranker':
             self._patch_generative_reranker(model, processor)
+        if transformers_5:
+            self._compat_transformers5(model)
         return model
 
     def _patch_generative_reranker(self, model, processor):
@@ -328,17 +337,16 @@ class ModelLoader(BaseModelLoader):
         if self.leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
             self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
-        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
-            self._compat_transformers5(model)
         model.model_info = self.model_info
         model.model_meta = self.model_meta
         model.model_dir = model_dir
         self._init_generation_config(model, model_dir)
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
 
-    def _add_new_special_tokens(self, model, tokenizer):
+    def _add_new_special_tokens(self, model, processor):
         if not self.new_special_tokens:
             return
+        tokenizer = self._get_tokenizer(processor)
         num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': self.new_special_tokens})
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
@@ -414,7 +422,7 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'qwen3_next':
                 from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
                 z3_leaf_modules = [Qwen3NextSparseMoeBlock]
-            elif architecture == 'OlmoeForCausalLM':
+            elif hf_model_type == 'olmoe':
                 from transformers.models.olmoe.modeling_olmoe import OlmoeSparseMoeBlock
                 z3_leaf_modules = [OlmoeSparseMoeBlock]
 

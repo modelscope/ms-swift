@@ -1,8 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import math
-import os
-import shutil
 from contextlib import contextmanager
 from typing import Any, Dict
 
@@ -25,7 +23,7 @@ def _test_params_sum(model):
     for n, p in model.named_parameters():
         n_parameter += 1
         sum_ = p.to(device='cuda', dtype=torch.float32).abs().sum().cpu().item()
-        if sum_ == 0:
+        if sum_ == 0 and '.lora_B.' not in n:
             zero_count += 1
             logger.warning(f'n: {n}, sum: {sum_}')
         elif math.isnan(sum_) or math.isinf(sum_) or sum_ > 1e10:
@@ -200,7 +198,7 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=torch_dtype)
-        if args.tensor_model_parallel_size > 1:
+        if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:
                 mg_logits = gather_from_tensor_model_parallel_region(mg_logits)

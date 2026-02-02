@@ -379,6 +379,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
+    apply_wd_to_qk_layernorm: bool = False
     # qwen3_vl, qwen3_omni
     mrope_interleaved: Optional[bool] = None
 
@@ -632,6 +633,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.norm_epsilon = 1e-5
         if self.rotary_base is None:
             self.rotary_base = 10000
+        else:
+            self.rotary_base = int(self.rotary_base)
         if self.rotary_interleaved is None:
             self.rotary_interleaved = False
         if self.attention_dropout is None:
@@ -728,6 +731,8 @@ class MegatronArguments(ExtraMegatronArguments):
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
+        if self.apply_wd_to_qk_layernorm and self.hf_model_type != 'qwen3_next':
+            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
