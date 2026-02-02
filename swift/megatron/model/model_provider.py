@@ -3,7 +3,6 @@ import math
 from typing import TYPE_CHECKING, Optional, Union
 
 import megatron.core
-import megatron.legacy
 import torch
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec, get_gpt_layer_local_spec,
                                                       get_gpt_layer_with_transformer_engine_spec,
@@ -56,9 +55,7 @@ def _get_transformer_layer_spec(use_te, config):
 
 
 # Code borrowed from NVIDIA/Megatron-LM
-def model_provider(pre_process=True,
-                   post_process=True,
-                   vp_stage: Optional[int] = None) -> Union['GPTModel', megatron.legacy.model.GPTModel]:
+def model_provider(pre_process=True, post_process=True, vp_stage: Optional[int] = None) -> 'GPTModel':
     """Builds the model.
 
     If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.

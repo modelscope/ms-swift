@@ -798,20 +798,6 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
-def _patch_megatron_timeout():
-    from megatron.core import parallel_state
-
-    create_group_origin = parallel_state.create_group
-
-    def create_group(ranks=None, timeout=None, *_args, **kwargs):
-        args = get_args()
-        if timeout is None:
-            timeout = timedelta(minutes=args.distributed_timeout_minutes)
-        return create_group_origin(ranks, timeout, *_args, **kwargs)
-
-    parallel_state.create_group = create_group
-
-
 def _patch_megatron_swanlab():
     from megatron.training import global_vars, wandb_utils, get_args
 
@@ -868,7 +854,7 @@ def init_megatron_env():
     logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
-    _patch_unified_memory()
+    # _patch_unified_memory()
     _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()
@@ -879,7 +865,6 @@ def init_megatron_env():
     _patch_mrope()
     _patch__write_item()
     _patch_mtp()
-    _patch_megatron_timeout()
     # _patch_megatron_swanlab()
     # _patch_modelopt()
     logging.root.setLevel(logging_level)  # revert logger level

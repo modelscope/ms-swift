@@ -50,4 +50,3 @@ class MegatronBaseArguments(MegatronArguments, BaseArguments):
             if getattr(self, k) is None:
                 setattr(self, k, v)
         MegatronArguments.__post_init__(self)
-        self.extra_args = self.parse_to_megatron()

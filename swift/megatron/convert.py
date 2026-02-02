@@ -13,7 +13,8 @@ from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
 from .model import get_megatron_model_meta
-from .utils import convert_hf_config, patch_load_base_checkpoint, patch_torch_dist_shard, test_convert_precision
+from .utils import (convert_hf_config, initialize_megatron, patch_load_base_checkpoint, patch_torch_dist_shard,
+                    test_convert_precision)
 
 logger = get_logger()
 
@@ -58,9 +59,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         **current_convert_kwargs,
         save=args.output_dir,
         torch_dtype=args.torch_dtype)
-    extra_args = megatron_args.parse_to_megatron()
-    extra_args_provider = megatron_model_meta.extra_args_provider
-    initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
+    initialize_megatron(megatron_args)
 
     mg_model = megatron_model_meta.model_provider()
     logger.info('Megatron model created successfully.')
@@ -105,9 +104,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         **current_convert_kwargs,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
-    extra_args = megatron_args.parse_to_megatron()
-    extra_args_provider = megatron_model_meta.extra_args_provider
-    initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=extra_args)
+    initialize_megatron(megatron_args)
 
     mg_model = megatron_model_meta.model_provider()
     if megatron_args.load is None:

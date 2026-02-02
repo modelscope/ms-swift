@@ -612,9 +612,6 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
     no_data_sharding: bool = False
 
-    # extra_args for megatron
-    megatron_extra_kwargs: Optional[Union[dict, str]] = None
-
     def _set_default(self):
         if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
             raise ValueError('mlp_padding_free is not compatible with sequence parallel or context parallel.')
@@ -734,6 +731,7 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.apply_wd_to_qk_layernorm and self.hf_model_type != 'qwen3_next':
             raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         self._set_default()
+        self._init_vpp_size()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.model_type = self.model_info.model_type
@@ -780,7 +778,6 @@ class MegatronArguments(ExtraMegatronArguments):
         self._init_moe()
         self._init_mixed_precision()
 
-        self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
         self._init_no_rope_fusion()
 
     def _init_no_rope_fusion(self):
@@ -793,37 +790,9 @@ class MegatronArguments(ExtraMegatronArguments):
             self.no_rope_fusion = False
         logger.info(f'Setting args.no_rope_fusion: {self.no_rope_fusion}.')
 
-    def _args_to_argv(self) -> Tuple[List[Any], Dict[str, Any]]:
-        new_args = []
-        args_dict = asdict(self)
-        extra_args = {}
-        extra_args['model_dir'] = self.model_info.model_dir
-        extra_args['is_multimodal'] = self.model_meta.is_multimodal
-        # model_type may be overridden by megatron
-        extra_args['hf_model_type'] = self.model_type
-        megatron_extra_kwargs = args_dict.pop('megatron_extra_kwargs')
-        args_dict.update(megatron_extra_kwargs)
-        for k, value in args_dict.items():
-            if k not in MegatronArguments.__annotations__ and k not in megatron_extra_kwargs:
-                extra_args[k] = value
-                continue
-            if value is None or value is False:
-                continue
-            new_args.append(f"--{k.replace('_', '-')}")
-            if isinstance(value, list):
-                new_args += [str(v) for v in value]
-            elif value is not True:
-                new_args.append(str(value))
-
-        return new_args, extra_args
-
-    def parse_to_megatron(self):
-        new_args, extra_args = self._args_to_argv()
-        sys._old_argv = sys.argv
-        sys.argv = sys.argv[:1] + new_args
-        # parameter conflict
-        extra_args.pop('loss_scale', None)
-        return extra_args
+    def _init_vpp_size(self):
+        # TODO
+        self.virtual_pipeline_model_parallel_size = None
 
     def _load_adapter_config(self):
         assert len(self.adapters) == 1, 'Currently only support one adapter'

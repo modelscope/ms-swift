@@ -28,8 +28,6 @@ class MegatronModelMeta:
     visual_cls: Optional[Type[nn.Module]] = None
     get_mtp_block_spec: Optional[Callable] = None
 
-    extra_args_provider: Optional[Callable[[ArgumentParser], ArgumentParser]] = None
-
     def __post_init__(self):
         if self.megatron_model_type in MLLMMegatronModelType.__dict__:
             self.is_multimodal = True

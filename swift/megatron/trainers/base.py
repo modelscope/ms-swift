@@ -1222,14 +1222,8 @@ class BaseMegatronTrainer(ABC):
         datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
         datasets_provider.is_distributed = True
         with self.patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
-            extra_args_provider = args.megatron_model_meta.extra_args_provider
-            pretrain(
-                datasets_provider,
-                args.megatron_model_meta.model_provider,
-                ModelType.encoder_or_decoder,
-                self.forward_step,
-                extra_args_provider=extra_args_provider,
-                args_defaults=args.extra_args)
+            pretrain(datasets_provider, args.megatron_model_meta.model_provider, ModelType.encoder_or_decoder,
+                     self.forward_step)
 
     # Code borrowed from NVIDIA/Megatron-LM
     def build_pretraining_data_loader(self, dataset, consumed_samples, data_collator=None):

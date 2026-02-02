@@ -39,8 +39,7 @@ class MegatronExport(SwiftPipeline):
         hf_config = self.processor.model_info.config
         args.init_model_args(self.tokenizer, hf_config)
         megatron_model_meta = args.megatron_model_meta
-        extra_args_provider = megatron_model_meta.extra_args_provider
-        initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=args.extra_args)
+        initialize_megatron(args)
 
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
@@ -93,8 +92,7 @@ class MegatronExport(SwiftPipeline):
         self.processor = template.processor
         args.init_model_args(self.tokenizer, self.processor.model_info.config)
         megatron_model_meta = args.megatron_model_meta
-        extra_args_provider = megatron_model_meta.extra_args_provider
-        initialize_megatron(extra_args_provider=extra_args_provider, args_defaults=args.extra_args)
+        initialize_megatron(args)
 
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()

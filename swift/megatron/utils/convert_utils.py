@@ -8,7 +8,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 from megatron.core import mpu
-from megatron.training import get_args
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
 from .utils import forward_step_helper, get_padding_to
@@ -144,7 +143,8 @@ def get_examples(is_multimodal: bool) -> Dict[str, Any]:
     return data
 
 
-def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
+def test_convert_precision(args, hf_model, mg_model, template):
+    torch_dtype = args.test_convert_dtype
     template.set_mode('train')
     _test_params_sum(mg_model)
 
@@ -172,7 +172,6 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
             hf_logits = hf_logits.to('cuda')
         hf_model.to('cpu')
 
-    args = get_args()
     template.use_megatron = True
     inputs = template.encode(get_examples(is_multimodal))
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')

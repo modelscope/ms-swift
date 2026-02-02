@@ -4,9 +4,10 @@ from contextlib import contextmanager
 import torch
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.dist_checkpointing.strategies.torch import TorchDistSaveShardedStrategy
-from megatron.training import checkpointing
 
 from swift.utils import get_logger
+
+# from megatron.training import checkpointing
 
 logger = get_logger()
 
