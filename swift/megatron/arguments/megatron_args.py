@@ -351,7 +351,6 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     dataloader_prefetch_factor: int = 2
     group_by_length: bool = False
 
-    # Megatron has a model_type parameter with the same name, so we need to avoid conflicts.
     hf_model_type: Optional[str] = None
     llm_model_type: Optional[str] = None
     max_epochs: Optional[int] = None
@@ -735,6 +734,8 @@ class MegatronArguments(ExtraMegatronArguments):
         self._set_default()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
+
+        # Megatron has a model_type parameter with the same name, so we need to avoid conflicts.
         self.hf_model_type = self.model_type = self.model_info.model_type
         if self.apply_wd_to_qk_layernorm and self.hf_model_type != 'qwen3_next':
             raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
