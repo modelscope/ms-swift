@@ -1119,10 +1119,10 @@ class BaseMegatronTrainer(ABC):
 
     @staticmethod
     def copy_path(src_path: str, tgt_path: str):
-        if not os.path.exists(src_path):
-            raise FileNotFoundError(f'Source path does not exist: {src_path}')
         if not is_last_rank():
             return
+        if not os.path.exists(src_path):
+            raise FileNotFoundError(f'Source path does not exist: {src_path}')
 
         if os.path.isfile(src_path):
             os.makedirs(os.path.dirname(tgt_path), exist_ok=True)
