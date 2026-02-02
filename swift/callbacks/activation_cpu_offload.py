@@ -67,7 +67,7 @@ class FSDPParameterFilter:
         self.model_parameters_storage = new_storage
 
 
-def get_torch_device() -> any:
+def get_torch_device() -> Any:
     """Return the corresponding torch attribute based on the device type string.
     Returns:
         module: The corresponding torch device namespace, or torch.cuda if not found.
