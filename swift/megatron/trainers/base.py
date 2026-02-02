@@ -1118,11 +1118,19 @@ class BaseMegatronTrainer(ABC):
                         module.unmerge()
 
     @staticmethod
-    def _copy_args(output_dir):
-        if is_last_rank():
-            args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
-            if os.path.exists(args_path):
-                shutil.copy(args_path, os.path.join(output_dir, 'args.json'))
+    def copy_path(src_path: str, tgt_path: str):
+        if not os.path.exists(src_path):
+            raise FileNotFoundError(f'Source path does not exist: {src_path}')
+        if not is_last_rank():
+            return
+
+        if os.path.isfile(src_path):
+            os.makedirs(os.path.dirname(tgt_path), exist_ok=True)
+            shutil.copy(src_path, tgt_path)
+        elif os.path.isdir(src_path):
+            shutil.copytree(src_path, tgt_path, dirs_exist_ok=True)
+        else:
+            raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
     def save_checkpoint(self, iteration, model, *_args, **kwargs):
         args = get_args()
@@ -1130,7 +1138,8 @@ class BaseMegatronTrainer(ABC):
         os.makedirs(output_dir, exist_ok=True)
         origin_save = args.save
         args.save = output_dir
-        self._copy_args(output_dir)
+        args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+        self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
@@ -1142,9 +1151,12 @@ class BaseMegatronTrainer(ABC):
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.tuner_type == 'lora' and args.merge_lora:
                 self.merge_lora_adapters()
+                origin_output_dir = output_dir
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
-                self._copy_args(output_dir)
+                for fname in ['latest_checkpointed_iteration.txt', f'iter_{iteration:07d}', 'args.json']:
+                    src_path = os.path.join(origin_output_dir, fname)
+                    self.copy_path(src_path, os.path.join(output_dir, fname))
             self.bridge.save_weights(
                 self.unwrapped_models,
                 output_dir,
