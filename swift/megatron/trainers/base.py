@@ -6,7 +6,7 @@ import os
 import shutil
 import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime
 from functools import partial
 from typing import Callable, Dict, List, Literal, Optional
@@ -317,7 +317,9 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
+        args = get_args()
         if self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            assert self.args.megatron_model_meta.is_multimodal
             vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
             aligner_lr = self.args.aligner_lr if self.args.aligner_lr is not None else self.args.lr
             logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {self.args.lr}')
@@ -335,6 +337,8 @@ class BaseMegatronTrainer(ABC):
 
                 if no_weight_decay_cond is not None:
                     no_wd: bool = no_weight_decay_cond(name, param)
+                elif args.apply_wd_to_qk_layernorm:
+                    assert args.hf_model_type == 'qwen3_next', 'currently only support qwen3_next'
                 else:
                     # Do not regularize biases and norm parameters.
                     #  optionally, also skip weight decay for embedding parameters if requested
@@ -423,10 +427,6 @@ class BaseMegatronTrainer(ABC):
 
     @contextmanager
     def _patch_get_param_groups(self):
-        if not self.args.megatron_model_meta.is_multimodal or (self.args.vit_lr is None
-                                                               and self.args.aligner_lr is None):
-            yield
-            return
         from megatron.core import optimizer
 
         _get_param_groups = optimizer._get_param_groups
@@ -497,7 +497,12 @@ class BaseMegatronTrainer(ABC):
         # read iteration
         if not args.finetune:
             args.iteration, args.num_floating_point_operations_so_far = self._load_iteration()
-        with self._patch_load_state_dict(self._load_base_checkpoint), self._patch_get_param_groups():
+
+        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            param_groups_context = self._patch_get_param_groups()
+        else:
+            param_groups_context = nullcontext()
+        with self._patch_load_state_dict(self._load_base_checkpoint), param_groups_context:
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         self.wrapped_models = model

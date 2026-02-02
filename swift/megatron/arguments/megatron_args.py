@@ -379,6 +379,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
+    apply_wd_to_qk_layernorm: bool = False
     # qwen3_vl, qwen3_omni
     mrope_interleaved: Optional[bool] = None
 
