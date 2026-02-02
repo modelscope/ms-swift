@@ -620,7 +620,12 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
                 Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
-            ], TemplateType.qwen3_thinking)
+            ], TemplateType.qwen3_thinking),
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-Next-Base', 'Qwen/Qwen3-Coder-Next-Base'),
+                Model('Qwen/Qwen3-Coder-Next', 'Qwen/Qwen3-Coder-Next'),
+                Model('Qwen/Qwen3-Coder-Next-FP8', 'Qwen/Qwen3-Coder-Next-FP8'),
+            ], TemplateType.qwen3_coder),
         ],
         requires=['transformers>=4.57'],
         architectures=['Qwen3NextForCausalLM'],
