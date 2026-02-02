@@ -469,8 +469,9 @@ class GPTBridge:
             if to_mcore:
                 assert mg_param is not None, f'mg_module: {mg_module}, mg_key: {mg_key}'
                 hf_weight = hf_state_dict[hf_key].load()
-                if module_key in {'embedding.word_embeddings', 'output_layer'
-                                  } and hf_weight.shape[0] < self.args.padded_vocab_size:
+                if module_key in {
+                        'embedding.word_embeddings', 'output_layer'
+                } and hf_weight.shape[0] < self.args.padded_vocab_size and self.args.task_type != 'seq_cls':
                     hf_weight = F.pad(hf_weight, (0, 0, 0, self.args.padded_vocab_size - hf_weight.shape[0]))
                 hf_scale_inv = None
                 if f'{hf_key}_scale_inv' in hf_state_dict:
@@ -708,6 +709,15 @@ class GPTBridge:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
+    def _get_hf_grouped(self):
+        if self.args.hf_model_type in {
+                'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'dots1', 'ernie4_5_moe', 'glm4_moe',
+                'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
+                'qwen3_vl_moe'
+        }:
+            return False, False
+        return None, None
+
     def _set_mlp_state(self,
                        mg_mlp,
                        hf_state_dict,
@@ -726,11 +736,15 @@ class GPTBridge:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
             num_local_experts = args.num_experts // self.ep_size
-        # TODO: Temporary modification for transformers 5.0 compatibility with GLM4.6v, to be fixed later
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
-        if self.is_transformers_5 and self.args.hf_model_type in {'glm4v_moe', 'glm4_moe_lite'}:
-            hf_grouped = False
-            is_gate_up = False
+        # transformers 5.0 compatibility
+        if self.is_transformers_5:
+            _hf_grouped, _is_gate_up = self._get_hf_grouped()
+            if _hf_grouped is not None:
+                hf_grouped = _hf_grouped
+            if _is_gate_up is not None:
+                is_gate_up = _is_gate_up
+
         if to_mcore or hf_grouped:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
@@ -1282,10 +1296,10 @@ class GPTBridge:
         lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
         if self.args.task_type != 'embedding':
             if self.args.untie_embeddings_and_output_weights:
-                if not to_mcore or self.args.task_type in {'causal_lm', 'generative_reranker'}:
-                    hf_lm_head_key = self.hf_lm_head_key
-                    if self.args.task_type == 'seq_cls':
-                        hf_lm_head_key = self.hf_score_key
+                hf_lm_head_key = self.hf_lm_head_key
+                if self.args.task_type == 'seq_cls':
+                    hf_lm_head_key = self.hf_score_key
+                if not to_mcore or hf_lm_head_key in hf_state_dict:
                     self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, hf_lm_head_key, to_mcore)
             elif to_mcore and lm_model.output_layer.weight is not None:
                 self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, self.hf_embed_key, to_mcore)

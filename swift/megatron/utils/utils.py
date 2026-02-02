@@ -15,6 +15,7 @@ from megatron.core.transformer.transformer_layer import get_transformer_layer_of
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
 from megatron.training import checkpointing, get_args
 from packaging import version
+from peft.tuners.lora import Linear as LoraLinear
 from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
 
@@ -27,10 +28,10 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 logger = get_logger()
 
 
-def find_all_linears(model):
+def find_all_linears(model, extra_layers=None):
 
     def _cond(name, module):
-        if name != 'output_layer' and isinstance(
+        if (extra_layers and isinstance(module, tuple(extra_layers))) or name != 'output_layer' and isinstance(
                 module, (TELinear, TELayerNormColumnParallelLinear, TEGroupedLinear, nn.Linear)):
             return True
         return False
@@ -53,6 +54,8 @@ def get_multimodal_target_regex(
     freeze_llm: bool = False,
     freeze_vit: bool = True,
     freeze_aligner: bool = True,
+    include_embedding: bool = False,
+    include_router: bool = False,
 ) -> str:
     from ..model import get_megatron_model_meta
     megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
@@ -67,6 +70,11 @@ def get_multimodal_target_regex(
     if not freeze_aligner:
         modules += aligner
     assert len(modules) > 0, f'modules: {modules}'
+    extra_layers = []
+    if include_embedding:
+        extra_layers.append(LanguageModelEmbedding)
+    if include_router:
+        extra_layers.append(TopKRouter)
 
     res = []
     for module in modules:
@@ -79,13 +87,13 @@ def get_multimodal_target_regex(
         sub_module = deep_getattr(model, module)
         if sub_module is None:
             continue
-        target_modules = find_all_linears(sub_module)
+        target_modules = find_all_linears(sub_module, extra_layers)
         if not target_modules:
             continue
         target_modules = [tm for tm in target_modules if tm]
         target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
         rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
-        res.append(rf'{rejected_pattern}{module}{target_pattern}')
+        res.append(rf'{rejected_pattern}{module}(?=\.){target_pattern}')
 
     return rf'^({"|".join(res)})$'
 
@@ -102,6 +110,8 @@ def get_target_modules(args, model):
                 freeze_llm=args.freeze_llm,
                 freeze_vit=args.freeze_vit,
                 freeze_aligner=args.freeze_aligner,
+                include_embedding='all-embedding' in target_modules,
+                include_router='all-router' in target_modules,
             )
         else:
             target_modules.remove('all-linear')
@@ -156,6 +166,7 @@ def _patch_deepcopy():
 
 
 def prepare_adapter(model):
+    from swift.megatron.tuners import LoraParallelLinear
     args = get_args()
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
@@ -179,6 +190,15 @@ def prepare_adapter(model):
         for n, p in model.named_parameters():
             if '.ref_adapter.' in n:
                 p.requires_grad = False
+    # setting average_gradients_across_tp_domain
+    for m in model.modules():
+        if isinstance(m, LoraLinear):
+            # just check
+            assert args.is_multimodal or args.hf_model_type == 'qwen3_next'
+            assert not isinstance(m, LoraParallelLinear)
+            for p in m.parameters():
+                if p.requires_grad:
+                    p.average_gradients_across_tp_domain = True
     return model
 
 

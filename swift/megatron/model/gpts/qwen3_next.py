@@ -8,10 +8,11 @@ from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, 
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec, get_gpt_mtp_block_spec
+from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
+from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
+                                           reduce_scatter_to_sequence_parallel_region)
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
-from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -427,7 +428,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         return query, key, value, gate
 
 
-class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
+class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
@@ -461,7 +462,7 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
             hidden_states = hidden_states.transpose(0, 1)
             attention_mask = kwargs.get('attention_mask')
             if attention_mask is not None:
-                attention_mask = attention_mask.sum(dim=(1, 3)) > 0
+                attention_mask = (~attention_mask).sum(dim=(1, 2)) > 0
         res = super().forward(hidden_states=hidden_states, attention_mask=attention_mask)
         if thd_format and not args.packing:
             res = res[attention_mask][:, None]
@@ -469,7 +470,8 @@ class Qwen3NextGatedDeltaNet(MegatronModule, _Qwen3NextGatedDeltaNet):
         else:
             res = res.transpose(0, 1)
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
-            res = scatter_to_sequence_parallel_region(res)
+            # Quick fix for dropout issue, awaiting ms-swift 4.0 refactor
+            res = reduce_scatter_to_sequence_parallel_region(res) / args.tensor_model_parallel_size
         return res, None
 
 

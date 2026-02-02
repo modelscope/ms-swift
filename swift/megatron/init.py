@@ -546,7 +546,7 @@ def _patch_TransformerLayer():
         mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
         mask = None
         if mlp_padding_free and hidden_states.shape[1] > 1:
-            mask = ((~kwargs['attention_mask']).sum(dim=(1, 3)) > 0).t()
+            mask = ((~kwargs['attention_mask']).sum(dim=(1, 2)) > 0).t()
             hidden_states = hidden_states[mask][:, None]
         output = self._forward_mlp(hidden_states, kwargs.get('inference_context', None))
         if mask is not None:
