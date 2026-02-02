@@ -1154,9 +1154,14 @@ class BaseMegatronTrainer(ABC):
                 origin_output_dir = output_dir
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
-                for fname in ['latest_checkpointed_iteration.txt', f'iter_{iteration:07d}', 'args.json']:
+                for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
                     src_path = os.path.join(origin_output_dir, fname)
                     self.copy_path(src_path, os.path.join(output_dir, fname))
+                # common.pt
+                common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
+                tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
+                os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
+                self.copy_path(common_path, tgt_common_path)
             self.bridge.save_weights(
                 self.unwrapped_models,
                 output_dir,
