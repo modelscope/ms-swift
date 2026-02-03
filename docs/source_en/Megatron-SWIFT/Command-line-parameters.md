@@ -25,11 +25,11 @@
 - 🔥log_interval: Log interval (unit: iters), default is 5.
 - tensorboard_dir: Directory where TensorBoard logs are written. Default is None, meaning logs will be stored in the `f'{save}/runs'` directory.
 - masked_softmax_fusion: Defaults to True. Used to enable the fusion of scaling, masking, and softmax for query_key_value.
-- no_bias_dropout_fusion: Default is False. Disables bias and dropout fusion.
-- no_bias_swiglu_fusion: Default is False. Specify `--no_bias_dropout_fusion true` to disable bias and swiglu fusion.
+- bias_dropout_fusion: Defaults to True. Used to enable the fusion of bias and dropout.
+- bias_swiglu_fusion: Defaults to True. Used to enable the fusion of bias and swiglu.
 - no_rope_fusion: Default is False. Specify `--no_rope_fusion true` to disable rope fusion.
   - **When using position embedding such as mrope that do not support RoPE fusion, this parameter will be automatically set to True**.
-- no_gradient_accumulation_fusion: Default is False. Specify `--no_gradient_accumulation_fusion true` to disable gradient accumulation fusion.
+- gradient_accumulation_fusion: Defaults to True. Used to enable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
 - cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padded tokens in the global batch. Default is True.

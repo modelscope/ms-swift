@@ -34,7 +34,7 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
-    --no_gradient_accumulation_fusion true \
+    --gradient_accumulation_fusion false \
     --masked_softmax_fusion false \
     --model_author swift \
     --model_name swift-robot

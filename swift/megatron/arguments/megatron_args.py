@@ -420,11 +420,11 @@ class MegatronArguments(ExtraMegatronArguments):
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
     masked_softmax_fusion: bool = True
-    no_bias_dropout_fusion: Optional[bool] = None
-    no_bias_swiglu_fusion: bool = False
-    no_bias_gelu_fusion: bool = False
+    bias_dropout_fusion: Optional[bool] = None
+    bias_swiglu_fusion: bool = True
+    bias_gelu_fusion: bool = True
     no_rope_fusion: Optional[bool] = None
-    no_gradient_accumulation_fusion: bool = False
+    gradient_accumulation_fusion: bool = True
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: Optional[bool] = None
@@ -666,8 +666,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = self.task_type == 'causal_lm'
-        if self.no_bias_dropout_fusion is None:
-            self.no_bias_dropout_fusion = False
+        if self.bias_dropout_fusion is None:
+            self.bias_dropout_fusion = True
         # moe
         MegatronArguments._set_moe_default(self)
         # log
@@ -757,12 +757,12 @@ class MegatronArguments(ExtraMegatronArguments):
         if self.save_strategy == 'epoch':
             self.save_interval = 1
             self.eval_interval = 1
-        if not self.no_gradient_accumulation_fusion:
+        if self.gradient_accumulation_fusion:
             try:
                 import apex
             except ImportError:
                 logger.warning('apex is not installed, so gradient accumulation fusion is disabled.')
-                self.no_gradient_accumulation_fusion = True
+                self.gradient_accumulation_fusion = False
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:

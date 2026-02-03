@@ -139,7 +139,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['rotary_interleaved'] = True
     elif llm_model_type == 'gpt_oss':
         res['add_bias_linear'] = True
-        res['no_bias_dropout_fusion'] = True
+        res['bias_dropout_fusion'] = False
         res['softmax_type'] = 'learnable'
         res['swiglu'] = False
         res['quick_geglu'] = True

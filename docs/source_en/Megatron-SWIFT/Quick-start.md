@@ -28,7 +28,7 @@ pip install pybind11
 pip install --no-build-isolation transformer_engine[pytorch]
 
 # apex
-# Note: Megatron-SWIFT can run in environments without apex by setting `--no_gradient_accumulation_fusion true`.
+# Note: Megatron-SWIFT can run in environments without apex by setting `--gradient_accumulation_fusion false`.
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./

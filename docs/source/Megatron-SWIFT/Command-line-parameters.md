@@ -24,11 +24,11 @@
 - 🔥log_interval: log的时间间隔（单位：iters），默认为5。
 - tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
 - masked_softmax_fusion: 默认为True。用于开启query_key_value的scaling, masking, and softmax融合。
-- no_bias_dropout_fusion: 默认为False。用于禁用bias和dropout的融合。
-- no_bias_swiglu_fusion: 默认为False。指定`--no_bias_dropout_fusion true`，用于禁止bias和swiglu融合。
+- bias_dropout_fusion: 默认为True。用于开启bias和dropout的融合。
+- bias_swiglu_fusion: 默认为True。用于开启bias和swiglu融合。
 - no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
   - **当使用mrope等不支持rope_fusion的位置编码时，该参数会自动设置为True**。
-- no_gradient_accumulation_fusion: 默认为False。指定`--no_gradient_accumulation_fusion true`用于禁用梯度累加融合。
+- gradient_accumulation_fusion: 默认为True。用于开启梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。

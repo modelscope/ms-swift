@@ -182,7 +182,7 @@ def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_par
 
 ### 使能
 
-另外，由于msprobe不支持融合计算，需要在启动脚本添加`--no_bias_dropout_fusion True`、`--no_bias_swiglu_fusion True`、`--cross_entropy_loss_fusion False`
+另外，由于msprobe不支持融合计算，需要在启动脚本添加`--bias_dropout_fusion false`、`--bias_swiglu_fusion false`、`--cross_entropy_loss_fusion false`
 
 #### 示例
 ```shell
@@ -196,7 +196,7 @@ megatron sft \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
     ...
-    --no_bias_dropout_fusion True \
-    --no_bias_swiglu_fusion True \
-    --cross_entropy_loss_fusion False
+    --bias_dropout_fusion false \
+    --bias_swiglu_fusion false \
+    --cross_entropy_loss_fusion false
 ```

@@ -124,9 +124,9 @@ def core_transformer_config_from_args(args, config_class=None):
     if args.swiglu:
         kw_args['activation_func'] = F.silu
         kw_args['gated_linear_unit'] = True
-        kw_args['bias_activation_fusion'] = not args.no_bias_swiglu_fusion
+        kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion
     else:
-        kw_args['bias_activation_fusion'] = not args.no_bias_gelu_fusion
+        kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
     if args.quick_geglu:
         assert not args.swiglu
         kw_args['gated_linear_unit'] = True

@@ -592,7 +592,7 @@ megatron sft \
 ```text
 RuntimeError: ColumnParallelLinear was called with gradient_accumulation_fusion set to True but the custom CUDA extension fused_weight_gradient_mlp_cuda module is not found. To use gradient_accumulation_fusion you must install APEX with --cpp_ext and --cuda_ext. For example: pip install --global-option="--cpp_ext" --global-option="--cuda_ext ." Note that the extension requires CUDA>=11. Otherwise, you must turn off gradient accumulation fusion.
 ```
-设置一下`--no_gradient_accumulation_fusion true`。
+设置一下`--gradient_accumulation_fusion false`。
 
 ### Q163: moe的lora训练，target_modules参数设置了all-linear，是包括了路由器模块吗？
 看gate是否是nn.Linear实现，如果是nn.Parameter就不训练，详见命令行参数[target_parameters](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#tuner)。

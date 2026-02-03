@@ -186,7 +186,7 @@ def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_par
 
 ### Enable
 
-Additionally, since msprobe does not support fusion computation, you need to add `--no_bias_dropout_fusion True`, `--no_bias_swiglu_fusion True`, `--cross_entropy_loss_fusion False` to the launch script.
+Additionally, since msprobe does not support fusion computation, you need to add `--bias_dropout_fusion false`, `--bias_swiglu_fusion false`, `--cross_entropy_loss_fusion false` to the launch script.
 
 #### Example
 ```shell
@@ -200,7 +200,7 @@ megatron sft \
               'swift/self-cognition#500' \
     --tensor_model_parallel_size 2 \
     ...
-    --no_bias_dropout_fusion True \
-    --no_bias_swiglu_fusion True \
-    --cross_entropy_loss_fusion False
+    --bias_dropout_fusion false \
+    --bias_swiglu_fusion false \
+    --cross_entropy_loss_fusion false
 ```

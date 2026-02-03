@@ -24,7 +24,7 @@ megatron sft \
     --recompute_granularity selective \
     --recompute_modules core_attn \
     --cross_entropy_loss_fusion true \
-    --no_gradient_accumulation_fusion true \
+    --gradient_accumulation_fusion false \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
