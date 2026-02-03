@@ -24,7 +24,7 @@
 - 🔥max_epochs: Specifies the number of training epochs. When using a non-streaming dataset, this parameter automatically calculates `train_iters`, eliminating the need to manually provide `train_iters`. When using a streaming dataset, training will be forcibly terminated upon reaching `max_epochs`, and the model weights will be validated and saved. Default is None.
 - 🔥log_interval: Log interval (unit: iters), default is 5.
 - tensorboard_dir: Directory where TensorBoard logs are written. Default is None, meaning logs will be stored in the `f'{save}/runs'` directory.
-- no_masked_softmax_fusion: Default is False. Disables scaling, masking, and softmax fusion for query_key_value.
+- masked_softmax_fusion: Defaults to True. Used to enable the fusion of scaling, masking, and softmax for query_key_value.
 - no_bias_dropout_fusion: Default is False. Disables bias and dropout fusion.
 - no_bias_swiglu_fusion: Default is False. Specify `--no_bias_dropout_fusion true` to disable bias and swiglu fusion.
 - no_rope_fusion: Default is False. Specify `--no_rope_fusion true` to disable rope fusion.
@@ -100,7 +100,7 @@
   - Note: For resuming training from a checkpoint, you should set `--load` (and additionally `--adapter_load` for LoRA training). If `--finetune true` is set, the optimizer and RNG states will not be loaded, the iteration count will be reset to 0, and no dataset skipping will occur. If `--finetune false` is set, the iteration count will be restored, and the corresponding number of previously trained samples will be skipped in the dataset. Loading of the optimizer and RNG states is controlled by `--no_load_optim` and `--no_load_rng`, respectively.
   - Streaming datasets (`--streaming`) are currently not supported for skipping datasets.
 - ckpt_format: Format of the checkpoint. Options are 'torch', 'torch_dist', 'zarr'. Default is 'torch_dist'. (Currently, weight conversion only supports the 'torch_dist' format.)
-- no_initialization: Do not initialize weights, default is True.
+- perform_initialization: Perform weight initialization. Default is False.
 - auto_detect_ckpt_format: Automatically detect whether the checkpoint format is legacy or distributed. Default is True.
 - exit_on_missing_checkpoint: If `--load` is set but **no checkpoint is found, exit directly** instead of initializing. Default is True.
 - 🔥async_save: Use asynchronous checkpoint saving. Currently only applicable to the `torch_dist` distributed checkpoint format. Defaults to False.
@@ -194,7 +194,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - activation_func_clamp_value: Clamp the output value range of linear_fc1 in the activation function. Only used when `activation_func` is `quick_gelu`. Default is None.
 - glu_linear_offset: Offset term in the GLU activation function: `activation_func(x[0]) * (x[1] + offset)`. Only used when gated_linear_unit is True. Default is 0.
 - untie_embeddings_and_output_weights: Unties embedding and output weights. Default is True.
-- disable_bias_linear: Disables bias in linear layers. Default is True.
+- add_bias_linear: Enable bias in linear layers. Default is True
 - add_qkv_bias: Adds bias only to QKV linear layers. Default is True.
 - attention_dropout: Default is 0.
 - hidden_dropout: Default is 0.

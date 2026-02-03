@@ -23,7 +23,7 @@
 - 🔥max_epochs: 指定训练的epochs数。当使用非流式数据集时，该参数会为你自动计算train_iters而不需要手动传入`train_iters`。当使用流式数据集时，该参数会在训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。默认为None。
 - 🔥log_interval: log的时间间隔（单位：iters），默认为5。
 - tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
-- no_masked_softmax_fusion: 默认为False。用于禁用query_key_value的scaling, masking, and softmax融合。
+- masked_softmax_fusion: 默认为True。用于开启query_key_value的scaling, masking, and softmax融合。
 - no_bias_dropout_fusion: 默认为False。用于禁用bias和dropout的融合。
 - no_bias_swiglu_fusion: 默认为False。指定`--no_bias_dropout_fusion true`，用于禁止bias和swiglu融合。
 - no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
@@ -96,7 +96,7 @@
   - 注意：**断点续训**你需要设置`--load`（lora训练需要额外设置`--adapter_load`），若设置`--finetune true`，将不加载优化器状态和随机种子状态并将迭代数设置为0，不会进行数据集跳过；若设置`--finetune false`，将读取迭代数并跳过之前训练的数据集数量，优化器状态和随机种子状态的读取通过`--no_load_optim`和`--no_load_rng`控制。
   - 流式数据集`--streaming`，暂不支持跳过数据集。
 - ckpt_format: checkpoint的格式。可选为'torch', 'torch_dist', 'zarr'。默认为'torch_dist'。（暂时权重转换只支持'torch_dist'格式）
-- no_initialization: 不对权重进行初始化，默认为True。
+- perform_initialization: 对权重进行初始化，默认为False。
 - auto_detect_ckpt_format: 自动检测ckpt format为legacy还是distributed格式。默认为True。
 - exit_on_missing_checkpoint: 如果设置了`–-load`，但**找不到检查点，则直接退出**，而不是初始化。默认为True。
 - 🔥async_save: 使用异步检查点保存。目前仅适用于`torch_dist`分布式检查点格式。默认为False。
@@ -183,7 +183,7 @@
 - activation_func_clamp_value: 限制激活函数中 linear_fc1 的输出值范围。仅在 `activation_func` 为 `quick_gelu` 时使用。默认为None。
 - glu_linear_offset: GLU 激活函数中的偏移项：`activation_func(x[0]) * (x[1] + offset)`。仅在 gated_linear_unit 为 True 时使用。默认为0.。
 - untie_embeddings_and_output_weights: 解开embedding和输出权重的绑定，默认为True。
-- disable_bias_linear: 禁用linear层的bias。默认为True。
+- add_bias_linear: 开启linear层的bias。默认为True。
 - add_qkv_bias: 仅在QKV的linear中增加bias，默认为True。
 - attention_dropout: 默认为0.。
 - hidden_dropout: 默认为0.。
