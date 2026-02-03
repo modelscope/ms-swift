@@ -5,14 +5,14 @@ from typing import List, Optional, Union
 
 import torch.distributed as dist
 from megatron.core import mpu
-# from megatron.training import initialize_megatron
 # from megatron.training.checkpointing import load_checkpoint
 # from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from transformers.utils import strtobool
 
 from swift.megatron.arguments import MegatronExportArguments
 from swift.megatron.convert import test_convert_precision
-from swift.megatron.utils import adapter_state_dict_context, patch_load_base_checkpoint, prepare_mcore_model
+from swift.megatron.utils import (adapter_state_dict_context, initialize_megatron, patch_load_base_checkpoint,
+                                  prepare_mcore_model)
 from swift.pipelines import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 

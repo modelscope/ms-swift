@@ -7,10 +7,11 @@ from datetime import timedelta
 import torch
 import torch.nn.functional as F
 from megatron.core import mpu, tensor_parallel
+from megatron.core.utils import unwrap_model
 from megatron.core.fusions.fused_bias_geglu import quick_gelu
 from megatron.core.transformer import MLATransformerConfig, TransformerConfig
 
-from swift.utils import get_logger, is_master, seed_everything
+from swift.utils import get_logger, init_process_group, is_master, seed_everything, set_device
 
 logger = get_logger()
 
@@ -36,7 +37,8 @@ def _patch_megatron_timeout(distributed_timeout_minutes):
 def _initialize_mpu(args):
     """Initialize torch.distributed and core model parallel."""
     if not torch.distributed.is_initialized():
-        raise ValueError('torch.distributed is not initialized')
+        set_device()
+        init_process_group(args.distributed_backend, args.ddp_timeout)
     args.rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
 
@@ -61,7 +63,7 @@ def _initialize_mpu(args):
 
 def _set_random_seed(
     seed_: int,
-    data_parallel_random_init: bool = True,
+    data_parallel_random_init: bool = False,
     te_rng_tracker: bool = False,
     inference_rng_tracker: bool = False,
     use_cudagraphable_rng: bool = False,
@@ -143,3 +145,9 @@ def core_transformer_config_from_args(args, config_class=None):
     config.args = args
 
     return config
+
+def save_mcore_checkpoint(args, model, iteration=1):
+    model = unwrap_model(model)
+
+def load_mcore_checkpoint(args):
+    pass
