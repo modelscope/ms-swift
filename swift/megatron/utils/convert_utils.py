@@ -143,8 +143,9 @@ def get_examples(is_multimodal: bool) -> Dict[str, Any]:
     return data
 
 
-def test_convert_precision(args, hf_model, mg_model, template):
-    torch_dtype = args.test_convert_dtype
+def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=None):
+    if test_convert_dtype is None:
+        test_convert_dtype = getattr(args, 'test_convert_dtype', torch.float32)
     template.set_mode('train')
     _test_params_sum(mg_model)
 
@@ -166,7 +167,7 @@ def test_convert_precision(args, hf_model, mg_model, template):
         ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
         hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
         with torch.inference_mode(), _model_cpu_forward_context(
-                hf_modules, torch_dtype, share_embedding=share_embedding):
+                hf_modules, test_convert_dtype, share_embedding=share_embedding):
             hf_inputs.pop('text_position_ids', None)
             hf_logits = hf_model(**hf_inputs).logits
             hf_logits = hf_logits.to('cuda')
@@ -195,8 +196,8 @@ def test_convert_precision(args, hf_model, mg_model, template):
             if n.endswith('router'):
                 m.to(mg_dtype)
     with torch.inference_mode(), _model_cpu_forward_context(
-            mg_modules, torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
-        mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=torch_dtype)
+            mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
+        mg_logits = forward_step_helper(args, mg_model, mg_inputs, dtype=test_convert_dtype)
         if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:

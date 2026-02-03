@@ -518,6 +518,7 @@ def _patch_peft_ModulesToSaveWrapper():
 def _patch_TransformerLayer():
     import megatron.core
     from megatron.core.transformer import TransformerLayer
+    from megatron.core import mpu
     _origin_forward = TransformerLayer.forward
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -531,7 +532,7 @@ def _patch_TransformerLayer():
         if not mcore_013:
             return _origin_forward(self, *_args, **kwargs)
         hidden_states, context = self._forward_attention(*_args, **kwargs)
-        args = get_args()
+        args = self.config.args
         mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
         mask = None
         if mlp_padding_free and hidden_states.shape[1] > 1:
@@ -660,6 +661,7 @@ def _patch__write_item():
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     import megatron.core
+    from megatron.core import mpu
     from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
     from megatron.core.models.common.embeddings import rope_utils
 
@@ -696,7 +698,7 @@ def _patch_mrope():
         seq_expanded = seq[:, :, None, :].float()
         # shape (3, bs, seq_length, dim)
         freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
-        args = get_args()
+        args = self.config.args
         if args.mrope_interleaved:
             freqs = apply_interleaved_mrope(freqs, mrope_section)
             emb = torch.cat((freqs, freqs), dim=-1)
@@ -744,8 +746,7 @@ def _patch_mrope():
         if cp_group is not None:
             cp_size = cp_group.size()
         else:
-            args = get_args()
-            cp_size = args.context_parallel_size
+            cp_size = mpu.get_context_parallel_world_size()
         cu_seqlens_for_batched = cu_seqlens // cp_size
         use_batched_rope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
         if not use_batched_rope:

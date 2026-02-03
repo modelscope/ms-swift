@@ -82,7 +82,7 @@ class MegatronExport(SwiftPipeline):
                 device_map = args.device_map or 'auto'
                 hf_model, template = prepare_model_template(
                     args, device_map=device_map, **kwargs) if is_last_rank() else (None, template)
-            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
+            test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
             dist.barrier()
 
     def convert_hf2mcore(self) -> None:
@@ -135,7 +135,7 @@ class MegatronExport(SwiftPipeline):
                     device_map = args.device_map or 'auto'
                     hf_model, template = prepare_model_template(
                         args, device_map=device_map) if is_last_rank() else (None, template)
-                test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
+                test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
                 dist.barrier()
             else:
                 logger.warning('Skip test_convert_precision because `--adapter_load` is specified.')

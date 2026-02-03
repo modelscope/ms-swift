@@ -74,7 +74,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
     # Place it at the end to avoid test_convert_precision affecting precision.
     if args.test_convert_precision:
-        test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
+        test_convert_precision(megatron_args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
@@ -131,7 +131,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
             hf_model, template = prepare_model_template(args, model=args.output_dir)
-            test_convert_precision(hf_model, mg_model, template, args.test_convert_dtype)
+            test_convert_precision(megatron_args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
     elif args.to_mcore:
         if args.thread_count is None:
             checkpoint_size = sum(get_n_params_grads(mg_model)[0]) * torch.finfo(args.torch_dtype).bits // 8e9

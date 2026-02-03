@@ -441,7 +441,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             teacher_data.pop('labels', None)
             # Teacher forward with args override for correct hidden_size
             with self.load_teacher_model_context(), self._teacher_args_context(), torch.no_grad():
-                teacher_logits = forward_step_helper(teacher_model, teacher_data)
+                teacher_logits = forward_step_helper(self.args, teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
             encoded_batch['teacher_logits'] = teacher_logits

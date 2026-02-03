@@ -1504,7 +1504,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         context = torch.no_grad() if no_grad else nullcontext()
 
         with context:
-            output_tensor = forward_step_helper(model, data)
+            output_tensor = forward_step_helper(self.args, model, data)
 
         # packed_seq_params only exists in padding_free mode
         packed_seq_params = data.get('packed_seq_params')
