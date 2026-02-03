@@ -13,18 +13,13 @@ from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.training import get_args, get_wandb_writer
+# from megatron.training import get_wandb_writer
 from packaging import version
 from transformers.utils import is_torch_npu_available
 
 from swift.utils import empty_cache, get_current_device, get_logger
 from swift.utils import get_packed_seq_params as _get_packed_seq_params
 from swift.utils import to_device
-
-try:
-    from megatron.training.datasets.data_samplers import RandomSeedDataset
-except ImportError:
-    from megatron.legacy.data.data_samplers import RandomSeedDataset
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 logger = get_logger()
@@ -441,9 +436,6 @@ class MegatronPretrainingRandomSampler:
         self.epoch = self.consumed_samples // active_total_samples
         current_epoch_samples = self.consumed_samples % active_total_samples
         assert current_epoch_samples % self.micro_batch_times_data_parallel_size == 0
-
-        if isinstance(self.dataset, RandomSeedDataset):
-            self.dataset.set_epoch(self.epoch)
 
         if self.shuffle:
             # data sharding and random sampling

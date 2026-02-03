@@ -20,7 +20,6 @@ from accelerate.utils import broadcast_object_list
 from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
-from megatron.training import get_args, get_wandb_writer, training
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
@@ -38,6 +37,8 @@ from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
+
+# from megatron.training import get_wandb_writer, training
 
 if is_wandb_available():
     import wandb
@@ -243,7 +244,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         from megatron.training.initialize import _set_random_seed
         from megatron.training import training
         training.cyclic_iter = self._origin_cyclic_iter
-        args = get_args()
+        args = self.args()
 
         train_valid_test_dataset_provider = self._train_valid_test_dataset_provider
         # Use different seed for resample iterator (offset by 1 to avoid overlap)
@@ -308,7 +309,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return batched_inputs, error_list
 
     def _get_encoded_batch(self, encoded_list, rollout_batch, template):
-        args = get_args()
+        args = self.args
         encoded_batch = to_device(template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
 
         labels = encoded_batch['labels']
@@ -1080,7 +1081,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         origin_build_pretraining_data_loader = training.build_pretraining_data_loader
 
         def build_pretraining_data_loader(*_args, **kwargs):
-            args = get_args()
+            args = self.args
             org_micro_batch_size = args.micro_batch_size
             # args.micro_batch_size = org_micro_batch_size // self.num_generations
             res = origin_build_pretraining_data_loader(*_args, **kwargs)
@@ -1097,7 +1098,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     @profiling_decorator
     def forward_step(self, data_iterator, model):
-        args = get_args()
+        args = self.args
         data = next(data_iterator)
         advantages = data.pop('advantages')
         truncated_mask = data.pop('truncated_mask')
@@ -1122,8 +1123,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.compute_entropy:
             # Forward without labels to get logits, then compute logps and entropy
             inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
-            with self.stimer:
-                output_tensor = model(**inputs_for_logits)
+            output_tensor = model(**inputs_for_logits)
 
             # Compute per_token_logps and per_token_entropy from logits on PP last stage
             if is_pp_last_stage and output_tensor is not None:
@@ -1160,8 +1160,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 data['per_token_entropy'] = per_token_entropy
         else:
             # Standard forward with labels, returns per-token loss (more efficient)
-            with self.stimer:
-                output_tensor = model(**inputs)
+            output_tensor = model(**inputs)
 
             # Convert output_tensor (per-token loss) to per_token_logps on PP last stage
             if is_pp_last_stage and output_tensor is not None:
@@ -1188,7 +1187,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     @profiling_decorator
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
-        args = get_args()
+        args = self.args
         # Get pre-padded data in batch format [batch_size, max_seq_len]
         advantages = data['advantages']  # [batch_size]
         completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
@@ -1460,7 +1459,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             }
             self.jsonl_writer.append(table)
             wandb_writer = get_wandb_writer()
-            args = get_args()
+            args = self.args
             if wandb_writer:
                 if args.report_to == 'wandb':
                     df = pd.DataFrame(table)
@@ -1496,8 +1495,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             data dict containing 'logps'
         """
         # used to calculate model forward (logps) in GRPO
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator)
+        data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
         input_ids = data.get('input_ids')
         labels = data.get('labels')
@@ -2070,7 +2068,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return config
 
     def get_trainer_state(self):
-        args = get_args()
+        args = self.args
         self.state.update(
             global_step=getattr(args, 'curr_iteration', 0) or 0, max_steps=getattr(args, 'train_iters', 0) or 0)
         return self.state

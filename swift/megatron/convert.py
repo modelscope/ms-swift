@@ -139,5 +139,5 @@ def convert_mcore2hf(args: ExportArguments) -> None:
 
         args.save_args()
         logger.info('Saving the model...')
-        mg_save_checkpoint(1, [mg_model], None, None, 0)
+        save_mcore_checkpoint(megatron_args, [mg_model])
         logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')

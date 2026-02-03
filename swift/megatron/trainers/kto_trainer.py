@@ -5,7 +5,6 @@ from typing import Any, Dict
 
 import torch
 from megatron.core import mpu
-from megatron.training import get_args, get_timers
 from trl import KTOTrainer
 
 from swift.utils import get_current_device, get_logger
@@ -113,16 +112,12 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return res
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
         # Get the batch.
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            # not support loss_scale
-            data, kl_data = self.get_batch(data_iterator, vp_stage)
-        timers('batch-generator').stop()
+        # not support loss_scale
+        data, kl_data = self.get_batch(data_iterator, vp_stage)
         label = data.pop('label')
         data.pop('loss_scale', None)
         kl_data.pop('loss_scale', None)
@@ -149,8 +144,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, length, 0))
-        with self.stimer:
-            output_tensor = model(**data)
+        output_tensor = model(**data)
         if self.mcore_013:
             is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
         else:

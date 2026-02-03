@@ -6,7 +6,6 @@ import torch
 import torch.nn
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import get_rerun_state_machine
-from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
@@ -54,7 +53,7 @@ class MegatronTrainer(BaseMegatronTrainer):
                   loss_scale: Optional[torch.Tensor] = None,
                   channels: Optional[List[str]] = None,
                   packed_seq_params=None):
-        args = get_args()
+        args = self.args
 
         losses = output_tensor.float()
         loss_mask = labels != -100
@@ -134,21 +133,15 @@ class MegatronTrainer(BaseMegatronTrainer):
         )
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
-
         # Get the batch.
         vp_stage = model.module.module.vp_stage
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator, vp_stage)
-        timers('batch-generator').stop()
+        data = self.get_batch(data_iterator, vp_stage)
         loss_scale = data.pop('loss_scale', None)
         channels = data.pop('channel', None)
         labels = data.get('labels')
         if self.args.task_type == 'seq_cls':
             data.pop('labels', None)
-        with self.stimer:
-            output_tensor = model(**data)
+        output_tensor = model(**data)
         packed_seq_params = data.get('packed_seq_params')
         if self.args.task_type == 'seq_cls':
             loss_func = partial(

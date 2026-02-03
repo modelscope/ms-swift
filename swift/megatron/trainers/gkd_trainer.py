@@ -9,8 +9,7 @@ import torch
 import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
-from megatron.training import get_args, get_model, get_timers
-from megatron.training.utils import unwrap_model
+from megatron.core.utils import unwrap_model
 from transformers import AutoConfig
 
 from swift.megatron.arguments import MegatronArguments
@@ -96,7 +95,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 
     def _load_teacher_model(self, teacher_model_path: str, model_type: str):
-        megatron_args = get_args()
+        megatron_args = self.args
         vp_size = getattr(megatron_args, 'virtual_pipeline_model_parallel_size')
         assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
         teacher_model_info, _ = get_model_info_meta(
@@ -233,7 +232,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         This is necessary for teacher model forward to use correct hidden_size, num_layers, etc.
         when the teacher has a different architecture than the student.
         """
-        megatron_args = get_args()
+        megatron_args = self.args
 
         # Save original values and override with teacher config
         original_values = {}
@@ -292,7 +291,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _encode_batch(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         """Encode a batch of raw data into model inputs."""
         template = self.template
-        args = get_args()
+        args = self.args
         max_length = template.max_length + self.max_completion_length
         with self._template_context(template, max_length=max_length):
             encoded_list = [template.encode(data, return_length=True) for data in batch]
@@ -357,7 +356,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """
         from megatron.training.training import build_train_valid_test_data_iterators
         from megatron.training.initialize import _set_random_seed
-        args = get_args()
+        args = self.args
 
         resample_seed = getattr(args, 'seed', 42) + 1
         try:
@@ -533,7 +532,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         beta: float = 0.5,
         chunk_size: int = 512,
     ) -> torch.Tensor:
-        args = get_args()
+        args = self.args
         mask = labels != -100
         local_num_valid = mask.sum()
         num_valid = local_num_valid.float()
@@ -641,7 +640,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # Add SFT loss if enabled (skip for student-generated responses)
         if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
-            args = get_args()
+            args = self.args
             logits_sbv = student_logits.transpose(0, 1).contiguous()
             per_token_loss = self.unwrapped_models[0].compute_language_model_loss(labels, logits_sbv)
 
@@ -669,28 +668,21 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-
-        timers = get_timers()
-
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
 
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = next(data_iterator)
-            data_source = data.pop('data_source', DataSource.DATASET)
-            teacher_logits = data.pop('teacher_logits', None)
-            data = self._prepare_batch(data, vp_stage)
-        timers('batch-generator').stop()
+        data = next(data_iterator)
+        data_source = data.pop('data_source', DataSource.DATASET)
+        teacher_logits = data.pop('teacher_logits', None)
+        data = self._prepare_batch(data, vp_stage)
 
         data.pop('loss_scale', None)
         labels = data.pop('labels', None)
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(input_tensor)
-        with self.stimer:
-            student_output = model(**data)
+        student_output = model(**data)
 
         return student_output, partial(
             self.loss_func, labels=labels, teacher_logits=teacher_logits, data_source=data_source)

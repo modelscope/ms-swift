@@ -19,7 +19,7 @@ from swift.utils.import_utils import _LazyModule
 if TYPE_CHECKING:
     from .pipelines import megatron_export_main, megatron_sft_main, megatron_pretrain_main, megatron_rlhf_main
     from .convert import convert_hf2mcore, convert_mcore2hf
-    from .utils import prepare_mcore_model, adapter_state_dict_context, convert_hf_config
+    from .utils import prepare_mcore_model, adapter_state_dict_context, convert_hf_config, initialize_megatron
     from .arguments import (MegatronSftArguments, MegatronPretrainArguments, MegatronRLHFArguments,
                             MegatronExportArguments, MegatronArguments)
     from .model import MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model
@@ -29,7 +29,7 @@ else:
     _import_structure = {
         'pipelines': ['megatron_sft_main', 'megatron_pretrain_main', 'megatron_rlhf_main', 'megatron_export_main'],
         'convert': ['convert_hf2mcore', 'convert_mcore2hf'],
-        'utils': ['prepare_mcore_model', 'adapter_state_dict_context', 'convert_hf_config'],
+        'utils': ['prepare_mcore_model', 'adapter_state_dict_context', 'convert_hf_config', 'initialize_megatron'],
         'arguments': [
             'MegatronSftArguments', 'MegatronPretrainArguments', 'MegatronRLHFArguments', 'MegatronExportArguments',
             'MegatronArguments'

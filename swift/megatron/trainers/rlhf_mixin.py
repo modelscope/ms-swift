@@ -3,12 +3,12 @@ from contextlib import contextmanager
 
 import torch
 from megatron.core import mpu
-from megatron.training import get_args, get_model
-from megatron.training.checkpointing import load_checkpoint
-from megatron.training.utils import unwrap_model
+# from megatron.training import get_args, get_model
+from megatron.core.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
+from swift.megatron.utils import load_mcore_checkpoint
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
 
@@ -30,7 +30,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                     self.bridge.load_weights(m, args.ref_model)
                 m.requires_grad_(False).eval()
             if args.ref_load:
-                load_checkpoint(ref_models, None, None, load_arg='ref_load')
+                load_mcore_checkpoint(ref_models, None, None, load_arg='ref_load')
             self.ref_models = ref_models
         return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
 

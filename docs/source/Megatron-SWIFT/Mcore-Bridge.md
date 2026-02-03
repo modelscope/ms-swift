@@ -285,9 +285,10 @@ megatron export \
 ```python
 import torch
 
-from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
+from swift.megatron import (
+    MegatronArguments, convert_hf_config, get_megatron_model_meta, initialize_megatron
+)
 from swift.model import get_processor
-from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-4B-Instruct-2507'
 processor = get_processor(model_id, download_model=True)
@@ -327,10 +328,10 @@ LoRA权重的加载、导出和存储同理，运行`CUDA_VISIBLE_DEVICES=0,1,2,
 import torch
 
 from swift.megatron import (
-    MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
+    MegatronArguments, convert_hf_config, get_megatron_model_meta,
+    prepare_mcore_model, initialize_megatron
 )
 from swift.model import get_processor
-from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
 processor = get_processor(model_id, download_model=True)

@@ -630,7 +630,6 @@ def _patch_TELinear():
 
 
 def _patch_build_train_valid_test_datasets():
-    from megatron.training import training
 
     def build_train_valid_test_datasets(build_train_valid_test_datasets_provider, *args, **kwargs):
         train_valid_test_num_samples = training.get_train_valid_test_num_samples()
@@ -800,7 +799,6 @@ def _patch_unified_memory():
 
 
 def _patch_megatron_swanlab():
-    from megatron.training import global_vars, wandb_utils, get_args
 
     def _set_wandb_writer(*_args, **kwargs):
         args = get_args()
@@ -836,20 +834,6 @@ def _patch_megatron_swanlab():
     wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
 
 
-def _patch_modelopt():
-    from megatron.training import checkpointing
-    if not hasattr(checkpointing, 'save_sharded_modelopt_state'):
-        return
-    save_sharded_modelopt_state = checkpointing.save_sharded_modelopt_state
-
-    def new_save_sharded_modelopt_state(model, *args, **kwargs):
-        if not model:
-            return
-        save_sharded_modelopt_state(model, *args, **kwargs)
-
-    checkpointing.save_sharded_modelopt_state = new_save_sharded_modelopt_state
-
-
 def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
@@ -867,7 +851,6 @@ def init_megatron_env():
     _patch__write_item()
     _patch_mtp()
     # _patch_megatron_swanlab()
-    # _patch_modelopt()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:

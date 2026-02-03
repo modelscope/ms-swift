@@ -5,13 +5,12 @@ from typing import List, Optional, Union
 
 import torch.distributed as dist
 from megatron.core import mpu
-# from megatron.training.checkpointing import load_checkpoint
-# from megatron.training.checkpointing import save_checkpoint as mg_save_checkpoint
 from transformers.utils import strtobool
 
 from swift.megatron.arguments import MegatronExportArguments
 from swift.megatron.convert import test_convert_precision
-from swift.megatron.utils import adapter_state_dict_context, initialize_megatron, prepare_mcore_model
+from swift.megatron.utils import (adapter_state_dict_context, initialize_megatron, load_mcore_checkpoint,
+                                  prepare_mcore_model, save_mcore_checkpoint)
 from swift.pipelines import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 
@@ -45,7 +44,7 @@ class MegatronExport(SwiftPipeline):
         mg_model = megatron_model_meta.model_provider(args, pre_process=pre_process, post_process=post_process)
         bridge = megatron_model_meta.bridge_cls(args)
         if args.load is not None:
-            load_checkpoint([mg_model], None, None, strict=True)
+            load_mcore_checkpoint([mg_model], None, None, strict=True)
         elif args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         else:
@@ -53,7 +52,7 @@ class MegatronExport(SwiftPipeline):
         if args.adapter_load is not None:
             peft_model = prepare_mcore_model(mg_model)
             with adapter_state_dict_context():
-                load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+                load_mcore_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
@@ -100,7 +99,7 @@ class MegatronExport(SwiftPipeline):
         if args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         elif args.load is not None:
-            load_checkpoint([mg_model], None, None, strict=True)
+            load_mcore_checkpoint([mg_model], None, None, strict=True)
         else:
             raise ValueError('Please specify `--load` or `--model`.')
         dist.barrier()
@@ -111,7 +110,7 @@ class MegatronExport(SwiftPipeline):
                 bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
             elif args.adapter_load is not None:
                 with adapter_state_dict_context():
-                    load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+                    load_mcore_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
@@ -122,7 +121,7 @@ class MegatronExport(SwiftPipeline):
             logger.info('Saving the model...')
             save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
             with adapter_state_dict_context(is_peft_format=save_peft_format):
-                mg_save_checkpoint(1, [mg_model], None, None, 0)
+                save_mcore_checkpoint(args, [mg_model])
             logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())
         # hf_model does not support loading args.adapter_load, so test_convert_precision cannot be performed
         support_convert_precision = args.adapter_load is None

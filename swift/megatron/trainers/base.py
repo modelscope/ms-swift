@@ -24,22 +24,22 @@ from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
-from megatron.core.utils import StragglerDetector
-# from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
+from megatron.core.utils import StragglerDetector, unwrap_model
+# from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer,
 #                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
 #                                print_rank_last, training)
-# from megatron.training.checkpointing import check_checkpoint_args, load_checkpoint, set_checkpoint_version
+# from megatron.training.checkpointing import check_checkpoint_args, set_checkpoint_version
 # from megatron.training.dist_signal_handler import DistributedSignalHandler
 # from megatron.training.theoretical_memory_usage import report_theoretical_memory
 # from megatron.training.training import num_floating_point_operations
-# from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
+# from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm
 
 from swift.megatron.tuners import LoraParallelLinear
-from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, patch_merge_fn,
-                                  prepare_mcore_model)
+from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, load_mcore_checkpoint,
+                                  patch_merge_fn, prepare_mcore_model)
 from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
@@ -47,10 +47,10 @@ from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_i
 from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
                     get_packed_seq_params, get_swift_datasets_provider)
 
-try:
-    from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
-except ImportError:
-    from megatron.legacy.data.data_samplers import MegatronPretrainingSampler
+# try:
+#     from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
+# except ImportError:
+#     from megatron.legacy.data.data_samplers import MegatronPretrainingSampler
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -65,7 +65,6 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args, template: Template):
         self.args = args
         self.template = template
-        self.stimer = StragglerDetector()
         self.unwrapped_models = []
         self.wrapped_models = []
         self.peft_models = []
@@ -514,10 +513,10 @@ class BaseMegatronTrainer(ABC):
                 copy_original_module_weight(m)
         if args.ref_adapter_load is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
+                load_mcore_checkpoint(model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
         if args.adapter_load is not None:
             with adapter_state_dict_context():
-                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
+                args.iteration, args.num_floating_point_operations_so_far = load_mcore_checkpoint(
                     model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
         if args.is_multimodal:
             for m in self.unwrapped_models:

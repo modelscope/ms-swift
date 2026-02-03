@@ -297,9 +297,10 @@ You need to create the following file (test.py), then run `CUDA_VISIBLE_DEVICES=
 ```python
 import torch
 
-from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
+from swift.megatron import (
+    MegatronArguments, convert_hf_config, get_megatron_model_meta, initialize_megatron
+)
 from swift.model import get_processor
-from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-4B-Instruct-2507'
 _, processor = get_processor(model_id, download_model=True)
@@ -341,10 +342,10 @@ Loading, exporting, and saving LoRA weights follows the same pattern. Run `CUDA_
 import torch
 
 from swift.megatron import (
-    MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
+    MegatronArguments, convert_hf_config, get_megatron_model_meta,
+    prepare_mcore_model, initialize_megatron
 )
 from swift.model import get_processor
-from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
 _, processor = get_processor(model_id, download_model=True)
