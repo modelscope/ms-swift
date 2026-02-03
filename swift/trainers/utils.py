@@ -316,6 +316,7 @@ def replace_index_file(output_dir: str):
         os.remove(os.path.join(output_dir, WEIGHTS_INDEX_NAME))
 
 
+@contextmanager
 def patch_modelscope_hub_timeout():
     from modelscope.hub.api import HubApi
     __init__ = HubApi.__init__

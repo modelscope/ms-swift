@@ -12,6 +12,7 @@ from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.arguments import ModelArguments
+from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
@@ -784,6 +785,7 @@ class MegatronArguments(ExtraMegatronArguments):
         self._init_mixed_precision()
 
         self._init_apply_rope_fusion()
+        initialize_megatron(self)
 
     def _init_apply_rope_fusion(self):
         if self.apply_rope_fusion is not None:

@@ -1223,7 +1223,7 @@ class BaseMegatronTrainer(ABC):
             if args.trainable_parameters:
                 logger.info(f'additional trainable_parameters: {args.trainable_parameters}')
 
-    def train(self, train_dataset, val_dataset, data_collator):
+    def train(self, train_dataset, val_dataset):
         args = self.args
         datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
         datasets_provider.is_distributed = True

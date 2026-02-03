@@ -59,7 +59,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         **current_convert_kwargs,
         save=args.output_dir,
         torch_dtype=args.torch_dtype)
-    initialize_megatron(megatron_args)
 
     mg_model = megatron_model_meta.model_provider(megatron_args)
     logger.info('Megatron model created successfully.')
@@ -103,7 +102,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         **current_convert_kwargs,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
-    initialize_megatron(megatron_args)
 
     mg_model = megatron_model_meta.model_provider(megatron_args)
     if megatron_args.load is None:
