@@ -23,6 +23,7 @@ from megatron.core.transformer import MLATransformerConfig, TransformerConfig
 from megatron.core.utils import unwrap_model
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
+from .patcher import patch_merge_fn
 
 logger = get_logger()
 
@@ -184,8 +185,7 @@ def _get_rng_state():
 
 def _generate_state_dict(args, model, iteration=None, model_sd_kwargs=None):
     model_sd_kwargs = model_sd_kwargs or {}
-    state_dict = {}
-    state_dict['args'] = Namespace(**check_json_format(args.__dict__))
+    state_dict = {'args': Namespace(**check_json_format(args.__dict__))}
     if iteration is not None:
         state_dict['iteration'] = iteration
     for i, m in enumerate(model):
@@ -301,6 +301,11 @@ def load_mcore_checkpoint(args, model, load_arg: str = 'load'):
     load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
                                                      mpu.get_data_parallel_group(with_context_parallel=True))
     state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_dir, load_strategy)
+
+    if state_dict.get('sharded_state_dict') is not None:
+        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
+        for k in model_keys:
+            patch_merge_fn(sharded_state_dict[k])
 
     if state_dict is None:
         return 0, 0

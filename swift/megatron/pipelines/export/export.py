@@ -11,8 +11,7 @@ from transformers.utils import strtobool
 
 from swift.megatron.arguments import MegatronExportArguments
 from swift.megatron.convert import test_convert_precision
-from swift.megatron.utils import (adapter_state_dict_context, initialize_megatron, patch_load_base_checkpoint,
-                                  prepare_mcore_model)
+from swift.megatron.utils import adapter_state_dict_context, initialize_megatron, prepare_mcore_model
 from swift.pipelines import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 
@@ -46,8 +45,7 @@ class MegatronExport(SwiftPipeline):
         mg_model = megatron_model_meta.model_provider(args, pre_process=pre_process, post_process=post_process)
         bridge = megatron_model_meta.bridge_cls(args)
         if args.load is not None:
-            with patch_load_base_checkpoint():
-                load_checkpoint([mg_model], None, None, strict=True)
+            load_checkpoint([mg_model], None, None, strict=True)
         elif args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         else:
@@ -102,8 +100,7 @@ class MegatronExport(SwiftPipeline):
         if args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         elif args.load is not None:
-            with patch_load_base_checkpoint():
-                load_checkpoint([mg_model], None, None, strict=True)
+            load_checkpoint([mg_model], None, None, strict=True)
         else:
             raise ValueError('Please specify `--load` or `--model`.')
         dist.barrier()
