@@ -27,8 +27,8 @@
 - masked_softmax_fusion: Defaults to True. Used to enable the fusion of scaling, masking, and softmax for query_key_value.
 - bias_dropout_fusion: Defaults to True. Used to enable the fusion of bias and dropout.
 - bias_swiglu_fusion: Defaults to True. Used to enable the fusion of bias and swiglu.
-- no_rope_fusion: Default is False. Specify `--no_rope_fusion true` to disable rope fusion.
-  - **When using position embedding such as mrope that do not support RoPE fusion, this parameter will be automatically set to True**.
+- apply_rope_fusion: Defaults to True. Used to enable RoPE (Rotary Position Embedding) fusion.
+  - **When using position embedding such as mrope that do not support RoPE fusion, this parameter will be automatically set to False**.
 - gradient_accumulation_fusion: Defaults to True. Used to enable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss calculation fusion. Default is False.
 - cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
@@ -54,7 +54,7 @@
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
 - 🔥num_workers: Number of workers for the dataloader, default is 4.
   - Note: If `--streaming true` is set, it will be set to 1.
-- no_data_sharding: Takes effect on train_dataloader when `--train_dataloader_shuffle true` is set. Defaults to False. This parameter controls the scope of dataset shuffling. If set to False, the dataset is first sharded, then each shard is shuffled independently (slightly more memory efficient); if set to True, the dataset is shuffled globally first, then sharded (better randomization). Requires "ms-swift>=3.12".
+- data_sharding: Takes effect on train_dataloader when `--train_dataloader_shuffle true` is set. Defaults to False. This parameter controls the scope of dataset shuffling. If set to True, the dataset is first sharded, then each shard is shuffled independently (slightly more memory efficient); if set to False, the dataset is shuffled globally first, then sharded (better randomization).
 - seq_length: Defaults to `None`, which means it will be set to `max_length`. To limit the sequence length of the dataset, it is recommended to use the `--max_length` argument under "Basic Parameters" instead; this parameter does not need to be set explicitly.
 - use_cpu_initialization: Initialize weights on the CPU. Defaults to `False`. This option is used during weight conversion between Hugging Face (HF) and MCore formats. The value typically does not need to be modified.
 - 🔥megatron_extra_kwargs: Additional arguments to be passed through directly to Megatron, provided as a JSON string. Defaults to `None`.
@@ -141,7 +141,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
 - tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
 - log_timers_to_tensorboard: Logs timers to TensorBoard. Default is True.
-- no_log_learning_rate_to_tensorboard: Do not log learning rate to TensorBoard. Default is False.
+- log_learning_rate_to_tensorboard: Do not log learning rate to TensorBoard. Default is True.
 - log_validation_ppl_to_tensorboard: Writes validation perplexity to TensorBoard. Default is True.
 - log_memory_to_tensorboard: Writes memory logs to TensorBoard. Default is True.
 - logging_level: Logging level. Default is None.

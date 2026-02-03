@@ -423,7 +423,7 @@ class MegatronArguments(ExtraMegatronArguments):
     bias_dropout_fusion: Optional[bool] = None
     bias_swiglu_fusion: bool = True
     bias_gelu_fusion: bool = True
-    no_rope_fusion: Optional[bool] = None
+    apply_rope_fusion: Optional[bool] = None
     gradient_accumulation_fusion: bool = True
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
@@ -596,7 +596,7 @@ class MegatronArguments(ExtraMegatronArguments):
     tensorboard_log_interval: int = 1
     tensorboard_queue_size: int = 50
     log_timers_to_tensorboard: bool = True
-    no_log_learning_rate_to_tensorboard: bool = False
+    log_learning_rate_to_tensorboard: bool = True
     log_validation_ppl_to_tensorboard: bool = True
     log_memory_to_tensorboard: bool = True
     logging_level: Optional[str] = None
@@ -612,7 +612,7 @@ class MegatronArguments(ExtraMegatronArguments):
     seed: int = 42
     seq_length: Optional[int] = None
     num_workers: int = 4
-    no_data_sharding: bool = False
+    data_sharding: bool = False
 
     def _set_default(self):
         if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
@@ -746,6 +746,7 @@ class MegatronArguments(ExtraMegatronArguments):
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
         self.group_query_attention = self.num_query_groups > 1
+        self.fp8 = self.fp8_format  # compat megatron-lm
         if self.rope_scaling is not None:
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
@@ -782,17 +783,17 @@ class MegatronArguments(ExtraMegatronArguments):
         self._init_moe()
         self._init_mixed_precision()
 
-        self._init_no_rope_fusion()
+        self._init_apply_rope_fusion()
 
-    def _init_no_rope_fusion(self):
-        if self.no_rope_fusion is not None:
+    def _init_apply_rope_fusion(self):
+        if self.apply_rope_fusion is not None:
             return
         if self.multi_latent_attention or self.rotary_interleaved:
             # Upgrading transformer_engine requires checking here.
-            self.no_rope_fusion = True
+            self.apply_rope_fusion = False
         else:
-            self.no_rope_fusion = False
-        logger.info(f'Setting args.no_rope_fusion: {self.no_rope_fusion}.')
+            self.apply_rope_fusion = True
+        logger.info(f'Setting args.apply_rope_fusion: {self.apply_rope_fusion}.')
 
     def _init_vpp_size(self):
         # TODO

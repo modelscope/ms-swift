@@ -26,8 +26,8 @@
 - masked_softmax_fusion: 默认为True。用于开启query_key_value的scaling, masking, and softmax融合。
 - bias_dropout_fusion: 默认为True。用于开启bias和dropout的融合。
 - bias_swiglu_fusion: 默认为True。用于开启bias和swiglu融合。
-- no_rope_fusion: 默认为False。指定`--no_rope_fusion true`用于禁止rope融合。
-  - **当使用mrope等不支持rope_fusion的位置编码时，该参数会自动设置为True**。
+- apply_rope_fusion: 默认为True。用于开启rope融合。
+  - **当使用mrope等不支持rope_fusion的位置编码时，该参数会自动设置为False**。
 - gradient_accumulation_fusion: 默认为True。用于开启梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
@@ -53,7 +53,7 @@
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
 - 🔥num_workers: dataloader的workers数量，默认为4。
   - 注意：若设置`--streaming true`，则设置为1。
-- no_data_sharding: 当`--train_dataloader_shuffle true`时对 train_dataloader 生效，默认为False。该参数控制数据集随机的范围。若设置为False，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为True，则先对数据集进行随机，再进行分片（更好的随机效果）。使用该参数需"ms-swift>=3.12"。
+- data_sharding: 当`--train_dataloader_shuffle true`时对 train_dataloader 生效，默认为False。该参数控制数据集随机的范围。若设置为True，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为False，则先对数据集进行随机，再进行分片（更好的随机效果）。
 - seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制建议使用“基本参数”中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。通常不需要修改该值。
 - 🔥megatron_extra_kwargs: 额外需要透传入megatron的其他参数，使用json传递。默认为None。
@@ -135,7 +135,7 @@
 - tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
 - tensorboard_queue_size: 用于暂存事件和摘要的 TensorBoard 队列大小；当队列中待处理的事件和摘要数量达到该大小时，下一次调用 "add" 相关方法会触发将数据刷新写入磁盘。默认为50。
 - log_timers_to_tensorboard: 记录timers到tensorboard。默认为True。
-- no_log_learning_rate_to_tensorboard: 不记录学习率到tensorboard。默认为False。
+- log_learning_rate_to_tensorboard: 记录学习率到tensorboard。默认为True。
 - log_validation_ppl_to_tensorboard: 将验证困惑度写入tensorboard。默认为True。
 - log_memory_to_tensorboard: 将内存日志写入tensorboard。默认为True。
 - logging_level: 日志级别。默认为None。
