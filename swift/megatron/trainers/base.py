@@ -447,10 +447,10 @@ class BaseMegatronTrainer(ABC):
         if ckpt_dir is None:
             return 0, 0
         logger.info(f'checkpoint_dir: {ckpt_dir}')
-        iteration_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
-        if not os.path.exists(iteration_path):
+        tracker_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
+        if not os.path.exists(tracker_path):
             return 0, 0
-        with open(iteration_path, 'r') as f:
+        with open(tracker_path, 'r') as f:
             iteration = int(f.read())
 
         common_path = os.path.join(ckpt_dir, f'iter_{iteration:07d}', 'common.pt')

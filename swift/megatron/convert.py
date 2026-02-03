@@ -13,8 +13,8 @@ from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
 from .model import get_megatron_model_meta
-from .utils import (convert_hf_config, initialize_megatron, patch_load_base_checkpoint, patch_torch_dist_shard,
-                    test_convert_precision, save_mcore_checkpoint)
+from .utils import (convert_hf_config, initialize_megatron, load_mcore_checkpoint, patch_load_base_checkpoint,
+                    patch_torch_dist_shard, save_mcore_checkpoint, test_convert_precision)
 
 logger = get_logger()
 
@@ -70,8 +70,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     if not _test_convert_precision:
         args.save_args()
         logger.info('Saving the model...')
-        save_mcore_checkpoint(args, [mg_model])
-        logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
+        save_mcore_checkpoint(megatron_args, [mg_model])
     # Place it at the end to avoid test_convert_precision affecting precision.
     if args.test_convert_precision:
         test_convert_precision(megatron_args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
@@ -109,12 +108,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     mg_model = megatron_model_meta.model_provider(megatron_args)
     if megatron_args.load is None:
         raise ValueError('Please specify `--mcore_model`.')
-    with patch_load_base_checkpoint():
-        load_checkpoint([mg_model], None, None, strict=True)
+    # with patch_load_base_checkpoint():
+    load_mcore_checkpoint(megatron_args, [mg_model], load_arg='load')
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)
-        with adapter_state_dict_context():
-            load_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+        # with adapter_state_dict_context():
+        load_mcore_checkpoint(megatron_args, [mg_model], load_arg='adapter_load')
         logger.info('Merge LoRA...')
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')

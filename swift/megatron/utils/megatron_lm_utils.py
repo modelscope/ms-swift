@@ -1,17 +1,28 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Parts of the functions in this file are code borrowed from NVIDIA/Megatron-LM
 import dataclasses
+import os
+import random
+from argparse import Namespace
 from contextlib import contextmanager
 from datetime import timedelta
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-from megatron.core import mpu, tensor_parallel
-from megatron.core.utils import unwrap_model
+from megatron.core import dist_checkpointing, mpu, tensor_parallel
+from megatron.core.dist_checkpointing.mapping import ShardedObject
+from megatron.core.dist_checkpointing.serialization import (get_default_load_sharded_strategy,
+                                                            get_default_save_sharded_strategy)
+from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyParallelLoadStrategyWrapper,
+                                                                        FullyParallelSaveStrategyWrapper)
 from megatron.core.fusions.fused_bias_geglu import quick_gelu
+from megatron.core.msc_utils import open_file
+from megatron.core.num_microbatches_calculator import update_num_microbatches
 from megatron.core.transformer import MLATransformerConfig, TransformerConfig
+from megatron.core.utils import unwrap_model
 
-from swift.utils import get_logger, init_process_group, is_master, seed_everything, set_device
+from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
 
 logger = get_logger()
 
@@ -56,9 +67,9 @@ def _initialize_mpu(args):
                 distributed_timeout_minutes=args.distributed_timeout_minutes,
             )
         if is_master():
-            logger.info(f'tp: {args.tensor_model_parallel_size}, pp: {args.pipeline_model_parallel_size}, '
-                        f'vpp: {args.virtual_pipeline_model_parallel_size}, cp: {args.context_parallel_size}, '
-                        f'ep: {args.expert_model_parallel_size}, etp: {args.expert_tensor_parallel_size}')
+            logger.info(f'TP: {args.tensor_model_parallel_size}, PP: {args.pipeline_model_parallel_size}, '
+                        f'VPP: {args.virtual_pipeline_model_parallel_size}, CP: {args.context_parallel_size}, '
+                        f'EP: {args.expert_model_parallel_size}, ETP: {args.expert_tensor_parallel_size}')
 
 
 def _set_random_seed(
@@ -146,8 +157,174 @@ def core_transformer_config_from_args(args, config_class=None):
 
     return config
 
+
+def _get_rng_state():
+    """Collect rng state across data parallel ranks."""
+    rng_state = {
+        'random_rng_state': random.getstate(),
+        'np_rng_state': np.random.get_state(),
+        'torch_rng_state': torch.get_rng_state(),
+        'cuda_rng_state': torch.cuda.get_rng_state(),
+        'rng_tracker_states': tensor_parallel.get_cuda_rng_tracker().get_states()
+    }
+
+    # data_parallel_random_init False
+    rng_state_list = [rng_state]
+
+    pp_rank = mpu.get_pipeline_model_parallel_rank()
+    pp_size = mpu.get_pipeline_model_parallel_world_size()
+    tp_rank = mpu.get_tensor_model_parallel_rank()
+    tp_size = mpu.get_tensor_model_parallel_world_size()
+    rng_state_list = ShardedObject(
+        'rng_state',
+        rng_state_list, (pp_size, tp_size), (pp_rank, tp_rank),
+        replica_id=mpu.get_data_parallel_rank(with_context_parallel=True))
+    return rng_state_list
+
+
+def _generate_state_dict(args, model, iteration=None, model_sd_kwargs=None):
+    model_sd_kwargs = model_sd_kwargs or {}
+    state_dict = {}
+    state_dict['args'] = Namespace(**check_json_format(args.__dict__))
+    if iteration is not None:
+        state_dict['iteration'] = iteration
+    for i, m in enumerate(model):
+        key = 'model'
+        if len(model) > 1:
+            key = f'model{i}'
+        model_sd = model[i].sharded_state_dict(**model_sd_kwargs)
+        state_dict[key] = model_sd
+    return state_dict
+
+
 def save_mcore_checkpoint(args, model, iteration=1):
     model = unwrap_model(model)
+    rng_state = _get_rng_state()
+    checkpoint_dir = os.path.join(args.save, f'iter_{iteration:07d}')
+    sharded_sd_metadata = {
+        'distrib_optim_sharding_type': 'dp_reshardable',
+        'singleton_local_shards': False,
+        'chained_optim_avoid_prefix': True
+    }
+    os.makedirs(checkpoint_dir, exist_ok=True)
+    save_strategy = get_default_save_sharded_strategy()
+    save_strategy = FullyParallelSaveStrategyWrapper(
+        save_strategy,
+        mpu.get_data_parallel_group(with_context_parallel=True),
+    )
 
-def load_mcore_checkpoint(args):
-    pass
+    state_dict = _generate_state_dict(args, model, iteration, model_sd_kwargs={'metadata': sharded_sd_metadata})
+    async_save_request = dist_checkpointing.save(
+        state_dict,
+        checkpoint_dir,
+        save_strategy,
+        async_sharded_save=args.async_save,
+        validate_access_integrity=True,
+        content_metadata=sharded_sd_metadata)
+
+    if not args.async_save:
+        assert async_save_request is None
+        # Wait so everyone is done (necessary)
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
+
+    if is_master():
+        tracker_path = os.path.join(args.save, 'latest_checkpointed_iteration.txt')
+
+        def iter_finalize_fn():
+            prev_iteration = 0
+            save_retain_interval = getattr(args, 'save_retain_interval', None)  # For backwards compatibility of tests.
+            if save_retain_interval is not None:
+                if os.path.exists(tracker_path):  # TODO: Make this work with MSC remote paths?
+                    with open_file(tracker_path, 'r') as f:
+                        prev_iteration = int(f.read().strip())
+
+            with open_file(tracker_path, 'w') as f:
+                f.write(str(iteration))
+            # TODO: delete_checkpoint
+
+        if args.async_save:
+            assert async_save_request is not None
+            async_save_request.add_finalize_fn(iter_finalize_fn)
+        else:
+            iter_finalize_fn()
+    logger.info(f'Successfully saved Megatron model weights in `{args.save}`.')
+
+
+def _load_iteration(tracker_path: str):
+    if not os.path.exists(tracker_path):
+        return 0
+    with open(tracker_path, 'r') as f:
+        iteration = int(f.read())
+    # Get the max iteration retrieved across the ranks.
+    if torch.distributed.is_initialized():
+        iters_cuda = torch.tensor([iteration], dtype=torch.long, device='cuda')
+        torch.distributed.all_reduce(iters_cuda, op=torch.distributed.ReduceOp.MAX)
+        iteration = iters_cuda[0].item()
+    return iteration
+
+
+def load_mcore_checkpoint(args, model, load_arg: str = 'load'):
+    if load_arg in {'adapter_load', 'ref_adapter_load'}:
+        is_peft_format = True
+    elif load_arg in {'load', 'ref_load'}:
+        is_peft_format = False
+    model = unwrap_model(model)
+    tracker_path = os.path.join(args.load, 'latest_checkpointed_iteration.txt')
+    iteration = _load_iteration(tracker_path)
+    checkpoint_dir = os.path.join(args.load, f'iter_{iteration:07d}')
+    state_dict = dist_checkpointing.load_common_state_dict(checkpoint_dir)
+
+    ckpt_tp_pp = (
+        state_dict['args'].tensor_model_parallel_size,
+        state_dict['args'].pipeline_model_parallel_size,
+    )
+    run_tp_pp = (
+        args.tensor_model_parallel_size,
+        args.pipeline_model_parallel_size,
+    )
+
+    # Determine if RNG state will be loaded
+    if (ckpt_tp_pp == run_tp_pp and not args.finetune and not args.no_load_rng
+            and not getattr(state_dict['args'], 'no_save_rng', False)):
+        gen_sd_rng_state = _get_rng_state()  # we can load the rng state
+    else:
+        gen_sd_rng_state = None
+        if ckpt_tp_pp != run_tp_pp:
+            logger.info(f'(TP, PP) mismatch after resume ({run_tp_pp} vs {ckpt_tp_pp} from checkpoint): '
+                        'RNG state will be ignored')
+    sharded_sd_metadata = dist_checkpointing.load_content_metadata(preloaded_state_dict=state_dict)
+
+    sharded_state_dict = _generate_state_dict(args, model, model_sd_kwargs={'metadata': sharded_sd_metadata})
+    load_kwargs = {'sharded_state_dict': sharded_state_dict}
+    load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
+    load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
+                                                     mpu.get_data_parallel_group(with_context_parallel=True))
+    state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_dir, load_strategy)
+
+    if state_dict is None:
+        return 0, 0
+
+    if args.finetune:
+        iteration = 0
+    num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
+    if 'args' in state_dict and not args.finetune:
+        checkpoint_args = state_dict['args']
+        args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
+        args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
+        update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
+        args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
+
+    if len(model) == 1:
+        model[0].load_state_dict(state_dict['model'])
+    else:
+        for i, m in enumerate(model):
+            if f'model{i}' not in state_dict:
+                continue
+            m.load_state_dict(state_dict[f'model{i}'])
+
+    if torch.distributed.is_initialized():
+        torch.distributed.barrier()
+
+    logger.info(f'Successfully loaded Megatron model weights from: {args.load}')
+    return iteration, num_floating_point_operations_so_far
