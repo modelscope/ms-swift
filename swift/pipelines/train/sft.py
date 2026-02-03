@@ -239,28 +239,31 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             append_to_jsonl(jsonl_path, self.train_msg, strict=False)
         return self.train_msg
 
+    def _get_resume_checkpoint(self, trainer):
+        if self.args.resume_from_checkpoint:
+            return self.args.resume_from_checkpoint
+        resume_checkpoint = None
+        # If flash checkpoint is enabled, try to resume from the last complete checkpoint.
+        # If the previous training finished, resume_checkpoint stays None.
+        if self.args.use_flash_ckpt:
+            # resume_checkpoint = <resume_dir>/checkpoint-<step>
+            resume_checkpoint = trainer.get_resume_checkpoint()
+
+        # Elastic runs require a universal checkpoint; fall back when missing or incomplete.
+        callbacks = set(getattr(self.args, 'callbacks', []))
+        elastic_enabled = 'deepspeed_elastic' in callbacks
+        if elastic_enabled and (resume_checkpoint is None
+                                or not os.path.exists(os.path.join(resume_checkpoint, 'latest_universal'))):
+            # get_resume_checkpoint_until_find_ucp returns <resume_dir>/checkpoint-<step> with latest_universal,
+            # or None; when None, no universal checkpoint exists and training starts from scratch.
+            resume_checkpoint = trainer.get_resume_checkpoint_until_find_ucp()
+        return resume_checkpoint
+
     def train(self, trainer):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
+        resume_checkpoint = self._get_resume_checkpoint(trainer)
         try:
-
-            resume_checkpoint = None
-            callbacks = set(getattr(self.args, 'callbacks', []))
-            elastic_enabled = 'deepspeed_elastic' in callbacks
-            # If flash checkpoint is enabled, try to resume from the last complete checkpoint.
-            # If the previous training finished, resume_checkpoint stays None.
-            if self.args.use_flash_ckpt:
-                # resume_checkpoint = <resume_dir>/checkpoint-<step>
-                resume_checkpoint = trainer.get_resume_checkpoint()
-            # Elastic runs require a universal checkpoint; fall back when missing or incomplete.
-            if elastic_enabled and (resume_checkpoint is None
-                                    or not os.path.exists(os.path.join(resume_checkpoint, 'latest_universal'))):
-                # get_resume_checkpoint_until_find_ucp returns <resume_dir>/checkpoint-<step> with latest_universal,
-                # or None; when None, no universal checkpoint exists and training starts from scratch.
-                resume_checkpoint = trainer.get_resume_checkpoint_until_find_ucp()
-            # Explicit user override always wins.
-            if self.args.resume_from_checkpoint:
-                resume_checkpoint = self.args.resume_from_checkpoint
             trainer.train(resume_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)

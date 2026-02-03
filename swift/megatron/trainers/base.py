@@ -38,11 +38,12 @@ from packaging import version
 from tqdm.auto import tqdm
 
 from swift.megatron.tuners import LoraParallelLinear
-from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, load_mcore_checkpoint,
-                                  patch_merge_fn, prepare_mcore_model)
+from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, get_padding_to,
+                                  load_mcore_checkpoint, patch_merge_fn, prepare_mcore_model)
 from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
+from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, ms_logger_context
 from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
                     get_packed_seq_params, get_swift_datasets_provider)
@@ -73,10 +74,10 @@ class BaseMegatronTrainer(ABC):
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
-        self._patch_megatron()
+        # self._patch_megatron()
 
-        if args.check_model and hasattr(args, 'model_info') and hasattr(args.model_info, 'model_dir'):
-            with ms_logger_context(logging.CRITICAL), self._patch_timeout():
+        if args.check_model and hasattr(args, 'model_dir'):
+            with ms_logger_context(logging.CRITICAL), patch_modelscope_hub_timeout():
                 config_info = self._collect_config_info()
                 config_info.update({
                     'invoked_by': 'local_trainer',
@@ -94,6 +95,13 @@ class BaseMegatronTrainer(ABC):
             'eval': collections.defaultdict(_get_mean_metric)
         }
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
+    def _get_data_collator(self):
+        data_collator = self.template.data_collator
+        padding_to = get_padding_to(self.args)
+        logger.info(f'padding_to: {padding_to}')
+        data_collator = partial(data_collator, padding_to=padding_to)
+        return data_collator
 
     @property
     def bridge(self):
@@ -1329,24 +1337,6 @@ class BaseMegatronTrainer(ABC):
     def get_batch(self, data_iterator, vp_stage=None):
         """Generate a batch."""
         return self._prepare_batch(next(data_iterator), vp_stage)
-
-    @contextmanager
-    def _patch_timeout(self):
-        from modelscope.hub.api import HubApi
-        __init__ = HubApi.__init__
-
-        def __new_init__(self, *args, **kwargs):
-            timeout = kwargs.get('timeout')
-            if timeout is not None and timeout > 5:
-                kwargs['timeout'] = 5
-            __init__(self, *args, **kwargs)
-
-        HubApi.__init__ = __new_init__
-
-        try:
-            yield
-        finally:
-            HubApi.__init__ = __init__
 
     def _collect_config_info(self) -> Dict[str, str]:
         """

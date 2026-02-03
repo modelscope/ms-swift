@@ -9,7 +9,6 @@ from transformers.utils import is_torch_npu_available
 
 from swift.megatron.arguments import MegatronSftArguments
 from swift.megatron.trainers import MegatronEmbeddingTrainer, MegatronRerankerTrainer, MegatronTrainer
-from swift.megatron.utils import get_padding_to
 from swift.pipelines import SwiftSft
 from swift.utils import get_logger, is_last_rank, plot_images
 from .utils import build_streaming_dataloader
@@ -60,25 +59,17 @@ class MegatronSft(SwiftSft):
         self.template.use_megatron = True
         self.trainer = self.prepare_trainer()
 
-    def _get_data_collator(self):
-        data_collator = self.template.data_collator
-        padding_to = get_padding_to(self.args)
-        logger.info(f'padding_to: {padding_to}')
-        data_collator = partial(data_collator, padding_to=padding_to)
-        return data_collator
-
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
-        data_collator = self._get_data_collator()
 
-        if args.streaming:
-            train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
-            if val_dataset is not None:
-                val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
+        # if args.streaming:
+        #     train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
+        #     if val_dataset is not None:
+        #         val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
 
         try:
-            self.trainer.train(train_dataset, val_dataset, data_collator)
+            self.trainer.train(train_dataset, val_dataset)
         finally:
             # Visualization
             if is_last_rank():
