@@ -46,6 +46,6 @@ class MegatronSftArguments(MegatronBaseArguments):
         if self.tensorboard_dir is None and self.save is not None:
             self.tensorboard_dir = f'{self.save}/runs'
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
-        if self.load is None and self.model is None and self.no_initialization:
+        if self.load is None and self.model is None and not self.perform_initialization:
             raise ValueError('You did not pass `--load/--model` to read weights, so you need to set '
-                             '`--no_initialization false` to allow the model to initialize weights properly.')
+                             '`--perform_initialization true` to allow the model to initialize weights properly.')

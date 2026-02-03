@@ -43,8 +43,8 @@ class MegatronExport(SwiftPipeline):
 
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
-        mg_model = megatron_model_meta.model_provider(pre_process=pre_process, post_process=post_process)
-        bridge = megatron_model_meta.bridge_cls()
+        mg_model = megatron_model_meta.model_provider(args, pre_process=pre_process, post_process=post_process)
+        bridge = megatron_model_meta.bridge_cls(args)
         if args.load is not None:
             with patch_load_base_checkpoint():
                 load_checkpoint([mg_model], None, None, strict=True)
@@ -96,9 +96,9 @@ class MegatronExport(SwiftPipeline):
 
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
-        mg_model = megatron_model_meta.model_provider(pre_process=pre_process, post_process=post_process)
+        mg_model = megatron_model_meta.model_provider(args, pre_process=pre_process, post_process=post_process)
         logger.info('Megatron model created successfully.')
-        bridge = megatron_model_meta.bridge_cls()
+        bridge = megatron_model_meta.bridge_cls(args)
         if args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         elif args.load is not None:

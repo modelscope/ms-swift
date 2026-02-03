@@ -107,9 +107,8 @@ def _get_rope_type(rope_scaling: Optional[Dict[str, Any]]):
     return rope_type
 
 
-def get_rope_inv_freq(seq_len=None):
+def get_rope_inv_freq(args, seq_len=None):
     from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-    args = get_args()
     ROPE_INIT_FUNCTIONS.update(EXTENDED_ROPE_INIT_FUNCTIONS)
     dummy_config = _get_dummy_config(args)
     rope_init_fn = ROPE_INIT_FUNCTIONS[_get_rope_type(args.rope_scaling)]
@@ -127,7 +126,7 @@ def longrope_frequency_update(args, model, inv_freq, seq_len: int):
         original_max_position_embeddings = args.max_position_embeddings
 
     if not hasattr(model, 'long_inv_freq'):
-        model.long_inv_freq, _ = get_rope_inv_freq(seq_len=original_max_position_embeddings + 1)
+        model.long_inv_freq, _ = get_rope_inv_freq(args, seq_len=original_max_position_embeddings + 1)
         model.original_inv_freq = inv_freq.clone()
 
     if seq_len > original_max_position_embeddings:
@@ -144,7 +143,7 @@ def dynamic_frequency_update(args, model, inv_freq, seq_len: int):
         model.original_inv_freq = inv_freq.clone()
     attention_scaling = None
     if seq_len > model.max_seq_len_cached:  # growth
-        new_inv_freq, attention_scaling = get_rope_inv_freq(seq_len=seq_len)
+        new_inv_freq, attention_scaling = get_rope_inv_freq(args, seq_len=seq_len)
         inv_freq.data.copy_(new_inv_freq)
         model.max_seq_len_cached = seq_len
 

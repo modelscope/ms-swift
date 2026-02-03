@@ -99,7 +99,7 @@ class BaseMegatronTrainer(ABC):
     @property
     def bridge(self):
         if self._bridge is None:
-            self._bridge = self.args.megatron_model_meta.bridge_cls()
+            self._bridge = self.args.megatron_model_meta.bridge_cls(self.args)
         return self._bridge
 
     @contextmanager
@@ -109,7 +109,7 @@ class BaseMegatronTrainer(ABC):
 
         def initialize_megatron(*_args, **kwargs):
             res = origin_initialize_megatron(*_args, **kwargs)
-            args = get_args()
+            args = self.args
             data_parallel_size = mpu.get_data_parallel_world_size()
             step_batch_size = args.micro_batch_size * data_parallel_size
             num_generations = args.num_generations if args.rlhf_type == 'grpo' else 1
@@ -158,7 +158,7 @@ class BaseMegatronTrainer(ABC):
             yield from self._origin_cyclic_iter(iterable)
             return
 
-        args = get_args()
+        args = self.args
         n_epoch = 0
         is_finished = False
         while True:
@@ -254,7 +254,7 @@ class BaseMegatronTrainer(ABC):
         checkpointing.origin__load_base_checkpoint = checkpointing._load_base_checkpoint
         checkpointing._load_base_checkpoint = load_base_checkpoint
 
-        args = get_args()
+        args = self.args
         origin_load_state_dict = torch.nn.Module.load_state_dict
         origin_no_load_optim = args.no_load_optim
         origin_no_load_rng = args.no_load_rng
@@ -317,7 +317,7 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
-        args = get_args()
+        args = self.args
         if self.args.vit_lr is not None or self.args.aligner_lr is not None:
             assert self.args.megatron_model_meta.is_multimodal
             vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
@@ -474,10 +474,8 @@ class BaseMegatronTrainer(ABC):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
-        args = get_args()
-
         def new_model_provider_func(*_args, **kwargs):
-            model = model_provider_func(*_args, **kwargs)
+            model = model_provider_func(self.args, *_args, **kwargs)
             if args.load is None:
                 self.bridge.load_weights(model, args.model_dir)
             self.unwrapped_models.append(model)
@@ -496,6 +494,7 @@ class BaseMegatronTrainer(ABC):
 
         self._init_multimodal_full()
         # read iteration
+        args = self.args
         if not args.finetune:
             args.iteration, args.num_floating_point_operations_so_far = self._load_iteration()
 
@@ -587,7 +586,7 @@ class BaseMegatronTrainer(ABC):
         eval_iters=None,
     ):
         """Evaluation."""
-        args = get_args()
+        args = self.args
         timers = get_timers()
 
         timers('evaluate', log_level=0).start(barrier=True)
@@ -746,7 +745,7 @@ class BaseMegatronTrainer(ABC):
     ):
         """Helper function to evaluate and dump results on screen."""
 
-        args = get_args()
+        args = self.args
         if write_to_tensorboard:
             writer = get_tensorboard_writer()
         else:
@@ -841,7 +840,7 @@ class BaseMegatronTrainer(ABC):
         total_loss_dict.update(metrics)
         self._remove_log(total_loss_dict)
         if iteration is None:
-            args = get_args()
+            args = self.args
             iteration = args.curr_iteration + 1
         if writer:
             for k, v in metrics.items():
@@ -853,7 +852,7 @@ class BaseMegatronTrainer(ABC):
     def training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""
-        args = get_args()
+        args = self.args
         timers = get_timers()
         writer = get_tensorboard_writer()
         wandb_writer = get_wandb_writer()
@@ -1139,7 +1138,7 @@ class BaseMegatronTrainer(ABC):
             raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
     def save_checkpoint(self, iteration, model, *_args, **kwargs):
-        args = get_args()
+        args = self.args
         output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
         os.makedirs(output_dir, exist_ok=True)
         origin_save = args.save
@@ -1197,7 +1196,7 @@ class BaseMegatronTrainer(ABC):
         training.save_checkpoint = self.save_checkpoint
 
     def _init_multimodal_full(self):
-        args = get_args()
+        args = self.args
         visual_cls = self.args.megatron_model_meta.visual_cls
         if args.tuner_type == 'full' and args.is_multimodal and visual_cls is not None:
             vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
@@ -1232,7 +1231,7 @@ class BaseMegatronTrainer(ABC):
         if dataset is None:
             return None
 
-        args = get_args()
+        args = self.args
         if args.dataloader_type == 'external':
             # External dataloaders are passed through. User is expected to provide a
             # torch-compatible dataloader and define samplers, if needed.
@@ -1316,7 +1315,7 @@ class BaseMegatronTrainer(ABC):
         batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
-        args = get_args()
+        args = self.args
         text_position_ids = batch.pop('text_position_ids', None)
         batch.pop('attention_mask_2d', None)
         if text_position_ids is None:

@@ -61,9 +61,9 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         torch_dtype=args.torch_dtype)
     initialize_megatron(megatron_args)
 
-    mg_model = megatron_model_meta.model_provider()
+    mg_model = megatron_model_meta.model_provider(megatron_args)
     logger.info('Megatron model created successfully.')
-    bridge = megatron_model_meta.bridge_cls()
+    bridge = megatron_model_meta.bridge_cls(megatron_args)
     bridge.load_weights(mg_model, args.model_info.model_dir)
     logger.info('Successfully transferred HF model weights to MG model.')
     _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
@@ -106,7 +106,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         torch_dtype=args.torch_dtype)
     initialize_megatron(megatron_args)
 
-    mg_model = megatron_model_meta.model_provider()
+    mg_model = megatron_model_meta.model_provider(megatron_args)
     if megatron_args.load is None:
         raise ValueError('Please specify `--mcore_model`.')
     with patch_load_base_checkpoint():
@@ -119,7 +119,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
-        bridge = megatron_model_meta.bridge_cls()
+        bridge = megatron_model_meta.bridge_cls(megatron_args)
         logger.info('Converting weights and saving the model...')
         bridge.save_weights([mg_model], args.output_dir, processor=processor, config=hf_config)
         if is_master():

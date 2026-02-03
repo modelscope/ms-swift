@@ -124,9 +124,9 @@ def core_transformer_config_from_args(args, config_class=None):
     if args.swiglu:
         kw_args['activation_func'] = F.silu
         kw_args['gated_linear_unit'] = True
-        kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion
+        kw_args['bias_activation_fusion'] = not args.no_bias_swiglu_fusion
     else:
-        kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
+        kw_args['bias_activation_fusion'] = not args.no_bias_gelu_fusion
     if args.quick_geglu:
         assert not args.swiglu
         kw_args['gated_linear_unit'] = True
@@ -135,15 +135,11 @@ def core_transformer_config_from_args(args, config_class=None):
         kw_args['num_query_groups'] = args.num_query_groups
     else:
         kw_args['num_query_groups'] = None
-    if args.rope_type is None:
-        # Pop 'rope_type' to let the config class use the default value.
-        kw_args.pop('rope_type', None)
-    else:
-        assert (args.multi_latent_attention or args.rope_type
-                == 'rope'), (f'Common attention only support rope_type="rope", but got {args.rope_type}.')
 
     kw_args['cp_comm_type'] = 'p2p'
     kw_args['inference_sampling_seed'] = args.seed
 
-    # Return config.
-    return config_class(**kw_args)
+    config = config_class(**kw_args)
+    config.args = args
+
+    return config

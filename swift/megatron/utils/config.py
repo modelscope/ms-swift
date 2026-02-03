@@ -19,7 +19,7 @@ config_mapping = {
     'untie_embeddings_and_output_weights': ['tie_word_embeddings'],
     'swiglu': ['hidden_act'],
     'add_qkv_bias': ['attention_bias', 'qkv_bias', 'use_bias'],
-    'disable_bias_linear': ['mlp_bias'],
+    'add_bias_linear': ['mlp_bias'],
     'kv_channels': ['head_dim'],
     'hf_model_type': ['model_type'],
     # moe
@@ -68,7 +68,7 @@ def _convert_config(config, _internal_call=False) -> Dict[str, Any]:
                     continue
                 if k == 'rotary_base':
                     megatron_config[k] = int(hf_v)
-                elif k in {'untie_embeddings_and_output_weights', 'disable_bias_linear', 'moe_router_pre_softmax'}:
+                elif k in {'untie_embeddings_and_output_weights', 'moe_router_pre_softmax'}:
                     megatron_config[k] = not hf_v
                 elif k == 'swiglu':
                     if hf_v == 'silu':
@@ -138,7 +138,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     elif llm_model_type in {'ernie4_5', 'ernie4_5_moe', 'glm4'}:
         res['rotary_interleaved'] = True
     elif llm_model_type == 'gpt_oss':
-        res['disable_bias_linear'] = False
+        res['add_bias_linear'] = True
         res['no_bias_dropout_fusion'] = True
         res['softmax_type'] = 'learnable'
         res['swiglu'] = False

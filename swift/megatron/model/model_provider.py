@@ -29,7 +29,6 @@ def _get_transformer_layer_spec(args):
         args.moe_grouped_gemm,
         args.qk_layernorm,
         args.multi_latent_attention,
-        moe_use_legacy_grouped_gemm=args.moe_use_legacy_grouped_gemm,
         **kwargs,
     )
 

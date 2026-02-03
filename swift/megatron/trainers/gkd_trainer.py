@@ -202,7 +202,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             teacher_models = get_model(teacher_megatron_model_meta.model_provider, model_type, wrap_with_ddp=False)
 
             # Create bridge for teacher model (for weight loading)
-            teacher_bridge = teacher_megatron_model_meta.bridge_cls()
+            teacher_bridge = teacher_megatron_model_meta.bridge_cls(self.args)
 
             # Load teacher weights and set to eval mode
             for m in teacher_models:

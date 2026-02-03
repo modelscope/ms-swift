@@ -2,7 +2,7 @@
 
 from .config import convert_hf_config
 from .convert_utils import test_convert_precision
-from .megatron_lm_utils import initialize_megatron
+from .megatron_lm_utils import core_transformer_config_from_args, initialize_megatron
 from .patcher import patch_load_base_checkpoint, patch_merge_fn, patch_torch_dist_shard
 from .utils import (MegatronTrainerState, adapter_state_dict_context, copy_original_module_weight, forward_step_helper,
                     get_local_layer_specs, get_padding_to, prepare_mcore_model, tuners_sharded_state_dict)

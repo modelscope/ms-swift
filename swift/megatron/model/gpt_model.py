@@ -94,7 +94,6 @@ class GPTModel(McoreGPTModel):
             share_embeddings_and_output_weights=share_embeddings_and_output_weights,
             position_embedding_type=position_embedding_type,
             rotary_base=rotary_base,
-            rope_scaling=rope_scaling,
             mtp_block_spec=mtp_block_spec,
             **kwargs,
         )
@@ -111,9 +110,9 @@ class GPTModel(McoreGPTModel):
                 if hasattr(self.decoder.layers[i].self_attention, 'rotary_pos_emb'):
                     del self.decoder.layers[i].self_attention.rotary_pos_emb
         self.attention_scaling = 1.
-        new_inv_freq, self.attention_scaling = get_rope_inv_freq()
+        self.args = args = config.args
+        new_inv_freq, self.attention_scaling = get_rope_inv_freq(args)
         self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
-        args = get_args()
         if args.task_type == 'seq_cls' and self.post_process:
             self.output_layer = OutputLayerLinear(
                 config.hidden_size,
@@ -343,7 +342,7 @@ class GPTModel(McoreGPTModel):
         """
         if not self.post_process:
             return hidden_states
-        args = get_args()
+        args = self.args
         labels = labels if args.task_type == 'causal_lm' else None
         in_inference_mode = inference_context is not None and not self.training
         if in_inference_mode:

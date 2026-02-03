@@ -380,6 +380,7 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
     apply_wd_to_qk_layernorm: bool = False
+    apply_layernorm_1p: bool = False
     # qwen3_vl, qwen3_omni
     mrope_interleaved: Optional[bool] = None
 
@@ -418,7 +419,7 @@ class MegatronArguments(ExtraMegatronArguments):
     train_iters: Optional[int] = None
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
-    no_masked_softmax_fusion: bool = False
+    masked_softmax_fusion: bool = True
     no_bias_dropout_fusion: Optional[bool] = None
     no_bias_swiglu_fusion: bool = False
     no_bias_gelu_fusion: bool = False
@@ -469,7 +470,7 @@ class MegatronArguments(ExtraMegatronArguments):
     no_load_rng: bool = False
     finetune: bool = False
     ckpt_format: Literal['torch', 'torch_dist', 'zarr'] = 'torch_dist'
-    no_initialization: bool = True
+    perform_initialization: bool = False
     auto_detect_ckpt_format: bool = True
     exit_on_missing_checkpoint: bool = True
     async_save: bool = False
@@ -522,7 +523,7 @@ class MegatronArguments(ExtraMegatronArguments):
     activation_func_clamp_value: Optional[float] = None
     glu_linear_offset: Optional[float] = None
     untie_embeddings_and_output_weights: Optional[bool] = None
-    disable_bias_linear: Optional[bool] = None
+    add_bias_linear: Optional[bool] = None
     add_qkv_bias: Optional[bool] = None
     attention_dropout: Optional[float] = None
     hidden_dropout: float = 0.
@@ -647,8 +648,8 @@ class MegatronArguments(ExtraMegatronArguments):
             self.glu_linear_offset = 0.
         if self.add_qkv_bias is None:
             self.add_qkv_bias = True
-        if self.disable_bias_linear is None:
-            self.disable_bias_linear = True
+        if self.add_bias_linear is None:
+            self.add_bias_linear = False
         if self.qk_layernorm is None:
             self.qk_layernorm = False
         if self.multi_latent_attention is None:
@@ -736,6 +737,8 @@ class MegatronArguments(ExtraMegatronArguments):
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.model_type = self.model_info.model_type
+        self.model_dir = self.model_info.model_dir
+        self.is_multimodal = self.model_meta.is_multimodal
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
