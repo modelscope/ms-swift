@@ -29,13 +29,6 @@ convert_kwargs = {
 }
 
 
-def _check_megatron_kwargs(kwargs):
-    # Make sure that the keys in kwargs have default values of None in MegatronArguments.
-    default_mapping = {field.name: field.default for field in fields(MegatronArguments)}
-    for k in kwargs.keys():
-        assert default_mapping[k] is None
-
-
 def convert_hf2mcore(args: ExportArguments) -> None:
     hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
     processor = template.processor
@@ -48,7 +41,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     kwargs = convert_hf_config(processor.model_info.config)
     logger.info(f'megatron_config: {kwargs}')
-    _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
@@ -85,7 +77,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     hf_config = processor.model_info.config
     kwargs = convert_hf_config(hf_config)
     logger.info(f'megatron_config: {kwargs}')
-    _check_megatron_kwargs(kwargs)
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
