@@ -561,15 +561,17 @@ class MegatronArguments(ExtraMegatronArguments):
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
-        if self.apply_wd_to_qk_layernorm and self.model_type != 'qwen3_next':
-            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         self._set_default()
         self._init_vpp_size()
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
-        self.model_type = self.model_info.model_type
+
+        # Megatron has a model_type parameter with the same name, so we need to avoid conflicts.
+        self.hf_model_type = self.model_type = self.model_info.model_type
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
+        if self.apply_wd_to_qk_layernorm and self.hf_model_type != 'qwen3_next':
+            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '

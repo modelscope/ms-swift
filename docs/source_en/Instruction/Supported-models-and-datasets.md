@@ -252,6 +252,9 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-Next-80B-A3B-Instruct-FP8](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Instruct-FP8)|qwen3_next|qwen3_nothinking|transformers>=4.57|&#x2714;|-|-|
 |[Qwen/Qwen3-Next-80B-A3B-Thinking](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Thinking)|qwen3_next|qwen3_thinking|transformers>=4.57|&#x2714;|-|-|
 |[Qwen/Qwen3-Next-80B-A3B-Thinking-FP8](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Thinking-FP8)|qwen3_next|qwen3_thinking|transformers>=4.57|&#x2714;|-|-|
+|[Qwen/Qwen3-Coder-Next-Base](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next-Base)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2714;|-|[Qwen/Qwen3-Coder-Next-Base](https://huggingface.co/Qwen/Qwen3-Coder-Next-Base)|
+|[Qwen/Qwen3-Coder-Next](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2714;|-|[Qwen/Qwen3-Coder-Next](https://huggingface.co/Qwen/Qwen3-Coder-Next)|
+|[Qwen/Qwen3-Coder-Next-FP8](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next-FP8)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2714;|-|[Qwen/Qwen3-Coder-Next-FP8](https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8)|
 |[Qwen/Qwen3-Embedding-0.6B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-0.6B)|qwen3_emb|qwen3_emb|-|&#x2714;|-|[Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)|
 |[Qwen/Qwen3-Embedding-4B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-4B)|qwen3_emb|qwen3_emb|-|&#x2714;|-|[Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B)|
 |[Qwen/Qwen3-Embedding-8B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-8B)|qwen3_emb|qwen3_emb|-|&#x2714;|-|[Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B)|
@@ -1013,8 +1016,6 @@ The table below introduces the models integrated with ms-swift:
 |[stepfun-ai/GOT-OCR-2.0-hf](https://modelscope.cn/models/stepfun-ai/GOT-OCR-2.0-hf)|got_ocr2_hf|got_ocr2_hf|-|&#x2718;|vision|[stepfun-ai/GOT-OCR-2.0-hf](https://huggingface.co/stepfun-ai/GOT-OCR-2.0-hf)|
 |[stepfun-ai/Step-Audio-Chat](https://modelscope.cn/models/stepfun-ai/Step-Audio-Chat)|step_audio|step_audio|funasr, sox, conformer, openai-whisper, librosa|&#x2718;|audio|[stepfun-ai/Step-Audio-Chat](https://huggingface.co/stepfun-ai/Step-Audio-Chat)|
 |[stepfun-ai/Step-Audio-2-mini](https://modelscope.cn/models/stepfun-ai/Step-Audio-2-mini)|step_audio2_mini|step_audio2_mini|transformers==4.53.3, torchaudio, librosa|&#x2718;|audio|[stepfun-ai/Step-Audio-2-mini](https://huggingface.co/stepfun-ai/Step-Audio-2-mini)|
-|[stepfun-ai/Step3-VL-10B-Base](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B-Base)|step3_vl|step3_vl|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B-Base](https://huggingface.co/stepfun-ai/Step3-VL-10B-Base)|
-|[stepfun-ai/Step3-VL-10B](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B)|step3_vl|step3_vl|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B](https://huggingface.co/stepfun-ai/Step3-VL-10B)|
 |[moonshotai/Kimi-VL-A3B-Instruct](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Instruct)|kimi_vl|kimi_vl|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-VL-A3B-Instruct](https://huggingface.co/moonshotai/Kimi-VL-A3B-Instruct)|
 |[moonshotai/Kimi-VL-A3B-Thinking](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking)|kimi_vl|kimi_vl|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-VL-A3B-Thinking](https://huggingface.co/moonshotai/Kimi-VL-A3B-Thinking)|
 |[moonshotai/Kimi-VL-A3B-Thinking-2506](https://modelscope.cn/models/moonshotai/Kimi-VL-A3B-Thinking-2506)|kimi_vl|kimi_vl|transformers<4.49|&#x2714;|-|[moonshotai/Kimi-VL-A3B-Thinking-2506](https://huggingface.co/moonshotai/Kimi-VL-A3B-Thinking-2506)|
@@ -1085,7 +1086,10 @@ The table below introduces the models integrated with ms-swift:
 |[mistralai/Ministral-3-14B-Reasoning-2512](https://modelscope.cn/models/mistralai/Ministral-3-14B-Reasoning-2512)|mistral3|mistral_2512_thinking|transformers>=5.0.0.dev0, mistral-common>=1.8.6|&#x2718;|vision|[mistralai/Ministral-3-14B-Reasoning-2512](https://huggingface.co/mistralai/Ministral-3-14B-Reasoning-2512)|
 |[mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://modelscope.cn/models/mistralai/Mistral-Small-3.2-24B-Instruct-2506)|mistral3_2506|mistral_2506|transformers>=4.49|&#x2718;|-|[mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506)|
 |[PaddlePaddle/PaddleOCR-VL](https://modelscope.cn/models/PaddlePaddle/PaddleOCR-VL)|paddle_ocr|paddle_ocr|-|&#x2718;|-|[PaddlePaddle/PaddleOCR-VL](https://huggingface.co/PaddlePaddle/PaddleOCR-VL)|
+|[PaddlePaddle/PaddleOCR-VL-1.5](https://modelscope.cn/models/PaddlePaddle/PaddleOCR-VL-1.5)|paddle_ocr_1_5|paddle_ocr_1_5|-|&#x2718;|-|[PaddlePaddle/PaddleOCR-VL-1.5](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5)|
 |[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr|transformers>=4.49.0|&#x2718;|-|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
+|[stepfun-ai/Step3-VL-10B-Base](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B-Base)|step3_vl|step3_vl|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B-Base](https://huggingface.co/stepfun-ai/Step3-VL-10B-Base)|
+|[stepfun-ai/Step3-VL-10B](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B)|step3_vl|step3_vl|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B](https://huggingface.co/stepfun-ai/Step3-VL-10B)|
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0|-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
 
 
