@@ -3,7 +3,7 @@ import math
 import os
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Any, Dict, Literal, Optional, Tuple
+from typing import Optional, Tuple
 
 import megatron.core
 import torch
@@ -58,18 +58,14 @@ class GPTModel(McoreGPTModel):
         self,
         config: MegatronModelConfig,
         transformer_layer_spec: ModuleSpec,
-        vocab_size: int,
-        max_sequence_length: int,
         pre_process: bool = True,
         post_process: bool = True,
-        share_embeddings_and_output_weights: bool = False,
-        position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'none'] = 'learned_absolute',
-        rotary_base: int = 10000,
-        hf_rope_scaling: Dict[str, Any] = None,
         mtp_block_spec: Optional[ModuleSpec] = None,
         vp_stage: Optional[int] = None,
     ):
-        vocab_size = math.ceil(vocab_size / config.tensor_model_parallel_size) * config.tensor_model_parallel_size
+        vocab_size = math.ceil(
+            config.padded_vocab_size / config.tensor_model_parallel_size) * config.tensor_model_parallel_size
+        hf_rope_scaling = config.rope_scaling
         if config.multi_latent_attention and config.rope_type == 'yarn':
             config.rope_type = 'rope'  # use transformers implementation
             if hf_rope_scaling and hf_rope_scaling['rope_type'] == 'yarn':
@@ -88,12 +84,12 @@ class GPTModel(McoreGPTModel):
             config,
             transformer_layer_spec,
             vocab_size,
-            max_sequence_length,
+            config.max_position_embeddings,
             pre_process=pre_process,
             post_process=post_process,
-            share_embeddings_and_output_weights=share_embeddings_and_output_weights,
-            position_embedding_type=position_embedding_type,
-            rotary_base=rotary_base,
+            share_embeddings_and_output_weights=not config.untie_embeddings_and_output_weights,
+            position_embedding_type=config.position_embedding_type,
+            rotary_base=config.rotary_base,
             mtp_block_spec=mtp_block_spec,
             **kwargs,
         )
@@ -102,7 +98,7 @@ class GPTModel(McoreGPTModel):
                 kv_channels=config.qk_pos_emb_head_dim,
                 rotary_percent=1,
                 rotary_interleaved=config.rotary_interleaved,
-                rotary_base=rotary_base,
+                rotary_base=config.rotary_base,
                 use_cpu_initialization=config.use_cpu_initialization,
             )
             # save memory
@@ -128,7 +124,7 @@ class GPTModel(McoreGPTModel):
         elif args.task_type == 'embedding' and self.post_process:
             self.output_layer = None
 
-        if (self.attention_scaling != 1 or position_embedding_type == 'mrope') and config.apply_rope_fusion:
+        if (self.attention_scaling != 1 or config.position_embedding_type == 'mrope') and config.apply_rope_fusion:
             config.apply_rope_fusion = False
             if self.attention_scaling != 1:
                 warning_string = 'attention_scaling'

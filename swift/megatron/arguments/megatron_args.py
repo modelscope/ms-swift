@@ -259,10 +259,9 @@ class RLHFMegatronArgumentsMixin:
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'left'
-        assert self.truncation_strategy in ['left', 'delete'
-                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
-                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`."
-                                                )  # noqa
+        if self.truncation_strategy not in {'left', 'delete'}:
+            raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                             f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
@@ -320,7 +319,6 @@ class MegatronTunerMixin:
 class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     check_model: bool = True
     initialize_embedding: bool = False
-    rope_scaling: Optional[Union[dict, str]] = None
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
@@ -349,9 +347,6 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False
-    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'generative_reranker'] = None
-    num_labels: Optional[int] = None
-    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
 
     report_to: Optional[Literal['wandb', 'swanlab']] = None
@@ -372,7 +367,8 @@ class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             with open(args_path, 'r', encoding='utf-8') as f:
                 old_args = json.load(f)
             keys = list(f.name for f in fields(MegatronTunerMixin))
-            keys += ['load', 'padded_vocab_size', 'task_type', 'num_labels']
+            # TODO: remove load/save
+            keys += ['load', 'padded_vocab_size', 'task_type', 'num_labels']  # TODO: padded_vocab_size
             for key in keys:
                 old_value = old_args.get(key)
                 if old_value is not None:
@@ -398,7 +394,7 @@ class MegatronArguments(ExtraMegatronArguments):
     log_interval: int = 5
     tensorboard_dir: Optional[str] = None
     masked_softmax_fusion: bool = True
-    bias_dropout_fusion: Optional[bool] = None
+    bias_dropout_fusion: bool = True  # TODO: gpt-oss
     bias_swiglu_fusion: bool = True
     bias_gelu_fusion: bool = True
     apply_rope_fusion: Optional[bool] = None
@@ -544,8 +540,6 @@ class MegatronArguments(ExtraMegatronArguments):
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = self.task_type == 'causal_lm'
-        if self.bias_dropout_fusion is None:
-            self.bias_dropout_fusion = True
 
         # log
         if self.wandb_exp_name is None:
@@ -583,10 +577,6 @@ class MegatronArguments(ExtraMegatronArguments):
         if hasattr(self, 'ddp_timeout'):
             self.distributed_timeout_minutes = self.ddp_timeout // 60
         self.fp8 = self.fp8_format  # compat megatron-lm
-        if self.rope_scaling is not None:
-            self.rope_scaling = json_parse_to_dict(self.rope_scaling)
-            if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
-                self.rope_scaling['rope_type'] = self.rope_scaling['type']
         if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:

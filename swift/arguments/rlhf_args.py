@@ -319,9 +319,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'left'
-        assert self.truncation_strategy in ['left', 'delete'
-                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
-                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
+        if self.truncation_strategy not in {'left', 'delete'}:
+            raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                             f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:

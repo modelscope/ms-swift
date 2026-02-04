@@ -1,12 +1,12 @@
-from dataclasses import dataclass, fields
-from typing import List, Literal, Optional
+from dataclasses import dataclass
+from typing import List, Literal, Optional, Union
 
 import torch.nn.functional as F
 from megatron.core.fusions.fused_bias_geglu import quick_gelu
 from megatron.core.transformer import TransformerConfig
 
 from swift.megatron.utils import convert_hf_config
-from swift.utils import get_logger
+from swift.utils import get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -16,6 +16,8 @@ class MegatronModelConfig(TransformerConfig):
     hf_model_type: Optional[str] = None
     llm_model_type: Optional[str] = None
     padded_vocab_size: Optional[int] = None
+    rope_scaling: Optional[Union[dict, str]] = None
+
     # model
     num_layers: Optional[int] = None
     hidden_size: Optional[int] = None
@@ -27,7 +29,7 @@ class MegatronModelConfig(TransformerConfig):
     window_attn_skip_freq: Optional[str] = None
     max_position_embeddings: Optional[int] = None
 
-    position_embedding_type: Optional[Literal['learned_absolute', 'rope', 'mrope', 'relative', 'none']] = None
+    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'none'] = 'rope',
     rotary_base: int = 10000
     rotary_percent: float = 1.
     rotary_interleaved: bool = False
@@ -94,11 +96,13 @@ class MegatronModelConfig(TransformerConfig):
     def __post_init__(self):
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
-        if self.moe_shared_expert_intermediate_size == 0:
-            self.moe_shared_expert_intermediate_size = None
         if self.num_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size
+        if self.rope_scaling is not None:
+            self.rope_scaling = json_parse_to_dict(self.rope_scaling)
+            if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
+                self.rope_scaling['rope_type'] = self.rope_scaling['type']
         super().__post_init__()
         self.variable_seq_lengths = True
 

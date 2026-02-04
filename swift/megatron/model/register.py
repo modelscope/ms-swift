@@ -1,16 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, List, Optional, Type, Union
+from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import megatron.core
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,
                                                       get_gpt_layer_with_transformer_engine_spec,
                                                       get_gpt_mtp_block_spec)
 from packaging import version
-from transformers.utils import is_torch_cuda_available, is_torch_npu_available
+from transformers.utils import is_torch_npu_available
 
-from swift.megatron.utils import convert_hf_config
 from swift.model import MODEL_MAPPING
 from swift.utils import get_logger
 from .constant import MLLMMegatronModelType
@@ -162,15 +161,8 @@ class MegatronModelLoader:
         return model_cls(
             config=self.config,
             transformer_layer_spec=transformer_layer_spec,
-            vocab_size=math.ceil(args.padded_vocab_size / args.tensor_model_parallel_size)
-            * args.tensor_model_parallel_size,
-            max_sequence_length=args.max_position_embeddings,
             pre_process=pre_process,
             post_process=post_process,
-            share_embeddings_and_output_weights=not args.untie_embeddings_and_output_weights,
-            position_embedding_type=args.position_embedding_type,
-            rotary_base=args.rotary_base,
-            hf_rope_scaling=args.rope_scaling,
             mtp_block_spec=mtp_block_spec,
             vp_stage=vp_stage,
         )
