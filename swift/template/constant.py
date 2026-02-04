@@ -243,6 +243,7 @@ class MLLMTemplateType:
     mistral_2512 = 'mistral_2512'
     mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
+    paddle_ocr_1_5 = 'paddle_ocr_1_5'
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
 

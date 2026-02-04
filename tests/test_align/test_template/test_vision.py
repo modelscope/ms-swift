@@ -1188,6 +1188,24 @@ def test_step3_vl():
     assert response == response2
 
 
+def test_paddle_ocr_1_5():
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    engine = TransformersEngine('PaddlePaddle/PaddleOCR-VL-1.5')
+    query = 'OCR:'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(engine, messages=messages, images=images, max_tokens=512)
+    assert response == ('简介\nSWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、评测和部署。开发者可以直接将我们的框架'
+                        '应用到自己的Research和生产环境中，实现模型训练评测到应用的完整链路。我们除支持了PEFT提供的轻量训练方案外，'
+                        '也提供了一个完整的Adapters库以支持最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器库可以脱离训'
+                        '练脚本直接使用在自己的自定流程中。\n为方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui用于控制训'
+                        '练和推理，并提供了配套的深度学习课程和最佳实践供新手入门。\n此外，我们也在拓展其他模态的能力，目前我们支持了'
+                        'AnimateDiff的全参数训练和LoRA训练。\nSWIFT具有丰富的文档体系，如有使用问题请请查看这里.\n'
+                        '可以在\\(\\underline{\\text{Huggingface space}}\\)'
+                        '和\\(\\underline{\\text{ModelScope创空间}}\\)'
+                        '中体验SWIFT web-ui功能了。')
+
+
 if __name__ == '__main__':
     from swift.infer_engine import TransformersEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1272,4 +1290,5 @@ if __name__ == '__main__':
     # test_hunyuan_ocr()
     # test_medgemma3_vision()
     # test_deepseek_ocr_2()
-    test_step3_vl()
+    # test_step3_vl()
+    test_paddle_ocr_1_5()

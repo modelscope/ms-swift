@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from transformers import PreTrainedModel
+from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
@@ -82,4 +82,32 @@ register_model(
         model_arch=ModelArch.ernie_vl,
         architectures=['Ernie4_5_VLMoeForConditionalGeneration'],
         requires=['transformers>=4.52', 'moviepy'],
+    ))
+
+
+class PaddleOCR1_5Loader(ModelLoader):
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        from transformers import AutoConfig
+        auto_config_cls = self.auto_config_cls or AutoConfig
+        return auto_config_cls.from_pretrained(model_dir)
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForImageTextToText
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        return super().get_model(model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.paddle_ocr_1_5,
+        [
+            ModelGroup([
+                Model('PaddlePaddle/PaddleOCR-VL-1.5', 'PaddlePaddle/PaddleOCR-VL-1.5'),
+            ]),
+        ],
+        PaddleOCR1_5Loader,
+        template=TemplateType.paddle_ocr_1_5,
+        model_arch=ModelArch.paddle_ocr_1_5,
+        architectures=['PaddleOCRVLForConditionalGeneration'],
     ))
