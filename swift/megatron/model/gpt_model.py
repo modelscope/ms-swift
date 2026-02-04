@@ -21,11 +21,11 @@ from megatron.core.tensor_parallel.mappings import (gather_from_sequence_paralle
                                                     reduce_from_tensor_model_parallel_region)
 from megatron.core.transformer.multi_token_prediction import MTPLossAutoScaler, MTPLossLoggingHelper, roll_tensor
 from megatron.core.transformer.spec_utils import ModuleSpec
-from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import WrappedTensor, deprecate_inference_params
 from packaging import version
 
 from swift.utils import get_logger
+from .model_config import MegatronModelConfig
 from .rope import dynamic_rope_update, get_rope_inv_freq
 
 logger = get_logger()
@@ -56,7 +56,7 @@ class GPTModel(McoreGPTModel):
 
     def __init__(
         self,
-        config: TransformerConfig,
+        config: MegatronModelConfig,
         transformer_layer_spec: ModuleSpec,
         vocab_size: int,
         max_sequence_length: int,

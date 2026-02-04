@@ -3,15 +3,15 @@ from contextlib import contextmanager
 
 import megatron.core
 import torch
-from megatron.core import InferenceParams
+from megatron.core import InferenceParams, mpu
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import VocabParallelEmbedding, reduce_scatter_to_sequence_parallel_region
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
-from megatron.core.transformer.transformer_config import TransformerConfig
 from packaging import version
 
 from .gpt_model import GPTModel
+from .model_config import MegatronModelConfig
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -19,7 +19,7 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 class MultimodalGPTModel(MegatronModule):
 
     def __init__(self,
-                 config: TransformerConfig,
+                 config: MegatronModelConfig,
                  transformer_layer_spec: ModuleSpec,
                  vocab_size: int,
                  max_sequence_length: int,
@@ -35,7 +35,6 @@ class MultimodalGPTModel(MegatronModule):
                                        post_process, *args, **kwargs)
         self.vp_stage = self.language_model.vp_stage
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
-        args = get_args()
         self.megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
         self.visual = None
         if args.mtp_num_layers:
@@ -49,7 +48,6 @@ class MultimodalGPTModel(MegatronModule):
 
         def forward(_self, input_):
             from ..trainers.utils import split_cp_inputs
-            args = get_args()
             reduce_scatter_embeddings = _self.reduce_scatter_embeddings
             _self.reduce_scatter_embeddings = False
             input_ = torch.masked_fill(input_, input_ < 0, 0)

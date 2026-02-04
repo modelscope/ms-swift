@@ -15,7 +15,6 @@ from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
-from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from packaging import version
 
@@ -24,6 +23,7 @@ from swift.model import ModelType
 from swift.utils import get_logger
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
+from ..model_config import MegatronModelConfig
 from ..register import MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
@@ -67,7 +67,7 @@ class Qwen3NextRMSNorm(torch.nn.Module):
     Interface matches TENorm for compatibility with Megatron-Core build_module.
     """
 
-    def __init__(self, config: TransformerConfig, hidden_size: int, eps: float = 1e-5):
+    def __init__(self, config: MegatronModelConfig, hidden_size: int, eps: float = 1e-5):
         super().__init__()
         self.config = config
         self.eps = eps
@@ -87,7 +87,7 @@ class Qwen3NextRMSNorm(torch.nn.Module):
 
 class Qwen3NextSelfAttention(SelfAttention):
 
-    def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
+    def __init__(self, config: MegatronModelConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
         super(SelfAttention, self).__init__(config, submodules, *args, attention_type='self', **kwargs)
         kwargs = {}
         if mcore_015:
@@ -429,7 +429,7 @@ class Qwen3NextSelfAttention(SelfAttention):
 
 class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
 
-    def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
+    def __init__(self, config: MegatronModelConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
         assert _Qwen3NextGatedDeltaNet is not object, 'please update the `transformers` version.'
         _Qwen3NextGatedDeltaNet.__init__(self, config, layer_number)

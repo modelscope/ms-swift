@@ -1,19 +1,18 @@
-from typing import Optional, Literal, List
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from typing import List, Literal, Optional
 
+import torch.nn.functional as F
+from megatron.core.fusions.fused_bias_geglu import quick_gelu
+from megatron.core.transformer import TransformerConfig
 
+from swift.megatron.utils import convert_hf_config
 from swift.utils import get_logger
-from transformers.utils import is_torch_npu_available
-
-
-MAX_NPU_EXPERTS_PER_EP = 128
-
 
 logger = get_logger()
 
 
 @dataclass
-class MegatronModelArguments:
+class MegatronModelConfig(TransformerConfig):
     hf_model_type: Optional[str] = None
     llm_model_type: Optional[str] = None
     padded_vocab_size: Optional[int] = None
@@ -22,7 +21,6 @@ class MegatronModelArguments:
     hidden_size: Optional[int] = None
     ffn_hidden_size: Optional[int] = None
     num_attention_heads: Optional[int] = None
-    group_query_attention: bool = False
     num_query_groups: Optional[int] = None
     softmax_type: Literal['vanilla', 'off-by-one', 'learnable'] = 'vanilla'
     window_size: Optional[str] = None
@@ -71,7 +69,8 @@ class MegatronModelArguments:
     moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: bool = False
     moe_router_topk_scaling_factor: Optional[float] = None
-    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn', 'none'] = 'aux_loss'
+    moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn',
+                                            'none'] = 'aux_loss'
     use_shared_expert_gate: bool = False
 
     # mla
@@ -79,7 +78,7 @@ class MegatronModelArguments:
     q_lora_rank: Optional[int] = None
     kv_lora_rank: int = 32
     qk_head_dim: int = 128
-    qk_pos_emb_head_dim: int= 64
+    qk_pos_emb_head_dim: int = 64
     v_head_dim: int = 128
 
     # qwen3_next
@@ -89,15 +88,10 @@ class MegatronModelArguments:
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
+
     # apply_layernorm_1p: bool = False  # TODO
 
-
     def __post_init__(self):
-        if self.num_query_groups is not None and self.num_query_groups > 1:
-            self.group_query_attention = True
-        self._init_moe()
-
-    def _init_moe(self):
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
         if self.moe_shared_expert_intermediate_size == 0:
@@ -105,13 +99,37 @@ class MegatronModelArguments:
         if self.num_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size
-            # TODO: remove
-            if is_torch_npu_available() and self.num_experts > MAX_NPU_EXPERTS_PER_EP:
-                required_ep = (self.num_experts + MAX_NPU_EXPERTS_PER_EP - 1) // MAX_NPU_EXPERTS_PER_EP
-                if self.expert_model_parallel_size < required_ep:
-                    logger.warning(f'{">"*20} WARNING {"<"*20}\n'
-                                   f'MindSpeed on NPU supports up to {MAX_NPU_EXPERTS_PER_EP} experts per EP group. '
-                                   f'num_experts={self.num_experts}, '
-                                   f'expert_model_parallel_size={self.expert_model_parallel_size}. '
-                                   f'Please set expert_model_parallel_size (EP) to {required_ep} '
-                                   f'(num_experts / {MAX_NPU_EXPERTS_PER_EP}) or higher.')
+        super().__post_init__()
+        self.variable_seq_lengths = True
+
+
+def create_mcore_model_config(args, hf_config):
+    # Translate args to core transformer configuration
+    kw_args = convert_hf_config(hf_config)
+    kw_args['persist_layer_norm'] = True
+    # TODO: apply_layernorm_1p
+    kw_args['layernorm_zero_centered_gamma'] = args.apply_layernorm_1p
+    kw_args['deallocate_pipeline_outputs'] = True
+    kw_args['pipeline_dtype'] = args.torch_dtype
+    kw_args['batch_p2p_comm'] = True
+    kw_args['num_moe_experts'] = args.num_experts
+    kw_args['rotary_interleaved'] = args.rotary_interleaved
+    kw_args['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
+    kw_args['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
+    kw_args['fp8_param'] = args.fp8_param_gather
+    if args.swiglu:
+        kw_args['activation_func'] = F.silu
+        kw_args['gated_linear_unit'] = True
+        kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion
+    else:
+        kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
+    if args.quick_geglu:
+        assert not args.swiglu
+        kw_args['gated_linear_unit'] = True
+        kw_args['activation_func'] = quick_gelu
+    kw_args['cp_comm_type'] = 'p2p'
+    kw_args['inference_sampling_seed'] = args.seed
+    kw_args['variable_seq_lengths'] = True
+    config = MegatronModelConfig(**kw_args)
+    config.args = config
+    return config

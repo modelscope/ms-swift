@@ -9,13 +9,13 @@ from megatron.core.transformer import transformer_layer
 from megatron.core.transformer.attention import SelfAttention
 from megatron.core.transformer.mlp import MLP, apply_swiglu_sharded_factory
 from megatron.core.transformer.spec_utils import build_module
-from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import sharded_state_dict_default
 from packaging import version
 
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
+from ..model_config import MegatronModelConfig
 from ..register import MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
@@ -25,7 +25,7 @@ class Glm4SelfAttention(SelfAttention):
 
     def __init__(
         self,
-        config: TransformerConfig,
+        config: MegatronModelConfig,
         *args,
         **kwargs,
     ):
@@ -48,7 +48,7 @@ class Glm4MLP(MLP):
 
     def __init__(
         self,
-        config: TransformerConfig,
+        config: MegatronModelConfig,
         *args,
         **kwargs,
     ):

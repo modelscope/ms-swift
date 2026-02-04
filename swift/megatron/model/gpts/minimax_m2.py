@@ -7,12 +7,12 @@ from megatron.core.tensor_parallel.mappings import (gather_from_tensor_model_par
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import build_module
-from megatron.core.transformer.transformer_config import TransformerConfig
 from packaging import version
 
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
+from ..model_config import MegatronModelConfig
 from ..register import MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
@@ -22,7 +22,7 @@ class MinimaxM2SelfAttention(SelfAttention):
 
     def __init__(
         self,
-        config: TransformerConfig,
+        config: MegatronModelConfig,
         submodules: SelfAttentionSubmodules,
         *args,
         **kwargs,
@@ -48,7 +48,6 @@ class MinimaxM2SelfAttention(SelfAttention):
         )
 
     def get_query_key_value_tensors(self, *_args, **kwargs):
-        args = get_args()
         query, key, value = super().get_query_key_value_tensors(*_args, **kwargs)
         query = query.reshape(*query.shape[:-2], -1)
         key = key.reshape(*key.shape[:-2], -1)

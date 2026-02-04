@@ -9,17 +9,14 @@ from datetime import timedelta
 
 import numpy as np
 import torch
-import torch.nn.functional as F
 from megatron.core import dist_checkpointing, mpu, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedObject
 from megatron.core.dist_checkpointing.serialization import (get_default_load_sharded_strategy,
                                                             get_default_save_sharded_strategy)
 from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyParallelLoadStrategyWrapper,
                                                                         FullyParallelSaveStrategyWrapper)
-from megatron.core.fusions.fused_bias_geglu import quick_gelu
 from megatron.core.msc_utils import open_file
 from megatron.core.num_microbatches_calculator import update_num_microbatches
-from megatron.core.transformer import MLATransformerConfig, TransformerConfig
 from megatron.core.utils import unwrap_model
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
@@ -109,53 +106,6 @@ def initialize_megatron(args):
         MoEAuxLossAutoScaler.set_loss_scale(torch.ones(1, device=torch.cuda.current_device()))
 
     # TODO: tp_comm_overlap, _compile_dependencies
-
-
-def core_transformer_config_from_args(args, config_class=None):
-    # Config class.
-    config_class = config_class or TransformerConfig
-
-    if args.multi_latent_attention:
-        config_class = MLATransformerConfig
-
-    # Translate args to core transformer configuration
-    kw_args = {}
-    for f in dataclasses.fields(config_class):
-        if hasattr(args, f.name):
-            kw_args[f.name] = getattr(args, f.name)
-    kw_args['persist_layer_norm'] = True
-    # TODO: apply_layernorm_1p
-    kw_args['layernorm_zero_centered_gamma'] = args.apply_layernorm_1p
-    kw_args['deallocate_pipeline_outputs'] = True
-    kw_args['pipeline_dtype'] = args.torch_dtype
-    kw_args['batch_p2p_comm'] = True
-    kw_args['num_moe_experts'] = args.num_experts
-    kw_args['rotary_interleaved'] = args.rotary_interleaved
-    kw_args['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
-    kw_args['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
-    kw_args['fp8_param'] = args.fp8_param_gather
-    if args.swiglu:
-        kw_args['activation_func'] = F.silu
-        kw_args['gated_linear_unit'] = True
-        kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion
-    else:
-        kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
-    if args.quick_geglu:
-        assert not args.swiglu
-        kw_args['gated_linear_unit'] = True
-        kw_args['activation_func'] = quick_gelu
-    if args.group_query_attention:
-        kw_args['num_query_groups'] = args.num_query_groups
-    else:
-        kw_args['num_query_groups'] = None
-
-    kw_args['cp_comm_type'] = 'p2p'
-    kw_args['inference_sampling_seed'] = args.seed
-
-    config = config_class(**kw_args)
-    config.args = args
-
-    return config
 
 
 def _get_rng_state():
