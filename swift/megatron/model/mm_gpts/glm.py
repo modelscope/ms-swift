@@ -4,7 +4,7 @@ from swift.template import Template
 from ..constant import MegatronModelType
 from ..gpt_bridge import MultimodalGPTBridge
 from ..gpts.glm4 import Glm4Bridge, Glm4Loader
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 
@@ -21,11 +21,18 @@ class Glm4vVit(HuggingFaceModule):
         return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.glm4v_moe, [
-            ModelType.glm4v_moe,
-        ], bridge_cls=MultimodalGPTBridge, visual_cls=Glm4vVit))
+class Glm4vMoeLoader(MegatronModelLoader):
+    bridge_cls = MultimodalGPTBridge
+    visual_cls = Glm4vVit
+
+
+register_megatron_model(MegatronModelMeta(
+    MegatronModelType.glm4v_moe,
+    [
+        ModelType.glm4v_moe,
+    ],
+    Glm4vMoeLoader,
+))
 
 
 class Glm4vBridge(Glm4Bridge, MultimodalGPTBridge):
@@ -42,4 +49,5 @@ register_megatron_model(MegatronModelMeta(
     [
         ModelType.glm4v,
     ],
+    Glm4vLoader,
 ))
