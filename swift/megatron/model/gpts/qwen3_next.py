@@ -24,7 +24,7 @@ from swift.utils import get_logger
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..model_config import MegatronModelConfig
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
@@ -474,65 +474,6 @@ class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
         return res, None
 
 
-def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
-    config.hetereogenous_dist_checkpoint = True
-    # compat Qwen3NextGatedDeltaNet
-    args = get_args()
-    config.hidden_act = 'silu'
-    config.rms_norm_eps = config.layernorm_epsilon
-    config.dtype = args.torch_dtype
-    config.linear_num_value_heads = args.linear_num_value_heads
-    config.linear_num_key_heads = args.linear_num_key_heads
-    config.linear_key_head_dim = args.linear_key_head_dim
-    config.linear_value_head_dim = args.linear_value_head_dim
-    config.linear_conv_kernel_dim = args.linear_conv_kernel_dim
-
-    # Use Zero-Centered RMSNorm to match HuggingFace exactly (no +1/-1 conversion needed)
-    layer_norm_impl = Qwen3NextRMSNorm
-    kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
-    moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-        num_experts=config.num_moe_experts,
-        moe_grouped_gemm=config.moe_grouped_gemm,
-        qk_layernorm=config.qk_layernorm,
-        multi_latent_attention=config.multi_latent_attention,
-        moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
-        **kwargs,
-    )
-    layer_specs = []
-    for layer_type in args.layer_types:
-        layer_spec = deepcopy(moe_layer_spec)
-        if layer_type == 'linear_attention':
-            layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
-        elif layer_type == 'full_attention':
-            layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
-            layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
-        # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)
-        layer_spec.submodules.input_layernorm = layer_norm_impl
-        if hasattr(layer_spec.submodules, 'pre_mlp_layernorm'):
-            layer_spec.submodules.pre_mlp_layernorm = layer_norm_impl
-        # Replace qk_layernorm if present
-        if hasattr(layer_spec.submodules.self_attention.submodules, 'q_layernorm'):
-            layer_spec.submodules.self_attention.submodules.q_layernorm = layer_norm_impl
-        if hasattr(layer_spec.submodules.self_attention.submodules, 'k_layernorm'):
-            layer_spec.submodules.self_attention.submodules.k_layernorm = layer_norm_impl
-        layer_specs.append(layer_spec)
-
-    local_layer_specs = get_local_layer_specs(config, layer_specs, vp_stage=vp_stage)
-    block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
-
-    return block_spec
-
-
-def get_qwen3_next_mtp_block_spec(*args, **kwargs):
-    mtp_block_spec = get_gpt_mtp_block_spec(*args, **kwargs)
-    if mtp_block_spec is not None:
-        for layer_spec in mtp_block_spec.layer_specs:
-            layer_spec.submodules.enorm = Qwen3NextRMSNorm
-            layer_spec.submodules.hnorm = Qwen3NextRMSNorm
-            layer_spec.submodules.layer_norm = Qwen3NextRMSNorm
-    return mtp_block_spec
-
-
 class Qwen3NextBridge(GPTBridge):
     hf_mtp_prefix = 'mtp.layers'
 
@@ -559,13 +500,67 @@ class Qwen3NextBridge(GPTBridge):
             origin_hf_state_dict.update(self._add_prefix(hf_state_dict, 'mtp.'))
 
 
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.qwen3_next,
-        [
-            ModelType.qwen3_next,
-        ],
-        get_transformer_layer_spec=get_qwen3_next_transformer_layer_spec,
-        get_mtp_block_spec=get_qwen3_next_mtp_block_spec,
-        bridge_cls=Qwen3NextBridge,
-    ))
+class Qwen3NextLoader(MegatronModelLoader):
+    bridge_cls = Qwen3NextBridge
+
+    def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
+        config = self.config
+        args = self.args
+        config.hetereogenous_dist_checkpoint = True
+        # compat Qwen3NextGatedDeltaNet
+        config.hidden_act = 'silu'
+        config.rms_norm_eps = config.layernorm_epsilon
+        config.dtype = args.torch_dtype
+
+        # Use Zero-Centered RMSNorm to match HuggingFace exactly (no +1/-1 conversion needed)
+        layer_norm_impl = Qwen3NextRMSNorm
+        kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
+        moe_layer_spec = get_gpt_layer_with_transformer_engine_spec(
+            num_experts=config.num_moe_experts,
+            moe_grouped_gemm=config.moe_grouped_gemm,
+            qk_layernorm=config.qk_layernorm,
+            multi_latent_attention=config.multi_latent_attention,
+            moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
+            **kwargs,
+        )
+        layer_specs = []
+        for layer_type in args.layer_types:
+            layer_spec = deepcopy(moe_layer_spec)
+            if layer_type == 'linear_attention':
+                layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
+            elif layer_type == 'full_attention':
+                layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
+                layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
+            # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)
+            layer_spec.submodules.input_layernorm = layer_norm_impl
+            if hasattr(layer_spec.submodules, 'pre_mlp_layernorm'):
+                layer_spec.submodules.pre_mlp_layernorm = layer_norm_impl
+            # Replace qk_layernorm if present
+            if hasattr(layer_spec.submodules.self_attention.submodules, 'q_layernorm'):
+                layer_spec.submodules.self_attention.submodules.q_layernorm = layer_norm_impl
+            if hasattr(layer_spec.submodules.self_attention.submodules, 'k_layernorm'):
+                layer_spec.submodules.self_attention.submodules.k_layernorm = layer_norm_impl
+            layer_specs.append(layer_spec)
+
+        local_layer_specs = get_local_layer_specs(config, layer_specs, vp_stage=vp_stage)
+        block_spec = TransformerBlockSubmodules(layer_specs=local_layer_specs, layer_norm=layer_norm_impl)
+
+        return block_spec
+
+    def get_mtp_block_spec(self, *args, **kwargs):
+        # TODO: layernorm_zero_centered_gamma
+        mtp_block_spec = super().get_mtp_block_spec(*args, **kwargs)
+        for layer_spec in mtp_block_spec.layer_specs:
+            layer_spec.submodules.enorm = Qwen3NextRMSNorm
+            layer_spec.submodules.hnorm = Qwen3NextRMSNorm
+            layer_spec.submodules.layer_norm = Qwen3NextRMSNorm
+        return mtp_block_spec
+
+
+register_megatron_model(MegatronModelMeta(
+    MegatronModelType.qwen3_next,
+    [
+        ModelType.qwen3_next,
+    ],
+    Qwen3NextLoader,
+))

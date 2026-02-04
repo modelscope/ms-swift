@@ -47,7 +47,7 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
 
     def __init__(self, config, ignore_init_model_cls=None):
         super().__init__(config)
-        args = get_args()
+        args = self.config.args
         attn_impl = getattr(args, 'attn_impl', None) or 'flash_attn'
         kwargs = {'attn_impl': attn_impl} if args.attention_backend.name == 'flash' else {}
         ignore_init_model_cls = ignore_init_model_cls or []

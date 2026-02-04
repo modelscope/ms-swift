@@ -4,7 +4,7 @@ import torch
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 
@@ -59,15 +59,21 @@ class Internvl3Vit(HuggingFaceModule):
         return inputs_embeds
 
 
+class InternvlLoader(MegatronModelLoader):
+    bridge_cls = Internvl3Bridge
+    visual_cls = Internvl3Vit
+
+
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.internvl3, [
+        MegatronModelType.internvl3,
+        [
             ModelType.internvl3,
             ModelType.internvl3_5,
             ModelType.internvl3_5_gpt,
         ],
-        bridge_cls=Internvl3Bridge,
-        visual_cls=Internvl3Vit))
+        InternvlLoader,
+    ))
 
 
 class InternvlHfBridge(MultimodalGPTBridge):
@@ -127,11 +133,17 @@ class InternvlHfVit(HuggingFaceModule):
         return inputs_embeds
 
 
+class InternvlHfLoader(MegatronModelLoader):
+    bridge_cls = InternvlHfBridge
+    visual_cls = InternvlHfVit
+
+
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.internvl_hf, [
+        MegatronModelType.internvl_hf,
+        [
             ModelType.internvl_hf,
             ModelType.internvl_gpt_hf,
         ],
-        bridge_cls=InternvlHfBridge,
-        visual_cls=InternvlHfVit))
+        InternvlHfLoader,
+    ))

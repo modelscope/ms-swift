@@ -6,7 +6,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import MultimodalGPTBridge
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 
@@ -47,7 +47,15 @@ class KimiVLVit(HuggingFaceModule):
         return inputs_embeds
 
 
-register_megatron_model(
-    MegatronModelMeta(MegatronModelType.kimi_vl, [
+class KimiLoader(MegatronModelLoader):
+    bridge_cls = KimiVLBridge
+    visual_cls = KimiVLVit
+
+
+register_megatron_model(MegatronModelMeta(
+    MegatronModelType.kimi_vl,
+    [
         ModelType.kimi_vl,
-    ], bridge_cls=KimiVLBridge, visual_cls=KimiVLVit))
+    ],
+    KimiLoader,
+))

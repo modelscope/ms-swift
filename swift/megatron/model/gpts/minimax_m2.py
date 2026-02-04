@@ -1,7 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+from typing import Optional
+
 import megatron.core
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
+from megatron.core import mpu
 from megatron.core.tensor_parallel.mappings import (gather_from_tensor_model_parallel_region,
                                                     scatter_to_tensor_model_parallel_region)
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
@@ -13,7 +15,7 @@ from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..model_config import MegatronModelConfig
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -48,15 +50,16 @@ class MinimaxM2SelfAttention(SelfAttention):
         )
 
     def get_query_key_value_tensors(self, *_args, **kwargs):
+        enable_tp = mpu.get_expert_data_parallel_world_size() > 1
         query, key, value = super().get_query_key_value_tensors(*_args, **kwargs)
         query = query.reshape(*query.shape[:-2], -1)
         key = key.reshape(*key.shape[:-2], -1)
-        if args.tensor_model_parallel_size > 1:
+        if enable_tp:
             query = gather_from_tensor_model_parallel_region(query)
             key = gather_from_tensor_model_parallel_region(key)
         query = self.q_norm(query)
         key = self.k_norm(key)
-        if args.tensor_model_parallel_size > 1:
+        if enable_tp:
             query = scatter_to_tensor_model_parallel_region(query)
             key = scatter_to_tensor_model_parallel_region(key)
         query = query.view(*query.shape[:2], -1, self.hidden_size_per_attention_head)
@@ -98,26 +101,19 @@ class MinimaxM2Bridge(GPTBridge):
         return hf_state_dict
 
 
-def get_minimax_m2_transformer_layer_spec(config, vp_stage=None):
-    kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
-    layer_spec = get_gpt_layer_with_transformer_engine_spec(
-        num_experts=config.num_moe_experts,
-        moe_grouped_gemm=config.moe_grouped_gemm,
-        qk_layernorm=config.qk_layernorm,
-        multi_latent_attention=config.multi_latent_attention,
-        moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
-        **kwargs,
-    )
-    layer_spec.submodules.self_attention.module = MinimaxM2SelfAttention
-    return layer_spec
+class MinimaxM2Loader(MegatronModelLoader):
+    bridge_cls = MinimaxM2Bridge
+
+    def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
+        layer_spec = self._get_transformer_layer_spec()
+        layer_spec.submodules.self_attention.module = MinimaxM2SelfAttention
+        return layer_spec
 
 
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.minimax_m2,
-        [
-            ModelType.minimax_m2,
-        ],
-        get_transformer_layer_spec=get_minimax_m2_transformer_layer_spec,
-        bridge_cls=MinimaxM2Bridge,
-    ))
+register_megatron_model(MegatronModelMeta(
+    MegatronModelType.minimax_m2,
+    [
+        ModelType.minimax_m2,
+    ],
+    MinimaxM2Loader,
+))

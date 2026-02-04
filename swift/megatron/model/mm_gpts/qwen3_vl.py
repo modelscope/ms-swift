@@ -17,7 +17,7 @@ from swift.utils import to_device
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
 from ..mm_gpt_model import MultimodalGPTModel
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 te_checkpoint = None
@@ -453,35 +453,12 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
         return hidden_states
 
 
-class Qwen3VLGPTModel(MultimodalGPTModel):
-
-    def _patch_transformer_block(self):
-        if hasattr(gpt_model, 'OriginTransformerBlock'):
-            return
-        gpt_model.OriginTransformerBlock = gpt_model.TransformerBlock
-        gpt_model.TransformerBlock = Qwen3VLTransformerBlock
-
-    def __init__(self, *args, **kwargs):
-        self._patch_transformer_block()
-        super().__init__(*args, **kwargs)
-
-
 class Qwen3OmniBridge(GPTBridge):
     hf_layers_prefix = 'thinker.model.layers'
     hf_embed_key = 'thinker.model.embed_tokens.weight'
     hf_final_layernorm_key = 'thinker.model.norm.weight'
     hf_lm_head_key = 'thinker.lm_head.weight'
     hf_score_key = 'thinker.score.weight'
-
-
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.qwen3_omni, [
-            ModelType.qwen3_omni_moe,
-        ],
-        model_cls=Qwen3VLGPTModel,
-        bridge_cls=Qwen3OmniBridge,
-        visual_cls=Qwen3Omni_Vit))
 
 
 class Qwen3VL_Vit(HuggingFaceModule):
@@ -498,14 +475,44 @@ class Qwen3VL_Vit(HuggingFaceModule):
         return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
 
 
+class Qwen3VLLoader(MegatronModelLoader):
+    bridge_cls = MultimodalGPTBridge
+    visual_cls = Qwen3VL_Vit
+
+    def _patch_transformer_block(self):
+        if hasattr(gpt_model, 'OriginTransformerBlock'):
+            return
+        gpt_model.OriginTransformerBlock = gpt_model.TransformerBlock
+        gpt_model.TransformerBlock = Qwen3VLTransformerBlock
+
+    def __init__(self, args, hf_config):
+        super().__init__(args, hf_config)
+        self._patch_transformer_block()
+
+
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.qwen3_vl, [
+        MegatronModelType.qwen3_vl,
+        [
             ModelType.qwen3_vl,
             ModelType.qwen3_vl_moe,
             ModelType.qwen3_vl_emb,
             ModelType.qwen3_vl_reranker,
         ],
-        model_cls=Qwen3VLGPTModel,
-        bridge_cls=MultimodalGPTBridge,
-        visual_cls=Qwen3VL_Vit))
+        Qwen3VLLoader,
+    ))
+
+
+class Qwen3OmniLoader(Qwen3VLLoader):
+    bridge_cls = Qwen3OmniBridge
+    visual_cls = Qwen3Omni_Vit
+
+
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen3_omni,
+        [
+            ModelType.qwen3_omni_moe,
+        ],
+        Qwen3OmniLoader,
+    ))

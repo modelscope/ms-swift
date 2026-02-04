@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from copy import deepcopy
+from typing import Optional
 
 import megatron.core
 import torch
@@ -11,7 +12,7 @@ from packaging import version
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
@@ -49,24 +50,6 @@ class Llama4Vit(HuggingFaceModule):
         return inputs_embeds
 
 
-def get_llama4_transformer_layer_spec(config, vp_stage=None):
-    args = get_args()
-    use_te = args.transformer_impl == 'transformer_engine'
-    kwargs = {'qk_l2_norm': args.qk_l2_norm, 'vp_stage': vp_stage} if mcore_013 else {}
-    # Define the decoder block spec
-    transformer_layer_spec = get_gpt_decoder_block_spec(
-        config, use_transformer_engine=use_te, normalization=args.normalization, **kwargs)
-    for i, layer_spec in enumerate(transformer_layer_spec.layer_specs):
-        global_i = i + get_transformer_layer_offset(config, vp_stage)
-        no_rope = config.no_rope_freq[global_i]
-        layer_spec = deepcopy(layer_spec)
-        if no_rope:
-            layer_spec.submodules.self_attention.submodules.q_layernorm = IdentityOp
-            layer_spec.submodules.self_attention.submodules.k_layernorm = IdentityOp
-            transformer_layer_spec.layer_specs[i] = layer_spec
-    return transformer_layer_spec
-
-
 class Llama4Bridge(GPTBridge):
     hf_layers_prefix = 'language_model.model.layers'
     hf_embed_key = 'language_model.model.embed_tokens.weight'
@@ -75,11 +58,27 @@ class Llama4Bridge(GPTBridge):
     hf_score_key = 'language_model.score.weight'
 
 
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.llama4, [
-            ModelType.llama4,
-        ],
-        bridge_cls=Llama4Bridge,
-        get_transformer_layer_spec=get_llama4_transformer_layer_spec,
-        visual_cls=Llama4Vit))
+class Llama4Loader(MegatronModelLoader):
+    bridge_cls = Llama4Bridge
+    visual_cls = Llama4Vit
+
+    def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
+        layer_specs = super().get_transformer_layer_spec(vp_stage)
+        for i, layer_spec in enumerate(layer_specs.layer_specs):
+            global_i = i + get_transformer_layer_offset(self.config, vp_stage)
+            no_rope = self.config.no_rope_freq[global_i]
+            layer_spec = deepcopy(layer_spec)
+            if no_rope:
+                layer_spec.submodules.self_attention.submodules.q_layernorm = IdentityOp
+                layer_spec.submodules.self_attention.submodules.k_layernorm = IdentityOp
+                layer_specs.layer_specs[i] = layer_spec
+        return layer_specs
+
+
+register_megatron_model(MegatronModelMeta(
+    MegatronModelType.llama4,
+    [
+        ModelType.llama4,
+    ],
+    Llama4Loader,
+))

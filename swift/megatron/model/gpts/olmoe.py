@@ -18,7 +18,7 @@ from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
 from ..model_config import MegatronModelConfig
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -217,10 +217,15 @@ class OLMoEBridge(GPTBridge):
         return hf_state_dict
 
 
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.olmoe,
-        [ModelType.olmoe],
-        get_transformer_layer_spec=get_olmoe_decoder_block_spec,
-        bridge_cls=OLMoEBridge,
-    ))
+class OlMoELoader(MegatronModelLoader):
+    bridge_cls = OLMoEBridge
+
+    def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
+        return get_olmoe_decoder_block_spec(self.config, vp_stage)
+
+
+register_megatron_model(MegatronModelMeta(
+    MegatronModelType.olmoe,
+    [ModelType.olmoe],
+    OlMoELoader,
+))
