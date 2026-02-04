@@ -1085,6 +1085,7 @@ The table below introduces the models integrated with ms-swift:
 |[mistralai/Ministral-3-14B-Reasoning-2512](https://modelscope.cn/models/mistralai/Ministral-3-14B-Reasoning-2512)|mistral3|mistral_2512_thinking|transformers>=5.0.0.dev0, mistral-common>=1.8.6|&#x2718;|vision|[mistralai/Ministral-3-14B-Reasoning-2512](https://huggingface.co/mistralai/Ministral-3-14B-Reasoning-2512)|
 |[mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://modelscope.cn/models/mistralai/Mistral-Small-3.2-24B-Instruct-2506)|mistral3_2506|mistral_2506|transformers>=4.49|&#x2718;|-|[mistralai/Mistral-Small-3.2-24B-Instruct-2506](https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506)|
 |[PaddlePaddle/PaddleOCR-VL](https://modelscope.cn/models/PaddlePaddle/PaddleOCR-VL)|paddle_ocr|paddle_ocr|-|&#x2718;|-|[PaddlePaddle/PaddleOCR-VL](https://huggingface.co/PaddlePaddle/PaddleOCR-VL)|
+|[PaddlePaddle/PaddleOCR-VL-1.5](https://modelscope.cn/models/PaddlePaddle/PaddleOCR-VL-1.5)|paddle_ocr_1_5|paddle_ocr_1_5|-|&#x2718;|-|[PaddlePaddle/PaddleOCR-VL-1.5](https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.5)|
 |[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr|transformers>=4.49.0|&#x2718;|-|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0|-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
 

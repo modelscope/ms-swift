@@ -88,6 +88,7 @@ class MLLMModelArch:
     step_audio2_mini = 'step_audio2_mini'
     hunyuan_vl = 'hunyuan_vl'
     step3_vl = 'step3_vl'
+    paddle_ocr_1_5 = 'paddle_ocr_1_5'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -750,6 +751,14 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner='model.vit_large_projector',
         vision_tower='model.vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.paddle_ocr_1_5,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.projector',
+        vision_tower='model.visual',
     ))
 
 
