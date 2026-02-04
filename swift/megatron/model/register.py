@@ -1,16 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from argparse import ArgumentParser
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, List, Optional, Type
 
 import torch.nn as nn
-
 from swift.model import MODEL_MAPPING
 from .constant import MLLMMegatronModelType
 from .gpt_bridge import GPTBridge
 from .gpt_model import GPTModel
 from .mm_gpt_model import MultimodalGPTModel
-from .model_provider import model_provider as model_provider_func
 
 if TYPE_CHECKING:
     from swift.megatron.arguments import MegatronArguments
@@ -27,7 +24,6 @@ class MegatronModelMeta:
     bridge_cls: Type[GPTBridge] = GPTBridge
     model_cls: Optional[Type[nn.Module]] = None
     get_transformer_layer_spec: Optional[Callable] = None
-    model_provider: Callable[['MegatronArguments'], nn.Module] = model_provider_func
     visual_cls: Optional[Type[nn.Module]] = None
     get_mtp_block_spec: Optional[Callable] = None
 

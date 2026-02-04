@@ -126,7 +126,6 @@ def core_transformer_config_from_args(args, config_class=None):
     kw_args['persist_layer_norm'] = True
     # TODO: apply_layernorm_1p
     kw_args['layernorm_zero_centered_gamma'] = args.apply_layernorm_1p
-    kw_args['layernorm_epsilon'] = args.norm_epsilon
     kw_args['deallocate_pipeline_outputs'] = True
     kw_args['pipeline_dtype'] = args.torch_dtype
     kw_args['batch_p2p_comm'] = True

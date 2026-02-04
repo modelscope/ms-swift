@@ -7,11 +7,9 @@ import torch
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec, get_gpt_layer_local_spec,
                                                       get_gpt_layer_with_transformer_engine_spec,
                                                       get_gpt_mtp_block_spec)
-from megatron.core.models.gpt.heterogeneous.heterogeneous_layer_specs import get_gpt_heterogeneous_layer_spec
-from megatron.core.transformer.spec_utils import import_module
 from packaging import version
 
-from swift.megatron.utils import core_transformer_config_from_args
+from swift.megatron.utils import core_transformer_config_from_args, convert_hf_config
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -33,25 +31,12 @@ def _get_transformer_layer_spec(args):
     )
 
 
-# Code borrowed from NVIDIA/Megatron-LM
-def model_provider(args, pre_process=True, post_process=True, vp_stage: Optional[int] = None) -> 'GPTModel':
-    """Builds the model.
-
-    If you set the use_legacy_models to True, it will return the legacy GPT model and if not the mcore GPT model.
-
-    Args:
-        pre_process (bool, optional): Set to true if you need to compute embedings. Defaults to True.
-        post_process (bool, optional): Set to true if you need to want to compute output logits/loss. Defaults to True.
-
-
-    Returns:
-        Union[GPTModel, megatron.legacy.model.GPTModel]: The returned model
-    """
+def get_mcore_model(args, model_args, pre_process=True, post_process=True, vp_stage: Optional[int] = None) -> 'GPTModel':
     from .register import get_megatron_model_meta
-    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
+    megatron_model_meta = get_megatron_model_meta(args.model_type)
 
     logger.info('building GPT model ...')
-    config = core_transformer_config_from_args(args)
+    config = core_transformer_config_from_args(args, model_args)
     config.variable_seq_lengths = True
     if megatron_model_meta.get_transformer_layer_spec is not None:
         transformer_layer_spec = megatron_model_meta.get_transformer_layer_spec(config, vp_stage=vp_stage)

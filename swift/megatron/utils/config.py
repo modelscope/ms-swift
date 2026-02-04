@@ -12,7 +12,7 @@ config_mapping = {
     'num_attention_heads': ['num_attention_heads'],
     'num_query_groups': ['num_key_value_heads'],
     'max_position_embeddings': ['max_position_embeddings'],
-    'norm_epsilon': ['rms_norm_eps'],
+    'layernorm_epsilon': ['rms_norm_eps'],
     'rotary_base': ['rope_theta'],
     'padded_vocab_size': ['vocab_size'],
     'attention_dropout': ['attention_dropout'],
