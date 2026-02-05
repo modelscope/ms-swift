@@ -2,13 +2,14 @@
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Type, Union
-from torch import nn
+
 import megatron.core
 from megatron.core import mpu
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,
                                                       get_gpt_layer_with_transformer_engine_spec,
                                                       get_gpt_mtp_block_spec)
 from packaging import version
+from torch import nn
 from transformers.utils import is_torch_npu_available
 
 from swift.model import MODEL_MAPPING

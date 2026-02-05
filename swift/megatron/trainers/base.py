@@ -16,12 +16,13 @@ import torch
 import torch.nn
 from megatron.core import mpu
 from megatron.core.datasets.utils import Split
+from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches, update_num_microbatches
 from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
-from megatron.core.transformer.module import MegatronModule
+from megatron.core.transformer.module import Float16Module, MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from megatron.core.utils import StragglerDetector, unwrap_model
@@ -67,11 +68,12 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args, template: Template):
         self.args = args
         self.template = template
-        hf_config = template.config
-        self.unwrapped_models = get_mcore_model(args, hf_config)
-        self.peft_models = prepare_mcore_model(args, self.unwrapped_models)
-        self.wrapped_models = []
         self._bridge = None
+        hf_config = template.config
+        self.unwrapped_models = []
+        self.peft_models = []
+        self.wrapped_models = []
+        self.prepare_model()
         self.eval_metrics = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
@@ -97,6 +99,86 @@ class BaseMegatronTrainer(ABC):
             'eval': collections.defaultdict(_get_mean_metric)
         }
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+
+    def prepare_model(self):
+        self.unwrapped_models = get_mcore_model(args, hf_config)
+        for model in self.unwrapped_models:
+            if args.load is None:
+                self.bridge.load_weights(model, args.model_dir)
+
+            model = prepare_mcore_model(args, model)
+            if args.tuner_type == 'lora':
+                if args.adapters and args.adapter_load is None:
+                    assert len(args.adapters) == 1, 'Currently only support one adapter.'
+                    self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
+                if args.ref_adapters and args.ref_adapter_load is None:
+                    assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
+                    self.bridge.load_weights(
+                        model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+            # Set tensor model parallel attributes if not set.
+            # Only parameters that are already tensor model parallel have these
+            # attributes set for them. We should make sure the default attributes
+            # are set for all params so the optimizer can use them.
+            for param in model.parameters():
+                tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
+            if args.use_cpu_initialization:
+                model.cuda(torch.cuda.current_device())
+            self.peft_models.append(model)
+            # Fp16
+            if args.fp16 or args.bf16:
+                config = get_model_config(model[0])
+                model = [Float16Module(config, model_module) for model_module in model]
+
+            # DDP
+            kwargs = {}
+            for f in dataclasses.fields(DistributedDataParallelConfig):
+                if hasattr(args, f.name):
+                    kwargs[f.name] = getattr(args, f.name)
+            kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+            kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+            kwargs['check_for_large_grads'] = args.check_for_large_grads
+            if args.ddp_num_buckets is not None:
+                assert args.ddp_bucket_size is None, \
+                    'Cannot specify both --ddp-num-buckets and --ddp-bucket-size'
+                assert args.ddp_num_buckets > 0, \
+                    '--ddp-num-buckets must be greater than 0'
+                kwargs['bucket_size'] = num_parameters // args.ddp_num_buckets
+            else:
+                kwargs['bucket_size'] = args.ddp_bucket_size
+            kwargs['pad_buckets_for_high_nccl_busbw'] = args.ddp_pad_buckets_for_high_nccl_busbw
+            kwargs['average_in_collective'] = args.ddp_average_in_collective
+            if args.use_megatron_fsdp and args.use_precision_aware_optimizer:
+                kwargs['preserve_fp32_weights'] = False
+            ddp_config = DistributedDataParallelConfig(**kwargs)
+
+            # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
+            # If bucket_size is not provided as an input, use sane default.
+            # If using very large dp_sizes, make buckets larger to ensure that chunks used in NCCL
+            # ring-reduce implementations are large enough to remain bandwidth-bound rather than
+            # latency-bound.
+            if ddp_config.bucket_size is None:
+                ddp_config.bucket_size = max(40000000,
+                                             1000000 * mpu.get_data_parallel_world_size(with_context_parallel=True))
+            # Set bucket_size to infinity if overlap_grad_reduce is False.
+            if not ddp_config.overlap_grad_reduce:
+                ddp_config.bucket_size = None
+
+        with torch.cuda.stream(torch.cuda.Stream()):
+            model = [
+                DP(
+                    config=config,
+                    ddp_config=ddp_config,
+                    module=model_chunk,
+                    # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                    # model chunks is overlapped with compute anyway.
+                    disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
+                ) for (model_chunk_idx, model_chunk) in enumerate(model)
+            ]
+
+        # Broadcast params from data parallel src rank to other data parallel ranks.
+        if args.data_parallel_random_init:
+            for model_module in model:
+                model_module.broadcast_params()
 
     def _get_data_collator(self):
         data_collator = self.template.data_collator

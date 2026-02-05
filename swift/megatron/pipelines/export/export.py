@@ -43,7 +43,7 @@ class MegatronExport(SwiftPipeline):
         mg_model = megatron_model_meta.model_provider(args, pre_process=pre_process, post_process=post_process)
         bridge = megatron_model_meta.bridge_cls(args)
         if args.load is not None:
-            load_mcore_checkpoint([mg_model], None, None, strict=True)
+            load_mcore_checkpoint(args, [mg_model], load_arg='load')
         elif args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         else:
@@ -51,7 +51,7 @@ class MegatronExport(SwiftPipeline):
         if args.adapter_load is not None:
             peft_model = prepare_mcore_model(mg_model)
             with adapter_state_dict_context():
-                load_mcore_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+                load_mcore_checkpoint(args, [mg_model], load_arg='adapter_load')
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
@@ -89,12 +89,27 @@ class MegatronExport(SwiftPipeline):
         hf_config = self.processor.model_info.config
         mg_model = get_mcore_model(args, hf_config)[0]
         logger.info('Megatron model created successfully.')
+        bridge = args.megatron_model_meta.bridge_cls(args)
+        if args.model is not None:
+            bridge.load_weights(mg_model, args.model_info.model_dir)
+        elif args.load is not None:
+            with patch_load_base_checkpoint():
+                load_mcore_checkpoint(args, [mg_model], load_arg='load')
+        else:
+            raise ValueError('Please specify `--load` or `--model`.')
         dist.barrier()
         if args.adapters or args.adapter_load is not None:
             peft_model = prepare_mcore_model(mg_model, load_adapters=True)
+            if args.adapters:
+                assert len(args.adapters) == 1, 'Currently only support one adapter'
+                bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
+            elif args.adapter_load is not None:
+                with adapter_state_dict_context():
+                    load_mcore_checkpoint(args, [mg_model], load_arg='adapter_load')
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
+        logger.info('Successfully transferred HF model weights to MG model.')
         _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
         if not _test_convert_precision:
             args.save_args(args.save)
