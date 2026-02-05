@@ -13,8 +13,8 @@ from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
 from .model import get_megatron_model_meta
-from .utils import (convert_hf_config, initialize_megatron, load_mcore_checkpoint, patch_torch_dist_shard,
-                    save_mcore_checkpoint, test_convert_precision)
+from .utils import (initialize_megatron, load_mcore_checkpoint, patch_torch_dist_shard, save_mcore_checkpoint,
+                    test_convert_precision)
 
 logger = get_logger()
 
@@ -37,17 +37,13 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         args.thread_count = max(math.ceil(checkpoint_size / 10), 2)  # 10GB
     patch_torch_dist_shard(args.thread_count)
 
-    megatron_model_meta = get_megatron_model_meta(args.model_type)
-    assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-    kwargs = convert_hf_config(processor.model_info.config)
-    logger.info(f'megatron_config: {kwargs}')
+    hf_config = processor.model_info.config
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
     megatron_args = MegatronArguments(
         model=args.model,
         model_type=args.model_type,
-        **kwargs,
         **current_convert_kwargs,
         save=args.output_dir,
         torch_dtype=args.torch_dtype)
@@ -72,11 +68,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     _, template = prepare_model_template(args, load_model=False)
     processor = template.processor
 
-    megatron_model_meta = get_megatron_model_meta(args.model_type)
-    assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
     hf_config = processor.model_info.config
-    kwargs = convert_hf_config(hf_config)
-    logger.info(f'megatron_config: {kwargs}')
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
@@ -85,11 +77,10 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     extra_config['adapter_load'] = adapter_load
     if args.mcore_model is not None:
         extra_config['load'] = args.mcore_model
-    kwargs.update(extra_config)
+    current_convert_kwargs.update(extra_config)
     megatron_args = MegatronArguments(
         model=args.model,
         model_type=args.model_type,
-        **kwargs,
         **current_convert_kwargs,
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
