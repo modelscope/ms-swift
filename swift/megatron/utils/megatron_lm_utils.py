@@ -218,7 +218,7 @@ def load_mcore_checkpoint(args, model, load_arg: str = 'load'):
         is_peft_format = True
     elif load_arg in {'load', 'ref_load'}:
         is_peft_format = False
-    model = unwrap_model(model)
+    model = [unwrap_model(m) for m in model]
     tracker_path = os.path.join(args.load, 'latest_checkpointed_iteration.txt')
     iteration = _load_iteration(tracker_path)
     checkpoint_dir = os.path.join(args.load, f'iter_{iteration:07d}')

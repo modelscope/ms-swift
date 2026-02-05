@@ -201,19 +201,24 @@ def prepare_adapter(args, model):
 
 
 def prepare_mcore_model(args, model, load_adapters=True):
-    if args.tuner_type == 'full':
-        freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
-        if args.trainable_parameters or args.trainable_parameters_regex:
-            activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
-    elif args.tuner_type == 'lora':
-        model.prepare_inputs_for_generation = None  # fix error
-        model = prepare_adapter(model)
+    from .megatron_lm_utils import load_mcore_checkpoint
+    for m in model:
+        if args.tuner_type == 'full':
+            freeze_parameters(m, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
+            if args.trainable_parameters or args.trainable_parameters_regex:
+                activate_parameters(m, args.trainable_parameters, args.trainable_parameters_regex)
+        elif args.tuner_type == 'lora':
+            m.prepare_inputs_for_generation = None  # fix error
+            m = prepare_adapter(args, m)
+    if load_adapters:
         if args.adapters:
+            bridge = args.megatron_model_meta.loader.bridge_cls(args)
             assert len(args.adapters) == 1, 'Currently only support one adapter'
-            bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
+            for m in model:
+                bridge.load_weights(m, args.adapters[0], is_peft_format=True)
         elif args.adapter_load is not None:
             with adapter_state_dict_context():
-                load_mcore_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
+                load_mcore_checkpoint(args, model, load_arg='adapter_load')
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
