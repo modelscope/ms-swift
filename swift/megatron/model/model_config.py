@@ -29,7 +29,7 @@ class MegatronModelConfig(TransformerConfig):
     window_attn_skip_freq: Optional[str] = None
     max_position_embeddings: Optional[int] = None
 
-    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'none'] = 'rope',
+    position_embedding_type: Literal['learned_absolute', 'rope', 'mrope', 'none'] = 'rope'
     rotary_base: int = 10000
     rotary_percent: float = 1.
     rotary_interleaved: bool = False
