@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import megatron.core
+from megatron.core import mpu
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,
                                                       get_gpt_layer_with_transformer_engine_spec,
                                                       get_gpt_mtp_block_spec)
@@ -77,12 +78,12 @@ class MegatronModelLoader:
         if self.model_cls is None:
             self.model_cls = MultimodalGPTModel if self.args.is_multimodal else GPTModel
         self._check_npu()
+        self.bridge = self.bridge_cls(args)
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         args = self.args
         if self.config.num_experts:
             kwargs = {'qk_l2_norm': self.config.qk_l2_norm, 'vp_stage': vp_stage} if self.mcore_013 else {}
-            # Define the decoder block spec
             transformer_layer_spec = get_gpt_decoder_block_spec(
                 self.config, use_transformer_engine=True, normalization=self.config.normalization, **kwargs)
         else:
@@ -137,6 +138,7 @@ class MegatronModelLoader:
             pre_process=pre_process,
             post_process=post_process,
             vp_stage=vp_stage)
+        self.bridge.load_weights(model, self.args.model_dir)
         return model
 
     def _check_npu(self):
@@ -166,3 +168,22 @@ class MegatronModelLoader:
             mtp_block_spec=mtp_block_spec,
             vp_stage=vp_stage,
         )
+
+
+def get_mcore_model(
+    args,
+    hf_config,
+):
+    loader = args.megatron_model_meta.loader(args, hf_config)
+    if (mpu.get_pipeline_model_parallel_world_size() > 1 and args.virtual_pipeline_model_parallel_size is not None):
+        models = []
+        for i in range(args.virtual_pipeline_model_parallel_size):
+            pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=i)
+            post_process = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=i)
+            model = loader.create_model_and_load(pre_process, post_process, vp_stage=i)
+            models.append(model)
+    else:
+        pre_process = mpu.is_pipeline_first_stage()
+        post_process = mpu.is_pipeline_last_stage()
+        models = [loader.create_model_and_load(pre_process=pre_process, post_process=post_process)]
+    return models

@@ -9,6 +9,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import transformers
 from megatron.core import mpu
+from megatron.core.utils import unwrap_model
 from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
@@ -1445,6 +1446,7 @@ class GPTBridge:
     def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
         self._is_peft_format = is_peft_format
         self._adapter_name = adapter_name
+        mg_model = unwrap_model(mg_model)
         hf_model_dir = safe_snapshot_download(hf_model_dir, use_hf=self.args.use_hf, hub_token=self.args.hub_token)
         with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
@@ -1464,6 +1466,7 @@ class GPTBridge:
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
+        mg_models = [unwrap_model(mg_model) for mg_model in mg_models]
         with torch.no_grad():
             yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
 
@@ -1477,6 +1480,7 @@ class GPTBridge:
         torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
+        mg_models = [unwrap_model(mg_model) for mg_model in mg_models]
         for k, v in self.export_weights(
                 mg_models, target_device='cpu', only_last_rank=True, is_peft_format=is_peft_format,
                 tqdm_desc='Saving: '):
