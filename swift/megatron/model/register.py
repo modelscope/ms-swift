@@ -2,7 +2,7 @@
 import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Type, Union
-
+from torch import nn
 import megatron.core
 from megatron.core import mpu
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,

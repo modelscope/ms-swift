@@ -50,11 +50,15 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     mg_model = get_mcore_model(megatron_args, hf_config)[0]
     logger.info('Megatron model created successfully.')
+    bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
+    bridge.load_weights(mg_model, args.model_info.model_dir)
+    logger.info('Successfully transferred HF model weights to MG model.')
     _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
     if not _test_convert_precision:
         args.save_args()
         logger.info('Saving the model...')
         save_mcore_checkpoint(megatron_args, [mg_model])
+        logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
     # Place it at the end to avoid test_convert_precision affecting precision.
     if args.test_convert_precision:
         test_convert_precision(megatron_args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
@@ -82,19 +86,18 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         save=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
 
-    mg_model = megatron_model_meta.model_provider(megatron_args)
+    mg_model = get_mcore_model(megatron_args, hf_config)[0]
     if megatron_args.load is None:
         raise ValueError('Please specify `--mcore_model`.')
     load_mcore_checkpoint(megatron_args, [mg_model], load_arg='load')
     if megatron_args.adapter_load is not None:
         peft_model = prepare_mcore_model(mg_model)
-        # with adapter_state_dict_context():
         load_mcore_checkpoint(megatron_args, [mg_model], load_arg='adapter_load')
         logger.info('Merge LoRA...')
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
-        bridge = megatron_model_meta.bridge_cls(megatron_args)
+        bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
         logger.info('Converting weights and saving the model...')
         bridge.save_weights([mg_model], args.output_dir, processor=processor, hf_config=hf_config)
         if is_master():

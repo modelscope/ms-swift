@@ -213,7 +213,7 @@ def prepare_mcore_model(args, model):
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(m)}',
         cond=mpu.get_data_parallel_rank() == 0)
-        return model
+    return model
 
 
 @contextmanager

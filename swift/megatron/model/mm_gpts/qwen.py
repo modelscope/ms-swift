@@ -68,7 +68,7 @@ register_megatron_model(
             ModelType.qwen2_vl,
         ],
         bridge_cls=Qwen2_5VLBridge,
-        visual_cls=Qwen2VLLoader,
+        visual_cls=Qwen2VL_Vit,
     ))
 
 
