@@ -21,33 +21,28 @@ class Glm4vVit(HuggingFaceModule):
         return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.hf_config)
 
 
-class Glm4vMoeLoader(MegatronModelLoader):
-    bridge_cls = MultimodalGPTBridge
-    visual_cls = Glm4vVit
-
-
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.glm4v_moe,
-    [
-        ModelType.glm4v_moe,
-    ],
-    Glm4vMoeLoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.glm4v_moe,
+        [
+            ModelType.glm4v_moe,
+        ],
+        bridge_cls=MultimodalGPTBridge,
+        visual_cls=Glm4vVit,
+    ))
 
 
 class Glm4vBridge(Glm4Bridge, MultimodalGPTBridge):
     pass
 
 
-class Glm4vLoader(Glm4Loader):
-    bridge_cls = Glm4vBridge
-    visual_cls = Glm4vVit
-
-
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.glm4v,
-    [
-        ModelType.glm4v,
-    ],
-    Glm4vLoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.glm4v,
+        [
+            ModelType.glm4v,
+        ],
+        bridge_cls=Glm4vBridge,
+        visual_cls=Glm4vVit,
+        loader=Glm4Loader,
+    ))

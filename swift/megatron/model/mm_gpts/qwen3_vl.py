@@ -476,8 +476,6 @@ class Qwen3VL_Vit(HuggingFaceModule):
 
 
 class Qwen3VLLoader(MegatronModelLoader):
-    bridge_cls = MultimodalGPTBridge
-    visual_cls = Qwen3VL_Vit
 
     def _patch_transformer_block(self):
         if hasattr(gpt_model, 'OriginTransformerBlock'):
@@ -499,14 +497,10 @@ register_megatron_model(
             ModelType.qwen3_vl_emb,
             ModelType.qwen3_vl_reranker,
         ],
-        Qwen3VLLoader,
+        bridge_cls=MultimodalGPTBridge,
+        visual_cls=Qwen3VL_Vit,
+        loader=Qwen3VLLoader,
     ))
-
-
-class Qwen3OmniLoader(Qwen3VLLoader):
-    bridge_cls = Qwen3OmniBridge
-    visual_cls = Qwen3Omni_Vit
-
 
 register_megatron_model(
     MegatronModelMeta(
@@ -514,5 +508,7 @@ register_megatron_model(
         [
             ModelType.qwen3_omni_moe,
         ],
-        Qwen3OmniLoader,
+        bridge_cls=Qwen3OmniBridge,
+        visual_cls=Qwen3Omni_Vit,
+        loader=Qwen3VLLoader,
     ))

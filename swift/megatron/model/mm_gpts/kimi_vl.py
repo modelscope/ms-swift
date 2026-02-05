@@ -47,15 +47,12 @@ class KimiVLVit(HuggingFaceModule):
         return inputs_embeds
 
 
-class KimiLoader(MegatronModelLoader):
-    bridge_cls = KimiVLBridge
-    visual_cls = KimiVLVit
-
-
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.kimi_vl,
-    [
-        ModelType.kimi_vl,
-    ],
-    KimiLoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.kimi_vl,
+        [
+            ModelType.kimi_vl,
+        ],
+        bridge_cls=KimiVLBridge,
+        visual_cls=KimiVLVit,
+    ))

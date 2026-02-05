@@ -59,11 +59,6 @@ class Internvl3Vit(HuggingFaceModule):
         return inputs_embeds
 
 
-class InternvlLoader(MegatronModelLoader):
-    bridge_cls = Internvl3Bridge
-    visual_cls = Internvl3Vit
-
-
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.internvl3,
@@ -72,7 +67,8 @@ register_megatron_model(
             ModelType.internvl3_5,
             ModelType.internvl3_5_gpt,
         ],
-        InternvlLoader,
+        bridge_cls=Internvl3Bridge,
+        visual_cls=Internvl3Vit,
     ))
 
 
@@ -133,11 +129,6 @@ class InternvlHfVit(HuggingFaceModule):
         return inputs_embeds
 
 
-class InternvlHfLoader(MegatronModelLoader):
-    bridge_cls = InternvlHfBridge
-    visual_cls = InternvlHfVit
-
-
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.internvl_hf,
@@ -145,5 +136,6 @@ register_megatron_model(
             ModelType.internvl_hf,
             ModelType.internvl_gpt_hf,
         ],
-        InternvlHfLoader,
+        bridge_cls=InternvlHfBridge,
+        visual_cls=InternvlHfVit,
     ))

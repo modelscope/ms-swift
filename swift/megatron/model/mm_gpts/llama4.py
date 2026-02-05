@@ -59,8 +59,6 @@ class Llama4Bridge(GPTBridge):
 
 
 class Llama4Loader(MegatronModelLoader):
-    bridge_cls = Llama4Bridge
-    visual_cls = Llama4Vit
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         layer_specs = super().get_transformer_layer_spec(vp_stage)
@@ -75,10 +73,13 @@ class Llama4Loader(MegatronModelLoader):
         return layer_specs
 
 
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.llama4,
-    [
-        ModelType.llama4,
-    ],
-    Llama4Loader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.llama4,
+        [
+            ModelType.llama4,
+        ],
+        bridge_cls=Llama4Bridge,
+        visual_cls=Llama4Vit,
+        loader=Llama4Loader,
+    ))

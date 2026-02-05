@@ -46,36 +46,30 @@ class Qwen2_5VLBridge(MultimodalGPTBridge):
     }
 
 
-class Qwen2_5VLLoader(MegatronModelLoader):
-    bridge_cls = Qwen2_5VLBridge
-    visual_cls = Qwen2_5VL_Vit
-
-
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.qwen2_5_vl,
-    [
-        ModelType.qwen2_5_vl,
-    ],
-    Qwen2_5VLLoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen2_5_vl,
+        [
+            ModelType.qwen2_5_vl,
+        ],
+        bridge_cls=Qwen2_5VLBridge,
+        visual_cls=Qwen2_5VL_Vit,
+    ))
 
 
 class Qwen2VL_Vit(Qwen2_5VL_Vit):
     version = 'v2'
 
 
-class Qwen2VLLoader(Qwen2_5VLLoader):
-    bridge_cls = Qwen2_5VLBridge
-    visual_cls = Qwen2VL_Vit
-
-
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.qwen2_vl,
-    [
-        ModelType.qwen2_vl,
-    ],
-    Qwen2VLLoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen2_vl,
+        [
+            ModelType.qwen2_vl,
+        ],
+        bridge_cls=Qwen2_5VLBridge,
+        visual_cls=Qwen2VLLoader,
+    ))
 
 
 class Qwen2_5OmniBridge(GPTBridge):
@@ -122,18 +116,14 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
         return inputs_embeds
 
 
-class Qwen2_5OmniLoader(MegatronModelLoader):
-    bridge_cls = Qwen2_5OmniBridge,
-    visual_cls = Qwen2_5Omni_Vit
-
-
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen2_5_omni,
         [
             ModelType.qwen2_5_omni,
         ],
-        Qwen2_5OmniLoader,
+        bridge_cls=Qwen2_5OmniBridge,
+        visual_cls=Qwen2_5Omni_Vit,
     ))
 
 
@@ -184,15 +174,12 @@ class Ovis2_5Vit(HuggingFaceModule):
         return inputs_embeds
 
 
-class Ovis2_5Loader(MegatronModelLoader):
-    bridge_cls = Ovis2_5Bridge
-    visual_cls = Ovis2_5Vit
-
-
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.ovis2_5,
-    [
-        ModelType.ovis2_5,
-    ],
-    Ovis2_5Loader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.ovis2_5,
+        [
+            ModelType.ovis2_5,
+        ],
+        bridge_cls=Ovis2_5Bridge,
+        visual_cls=Ovis2_5Vit,
+    ))

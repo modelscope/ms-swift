@@ -30,8 +30,10 @@ class MegatronModelMeta:
     megatron_model_type: str
     model_types: List[str]
 
-    loader: Optional[Type['MegatronModelLoader']] = None
+    bridge_cls: Type[GPTBridge] = GPTBridge
+    visual_cls: Optional[Type[nn.Module]] = None
     is_multimodal: bool = False
+    loader: Optional[Type['MegatronModelLoader']] = None
 
     def __post_init__(self):
         if self.megatron_model_type in MLLMMegatronModelType.__dict__:
@@ -67,8 +69,6 @@ def get_megatron_model_meta(model_type: str) -> Optional[MegatronModelMeta]:
 
 class MegatronModelLoader:
     model_cls = None
-    visual_cls = None
-    bridge_cls = GPTBridge
 
     def __init__(self, args, hf_config):
         from swift.megatron.model import GPTModel, MultimodalGPTModel
@@ -79,7 +79,6 @@ class MegatronModelLoader:
         if self.model_cls is None:
             self.model_cls = MultimodalGPTModel if self.args.is_multimodal else GPTModel
         self._init_config()
-        self.bridge = self.bridge_cls(args)
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         if self.config.num_moe_experts:
@@ -126,7 +125,6 @@ class MegatronModelLoader:
         pre_process=True,
         post_process=True,
         vp_stage: Optional[int] = None,
-        load_weights: bool = True,
     ) -> Union['GPTModel', 'MultimodalGPTModel']:
         transformer_layer_spec = self.get_transformer_layer_spec(vp_stage=vp_stage)
         self._set_shared_expert_gate(transformer_layer_spec)
@@ -139,13 +137,6 @@ class MegatronModelLoader:
             pre_process=pre_process,
             post_process=post_process,
             vp_stage=vp_stage)
-        if load_weights:
-            if self.args.load is not None:
-                load_mcore_checkpoint([mg_model], None, None, strict=True)
-            elif self.args.model is not None:
-                self.bridge.load_weights(model, self.args.model_dir)
-            else:
-                raise ValueError('Please specify `--load` or `--model`.')
         return model
 
     def _init_config(self):
@@ -179,7 +170,6 @@ class MegatronModelLoader:
 def get_mcore_model(
     args,
     hf_config,
-    load_weights: bool = True,
 ):
     loader = args.megatron_model_meta.loader(args, hf_config)
     if (mpu.get_pipeline_model_parallel_world_size() > 1 and args.virtual_pipeline_model_parallel_size is not None):
@@ -187,10 +177,10 @@ def get_mcore_model(
         for i in range(args.virtual_pipeline_model_parallel_size):
             pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=i)
             post_process = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=i)
-            model = loader.build_model(pre_process, post_process, vp_stage=i, load_weights=load_weights)
+            model = loader.build_model(pre_process, post_process, vp_stage=i)
             models.append(model)
     else:
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
-        models = [loader.build_model(pre_process=pre_process, post_process=post_process, load_weights=load_weights)]
+        models = [loader.build_model(pre_process=pre_process, post_process=post_process)]
     return models

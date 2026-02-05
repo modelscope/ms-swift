@@ -94,7 +94,6 @@ class Glm4Bridge(GPTBridge):
 
 
 class Glm4Loader(MegatronModelLoader):
-    bridge_cls = Glm4Bridge
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         layer_spec = self._get_transformer_layer_spec()
@@ -104,10 +103,12 @@ class Glm4Loader(MegatronModelLoader):
         return layer_spec
 
 
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.glm4,
-    [
-        ModelType.glm4,
-    ],
-    Glm4Loader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.glm4,
+        [
+            ModelType.glm4,
+        ],
+        bridge_cls=Glm4Bridge,
+        loader=Glm4Loader,
+    ))

@@ -37,6 +37,7 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm
 
+from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, get_padding_to,
                                   load_mcore_checkpoint, patch_merge_fn, prepare_mcore_model)
@@ -66,9 +67,10 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args, template: Template):
         self.args = args
         self.template = template
-        self.unwrapped_models = []
+        hf_config = template.config
+        self.unwrapped_models = get_mcore_model(args, hf_config)
+        self.peft_models = prepare_mcore_model(args, self.unwrapped_models)
         self.wrapped_models = []
-        self.peft_models = []
         self._bridge = None
         self.eval_metrics = None
         logging_path = os.path.join(args.save, 'logging.jsonl')

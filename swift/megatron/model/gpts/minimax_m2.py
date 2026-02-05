@@ -102,7 +102,6 @@ class MinimaxM2Bridge(GPTBridge):
 
 
 class MinimaxM2Loader(MegatronModelLoader):
-    bridge_cls = MinimaxM2Bridge
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         layer_spec = self._get_transformer_layer_spec()
@@ -110,10 +109,12 @@ class MinimaxM2Loader(MegatronModelLoader):
         return layer_spec
 
 
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.minimax_m2,
-    [
-        ModelType.minimax_m2,
-    ],
-    MinimaxM2Loader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.minimax_m2,
+        [
+            ModelType.minimax_m2,
+        ],
+        bridge_cls=MinimaxM2Bridge,
+        loader=MinimaxM2Loader,
+    ))

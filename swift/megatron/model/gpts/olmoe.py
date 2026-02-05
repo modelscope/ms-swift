@@ -218,14 +218,15 @@ class OLMoEBridge(GPTBridge):
 
 
 class OlMoELoader(MegatronModelLoader):
-    bridge_cls = OLMoEBridge
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         return get_olmoe_decoder_block_spec(self.config, vp_stage)
 
 
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.olmoe,
-    [ModelType.olmoe],
-    OlMoELoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.olmoe,
+        [ModelType.olmoe],
+        bridge_cls=OLMoEBridge,
+        loader=OlMoELoader,
+    ))
