@@ -22,6 +22,7 @@ from megatron.core.num_microbatches_calculator import update_num_microbatches
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module, MegatronModule
 from megatron.core.utils import unwrap_model
+from peft import PeftModel
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
 from .patcher import patch_merge_fn
@@ -102,7 +103,7 @@ def initialize_megatron(args):
 
     # Random seeds for reproducibility.
     logger.info(f'Setting random seeds to {args.seed}.')
-    _set_random_seed(args.seed)
+    _set_random_seed(args.seed, args.data_parallel_random_init)
 
     # Setup MoE aux loss scale value.
     if args.model_info.is_moe_model:
@@ -136,7 +137,7 @@ def _get_rng_state():
     return rng_state_list
 
 
-def _generate_state_dict(args, model, iteration=None, model_sd_kwargs=None):
+def _generate_state_dict(args, model: list, iteration=None, model_sd_kwargs=None):
     model_sd_kwargs = model_sd_kwargs or {}
     state_dict = {'args': Namespace(**check_json_format(args.__dict__))}
     if iteration is not None:
@@ -150,7 +151,7 @@ def _generate_state_dict(args, model, iteration=None, model_sd_kwargs=None):
     return state_dict
 
 
-def save_mcore_checkpoint(args, model, iteration=1):
+def save_mcore_checkpoint(args, model: list, iteration=1):
     model = unwrap_model(model)
     rng_state = _get_rng_state()
     checkpoint_dir = os.path.join(args.save, f'iter_{iteration:07d}')
@@ -217,7 +218,7 @@ def _load_iteration(tracker_path: str):
     return iteration
 
 
-def load_mcore_checkpoint(args, model, optimizer, scheduler, load_arg: str = 'load'):
+def load_mcore_checkpoint(args, model: list, optimizer, scheduler, load_arg: str = 'load'):
     if load_arg in {'adapter_load', 'ref_adapter_load'}:
         is_peft_format = True
     elif load_arg in {'load', 'ref_load'}:
@@ -288,15 +289,16 @@ def load_mcore_checkpoint(args, model, optimizer, scheduler, load_arg: str = 'lo
     return iteration, num_floating_point_operations_so_far
 
 
-def wrap_model(args, model, wrap_with_ddp: bool = True):
+def wrap_model(args, model: list, wrap_with_ddp: bool = True):
     # Set tensor model parallel attributes if not set.
     # Only parameters that are already tensor model parallel have these
     # attributes set for them. We should make sure the default attributes
     # are set for all params so the optimizer can use them.
-    for param in model.parameters():
-        tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
-    if args.use_cpu_initialization:
-        model.cuda(torch.cuda.current_device())
+    for m in model:
+        for param in m.parameters():
+            tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
+        if args.use_cpu_initialization:
+            m.cuda(torch.cuda.current_device())
     # Fp16
     config = model[0].config
     if args.fp16 or args.bf16:
@@ -309,12 +311,7 @@ def wrap_model(args, model, wrap_with_ddp: bool = True):
     for f in dataclasses.fields(DistributedDataParallelConfig):
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
-    kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
-    kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
-    kwargs['check_for_large_grads'] = args.check_for_large_grads
-    kwargs['bucket_size'] = args.ddp_bucket_size
-    kwargs['pad_buckets_for_high_nccl_busbw'] = args.ddp_pad_buckets_for_high_nccl_busbw
-    kwargs['average_in_collective'] = args.ddp_average_in_collective
+    kwargs['check_for_nan_in_grad'] = True
     ddp_config = DistributedDataParallelConfig(**kwargs)
 
     # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
@@ -336,14 +333,14 @@ def wrap_model(args, model, wrap_with_ddp: bool = True):
                 module=model_chunk,
                 # Turn off bucketing for model_chunk 2 onwards, since communication for these
                 # model chunks is overlapped with compute anyway.
-                disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
+                disable_bucketing=model_chunk_idx > 0,
             ) for (model_chunk_idx, model_chunk) in enumerate(model)
         ]
 
         # Broadcast params from data parallel src rank to other data parallel ranks.
     if args.data_parallel_random_init:
-        for model_module in model:
-            model_module.broadcast_params()
+        for m in model:
+            m.broadcast_params()
 
     return model
 

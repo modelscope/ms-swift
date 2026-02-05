@@ -136,7 +136,7 @@ class BaseMegatronTrainer(ABC):
                     self.bridge.load_weights(
                         model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
             self.peft_models.append(model)
-            self.wrapped_models.append(wrap_model(args, model))
+        self.wrapped_models = wrap_model(args, self.peft_models)
 
     def get_optimizer_and_scheduler(self):
         args = self.args

@@ -465,6 +465,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # other
     seed: int = 42
+    data_parallel_random_init: Optional[bool] = False
     num_workers: int = 4
     data_sharding: bool = False
 
