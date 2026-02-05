@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
+import dataclasses
 import logging
 import math
 import os
@@ -14,18 +15,16 @@ from typing import Callable, Dict, List, Literal, Optional
 import megatron.core
 import torch
 import torch.nn
-from megatron.core import mpu
+from megatron.core import mpu, tensor_parallel
 from megatron.core.datasets.utils import Split
-from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches, update_num_microbatches
-from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
+from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import Float16Module, MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
-from megatron.core.utils import StragglerDetector, unwrap_model
 # from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer,
 #                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
 #                                print_rank_last, training)
@@ -40,8 +39,9 @@ from tqdm.auto import tqdm
 
 from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
-from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, get_padding_to,
-                                  load_mcore_checkpoint, patch_merge_fn, prepare_mcore_model)
+from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight,
+                                  get_optimizer_param_scheduler, get_padding_to, load_mcore_checkpoint, patch_merge_fn,
+                                  prepare_mcore_model, wrap_model)
 from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
@@ -68,17 +68,33 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args, template: Template):
         self.args = args
         self.template = template
-        self._bridge = None
-        hf_config = template.config
-        self.unwrapped_models = []
-        self.peft_models = []
-        self.wrapped_models = []
+        self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.prepare_model()
+        self.optimizer, self.scheduler = self.get_optimizer_and_scheduler()
+        self.data_collator = self._get_data_collator()
+        args.iteration = 0
+        args.num_floating_point_operations_so_far = 0
+        if args.initialize_embedding:
+            for m in self.unwrapped_models:
+                self._initialize_embedding(m)
+        if args.tuner_type != 'full' and args.modules_to_save:
+            for m in self.unwrapped_models:
+                copy_original_module_weight(m)
+        if args.ref_adapter_load is not None:
+            with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
+                load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_adapter_load')
+        if args.adapter_load is not None:
+            with adapter_state_dict_context():
+                args.iteration, args.num_floating_point_operations_so_far = load_mcore_checkpoint(
+                    args, self.wrapped_models, self.optimizer, self.scheduler, load_arg='adapter_load', strict=False)
+        if args.is_multimodal:
+            for m in self.unwrapped_models:
+                self._prepare_vit_gradient_checkpointing(m)
+
         self.eval_metrics = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
-        # self._patch_megatron()
 
         if args.check_model and hasattr(args, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), patch_modelscope_hub_timeout():
@@ -101,6 +117,10 @@ class BaseMegatronTrainer(ABC):
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     def prepare_model(self):
+        args = self.args
+        hf_config = self.template.config
+        self.peft_models = []
+        self.wrapped_models = []
         self.unwrapped_models = get_mcore_model(args, hf_config)
         for model in self.unwrapped_models:
             if args.load is None:
@@ -115,70 +135,22 @@ class BaseMegatronTrainer(ABC):
                     assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
                     self.bridge.load_weights(
                         model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
-            # Set tensor model parallel attributes if not set.
-            # Only parameters that are already tensor model parallel have these
-            # attributes set for them. We should make sure the default attributes
-            # are set for all params so the optimizer can use them.
-            for param in model.parameters():
-                tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
-            if args.use_cpu_initialization:
-                model.cuda(torch.cuda.current_device())
             self.peft_models.append(model)
-            # Fp16
-            if args.fp16 or args.bf16:
-                config = get_model_config(model[0])
-                model = [Float16Module(config, model_module) for model_module in model]
+            self.wrapped_models.append(wrap_model(args, model))
 
-            # DDP
-            kwargs = {}
-            for f in dataclasses.fields(DistributedDataParallelConfig):
-                if hasattr(args, f.name):
-                    kwargs[f.name] = getattr(args, f.name)
-            kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
-            kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
-            kwargs['check_for_large_grads'] = args.check_for_large_grads
-            if args.ddp_num_buckets is not None:
-                assert args.ddp_bucket_size is None, \
-                    'Cannot specify both --ddp-num-buckets and --ddp-bucket-size'
-                assert args.ddp_num_buckets > 0, \
-                    '--ddp-num-buckets must be greater than 0'
-                kwargs['bucket_size'] = num_parameters // args.ddp_num_buckets
-            else:
-                kwargs['bucket_size'] = args.ddp_bucket_size
-            kwargs['pad_buckets_for_high_nccl_busbw'] = args.ddp_pad_buckets_for_high_nccl_busbw
-            kwargs['average_in_collective'] = args.ddp_average_in_collective
-            if args.use_megatron_fsdp and args.use_precision_aware_optimizer:
-                kwargs['preserve_fp32_weights'] = False
-            ddp_config = DistributedDataParallelConfig(**kwargs)
-
-            # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
-            # If bucket_size is not provided as an input, use sane default.
-            # If using very large dp_sizes, make buckets larger to ensure that chunks used in NCCL
-            # ring-reduce implementations are large enough to remain bandwidth-bound rather than
-            # latency-bound.
-            if ddp_config.bucket_size is None:
-                ddp_config.bucket_size = max(40000000,
-                                             1000000 * mpu.get_data_parallel_world_size(with_context_parallel=True))
-            # Set bucket_size to infinity if overlap_grad_reduce is False.
-            if not ddp_config.overlap_grad_reduce:
-                ddp_config.bucket_size = None
-
-        with torch.cuda.stream(torch.cuda.Stream()):
-            model = [
-                DP(
-                    config=config,
-                    ddp_config=ddp_config,
-                    module=model_chunk,
-                    # Turn off bucketing for model_chunk 2 onwards, since communication for these
-                    # model chunks is overlapped with compute anyway.
-                    disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
-                ) for (model_chunk_idx, model_chunk) in enumerate(model)
-            ]
-
-        # Broadcast params from data parallel src rank to other data parallel ranks.
-        if args.data_parallel_random_init:
-            for model_module in model:
-                model_module.broadcast_params()
+    def get_optimizer_and_scheduler(self):
+        args = self.args
+        kwargs = {}
+        for f in dataclasses.fields(OptimizerConfig):
+            if hasattr(args, f.name):
+                kwargs[f.name] = getattr(args, f.name)
+        config = OptimizerConfig(**kwargs)
+        optimizer = get_megatron_optimizer(
+            config,
+            self.wrapped_models,
+        )
+        scheduler = get_optimizer_param_scheduler(args, optimizer)
+        return optimizer, scheduler
 
     def _get_data_collator(self):
         data_collator = self.template.data_collator
@@ -186,62 +158,6 @@ class BaseMegatronTrainer(ABC):
         logger.info(f'padding_to: {padding_to}')
         data_collator = partial(data_collator, padding_to=padding_to)
         return data_collator
-
-    @property
-    def bridge(self):
-        if self._bridge is None:
-            self._bridge = self.args.megatron_model_meta.bridge_cls(self.args)
-        return self._bridge
-
-    @contextmanager
-    def _get_iters(self, train_dataset, val_dataset):
-        origin_initialize_megatron = training.initialize_megatron
-        origin_validate_args = initialize.validate_args
-
-        def initialize_megatron(*_args, **kwargs):
-            res = origin_initialize_megatron(*_args, **kwargs)
-            args = self.args
-            data_parallel_size = mpu.get_data_parallel_world_size()
-            step_batch_size = args.micro_batch_size * data_parallel_size
-            num_generations = args.num_generations if args.rlhf_type == 'grpo' else 1
-            if args.save_strategy == 'epoch':
-                if hasattr(train_dataset, '__len__'):
-                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
-                    args.save_interval = dataset_sample // args.global_batch_size
-                    args.eval_interval = args.save_interval
-                    if getattr(args, 'save_retain_interval', None) is not None:
-                        args.save_retain_interval *= args.save_interval
-                else:
-                    raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
-            if args.max_epochs is not None:
-                if hasattr(train_dataset, '__len__'):
-                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
-                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
-                elif args.train_iters is None:
-                    raise ValueError(
-                        'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
-            if args.eval_iters < 0:
-                if val_dataset is None:
-                    args.eval_iters = 0
-                elif hasattr(val_dataset, '__len__'):
-                    dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
-                    dataset_sample = dataset_sample * num_generations
-                    args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
-                else:
-                    raise ValueError(
-                        'You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
-                logger.info(f'Setting args.eval_iters: {args.eval_iters}')
-            return res
-
-        self._origin_validate_args = origin_validate_args
-
-        training.initialize_megatron = initialize_megatron
-        initialize.validate_args = self.patched_validate_args
-        try:
-            yield
-        finally:
-            training.initialize_megatron = origin_initialize_megatron
-            initialize.validate_args = self._origin_validate_args
 
     def new_cyclic_iter(self, iterable):
         training = self.unwrapped_models[0].training
@@ -566,25 +482,6 @@ class BaseMegatronTrainer(ABC):
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
-        def new_model_provider_func(*_args, **kwargs):
-            model = model_provider_func(self.args, *_args, **kwargs)
-            if args.load is None:
-                self.bridge.load_weights(model, args.model_dir)
-            self.unwrapped_models.append(model)
-            peft_model = prepare_mcore_model(model)
-            if args.tuner_type == 'lora':
-                if args.adapters and args.adapter_load is None:
-                    assert len(args.adapters) == 1, 'Currently only support one adapter.'
-                    self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
-                if args.ref_adapters and args.ref_adapter_load is None:
-                    assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
-                    self.bridge.load_weights(
-                        model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
-
-            self.peft_models.append(peft_model)
-            return model
-
-        self._init_multimodal_full()
         # read iteration
         args = self.args
         if not args.finetune:
@@ -598,22 +495,6 @@ class BaseMegatronTrainer(ABC):
             model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
                 new_model_provider_func, model_type, *_args, **kwargs)
         self.wrapped_models = model
-        if args.initialize_embedding:
-            for m in self.unwrapped_models:
-                self._initialize_embedding(m)
-        if args.tuner_type != 'full' and args.modules_to_save:
-            for m in self.unwrapped_models:
-                copy_original_module_weight(m)
-        if args.ref_adapter_load is not None:
-            with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                load_mcore_checkpoint(model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
-        if args.adapter_load is not None:
-            with adapter_state_dict_context():
-                args.iteration, args.num_floating_point_operations_so_far = load_mcore_checkpoint(
-                    model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.is_multimodal:
-            for m in self.unwrapped_models:
-                self._prepare_vit_gradient_checkpointing(m)
         return model, optimizer, opt_param_scheduler
 
     def _prepare_vit_gradient_checkpointing(self, model):
@@ -1287,27 +1168,6 @@ class BaseMegatronTrainer(ABC):
         self._origin_save_checkpoint = training.save_checkpoint
         training.save_checkpoint = self.save_checkpoint
 
-    def _init_multimodal_full(self):
-        args = self.args
-        visual_cls = self.args.megatron_model_meta.visual_cls
-        if args.tuner_type == 'full' and args.is_multimodal and visual_cls is not None:
-            vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
-            aligner = [f'visual.{aligner}' for aligner in getattr(visual_cls, '_aligner', [])]
-            generator = [f'visual.{generator}' for generator in getattr(visual_cls, '_generator', [])]
-            if args.freeze_llm:
-                args.freeze_parameters.append('language_model')
-            if args.freeze_vit:
-                args.freeze_parameters += vision_tower
-            if args.freeze_aligner:
-                args.freeze_parameters += aligner
-            else:
-                args.trainable_parameters += aligner
-            args.freeze_parameters += generator
-            if args.freeze_parameters:
-                logger.info(f'freeze_parameters: {args.freeze_parameters}')
-            if args.trainable_parameters:
-                logger.info(f'additional trainable_parameters: {args.trainable_parameters}')
-
     def train(self, train_dataset, val_dataset):
         args = self.args
         datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
@@ -1453,6 +1313,3 @@ class BaseMegatronTrainer(ABC):
             last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
             last_tokens = output_tensor[0, last_token_idx]
         return last_tokens
-
-    def patched_validate_args(self, args, *_args, **kwargs):
-        return self._origin_validate_args(args, *_args, **kwargs)

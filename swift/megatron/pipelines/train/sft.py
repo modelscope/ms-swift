@@ -61,7 +61,7 @@ class MegatronSft(SwiftSft):
     def run(self):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
-
+        args.init_iters(train_dataset, val_dataset)
         # if args.streaming:
         #     train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
         #     if val_dataset is not None:

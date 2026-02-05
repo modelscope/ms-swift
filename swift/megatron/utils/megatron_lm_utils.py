@@ -15,8 +15,12 @@ from megatron.core.dist_checkpointing.serialization import (get_default_load_sha
                                                             get_default_save_sharded_strategy)
 from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyParallelLoadStrategyWrapper,
                                                                         FullyParallelSaveStrategyWrapper)
+from megatron.core.distributed import DistributedDataParallel as DDP
+from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.msc_utils import open_file
 from megatron.core.num_microbatches_calculator import update_num_microbatches
+from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
+from megatron.core.transformer.module import Float16Module, MegatronModule
 from megatron.core.utils import unwrap_model
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
@@ -213,7 +217,7 @@ def _load_iteration(tracker_path: str):
     return iteration
 
 
-def load_mcore_checkpoint(args, model, load_arg: str = 'load'):
+def load_mcore_checkpoint(args, model, optimizer, scheduler, load_arg: str = 'load'):
     if load_arg in {'adapter_load', 'ref_adapter_load'}:
         is_peft_format = True
     elif load_arg in {'load', 'ref_load'}:
@@ -282,3 +286,94 @@ def load_mcore_checkpoint(args, model, load_arg: str = 'load'):
 
     logger.info(f'Successfully loaded Megatron model weights from: {args.load}')
     return iteration, num_floating_point_operations_so_far
+
+
+def wrap_model(args, model, wrap_with_ddp: bool = True):
+    # Set tensor model parallel attributes if not set.
+    # Only parameters that are already tensor model parallel have these
+    # attributes set for them. We should make sure the default attributes
+    # are set for all params so the optimizer can use them.
+    for param in model.parameters():
+        tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
+    if args.use_cpu_initialization:
+        model.cuda(torch.cuda.current_device())
+    # Fp16
+    config = model[0].config
+    if args.fp16 or args.bf16:
+        model = [Float16Module(config, model_module) for model_module in model]
+
+    # DDP
+    if not wrap_with_ddp:
+        return
+    kwargs = {}
+    for f in dataclasses.fields(DistributedDataParallelConfig):
+        if hasattr(args, f.name):
+            kwargs[f.name] = getattr(args, f.name)
+    kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
+    kwargs['check_for_nan_in_grad'] = args.check_for_nan_in_loss_and_grad
+    kwargs['check_for_large_grads'] = args.check_for_large_grads
+    kwargs['bucket_size'] = args.ddp_bucket_size
+    kwargs['pad_buckets_for_high_nccl_busbw'] = args.ddp_pad_buckets_for_high_nccl_busbw
+    kwargs['average_in_collective'] = args.ddp_average_in_collective
+    ddp_config = DistributedDataParallelConfig(**kwargs)
+
+    # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
+    # If bucket_size is not provided as an input, use sane default.
+    # If using very large dp_sizes, make buckets larger to ensure that chunks used in NCCL
+    # ring-reduce implementations are large enough to remain bandwidth-bound rather than
+    # latency-bound.
+    if ddp_config.bucket_size is None:
+        ddp_config.bucket_size = max(40000000, 1000000 * mpu.get_data_parallel_world_size(with_context_parallel=True))
+    # Set bucket_size to infinity if overlap_grad_reduce is False.
+    if not ddp_config.overlap_grad_reduce:
+        ddp_config.bucket_size = None
+
+    with torch.cuda.stream(torch.cuda.Stream()):
+        model = [
+            DDP(
+                config=config,
+                ddp_config=ddp_config,
+                module=model_chunk,
+                # Turn off bucketing for model_chunk 2 onwards, since communication for these
+                # model chunks is overlapped with compute anyway.
+                disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
+            ) for (model_chunk_idx, model_chunk) in enumerate(model)
+        ]
+
+        # Broadcast params from data parallel src rank to other data parallel ranks.
+    if args.data_parallel_random_init:
+        for model_module in model:
+            model_module.broadcast_params()
+
+    return model
+
+
+def get_optimizer_param_scheduler(args, optimizer):
+    # Iteration-based training.
+    if args.lr_decay_iters is None:
+        args.lr_decay_iters = args.train_iters
+    lr_decay_steps = args.lr_decay_iters * args.global_batch_size
+    wd_incr_steps = args.train_iters * args.global_batch_size
+    wsd_decay_steps = None
+    if args.lr_wsd_decay_iters is not None:
+        wsd_decay_steps = args.lr_wsd_decay_iters * args.global_batch_size
+    if args.lr_warmup_fraction is not None:
+        lr_warmup_steps = args.lr_warmup_fraction * lr_decay_steps
+    else:
+        lr_warmup_steps = args.lr_warmup_iters * args.global_batch_size
+
+    opt_param_scheduler = OptimizerParamScheduler(
+        optimizer,
+        init_lr=args.lr_warmup_init,
+        max_lr=args.lr,
+        min_lr=args.min_lr,
+        lr_warmup_steps=lr_warmup_steps,
+        lr_decay_steps=lr_decay_steps,
+        lr_decay_style=args.lr_decay_style,
+        start_wd=args.start_weight_decay,
+        end_wd=args.end_weight_decay,
+        wd_incr_steps=wd_incr_steps,
+        wd_incr_style=args.weight_decay_incr_style,
+    )
+
+    return opt_param_scheduler

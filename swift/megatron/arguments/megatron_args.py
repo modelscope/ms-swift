@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 import json
 import megatron.core
 import torch
+from megatron.core import mpu
 from packaging import version
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
@@ -353,6 +354,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     manual_gc_interval: int = 0
 
     # learning rate
+    lr_warmup_init: float = 0.
     lr: Optional[float] = None
     lr_decay_style: Literal['cosine', 'linear', 'constant'] = 'cosine'
     # The default is None, which will be set to `train_iters`.
@@ -363,6 +365,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # regularization
     weight_decay: float = 0.1
+    weight_decay_incr_style: Literal['constant', 'linear', 'cosine'] = 'constant'
+    start_weight_decay: Optional[float] = None
+    end_weight_decay: Optional[float] = None
     clip_grad: float = 1.
     adam_beta1: float = 0.9
     adam_beta2: float = 0.95
@@ -372,7 +377,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # checkpoint
     save: Optional[str] = None
     save_interval: int = 500
-    # save_retain_interval: Optional[int] = None
+    save_retain_interval: Optional[int] = None
     no_save_optim: bool = False
     no_save_rng: bool = False
     load: Optional[str] = None
@@ -610,6 +615,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.adapters:
             self._load_adapter_config()
         self._init_mixed_precision()
+        self._init_multimodal_full()
 
         initialize_megatron(self)
 
@@ -635,3 +641,56 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             if v != getattr(self, k):
                 setattr(self, k, v)
                 logger.info(f'Setting {k}: {v}')
+
+    def init_iters(self, train_dataset, val_dataset):
+        data_parallel_size = mpu.get_data_parallel_world_size()
+        step_batch_size = self.micro_batch_size * data_parallel_size
+        num_generations = self.num_generations if self.rlhf_type == 'grpo' else 1
+        if self.save_strategy == 'epoch':
+            if hasattr(train_dataset, '__len__'):
+                dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
+                self.save_interval = dataset_sample // self.global_batch_size
+                self.eval_interval = self.save_interval
+                # TODO
+                if getattr(self, 'save_retain_interval', None) is not None:
+                    self.save_retain_interval *= self.save_interval
+            else:
+                raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
+        if self.max_epochs is not None:
+            if hasattr(train_dataset, '__len__'):
+                dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
+                self.train_iters = dataset_sample * self.max_epochs // self.global_batch_size
+            elif self.train_iters is None:
+                raise ValueError(
+                    'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
+        if self.eval_iters < 0:
+            if val_dataset is None:
+                self.eval_iters = 0
+            elif hasattr(val_dataset, '__len__'):
+                dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
+                dataset_sample = dataset_sample * num_generations
+                self.eval_iters = max(dataset_sample // self.global_batch_size, 1)
+            else:
+                raise ValueError(
+                    'You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
+            logger.info(f'Setting args.eval_iters: {self.eval_iters}')
+
+    def _init_multimodal_full(self):
+        visual_cls = self.megatron_model_meta.visual_cls
+        if self.tuner_type == 'full' and self.is_multimodal and visual_cls is not None:
+            vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
+            aligner = [f'visual.{aligner}' for aligner in getattr(visual_cls, '_aligner', [])]
+            generator = [f'visual.{generator}' for generator in getattr(visual_cls, '_generator', [])]
+            if self.freeze_llm:
+                self.freeze_parameters.append('language_model')
+            if self.freeze_vit:
+                self.freeze_parameters += vision_tower
+            if self.freeze_aligner:
+                self.freeze_parameters += aligner
+            else:
+                self.trainable_parameters += aligner
+            self.freeze_parameters += generator
+            if self.freeze_parameters:
+                logger.info(f'freeze_parameters: {self.freeze_parameters}')
+            if self.trainable_parameters:
+                logger.info(f'additional trainable_parameters: {self.trainable_parameters}')
