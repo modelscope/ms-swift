@@ -140,7 +140,12 @@ class MegatronModelLoader:
             post_process=post_process,
             vp_stage=vp_stage)
         if load_weights:
-            self.bridge.load_weights(model, self.args.model_dir)
+            if self.args.load is not None:
+                load_mcore_checkpoint([mg_model], None, None, strict=True)
+            elif self.args.model is not None:
+                self.bridge.load_weights(model, self.args.model_dir)
+            else:
+                raise ValueError('Please specify `--load` or `--model`.')
         return model
 
     def _init_config(self):

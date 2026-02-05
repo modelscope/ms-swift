@@ -573,7 +573,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
-        assert self.megatron_model_meta is not None, f'Model: {args.model} is not supported.'
+        if self.megatron_model_meta is None:
+            raise ValueError(f'Model: {self.model} is not supported.')
         if self.apply_wd_to_qk_layernorm and self.model_type != 'qwen3_next':
             raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None

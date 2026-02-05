@@ -16,6 +16,10 @@ logger = get_logger()
 
 @dataclass
 class MegatronModelConfig(TransformerConfig):
+    """
+    During Megatron training, multiple models may be created. This class is used to
+    distinguish the configurations of different models.
+    """
     hf_model_type: Optional[str] = None
     llm_model_type: Optional[str] = None
     padded_vocab_size: Optional[int] = None
@@ -145,6 +149,11 @@ def create_mcore_model_config(args, hf_config):
     for f in fields(MegatronModelConfig):
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
+
+    if args.task_type == 'seq_cls':
+        args.problem_type = args.problem_type or getattr(hf_config, 'problem_type', None)
+        logger.info(f'args.problem_type: {args.problem_type}')
+
     kwargs['pipeline_dtype'] = args.torch_dtype
     kwargs['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
     kwargs['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers

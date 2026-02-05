@@ -532,7 +532,8 @@ def _patch_TransformerLayer():
         if not mcore_013:
             return _origin_forward(self, *_args, **kwargs)
         hidden_states, context = self._forward_attention(*_args, **kwargs)
-        mlp_padding_free = self.config.mlp_padding_free and 'attention_mask' in kwargs
+        args = self.config.args
+        mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
         mask = None
         if mlp_padding_free and hidden_states.shape[1] > 1:
             mask = ((~kwargs['attention_mask']).sum(dim=(1, 2)) > 0).t()

@@ -54,7 +54,6 @@ class MegatronSft(SwiftSft):
         with torch.device('meta'):
             self.model, self.processor = args.get_model_processor(**kwargs, download_model=args.load is None)
         self._prepare_template()
-        args.init_model_args(self.tokenizer, self.processor.model_info.config)
         args.save_args(args.save)
         self.template.use_megatron = True
         self.trainer = self.prepare_trainer()

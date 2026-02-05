@@ -24,6 +24,10 @@ logger = get_logger()
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
+EP_PP_SIZE = None
+EP_PP_GROUP = None
+EP_PP_RANK = None
+
 
 # Some ideas for LoRA conversion are referenced from: https://github.com/modelscope/ms-swift/pull/6225
 class GPTBridge:
@@ -87,15 +91,20 @@ class GPTBridge:
             rank_offset=0,
         )
         rank = dist.get_rank()
-        for ranks in expert_decoder_rank_generator.get_ranks('ep-pp'):
-            group = mpu.create_group(
-                ranks,
-                group_desc='EP-PP-GROUP',
-            )
-            if rank in ranks:
-                self.ep_pp_size = self.ep_size * self.pp_size
-                self.ep_pp_group = group
-                self.ep_pp_rank = dist.get_rank(group)
+        global EP_PP_GROUP, EP_PP_RANK, EP_PP_SIZE
+        if EP_PP_GROUP is None:
+            for ranks in expert_decoder_rank_generator.get_ranks('ep-pp'):
+                group = mpu.create_group(
+                    ranks,
+                    group_desc='EP-PP-GROUP',
+                )
+                if rank in ranks:
+                    EP_PP_SIZE = self.ep_size * self.pp_size
+                    EP_PP_GROUP = group
+                    EP_PP_RANK = dist.get_rank(group)
+        self.ep_pp_size = EP_PP_SIZE
+        self.ep_pp_group = EP_PP_GROUP
+        self.ep_pp_rank = EP_PP_RANK
 
     def get_hf_mlp_prefix(self, layer_idx):
         if hasattr(self.hf_layers[layer_idx], 'feed_forward'):

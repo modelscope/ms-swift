@@ -200,7 +200,7 @@ def prepare_adapter(args, model):
     return model
 
 
-def prepare_mcore_model(args, model):
+def prepare_mcore_model(args, model, load_adapters=True):
     if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
@@ -208,6 +208,12 @@ def prepare_mcore_model(args, model):
     elif args.tuner_type == 'lora':
         model.prepare_inputs_for_generation = None  # fix error
         model = prepare_adapter(model)
+        if args.adapters:
+            assert len(args.adapters) == 1, 'Currently only support one adapter'
+            bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
+        elif args.adapter_load is not None:
+            with adapter_state_dict_context():
+                load_mcore_checkpoint([mg_model], None, None, load_arg='adapter_load', strict=False)
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
@@ -300,14 +306,15 @@ def copy_ref_adapter_weight(model, ref_adapter_name: str):
 
 
 def forward_step_helper(args, model, inputs, dtype=None):
+    config = model.config
     if mpu.is_pipeline_first_stage():
         micro_batch_size = 1  # use qkv_format 'thd'
         if not args.padding_free:
             micro_batch_size = args.micro_batch_size
         seq_length = inputs['position_ids'].shape[-1]
-        if args.sequence_parallel:
+        if config.sequence_parallel:
             seq_length //= mpu.get_tensor_model_parallel_world_size()
-        recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
+        recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, config.hidden_size],
                                          device=torch.cuda.current_device(),
                                          dtype=torch.int64)
     else:
@@ -318,7 +325,7 @@ def forward_step_helper(args, model, inputs, dtype=None):
     shape = recv_shape_buffer.tolist()
 
     if not mpu.is_pipeline_first_stage():
-        dtype = dtype or args.params_dtype
+        dtype = dtype or config.params_dtype
         recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=dtype)
         recv_from_prev_pipeline_rank_(recv_buffer)
         model.set_input_tensor(recv_buffer)
