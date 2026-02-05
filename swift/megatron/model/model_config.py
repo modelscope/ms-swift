@@ -103,7 +103,6 @@ class MegatronModelConfig(TransformerConfig):
     cp_comm_type: str = 'p2p'
 
     def __post_init__(self):
-        self.pipeline_dtype = self.torch_dtype
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
         if self.num_moe_experts is not None:
@@ -142,17 +141,18 @@ class MegatronModelConfig(TransformerConfig):
 
 def create_mcore_model_config(args, hf_config):
     # Translate args to core transformer configuration
-    kw_args = convert_hf_config(hf_config)
+    kwargs = convert_hf_config(hf_config)
     for f in fields(MegatronModelConfig):
         if hasattr(args, f.name):
-            kw_args[f.name] = getattr(args, f.name)
-    kw_args['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
-    kw_args['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
-    kw_args['fp8_param'] = args.fp8_param_gather
-    kw_args['inference_sampling_seed'] = args.seed
-    swiglu = kw_args.get('swiglu', True)
-    kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion if swiglu else args.bias_gelu_fusion
-    config = MegatronModelConfig(**kw_args)
+            kwargs[f.name] = getattr(args, f.name)
+    kwargs['pipeline_dtype'] = args.torch_dtype
+    kwargs['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
+    kwargs['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
+    kwargs['fp8_param'] = args.fp8_param_gather
+    kwargs['inference_sampling_seed'] = args.seed
+    swiglu = kwargs.get('swiglu', True)
+    kwargs['bias_activation_fusion'] = args.bias_swiglu_fusion if swiglu else args.bias_gelu_fusion
+    config = MegatronModelConfig(**kwargs)
     config.hf_config = hf_config
     config.args = args
     return config

@@ -108,7 +108,8 @@ class GPTModel(McoreGPTModel):
         self.attention_scaling = 1.
         new_inv_freq, self.attention_scaling = get_rope_inv_freq(config)
         self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
-        if self.config.task_type == 'seq_cls' and self.post_process:
+        self.args = args = config.args
+        if self.args.task_type == 'seq_cls' and self.post_process:
             self.output_layer = OutputLayerLinear(
                 config.hidden_size,
                 self.config.num_labels,
@@ -120,7 +121,7 @@ class GPTModel(McoreGPTModel):
                 skip_weight_param_allocation=False,
             )
             self.output_layer.weight.average_gradients_across_tp_domain = True
-        elif self.config.task_type == 'embedding' and self.post_process:
+        elif self.args.task_type == 'embedding' and self.post_process:
             self.output_layer = None
 
         if (self.attention_scaling != 1 or config.position_embedding_type == 'mrope') and config.apply_rope_fusion:
@@ -337,7 +338,7 @@ class GPTModel(McoreGPTModel):
         """
         if not self.post_process:
             return hidden_states
-        labels = labels if self.config.task_type == 'causal_lm' else None
+        labels = labels if self.args.task_type == 'causal_lm' else None
         in_inference_mode = inference_context is not None and not self.training
         if in_inference_mode:
             assert runtime_gather_output, 'Inference must always gather TP logits'
@@ -430,16 +431,16 @@ class GPTModel(McoreGPTModel):
                 # (so that the output layer, which expects S×B×H, receives only the final token)
                 hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
 
-        if self.config.task_type in {'seq_cls', 'embedding'
-                                     } and self.config.sequence_parallel and self.config.tensor_model_parallel_size > 1:
+        if self.args.task_type in {'seq_cls', 'embedding'
+                                   } and self.config.sequence_parallel and self.config.tensor_model_parallel_size > 1:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
 
-        if self.config.task_type == 'embedding':
+        if self.args.task_type == 'embedding':
             logits = F.normalize(hidden_states, p=2, dim=-1)
         else:
             logits, _ = self.output_layer(
                 hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
-            if self.config.task_type == 'generative_reranker':
+            if self.args.task_type == 'generative_reranker':
                 logits = gather_from_tensor_model_parallel_region(logits)
                 positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
                 negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')

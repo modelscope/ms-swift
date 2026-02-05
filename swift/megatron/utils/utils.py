@@ -57,7 +57,7 @@ def get_multimodal_target_regex(
     include_router: bool = False,
 ) -> str:
     from ..model import get_megatron_model_meta
-    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
+    megatron_model_meta = get_megatron_model_meta(args.model_type)
     modules = []
     visual_cls = megatron_model_meta.visual_cls
     vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
@@ -192,7 +192,7 @@ def prepare_adapter(args, model):
     for m in model.modules():
         if isinstance(m, LoraLinear):
             # just check
-            assert args.is_multimodal or args.hf_model_type == 'qwen3_next'
+            assert args.is_multimodal or args.model_type == 'qwen3_next'
             assert not isinstance(m, LoraParallelLinear)
             for p in m.parameters():
                 if p.requires_grad:

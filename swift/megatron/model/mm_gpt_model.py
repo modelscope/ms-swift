@@ -35,7 +35,7 @@ class MultimodalGPTModel(MegatronModule):
                                        post_process, *args, **kwargs)
         self.vp_stage = self.language_model.vp_stage
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
-        self.megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
+        self.megatron_model_meta = get_megatron_model_meta(args.model_type)
         self.visual = None
         if args.mtp_num_layers:
             raise ValueError('MTP currently does not support multimodal models.')

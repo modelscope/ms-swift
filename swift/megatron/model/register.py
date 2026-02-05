@@ -121,24 +121,26 @@ class MegatronModelLoader:
                 if hasattr(layer_spec.submodules.mlp.submodules, 'shared_experts'):
                     layer_spec.submodules.mlp.submodules.shared_experts.params = {'gate': True}
 
-    def create_model_and_load(
+    def build_model(
         self,
         pre_process=True,
         post_process=True,
         vp_stage: Optional[int] = None,
+        load_weights: bool = True,
     ) -> Union['GPTModel', 'MultimodalGPTModel']:
         transformer_layer_spec = self.get_transformer_layer_spec(vp_stage=vp_stage)
         self._set_shared_expert_gate(transformer_layer_spec)
         mtp_block_spec = None
         if self.args.mtp_num_layers is not None:
             mtp_block_spec = self.get_mtp_block_spec(transformer_layer_spec, vp_stage=vp_stage)
-        model = self._create_model(
+        model = self._init_model(
             transformer_layer_spec,
             mtp_block_spec,
             pre_process=pre_process,
             post_process=post_process,
             vp_stage=vp_stage)
-        self.bridge.load_weights(model, self.args.model_dir)
+        if load_weights:
+            self.bridge.load_weights(model, self.args.model_dir)
         return model
 
     def _init_config(self):
@@ -153,12 +155,12 @@ class MegatronModelLoader:
             config.apply_rope_fusion = True
         logger.info(f'Setting config.apply_rope_fusion: {config.apply_rope_fusion}.')
 
-    def _create_model(self,
-                      transformer_layer_spec,
-                      mtp_block_spec,
-                      pre_process=True,
-                      post_process=True,
-                      vp_stage: Optional[int] = None):
+    def _init_model(self,
+                    transformer_layer_spec,
+                    mtp_block_spec,
+                    pre_process=True,
+                    post_process=True,
+                    vp_stage: Optional[int] = None):
         return self.model_cls(
             config=self.config,
             transformer_layer_spec=transformer_layer_spec,
@@ -172,6 +174,7 @@ class MegatronModelLoader:
 def get_mcore_model(
     args,
     hf_config,
+    load_weights: bool = True,
 ):
     loader = args.megatron_model_meta.loader(args, hf_config)
     if (mpu.get_pipeline_model_parallel_world_size() > 1 and args.virtual_pipeline_model_parallel_size is not None):
@@ -179,10 +182,10 @@ def get_mcore_model(
         for i in range(args.virtual_pipeline_model_parallel_size):
             pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=i)
             post_process = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=i)
-            model = loader.create_model_and_load(pre_process, post_process, vp_stage=i)
+            model = loader.build_model(pre_process, post_process, vp_stage=i, load_weights=load_weights)
             models.append(model)
     else:
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
-        models = [loader.create_model_and_load(pre_process=pre_process, post_process=post_process)]
+        models = [loader.build_model(pre_process=pre_process, post_process=post_process, load_weights=load_weights)]
     return models

@@ -166,7 +166,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Apply teacher config to global Megatron args
         for key, value in teacher_megatron_config.items():
             setattr(megatron_args, key, value)
-        megatron_args.hf_model_type = teacher_model_type
+        megatron_args.model_type = teacher_model_type
         megatron_args.model_dir = teacher_model_info.model_dir
 
         # Reset MoE-related keys that are not in teacher config to None.

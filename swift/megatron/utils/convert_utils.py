@@ -190,7 +190,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
     _param = next(mg_language_model.parameters())
     mg_dtype = _param.dtype
     mg_device = _param.device
-    if args.hf_model_type == 'minimax_m2':
+    if args.model_type == 'minimax_m2':
         # router to bfloat16
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
