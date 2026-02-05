@@ -46,11 +46,12 @@ class GPTBridge:
         self._peft_modules_to_save = set()
         self._is_peft_format = False
         self._adapter_name = 'default'
+        self.config = None
         self._init_meta_hf_model()
         self.hf_layers = deep_getattr(self.hf_model, self.hf_layers_prefix)
         self.module_mapping = {}
         self.mcore_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
-        megatron_model_meta = get_megatron_model_meta(self.args.hf_model_type)
+        megatron_model_meta = get_megatron_model_meta(self.args.model_type)
         if self.args.is_multimodal and megatron_model_meta.visual_cls is not None:
             self.module_mapping = megatron_model_meta.visual_cls.module_mapping
         self.tp_size = self.args.tensor_model_parallel_size
@@ -108,7 +109,7 @@ class GPTBridge:
     def _init_meta_hf_model(self):
         with torch.device('meta'):
             self.hf_model, self.processor = get_model_processor(
-                self.args.model_dir, model_type=self.args.hf_model_type, return_dummy_model=True)
+                self.args.model_dir, model_type=self.args.model_type, return_dummy_model=True)
 
     def _get_tp_split_dim(self, mg_key: Optional[str]) -> Optional[int]:
         if mg_key is None:
@@ -376,7 +377,7 @@ class GPTBridge:
             tensor = torch.concat(tensor, dim=0)
             if mg_scale_inv is not None:
                 mg_scale_inv = torch.concat(mg_scale_inv, dim=0)
-        num_local_experts = self.args.num_experts // self.ep_size if is_expert else 1
+        num_local_experts = self.config.num_moe_experts // self.ep_size if is_expert else 1
         tp_dim = self._get_tp_split_dim(mg_key)
         is_linear_fc1 = (mg_key is not None and mg_key.split('.', 1)[0] == 'linear_fc1' and tp_dim is not None)
         if tensor is not None and is_linear_fc1:
@@ -396,8 +397,8 @@ class GPTBridge:
             assert mg_scale_inv is None, f'mg_key: {mg_key}'
             tensor = tensor + offset
         is_embedding = mg_key in {'embedding.word_embeddings.weight', 'output_layer.weight'}
-        if is_embedding and self.args.padded_vocab_size < tensor.shape[0]:
-            tensor = tensor[:self.args.padded_vocab_size]
+        if is_embedding and self.config.padded_vocab_size < tensor.shape[0]:
+            tensor = tensor[:self.config.padded_vocab_size]
         if self._target_device is not None:
             tensor = tensor.to(device=self._target_device)
             if mg_scale_inv is not None:
@@ -471,8 +472,8 @@ class GPTBridge:
                 hf_weight = hf_state_dict[hf_key].load()
                 if module_key in {
                         'embedding.word_embeddings', 'output_layer'
-                } and hf_weight.shape[0] < self.args.padded_vocab_size and self.args.task_type != 'seq_cls':
-                    hf_weight = F.pad(hf_weight, (0, 0, 0, self.args.padded_vocab_size - hf_weight.shape[0]))
+                } and hf_weight.shape[0] < self.config.padded_vocab_size and self.args.task_type != 'seq_cls':
+                    hf_weight = F.pad(hf_weight, (0, 0, 0, self.config.padded_vocab_size - hf_weight.shape[0]))
                 hf_scale_inv = None
                 if f'{hf_key}_scale_inv' in hf_state_dict:
                     hf_scale_inv = hf_state_dict[f'{hf_key}_scale_inv'].load()
@@ -518,9 +519,10 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         hf_attn = self.hf_layers[layer_idx].self_attn
-        args = self.args
-        num_query_groups = (args.num_query_groups if args.num_query_groups is not None else args.num_attention_heads)
-        hidden_size_block = args.hidden_size // self.fp8_block_size
+        config = self.config
+        num_query_groups = (
+            config.num_query_groups if config.num_query_groups is not None else config.num_attention_heads)
+        hidden_size_block = config.hidden_size // self.fp8_block_size
         if to_mcore:
             if isinstance(mg_attn.linear_qkv, LoraParallelLinear):
                 lora_A = hf_state_dict['q_proj.lora_A.weight'].load()
@@ -540,11 +542,11 @@ class GPTBridge:
                                  'linear_qkv.lora_B.weight')
             elif not self._is_peft_format:
                 linear_qkv_weight = torch.cat([
-                    hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
-                    hf_state_dict['k_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
-                    hf_state_dict['v_proj.weight'].load().reshape((num_query_groups, -1, args.hidden_size)),
+                    hf_state_dict['q_proj.weight'].load().reshape((num_query_groups, -1, config.hidden_size)),
+                    hf_state_dict['k_proj.weight'].load().reshape((num_query_groups, -1, config.hidden_size)),
+                    hf_state_dict['v_proj.weight'].load().reshape((num_query_groups, -1, config.hidden_size)),
                 ],
-                                              dim=1).reshape((-1, args.hidden_size))
+                                              dim=1).reshape((-1, config.hidden_size))
                 qkv_scale_inv = None
                 if 'q_proj.weight_scale_inv' in hf_state_dict:
                     qkv_scale_inv = torch.cat([
@@ -589,13 +591,13 @@ class GPTBridge:
                 mg_attn_weight, scale_inv = self._get_weight(
                     None if mg_attn is None else mg_attn.linear_qkv.weight.data, 'linear_qkv.weight')
                 if mg_attn_weight is not None:
-                    mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, args.hidden_size))
-                    hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1, args.hidden_size).clone()
-                    hf_state_dict['k_proj.weight'] = mg_attn_weight[:,
-                                                                    q_dim:-kv_dim, :].reshape(-1,
-                                                                                              args.hidden_size).clone()
+                    mg_attn_weight = mg_attn_weight.reshape((num_query_groups, -1, config.hidden_size))
+                    hf_state_dict['q_proj.weight'] = mg_attn_weight[:, :q_dim, :].reshape(-1,
+                                                                                          config.hidden_size).clone()
+                    hf_state_dict['k_proj.weight'] = mg_attn_weight[:, q_dim:-kv_dim, :].reshape(
+                        -1, config.hidden_size).clone()
                     hf_state_dict['v_proj.weight'] = mg_attn_weight[:, -kv_dim:, :].reshape(-1,
-                                                                                            args.hidden_size).clone()
+                                                                                            config.hidden_size).clone()
                 if scale_inv is not None:
                     scale_inv = scale_inv.reshape((num_query_groups, -1, hidden_size_block))
                     hf_state_dict['q_proj.weight_scale_inv'] = scale_inv[:, :q_block, :].reshape(
@@ -606,11 +608,11 @@ class GPTBridge:
                         -1, hidden_size_block).clone()
                 del mg_attn_weight
         self._set_state_dict(mg_attn, 'linear_proj.weight', hf_state_dict, 'o_proj.weight', to_mcore)
-        if args.add_bias_linear:
+        if config.add_bias_linear:
             self._set_state_dict(mg_attn, 'linear_proj.bias', hf_state_dict, 'o_proj.bias', to_mcore)
 
         # Copy bias
-        if (args.add_bias_linear or args.add_qkv_bias) and not self._is_peft_format:
+        if (config.add_bias_linear or config.add_qkv_bias) and not self._is_peft_format:
             if to_mcore:
                 linear_qkv_bias = torch.cat([
                     hf_state_dict['q_proj.bias'].load().reshape((num_query_groups, -1)),
@@ -627,9 +629,9 @@ class GPTBridge:
                     hf_state_dict['q_proj.bias'] = mg_attn_bias[:, :q_dim].reshape(-1).clone()
                     hf_state_dict['k_proj.bias'] = mg_attn_bias[:, q_dim:-kv_dim].reshape(-1).clone()
                     hf_state_dict['v_proj.bias'] = mg_attn_bias[:, -kv_dim:].reshape(-1).clone()
-        if getattr(args, 'softmax_type', 'vanilla') == 'learnable':
+        if getattr(config, 'softmax_type', 'vanilla') == 'learnable':
             self._set_state_dict(mg_attn, 'core_attention.softmax_offset', hf_state_dict, 'sinks', to_mcore)
-        if args.qk_layernorm:
+        if config.qk_layernorm:
             self._set_qk_layernorm(mg_attn, hf_attn, hf_state_dict, to_mcore)
         if to_mcore:
             hf_state_dict = {}
@@ -662,7 +664,7 @@ class GPTBridge:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
         else:
             hf_state_dict = {}
-        args = self.args
+        config = self.config
         hf_mlp = self._get_hf_mlp(layer_idx)
         if hasattr(hf_mlp, 'router'):
             hf_gate_key = 'router.weight'
@@ -671,13 +673,13 @@ class GPTBridge:
         else:
             hf_gate_key = 'gate.weight'
         self._set_state_dict(mg_mlp, 'router.weight', hf_state_dict, hf_gate_key, to_mcore)
-        if args.add_bias_linear:
+        if config.add_bias_linear:
             self._set_state_dict(mg_mlp, 'router.bias', hf_state_dict, hf_gate_key.replace('weight', 'bias'), to_mcore)
-        if args.moe_router_enable_expert_bias:
+        if config.moe_router_enable_expert_bias:
             hf_bias_key = self.get_e_score_correction_bias_key(hf_mlp)
             self._set_state_dict(mg_mlp, 'router.expert_bias', hf_state_dict, hf_bias_key, to_mcore)
 
-        if args.moe_shared_expert_intermediate_size:
+        if config.moe_shared_expert_intermediate_size:
             for key in ['shared_expert', 'shared_experts', 'shared_mlp']:
                 if hasattr(hf_mlp, key):
                     hf_shared_expert_prefix = f'{key}.'
@@ -710,7 +712,7 @@ class GPTBridge:
         return hf_state_dict
 
     def _get_hf_grouped(self):
-        if self.args.hf_model_type in {
+        if self.args.model_type in {
                 'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'dots1', 'ernie4_5_moe', 'glm4_moe',
                 'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
                 'qwen3_vl_moe'
@@ -735,7 +737,7 @@ class GPTBridge:
         if is_expert:
             hf_grouped = not hasattr(hf_mlp.experts, '__len__')
             hf_mlp = hf_mlp.experts if hf_grouped else hf_mlp.experts[0]
-            num_local_experts = args.num_experts // self.ep_size
+            num_local_experts = args.num_moe_experts // self.ep_size
         is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
         # transformers 5.0 compatibility
         if self.is_transformers_5:
@@ -982,7 +984,7 @@ class GPTBridge:
                                 if 'gate_up_proj' in hf_state_dict:
                                     gate_up_proj_weight = torch.concat(
                                         [hf_state_dict['gate_up_proj'], gate_up_proj_weight], dim=0)
-                                is_last_ckpt = gate_up_proj_weight.shape[0] == args.num_experts
+                                is_last_ckpt = gate_up_proj_weight.shape[0] == args.num_moe_experts
                                 if args.llm_model_type == 'gpt_oss' and is_last_ckpt:
                                     gate_proj_weight, up_proj_weight = gate_up_proj_weight.chunk(2, dim=2)
                                     new_gate_up_proj_weight = torch.empty_like(gate_up_proj_weight)
@@ -1233,7 +1235,7 @@ class GPTBridge:
 
     def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
         mg_attn = None if mg_layer is None else mg_layer.self_attention
-        if self.args.multi_latent_attention:
+        if self.config.multi_latent_attention:
             hf_state_dict.update(self._set_mla_attn_state(mg_attn, hf_state_dict, 'self_attn.', layer_idx, to_mcore))
             self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', to_mcore)
         else:
@@ -1345,8 +1347,8 @@ class GPTBridge:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
             hf_state_dict = {}
         layer_idx = 0
-        prog_bar = tqdm(range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd)
-        while layer_idx < self.args.num_layers:
+        prog_bar = tqdm(range(self.config.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd)
+        while layer_idx < self.config.num_layers:
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             if len(lm_model.decoder.layers) > 0:
                 start_idx = lm_model.decoder.layers[0].layer_number - 1
@@ -1377,13 +1379,13 @@ class GPTBridge:
                 yield from list(self._add_prefix(res, hf_prefix).items())
                 hf_state_dict = {}
 
-        if (not to_mcore or is_pp_last_stage) and self.args.mtp_num_layers:
+        if (not to_mcore or is_pp_last_stage) and self.config.mtp_num_layers:
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             if to_mcore and self.pp_rank > 0:
                 self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, self.hf_embed_key,
                                      to_mcore)
             layer_idx = 0
-            while layer_idx < self.args.mtp_num_layers:
+            while layer_idx < self.config.mtp_num_layers:
                 res = self._convert_mtp_layer(lm_model, hf_state_dict, f'{self.hf_mtp_prefix}.', layer_idx, to_mcore)
                 layer_idx += 1
                 if to_mcore:
@@ -1407,7 +1409,7 @@ class GPTBridge:
     def _convert_mtp_layer(self, lm_model, hf_state_dict, hf_prefix: str, layer_idx: int, to_mcore: bool):
         mtp_layer = lm_model.mtp.layers[layer_idx] if hasattr(lm_model, 'mtp') else None
         if self.hf_mtp_prefix == self.hf_layers_prefix:
-            hf_layer_idx = layer_idx + self.args.num_layers
+            hf_layer_idx = layer_idx + self.config.num_layers
         else:
             hf_layer_idx = layer_idx
         hf_prefix = f'{hf_prefix}{hf_layer_idx}.'
@@ -1428,10 +1430,10 @@ class GPTBridge:
             hf_state_dict = {}
         self._convert_mtp_extra(mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict)
         transformer_layer = None if mtp_layer is None else mtp_layer.transformer_layer
-        if not to_mcore and not self.args.hf_model_type.startswith('qwen3_next'):
+        if not to_mcore and not self.args.model_type.startswith('qwen3_next'):
             self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
                                  to_mcore)
-            if self.args.untie_embeddings_and_output_weights:
+            if self.config.untie_embeddings_and_output_weights:
                 self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight',
                                      to_mcore)
         hf_state_dict.update(self._set_layer_attn(transformer_layer, hf_state_dict, -1, to_mcore))
@@ -1447,6 +1449,7 @@ class GPTBridge:
         self._is_peft_format = is_peft_format
         self._adapter_name = adapter_name
         mg_model = unwrap_model(mg_model)
+        self.config = mg_model.config
         hf_model_dir = safe_snapshot_download(hf_model_dir, use_hf=self.args.use_hf, hub_token=self.args.hub_token)
         with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
@@ -1467,6 +1470,7 @@ class GPTBridge:
         self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
         mg_models = [unwrap_model(mg_model) for mg_model in mg_models]
+        self.config = mg_models[0].config
         with torch.no_grad():
             yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
 
@@ -1475,7 +1479,7 @@ class GPTBridge:
                      output_dir: str,
                      is_peft_format: bool = False,
                      processor=None,
-                     config=None) -> None:
+                     hf_config=None) -> None:
         """Save the mg_model checkpoint in HF format"""
         torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
@@ -1488,9 +1492,9 @@ class GPTBridge:
         saver.finalize()
         args = self.args
         processor = processor if processor is not None else self.processor
-        if config is None:
-            config = self.hf_model.config
-        config = copy(config)
+        if hf_config is None:
+            hf_config = self.hf_model.config
+        hf_config = copy(hf_config)
         if is_last_rank():
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
@@ -1512,19 +1516,20 @@ class GPTBridge:
                 peft_config.save_pretrained(output_dir)
             else:
                 if args.mtp_num_layers:
-                    config.num_nextn_predict_layers = args.mtp_num_layers
-                config.vocab_size = args.padded_vocab_size
+                    hf_config.num_nextn_predict_layers = args.mtp_num_layers
+                hf_config.vocab_size = args.padded_vocab_size
                 if args.fp8 is not None and args.fp8_recipe == 'blockwise' and args.fp8_param_gather:
-                    if getattr(config, 'quantization_config', None) is None:
+                    if getattr(hf_config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
                         modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
-                        config.quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
-                elif hasattr(config, 'quantization_config'):
-                    del config.quantization_config
-                config.save_pretrained(output_dir)
+                        hf_config.quantization_config = FineGrainedFP8Config(
+                            modules_to_not_convert=modules_to_not_convert)
+                elif hasattr(hf_config, 'quantization_config'):
+                    del hf_config.quantization_config
+                hf_config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
                     try:
-                        custom_object_save(self.hf_model, output_dir, config=config)
+                        custom_object_save(self.hf_model, output_dir, config=hf_config)
                     except FileNotFoundError as e:
                         logger.error(f'custom_object_save Error: {e}')
                 save_checkpoint(

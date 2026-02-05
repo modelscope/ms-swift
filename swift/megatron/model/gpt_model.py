@@ -106,13 +106,12 @@ class GPTModel(McoreGPTModel):
                 if hasattr(self.decoder.layers[i].self_attention, 'rotary_pos_emb'):
                     del self.decoder.layers[i].self_attention.rotary_pos_emb
         self.attention_scaling = 1.
-        self.args = args = config.args
-        new_inv_freq, self.attention_scaling = get_rope_inv_freq(args)
+        new_inv_freq, self.attention_scaling = get_rope_inv_freq(config)
         self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
-        if args.task_type == 'seq_cls' and self.post_process:
+        if self.config.task_type == 'seq_cls' and self.post_process:
             self.output_layer = OutputLayerLinear(
                 config.hidden_size,
-                args.num_labels,
+                self.config.num_labels,
                 config=config,
                 init_method=config.init_method,
                 bias=False,
@@ -121,7 +120,7 @@ class GPTModel(McoreGPTModel):
                 skip_weight_param_allocation=False,
             )
             self.output_layer.weight.average_gradients_across_tp_domain = True
-        elif args.task_type == 'embedding' and self.post_process:
+        elif self.config.task_type == 'embedding' and self.post_process:
             self.output_layer = None
 
         if (self.attention_scaling != 1 or config.position_embedding_type == 'mrope') and config.apply_rope_fusion:
@@ -202,7 +201,7 @@ class GPTModel(McoreGPTModel):
                     attention_scaling = dynamic_rope_update(self, self.rotary_pos_emb.inv_freq, rotary_seq_len)
                     if attention_scaling is not None and attention_scaling != self.attention_scaling:
                         raise ValueError('Currently does not support changing attention_scaling during training. '
-                                         f'args.attention_scaling: {self.attention_scaling}, '
+                                         f'self.attention_scaling: {self.attention_scaling}, '
                                          f'current_attention_scaling: {attention_scaling}.')
                 packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                 if self.position_embedding_type == 'mrope':
@@ -338,8 +337,7 @@ class GPTModel(McoreGPTModel):
         """
         if not self.post_process:
             return hidden_states
-        args = self.args
-        labels = labels if args.task_type == 'causal_lm' else None
+        labels = labels if self.config.task_type == 'causal_lm' else None
         in_inference_mode = inference_context is not None and not self.training
         if in_inference_mode:
             assert runtime_gather_output, 'Inference must always gather TP logits'
@@ -391,7 +389,7 @@ class GPTModel(McoreGPTModel):
                     else:
                         loss_mask[:, cu_seqlens[:-1]] = 0
                         loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1)
-                        if args.context_parallel_size > 1:
+                        if self.config.context_parallel_size > 1:
                             loss_mask_ = split_cp_inputs(loss_mask, cu_seqlens, dim=1)
                         else:
                             loss_mask_ = loss_mask.clone()
@@ -432,16 +430,16 @@ class GPTModel(McoreGPTModel):
                 # (so that the output layer, which expects S×B×H, receives only the final token)
                 hidden_states = inference_context.last_token_logits(hidden_states.squeeze(1).unsqueeze(0)).unsqueeze(1)
 
-        if args.task_type in {'seq_cls', 'embedding'
-                              } and args.sequence_parallel and args.tensor_model_parallel_size > 1:
+        if self.config.task_type in {'seq_cls', 'embedding'
+                                     } and self.config.sequence_parallel and self.config.tensor_model_parallel_size > 1:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
 
-        if args.task_type == 'embedding':
+        if self.config.task_type == 'embedding':
             logits = F.normalize(hidden_states, p=2, dim=-1)
         else:
             logits, _ = self.output_layer(
                 hidden_states, weight=output_weight, runtime_gather_output=runtime_gather_output)
-            if args.task_type == 'generative_reranker':
+            if self.config.task_type == 'generative_reranker':
                 logits = gather_from_tensor_model_parallel_region(logits)
                 positive_token = os.environ.get('GENERATIVE_RERANKER_POSITIVE_TOKEN', 'yes')
                 negative_token = os.environ.get('GENERATIVE_RERANKER_NEGATIVE_TOKEN', 'no')

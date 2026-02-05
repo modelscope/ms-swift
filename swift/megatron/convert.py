@@ -12,7 +12,7 @@ from swift.arguments import ExportArguments
 from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
-from .model import get_megatron_model_meta
+from .model import get_mcore_model, get_megatron_model_meta
 from .utils import (initialize_megatron, load_mcore_checkpoint, patch_torch_dist_shard, save_mcore_checkpoint,
                     test_convert_precision)
 
@@ -48,11 +48,8 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         save=args.output_dir,
         torch_dtype=args.torch_dtype)
 
-    mg_model = megatron_model_meta.model_provider(megatron_args)
+    mg_model = get_mcore_model(megatron_args, hf_config)[0]
     logger.info('Megatron model created successfully.')
-    bridge = megatron_model_meta.bridge_cls(megatron_args)
-    bridge.load_weights(mg_model, args.model_info.model_dir)
-    logger.info('Successfully transferred HF model weights to MG model.')
     _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
     if not _test_convert_precision:
         args.save_args()
@@ -99,7 +96,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.to_hf:
         bridge = megatron_model_meta.bridge_cls(megatron_args)
         logger.info('Converting weights and saving the model...')
-        bridge.save_weights([mg_model], args.output_dir, processor=processor, config=hf_config)
+        bridge.save_weights([mg_model], args.output_dir, processor=processor, hf_config=hf_config)
         if is_master():
             args_path = os.path.join(megatron_args.adapter_load or megatron_args.load or args.model, 'args.json')
             if os.path.exists(args_path):

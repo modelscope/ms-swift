@@ -31,7 +31,7 @@ class Llama4Vit(HuggingFaceModule):
         pixel_values = kwargs.get('pixel_values')
         input_ids = kwargs.get('input_ids')
         model = self._hf_model[0]
-        vision_feature_select_strategy = self.model_config.vision_config.vision_feature_select_strategy
+        vision_feature_select_strategy = self.hf_config.vision_config.vision_feature_select_strategy
         origin_pixel_values = pixel_values
         if pixel_values is None:
             pixel_values = torch.zeros((1, 3, 336, 336), dtype=self.vision_model.dtype, device=inputs_embeds.device)

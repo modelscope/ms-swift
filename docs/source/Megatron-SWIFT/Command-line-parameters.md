@@ -199,9 +199,9 @@
 
 
 **MoE参数**:
-- num_experts: MoE的专家数，默认为None。自动从config.json读取。
+- num_moe_experts: MoE的专家数，默认为None。自动从config.json读取。
 - moe_layer_freq: MoE 层与 Dense 层之间的分布频率。默认为None。从config.json中读取。
-- moe_ffn_hidden_size: 每个专家的前馈网络（ffn）的隐藏层大小。默认为None，自动从config.json读取。若未读取到且`num_experts`不为None，则设置为ffn_hidden_size。
+- moe_ffn_hidden_size: 每个专家的前馈网络（ffn）的隐藏层大小。默认为None，自动从config.json读取。若未读取到且`num_moe_experts`不为None，则设置为ffn_hidden_size。
 - moe_shared_expert_intermediate_size: 共享专家的总FFN隐藏层大小。如果有多个共享专家，它应等于 `num_shared_experts * ffn_size_of_each_shared_expert`。 默认为None。自动从config.json读取。
 - moe_router_topk: 每个token路由到的专家数量。默认为None。自动从config.json读取。
 - moe_router_num_groups: 将专家分成的组数，用于组限制路由。参考DeepSeek-V2和DeepSeek-V3。默认为None。自动从config.json读取。

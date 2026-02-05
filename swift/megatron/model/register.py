@@ -71,18 +71,18 @@ class MegatronModelLoader:
     bridge_cls = GPTBridge
 
     def __init__(self, args, hf_config):
+        from swift.megatron.model import GPTModel, MultimodalGPTModel
         self.args = args
         self.hf_config = hf_config
         self.config = create_mcore_model_config(args, hf_config)
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if self.model_cls is None:
             self.model_cls = MultimodalGPTModel if self.args.is_multimodal else GPTModel
-        self._check_npu()
+        self._init_config()
         self.bridge = self.bridge_cls(args)
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
-        args = self.args
-        if self.config.num_experts:
+        if self.config.num_moe_experts:
             kwargs = {'qk_l2_norm': self.config.qk_l2_norm, 'vp_stage': vp_stage} if self.mcore_013 else {}
             transformer_layer_spec = get_gpt_decoder_block_spec(
                 self.config, use_transformer_engine=True, normalization=self.config.normalization, **kwargs)
@@ -94,7 +94,7 @@ class MegatronModelLoader:
         config = self.config
         kwargs = {'qk_l2_norm': config.qk_l2_norm} if self.mcore_013 else {}
         transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-            config.num_experts,
+            config.num_moe_experts,
             self.args.moe_grouped_gemm,
             config.qk_layernorm,
             config.multi_latent_attention,
@@ -141,18 +141,17 @@ class MegatronModelLoader:
         self.bridge.load_weights(model, self.args.model_dir)
         return model
 
-    def _check_npu(self):
-        MAX_NPU_EXPERTS_PER_EP = 128
-        num_experts = self.config.num_experts
-        if is_torch_npu_available() and num_experts > MAX_NPU_EXPERTS_PER_EP:
-            required_ep = (num_experts + MAX_NPU_EXPERTS_PER_EP - 1) // MAX_NPU_EXPERTS_PER_EP
-            if self.args.expert_model_parallel_size < required_ep:
-                logger.warning(f'{">" * 20} WARNING {"<" * 20}\n'
-                               f'MindSpeed on NPU supports up to {MAX_NPU_EXPERTS_PER_EP} experts per EP group. '
-                               f'num_experts={num_experts}, '
-                               f'expert_model_parallel_size={self.args.expert_model_parallel_size}. '
-                               f'Please set expert_model_parallel_size (EP) to {required_ep} '
-                               f'(num_experts / {MAX_NPU_EXPERTS_PER_EP}) or higher.')
+    def _init_config(self):
+        config = self.config
+        # apply_rope_fusion
+        if config.apply_rope_fusion is not None:
+            return
+        if config.multi_latent_attention or config.rotary_interleaved:
+            # Upgrading transformer_engine requires checking here.
+            config.apply_rope_fusion = False
+        else:
+            config.apply_rope_fusion = True
+        logger.info(f'Setting config.apply_rope_fusion: {config.apply_rope_fusion}.')
 
     def _create_model(self,
                       transformer_layer_spec,

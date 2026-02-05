@@ -211,9 +211,9 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 **MoE Parameters**:
 
-- num_experts: The number of experts in MoE, default is None. Automatically read from config.json.
+- num_moe_experts: The number of experts in MoE, default is None. Automatically read from config.json.
 - moe_layer_freq: Frequency distribution between MoE layers and Dense layers. Default is None. This parameter is read from config.json.
-- moe_ffn_hidden_size: Hidden layer size of the feedforward network (ffn) for each expert. Default is None and will be automatically read from config.json. If not found and `num_experts` is not None, it will be set to ffn_hidden_size.
+- moe_ffn_hidden_size: Hidden layer size of the feedforward network (ffn) for each expert. Default is None and will be automatically read from config.json. If not found and `num_moe_experts` is not None, it will be set to ffn_hidden_size.
 - moe_shared_expert_intermediate_size: The total FFN hidden layer size for shared experts. If there are multiple shared experts, it should equal `num_shared_experts * ffn_size_of_each_shared_expert`. Default is None. Automatically read from config.json.
 - moe_router_topk: The number of experts each token is routed to. Default is None. Automatically read from config.json.
 - moe_router_num_groups: Number of groups to divide experts into for group-limited routing. Refers to DeepSeek-V2 and DeepSeek-V3. Default is None. Automatically read from config.json.

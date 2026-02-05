@@ -532,8 +532,7 @@ def _patch_TransformerLayer():
         if not mcore_013:
             return _origin_forward(self, *_args, **kwargs)
         hidden_states, context = self._forward_attention(*_args, **kwargs)
-        args = self.config.args
-        mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
+        mlp_padding_free = self.config.mlp_padding_free and 'attention_mask' in kwargs
         mask = None
         if mlp_padding_free and hidden_states.shape[1] > 1:
             mask = ((~kwargs['attention_mask']).sum(dim=(1, 2)) > 0).t()
@@ -697,8 +696,7 @@ def _patch_mrope():
         seq_expanded = seq[:, :, None, :].float()
         # shape (3, bs, seq_length, dim)
         freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
-        args = self.config.args
-        if args.mrope_interleaved:
+        if self.config.mrope_interleaved:
             freqs = apply_interleaved_mrope(freqs, mrope_section)
             emb = torch.cat((freqs, freqs), dim=-1)
         else:

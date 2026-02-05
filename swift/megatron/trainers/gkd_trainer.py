@@ -130,7 +130,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # When student is MoE and teacher is Dense (or vice versa), these keys need to be
         # properly reset to ensure correct model architecture creation.
         moe_related_keys = {
-            'num_experts',
+            'num_moe_experts',
             'moe_ffn_hidden_size',
             'moe_shared_expert_intermediate_size',
             'moe_router_topk',
@@ -172,7 +172,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Reset MoE-related keys that are not in teacher config to None.
         # This ensures Dense teacher doesn't inherit MoE settings from MoE student,
         # and MoE teacher gets its own settings without interference from Dense student.
-        teacher_is_moe = teacher_megatron_config.get('num_experts') is not None
+        teacher_is_moe = teacher_megatron_config.get('num_moe_experts') is not None
         for key in moe_related_keys:
             if key not in teacher_megatron_config and hasattr(megatron_args, key):
                 setattr(megatron_args, key, None)
@@ -693,7 +693,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         This is called before Megatron's validate_args, allowing us to reset EP to 1
         when student is Dense but EP > 1 was configured (for MoE teacher).
         """
-        student_is_moe = getattr(args, 'num_experts', None) is not None
+        student_is_moe = getattr(args, 'num_moe_experts', None) is not None
         if not student_is_moe:
             # Reset EP to 1 in Megatron args for Dense student
             self._original_ep_size = args.expert_model_parallel_size

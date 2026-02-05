@@ -115,10 +115,10 @@ class InternvlHfVit(HuggingFaceModule):
             pixel_values = pixel_values.to(device=device)
             image_features = model.model.get_image_features(
                 pixel_values,
-                vision_feature_layer=self.model_config.vision_feature_layer,
-                vision_feature_select_strategy=self.model_config.vision_feature_select_strategy,
+                vision_feature_layer=self.hf_config.vision_feature_layer,
+                vision_feature_select_strategy=self.hf_config.vision_feature_select_strategy,
             )
-            special_image_mask = input_ids == self.model_config.image_token_id
+            special_image_mask = input_ids == self.hf_config.image_token_id
             special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(special_image_mask, image_features)
@@ -126,8 +126,8 @@ class InternvlHfVit(HuggingFaceModule):
             dummy_pixel_values = torch.zeros((1, 3, 32, 32), device=device, dtype=self.vision_tower.dtype)
             image_features = model.model.get_image_features(
                 dummy_pixel_values,
-                vision_feature_layer=self.model_config.vision_feature_layer,
-                vision_feature_select_strategy=self.model_config.vision_feature_select_strategy,
+                vision_feature_layer=self.hf_config.vision_feature_layer,
+                vision_feature_select_strategy=self.hf_config.vision_feature_select_strategy,
             )
             inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return inputs_embeds

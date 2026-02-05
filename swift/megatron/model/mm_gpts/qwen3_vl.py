@@ -158,7 +158,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         input_ids = kwargs['input_ids']
         visual = self.thinker.visual
-        config = self.model_config.thinker_config
+        config = self.hf_config.thinker_config
         res = self._get_inputs_embeds(inputs_embeds, kwargs, visual, self.processor, config)
         inputs_embeds = res['inputs_embeds']
         input_features = kwargs.get('input_features')
@@ -472,7 +472,7 @@ class Qwen3VL_Vit(HuggingFaceModule):
         super().__init__(config, [Qwen3VLTextModel, Qwen3VLMoeTextModel])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
+        return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.hf_config)
 
 
 class Qwen3VLLoader(MegatronModelLoader):

@@ -61,7 +61,7 @@ class MegatronExport(SwiftPipeline):
                             args.save,
                             is_peft_format=save_peft_format,
                             processor=self.processor,
-                            config=hf_config)
+                            hf_config=hf_config)
         args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
         if os.path.exists(args_path):
             if is_last_rank():

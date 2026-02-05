@@ -12,6 +12,7 @@ from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.arguments import ModelArguments
+from swift.megatron.model import get_megatron_model_meta
 from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
@@ -316,71 +317,7 @@ class MegatronTunerMixin:
 
 
 @dataclass
-class ExtraMegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
-    check_model: bool = True
-    initialize_embedding: bool = False
-    torch_dtype: Optional[Union[torch.dtype, str]] = None
-    padding_free: bool = True
-    mlp_padding_free: bool = False
-    # mcore-bridge
-    model: Optional[str] = None
-    model_type: Optional[str] = None
-    load_safetensors: Optional[bool] = None
-    save_safetensors: bool = True
-    adapters: List[str] = field(default_factory=list)
-    ref_model: Optional[str] = None
-    ref_adapters: List[str] = field(default_factory=list)
-    use_hf: bool = False
-    # None: use env var `MODELSCOPE_API_TOKEN`
-    hub_token: Optional[str] = field(
-        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
-    merge_lora: Optional[bool] = None
-    max_shard_size: str = '5GB'
-
-    # dataloader
-    train_dataloader_shuffle: bool = True
-    dataloader_pin_memory: bool = True
-    dataloader_persistent_workers: bool = True
-    dataloader_prefetch_factor: int = 2
-    group_by_length: bool = False
-
-    max_epochs: Optional[int] = None
-    enable_dft_loss: bool = False
-    enable_channel_loss: bool = False
-    save_strategy: Literal['steps', 'epoch'] = 'steps'
-
-    report_to: Optional[Literal['wandb', 'swanlab']] = None
-
-    # visual
-    vit_gradient_checkpointing: bool = True
-    vit_lr: Optional[float] = None
-    aligner_lr: Optional[float] = None
-    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
-
-    @staticmethod
-    def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
-        res = {}
-        if ckpt_dir is None:
-            return res
-        args_path = os.path.join(ckpt_dir, 'args.json')
-        if os.path.exists(args_path):
-            with open(args_path, 'r', encoding='utf-8') as f:
-                old_args = json.load(f)
-            keys = list(f.name for f in fields(MegatronTunerMixin))
-            # TODO: remove load/save
-            keys += ['load', 'padded_vocab_size', 'task_type', 'num_labels']  # TODO: padded_vocab_size
-            for key in keys:
-                old_value = old_args.get(key)
-                if old_value is not None:
-                    res[key] = old_value
-            res.pop('adapter_load', None)
-            if res['tuner_type'] != 'lora':
-                res.pop('load', None)
-        return res
-
-
-@dataclass
-class MegatronArguments(ExtraMegatronArguments):
+class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # training
     micro_batch_size: int = 1
     global_batch_size: int = 16
@@ -526,6 +463,71 @@ class MegatronArguments(ExtraMegatronArguments):
     num_workers: int = 4
     data_sharding: bool = False
 
+    check_model: bool = True
+    initialize_embedding: bool = False
+    torch_dtype: Optional[Union[torch.dtype, str]] = None
+    padding_free: bool = True
+    mlp_padding_free: bool = False
+
+    # mcore-bridge
+    model: Optional[str] = None
+    model_type: Optional[str] = None
+    load_safetensors: Optional[bool] = None
+    save_safetensors: bool = True
+    adapters: List[str] = field(default_factory=list)
+    ref_model: Optional[str] = None
+    ref_adapters: List[str] = field(default_factory=list)
+    use_hf: bool = False
+    # None: use env var `MODELSCOPE_API_TOKEN`
+    hub_token: Optional[str] = field(
+        default=None, metadata={'help': 'SDK token can be found in https://modelscope.cn/my/myaccesstoken'})
+    merge_lora: Optional[bool] = None
+    max_shard_size: str = '5GB'
+
+    # dataloader
+    train_dataloader_shuffle: bool = True
+    dataloader_pin_memory: bool = True
+    dataloader_persistent_workers: bool = True
+    dataloader_prefetch_factor: int = 2
+    group_by_length: bool = False
+
+    max_epochs: Optional[int] = None
+    enable_dft_loss: bool = False
+    enable_channel_loss: bool = False
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'generative_reranker'] = None
+    num_labels: Optional[int] = None
+    problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
+    save_strategy: Literal['steps', 'epoch'] = 'steps'
+
+    report_to: Optional[Literal['wandb', 'swanlab']] = None
+
+    # visual
+    vit_gradient_checkpointing: bool = True
+    vit_lr: Optional[float] = None
+    aligner_lr: Optional[float] = None
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+
+    @staticmethod
+    def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
+        res = {}
+        if ckpt_dir is None:
+            return res
+        args_path = os.path.join(ckpt_dir, 'args.json')
+        if os.path.exists(args_path):
+            with open(args_path, 'r', encoding='utf-8') as f:
+                old_args = json.load(f)
+            keys = list(f.name for f in fields(MegatronTunerMixin))
+            # TODO: remove load/save
+            keys += ['load', 'padded_vocab_size', 'task_type', 'num_labels']  # TODO: padded_vocab_size
+            for key in keys:
+                old_value = old_args.get(key)
+                if old_value is not None:
+                    res[key] = old_value
+            res.pop('adapter_load', None)
+            if res['tuner_type'] != 'lora':
+                res.pop('load', None)
+        return res
+
     def _set_default(self):
         if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
             raise ValueError('mlp_padding_free is not compatible with sequence parallel or context parallel.')
@@ -567,12 +569,12 @@ class MegatronArguments(ExtraMegatronArguments):
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
 
         # Megatron has a model_type parameter with the same name, so we need to avoid conflicts.
-        self.hf_model_type = self.model_type = self.model_info.model_type
+        self.model_type = self.model_info.model_type
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
-        assert megatron_model_meta is not None, f'Model: {args.model} is not supported.'
-        if self.apply_wd_to_qk_layernorm and self.hf_model_type != 'qwen3_next':
+        assert self.megatron_model_meta is not None, f'Model: {args.model} is not supported.'
+        if self.apply_wd_to_qk_layernorm and self.model_type != 'qwen3_next':
             raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
                                                        or self.decoder_last_pipeline_num_layers is not None):
@@ -608,18 +610,7 @@ class MegatronArguments(ExtraMegatronArguments):
             self._load_adapter_config()
         self._init_mixed_precision()
 
-        self._init_apply_rope_fusion()
         initialize_megatron(self)
-
-    def _init_apply_rope_fusion(self):
-        if self.apply_rope_fusion is not None:
-            return
-        if self.multi_latent_attention or self.rotary_interleaved:
-            # Upgrading transformer_engine requires checking here.
-            self.apply_rope_fusion = False
-        else:
-            self.apply_rope_fusion = True
-        logger.info(f'Setting args.apply_rope_fusion: {self.apply_rope_fusion}.')
 
     def _init_vpp_size(self):
         # TODO

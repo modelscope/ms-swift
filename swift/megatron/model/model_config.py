@@ -1,9 +1,12 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import List, Literal, Optional, Union
 
+import torch
 import torch.nn.functional as F
+from megatron.core import mpu
 from megatron.core.fusions.fused_bias_geglu import quick_gelu
 from megatron.core.transformer import TransformerConfig
+from transformers.utils import is_torch_npu_available
 
 from swift.megatron.utils import convert_hf_config
 from swift.utils import get_logger, json_parse_to_dict
@@ -57,7 +60,7 @@ class MegatronModelConfig(TransformerConfig):
     moe_apply_probs_on_input: Optional[bool] = None
 
     # moe
-    num_experts: Optional[int] = None
+    num_moe_experts: Optional[int] = None
     moe_layer_freq: str = 1
     moe_ffn_hidden_size: Optional[int] = None
     moe_shared_expert_intermediate_size: Optional[int] = None
@@ -91,49 +94,65 @@ class MegatronModelConfig(TransformerConfig):
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
 
-    # apply_layernorm_1p: bool = False  # TODO
+    layernorm_zero_centered_gamma: bool = False
+
+    # Override
+    persist_layer_norm: bool = True
+    deallocate_pipeline_outputs: bool = True
+    batch_p2p_comm: bool = True
+    cp_comm_type: str = 'p2p'
 
     def __post_init__(self):
+        self.pipeline_dtype = self.torch_dtype
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
-        if self.num_experts is not None:
+        if self.num_moe_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size
         if self.rope_scaling is not None:
             self.rope_scaling = json_parse_to_dict(self.rope_scaling)
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
+
+        if self.swiglu:
+            self.activation_func = F.silu
+            self.gated_linear_unit = True
+        if self.quick_geglu:
+            assert not self.swiglu
+            self.gated_linear_unit = True
+            self.activation_func = quick_gelu
         super().__post_init__()
+        self._check_npu()
         self.variable_seq_lengths = True
+
+    def _check_npu(self):
+        MAX_NPU_EXPERTS_PER_EP = 128
+        num_experts = self.num_moe_experts
+        expert_model_parallel_size = mpu.get_expert_model_parallel_world_size()
+        if is_torch_npu_available() and num_experts > MAX_NPU_EXPERTS_PER_EP:
+            required_ep = (num_experts + MAX_NPU_EXPERTS_PER_EP - 1) // MAX_NPU_EXPERTS_PER_EP
+            if expert_model_parallel_size < required_ep:
+                logger.warning(f'{">" * 20} WARNING {"<" * 20}\n'
+                               f'MindSpeed on NPU supports up to {MAX_NPU_EXPERTS_PER_EP} experts per EP group. '
+                               f'num_experts={num_experts}, '
+                               f'expert_model_parallel_size={expert_model_parallel_size}. '
+                               f'Please set expert_model_parallel_size (EP) to {required_ep} '
+                               f'(num_experts / {MAX_NPU_EXPERTS_PER_EP}) or higher.')
 
 
 def create_mcore_model_config(args, hf_config):
     # Translate args to core transformer configuration
     kw_args = convert_hf_config(hf_config)
-    kw_args['persist_layer_norm'] = True
-    # TODO: apply_layernorm_1p
-    kw_args['layernorm_zero_centered_gamma'] = args.apply_layernorm_1p
-    kw_args['deallocate_pipeline_outputs'] = True
-    kw_args['pipeline_dtype'] = args.torch_dtype
-    kw_args['batch_p2p_comm'] = True
-    kw_args['num_moe_experts'] = args.num_experts
-    kw_args['rotary_interleaved'] = args.rotary_interleaved
+    for f in fields(MegatronModelConfig):
+        if hasattr(args, f.name):
+            kw_args[f.name] = getattr(args, f.name)
     kw_args['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
     kw_args['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
     kw_args['fp8_param'] = args.fp8_param_gather
-    if args.swiglu:
-        kw_args['activation_func'] = F.silu
-        kw_args['gated_linear_unit'] = True
-        kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion
-    else:
-        kw_args['bias_activation_fusion'] = args.bias_gelu_fusion
-    if args.quick_geglu:
-        assert not args.swiglu
-        kw_args['gated_linear_unit'] = True
-        kw_args['activation_func'] = quick_gelu
-    kw_args['cp_comm_type'] = 'p2p'
     kw_args['inference_sampling_seed'] = args.seed
-    kw_args['variable_seq_lengths'] = True
+    swiglu = kw_args.get('swiglu', True)
+    kw_args['bias_activation_fusion'] = args.bias_swiglu_fusion if swiglu else args.bias_gelu_fusion
     config = MegatronModelConfig(**kw_args)
-    config.args = config
+    config.hf_config = hf_config
+    config.args = args
     return config

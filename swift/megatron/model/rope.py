@@ -25,24 +25,24 @@ class DummyConfig(RotaryEmbeddingConfigMixin):
             setattr(self, k, v)
 
 
-def _get_dummy_config(args):
+def _get_dummy_config(config):
     dummy_config = DummyConfig(
-        rope_scaling=args.rope_scaling,
-        rope_theta=args.rotary_base,
-        max_position_embeddings=args.max_position_embeddings,
-        head_dim=args.qk_pos_emb_head_dim if args.multi_latent_attention else args.kv_channels,
-        hidden_size=args.hidden_size,
-        num_attention_heads=args.num_attention_heads,
+        rope_scaling=config.rope_scaling,
+        rope_theta=config.rotary_base,
+        max_position_embeddings=config.max_position_embeddings,
+        head_dim=config.qk_pos_emb_head_dim if config.multi_latent_attention else config.kv_channels,
+        hidden_size=config.hidden_size,
+        num_attention_heads=config.num_attention_heads,
     )
-    original_max_position_embeddings = args.original_max_position_embeddings or (
-        args.rope_scaling or {}).get('original_max_position_embeddings')
+    original_max_position_embeddings = config.original_max_position_embeddings or (
+        config.rope_scaling or {}).get('original_max_position_embeddings')
     if original_max_position_embeddings is not None:
         dummy_config.original_max_position_embeddings = original_max_position_embeddings
-    if args.partial_rotary_factor is not None:
-        dummy_config.partial_rotary_factor = args.partial_rotary_factor
+    if config.partial_rotary_factor is not None:
+        dummy_config.partial_rotary_factor = config.partial_rotary_factor
     if transformers_5:
         rope_parameters = getattr(dummy_config, 'rope_parameters', None) or {}
-        rope_parameters.update(args.rope_scaling or {})
+        rope_parameters.update(config.rope_scaling or {})
         dummy_config.rope_parameters = rope_parameters
     return dummy_config
 
@@ -107,11 +107,11 @@ def _get_rope_type(rope_scaling: Optional[Dict[str, Any]]):
     return rope_type
 
 
-def get_rope_inv_freq(args, seq_len=None):
+def get_rope_inv_freq(config, seq_len=None):
     from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
     ROPE_INIT_FUNCTIONS.update(EXTENDED_ROPE_INIT_FUNCTIONS)
-    dummy_config = _get_dummy_config(args)
-    rope_init_fn = ROPE_INIT_FUNCTIONS[_get_rope_type(args.rope_scaling)]
+    dummy_config = _get_dummy_config(config)
+    rope_init_fn = ROPE_INIT_FUNCTIONS[_get_rope_type(config.rope_scaling)]
     inv_freq, attention_scaling = rope_init_fn(dummy_config, 'cpu', seq_len=seq_len)
     if attention_scaling is None:
         attention_scaling = 1.

@@ -18,7 +18,7 @@ class Glm4vVit(HuggingFaceModule):
         super().__init__(config, Glm4vMoeTextModel)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
+        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.hf_config)
 
 
 class Glm4vMoeLoader(MegatronModelLoader):

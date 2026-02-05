@@ -33,7 +33,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         super().__init__(config, ignore_init_model_cls)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
+        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.hf_config)
 
 
 class Qwen2_5VLBridge(MultimodalGPTBridge):
@@ -101,7 +101,7 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
         del self.thinker.lm_head
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        thinker_config = self.model_config.thinker_config
+        thinker_config = self.hf_config.thinker_config
         inputs_embeds = Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.thinker.visual, self.processor,
                                                        thinker_config)
         input_ids = kwargs['input_ids']

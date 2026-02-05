@@ -101,7 +101,7 @@ def initialize_megatron(args):
     _set_random_seed(args.seed)
 
     # Setup MoE aux loss scale value.
-    if args.num_experts is not None:
+    if args.model_info.is_moe_model:
         from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
         MoEAuxLossAutoScaler.set_loss_scale(torch.ones(1, device=torch.cuda.current_device()))
 
