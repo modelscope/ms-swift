@@ -1,7 +1,7 @@
 # 4 * 60GiB
 # Note: Due to linear attention, this model currently does not support padding_free and packing.
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-nohup swift sft \
+swift sft \
     --model Qwen/Qwen3-Next-80B-A3B-Instruct \
     --tuner_type lora \
     --dataset 'swift/self-cognition#1000' \

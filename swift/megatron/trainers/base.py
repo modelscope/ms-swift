@@ -318,8 +318,9 @@ class BaseMegatronTrainer(ABC):
             List of parameter groups.
         """
         args = get_args()
+        is_multimodal = self.args.megatron_model_meta.is_multimodal
         if self.args.vit_lr is not None or self.args.aligner_lr is not None:
-            assert self.args.megatron_model_meta.is_multimodal
+            assert is_multimodal, 'vit_lr and aligner_lr are only supported for multimodal models.'
             vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
             aligner_lr = self.args.aligner_lr if self.args.aligner_lr is not None else self.args.lr
             logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {self.args.lr}')
@@ -328,7 +329,7 @@ class BaseMegatronTrainer(ABC):
         # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
         params_map = {}
         for model_chunk in model_chunks:
-            visual = model_chunk.module.module.visual
+            visual = model_chunk.module.module.visual if is_multimodal else None
             for name, param in model_chunk.named_parameters():
                 if not param.requires_grad:
                     continue
