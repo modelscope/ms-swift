@@ -199,15 +199,25 @@ class SynchronizedGroupOffloadHandler(OffloadHandler):
     @staticmethod
     def offload(src_tensor, pin_memory=True):
         """Offload."""
-
-        cpu_backup = torch.empty(
-            src_tensor.size(),
-            dtype=src_tensor.dtype,
-            layout=src_tensor.layout,
-            device='cpu',
-            pin_memory=pin_memory,
-        )
-        cpu_backup.copy_(src_tensor, non_blocking=True)
+        # NPU doesn't fully support async H2D/D2H with pinned memory; use sync copy.
+        if is_npu_available:
+            cpu_backup = torch.empty(
+                src_tensor.size(),
+                dtype=src_tensor.dtype,
+                layout=src_tensor.layout,
+                device='cpu',
+                pin_memory=False,
+            )
+            cpu_backup.copy_(src_tensor, non_blocking=False)
+        else:
+            cpu_backup = torch.empty(
+                src_tensor.size(),
+                dtype=src_tensor.dtype,
+                layout=src_tensor.layout,
+                device='cpu',
+                pin_memory=pin_memory,
+            )
+            cpu_backup.copy_(src_tensor, non_blocking=True)
         state = (src_tensor.device, cpu_backup)
         return state
 

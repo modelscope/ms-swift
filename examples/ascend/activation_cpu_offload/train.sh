@@ -4,7 +4,7 @@ NPROC_PER_NODE=2 \
 swift sft \
     --model 'Qwen/Qwen3-8B' \
     --train_type lora \
-    --dataset 'AI-ModelScope/LongAlpaca-12k#2000' \
+    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -26,8 +26,8 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --fsdp './examples/ascend/activation_cpu_offload/fsdp2.json'
-    
 
+#  --dataset AI-ModelScope/LongAlpaca-12k
 # activation_cpu_offload=false
 
 # {'loss': 2.93329144, 'grad_norm': 2.44835496, 'learning_rate': 0.0001, 'token_acc': 0.56405613, 'epoch': 0.06, 'global_step/max_steps': '1/16', 'percentage': '6.25%', 'elapsed_time': '8s', 'remaining_time': '2m 6s', 'memory(GiB)': 24.8, 'train_speed(iter/s)': 0.118837}
@@ -42,7 +42,7 @@ swift sft \
 # Train: 100%|███████████████████████████████████████████████████████████████████████████████████████████████████████████████| 16/16 [01:19<00:00,  4.98s/it]
 
 
-
+#  --dataset AI-ModelScope/LongAlpaca-12k
 # "activation_cpu_offload": true
 
 # {'loss': 2.93329144, 'grad_norm': 2.44853568, 'learning_rate': 0.0001, 'token_acc': 0.56405613, 'epoch': 0.06, 'global_step/max_steps': '1/16', 'percentage': '6.25%', 'elapsed_time': '26s', 'remaining_time': '6m 43s', 'memory(GiB)': 24.62, 'train_speed(iter/s)': 0.037168}
