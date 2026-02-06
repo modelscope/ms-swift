@@ -368,14 +368,9 @@ def reduce_max_stat_across_model_parallel_group(stat: float) -> float:
 
     We use an all_reduce max since the values have already been summed across optimizer ranks where possible
     """
-    if stat is None:
-        stat = -1.0
     stat = torch.tensor([stat], dtype=torch.float32, device=torch.cuda.current_device())
     torch.distributed.all_reduce(stat, op=torch.distributed.ReduceOp.MAX, group=mpu.get_model_parallel_group())
-    if stat.item() == -1.0:
-        return None
-    else:
-        return stat.item()
+    return stat
 
 
 def logical_and_across_model_parallel_group(input: bool) -> bool:

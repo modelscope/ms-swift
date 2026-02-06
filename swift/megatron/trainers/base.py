@@ -134,7 +134,7 @@ class BaseMegatronTrainer(ABC):
             if args.load is None:
                 self.bridge.load_weights(model, args.model_dir)
 
-            model = prepare_mcore_model(args, model)
+            peft_model = prepare_mcore_model(args, model)
             if args.tuner_type == 'lora':
                 if args.adapters and args.adapter_load is None:
                     assert len(args.adapters) == 1, 'Currently only support one adapter.'
@@ -143,8 +143,8 @@ class BaseMegatronTrainer(ABC):
                     assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
                     self.bridge.load_weights(
                         model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
-            self.peft_models.append(model)
-        self.wrapped_models = wrap_model(args, self.peft_models)
+            self.peft_models.append(peft_model)
+        self.wrapped_models = wrap_model(args, self.unwrapped_models)
 
     def get_optimizer_and_scheduler(self):
         args = self.args
@@ -167,11 +167,9 @@ class BaseMegatronTrainer(ABC):
         data_collator = partial(data_collator, padding_to=padding_to)
         return data_collator
 
-    def new_cyclic_iter(self, iterable):
+    def cyclic_iter(self, iterable):
         training = self.unwrapped_models[0].training
-        if not training:
-            yield from self._origin_cyclic_iter(iterable)
-            return
+        assert training, 'training must be True'
 
         args = self.args
         n_epoch = 0
@@ -181,11 +179,11 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'The training of Epoch {n_epoch} starts...')
             for x in iterable:
                 yield x
+            # streaming
             if training and args.max_epochs and n_epoch >= args.max_epochs - 1:
                 is_finished = True
             n_epoch += 1
             if is_finished:
-                # streaming
                 # Note that this approach will train for one additional step.
                 logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
                 args.train_iters = args.curr_iteration + 1
@@ -1161,8 +1159,9 @@ class BaseMegatronTrainer(ABC):
         self.config.finalize_model_grads_func = finalize_model_grads
         # TODO: manual_gc
         train_metrics = {}
+        train_data_iterator = iter(self.cyclic_iter(train_dataloader))
         while args.iteration < args.train_iters:
-            metrics, grad_norm = self.train_step(train_dataloader)
+            metrics = self.train_step(train_data_iterator)
             if mpu.is_pipeline_last_stage(ignore_virtual=True):
                 self.aggregated_metrics(metrics, train_metrics)
             self.training_log(train_metrics, grad_norm)
@@ -1191,9 +1190,9 @@ class BaseMegatronTrainer(ABC):
             m.eval()
         eval_metrics = {}
         forward_backward_func = get_forward_backward_func()
-
+        val_data_iterator = iter(val_dataloader)
         with torch.no_grad(), tqdm(
-                total=val_dataloader, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
+                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
             iteration = 0
             while iteration < args.eval_iters:
                 prog_bar.update()
@@ -1201,7 +1200,7 @@ class BaseMegatronTrainer(ABC):
 
                 metrics = forward_backward_func(
                     forward_step_func=self.forward_step,
-                    data_iterator=val_dataloader,
+                    data_iterator=val_data_iterator,
                     model=self.wrapped_models,
                     num_microbatches=get_num_microbatches(),
                     seq_length=args.max_length,
@@ -1215,7 +1214,7 @@ class BaseMegatronTrainer(ABC):
         for m in self.wrapped_models:
             m.train()
 
-    def train_step(self, train_dataloader):
+    def train_step(self, train_data_iterator):
         args = self.args
         forward_backward_func = get_forward_backward_func()
         for m in self.wrapped_models:
@@ -1223,7 +1222,7 @@ class BaseMegatronTrainer(ABC):
         self.optimizer.zero_grad()
         metrics = forward_backward_func(
             forward_step_func=self.forward_step,
-            data_iterator=train_dataloader,
+            data_iterator=train_data_iterator,
             model=self.wrapped_models,
             num_microbatches=get_num_microbatches(),
             seq_length=args.max_length,
@@ -1242,14 +1241,15 @@ class BaseMegatronTrainer(ABC):
             args.consumed_train_samples += increment
             self.scheduler.step(increment=increment)
 
-        return metrics, grad_norm
+        metrics['grad_norm'] = torch.tensor([grad_norm], dtype=torch.float32, device=torch.cuda.current_device())
+        return metrics
 
     def aggregated_metrics(self, metrics, total_metrics):
         for key in metrics[0].keys():
             if key not in total_metrics:
                 total_metrics[key] = torch.tensor([0.0], dtype=torch.float32, device=torch.cuda.current_device())
             val = [x[key].view(-1) for x in metrics]
-            val = torch.concat(val, dim=0)
+            val = torch.stack(val, dim=0)
             if val[0].numel() == 2:
                 val = val.sum(dim=0)
                 total_metrics[key] += val[0] / val[1]
@@ -1304,7 +1304,7 @@ class BaseMegatronTrainer(ABC):
         pass
 
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
-        batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
+        batch = get_batch_on_this_tp_rank(self.args, data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
         args = self.args
@@ -1316,7 +1316,7 @@ class BaseMegatronTrainer(ABC):
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples
         # slice batch along sequence dimension for context parallelism
-        batch = get_batch_on_this_cp_rank(batch)
+        batch = get_batch_on_this_cp_rank(args, batch)
         return batch
 
     def get_batch(self, data_iterator, vp_stage=None):
