@@ -617,6 +617,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self._load_adapter_config()
         self._init_mixed_precision()
         self._init_multimodal_full()
+        self._map_dtype()
+        self._init_weigh_decay()
 
         initialize_megatron(self)
 
@@ -695,3 +697,23 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 logger.info(f'freeze_parameters: {self.freeze_parameters}')
             if self.trainable_parameters:
                 logger.info(f'additional trainable_parameters: {self.trainable_parameters}')
+
+
+    def _map_dtype(self):
+        dtype_map = {
+            'fp32': torch.float32, 'bf16': torch.bfloat16, 'fp16': torch.float16, 'fp8': torch.uint8,
+        }
+        self.main_grads_dtype = dtype_map[self.main_grads_dtype]
+        self.main_params_dtype = dtype_map[self.main_params_dtype]
+        self.exp_avg_dtype = dtype_map[self.exp_avg_dtype]
+        self.exp_avg_sq_dtype = dtype_map[self.exp_avg_sq_dtype]
+
+
+    def _init_weigh_decay(self):
+        if self.weight_decay_incr_style == 'constant':
+            assert self.start_weight_decay is None
+            assert self.end_weight_decay is None
+            self.start_weight_decay = self.end_weight_decay = self.weight_decay
+        else:
+            assert self.start_weight_decay is not None
+            assert self.end_weight_decay is not None

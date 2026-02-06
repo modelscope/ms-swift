@@ -142,7 +142,7 @@ class BaseMegatronTrainer(ABC):
         args = self.args
         kwargs = {}
         for f in dataclasses.fields(OptimizerConfig):
-            if hasattr(args, f.name):
+            if hasattr(args, f.name) and f.name != 'loss_scale':
                 kwargs[f.name] = getattr(args, f.name)
         config = OptimizerConfig(**kwargs)
         optimizer = get_megatron_optimizer(
