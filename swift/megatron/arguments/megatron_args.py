@@ -466,7 +466,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # other
     seed: int = 42
     data_parallel_random_init: Optional[bool] = False
-    num_workers: int = 4
     data_sharding: bool = False
 
     check_model: bool = True
@@ -492,6 +491,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # dataloader
     train_dataloader_shuffle: bool = True
+    dataloader_num_workers: int = 4
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = True
     dataloader_prefetch_factor: int = 2
@@ -678,6 +678,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                     'You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
             logger.info(f'Setting args.eval_iters: {self.eval_iters}')
 
+        data_parallel_size = mpu.get_data_parallel_world_size()
+        step_batch_size = self.micro_batch_size * data_parallel_size
+        # To avoid errors caused by the validation set being insufficient to complete a single step.
+        if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) < step_batch_size:
+            val_dataset = None
+        if val_dataset is None:
+            self.eval_iters = 0
+
     def _init_multimodal_full(self):
         visual_cls = self.megatron_model_meta.visual_cls
         if self.tuner_type == 'full' and self.is_multimodal and visual_cls is not None:
@@ -698,16 +706,17 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             if self.trainable_parameters:
                 logger.info(f'additional trainable_parameters: {self.trainable_parameters}')
 
-
     def _map_dtype(self):
         dtype_map = {
-            'fp32': torch.float32, 'bf16': torch.bfloat16, 'fp16': torch.float16, 'fp8': torch.uint8,
+            'fp32': torch.float32,
+            'bf16': torch.bfloat16,
+            'fp16': torch.float16,
+            'fp8': torch.uint8,
         }
         self.main_grads_dtype = dtype_map[self.main_grads_dtype]
         self.main_params_dtype = dtype_map[self.main_params_dtype]
         self.exp_avg_dtype = dtype_map[self.exp_avg_dtype]
         self.exp_avg_sq_dtype = dtype_map[self.exp_avg_sq_dtype]
-
 
     def _init_weigh_decay(self):
         if self.weight_decay_incr_style == 'constant':

@@ -266,7 +266,6 @@ def load_mcore_checkpoint(args, model: list, optimizer, scheduler, load_arg: str
 
     if args.finetune:
         iteration = 0
-    num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
     if 'args' in state_dict and not args.finetune:
         checkpoint_args = state_dict['args']
         args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
@@ -286,7 +285,7 @@ def load_mcore_checkpoint(args, model: list, optimizer, scheduler, load_arg: str
         torch.distributed.barrier()
 
     logger.info(f'Successfully loaded Megatron model weights from: {args.load}')
-    return iteration, num_floating_point_operations_so_far
+    return iteration
 
 
 def wrap_model(args, model: list, wrap_with_ddp: bool = True):
