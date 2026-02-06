@@ -5,7 +5,6 @@ from typing import List, Optional
 import torch
 import torch.nn
 from megatron.core import mpu
-from megatron.core.rerun_state_machine import get_rerun_state_machine
 from torch.distributed.nn import all_reduce
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
@@ -80,38 +79,6 @@ class MegatronTrainer(BaseMegatronTrainer):
         if args.context_parallel_size > 1 and not self.mcore_013:
             loss = all_reduce(loss, group=mpu.get_context_parallel_group())
 
-        # Check individual rank losses are not NaN prior to DP all-reduce.
-        rerun_state_machine = get_rerun_state_machine()
-        if args.check_for_nan_in_loss_and_grad:
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=torch.isnan,
-                message='found NaN in local forward loss calculation',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=True,
-            )
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=torch.isinf,
-                message='found Inf in local forward loss calculation',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=True,
-            )
-        # Check for spiky loss
-        if args.check_for_spiky_loss:
-            # define spiky loss as a loss that's 10x the max loss observed
-            SPIKY_LOSS_FACTOR = 10
-            rerun_state_machine.validate_result(
-                result=loss[0],
-                rejection_func=partial(
-                    rerun_state_machine.is_unexpectedly_large,
-                    threshold=SPIKY_LOSS_FACTOR,
-                    context='loss',
-                ),
-                message='Spiky loss',
-                tolerance=0.0,  # forward pass calculations are determinisic
-                fatal=False,
-            )
         # Reduce loss for logging.
         reporting_loss = loss.detach().clone()
         lm_loss = loss[0]

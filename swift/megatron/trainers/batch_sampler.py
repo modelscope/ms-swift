@@ -1,3 +1,8 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
+from swift.utils import get_logger
+logger = get_logger()
+
 # Code borrowed from megatron-lm
 class MegatronPretrainingSampler:
 
