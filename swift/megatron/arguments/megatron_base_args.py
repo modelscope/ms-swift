@@ -21,6 +21,6 @@ class MegatronBaseArguments(MegatronArguments, BaseArguments):
         MegatronArguments.__post_init__(self)
         if self.streaming:
             self.dataloader_type = 'external'
-            if self.num_workers > 1:
-                self.num_workers = 1
-                logger.info('Using streaming dataset, setting args.num_workers to 1.')
+            if self.dataloader_num_workers > 1:
+                self.dataloader_num_workers = 1
+                logger.info('Using streaming dataset, setting args.dataloader_num_workers to 1.')

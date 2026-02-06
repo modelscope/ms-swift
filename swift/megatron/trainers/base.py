@@ -76,6 +76,7 @@ class BaseMegatronTrainer(ABC):
         self.data_collator = self._get_data_collator()
         # TODO: resume_from_checkpoint
         args.iteration = 0
+        args.consumed_train_samples = 0
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
@@ -470,7 +471,6 @@ class BaseMegatronTrainer(ABC):
             checkpoint_args = state_dict['args']
             check_checkpoint_args(checkpoint_args)
             args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
-            args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
             update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
             # TODO: ignore
             # args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
@@ -1285,8 +1285,8 @@ class BaseMegatronTrainer(ABC):
             batch_sampler=batch_sampler,
             num_workers=args.dataloader_num_workers,
             pin_memory=args.dataloader_pin_memory,
-            persistent_workers=args.dataloader_persistent_workers if args.num_workers > 0 else False,
-            prefetch_factor=args.dataloader_prefetch_factor if args.num_workers > 0 else None,
+            persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+            prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
             collate_fn=self.data_collator,
         )
         return dataloader
