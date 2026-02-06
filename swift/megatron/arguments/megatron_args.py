@@ -621,6 +621,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._init_weigh_decay()
 
         initialize_megatron(self)
+        total_model_size = self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size
+        self.data_parallel_size = self.world_size // total_model_size
 
     def _init_vpp_size(self):
         # TODO

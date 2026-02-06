@@ -24,6 +24,7 @@ from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_p
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import Float16Module, MegatronModule
+from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 # from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer,
@@ -74,6 +75,13 @@ class BaseMegatronTrainer(ABC):
         self.config = self.unwrapped_models[0].config
         self.optimizer, self.scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
+        init_num_microbatches_calculator(
+            args.rank,
+            None,
+            args.global_batch_size,
+            args.micro_batch_size,
+            args.data_parallel_size,
+        )
         # TODO: resume_from_checkpoint
         args.iteration = 0
         args.consumed_train_samples = 0
