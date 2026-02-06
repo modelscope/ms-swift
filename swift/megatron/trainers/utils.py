@@ -25,29 +25,8 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 logger = get_logger()
 
 
-def get_swift_datasets_provider(train_dataset, val_dataset):
-
-    def swift_datasets_provider(train_val_test_num_samples, vp_stage=None):
-        nonlocal val_dataset
-        args = get_args()
-        data_parallel_size = mpu.get_data_parallel_world_size()
-        step_batch_size = args.micro_batch_size * data_parallel_size
-        # To avoid errors caused by the validation set being insufficient to complete a single step.
-        if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) < step_batch_size:
-            val_dataset = None
-        if val_dataset is None:
-            args.eval_iters = 0
-        else:
-            val_dataset.dataset_type = 'validation'
-        return train_dataset, val_dataset, None
-
-    return swift_datasets_provider
-
-
 # Code borrowed from NVIDIA/Megatron-LM
-def get_batch_on_this_tp_rank(data, vp_stage=None):
-    args = get_args()
-
+def get_batch_on_this_tp_rank(args, data, vp_stage=None):
     if args.task_type == 'causal_lm':
         data['labels'] = torch.roll(data['labels'], -1, dims=-1)
         if 'loss_scale' in data:
@@ -109,7 +88,7 @@ def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: Optional[torch.Tensor], di
     return torch.cat(new_inputs, dim=dim)
 
 
-def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
+def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
     """Slice batch input along sequence dimension into multiple chunks,
     which are parallelized across GPUs in a context parallel group.
     """
@@ -122,7 +101,6 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     # that we can get balanced workload among GPUs in a context parallel group.
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
-        args = get_args()
         keys = ['labels', 'position_ids', 'loss_scale']
         if not args.is_multimodal:
             # Multimodal models will handle CP in input_embeds.
@@ -382,95 +360,29 @@ def log_gpu_memory(prefix: str = '', info_once: bool = False):
         logger.info(log_msg)
 
 
-# Code borrowed from megatron-lm
-class MegatronPretrainingRandomSampler:
+def reduce_max_stat_across_model_parallel_group(stat: float) -> float:
+    """
+    Ranks without an optimizer will have no grad_norm or num_zeros_in_grad stats.
+    We need to ensure the logging and writer rank has those values.
+    This function reduces a stat tensor across the model parallel group.
 
-    def __init__(
-        self,
-        dataset,
-        total_samples,
-        consumed_samples,
-        micro_batch_size,
-        data_parallel_rank,
-        data_parallel_size,
-        data_sharding,
-        shuffle: bool = True,
-        group_by_length: bool = False,
-    ):
-        # Keep a copy of input params for later use.
-        self.dataset = dataset
-        self.total_samples = total_samples
-        self.consumed_samples = consumed_samples
-        self.micro_batch_size = micro_batch_size
-        self.data_parallel_rank = data_parallel_rank
-        self.data_parallel_size = data_parallel_size
-        if group_by_length:
-            if data_sharding:
-                data_sharding = False
-                logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
-                               'Setting `data_sharding=False` to enable length grouping.')
-            if not shuffle:
-                raise ValueError('shuffle must be True when group_by_length is True')
-        self.data_sharding = data_sharding
-        self.shuffle = shuffle
-        self.group_by_length = group_by_length
-        self.lengths = self.dataset['lengths'] if group_by_length else None
-        if self.lengths is not None:
-            self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
-        self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size
-        self.last_batch_size = self.total_samples % self.micro_batch_times_data_parallel_size
+    We use an all_reduce max since the values have already been summed across optimizer ranks where possible
+    """
+    if stat is None:
+        stat = -1.0
+    stat = torch.tensor([stat], dtype=torch.float32, device=torch.cuda.current_device())
+    torch.distributed.all_reduce(stat, op=torch.distributed.ReduceOp.MAX, group=mpu.get_model_parallel_group())
+    if stat.item() == -1.0:
+        return None
+    else:
+        return stat.item()
 
-        # Sanity checks.
-        assert self.total_samples > 0, 'no sample to consume: {}'.format(self.total_samples)
-        assert self.micro_batch_size > 0
-        assert data_parallel_size > 0
-        assert self.data_parallel_rank < data_parallel_size, (
-            'data_parallel_rank should be smaller than data size: {}, '
-            '{}'.format(self.data_parallel_rank, data_parallel_size))
 
-    def __len__(self):
-        return self.total_samples
-
-    def __iter__(self):
-        active_total_samples = self.total_samples - self.last_batch_size
-        self.epoch = self.consumed_samples // active_total_samples
-        current_epoch_samples = self.consumed_samples % active_total_samples
-        assert current_epoch_samples % self.micro_batch_times_data_parallel_size == 0
-
-        if self.shuffle:
-            # data sharding and random sampling
-            if self.data_sharding:
-                bucket_size = (self.total_samples // self.micro_batch_times_data_parallel_size) * self.micro_batch_size
-                bucket_offset = current_epoch_samples // self.data_parallel_size
-                start_idx = self.data_parallel_rank * bucket_size
-
-                g = torch.Generator()
-                g.manual_seed(self.epoch)
-                random_idx = torch.randperm(bucket_size, generator=g).tolist()
-                idx_range = [start_idx + x for x in random_idx[bucket_offset:]]
-            else:
-                full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
-                full_bucket_offset = current_epoch_samples
-                g = torch.Generator()
-                g.manual_seed(self.epoch)
-                if self.group_by_length:
-                    from transformers.trainer_pt_utils import get_length_grouped_indices
-                    idx_range_total = get_length_grouped_indices(
-                        self.lengths, self.micro_batch_times_data_parallel_size, generator=g)
-                else:
-                    idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
-                idx_range_active = idx_range_total[full_bucket_offset:]
-                idx_range = idx_range_active[self.data_parallel_rank::self.data_parallel_size]
-        else:
-            full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
-            full_bucket_offset = current_epoch_samples
-            idx_range = range(full_bucket_offset + self.data_parallel_rank, full_bucket_size, self.data_parallel_size)
-
-        batch = []
-        # Last batch if not complete will be dropped.
-        for idx in idx_range:
-            batch.append(idx)
-            if len(batch) == self.micro_batch_size:
-                self.consumed_samples += self.micro_batch_times_data_parallel_size
-                yield batch
-                batch = []
+def logical_and_across_model_parallel_group(input: bool) -> bool:
+    """
+    This function gathers a bool value across the model parallel group
+    """
+    input = int(bool(input))
+    input = torch.tensor([input], dtype=torch.int, device=torch.cuda.current_device())
+    torch.distributed.all_reduce(input, op=torch.distributed.ReduceOp.MIN, group=mpu.get_model_parallel_group())
+    return bool(input.item())

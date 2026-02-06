@@ -108,11 +108,11 @@ class GPTModel(McoreGPTModel):
         self.attention_scaling = 1.
         new_inv_freq, self.attention_scaling = get_rope_inv_freq(config)
         self.rotary_pos_emb.inv_freq = new_inv_freq.to(self.rotary_pos_emb.inv_freq.device)
-        self.args = args = config.args
+        self.args = config.args
         if self.args.task_type == 'seq_cls' and self.post_process:
             self.output_layer = OutputLayerLinear(
                 config.hidden_size,
-                self.config.num_labels,
+                self.args.num_labels,
                 config=config,
                 init_method=config.init_method,
                 bias=False,

@@ -17,6 +17,7 @@ import torch
 import torch.nn
 from megatron.core import mpu, tensor_parallel
 from megatron.core.datasets.utils import Split
+from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
 from megatron.core.num_microbatches_calculator import get_num_microbatches, update_num_microbatches
 from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
@@ -29,9 +30,7 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 #                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
 #                                print_rank_last, training)
 # from megatron.training.checkpointing import check_checkpoint_args, set_checkpoint_version
-# from megatron.training.dist_signal_handler import DistributedSignalHandler
 # from megatron.training.theoretical_memory_usage import report_theoretical_memory
-# from megatron.training.training import num_floating_point_operations
 # from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 from modelscope import check_local_model_is_latest
 from packaging import version
@@ -46,9 +45,11 @@ from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
-from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, ms_logger_context
-from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
-                    get_packed_seq_params, get_swift_datasets_provider)
+from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, is_last_rank,
+                         ms_logger_context)
+from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
+                    logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group)
 
 # try:
 #     from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
@@ -70,12 +71,11 @@ class BaseMegatronTrainer(ABC):
         self.template = template
         self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.prepare_model()
+        self.config = self.unwrapped_models[0].config
         self.optimizer, self.scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
         # TODO: resume_from_checkpoint
         args.iteration = 0
-        args.num_floating_point_operations_so_far = 0
-        args.consumed_train_samples = 0
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
@@ -87,11 +87,8 @@ class BaseMegatronTrainer(ABC):
                 load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_adapter_load')
         if args.adapter_load is not None:
             with adapter_state_dict_context():
-                args.iteration, args.num_floating_point_operations_so_far = load_mcore_checkpoint(
-                    args, self.wrapped_models, self.optimizer, self.scheduler, load_arg='adapter_load', strict=False)
-        if args.is_multimodal:
-            for m in self.unwrapped_models:
-                self._prepare_vit_gradient_checkpointing(m)
+                args.iteration = load_mcore_checkpoint(
+                    args, self.wrapped_models, self.optimizer, self.scheduler, load_arg='adapter_load')
 
         self.eval_metrics = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
@@ -469,7 +466,6 @@ class BaseMegatronTrainer(ABC):
 
         state_dict = torch.load(common_path)
         set_checkpoint_version(state_dict.get('checkpoint_version', 0))
-        num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
         if 'args' in state_dict and not args.finetune:
             checkpoint_args = state_dict['args']
             check_checkpoint_args(checkpoint_args)
@@ -481,14 +477,14 @@ class BaseMegatronTrainer(ABC):
         else:
             print_rank_0('could not find arguments in the checkpoint ...')
 
-        return iteration, num_floating_point_operations_so_far
+        return iteration
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
 
         # read iteration
         args = self.args
         if not args.finetune:
-            args.iteration, args.num_floating_point_operations_so_far = self._load_iteration()
+            args.iteration = self._load_iteration()
 
         if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
             param_groups_context = self._patch_get_param_groups()
@@ -543,14 +539,8 @@ class BaseMegatronTrainer(ABC):
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args,
-                   **kwargs):
-        new_data_iterator = self._replace_data_iterator(data_iterator, model)
-        return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config, *args, **kwargs)
-
     # Code borrowed from NVIDIA/Megatron-LM
-    def evaluate(
+    def _evaluate(
         self,
         forward_step_func,
         data_iterator,
@@ -615,7 +605,6 @@ class BaseMegatronTrainer(ABC):
                     num_microbatches=eval_num_microbatches,
                     seq_length=args.seq_length,
                     micro_batch_size=args.micro_batch_size,
-                    decoder_seq_length=args.decoder_seq_length,
                     forward_only=True,
                 )
                 ft_integration.on_eval_step_end()
@@ -678,7 +667,6 @@ class BaseMegatronTrainer(ABC):
                     num_microbatches=get_num_microbatches(),
                     seq_length=args.seq_length,
                     micro_batch_size=args.micro_batch_size,
-                    decoder_seq_length=args.decoder_seq_length,
                     forward_only=True,
                     collect_non_loss_data=True,
                 )
@@ -706,7 +694,7 @@ class BaseMegatronTrainer(ABC):
             self.jsonl_writer.append(logs)
         return total_loss_dict, collected_non_loss_data, False
 
-    def evaluate_and_print_results(
+    def _evaluate_and_print_results(
         self,
         prefix,
         forward_step_func,
@@ -825,8 +813,8 @@ class BaseMegatronTrainer(ABC):
             wandb_writer.log(metrics, iteration)
 
     # Code borrowed from NVIDIA/Megatron-LM
-    def training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
-                     report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
+    def _training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
+                      report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
         """Log training information such as losses, timing, ...."""
         args = self.args
         timers = get_timers()
@@ -1113,7 +1101,7 @@ class BaseMegatronTrainer(ABC):
         else:
             raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
-    def save_checkpoint(self, iteration, model, *_args, **kwargs):
+    def _save_checkpoint(self, iteration, model, *_args, **kwargs):
         args = self.args
         output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
         os.makedirs(output_dir, exist_ok=True)
@@ -1152,115 +1140,156 @@ class BaseMegatronTrainer(ABC):
             if args.tuner_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
-    def _patch_megatron(self):
-        # support max_epochs
-        self._origin_train_step = training.train_step
-        training.train_step = self.train_step
-        self._origin_cyclic_iter = training.cyclic_iter
-        training.cyclic_iter = self.new_cyclic_iter
-        # patch training_log
-        self._origin_training_log = training.training_log
-        training.training_log = self.training_log
-        # patch evaluate
-        self._origin_evaluate_and_print_results = training.evaluate_and_print_results
-        training.evaluate_and_print_results = self.evaluate_and_print_results
-        # patch model and optimizer
-        self._origin_setup_model_and_optimizer = training.setup_model_and_optimizer
-        training.setup_model_and_optimizer = self.setup_model_and_optimizer
-        # patch save_checkpoint
-        self._origin_save_checkpoint = training.save_checkpoint
-        training.save_checkpoint = self.save_checkpoint
-
     def train(self, train_dataset, val_dataset):
         args = self.args
-        datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
-        datasets_provider.is_distributed = True
-        with self.patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
-            pretrain(datasets_provider, args.megatron_model_meta.model_provider, ModelType.encoder_or_decoder,
-                     self.forward_step)
+        train_dataloader, val_dataloader = self.prepare_dataloader(train_dataset, val_dataset)
+        for m in self.wrapped_models:
+            m.train()
 
-    # Code borrowed from NVIDIA/Megatron-LM
-    def build_pretraining_data_loader(self, dataset, consumed_samples, data_collator=None):
-        """Build dataloader given an input dataset."""
+        if args.is_multimodal:
+            for m in self.unwrapped_models:
+                self._prepare_vit_gradient_checkpointing(m)
 
-        if dataset is None:
-            return None
+        self.config.finalize_model_grads_func = finalize_model_grads
+        # TODO: manual_gc
+        train_metrics = {}
+        while args.iteration < args.train_iters:
+            metrics, grad_norm = self.train_step(train_dataloader)
+            if mpu.is_pipeline_last_stage(ignore_virtual=True):
+                self.aggregated_metrics(metrics, train_metrics)
+            self.training_log(train_metrics, grad_norm)
 
+            if args.eval_interval and args.iteration % args.eval_interval == 0:
+                self.evaluate(val_dataloader)
+
+            if args.save and args.save_interval and args.iteration % args.save_interval == 0:
+                self.save_checkpoint()
+
+    def save_checkpoint(self):
+        print
+
+    def training_log(self, metrics, grad_norm):
+        learning_rate = None
+        for param_group in self.optimizer.param_groups:
+            if len(param_group['params']) == 0:
+                continue
+            learning_rate = param_group['lr']
+        logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, learning_rate: {learning_rate}')
+
+    def evaluate(self, val_dataloader):
+        # TODO: 兼容transformers callback, eval_metrics等
         args = self.args
-        if args.dataloader_type == 'external':
-            # External dataloaders are passed through. User is expected to provide a
-            # torch-compatible dataloader and define samplers, if needed.
-            return dataset
+        for m in self.wrapped_models:
+            m.eval()
+        eval_metrics = {}
+        forward_backward_func = get_forward_backward_func()
 
-        if hasattr(dataset, 'split'):
-            split = dataset.split
-        elif hasattr(dataset, 'index_split'):
-            split = dataset.index_split
-        else:
-            split = None
+        with torch.no_grad(), tqdm(
+                total=val_dataloader, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
+            iteration = 0
+            while iteration < args.eval_iters:
+                prog_bar.update()
+                iteration += 1
 
-        is_val_dataset = getattr(dataset, 'dataset_type', None) == 'validation'
+                metrics = forward_backward_func(
+                    forward_step_func=self.forward_step,
+                    data_iterator=val_dataloader,
+                    model=self.wrapped_models,
+                    num_microbatches=get_num_microbatches(),
+                    seq_length=args.max_length,
+                    micro_batch_size=args.micro_batch_size,
+                    forward_only=True,
+                )
+                if mpu.is_pipeline_last_stage(ignore_virtual=True):
+                    self.aggregated_metrics(metrics, eval_metrics)
+        # TODO: log metrics
+        logger.info(f'eval_metrics: {eval_metrics}')
+        for m in self.wrapped_models:
+            m.train()
 
-        if split == Split.valid and args.full_validation:
-            batch_sampler = MegatronPretrainingSampler(
-                total_samples=len(dataset),
+    def train_step(self, train_dataloader):
+        args = self.args
+        forward_backward_func = get_forward_backward_func()
+        for m in self.wrapped_models:
+            m.zero_grad_buffer()
+        self.optimizer.zero_grad()
+        metrics = forward_backward_func(
+            forward_step_func=self.forward_step,
+            data_iterator=train_dataloader,
+            model=self.wrapped_models,
+            num_microbatches=get_num_microbatches(),
+            seq_length=args.max_length,
+            micro_batch_size=args.micro_batch_size,
+            forward_only=False,
+        )
+
+        update_successful, grad_norm, _ = self.optimizer.step()
+        update_successful = logical_and_across_model_parallel_group(update_successful)
+        grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
+
+        # Update learning rate.
+        if update_successful:
+            increment = get_num_microbatches() * args.micro_batch_size * args.data_parallel_size
+            args.iteration += 1
+            args.consumed_train_samples += increment
+            self.scheduler.step(increment=increment)
+
+        return metrics, grad_norm
+
+    def aggregated_metrics(self, metrics, total_metrics):
+        for key in metrics[0].keys():
+            if key not in total_metrics:
+                total_metrics[key] = torch.tensor([0.0], dtype=torch.float32, device=torch.cuda.current_device())
+            val = [x[key].view(-1) for x in metrics]
+            val = torch.concat(val, dim=0)
+            if val[0].numel() == 2:
+                val = val.sum(dim=0)
+                total_metrics[key] += val[0] / val[1]
+            elif val[0].numel() == 1:
+                total_metrics[key] += val.sum()
+            else:
+                raise ValueError(f'Invalid value shape: {val[0].shape} for key {key}')
+
+    def prepare_dataloader(self, train_dataset, val_dataset):
+        args = self.args
+
+        train_batch_sampler = MegatronPretrainingRandomSampler(
+            train_dataset,
+            total_samples=len(train_dataset),
+            consumed_samples=args.consumed_train_samples,
+            micro_batch_size=args.micro_batch_size,
+            data_parallel_rank=mpu.get_data_parallel_rank(),
+            data_parallel_size=mpu.get_data_parallel_world_size(),
+            data_sharding=args.data_sharding,
+            shuffle=args.train_dataloader_shuffle,
+            group_by_length=args.group_by_length,
+        )
+        train_dataloader = self._create_dataloader(train_dataset, train_batch_sampler)
+        val_dataloader = None
+        if val_dataset is not None:
+            val_batch_sampler = MegatronPretrainingSampler(
+                total_samples=len(val_dataset),
                 consumed_samples=0,
                 micro_batch_size=args.micro_batch_size,
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
-        elif args.dataloader_type == 'single' or is_val_dataset:
-            if is_val_dataset:
-                consumed_samples = 0
-            # Megatron sampler
-            batch_sampler = MegatronPretrainingSampler(
-                total_samples=len(dataset),
-                consumed_samples=consumed_samples,
-                micro_batch_size=args.micro_batch_size,
-                data_parallel_rank=mpu.get_data_parallel_rank(),
-                data_parallel_size=mpu.get_data_parallel_world_size(),
-            )
-        elif args.dataloader_type == 'cyclic':
-            batch_sampler = MegatronPretrainingRandomSampler(
-                dataset,
-                total_samples=len(dataset),
-                consumed_samples=consumed_samples,
-                micro_batch_size=args.micro_batch_size,
-                data_parallel_rank=mpu.get_data_parallel_rank(),
-                data_parallel_size=mpu.get_data_parallel_world_size(),
-                data_sharding=args.data_sharding,
-                shuffle=args.train_dataloader_shuffle,
-                group_by_length=args.group_by_length,
-            )
-        else:
-            raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
+            val_dataloader = self._create_dataloader(val_dataset, val_batch_sampler)
+        return train_dataloader, val_dataloader
 
-        def worker_init_fn(_):
-            DistributedSignalHandler(args.exit_signal).__enter__()
+    def _create_dataloader(self, dataset, batch_sampler):
+        args = self.args
 
-        maybe_worker_init_fn = (worker_init_fn if args.exit_signal_handler and args.num_workers > 0 else None)
-        # Torch dataloader.
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_sampler=batch_sampler,
-            num_workers=args.num_workers,
+            num_workers=args.dataloader_num_workers,
             pin_memory=args.dataloader_pin_memory,
             persistent_workers=args.dataloader_persistent_workers if args.num_workers > 0 else False,
             prefetch_factor=args.dataloader_prefetch_factor if args.num_workers > 0 else None,
-            worker_init_fn=maybe_worker_init_fn,
-            collate_fn=data_collator,
+            collate_fn=self.data_collator,
         )
         return dataloader
-
-    @contextmanager
-    def patch_megatron_data_collator(self, data_collator):
-        origin_build_pretraining_data_loader = training.build_pretraining_data_loader
-        training.build_pretraining_data_loader = partial(
-            self.build_pretraining_data_loader, data_collator=data_collator)
-        try:
-            yield
-        finally:
-            training.build_pretraining_data_loader = origin_build_pretraining_data_loader
 
     @abstractmethod
     def forward_step(self, data_iterator, model):
