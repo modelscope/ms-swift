@@ -272,7 +272,8 @@ def load_mcore_checkpoint(args, model: list, optimizer, scheduler, load_arg: str
         args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
         args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
         update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
-        args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
+        # TODO:
+        # args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
 
     if len(model) == 1:
         model[0].load_state_dict(state_dict['model'])
@@ -351,9 +352,10 @@ def get_optimizer_param_scheduler(args, optimizer):
         args.lr_decay_iters = args.train_iters
     lr_decay_steps = args.lr_decay_iters * args.global_batch_size
     wd_incr_steps = args.train_iters * args.global_batch_size
-    wsd_decay_steps = None
-    if args.lr_wsd_decay_iters is not None:
-        wsd_decay_steps = args.lr_wsd_decay_iters * args.global_batch_size
+    # TODO
+    # wsd_decay_steps = None
+    # if args.lr_wsd_decay_iters is not None:
+    #     wsd_decay_steps = args.lr_wsd_decay_iters * args.global_batch_size
     if args.lr_warmup_fraction is not None:
         lr_warmup_steps = args.lr_warmup_fraction * lr_decay_steps
     else:

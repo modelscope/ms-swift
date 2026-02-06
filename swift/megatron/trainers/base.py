@@ -72,8 +72,10 @@ class BaseMegatronTrainer(ABC):
         self.prepare_model()
         self.optimizer, self.scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
+        # TODO: resume_from_checkpoint
         args.iteration = 0
         args.num_floating_point_operations_so_far = 0
+        args.consumed_train_samples = 0
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
@@ -474,7 +476,8 @@ class BaseMegatronTrainer(ABC):
             args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
             args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
             update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
-            args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
+            # TODO: ignore
+            # args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
         else:
             print_rank_0('could not find arguments in the checkpoint ...')
 
@@ -652,7 +655,7 @@ class BaseMegatronTrainer(ABC):
                                 else:
                                     total_loss_dict[key][0] += val
                                     total_loss_dict[key][1] += 1
-                args.consumed_valid_samples += eval_batch_size
+                # args.consumed_valid_samples += eval_batch_size
 
                 if args.exit_duration_in_mins:
                     train_time = (time.time() - training._TRAIN_START_TIME) / 60.0
