@@ -1173,7 +1173,7 @@ class BaseMegatronTrainer(ABC):
                 self.save_checkpoint()
 
     def save_checkpoint(self):
-        print
+        pass
 
     def training_log(self, metrics, grad_norm):
         learning_rate = None
