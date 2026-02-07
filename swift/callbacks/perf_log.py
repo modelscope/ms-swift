@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import torch
 from transformers import TrainerControl, TrainerState
 
-from swift.utils import empty_cache, get_logger
+from swift.utils import empty_cache, get_current_device, get_device_count, get_env_args, get_logger
 from .base import TrainerCallback
 
 if TYPE_CHECKING:
@@ -43,7 +43,6 @@ class PerfMetricsLogCallback(TrainerCallback):
         self.step_start_time = None
 
     def on_init_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
-        from swift.utils import get_current_device, get_device_count, get_env_args
 
         # Top priority. Specify by ENV
         tflops = get_env_args('DEVICE_TFLOPS', int, None)
