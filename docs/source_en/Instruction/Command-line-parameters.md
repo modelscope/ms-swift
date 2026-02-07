@@ -587,7 +587,7 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - beta: KL regularization coefficient; default 0.04. Setting it to 0 disables the reference model.
 - per_device_train_batch_size: The training batch size per device. In GRPO, this refers to the batch size of completions during training.
 - per_device_eval_batch_size: The evaluation batch size per device. In GRPO, this refers to the batch size of completions during evaluation.
-- steps_per_generation: Number of optimization steps per generation. It defaults to gradient_accumulation_steps. This parameter and generation_batch_size cannot be set simultaneously. When generation_batch_size is set, it will be overridden by generation_batch_size // (per_device_train_batch_size * num_processes).
+- steps_per_generation: Number of optimization steps per generation. It defaults to gradient_accumulation_steps. This parameter and generation_batch_size cannot be set simultaneously.
 - generation_batch_size: Total batch size of sampling completions. It should be a multiple of num_processes * per_device_train_batch_size. It defaults to per_device_train_batch_size * steps_per_generation * num_processes.
 - num_generations: The number of samples generated per prompt (corresponding to the G value in the paper). generation_batch_size must be divisible by num_generations. The default value is 8.
 - num_generations_eval: Number of generations to sample during evaluation. This allows using fewer generations during evaluation to save computation. If `None`, uses the value of `num_generations`. Default is None.

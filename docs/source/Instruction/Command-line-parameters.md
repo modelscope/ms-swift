@@ -574,7 +574,7 @@ reward模型参数将在PPO、GRPO中使用。
 - beta: KL正则系数，默认为0.04，设置为0时不加载ref model。
 - per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
 - per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
-- steps_per_generation: 每轮生成的优化步数，默认等于 gradient_accumulation_steps。与 generation_batch_size 只能同时设置一个。当 generation_batch_size 设置时，steps_per_generation 将被覆盖为 generation_batch_size // (per_device_train_batch_size * num_processes)。
+- steps_per_generation: 每轮生成的优化步数，默认等于 gradient_accumulation_steps。与 generation_batch_size 只能同时设置一个。
 - generation_batch_size: 总的采样 completion 批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于 per_device_train_batch_size * steps_per_generation * num_processes。
 - num_generations: 每个prompt采样的数量，论文中的G值，generation_batch_size 必须能被 num_generations 整除。默认为 8。
 - num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
