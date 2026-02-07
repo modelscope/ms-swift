@@ -595,15 +595,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.untie_embeddings_and_output_weights = True
         if self.gradient_checkpointing_kwargs is not None:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
-        if self.save_strategy == 'epoch':
-            self.save_interval = 1
-            self.eval_interval = 1
         if self.gradient_accumulation_fusion:
             try:
                 import apex
             except ImportError:
                 logger.warning('apex is not installed, so gradient accumulation fusion is disabled.')
                 self.gradient_accumulation_fusion = False
+        self.callbacks += ['print', 'default_flow']
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:
@@ -624,6 +622,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         initialize_megatron(self)
         total_model_size = self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size
         self.data_parallel_size = self.world_size // total_model_size
+        self.num_micro_batches = self.global_batch_size // self.data_parallel_size
 
     def _init_vpp_size(self):
         # TODO:
@@ -734,8 +733,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.save_interval = dataset_sample // self.global_batch_size
                 self.eval_interval = self.save_interval
                 # TODO
-                if getattr(self, 'save_retain_interval', None) is not None:
-                    self.save_retain_interval *= self.save_interval
+                # if getattr(self, 'save_retain_interval', None) is not None:
+                #     self.save_retain_interval *= self.save_interval
             else:
                 raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
         if self.max_epochs is not None:

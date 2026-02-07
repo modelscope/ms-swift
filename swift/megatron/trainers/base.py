@@ -19,8 +19,6 @@ from megatron.core import mpu, tensor_parallel
 from megatron.core.datasets.utils import Split
 from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
-from megatron.core.num_microbatches_calculator import (get_num_microbatches, init_num_microbatches_calculator,
-                                                       update_num_microbatches)
 from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
@@ -37,12 +35,12 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from tqdm.auto import tqdm
 
+from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight,
                                   get_optimizer_param_scheduler, get_padding_to, load_mcore_checkpoint, patch_merge_fn,
                                   prepare_mcore_model, wrap_model)
-from swift.megatron.callbacks import megatron_callbacks_map
 from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
@@ -50,9 +48,9 @@ from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, is_last_rank,
                          ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+from .trainer_state import TrainerState
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group)
-from .trainer_state import TrainerState
 
 # try:
 #     from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
@@ -77,13 +75,6 @@ class BaseMegatronTrainer(ABC):
         self.config = self.unwrapped_models[0].config
         self.optimizer, self.scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
-        init_num_microbatches_calculator(
-            args.rank,
-            None,
-            args.global_batch_size,
-            args.micro_batch_size,
-            args.data_parallel_size,
-        )
         # TODO: resume_from_checkpoint
         self.state = TrainerState()
         if args.initialize_embedding:
@@ -97,7 +88,7 @@ class BaseMegatronTrainer(ABC):
                 load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_adapter_load')
         if args.adapter_load is not None:
             with adapter_state_dict_context():
-                args.iteration = load_mcore_checkpoint(
+                state.iteration = load_mcore_checkpoint(
                     args, self.wrapped_models, self.optimizer, self.scheduler, load_arg='adapter_load')
 
         self.eval_metrics = None
@@ -124,14 +115,13 @@ class BaseMegatronTrainer(ABC):
             'eval': collections.defaultdict(_get_mean_metric)
         }
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        self.args.callbacks += ['print', '']
         self.callbacks = []
         for callback in self.args.callbacks:
             self.callbacks(megatron_callbacks_map[callback](self))
 
-    def call_event(self, event):
+    def call_event(self, event, *args, **kwargs):
         for callback in self.callbacks:
-            getattr(callback, event)()
+            getattr(callback, event)(*args, **kwargs)
 
     def prepare_model(self):
         args = self.args
@@ -181,21 +171,21 @@ class BaseMegatronTrainer(ABC):
         assert training, 'training must be True'
 
         args = self.args
-        n_epoch = 0
+        state = self.state
         is_finished = False
         while True:
             if not is_finished:
-                logger.info(f'The training of Epoch {n_epoch} starts...')
+                logger.info(f'The training of Epoch {state.epoch} starts...')
             for x in iterable:
                 yield x
             # streaming
-            if training and args.max_epochs and n_epoch >= args.max_epochs - 1:
+            if training and args.max_epochs and state.epoch >= args.max_epochs - 1:
                 is_finished = True
-            n_epoch += 1
+            state.epoch += 1
             if is_finished:
                 # Note that this approach will train for one additional step.
-                logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
-                args.train_iters = args.iteration + 1
+                logger.info(f'Training of {state.epoch} epochs has been completed, the training has finished.')
+                args.train_iters = state.iteration + 1
 
     def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
@@ -486,9 +476,6 @@ class BaseMegatronTrainer(ABC):
             checkpoint_args = state_dict['args']
             check_checkpoint_args(checkpoint_args)
             args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
-            update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
-            # TODO: ignore
-            # args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
         else:
             print_rank_0('could not find arguments in the checkpoint ...')
 
@@ -499,7 +486,7 @@ class BaseMegatronTrainer(ABC):
         # read iteration
         args = self.args
         if not args.finetune:
-            args.iteration = self._load_iteration()
+            state.iteration = self._load_iteration()
 
         if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
             param_groups_context = self._patch_get_param_groups()
@@ -820,7 +807,7 @@ class BaseMegatronTrainer(ABC):
         self._remove_log(total_loss_dict)
         if iteration is None:
             args = self.args
-            iteration = args.iteration + 1
+            iteration = state.iteration + 1
         if writer:
             for k, v in metrics.items():
                 writer.add_scalar(k, v, iteration)
@@ -1167,19 +1154,27 @@ class BaseMegatronTrainer(ABC):
 
         self.config.finalize_model_grads_func = finalize_model_grads
         # TODO: manual_gc
+        self.call_event('on_train_begin')
         train_metrics = {}
         train_data_iterator = iter(self.cyclic_iter(train_dataloader))
-        while args.iteration < args.train_iters:
+        state = self.state
+        while state.iteration < args.train_iters:
+            self.call_event('on_step_begin')
             metrics = self.train_step(train_data_iterator)
+            self.call_event('on_step_end')
             if mpu.is_pipeline_last_stage(ignore_virtual=True):
                 self.aggregated_metrics(metrics, train_metrics)
-            self.training_log(train_metrics, grad_norm)
+            self.call_event('on_log', train_metrics)
 
-            if args.eval_interval and args.iteration % args.eval_interval == 0:
+            if state.should_eval:
+                state.should_eval = False
                 self.evaluate(val_dataloader)
 
-            if args.save and args.save_interval and args.iteration % args.save_interval == 0:
+            if state.should_save:
+                state.should_save = False
                 self.save_checkpoint()
+
+        self.call_event('on_train_end')
 
     def save_checkpoint(self):
         pass
@@ -1201,27 +1196,27 @@ class BaseMegatronTrainer(ABC):
         forward_backward_func = get_forward_backward_func()
         val_data_iterator = iter(val_dataloader)
 
+        self.call_event('on_eval_begin')
         with torch.no_grad():
             iteration = 0
             while iteration < args.eval_iters:
-                prog_bar.update()
-                iteration += 1
-
                 metrics = forward_backward_func(
                     forward_step_func=self.forward_step,
                     data_iterator=val_data_iterator,
                     model=self.wrapped_models,
-                    num_microbatches=get_num_microbatches(),
+                    num_microbatches=self.num_micro_batches,
                     seq_length=args.max_length,
                     micro_batch_size=args.micro_batch_size,
                     forward_only=True,
                 )
+                self.call_event('on_eval_step')
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
                     self.aggregated_metrics(metrics, eval_metrics)
         # TODO: log metrics
         logger.info(f'eval_metrics: {eval_metrics}')
         for m in self.wrapped_models:
             m.train()
+        self.call_event('on_eval_end')
 
     def train_step(self, train_data_iterator):
         args = self.args
@@ -1233,7 +1228,7 @@ class BaseMegatronTrainer(ABC):
             forward_step_func=self.forward_step,
             data_iterator=train_data_iterator,
             model=self.wrapped_models,
-            num_microbatches=get_num_microbatches(),
+            num_microbatches=args.num_micro_batches,
             seq_length=args.max_length,
             micro_batch_size=args.micro_batch_size,
             forward_only=False,
@@ -1241,10 +1236,6 @@ class BaseMegatronTrainer(ABC):
 
         _, grad_norm, _ = self.optimizer.step()
         grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
-
-        increment = get_num_microbatches() * args.micro_batch_size * args.data_parallel_size
-        args.iteration += 1
-        args.consumed_train_samples += increment
         self.scheduler.step(increment=increment)
 
         metrics['grad_norm'] = torch.tensor([grad_norm], dtype=torch.float32, device=torch.cuda.current_device())

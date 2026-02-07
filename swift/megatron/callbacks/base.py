@@ -1,3 +1,4 @@
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -18,23 +19,20 @@ class MegatronCallback:
     def on_train_end(self):
         pass
 
+    def on_step_begin(self):
+        pass
+
     def on_step_end(self):
-        pass
-
-    def on_epoch_begin(self):
-        pass
-
-    def on_epoch_end(self):
         pass
 
     def on_log(self, logs):
         pass
 
-    def on_evaluate_begin(self):
+    def on_eval_begin(self):
         pass
 
-    def on_evaluate_end(self):
+    def on_eval_end(self):
         pass
 
-    def on_evaluate_step(self):
+    def on_eval_step(self):
         pass
