@@ -347,7 +347,7 @@ def get_padding_to(args):
     elif fp8_format is not None:
         padding_to = max((padding_to or 1) * 8, 16)
     if args.attention_backend == 'fused':
-        padding_to = max(padding_to, ((origin_padding_to) or 1) * 64)
+        padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
     return padding_to
 
 
