@@ -25,22 +25,23 @@ def get_max_reserved_memory() -> float:
     return sum(mems) / 1024**3
 
 
-def add_train_message(logs, state, start_time) -> None:
+def add_train_message(logs, state, start_time, start_step) -> None:
     logs['global_step/max_steps'] = f'{state.global_step}/{state.max_steps}'
     train_percentage = state.global_step / state.max_steps if state.max_steps else 0.
     logs['percentage'] = f'{train_percentage * 100:.2f}%'
     elapsed = time.time() - start_time
     logs['elapsed_time'] = format_time(elapsed)
+    n_steps = state.global_step - start_step
+    train_speed = elapsed / n_steps if n_steps > 0 else 0.0
     if train_percentage != 0:
-        logs['remaining_time'] = format_time(elapsed / train_percentage - elapsed)
+        logs['remaining_time'] = format_time((state.max_steps - state.global_step) * train_speed)
     for k, v in logs.items():
         if isinstance(v, float):
             logs[k] = round(logs[k], 8)
     state.max_memory = max(getattr(state, 'max_memory', 0), get_max_reserved_memory())
     if state.max_memory:
         logs['memory(GiB)'] = round(state.max_memory, 2)
-
-    logs['train_speed(iter/s)'] = round(state.global_step / elapsed, 6)
+    logs['train_speed(s/it)'] = round(train_speed, 6)
 
 
 class ProgressCallbackNew(ProgressCallback):
@@ -48,6 +49,7 @@ class ProgressCallbackNew(ProgressCallback):
     def on_train_begin(self, args, state, control, **kwargs):
         if state.is_world_process_zero:
             self.training_bar = tqdm(desc='Train', total=state.max_steps, dynamic_ncols=True)
+        self.start_step = state.global_step
         self.current_step = 0
         self.start_time = time.time()
 
@@ -61,7 +63,7 @@ class ProgressCallbackNew(ProgressCallback):
             self.prediction_bar.update()
 
     def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
-        add_train_message(logs, state, self.start_time)
+        add_train_message(logs, state, self.start_time, self.start_step)
         if not is_pai_training_job() and state.is_world_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             append_to_jsonl(jsonl_path, logs)
@@ -100,10 +102,11 @@ class PrinterCallbackNew(PrinterCallback):
 
     def on_train_begin(self, args, state, control, **kwargs):
         self.start_time = time.time()
+        self.start_step = state.global_step
         return super().on_train_begin(args, state, control, **kwargs)
 
     def on_log(self, args, state, control, logs=None, **kwargs):
-        add_train_message(logs, state, self.start_time)
+        add_train_message(logs, state, self.start_time, self.start_step)
         if not is_pai_training_job() and state.is_world_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             append_to_jsonl(jsonl_path, logs)
