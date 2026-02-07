@@ -27,14 +27,11 @@ def get_max_reserved_memory() -> float:
 
 def add_train_message(logs, state, start_time, start_step) -> None:
     logs['global_step/max_steps'] = f'{state.global_step}/{state.max_steps}'
-    train_percentage = state.global_step / state.max_steps if state.max_steps else 0.
-    logs['percentage'] = f'{train_percentage * 100:.2f}%'
     elapsed = time.time() - start_time
     logs['elapsed_time'] = format_time(elapsed)
     n_steps = state.global_step - start_step
     train_speed = elapsed / n_steps if n_steps > 0 else 0.0
-    if train_percentage != 0:
-        logs['remaining_time'] = format_time((state.max_steps - state.global_step) * train_speed)
+    logs['remaining_time'] = format_time((state.max_steps - state.global_step) * train_speed)
     for k, v in logs.items():
         if isinstance(v, float):
             logs[k] = round(logs[k], 8)
