@@ -31,7 +31,8 @@ def add_train_message(logs, state, start_time, start_step) -> None:
     logs['percentage'] = f'{train_percentage * 100:.2f}%'
     elapsed = time.time() - start_time
     logs['elapsed_time'] = format_time(elapsed)
-    train_speed = elapsed / (state.global_step - start_step)
+    n_steps = state.global_step - start_step
+    train_speed = elapsed / n_steps if n_steps > 0 else 0.0
     if train_percentage != 0:
         logs['remaining_time'] = format_time((state.max_steps - state.global_step) * train_speed)
     for k, v in logs.items():
