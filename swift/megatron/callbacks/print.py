@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from tqdm import tqdm
+
 from swift.utils import is_master
 from .base import MegatronCallback
 
@@ -22,7 +24,7 @@ class PrintCallback(MegatronCallback):
         self.training_bar.update()
 
     def on_eval_begin(self):
-        self.eval_bar = tqdm(total=eval_iters, dynamic_ncols=True, disable=not is_master(), desc='Evaluate: ')
+        self.eval_bar = tqdm(total=self.argseval_iters, dynamic_ncols=True, disable=not is_master(), desc='Evaluate: ')
 
     def on_eval_end(self):
         self.eval_bar.close()

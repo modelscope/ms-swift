@@ -2,14 +2,14 @@
 from .base import MegatronCallback
 
 
-class DefaultFlowCallbacks(MegatronCallback):
+class DefaultFlowCallback(MegatronCallback):
 
     def on_step_end(self):
         args = self.args
         state = self.state
 
         state.iteration += 1
-        args.consumed_train_samples += args.global_batch_size
+        state.consumed_train_samples += args.global_batch_size
 
         if state.iteration == 1 or state.iteration % args.log_interval == 0:
             self.state.should_log = True

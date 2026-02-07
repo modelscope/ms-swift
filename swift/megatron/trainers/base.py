@@ -48,8 +48,7 @@ from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, is_last_rank,
                          ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .trainer_state import TrainerState
-from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
+from .utils import (TrainerState, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group)
 
 # try:
@@ -117,11 +116,22 @@ class BaseMegatronTrainer(ABC):
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         self.callbacks = []
         for callback in self.args.callbacks:
-            self.callbacks(megatron_callbacks_map[callback](self))
+            self.callbacks.append(megatron_callbacks_map[callback](self))
 
     def call_event(self, event, *args, **kwargs):
+        if event == 'on_log':
+            self._log_callback(*args, **kwargs)
         for callback in self.callbacks:
             getattr(callback, event)(*args, **kwargs)
+
+    def _log_callback(self, logs):
+        n_iters = logs.pop('n_iters')
+        for k, v in logs.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+            if isinstance(v, float):
+                v = round(v, 8)
+            logs[k] = v / n_iters
 
     def prepare_model(self):
         args = self.args
@@ -186,9 +196,6 @@ class BaseMegatronTrainer(ABC):
                 # Note that this approach will train for one additional step.
                 logger.info(f'Training of {state.epoch} epochs has been completed, the training has finished.')
                 args.train_iters = state.iteration + 1
-
-    def _replace_data_iterator(self, data_iterator, model):
-        return data_iterator
 
     def _load_adapter_base_checkpoint(self, *_args, **kwargs):
         adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
@@ -1160,11 +1167,13 @@ class BaseMegatronTrainer(ABC):
         state = self.state
         while state.iteration < args.train_iters:
             self.call_event('on_step_begin')
-            metrics = self.train_step(train_data_iterator)
+            metrics, grad_norm = self.train_step(train_data_iterator)
             self.call_event('on_step_end')
             if mpu.is_pipeline_last_stage(ignore_virtual=True):
                 self.aggregated_metrics(metrics, train_metrics)
-            self.call_event('on_log', train_metrics)
+                train_metrics['grad_norm'] = torch.tensor([grad_norm], dtype=torch.float32, device=torch.cuda.current_device())
+            if state.should_log:
+                self.call_event('on_log', train_metrics)
 
             if state.should_eval:
                 state.should_eval = False
@@ -1236,12 +1245,14 @@ class BaseMegatronTrainer(ABC):
 
         _, grad_norm, _ = self.optimizer.step()
         grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
-        self.scheduler.step(increment=increment)
+        self.scheduler.step(increment=args.global_batch_size)
 
-        metrics['grad_norm'] = torch.tensor([grad_norm], dtype=torch.float32, device=torch.cuda.current_device())
-        return metrics
+        return metrics, grad_norm
 
     def aggregated_metrics(self, metrics, total_metrics):
+        if 'n_iters' not in total_metrics:
+            total_metrics['n_iters'] = torch.tensor([0], dtype=torch.int64, device=torch.cuda.current_device())
+        total_metrics['n_iters'] += 1
         for key in metrics[0].keys():
             if key not in total_metrics:
                 total_metrics[key] = torch.tensor([0.0], dtype=torch.float32, device=torch.cuda.current_device())
@@ -1261,7 +1272,7 @@ class BaseMegatronTrainer(ABC):
         train_batch_sampler = MegatronPretrainingRandomSampler(
             train_dataset,
             total_samples=len(train_dataset),
-            consumed_samples=args.consumed_train_samples,
+            consumed_samples=self.state.consumed_train_samples,
             micro_batch_size=args.micro_batch_size,
             data_parallel_rank=mpu.get_data_parallel_rank(),
             data_parallel_size=mpu.get_data_parallel_world_size(),
