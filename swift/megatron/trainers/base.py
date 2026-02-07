@@ -19,12 +19,12 @@ from megatron.core import mpu, tensor_parallel
 from megatron.core.datasets.utils import Split
 from megatron.core.distributed import finalize_model_grads
 from megatron.core.enums import ModelType
-from megatron.core.num_microbatches_calculator import get_num_microbatches, update_num_microbatches
+from megatron.core.num_microbatches_calculator import (get_num_microbatches, init_num_microbatches_calculator,
+                                                       update_num_microbatches)
 from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import Float16Module, MegatronModule
-from megatron.core.num_microbatches_calculator import init_num_microbatches_calculator
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 # from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer,
@@ -42,6 +42,7 @@ from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight,
                                   get_optimizer_param_scheduler, get_padding_to, load_mcore_checkpoint, patch_merge_fn,
                                   prepare_mcore_model, wrap_model)
+from swift.megatron.callbacks import megatron_callbacks_map
 from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
@@ -51,6 +52,7 @@ from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group)
+from .trainer_state import TrainerState
 
 # try:
 #     from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
@@ -83,8 +85,7 @@ class BaseMegatronTrainer(ABC):
             args.data_parallel_size,
         )
         # TODO: resume_from_checkpoint
-        args.iteration = 0
-        args.consumed_train_samples = 0
+        self.state = TrainerState()
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
@@ -123,6 +124,14 @@ class BaseMegatronTrainer(ABC):
             'eval': collections.defaultdict(_get_mean_metric)
         }
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        self.args.callbacks += ['print', '']
+        self.callbacks = []
+        for callback in self.args.callbacks:
+            self.callbacks(megatron_callbacks_map[callback](self))
+
+    def call_event(self, event):
+        for callback in self.callbacks:
+            getattr(callback, event)()
 
     def prepare_model(self):
         args = self.args
@@ -186,7 +195,7 @@ class BaseMegatronTrainer(ABC):
             if is_finished:
                 # Note that this approach will train for one additional step.
                 logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
-                args.train_iters = args.curr_iteration + 1
+                args.train_iters = args.iteration + 1
 
     def _replace_data_iterator(self, data_iterator, model):
         return data_iterator
@@ -811,7 +820,7 @@ class BaseMegatronTrainer(ABC):
         self._remove_log(total_loss_dict)
         if iteration is None:
             args = self.args
-            iteration = args.curr_iteration + 1
+            iteration = args.iteration + 1
         if writer:
             for k, v in metrics.items():
                 writer.add_scalar(k, v, iteration)
@@ -1191,8 +1200,8 @@ class BaseMegatronTrainer(ABC):
         eval_metrics = {}
         forward_backward_func = get_forward_backward_func()
         val_data_iterator = iter(val_dataloader)
-        with torch.no_grad(), tqdm(
-                total=args.eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
+
+        with torch.no_grad():
             iteration = 0
             while iteration < args.eval_iters:
                 prog_bar.update()
@@ -1230,16 +1239,13 @@ class BaseMegatronTrainer(ABC):
             forward_only=False,
         )
 
-        update_successful, grad_norm, _ = self.optimizer.step()
-        update_successful = logical_and_across_model_parallel_group(update_successful)
+        _, grad_norm, _ = self.optimizer.step()
         grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
 
-        # Update learning rate.
-        if update_successful:
-            increment = get_num_microbatches() * args.micro_batch_size * args.data_parallel_size
-            args.iteration += 1
-            args.consumed_train_samples += increment
-            self.scheduler.step(increment=increment)
+        increment = get_num_microbatches() * args.micro_batch_size * args.data_parallel_size
+        args.iteration += 1
+        args.consumed_train_samples += increment
+        self.scheduler.step(increment=increment)
 
         metrics['grad_norm'] = torch.tensor([grad_norm], dtype=torch.float32, device=torch.cuda.current_device())
         return metrics

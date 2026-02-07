@@ -504,6 +504,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
+    callbacks: List[str] = field(default_factory=list)
 
     report_to: Optional[Literal['wandb', 'swanlab']] = None
 
@@ -627,16 +628,15 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     def _init_vpp_size(self):
         # TODO:
         self.virtual_pipeline_model_parallel_size = None
-
+        return
         if self.pipeline_model_parallel_layout is not None:
             # Parse the input flattened layout to a list and get the vpp size.
             # We will validate the layout more carefully in the TransformerConfig constructor.
             num_stages = PipelineParallelLayerLayout.get_num_stages_from_str(args.pipeline_model_parallel_layout)
             assert num_stages % self.pipeline_model_parallel_size == 0, (
-                f"The length of pipeline_model_parallel_layout must be divisible"
-                f" by pipeline_model_parallel_size ({num_stages=},"
-                f" {self.pipeline_model_parallel_size=})"
-            )
+                f'The length of pipeline_model_parallel_layout must be divisible'
+                f' by pipeline_model_parallel_size ({num_stages=},'
+                f' {self.pipeline_model_parallel_size=})')
             self.virtual_pipeline_model_parallel_size = num_stages // self.pipeline_model_parallel_size
             if self.virtual_pipeline_model_parallel_size == 1:
                 self.virtual_pipeline_model_parallel_size = None

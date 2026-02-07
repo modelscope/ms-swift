@@ -15,6 +15,7 @@ from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
 # from megatron.training import get_wandb_writer
 from packaging import version
+from dataclasses import dataclass
 from transformers.utils import is_torch_npu_available
 
 from swift.utils import empty_cache, get_current_device, get_logger
@@ -381,3 +382,15 @@ def logical_and_across_model_parallel_group(input: bool) -> bool:
     input = torch.tensor([input], dtype=torch.int, device=torch.cuda.current_device())
     torch.distributed.all_reduce(input, op=torch.distributed.ReduceOp.MIN, group=mpu.get_model_parallel_group())
     return bool(input.item())
+
+
+@dataclass
+class TrainerState:
+    should_save: bool = False
+    should_evaluate: bool = False
+    should_log: bool = False
+
+    iteration: int = 0
+    eval_iteration: int = 0
+    epoch: int = 0
+    consumed_train_samples = 0

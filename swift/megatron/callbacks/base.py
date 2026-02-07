@@ -1,0 +1,40 @@
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from swift.megatron.trainers import BaseMegatronTrainer
+    from swift.megatron.arguments import MegatronArguments
+
+
+class MegatronCallback:
+
+    def __init__(self, trainer: 'BaseMegatronTrainer'):
+        self.trainer = trainer
+        self.args = trainer.args
+        self.state = trainer.state
+
+    def on_train_begin(self):
+        pass
+
+    def on_train_end(self):
+        pass
+
+    def on_step_end(self):
+        pass
+
+    def on_epoch_begin(self):
+        pass
+
+    def on_epoch_end(self):
+        pass
+
+    def on_log(self, logs):
+        pass
+
+    def on_evaluate_begin(self):
+        pass
+
+    def on_evaluate_end(self):
+        pass
+
+    def on_evaluate_step(self):
+        pass
