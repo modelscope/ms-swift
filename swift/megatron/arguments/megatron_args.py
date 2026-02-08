@@ -27,7 +27,7 @@ class RLHFMegatronArgumentsMixin:
     rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = None
     loss_type: Optional[str] = None  # rlhf / plugins
     ref_mcore_model: Optional[str] = None
-    ref_mcore_adapter = Optional[str] = None
+    ref_mcore_adapter: Optional[str] = None
 
     beta: Optional[float] = None
     rpo_alpha: Optional[float] = None
@@ -546,7 +546,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
         # log
         if self.wandb_exp_name is None:
-            self.wandb_exp_name = self.save
+            self.wandb_exp_name = self.output_dir
 
     def _init_mixed_precision(self):
         ModelArguments._init_mixed_precision(self)

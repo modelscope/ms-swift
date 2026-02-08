@@ -8,7 +8,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
@@ -37,7 +37,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \

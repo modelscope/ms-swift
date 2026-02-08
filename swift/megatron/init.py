@@ -838,7 +838,7 @@ def init_megatron_env():
     logging_level = logging.root.level
     _patch_flash_attn()
     _patch_transformer_engine()
-    # _patch_unified_memory()
+    _patch_unified_memory()
     _patch_TELinear()
     _patch__batched_p2p_ops()
     _patch_mla_attention()

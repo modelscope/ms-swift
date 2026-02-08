@@ -35,6 +35,9 @@ class MegatronSft(SwiftSft):
         else:
             return MegatronTrainer(self.args, self.template)
 
+    def _set_seed(self):
+        pass
+
     def __init__(self, args: Optional[Union[List[str], MegatronSftArguments]] = None) -> None:
         self.train_msg = {}
         super(SwiftSft, self).__init__(args)
@@ -52,7 +55,7 @@ class MegatronSft(SwiftSft):
         else:
             kwargs = {'load_model': False}
         with torch.device('meta'):
-            self.model, self.processor = args.get_model_processor(**kwargs, download_model=args.load is None)
+            self.model, self.processor = args.get_model_processor(**kwargs, download_model=args.mcore_model is None)
         self._prepare_template()
         args.save_args(args.output_dir)
         self.template.use_megatron = True

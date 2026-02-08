@@ -742,7 +742,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - to_hf: Megatron格式权重转成HF格式。默认为False。
 - mcore_model: mcore格式模型路径。默认为None。
-- mcore_adapters: mcore格式模型的adapter路径列表，默认为空列表。
+- mcore_adapter: mcore格式模型的adapter路径列表，默认为空列表。
 - thread_count: `--to_mcore true`时的模型切片数。默认为None，根据模型大小自动设置，使得最大分片小于10GB。
 - 🔥offload_bridge: Megatron导出的用于vLLM更新HF格式权重使用CPU主存存放，以降低 GPU 显存占用。默认为 False。
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。

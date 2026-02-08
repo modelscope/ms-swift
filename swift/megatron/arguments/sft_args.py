@@ -37,7 +37,7 @@ class MegatronSftArguments(MegatronBaseArguments):
             self.model = old_args.get('model')
 
     def __post_init__(self):
-        self.load = to_abspath(self.load, check_path_exist=True)
+        self.mcore_model = to_abspath(self.mcore_model, check_path_exist=True)
         super().__post_init__()
         if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
@@ -46,6 +46,6 @@ class MegatronSftArguments(MegatronBaseArguments):
         if self.tensorboard_dir is None and self.output_dir is not None:
             self.tensorboard_dir = f'{self.output_dir}/runs'
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)
-        if self.load is None and self.model is None and not self.perform_initialization:
-            raise ValueError('You did not pass `--load/--model` to read weights, so you need to set '
+        if self.mcore_model is None and self.model is None and not self.perform_initialization:
+            raise ValueError('You did not pass `--mcore_model/--model` to read weights, so you need to set '
                              '`--perform_initialization true` to allow the model to initialize weights properly.')

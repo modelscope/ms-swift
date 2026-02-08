@@ -100,14 +100,14 @@ megatron export \
 # swift export
 # CUDA_VISIBLE_DEVICES=0 \
 # swift export \
-#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+#     --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_hf true \
 #     --torch_dtype bfloat16 \
 #     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
 #     --test_convert_precision true
 ```
 
-- Note: The `--adapter_load/--mcore_adapters` folder contains an `args.json` file. The conversion process will read the `--model/--mcore_model` and LoRA-related parameter information from this file. `swift export` does not currently support conversion of LoRA incremental weights. With `megatron export`, you can use the `--merge_lora` parameter to control whether to merge weights.
+- Note: The `--adapter_load/--mcore_adapter` folder contains an `args.json` file. The conversion process will read the `--model/--mcore_model` and LoRA-related parameter information from this file. `swift export` does not currently support conversion of LoRA incremental weights. With `megatron export`, you can use the `--merge_lora` parameter to control whether to merge weights.
 
 
 ### Inference
@@ -141,7 +141,7 @@ megatron export \
 # swift export
 # CUDA_VISIBLE_DEVICES=0 \
 # swift export \
-#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+#     --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_mcore true \
 #     --torch_dtype bfloat16 \
 #     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \

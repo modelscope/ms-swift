@@ -75,7 +75,7 @@ def _initialize_mpu(args):
                         f'EP: {args.expert_model_parallel_size}, ETP: {args.expert_tensor_parallel_size}')
 
 
-def _set_random_seed(
+def set_random_seed(
     seed_: int,
     data_parallel_random_init: bool = False,
     te_rng_tracker: bool = False,
@@ -103,7 +103,7 @@ def initialize_megatron(args):
 
     # Random seeds for reproducibility.
     logger.info(f'Setting random seeds to {args.seed}.')
-    _set_random_seed(args.seed, args.data_parallel_random_init)
+    set_random_seed(args.seed, args.data_parallel_random_init)
 
     # Setup MoE aux loss scale value.
     if args.model_info.is_moe_model:
@@ -137,9 +137,19 @@ def _get_rng_state():
     return rng_state_list
 
 
-def _generate_state_dict(args, model: list, iteration=None, model_sd_kwargs=None):
+def _generate_state_dict(args,
+                         model: list,
+                         optimizer=None,
+                         opt_param_scheduler=None,
+                         rng_state=None,
+                         iteration=None,
+                         model_sd_kwargs=None,
+                         optim_sd_kwargs=None):
     model_sd_kwargs = model_sd_kwargs or {}
-    state_dict = {'args': Namespace(**check_json_format(args.__dict__))}
+    state_dict = {
+        'args': Namespace(**check_json_format(args.__dict__)),
+        'checkpoint_version': 3.0,
+    }
     if iteration is not None:
         state_dict['iteration'] = iteration
     for i, m in enumerate(model):
@@ -148,26 +158,81 @@ def _generate_state_dict(args, model: list, iteration=None, model_sd_kwargs=None
             key = f'model{i}'
         model_sd = model[i].sharded_state_dict(**model_sd_kwargs)
         state_dict[key] = model_sd
+
+    if not args.no_save_optim and optimizer is not None:
+        state_dict['optimizer'] = optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
+
+    if not opt_param_scheduler is not None:
+        state_dict['opt_param_scheduler'] = opt_param_scheduler.state_dict()
+
+    if not args.no_save_rng and rng_state is not None:
+        state_dict['rng_state'] = rng_state
     return state_dict
 
 
-def save_mcore_checkpoint(args, model: list, iteration=1):
+def _filter_adapter_state_dict(state_dict, is_peft_format: bool = True, adapter_name: str = 'default'):
+    """
+    When is_peft_format is True, keep only the PEFT format state_dict;
+    when False, remove the PEFT format state_dict.
+
+    This function ensures it is called when tuner_type != 'full'.
+    """
+    n_models = 1
+    if 'model' not in state_dict:
+        while f'model{n_models - 1}' in state_dict:
+            n_models += 1
+
+    for i in range(n_models):
+        if i == 0 and n_models == 1:
+            model_key = 'model'
+        else:
+            model_key = f'model{i}'
+        new_state_dict = {}
+        state_dict_model = state_dict[model_key]
+        for k, v in state_dict_model.items():
+            if is_peft_format:
+                if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
+                    k = k.replace(f'{adapter_name}.', '')
+                    new_state_dict[k] = v
+            else:
+                if '.lora_A.' in k or '.lora_B.' in k or 'original_module.' in k:
+                    continue
+                k = k.replace('base_layer.', '')
+                k = k.replace(f'modules_to_save.{adapter_name}.', '')
+                new_state_dict[k] = v
+        state_dict[model_key] = new_state_dict
+
+
+def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler=None, iteration=1):
     model = unwrap_model(model)
     rng_state = _get_rng_state()
-    checkpoint_dir = os.path.join(args.save, f'iter_{iteration:07d}')
+    checkpoint_dir = os.path.join(args.output_dir, f'iter_{iteration:07d}')
     sharded_sd_metadata = {
         'distrib_optim_sharding_type': 'dp_reshardable',
         'singleton_local_shards': False,
         'chained_optim_avoid_prefix': True
     }
     os.makedirs(checkpoint_dir, exist_ok=True)
+
+    state_dict = _generate_state_dict(
+        args,
+        model,
+        optimizer,
+        opt_param_scheduler,
+        rng_state,
+        iteration=iteration,
+        model_sd_kwargs={'metadata': sharded_sd_metadata},
+        optim_sd_kwargs={'metadata': sharded_sd_metadata},
+    )
+
+    if args.tuner_type == 'lora':
+        _filter_adapter_state_dict(state_dict, model, True)
+
     save_strategy = get_default_save_sharded_strategy()
     save_strategy = FullyParallelSaveStrategyWrapper(
         save_strategy,
         mpu.get_data_parallel_group(with_context_parallel=True),
     )
-
-    state_dict = _generate_state_dict(args, model, iteration, model_sd_kwargs={'metadata': sharded_sd_metadata})
     async_save_request = dist_checkpointing.save(
         state_dict,
         checkpoint_dir,
@@ -177,32 +242,34 @@ def save_mcore_checkpoint(args, model: list, iteration=1):
         content_metadata=sharded_sd_metadata)
 
     if not args.async_save:
+        # TODO: test async_save
         assert async_save_request is None
         # Wait so everyone is done (necessary)
         if torch.distributed.is_initialized():
             torch.distributed.barrier()
 
     if is_master():
-        tracker_path = os.path.join(args.save, 'latest_checkpointed_iteration.txt')
 
         def iter_finalize_fn():
+            # TODO: delete_checkpoint
+            tracker_path = os.path.join(args.output_dir, 'latest_checkpointed_iteration.txt')
             prev_iteration = 0
-            save_retain_interval = getattr(args, 'save_retain_interval', None)  # For backwards compatibility of tests.
+            save_retain_interval = getattr(args, 'save_retain_interval', None)
             if save_retain_interval is not None:
-                if os.path.exists(tracker_path):  # TODO: Make this work with MSC remote paths?
+                if os.path.exists(tracker_path):
                     with open_file(tracker_path, 'r') as f:
                         prev_iteration = int(f.read().strip())
 
             with open_file(tracker_path, 'w') as f:
                 f.write(str(iteration))
-            # TODO: delete_checkpoint
+
+            logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
 
         if args.async_save:
             assert async_save_request is not None
             async_save_request.add_finalize_fn(iter_finalize_fn)
         else:
             iter_finalize_fn()
-    logger.info(f'Successfully saved Megatron model weights in `{args.save}`.')
 
 
 def _load_iteration(tracker_path: str):
@@ -218,15 +285,29 @@ def _load_iteration(tracker_path: str):
     return iteration
 
 
-def load_mcore_checkpoint(args, model: list, optimizer, scheduler, load_arg: str = 'load'):
-    if load_arg in {'adapter_load', 'ref_adapter_load'}:
+def load_mcore_checkpoint(args,
+                          model: list,
+                          optimizer=None,
+                          opt_param_scheduler=None,
+                          load_arg: str = 'mcore_model',
+                          adapter_name: str = 'default'):
+    if load_arg in {'mcore_adapter', 'ref_mcore_adapter'}:
         is_peft_format = True
-    elif load_arg in {'load', 'ref_load'}:
+    elif load_arg in {'mcore_model', 'ref_mcore_model'}:
         is_peft_format = False
+    load_dir = getattr(args, load_arg)
+
+    no_load_optim = args.no_load_optim
+    no_load_rng = args.no_load_rng
+    finetune = args.finetune
+    if not is_peft_format and args.tuner_type != 'full':
+        no_load_optim = True
+        no_load_rng = True
+        finetune = False
     model = [unwrap_model(m) for m in model]
-    tracker_path = os.path.join(args.load, 'latest_checkpointed_iteration.txt')
+    tracker_path = os.path.join(load_dir, 'latest_checkpointed_iteration.txt')
     iteration = _load_iteration(tracker_path)
-    checkpoint_dir = os.path.join(args.load, f'iter_{iteration:07d}')
+    checkpoint_dir = os.path.join(load_dir, f'iter_{iteration:07d}')
     state_dict = dist_checkpointing.load_common_state_dict(checkpoint_dir)
 
     ckpt_tp_pp = (
@@ -249,7 +330,27 @@ def load_mcore_checkpoint(args, model: list, optimizer, scheduler, load_arg: str
                         'RNG state will be ignored')
     sharded_sd_metadata = dist_checkpointing.load_content_metadata(preloaded_state_dict=state_dict)
 
-    sharded_state_dict = _generate_state_dict(args, model, model_sd_kwargs={'metadata': sharded_sd_metadata})
+    if (not args.finetune and not args.no_load_optim and not getattr(state_dict['args'], 'no_save_optim', False)):
+        gen_sd_optim = optimizer
+        gen_sd_opt_param_scheduler = opt_param_scheduler
+
+        if args.use_distributed_optimizer:
+            pass
+
+    optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True)
+    model_sd_kwargs = dict(metadata=sharded_sd_metadata)
+
+    sharded_state_dict = _generate_state_dict(
+        args,
+        model,
+        optimizer,
+        opt_param_scheduler,
+        gen_sd_rng_state,
+        iteration=iteration,
+        model_sd_kwargs=model_sd_kwargs,
+        optim_sd_kwargs=optim_sd_kwargs)
+    if args.tuner_type == 'lora':
+        _filter_adapter_state_dict(state_dict, model, is_peft_format, adapter_name=adapter_name)
     load_kwargs = {'sharded_state_dict': sharded_state_dict}
     load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
     load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,

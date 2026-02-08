@@ -33,7 +33,7 @@ class PrintCallback(MegatronCallback):
         self.training_bar.close()
         self.training_bar = None
 
-    def on_train_step(self):
+    def on_step_end(self):
         self.training_bar.update()
 
     def on_eval_begin(self):

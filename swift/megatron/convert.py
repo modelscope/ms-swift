@@ -65,7 +65,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
-    from swift.megatron import prepare_mcore_model, adapter_state_dict_context
+    from swift.megatron import prepare_mcore_model
     _, template = prepare_model_template(args, load_model=False)
     processor = template.processor
 
@@ -73,11 +73,10 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     current_convert_kwargs = convert_kwargs.copy()
     if args.model_info.is_moe_model:
         current_convert_kwargs['moe_grouped_gemm'] = True
-    adapter_load = args.mcore_adapters[0] if args.mcore_adapters else None
-    extra_config = MegatronArguments.load_args_config(adapter_load or args.mcore_model)
-    extra_config['adapter_load'] = adapter_load
+    extra_config = MegatronArguments.load_args_config(args.mcore_adapter or args.mcore_model)
+    extra_config['mcore_adapter'] = args.mcore_adapter
     if args.mcore_model is not None:
-        extra_config['load'] = args.mcore_model
+        extra_config['mcore_model'] = args.mcore_model
     current_convert_kwargs.update(extra_config)
     megatron_args = MegatronArguments(
         model=args.model,
@@ -87,12 +86,12 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         torch_dtype=args.torch_dtype)
 
     mg_model = get_mcore_model(megatron_args, hf_config)[0]
-    if megatron_args.load is None:
+    if megatron_args.mcore_model is None:
         raise ValueError('Please specify `--mcore_model`.')
-    load_mcore_checkpoint(megatron_args, [mg_model], load_arg='load')
-    if megatron_args.adapter_load is not None:
+    load_mcore_checkpoint(megatron_args, [mg_model], load_arg='mcore_model')
+    if megatron_args.mcore_adapter is not None:
         peft_model = prepare_mcore_model(mg_model)
-        load_mcore_checkpoint(megatron_args, [mg_model], load_arg='adapter_load')
+        load_mcore_checkpoint(megatron_args, [mg_model], load_arg='mcore_adapter')
         logger.info('Merge LoRA...')
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
@@ -101,7 +100,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         logger.info('Converting weights and saving the model...')
         bridge.save_weights([mg_model], args.output_dir, processor=processor, hf_config=hf_config)
         if is_master():
-            args_path = os.path.join(megatron_args.adapter_load or megatron_args.load or args.model, 'args.json')
+            args_path = os.path.join(megatron_args.mcore_adapter or megatron_args.mcore_model or args.model, 'args.json')
             if os.path.exists(args_path):
                 shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
             else:

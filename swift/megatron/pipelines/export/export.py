@@ -10,8 +10,7 @@ from transformers.utils import strtobool
 from swift.megatron.arguments import MegatronExportArguments
 from swift.megatron.convert import test_convert_precision
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import (adapter_state_dict_context, initialize_megatron, load_mcore_checkpoint,
-                                  prepare_mcore_model, save_mcore_checkpoint)
+from swift.megatron.utils import initialize_megatron, load_mcore_checkpoint, prepare_mcore_model, save_mcore_checkpoint
 from swift.pipelines import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 
@@ -42,16 +41,15 @@ class MegatronExport(SwiftPipeline):
         post_process = mpu.is_pipeline_last_stage()
         mg_model = megatron_model_meta.model_provider(args, pre_process=pre_process, post_process=post_process)
         bridge = megatron_model_meta.bridge_cls(args)
-        if args.load is not None:
-            load_mcore_checkpoint(args, [mg_model], load_arg='load')
+        if args.mcore_model is not None:
+            load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
         elif args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         else:
-            raise ValueError('Please specify `--load` or `--model`.')
-        if args.adapter_load is not None:
+            raise ValueError('Please specify `--mcore_model` or `--model`.')
+        if args.mcore_adapter is not None:
             peft_model = prepare_mcore_model(mg_model)
-            with adapter_state_dict_context():
-                load_mcore_checkpoint(args, [mg_model], load_arg='adapter_load')
+                load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
@@ -62,7 +60,7 @@ class MegatronExport(SwiftPipeline):
                             is_peft_format=save_peft_format,
                             processor=self.processor,
                             hf_config=hf_config)
-        args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
+        args_path = os.path.join(args.mcore_adapter or args.mcore_model or args.model, 'args.json')
         if os.path.exists(args_path):
             if is_last_rank():
                 shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
@@ -92,20 +90,19 @@ class MegatronExport(SwiftPipeline):
         bridge = args.megatron_model_meta.bridge_cls(args)
         if args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
-        elif args.load is not None:
+        elif args.mcore_model is not None:
             with patch_load_base_checkpoint():
-                load_mcore_checkpoint(args, [mg_model], load_arg='load')
+                load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
         else:
-            raise ValueError('Please specify `--load` or `--model`.')
+            raise ValueError('Please specify `--mcore_model` or `--model`.')
         dist.barrier()
-        if args.adapters or args.adapter_load is not None:
+        if args.adapters or args.mcore_adapter is not None:
             peft_model = prepare_mcore_model(mg_model, load_adapters=True)
             if args.adapters:
                 assert len(args.adapters) == 1, 'Currently only support one adapter'
                 bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
-            elif args.adapter_load is not None:
-                with adapter_state_dict_context():
-                    load_mcore_checkpoint(args, [mg_model], load_arg='adapter_load')
+            elif args.mcore_adapter is not None:
+                load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
@@ -115,11 +112,10 @@ class MegatronExport(SwiftPipeline):
             args.save_args(args.output_dir)
             logger.info('Saving the model...')
             save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
-            with adapter_state_dict_context(is_peft_format=save_peft_format):
-                save_mcore_checkpoint(args, [mg_model])
+            save_mcore_checkpoint(args, [mg_model])
             logger.info_if(f'Successfully saved Megatron model weights in `{args.output_dir}`.', cond=is_last_rank())
-        # hf_model does not support loading args.adapter_load, so test_convert_precision cannot be performed
-        support_convert_precision = args.adapter_load is None
+        # hf_model does not support loading args.mcore_adapter, so test_convert_precision cannot be performed
+        support_convert_precision = args.mcore_adapter is None
         if args.test_convert_precision:
             if support_convert_precision:
                 with disable_safe_ddp_context_use_barrier():
@@ -129,7 +125,7 @@ class MegatronExport(SwiftPipeline):
                 test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
                 dist.barrier()
             else:
-                logger.warning('Skip test_convert_precision because `--adapter_load` is specified.')
+                logger.warning('Skip test_convert_precision because `--mcore_adapter` is specified.')
 
 
 def megatron_export_main(args: Optional[Union[List[str], MegatronExportArguments]] = None):

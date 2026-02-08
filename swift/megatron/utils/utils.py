@@ -182,7 +182,7 @@ def prepare_adapter(args, model):
     logger.info(f'lora_config: {lora_config}')
     with _patch_deepcopy():
         model = Swift.prepare_model(model, lora_config)
-    if args.ref_adapter_load or args.ref_adapters:
+    if args.ref_mcore_adapter or args.ref_adapters:
         model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
         for n, p in model.named_parameters():
@@ -214,39 +214,6 @@ def prepare_mcore_model(args, model):
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
         cond=mpu.get_data_parallel_rank() == 0)
     return model
-
-
-@contextmanager
-def adapter_state_dict_context(is_peft_format: bool = True):
-    if not is_peft_format:
-        yield
-        return
-    _origin_generate_state_dict = checkpointing.generate_state_dict
-
-    def generate_state_dict(args, model, *_args, **kwargs):
-        state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
-        if 'model' not in state_dict:
-            return state_dict
-        new_state_dict = {}
-        state_dict_model = state_dict['model']
-        for n, p in model[0].named_parameters():
-            if not p.requires_grad:
-                continue
-            if n in state_dict_model:
-                new_state_dict[n] = state_dict_model[n]
-            key = n.replace('.weight', '._extra_state')
-            if key.endswith('._extra_state0'):
-                key = key.replace('._extra_state0', '._extra_state')
-            if key in state_dict_model:
-                new_state_dict[key] = state_dict_model[key]
-        state_dict['model'] = new_state_dict
-        return state_dict
-
-    checkpointing.generate_state_dict = generate_state_dict
-    try:
-        yield
-    finally:
-        checkpointing.generate_state_dict = _origin_generate_state_dict
 
 
 def tuners_sharded_state_dict(

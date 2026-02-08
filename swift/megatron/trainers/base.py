@@ -38,9 +38,9 @@ from tqdm.auto import tqdm
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
-from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight,
-                                  get_optimizer_param_scheduler, get_padding_to, load_mcore_checkpoint, patch_merge_fn,
-                                  prepare_mcore_model, wrap_model)
+from swift.megatron.utils import (copy_original_module_weight, get_optimizer_param_scheduler, get_padding_to,
+                                  load_mcore_checkpoint, patch_merge_fn, prepare_mcore_model, save_mcore_checkpoint,
+                                  wrap_model)
 from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
@@ -72,7 +72,7 @@ class BaseMegatronTrainer(ABC):
         self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.prepare_model()
         self.config = self.unwrapped_models[0].config
-        self.optimizer, self.scheduler = self.get_optimizer_and_scheduler()
+        self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
         # TODO: resume_from_checkpoint
         self.state = TrainerState()
@@ -82,18 +82,20 @@ class BaseMegatronTrainer(ABC):
         if args.tuner_type != 'full' and args.modules_to_save:
             for m in self.unwrapped_models:
                 copy_original_module_weight(m)
-        if args.ref_adapter_load is not None:
+        if args.mcore_model is not None:
+            state.iteration = load_mcore_checkpoint(
+                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_model')
+        if args.ref_mcore_adapter is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_adapter_load')
-        if args.adapter_load is not None:
-            with adapter_state_dict_context():
-                state.iteration = load_mcore_checkpoint(
-                    args, self.wrapped_models, self.optimizer, self.scheduler, load_arg='adapter_load')
+                load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_mcore_adapter')
+        if args.mcore_adapter is not None:
+            state.iteration = load_mcore_checkpoint(
+                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_adapter')
         if not args.finetune:
             state.iteration = self._load_iteration()
 
         self.eval_metrics = None
-        logging_path = os.path.join(args.save, 'logging.jsonl')
+        logging_path = os.path.join(args.output_dir, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
 
         if args.check_model and hasattr(args, 'model_dir'):
@@ -127,7 +129,10 @@ class BaseMegatronTrainer(ABC):
 
     def _log_callback(self, logs):
         """This function is used to normalize logs for easier use with wandb/swanlab callbacks."""
-        n_iters = logs.pop('n_iters').item()
+        n_iters = logs.pop('n_iters', None)
+        if n_iters is None:
+            n_iters = logs.pop('eval_n_iters', None)
+        n_iters = n_iters.item()
         for k, v in logs.items():
             if isinstance(v, torch.Tensor):
                 v = v.item()
@@ -142,15 +147,15 @@ class BaseMegatronTrainer(ABC):
         self.wrapped_models = []
         self.unwrapped_models = get_mcore_model(args, hf_config)
         for model in self.unwrapped_models:
-            if args.load is None:
+            if args.mcore_model is None:
                 self.bridge.load_weights(model, args.model_dir)
 
             peft_model = prepare_mcore_model(args, model)
             if args.tuner_type == 'lora':
-                if args.adapters and args.adapter_load is None:
+                if args.adapters and args.mcore_adapter is None:
                     assert len(args.adapters) == 1, 'Currently only support one adapter.'
                     self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
-                if args.ref_adapters and args.ref_adapter_load is None:
+                if args.ref_adapters and args.ref_mcore_adapter is None:
                     assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
                     self.bridge.load_weights(
                         model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
@@ -170,8 +175,8 @@ class BaseMegatronTrainer(ABC):
             param_groups_context = nullcontext()
         with param_groups_context:
             optimizer = get_megatron_optimizer(config, self.wrapped_models)
-        scheduler = get_optimizer_param_scheduler(args, optimizer)
-        return optimizer, scheduler
+        opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
+        return optimizer, opt_param_scheduler
 
     def _get_data_collator(self):
         data_collator = self.template.data_collator
@@ -200,106 +205,6 @@ class BaseMegatronTrainer(ABC):
                 # Note that this approach will train for one additional step.
                 logger.info(f'Training of {state.epoch} epochs has been completed, the training has finished.')
                 args.train_iters = state.iteration + 1
-
-    def _load_adapter_base_checkpoint(self, *_args, **kwargs):
-        adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
-        sharded_state_dict = kwargs.get('sharded_state_dict')
-        if sharded_state_dict is None:
-            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
-        mapping = {}
-        for model_k in model_keys:
-            mapping[model_k] = {}
-            state_dict_model = {}
-            for k, v in sharded_state_dict[model_k].items():
-                if adapter_name not in k:
-                    continue
-                # lora
-                origin_k = k
-                k = k.replace(f'.{adapter_name}.', '.default.')
-                mapping[model_k][k] = origin_k
-                v.key = v.key.replace(f'.{adapter_name}.', '.default.')
-                state_dict_model[k] = v
-            sharded_state_dict[model_k] = state_dict_model
-            patch_merge_fn(state_dict_model)
-        res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        for model_k in model_keys:
-            state_dict = res[0][model_k]
-            for k, origin_k in mapping[model_k].items():
-                v = state_dict.pop(k)
-                state_dict[origin_k] = v
-        return res
-
-    def _load_base_checkpoint(self, *_args, **kwargs):
-        sharded_state_dict = kwargs.get('sharded_state_dict')
-        if sharded_state_dict is None:
-            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
-        if self.args.tuner_type == 'full':
-            for k in model_keys:
-                patch_merge_fn(sharded_state_dict[k])
-            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        mapping = {}
-        for model_k in model_keys:
-            mapping[model_k] = {}
-            state_dict_model = {}
-            for k, v in sharded_state_dict[model_k].items():
-                if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
-                    continue
-                # lora
-                if '.base_layer' in k:
-                    origin_k = k
-                    k = k.replace('.base_layer', '')
-                    mapping[model_k][k] = origin_k
-                    v.key = v.key.replace('.base_layer', '')
-                elif '.modules_to_save' in k:
-                    if '.modules_to_save.default' not in k:
-                        # e.g. ref_adapter
-                        continue
-                    # modules to save
-                    origin_k = k
-                    k = k.replace('.modules_to_save.default', '')
-                    mapping[model_k][k] = origin_k
-                    v.key = v.key.replace('.modules_to_save.default', '')
-                state_dict_model[k] = v
-            sharded_state_dict[model_k] = state_dict_model
-            patch_merge_fn(state_dict_model)
-        res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        for model_k in model_keys:
-            state_dict = res[0][model_k]
-            for k, origin_k in mapping[model_k].items():
-                v = state_dict.pop(k)
-                state_dict[origin_k] = v
-        return res
-
-    @contextmanager
-    def _patch_load_state_dict(self, load_base_checkpoint):
-        checkpointing.origin__load_base_checkpoint = checkpointing._load_base_checkpoint
-        checkpointing._load_base_checkpoint = load_base_checkpoint
-
-        args = self.args
-        origin_load_state_dict = torch.nn.Module.load_state_dict
-        origin_no_load_optim = args.no_load_optim
-        origin_no_load_rng = args.no_load_rng
-        origin_finetune = args.finetune
-
-        def load_state_dict(self, state_dict, strict: bool = True, *args, **kwargs):
-            strict = False
-            return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
-
-        if args.tuner_type != 'full':
-            torch.nn.Module.load_state_dict = load_state_dict
-            args.no_load_optim = True
-            args.no_load_rng = True
-            args.finetune = True
-        try:
-            yield
-        finally:
-            checkpointing._load_base_checkpoint = checkpointing.origin__load_base_checkpoint
-            torch.nn.Module.load_state_dict = origin_load_state_dict
-            args.no_load_optim = origin_no_load_optim
-            args.no_load_rng = origin_no_load_rng
-            args.finetune = origin_finetune
 
     # Code borrowed from Megatron-LM
     def _get_param_groups(
@@ -636,6 +541,7 @@ class BaseMegatronTrainer(ABC):
 
     def save_checkpoint(self):
         args = self.args
+        iteration = self.state.iteration
         output_dir = os.path.join(args.output_dir, f'checkpoint-{iteration}')
         os.makedirs(output_dir, exist_ok=True)
         origin_output_dir = args.output_dir
@@ -643,11 +549,8 @@ class BaseMegatronTrainer(ABC):
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
-        # TODO
-        # if args.save_safetensors and args.no_save_optim:
-        #     model = []
-        # with adapter_state_dict_context(is_peft_format=args.tuner_type == 'lora'):
-        #     self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
+        save_mcore_checkpoint(
+            self.args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, iteration=iteration)
         args.output_dir = origin_output_dir
         # safetensors
         if args.save_safetensors:
@@ -706,6 +609,7 @@ class BaseMegatronTrainer(ABC):
                 self.call_event('on_eval_step')
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
                     self.aggregated_metrics(metrics, eval_metrics)
+        eval_metrics = {f'eval_{k}': v for k, v in eval_metrics.items()}
         self.call_event('on_log', eval_metrics)
         self.call_event('on_eval_end')
 
@@ -727,7 +631,7 @@ class BaseMegatronTrainer(ABC):
 
         _, grad_norm, _ = self.optimizer.step()
         grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
-        self.scheduler.step(increment=args.global_batch_size)
+        self.opt_param_scheduler.step(increment=args.global_batch_size)
 
         return metrics, grad_norm
 
