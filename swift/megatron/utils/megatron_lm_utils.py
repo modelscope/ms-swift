@@ -18,7 +18,6 @@ from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyPar
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.msc_utils import open_file
-from megatron.core.num_microbatches_calculator import update_num_microbatches
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module, MegatronModule
 from megatron.core.utils import unwrap_model
@@ -159,11 +158,11 @@ def _generate_state_dict(args,
         model_sd = model[i].sharded_state_dict(**model_sd_kwargs)
         state_dict[key] = model_sd
 
-    if not args.no_save_optim and optimizer is not None:
-        state_dict['optimizer'] = optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
-
-    if not opt_param_scheduler is not None:
-        state_dict['opt_param_scheduler'] = opt_param_scheduler.state_dict()
+    if not args.no_save_optim:
+        if optimizer is not None:
+            state_dict['optimizer'] = optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
+        if opt_param_scheduler is not None:
+            state_dict['opt_param_scheduler'] = opt_param_scheduler.state_dict()
 
     if not args.no_save_rng and rng_state is not None:
         state_dict['rng_state'] = rng_state
@@ -192,7 +191,6 @@ def _filter_adapter_state_dict(state_dict, is_peft_format: bool = True, adapter_
         for k, v in state_dict_model.items():
             if is_peft_format:
                 if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
-                    k = k.replace(f'{adapter_name}.', '')
                     new_state_dict[k] = v
             else:
                 if '.lora_A.' in k or '.lora_B.' in k or 'original_module.' in k:
@@ -226,7 +224,7 @@ def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler
     )
 
     if args.tuner_type == 'lora':
-        _filter_adapter_state_dict(state_dict, model, True)
+        _filter_adapter_state_dict(state_dict, True)
 
     save_strategy = get_default_save_sharded_strategy()
     save_strategy = FullyParallelSaveStrategyWrapper(
@@ -318,7 +316,7 @@ def load_mcore_checkpoint(args,
         args.tensor_model_parallel_size,
         args.pipeline_model_parallel_size,
     )
-
+    mismatch_msg = f'(TP, PP) mismatch after resume ({run_tp_pp} vs {ckpt_tp_pp} from checkpoint)'
     # Determine if RNG state will be loaded
     if (ckpt_tp_pp == run_tp_pp and not args.finetune and not args.no_load_rng
             and not getattr(state_dict['args'], 'no_save_rng', False)):
@@ -326,63 +324,70 @@ def load_mcore_checkpoint(args,
     else:
         gen_sd_rng_state = None
         if ckpt_tp_pp != run_tp_pp:
-            logger.info(f'(TP, PP) mismatch after resume ({run_tp_pp} vs {ckpt_tp_pp} from checkpoint): '
-                        'RNG state will be ignored')
+            logger.info(f'{mismatch_msg}: RNG state will be ignored')
     sharded_sd_metadata = dist_checkpointing.load_content_metadata(preloaded_state_dict=state_dict)
-
     if (not args.finetune and not args.no_load_optim and not getattr(state_dict['args'], 'no_save_optim', False)):
         gen_sd_optim = optimizer
         gen_sd_opt_param_scheduler = opt_param_scheduler
 
-        if args.use_distributed_optimizer:
-            pass
-
+        if args.use_distributed_optimizer and ckpt_tp_pp != run_tp_pp:
+            raise RuntimeError(f'{mismatch_msg}: not supported for DistributedOptimizer')
+    else:
+        gen_sd_optim, gen_sd_opt_param_scheduler = None, None
     optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True)
     model_sd_kwargs = dict(metadata=sharded_sd_metadata)
 
     sharded_state_dict = _generate_state_dict(
         args,
         model,
-        optimizer,
-        opt_param_scheduler,
+        gen_sd_optim,
+        gen_sd_opt_param_scheduler,
         gen_sd_rng_state,
         iteration=iteration,
         model_sd_kwargs=model_sd_kwargs,
         optim_sd_kwargs=optim_sd_kwargs)
     if args.tuner_type == 'lora':
-        _filter_adapter_state_dict(state_dict, model, is_peft_format, adapter_name=adapter_name)
-    load_kwargs = {'sharded_state_dict': sharded_state_dict}
+        _filter_adapter_state_dict(sharded_state_dict, is_peft_format, adapter_name=adapter_name)
+    model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
+    for k in model_keys:
+        patch_merge_fn(sharded_state_dict[k])
     load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
     load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
                                                      mpu.get_data_parallel_group(with_context_parallel=True))
     state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_dir, load_strategy)
-
-    if state_dict.get('sharded_state_dict') is not None:
-        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
-        for k in model_keys:
-            patch_merge_fn(sharded_state_dict[k])
-
-    if state_dict is None:
-        return 0, 0
 
     if args.finetune:
         iteration = 0
     if 'args' in state_dict and not args.finetune:
         checkpoint_args = state_dict['args']
         args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
-        args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
-        update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
-        # TODO:
-        # args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
 
     if len(model) == 1:
-        model[0].load_state_dict(state_dict['model'])
+        model[0].load_state_dict(state_dict['model'], strict=False)
     else:
         for i, m in enumerate(model):
             if f'model{i}' not in state_dict:
                 continue
             m.load_state_dict(state_dict[f'model{i}'])
 
+    if not args.finetune and not args.no_load_optim:
+        if optimizer is not None:
+            optimizer.load_state_dict(state_dict['optimizer'])
+        if opt_param_scheduler is not None:
+            opt_param_scheduler.load_state_dict(state_dict['opt_param_scheduler'])
+
+    if not args.finetune and not args.no_load_rng:
+        if 'rng_state' in state_dict:
+            rng_state = state_dict['rng_state']
+            if args.data_parallel_random_init:
+                rng_state = rng_state[mpu.get_data_parallel_rank()]
+            else:
+                rng_state = rng_state[0]
+            random.setstate(rng_state['random_rng_state'])
+            np.random.set_state(rng_state['np_rng_state'])
+            torch.set_rng_state(rng_state['torch_rng_state'])
+            torch.cuda.set_rng_state(rng_state['cuda_rng_state'])
+            tensor_parallel.get_cuda_rng_tracker().set_states(rng_state['rng_tracker_states'])
     if torch.distributed.is_initialized():
         torch.distributed.barrier()
 

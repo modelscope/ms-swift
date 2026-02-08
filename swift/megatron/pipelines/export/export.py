@@ -49,7 +49,7 @@ class MegatronExport(SwiftPipeline):
             raise ValueError('Please specify `--mcore_model` or `--model`.')
         if args.mcore_adapter is not None:
             peft_model = prepare_mcore_model(mg_model)
-                load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
+            load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
