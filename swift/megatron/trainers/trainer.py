@@ -95,7 +95,7 @@ class MegatronTrainer(BaseMegatronTrainer):
             lm_loss,
             local_num_tokens,
             {
-                'lm loss': reporting_loss
+                'lm_loss': reporting_loss
             },
         )
 

@@ -89,6 +89,8 @@ class BaseMegatronTrainer(ABC):
             with adapter_state_dict_context():
                 state.iteration = load_mcore_checkpoint(
                     args, self.wrapped_models, self.optimizer, self.scheduler, load_arg='adapter_load')
+        if not args.finetune:
+            state.iteration = self._load_iteration()
 
         self.eval_metrics = None
         logging_path = os.path.join(args.save, 'logging.jsonl')
@@ -124,7 +126,8 @@ class BaseMegatronTrainer(ABC):
             getattr(callback, event)(*args, **kwargs)
 
     def _log_callback(self, logs):
-        n_iters = logs.pop('n_iters')
+        """This function is used to normalize logs for easier use with wandb/swanlab callbacks."""
+        n_iters = logs.pop('n_iters').item()
         for k, v in logs.items():
             if isinstance(v, torch.Tensor):
                 v = v.item()
@@ -161,10 +164,12 @@ class BaseMegatronTrainer(ABC):
             if hasattr(args, f.name) and f.name != 'loss_scale':
                 kwargs[f.name] = getattr(args, f.name)
         config = OptimizerConfig(**kwargs)
-        optimizer = get_megatron_optimizer(
-            config,
-            self.wrapped_models,
-        )
+        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            param_groups_context = self._patch_get_param_groups()
+        else:
+            param_groups_context = nullcontext()
+        with param_groups_context:
+            optimizer = get_megatron_optimizer(config, self.wrapped_models)
         scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, scheduler
 
@@ -336,12 +341,12 @@ class BaseMegatronTrainer(ABC):
             List of parameter groups.
         """
         args = self.args
-        is_multimodal = self.args.megatron_model_meta.is_multimodal
-        if self.args.vit_lr is not None or self.args.aligner_lr is not None:
+        is_multimodal = args.megatron_model_meta.is_multimodal
+        if args.vit_lr is not None or args.aligner_lr is not None:
             assert is_multimodal, 'vit_lr and aligner_lr are only supported for multimodal models.'
-            vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
-            aligner_lr = self.args.aligner_lr if self.args.aligner_lr is not None else self.args.lr
-            logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {self.args.lr}')
+            vit_lr = args.vit_lr if args.vit_lr is not None else args.lr
+            aligner_lr = args.aligner_lr if args.aligner_lr is not None else args.lr
+            logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {args.lr}')
         use_decoupled_learning_rate = decoupled_lr is not None
 
         # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
@@ -380,12 +385,12 @@ class BaseMegatronTrainer(ABC):
                                      for k in visual._vision_tower) and not is_aligner
                     else:
                         is_aligner, is_vit = False, False
-                    if is_vit and self.args.vit_lr:
+                    if is_vit and args.vit_lr:
                         scale_lr = True
-                        _lr_mult = self.args.vit_lr / lr
-                    elif is_aligner and self.args.aligner_lr:
+                        _lr_mult = args.vit_lr / lr
+                    elif is_aligner and args.aligner_lr:
                         scale_lr = True
-                        _lr_mult = self.args.aligner_lr / lr
+                        _lr_mult = args.aligner_lr / lr
 
                 if not no_wd and not scale_lr:
                     wd_mult, _lr_mult = 1.0, 1.0
@@ -487,23 +492,6 @@ class BaseMegatronTrainer(ABC):
 
         return iteration
 
-    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
-
-        # read iteration
-        args = self.args
-        if not args.finetune:
-            state.iteration = self._load_iteration()
-
-        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
-            param_groups_context = self._patch_get_param_groups()
-        else:
-            param_groups_context = nullcontext()
-        with self._patch_load_state_dict(self._load_base_checkpoint), param_groups_context:
-            model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
-                new_model_provider_func, model_type, *_args, **kwargs)
-        self.wrapped_models = model
-        return model, optimizer, opt_param_scheduler
-
     def _prepare_vit_gradient_checkpointing(self, model):
         visual = model.visual
         if visual is None:
@@ -554,23 +542,23 @@ class BaseMegatronTrainer(ABC):
             for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
         }
 
-    def _remove_log(self, total_loss_dict):
-        pass
+    # def _remove_log(self, total_loss_dict):
+    #     pass
 
-    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval'], iteration=None) -> None:
-        writer = get_tensorboard_writer()
-        wandb_writer = get_wandb_writer()
-        metrics = self._get_metrics(total_loss_dict, mode)
-        total_loss_dict.update(metrics)
-        self._remove_log(total_loss_dict)
-        if iteration is None:
-            args = self.args
-            iteration = state.iteration + 1
-        if writer:
-            for k, v in metrics.items():
-                writer.add_scalar(k, v, iteration)
-        if wandb_writer:
-            wandb_writer.log(metrics, iteration)
+    # def custom_log(self, total_loss_dict, mode: Literal['train', 'eval'], iteration=None) -> None:
+    #     writer = get_tensorboard_writer()
+    #     wandb_writer = get_wandb_writer()
+    #     metrics = self._get_metrics(total_loss_dict, mode)
+    #     total_loss_dict.update(metrics)
+    #     self._remove_log(total_loss_dict)
+    #     if iteration is None:
+    #         args = self.args
+    #         iteration = state.iteration + 1
+    #     if writer:
+    #         for k, v in metrics.items():
+    #             writer.add_scalar(k, v, iteration)
+    #     if wandb_writer:
+    #         wandb_writer.log(metrics, iteration)
 
     def merge_lora_adapters(self, adapter_name='default'):
         """Merge LoRA adapters into base model weights for vLLM inference."""
@@ -605,45 +593,6 @@ class BaseMegatronTrainer(ABC):
         else:
             raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
-    def _save_checkpoint(self, iteration, model, *_args, **kwargs):
-        args = self.args
-        output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
-        os.makedirs(output_dir, exist_ok=True)
-        origin_save = args.save
-        args.save = output_dir
-        args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
-        self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
-        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
-        if args.save_safetensors and args.no_save_optim:
-            model = []
-        with adapter_state_dict_context(is_peft_format=args.tuner_type == 'lora'):
-            self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
-        args.save = origin_save
-        # safetensors
-        if args.save_safetensors:
-            # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
-            if args.tuner_type == 'lora' and args.merge_lora:
-                self.merge_lora_adapters()
-                origin_output_dir = output_dir
-                output_dir = f'{output_dir}-merged'
-                os.makedirs(output_dir, exist_ok=True)
-                for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
-                    src_path = os.path.join(origin_output_dir, fname)
-                    self.copy_path(src_path, os.path.join(output_dir, fname))
-                # common.pt
-                common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
-                tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
-                os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
-                self.copy_path(common_path, tgt_common_path)
-            self.bridge.save_weights(
-                self.unwrapped_models,
-                output_dir,
-                is_peft_format=save_peft_format,
-                processor=self.template.processor,
-                hf_config=self.template.config)
-            if args.tuner_type == 'lora' and args.merge_lora:
-                self.unmerge_lora_adapters()
-
     def train(self, train_dataset, val_dataset):
         args = self.args
         train_dataloader, val_dataloader = self.prepare_dataloader(train_dataset, val_dataset)
@@ -670,11 +619,14 @@ class BaseMegatronTrainer(ABC):
                                                           dtype=torch.float32,
                                                           device=torch.cuda.current_device())
             if state.should_log:
+                state.should_log = False
                 self.call_event('on_log', train_metrics)
 
             if state.should_eval:
                 state.should_eval = False
                 self.evaluate(val_dataloader)
+                for m in self.wrapped_models:
+                    m.train()
 
             if state.should_save:
                 state.should_save = False
@@ -683,7 +635,44 @@ class BaseMegatronTrainer(ABC):
         self.call_event('on_train_end')
 
     def save_checkpoint(self):
-        pass
+        args = self.args
+        output_dir = os.path.join(args.output_dir, f'checkpoint-{iteration}')
+        os.makedirs(output_dir, exist_ok=True)
+        origin_output_dir = args.output_dir
+        args.output_dir = output_dir
+        args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
+        self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
+        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
+        # TODO
+        # if args.save_safetensors and args.no_save_optim:
+        #     model = []
+        # with adapter_state_dict_context(is_peft_format=args.tuner_type == 'lora'):
+        #     self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
+        args.output_dir = origin_output_dir
+        # safetensors
+        if args.save_safetensors:
+            # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
+            if args.tuner_type == 'lora' and args.merge_lora:
+                self.merge_lora_adapters()
+                origin_output_dir = output_dir
+                output_dir = f'{output_dir}-merged'
+                os.makedirs(output_dir, exist_ok=True)
+                # for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
+                #     src_path = os.path.join(origin_output_dir, fname)
+                #     self.copy_path(src_path, os.path.join(output_dir, fname))
+                # # common.pt
+                # common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
+                # tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
+                # os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
+                # self.copy_path(common_path, tgt_common_path)
+            self.bridge.save_weights(
+                self.unwrapped_models,
+                output_dir,
+                is_peft_format=save_peft_format,
+                processor=self.template.processor,
+                hf_config=self.template.config)
+            if args.tuner_type == 'lora' and args.merge_lora:
+                self.unmerge_lora_adapters()
 
     def training_log(self, metrics, grad_norm):
         learning_rate = None
@@ -704,13 +693,12 @@ class BaseMegatronTrainer(ABC):
 
         self.call_event('on_eval_begin')
         with torch.no_grad():
-            iteration = 0
-            while iteration < args.eval_iters:
+            while self.state.eval_iteration < args.eval_iters:
                 metrics = forward_backward_func(
                     forward_step_func=self.forward_step,
                     data_iterator=val_data_iterator,
                     model=self.wrapped_models,
-                    num_microbatches=self.num_micro_batches,
+                    num_microbatches=self.args.num_micro_batches,
                     seq_length=args.max_length,
                     micro_batch_size=args.micro_batch_size,
                     forward_only=True,
@@ -718,10 +706,7 @@ class BaseMegatronTrainer(ABC):
                 self.call_event('on_eval_step')
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
                     self.aggregated_metrics(metrics, eval_metrics)
-        # TODO: log metrics
-        logger.info(f'eval_metrics: {eval_metrics}')
-        for m in self.wrapped_models:
-            m.train()
+        self.call_event('on_log', eval_metrics)
         self.call_event('on_eval_end')
 
     def train_step(self, train_data_iterator):

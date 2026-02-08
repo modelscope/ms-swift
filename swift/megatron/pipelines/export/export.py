@@ -58,23 +58,23 @@ class MegatronExport(SwiftPipeline):
         logger.info('Converting weights and saving the model...')
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         bridge.save_weights([mg_model],
-                            args.save,
+                            args.output_dir,
                             is_peft_format=save_peft_format,
                             processor=self.processor,
                             hf_config=hf_config)
         args_path = os.path.join(args.adapter_load or args.load or args.model, 'args.json')
         if os.path.exists(args_path):
             if is_last_rank():
-                shutil.copy(args_path, os.path.join(args.save, 'args.json'))
+                shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
         else:
-            args.save_args(args.save)
-        logger.info(f'Successfully saved HF model weights in `{args.save}`.')
+            args.save_args(args.output_dir)
+        logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
                 if save_peft_format:
-                    kwargs = {'adapters': [args.save]}
+                    kwargs = {'adapters': [args.output_dir]}
                 else:
-                    kwargs = {'model': args.save, 'torch_dtype': None}
+                    kwargs = {'model': args.output_dir, 'torch_dtype': None}
                 device_map = args.device_map or 'auto'
                 hf_model, template = prepare_model_template(
                     args, device_map=device_map, **kwargs) if is_last_rank() else (None, template)
@@ -112,12 +112,12 @@ class MegatronExport(SwiftPipeline):
         logger.info('Successfully transferred HF model weights to MG model.')
         _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
         if not _test_convert_precision:
-            args.save_args(args.save)
+            args.save_args(args.output_dir)
             logger.info('Saving the model...')
             save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
             with adapter_state_dict_context(is_peft_format=save_peft_format):
                 save_mcore_checkpoint(args, [mg_model])
-            logger.info_if(f'Successfully saved Megatron model weights in `{args.save}`.', cond=is_last_rank())
+            logger.info_if(f'Successfully saved Megatron model weights in `{args.output_dir}`.', cond=is_last_rank())
         # hf_model does not support loading args.adapter_load, so test_convert_precision cannot be performed
         support_convert_precision = args.adapter_load is None
         if args.test_convert_precision:

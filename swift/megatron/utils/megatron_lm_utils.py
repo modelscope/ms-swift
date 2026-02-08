@@ -297,7 +297,7 @@ def wrap_model(args, model: list, wrap_with_ddp: bool = True):
     for m in model:
         for param in m.parameters():
             tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
-        if args.use_cpu_initialization:
+        if not args.use_cpu_initialization:
             m.cuda(torch.cuda.current_device())
     # Fp16
     config = model[0].config

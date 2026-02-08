@@ -1,11 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+import time
 
 import torch
 from tqdm import tqdm
 
-from swift.utils import JsonlWriter, format_time, is_master
+from swift.utils import JsonlWriter, format_time, get_logger, is_master
 from .base import MegatronCallback
+
+logger = get_logger()
 
 
 class PrintCallback(MegatronCallback):
@@ -15,13 +18,15 @@ class PrintCallback(MegatronCallback):
         self.training_bar = None
         self.eval_bar = None
         self.jsonl_writer = None
+        self.is_write_rank = is_master()
 
     def on_train_begin(self):
         self.training_bar = tqdm(
-            total=self.args.train_iters, dynamic_ncols=True, disable=not is_master(), desc='Train: ')
-        self.start_step = state.iteration
+            total=self.args.train_iters, dynamic_ncols=True, disable=not self.is_write_rank, desc='Train: ')
+        self.start_step = self.state.iteration
         self.start_time = time.time()
-        logging_path = os.path.join(self.args.save, 'logging.jsonl')
+        logging_path = os.path.join(self.args.output_dir, 'logging.jsonl')
+        logger.info(f'logging_path: {logging_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')
 
     def on_train_end(self):
@@ -32,7 +37,8 @@ class PrintCallback(MegatronCallback):
         self.training_bar.update()
 
     def on_eval_begin(self):
-        self.eval_bar = tqdm(total=self.argseval_iters, dynamic_ncols=True, disable=not is_master(), desc='Evaluate: ')
+        self.eval_bar = tqdm(
+            total=self.args.eval_iters, dynamic_ncols=True, disable=not self.is_write_rank, desc='Evaluate: ')
 
     def on_eval_end(self):
         self.eval_bar.close()
@@ -53,4 +59,5 @@ class PrintCallback(MegatronCallback):
         logs['memory(GiB)'] = round(torch.cuda.max_memory_reserved() / 1024**3, 2)
         logs['train_speed(s/it)'] = round(train_speed, 6)
         self.jsonl_writer.append(logs)
-        self.training_bar.write(str(logs))
+        if self.is_write_rank:
+            self.training_bar.write(str(logs))

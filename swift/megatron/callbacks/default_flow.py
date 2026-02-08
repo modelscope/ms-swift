@@ -21,3 +21,9 @@ class DefaultFlowCallback(MegatronCallback):
         if state.iteration >= args.train_iters:
             self.state.should_eval = True
             self.state.should_save = True
+
+    def on_eval_begin(self):
+        self.state.eval_iteration = 0
+
+    def on_eval_step(self):
+        self.state.eval_iteration += 1

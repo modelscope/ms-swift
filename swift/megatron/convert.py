@@ -45,7 +45,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         model=args.model,
         model_type=args.model_type,
         **current_convert_kwargs,
-        save=args.output_dir,
+        output_dir=args.output_dir,
         torch_dtype=args.torch_dtype)
 
     mg_model = get_mcore_model(megatron_args, hf_config)[0]
@@ -83,7 +83,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         model=args.model,
         model_type=args.model_type,
         **current_convert_kwargs,
-        save=args.output_dir if args.to_mcore else None,
+        output_dir=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
 
     mg_model = get_mcore_model(megatron_args, hf_config)[0]

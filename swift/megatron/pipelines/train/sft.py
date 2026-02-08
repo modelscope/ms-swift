@@ -54,7 +54,7 @@ class MegatronSft(SwiftSft):
         with torch.device('meta'):
             self.model, self.processor = args.get_model_processor(**kwargs, download_model=args.load is None)
         self._prepare_template()
-        args.save_args(args.save)
+        args.save_args(args.output_dir)
         self.template.use_megatron = True
         self.trainer = self.prepare_trainer()
 
@@ -72,7 +72,7 @@ class MegatronSft(SwiftSft):
         finally:
             # Visualization
             if is_last_rank():
-                images_dir = os.path.join(args.save, 'images')
+                images_dir = os.path.join(args.output_dir, 'images')
                 logger.info(f'images_dir: {images_dir}')
                 plot_images(images_dir, args.tensorboard_dir)
 

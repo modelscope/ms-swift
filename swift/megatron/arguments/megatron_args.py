@@ -26,8 +26,8 @@ logger = get_logger()
 class RLHFMegatronArgumentsMixin:
     rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = None
     loss_type: Optional[str] = None  # rlhf / plugins
-    ref_load: Optional[str] = None
-    ref_adapter_load: Optional[str] = None
+    ref_mcore_model: Optional[str] = None
+    ref_mcore_adapter = Optional[str] = None
 
     beta: Optional[float] = None
     rpo_alpha: Optional[float] = None
@@ -294,7 +294,6 @@ class MegatronTunerMixin:
     trainable_parameters: List[str] = field(default_factory=list)
     trainable_parameters_regex: Optional[str] = None
     # lora
-    adapter_load: Optional[str] = None
     target_modules: List[str] = field(default_factory=lambda: ['all-linear'])
     target_regex: Optional[str] = None
     modules_to_save: List[str] = field(default_factory=list)
@@ -340,7 +339,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     cross_entropy_loss_fusion: bool = False
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: Optional[bool] = None
-    use_flash_attn: bool = False
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
     optimizer_cpu_offload: bool = False
@@ -375,21 +373,19 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     sgd_momentum: float = 0.9
 
     # checkpoint
-    save: Optional[str] = None
     save_interval: int = 500
     save_retain_interval: Optional[int] = None
     no_save_optim: bool = False
     no_save_rng: bool = False
-    load: Optional[str] = None
+    mcore_model: Optional[str] = None
+    mcore_adapter: Optional[str] = None
     no_load_optim: bool = False
     no_load_rng: bool = False
     finetune: bool = False
+    output_dir: Optional[str] = None
     # ckpt_format: Literal['torch', 'torch_dist', 'zarr'] = 'torch_dist'
     perform_initialization: bool = False
     async_save: bool = False
-    use_persistent_ckpt_worker: bool = False
-    ckpt_fully_parallel_load: bool = False
-    ckpt_assume_constant_structure: bool = False
 
     # dist
     distributed_backend: Literal['nccl', 'gloo'] = 'nccl'
@@ -477,7 +473,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # mcore-bridge
     model: Optional[str] = None
     model_type: Optional[str] = None
-    load_safetensors: Optional[bool] = None
     save_safetensors: bool = True
     adapters: List[str] = field(default_factory=list)
     ref_model: Optional[str] = None
@@ -524,15 +519,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             with open(args_path, 'r', encoding='utf-8') as f:
                 old_args = json.load(f)
             keys = list(f.name for f in fields(MegatronTunerMixin))
-            # TODO: remove load/save
-            keys += ['load', 'padded_vocab_size', 'task_type', 'num_labels']  # TODO: padded_vocab_size
+            keys += ['mcore_model', 'padded_vocab_size', 'task_type', 'num_labels']  # TODO: padded_vocab_size
             for key in keys:
                 old_value = old_args.get(key)
                 if old_value is not None:
                     res[key] = old_value
-            res.pop('adapter_load', None)
+            res.pop('mcore_adapter', None)
             if res['tuner_type'] != 'lora':
-                res.pop('load', None)
+                res.pop('mcore_model', None)
         return res
 
     def _set_default(self):
@@ -608,7 +602,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.eval_interval = self.save_interval
         if self.merge_lora is None:
             self.merge_lora = self.save_safetensors
-        if self.adapters or self.adapter_load or self.ref_adapter_load:
+        if self.adapters or self.ref_adapters or self.mcore_adapter or self.ref_mcore_adapter:
             if self.tuner_type == 'full':
                 self.tuner_type = 'lora'
                 logger.info('Setting args.tuner_type: lora')
