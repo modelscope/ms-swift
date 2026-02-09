@@ -145,12 +145,13 @@ register_model(
             ], template=TemplateType.minicpmo),
             ModelGroup([
                 Model('OpenBMB/MiniCPM-o-4_5', 'openbmb/MiniCPM-o-4_5'),
-            ], template=TemplateType.minicpmo4_5),
+            ], template=TemplateType.minicpmo4_5,
+            requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile'],),
         ],
         MiniCPMO2Loader,
         architectures=['MiniCPMO'],
         model_arch=ModelArch.minicpmv,
-        requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile'],
+        requires=['timm', 'transformers>=4.36', 'decord', 'soundfile'],
         tags=['vision', 'video', 'omni', 'audio'],
     ))
 
