@@ -5,7 +5,7 @@ import torch
 from megatron.core.extensions.transformer_engine import _get_extra_te_kwargs
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.attention import SelfAttentionSubmodules
-from megatron.core.transformer.module import MegatronModule
+from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
 
@@ -22,7 +22,7 @@ except ImportError:
     _Qwen3_5MoeGatedDeltaNet = object
 
 
-class Qwen3_5MoeGatedDeltaNet(MegatronModule, _Qwen3_5MoeGatedDeltaNet):
+class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
@@ -64,7 +64,8 @@ class Qwen3_5MoeGatedDeltaNet(MegatronModule, _Qwen3_5MoeGatedDeltaNet):
         else:
             res = res.transpose(0, 1)
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
-            res = scatter_to_sequence_parallel_region(res)
+            # Quick fix for dropout issue, awaiting ms-swift 4.0 refactor
+            res = reduce_scatter_to_sequence_parallel_region(res) / args.tensor_model_parallel_size
         return res, None
 
 
