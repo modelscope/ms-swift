@@ -841,12 +841,12 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - VIDEO_SEGMENTS: 默认为8。
 
 
-### minicpmv2_6, minicpmo2_6, minicpmv4
+### minicpmv2_6, minicpmo, minicpmv4
 - MAX_SLICE_NUMS: 默认为9，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)。
 - VIDEO_MAX_SLICE_NUMS: 默认为1，视频的MAX_SLICE_NUMS，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)。
 - MAX_NUM_FRAMES: 默认为64，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)。
 
-### minicpmo2_6
+### minicpmo
 - INIT_TTS: 默认为False。
 - INIT_AUDIO: 默认为False。
 

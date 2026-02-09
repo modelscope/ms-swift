@@ -866,12 +866,12 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
 - VIDEO_SEGMENTS: Default is 8
 
-### minicpmv2_6, minicpmo2_6, minicpmv4
+### minicpmv2_6, minicpmo, minicpmv4
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 
-### minicpmo2_6
+### minicpmo
 - INIT_TTS: Default is False
 - INIT_AUDIO: Default is False
 

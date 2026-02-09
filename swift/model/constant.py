@@ -211,9 +211,9 @@ class MLLMModelType:
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
-    minicpmo2_6 = 'minicpmo2_6'
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
+    minicpmo = 'minicpmo'
 
     minimax_vl = 'minimax_vl'
 

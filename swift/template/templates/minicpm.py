@@ -232,13 +232,15 @@ register_template(QwenTemplateMeta(
 ))
 
 register_template(Qwen2_5TemplateMeta(
-    MLLMTemplateType.minicpmo2_6,
+    MLLMTemplateType.minicpmo,
     template_cls=MiniCPMV2_6Template,
 ))
 
-register_template(ChatmlTemplateMeta(
-    MLLMTemplateType.minicpmv4,
+register_template(Qwen3MixedTemplateMeta(
+    MLLMTemplateType.minicpmo4_5,
     template_cls=MiniCPMV2_6Template,
+    is_thinking=True,
+    thinking_prefix='<think>\n',
 ))
 
 

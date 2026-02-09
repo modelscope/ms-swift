@@ -138,17 +138,19 @@ class MiniCPMO2Loader(MiniCPMV2Loader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmo2_6,
+        MLLMModelType.minicpmo,
         [
             ModelGroup([
                 Model('OpenBMB/MiniCPM-o-2_6', 'openbmb/MiniCPM-o-2_6'),
-            ]),
+            ], template=TemplateType.minicpmo),
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-o-4_5', 'openbmb/MiniCPM-o-4_5'),
+            ], template=TemplateType.minicpmo4_5),
         ],
         MiniCPMO2Loader,
-        template=TemplateType.minicpmo2_6,
         architectures=['MiniCPMO'],
         model_arch=ModelArch.minicpmv,
-        requires=['timm', 'transformers>=4.36', 'decord', 'soundfile'],
+        requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile'],
         tags=['vision', 'video', 'omni', 'audio'],
     ))
 

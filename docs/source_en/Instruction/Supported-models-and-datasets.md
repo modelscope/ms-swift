@@ -252,9 +252,9 @@ The table below introduces the models integrated with ms-swift:
 |[Qwen/Qwen3-Next-80B-A3B-Instruct-FP8](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Instruct-FP8)|qwen3_next|qwen3_nothinking|transformers>=4.57|&#x2714;|-|-|
 |[Qwen/Qwen3-Next-80B-A3B-Thinking](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Thinking)|qwen3_next|qwen3_thinking|transformers>=4.57|&#x2714;|-|-|
 |[Qwen/Qwen3-Next-80B-A3B-Thinking-FP8](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Thinking-FP8)|qwen3_next|qwen3_thinking|transformers>=4.57|&#x2714;|-|-|
-|[Qwen/Qwen3-Coder-Next-Base](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next-Base)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2714;|-|[Qwen/Qwen3-Coder-Next-Base](https://huggingface.co/Qwen/Qwen3-Coder-Next-Base)|
-|[Qwen/Qwen3-Coder-Next](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2714;|-|[Qwen/Qwen3-Coder-Next](https://huggingface.co/Qwen/Qwen3-Coder-Next)|
-|[Qwen/Qwen3-Coder-Next-FP8](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next-FP8)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2714;|-|[Qwen/Qwen3-Coder-Next-FP8](https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8)|
+|[Qwen/Qwen3-Coder-Next-Base](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next-Base)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2718;|-|[Qwen/Qwen3-Coder-Next-Base](https://huggingface.co/Qwen/Qwen3-Coder-Next-Base)|
+|[Qwen/Qwen3-Coder-Next](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2718;|-|[Qwen/Qwen3-Coder-Next](https://huggingface.co/Qwen/Qwen3-Coder-Next)|
+|[Qwen/Qwen3-Coder-Next-FP8](https://modelscope.cn/models/Qwen/Qwen3-Coder-Next-FP8)|qwen3_next|qwen3_coder|transformers>=4.57|&#x2718;|-|[Qwen/Qwen3-Coder-Next-FP8](https://huggingface.co/Qwen/Qwen3-Coder-Next-FP8)|
 |[Qwen/Qwen3-Embedding-0.6B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-0.6B)|qwen3_emb|qwen3_emb|-|&#x2714;|-|[Qwen/Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)|
 |[Qwen/Qwen3-Embedding-4B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-4B)|qwen3_emb|qwen3_emb|-|&#x2714;|-|[Qwen/Qwen3-Embedding-4B](https://huggingface.co/Qwen/Qwen3-Embedding-4B)|
 |[Qwen/Qwen3-Embedding-8B](https://modelscope.cn/models/Qwen/Qwen3-Embedding-8B)|qwen3_emb|qwen3_emb|-|&#x2714;|-|[Qwen/Qwen3-Embedding-8B](https://huggingface.co/Qwen/Qwen3-Embedding-8B)|
@@ -306,7 +306,7 @@ The table below introduces the models integrated with ms-swift:
 |[deepseek-ai/deepseek-coder-33b-base](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-base)|llama|deepseek|-|&#x2714;|coding|[deepseek-ai/deepseek-coder-33b-base](https://huggingface.co/deepseek-ai/deepseek-coder-33b-base)|
 |[deepseek-ai/deepseek-coder-33b-instruct](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-instruct)|llama|deepseek|-|&#x2714;|coding|[deepseek-ai/deepseek-coder-33b-instruct](https://huggingface.co/deepseek-ai/deepseek-coder-33b-instruct)|
 |[gongjy/MiniMind2](https://modelscope.cn/models/gongjy/MiniMind2)|llama|minimind|transformers>=4.57.1|&#x2714;|-|[jingyaogong/MiniMind2](https://huggingface.co/jingyaogong/MiniMind2)|
-|-|llama|minimind|transformers>=4.57.1|&#x2714;|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
+|-|llama|minimind|transformers>=4.57.1|pretrain, quality|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
 |[LLM-Research/Meta-Llama-3-8B-Instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)|
 |[LLM-Research/Meta-Llama-3-70B-Instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-70B-Instruct)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-70B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)|
 |[LLM-Research/Meta-Llama-3-8B](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B)|
@@ -999,9 +999,10 @@ The table below introduces the models integrated with ms-swift:
 |[OpenBMB/MiniCPM-V-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2)|minicpmv|minicpmv|timm, transformers<4.42|&#x2718;|vision|[openbmb/MiniCPM-V-2](https://huggingface.co/openbmb/MiniCPM-V-2)|
 |[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5)|minicpmv2_5|minicpmv2_5|timm, transformers>=4.36|&#x2718;|vision|[openbmb/MiniCPM-Llama3-V-2_5](https://huggingface.co/openbmb/MiniCPM-Llama3-V-2_5)|
 |[OpenBMB/MiniCPM-V-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)|minicpmv2_6|minicpmv2_6|timm, transformers>=4.36, decord|&#x2718;|vision, video|[openbmb/MiniCPM-V-2_6](https://huggingface.co/openbmb/MiniCPM-V-2_6)|
-|[OpenBMB/MiniCPM-o-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-o-2_6)|minicpmo2_6|minicpmo2_6|timm, transformers>=4.36, decord, soundfile|&#x2718;|vision, video, omni, audio|[openbmb/MiniCPM-o-2_6](https://huggingface.co/openbmb/MiniCPM-o-2_6)|
 |[OpenBMB/MiniCPM-V-4](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4)|minicpmv4|minicpmv4|timm, transformers>=4.36, decord|&#x2718;|vision, video|[openbmb/MiniCPM-V-4](https://huggingface.co/openbmb/MiniCPM-V-4)|
 |[OpenBMB/MiniCPM-V-4_5](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)|minicpmv4_5|minicpmv4_5|timm, transformers>=4.36, decord|&#x2718;|vision, video|[openbmb/MiniCPM-V-4_5](https://huggingface.co/openbmb/MiniCPM-V-4_5)|
+|[OpenBMB/MiniCPM-o-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-o-2_6)|minicpmo|minicpmo|timm, transformers==4.51.3, decord, soundfile|&#x2718;|vision, video, omni, audio|[openbmb/MiniCPM-o-2_6](https://huggingface.co/openbmb/MiniCPM-o-2_6)|
+|[OpenBMB/MiniCPM-o-4_5](https://modelscope.cn/models/OpenBMB/MiniCPM-o-4_5)|minicpmo|minicpmo4_5|timm, transformers==4.51.3, decord, soundfile|&#x2718;|vision, video, omni, audio|[openbmb/MiniCPM-o-4_5](https://huggingface.co/openbmb/MiniCPM-o-4_5)|
 |[MiniMax/MiniMax-VL-01](https://modelscope.cn/models/MiniMax/MiniMax-VL-01)|minimax_vl|minimax_vl|-|&#x2718;|vision|[MiniMaxAI/MiniMax-VL-01](https://huggingface.co/MiniMaxAI/MiniMax-VL-01)|
 |[iic/mPLUG-Owl2](https://modelscope.cn/models/iic/mPLUG-Owl2)|mplug_owl2|mplug_owl2|transformers<4.35, icecream|&#x2718;|vision|[MAGAer13/mplug-owl2-llama2-7b](https://huggingface.co/MAGAer13/mplug-owl2-llama2-7b)|
 |[iic/mPLUG-Owl2.1](https://modelscope.cn/models/iic/mPLUG-Owl2.1)|mplug_owl2_1|mplug_owl2|transformers<4.35, icecream|&#x2718;|vision|[Mizukiluke/mplug_owl_2_1](https://huggingface.co/Mizukiluke/mplug_owl_2_1)|
