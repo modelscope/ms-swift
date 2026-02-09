@@ -236,12 +236,12 @@ register_template(Qwen2_5TemplateMeta(
     template_cls=MiniCPMV2_6Template,
 ))
 
-register_template(Qwen3MixedTemplateMeta(
-    MLLMTemplateType.minicpmo4_5,
-    template_cls=MiniCPMV2_6Template,
-    is_thinking=True,
-    thinking_prefix='<think>\n',
-))
+register_template(
+    Qwen3MixedTemplateMeta(
+        MLLMTemplateType.minicpmo4_5,
+        template_cls=MiniCPMV2_6Template,
+        is_thinking=True,
+    ))
 
 
 class MiniCPMV4_5Template(MiniCPMV2_6Template):
