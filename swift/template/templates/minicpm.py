@@ -231,15 +231,22 @@ register_template(QwenTemplateMeta(
     template_cls=MiniCPMV2_6Template,
 ))
 
-register_template(Qwen2_5TemplateMeta(
-    MLLMTemplateType.minicpmo2_6,
-    template_cls=MiniCPMV2_6Template,
-))
-
 register_template(ChatmlTemplateMeta(
     MLLMTemplateType.minicpmv4,
     template_cls=MiniCPMV2_6Template,
 ))
+
+register_template(Qwen2_5TemplateMeta(
+    MLLMTemplateType.minicpmo,
+    template_cls=MiniCPMV2_6Template,
+))
+
+register_template(
+    Qwen3MixedTemplateMeta(
+        MLLMTemplateType.minicpmo4_5,
+        template_cls=MiniCPMV2_6Template,
+        is_thinking=True,
+    ))
 
 
 class MiniCPMV4_5Template(MiniCPMV2_6Template):
