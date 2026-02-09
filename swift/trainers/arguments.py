@@ -261,6 +261,10 @@ class SwiftArgumentsMixin(RLHFArgumentsMixin, TrainArgumentsMixin):
     train_type: Optional[str] = None
     local_repo_path: Optional[str] = None
     galore_config: Optional[GaLoreConfig] = None
+    padding_side: Optional[str] = None
+    padding_free: Optional[bool] = None
+    greedy_packing: bool = False  # Use greedy packing instead of binpacking
+    packing_length: Optional[int] = None  # Packing target length (defaults to max_length)
     task_type: Optional[str] = None
     problem_type: Optional[str] = None
 

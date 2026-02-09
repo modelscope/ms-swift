@@ -99,7 +99,11 @@ class LazyLLMDataset(Dataset):
                 self._idx = (self._idx + 1) % len(self.dataset)
             data = self.dataset[i]
             try:
-                return self.encode_func(data, return_length=True)
+                result = self.encode_func(data, return_length=True)
+                # 保留 _dataset_source 用于 greedy_packing 进度统计
+                if '_dataset_source' in data:
+                    result['_dataset_source'] = data['_dataset_source']
+                return result
             except Exception:
                 if n_try == self.n_try_fetch - 1 or self.strict:
                     if self.strict:
@@ -326,3 +330,87 @@ class AddLengthPreprocessor(EncodePreprocessor):
         encoded = super().preprocess(row)
         row['length'] = encoded['length']
         return row
+
+
+class GreedyPackingDataLoader:
+    """在 DataLoader 之上包装贪心打包层。
+    
+    特点：
+    - 复用 DataLoader 的多 workers 和 prefetch
+    - 贪心打包 O(1) 开销
+    - encode 只执行一次
+    
+    适用场景：
+    - 非 streaming 数据集
+    - 希望避免 binpacking 预处理开销
+    - 可接受稍低的空间利用率（~85-90% vs ~95%）
+    """
+    
+    def __init__(
+        self,
+        dataloader,
+        packing_length: int,
+        packing_collator: Callable,
+    ):
+        """
+        Args:
+            dataloader: 原始 DataLoader，batch_size 应设为 1
+            packing_length: 打包目标长度
+            packing_collator: 打包样本的 collator 函数
+        """
+        self.dataloader = dataloader
+        self.packing_length = packing_length
+        self.packing_collator = packing_collator
+        self._length = None
+    
+    def __iter__(self):
+        buffer = []
+        buffer_length = 0
+        
+        for batch in self.dataloader:
+            samples = batch if isinstance(batch, list) else [batch]
+            
+            for sample in samples:
+                sample_length = sample.get('length') or len(sample['input_ids'])
+                
+                if buffer_length + sample_length <= self.packing_length:
+                    buffer.append(sample)
+                    buffer_length += sample_length
+                else:
+                    # 当前包满了，输出
+                    if buffer:
+                        # 注意：必须在调用 packing_collator 之前收集 sources 和 lengths，
+                        # 因为 packing_collator 会原地修改 buffer（batch[:] = [packing_row(batch)]）
+                        batch_lengths = [len(s['input_ids']) for s in buffer]
+                        sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
+                        packed = self.packing_collator(buffer)
+                        packed['_batch_lengths'] = batch_lengths
+                        if sources:
+                            packed['_batch_sources'] = sources
+                        yield packed
+                    
+                    buffer = [sample]
+                    buffer_length = sample_length
+        
+        # 输出最后一个 pack
+        if buffer:
+            # 注意：必须在调用 packing_collator 之前收集 sources 和 lengths
+            batch_lengths = [len(s['input_ids']) for s in buffer]
+            sources = [s.get('_dataset_source') for s in buffer if s.get('_dataset_source')]
+            packed = self.packing_collator(buffer)
+            packed['_batch_lengths'] = batch_lengths
+            if sources:
+                packed['_batch_sources'] = sources
+            yield packed
+    
+    def __len__(self):
+        # 估算长度（不精确，但足够用于进度条等）
+        # 实际长度取决于打包效率，这里返回一个合理估计
+        if self._length is not None:
+            return self._length
+        if hasattr(self.dataloader, '__len__'):
+            # 假设平均打包效率为 85%
+            avg_samples_per_pack = max(1, self.packing_length // 512)  # 假设平均样本长度 512
+            self._length = max(1, len(self.dataloader) // avg_samples_per_pack)
+            return self._length
+        return 0
