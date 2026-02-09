@@ -18,6 +18,7 @@ swift sft \
     --lora_alpha 32 \
     --router_aux_loss_coef 1e-3 \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps 4 \
     --gradient_checkpointing true \
     --eval_steps 50 \

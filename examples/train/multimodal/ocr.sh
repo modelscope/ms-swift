@@ -16,6 +16,7 @@ swift sft \
     --lora_alpha 32 \
     --target_modules all-linear \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \

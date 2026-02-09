@@ -242,7 +242,7 @@ Yes, here's an [example](https://github.com/modelscope/ms-swift/blob/main/exampl
 ### Q76: Is there a big difference in performance between manually coding fine-tuning and GRPO using peft and trl libraries compared to Swift official training with the same parameters?
 The difference is minimal, with Swift additionally supporting multimodality.
 
-### Q77: Does Swift currently not support audio modal input training for minicpmo2_6? It shows error: assert media_type in {'image', 'video'}
+### Q77: Does Swift currently not support audio modal input training for minicpmo? It shows error: assert media_type in {'image', 'video'}
 Audio is not currently supported.
 
 ### Q78: Can Swift fine-tune deepseek R1 671B?

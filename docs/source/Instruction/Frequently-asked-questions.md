@@ -242,7 +242,7 @@ examples下有[例子](https://github.com/modelscope/ms-swift/blob/main/examples
 ### Q76: 话说直接从peft和trl库，手搓微调和grpo代码和swift官方在同参数下进行训练，效果差异大吗？
 区别不大，额外支持了多模态。
 
-### Q77: swift 目前不支持 minicpmo2_6 使用音频模态输入的训练吗？会报错： assert media_type in {'image', 'video'}
+### Q77: swift 目前不支持 minicpmo 使用音频模态输入的训练吗？会报错： assert media_type in {'image', 'video'}
 目前不支持音频。
 
 ### Q78: swift可以微调deepseek R1 671B吗？
