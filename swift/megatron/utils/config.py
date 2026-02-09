@@ -107,7 +107,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
     window_size = res.pop('window_size', None)
     rope_scaling = res.get('rope_scaling') or {}
     if llm_model_type in {'qwen3', 'qwen3_moe', 'qwen3_next'} or hf_model_type in {
-            'qwen3_omni_moe', 'qwen3_omni', 'qwen3_vl', 'qwen3_vl_moe', 'qwen3_5_moe'
+            'qwen3_omni_moe', 'qwen3_omni', 'qwen3_vl', 'qwen3_vl_moe', 'qwen3_5', 'qwen3_5_moe'
     }:
         res['qk_layernorm'] = True
     if llm_model_type in {'qwen2_moe', 'qwen3_moe', 'qwen3_next'
@@ -157,7 +157,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
         if llm_model_type == 'glm4_moe_lite':
             res['qk_layernorm'] = True
             res.pop('num_query_groups', None)
-    elif llm_model_type == 'qwen3_next' or hf_model_type == 'qwen3_5_moe':
+    elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
         full_attention_interval = res.pop('full_attention_interval', 4)
         num_layers = res['num_layers']
         res['layer_types'] = [

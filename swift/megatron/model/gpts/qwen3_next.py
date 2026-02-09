@@ -13,6 +13,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
                                            reduce_scatter_to_sequence_parallel_region)
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
+from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
@@ -510,7 +511,8 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None, gated_delta_net
             layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
         # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)
         layer_spec.submodules.input_layernorm = layer_norm_impl
-        if hasattr(layer_spec.submodules, 'pre_mlp_layernorm'):
+        if hasattr(layer_spec.submodules,
+                   'pre_mlp_layernorm') and layer_spec.submodules.pre_mlp_layernorm is not IdentityOp:
             layer_spec.submodules.pre_mlp_layernorm = layer_norm_impl
         # Replace qk_layernorm if present
         if hasattr(layer_spec.submodules.self_attention.submodules, 'q_layernorm'):

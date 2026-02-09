@@ -3,9 +3,9 @@ from functools import partial
 
 import torch
 from megatron.core.extensions.transformer_engine import _get_extra_te_kwargs
+from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
 from megatron.core.transformer.attention import SelfAttentionSubmodules
-from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
 
@@ -90,8 +90,9 @@ class Qwen3_5Bridge(Qwen3NextBridge):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.qwen3_5_moe,
+        MegatronModelType.qwen3_5,
         [
+            ModelType.qwen3_5,
             ModelType.qwen3_5_moe,
         ],
         get_transformer_layer_spec=partial(
