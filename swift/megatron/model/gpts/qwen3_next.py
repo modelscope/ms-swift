@@ -475,7 +475,7 @@ class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
         return res, None
 
 
-def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
+def get_qwen3_next_transformer_layer_spec(config, vp_stage=None, gated_delta_net=None):
     config.hetereogenous_dist_checkpoint = True
     # compat Qwen3NextGatedDeltaNet
     args = get_args()
@@ -500,10 +500,11 @@ def get_qwen3_next_transformer_layer_spec(config, vp_stage=None):
         **kwargs,
     )
     layer_specs = []
+    gated_delta_net = gated_delta_net or Qwen3NextGatedDeltaNet
     for layer_type in args.layer_types:
         layer_spec = deepcopy(moe_layer_spec)
         if layer_type == 'linear_attention':
-            layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
+            layer_spec.submodules.self_attention.module = gated_delta_net
         elif layer_type == 'full_attention':
             layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
             layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
