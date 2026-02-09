@@ -4,7 +4,8 @@ from functools import partial
 import torch
 from megatron.core.extensions.transformer_engine import _get_extra_te_kwargs
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
-from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
+from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
+                                           reduce_scatter_to_sequence_parallel_region)
 from megatron.core.transformer.attention import SelfAttentionSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.training import get_args
@@ -75,8 +76,9 @@ class Qwen3_5Vit(HuggingFaceModule):
     _aligner = ['visual.merger']
 
     def __init__(self, config):
+        from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5TextModel
         from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import Qwen3_5MoeTextModel
-        super().__init__(config, [Qwen3_5MoeTextModel])
+        super().__init__(config, [Qwen3_5TextModel, Qwen3_5MoeTextModel])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
