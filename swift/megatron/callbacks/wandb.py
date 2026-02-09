@@ -16,15 +16,18 @@ class WandbCallback(MegatronCallback):
         if args.wandb_exp_name is None:
             args.wandb_exp_name = args.output_dir
         self.save_dir = os.path.join(args.output_dir, 'wandb')
+        self.writer = None
         self.setup()
 
     def setup(self):
         import wandb
         args = self.args
-        wandb.init(dir=self.save_dir, name=args.wandb_exp_name, project=args.wandb_project, config=self.config)
-        self.writer = wandb
+        if is_last_rank():
+            wandb.init(dir=self.save_dir, name=args.wandb_exp_name, project=args.wandb_project, config=self.config)
+            self.writer = wandb
 
     def on_log(self, logs):
         logs = rewrite_logs(logs)
         logs['iteration'] = self.state.iteration
-        self.writer.log(logs, step=self.state.iteration)
+        if is_last_rank():
+            self.writer.log(logs, step=self.state.iteration)
