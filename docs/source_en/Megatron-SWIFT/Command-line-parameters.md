@@ -22,8 +22,6 @@
 - 🔥train_iters: Total number of training iterations, default is None.
   - Tip: You can set `--max_epochs` to specify the number of training epochs. When using a non-streaming dataset, `train_iters` will be automatically calculated based on the dataset size (compatible with packing).
 - 🔥max_epochs: Specifies the number of training epochs. When using a non-streaming dataset, this parameter automatically calculates `train_iters`, eliminating the need to manually provide `train_iters`. When using a streaming dataset, training will be forcibly terminated upon reaching `max_epochs`, and the model weights will be validated and saved. Default is None.
-- 🔥log_interval: Log interval (unit: iters), default is 5.
-- tensorboard_dir: Directory where TensorBoard logs are written. Default is None, meaning logs will be stored in the `f'{save}/runs'` directory.
 - masked_softmax_fusion: Defaults to True. Used to enable the fusion of scaling, masking, and softmax for query_key_value.
 - bias_dropout_fusion: Defaults to True. Used to enable the fusion of bias and dropout.
 - bias_swiglu_fusion: Defaults to True. Used to enable the fusion of bias and swiglu.
@@ -134,21 +132,14 @@ For guidance on selecting parallelization strategies, please refer to the [Train
   - This parameter is typically used on heterogeneous GPU clusters.
 
 **Logging Parameters**:
-
-- log_params_norm: Logs the norm of parameters. Default is False.
-- log_throughput: Log the theoretical throughput per GPU. Defaults to False.
-  - Note: In non-packing scenarios, log_throughput is not accurate because `seq_length` does not equal the actual sequence length.
-- tensorboard_log_interval: Interval (steps) for logging to TensorBoard, default is 1.
+- report_to: (ms-swift>=3.12) Logging backends to enable. Defaults to `['tensorboard']`. Available options: 'tensorboard', 'wandb', 'swanlab'. Login using `WANDB_API_KEY` or `SWANLAB_API_KEY` environment variables.
+- 🔥log_interval: Log interval (unit: iters), default is 5.
+- tensorboard_dir: Directory where TensorBoard logs are written. Default is None, meaning logs will be stored in the `f'{save}/runs'` directory.
 - tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
-- log_timers_to_tensorboard: Logs timers to TensorBoard. Default is True.
-- log_learning_rate_to_tensorboard: Do not log learning rate to TensorBoard. Default is True.
-- log_validation_ppl_to_tensorboard: Writes validation perplexity to TensorBoard. Default is True.
-- log_memory_to_tensorboard: Writes memory logs to TensorBoard. Default is True.
-- logging_level: Logging level. Default is None.
-- report_to: (ms-swift>=3.12) The logging backend to enable. Defaults to None. Options are 'wandb' and 'swanlab'. (TensorBoard will always be started). Login can be done using the `WANDB_API_KEY` or `SWANLAB_API_KEY` environment variables.
-- wandb_project: The wandb/swanlab project name (shared parameters), depending on `report_to`. Defaults to 'megatron-swift'.
-- wandb_exp_name: The wandb/swanlab experiment name (shared parameters). Defaults to the value of `--save`.
-- wandb_save_dir: The path to save wandb/swanlab results locally. Default is None, which means it will be stored in `f'{args.save}/wandb'` or `f'{args.save}/swanlab'`.
+- wandb_project: wandb project name. Defaults to 'megatron-swift'.
+- wandb_exp_name: wandb experiment name. Defaults to the value of `--output_dir`.
+- swanlab_project: swanlab project name. Defaults to 'megatron-swift'.
+- swanlab_exp_name: swanlab experiment name. Defaults to the value of `--output_dir`.
 
 **Evaluation Parameters**:
 

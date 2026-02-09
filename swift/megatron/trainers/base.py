@@ -83,16 +83,16 @@ class BaseMegatronTrainer(ABC):
             for m in self.unwrapped_models:
                 copy_original_module_weight(m)
         if args.mcore_model is not None:
-            state.iteration = load_mcore_checkpoint(
+            self.state.iteration = load_mcore_checkpoint(
                 args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_model')
         if args.ref_mcore_adapter is not None:
             with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
                 load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_mcore_adapter')
         if args.mcore_adapter is not None:
-            state.iteration = load_mcore_checkpoint(
+            self.state.iteration = load_mcore_checkpoint(
                 args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_adapter')
         if not args.finetune:
-            state.iteration = self._load_iteration()
+            self.state.iteration = self._load_iteration()
 
         self.eval_metrics = None
         logging_path = os.path.join(args.output_dir, 'logging.jsonl')
@@ -374,17 +374,17 @@ class BaseMegatronTrainer(ABC):
         elif args.tuner_type == 'lora' and args.adapters:
             ckpt_dir = args.adapters[0]
         if ckpt_dir is None:
-            return 0, 0
+            return 0
         logger.info(f'checkpoint_dir: {ckpt_dir}')
         tracker_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
         if not os.path.exists(tracker_path):
-            return 0, 0
+            return 0
         with open(tracker_path, 'r') as f:
             iteration = int(f.read())
 
         common_path = os.path.join(ckpt_dir, f'iter_{iteration:07d}', 'common.pt')
         if not os.path.exists(common_path):
-            return iteration, 0
+            return iteration
 
         state_dict = torch.load(common_path)
         set_checkpoint_version(state_dict.get('checkpoint_version', 0))
@@ -520,9 +520,15 @@ class BaseMegatronTrainer(ABC):
             self.call_event('on_step_end')
             if mpu.is_pipeline_last_stage(ignore_virtual=True):
                 self.aggregated_metrics(metrics, train_metrics)
-                train_metrics['grad_norm'] = torch.tensor([grad_norm],
-                                                          dtype=torch.float32,
-                                                          device=torch.cuda.current_device())
+                train_metrics['grad_norm'] = grad_norm
+                # TODO: check vit_lr
+                learning_rate = None
+                for param_group in self.optimizer.param_groups:
+                    if len(param_group['params']) == 0:
+                        continue
+                    learning_rate = param_group['lr']
+                if learning_rate is not None:
+                    train_metrics['learning_rate'] = learning_rate
             if state.should_log:
                 state.should_log = False
                 self.call_event('on_log', train_metrics)

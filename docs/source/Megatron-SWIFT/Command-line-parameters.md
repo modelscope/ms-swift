@@ -21,8 +21,6 @@
 - 🔥train_iters: 训练的总迭代次数，默认为None。
   - 提示：你可以通过设置`--max_epochs`来设置训练的epochs数。在使用非流式数据集时，会自动根据数据集数量计算`train_iters`（兼容packing）。
 - 🔥max_epochs: 指定训练的epochs数。当使用非流式数据集时，该参数会为你自动计算train_iters而不需要手动传入`train_iters`。当使用流式数据集时，该参数会在训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。默认为None。
-- 🔥log_interval: log的时间间隔（单位：iters），默认为5。
-- tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
 - masked_softmax_fusion: 默认为True。用于开启query_key_value的scaling, masking, and softmax融合。
 - bias_dropout_fusion: 默认为True。用于开启bias和dropout的融合。
 - bias_swiglu_fusion: 默认为True。用于开启bias和swiglu融合。
@@ -129,20 +127,14 @@
   - 该参数通常在异构GPU集群上使用。
 
 **日志参数**:
-- log_params_norm: 记录参数的norm。默认为False。
-- log_throughput: 记录每个GPU的吞吐量（理论值）。默认为False。
-  - 注意：在非packing情况下，log_throughput并不准确，因为`seq_length`并不等于真实序列长度。
-- tensorboard_log_interval: 记录到tensorboard的间隔（steps），默认为1。
+- report_to: (ms-swift>=3.12) 启用的日志后端。默认为`['tensorboard']`。可选项为'tensorboard', 'wandb'和'swanlab'。登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
+- 🔥log_interval: log的时间间隔（单位：iters），默认为5。
+- tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
 - tensorboard_queue_size: 用于暂存事件和摘要的 TensorBoard 队列大小；当队列中待处理的事件和摘要数量达到该大小时，下一次调用 "add" 相关方法会触发将数据刷新写入磁盘。默认为50。
-- log_timers_to_tensorboard: 记录timers到tensorboard。默认为True。
-- log_learning_rate_to_tensorboard: 记录学习率到tensorboard。默认为True。
-- log_validation_ppl_to_tensorboard: 将验证困惑度写入tensorboard。默认为True。
-- log_memory_to_tensorboard: 将内存日志写入tensorboard。默认为True。
-- logging_level: 日志级别。默认为None。
-- report_to: (ms-swift>=3.12) 启用的日志后端。默认为None。可选项为'wandb'和'swanlab'。（tensorboard会一直启动）。登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
-- wandb_project: wandb/swanlab 项目名称（共用参数），取决于`report_to`。默认为'megatron-swift'。
-- wandb_exp_name: wandb/swanlab 实验名称（共用参数）。默认为`--save`的值。
-- wandb_save_dir: 本地保存 wandb/swanlab 结果的路径。默认为None，即存储在`f'{args.save}/wandb'`或`f'{args.save}/swanlab'`。
+- wandb_project: wandb项目名称，默认为'megatron-swift'。
+- wandb_exp_name: wandb 实验名称。默认为`--output_dir`的值。
+- swanlab_project: swanlab项目名称，默认为'megatron-swift'。
+- swanlab_exp_name: swanlab 实验名称。默认为`--output_dir`的值。
 
 **评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为`-1`，根据验证数据集的数量设置合适的值。**若验证集数量少于global_batch_size，则不进行评估**。若使用流式数据集，该值需要手动设置。

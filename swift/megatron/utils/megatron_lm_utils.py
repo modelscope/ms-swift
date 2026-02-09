@@ -146,7 +146,7 @@ def _generate_state_dict(args,
                          optim_sd_kwargs=None):
     model_sd_kwargs = model_sd_kwargs or {}
     state_dict = {
-        'args': Namespace(**check_json_format(args.__dict__)),
+        'args': Namespace(**check_json_format(vars(args))),
         'checkpoint_version': 3.0,
     }
     if iteration is not None:
@@ -201,6 +201,16 @@ def _filter_adapter_state_dict(state_dict, is_peft_format: bool = True, adapter_
         state_dict[model_key] = new_state_dict
 
 
+def _preprocess_common_before_consistancy_check(common_state_dict):
+    # Convert args key of type namespace to dictionary
+    preprocessed_common_state_dict = copy.deepcopy(common_state_dict)
+    preprocessed_common_state_dict['args'] = vars(preprocessed_common_state_dict['args'])
+    # Remove rank and local rank from state dict if it exists, since they are expected to be different
+    preprocessed_common_state_dict['args'].pop('local_rank', None)
+    preprocessed_common_state_dict['args'].pop('rank', None)
+    return preprocessed_common_state_dict
+
+
 def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler=None, iteration=1):
     model = unwrap_model(model)
     rng_state = _get_rng_state()
@@ -237,7 +247,8 @@ def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler
         save_strategy,
         async_sharded_save=args.async_save,
         validate_access_integrity=True,
-        content_metadata=sharded_sd_metadata)
+        content_metadata=sharded_sd_metadata,
+        preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check)
 
     if not args.async_save:
         # TODO: test async_save
@@ -336,7 +347,7 @@ def load_mcore_checkpoint(args,
         gen_sd_optim, gen_sd_opt_param_scheduler = None, None
     optim_sd_kwargs = dict(metadata=sharded_sd_metadata, is_loading=True)
     model_sd_kwargs = dict(metadata=sharded_sd_metadata)
-
+    # TODO: check no_save_optim
     sharded_state_dict = _generate_state_dict(
         args,
         model,
@@ -391,7 +402,7 @@ def load_mcore_checkpoint(args,
     if torch.distributed.is_initialized():
         torch.distributed.barrier()
 
-    logger.info(f'Successfully loaded Megatron model weights from: {args.load}')
+    logger.info(f'Successfully loaded Megatron model weights from: {load_dir}')
     return iteration
 
 

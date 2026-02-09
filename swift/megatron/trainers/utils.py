@@ -371,7 +371,7 @@ def reduce_max_stat_across_model_parallel_group(stat: float) -> float:
     """
     stat = torch.tensor([stat], dtype=torch.float32, device=torch.cuda.current_device())
     torch.distributed.all_reduce(stat, op=torch.distributed.ReduceOp.MAX, group=mpu.get_model_parallel_group())
-    return stat
+    return stat.item()
 
 
 def logical_and_across_model_parallel_group(input: bool) -> bool:

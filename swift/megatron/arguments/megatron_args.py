@@ -328,8 +328,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     use_cpu_initialization: bool = False
     deterministic_mode: bool = False
     train_iters: Optional[int] = None
-    log_interval: int = 5
-    tensorboard_dir: Optional[str] = None
     masked_softmax_fusion: bool = True
     bias_dropout_fusion: bool = True  # TODO: gpt-oss
     bias_swiglu_fusion: bool = True
@@ -441,20 +439,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     apply_query_key_layer_scaling: Optional[bool] = None
     attention_softmax_in_fp32: bool = True
 
-    # logging
-    log_params_norm: bool = False
-    log_throughput: bool = False
-    tensorboard_log_interval: int = 1
-    tensorboard_queue_size: int = 50
-    log_timers_to_tensorboard: bool = True
-    log_learning_rate_to_tensorboard: bool = True
-    log_validation_ppl_to_tensorboard: bool = True
-    log_memory_to_tensorboard: bool = True
-    logging_level: Optional[str] = None
-    wandb_project: str = 'megatron-swift'
-    wandb_exp_name: Optional[str] = None
-    wandb_save_dir: Optional[str] = None
-
     # evaluate
     eval_iters: int = -1
     eval_interval: Optional[int] = None
@@ -501,7 +485,15 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     save_strategy: Literal['steps', 'epoch'] = 'steps'
     callbacks: List[str] = field(default_factory=list)
 
-    report_to: Optional[Literal['wandb', 'swanlab']] = None
+    # 'wandb', 'swanlab', 'tensorboard'
+    report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    log_interval: int = 5
+    tensorboard_dir: Optional[str] = None
+    tensorboard_queue_size: int = 50
+    wandb_project: str = 'megatron-swift'
+    wandb_exp_name: Optional[str] = None
+    swanlab_project: str = 'megatron-swift'
+    swanlab_exp_name: Optional[str] = None
 
     # visual
     vit_gradient_checkpointing: bool = True
@@ -544,10 +536,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.calculate_per_token_loss is None:
             self.calculate_per_token_loss = self.task_type == 'causal_lm'
 
-        # log
-        if self.wandb_exp_name is None:
-            self.wandb_exp_name = self.output_dir
-
     def _init_mixed_precision(self):
         ModelArguments._init_mixed_precision(self)
         if self.apply_query_key_layer_scaling is None:
@@ -566,6 +554,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.recompute_granularity = None
         self._set_default()
         self._init_vpp_size()
+        if isinstance(self.report_to, str):
+            self.report_to = [self.report_to]
         self.model_info, self.model_meta = get_model_info_meta(
             self.model, model_type=self.model_type, use_hf=self.use_hf, hub_token=self.hub_token)
 
@@ -596,6 +586,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 logger.warning('apex is not installed, so gradient accumulation fusion is disabled.')
                 self.gradient_accumulation_fusion = False
         self.callbacks += ['print', 'default_flow']
+        self.callbacks += self.report_to
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
         if self.eval_interval is None:
@@ -614,7 +605,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._init_weigh_decay()
 
         initialize_megatron(self)
-        total_model_size = self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size
+        total_model_size = (
+            self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)
         self.data_parallel_size = self.world_size // total_model_size
         self.num_micro_batches = self.global_batch_size // self.data_parallel_size
 
@@ -721,6 +713,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         data_parallel_size = mpu.get_data_parallel_world_size()
         step_batch_size = self.micro_batch_size * data_parallel_size
         num_generations = self.num_generations if self.rlhf_type == 'grpo' else 1
+        # TODO: Check if it causes duplicate saving at the end.
         if self.save_strategy == 'epoch':
             if hasattr(train_dataset, '__len__'):
                 dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
