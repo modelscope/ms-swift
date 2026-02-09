@@ -26,7 +26,7 @@ except ImportError:
 class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
 
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
-        assert config.context_parallel_size == 1, 'Qwen3Next currently does not support context parallel.'
+        assert config.context_parallel_size == 1, 'Qwen3_5 currently does not support context parallel.'
         assert _Qwen3_5MoeGatedDeltaNet is not object, 'please update the `transformers` version.'
         _Qwen3_5MoeGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
