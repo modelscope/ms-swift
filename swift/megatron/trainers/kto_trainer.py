@@ -169,7 +169,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         res[0]['label'] = data['label']
         return res
 
-    def _log_callback(self, logs, n_iters: int):
-        super()._log_callback(logs, n_iters)
+    def _log_callback(self, logs):
+        super()._log_callback(logs)
         if 'rewards/chosen' in logs and 'rewards/rejected' in logs:
             logs['rewards/margins'] = logs['rewards/chosen'] - logs['rewards/rejected']

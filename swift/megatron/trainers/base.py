@@ -101,22 +101,21 @@ class BaseMegatronTrainer(ABC):
             self.state.iteration = self._load_iteration()
 
     def call_event(self, event, **kwargs):
-        if event == 'on_log':
-            logs = kwargs.get('logs')
-            n_iters = logs.pop('n_iters', None)
-            if n_iters is None:
-                n_iters = logs.pop('eval_n_iters', None)
-            if n_iters is not None:
-                n_iters = n_iters.item()
-                self._log_callback(n_iters=n_iters, **kwargs)
         for callback in self.callbacks:
             getattr(callback, event)(**kwargs)
 
-    def _log_callback(self, logs, n_iters: int):
+    def on_log(self, logs, prefix=''):
+        self._log_callback(logs)
+        if prefix:
+            logs = {f'{prefix}{k}': v for k, v in logs.items()}
+        self.call_event('on_log', logs=logs)
+
+    def _log_callback(self, logs):
         """This function is used to normalize logs for easier use with wandb/swanlab callbacks."""
         for k, v in logs.items():
-            v = v / n_iters
             if isinstance(v, torch.Tensor):
+                if v.shape[0] == 2:
+                    v = v[0] / v[1]
                 v = v.item()
             logs[k] = v
 
@@ -497,7 +496,7 @@ class BaseMegatronTrainer(ABC):
             metrics, grad_norm = self.train_step(train_data_iterator)
             self.call_event('on_step_end')
             if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                self.aggregated_metrics(metrics, train_metrics)
+                self._aggregated_metrics(metrics, train_metrics)
                 train_metrics['grad_norm'] = grad_norm
                 # TODO: check vit_lr
                 learning_rate = None
@@ -509,7 +508,7 @@ class BaseMegatronTrainer(ABC):
                     train_metrics['learning_rate'] = learning_rate
             if state.should_log:
                 state.should_log = False
-                self.call_event('on_log', logs=train_metrics)
+                self.on_log(logs=train_metrics)
                 train_metrics = {}
 
             if state.should_eval:
@@ -593,9 +592,8 @@ class BaseMegatronTrainer(ABC):
                 )
                 self.call_event('on_eval_step')
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                    self.aggregated_metrics(metrics, eval_metrics)
-        eval_metrics = {f'eval_{k}': v for k, v in eval_metrics.items()}
-        self.call_event('on_log', logs=eval_metrics)
+                    self._aggregated_metrics(metrics, eval_metrics)
+        self.on_log(logs=eval_metrics, prefix='eval_')
         self.call_event('on_eval_end')
 
     def train_step(self, train_data_iterator):
@@ -620,22 +618,21 @@ class BaseMegatronTrainer(ABC):
 
         return metrics, grad_norm
 
-    def aggregated_metrics(self, metrics, total_metrics):
-        if 'n_iters' not in total_metrics:
-            total_metrics['n_iters'] = torch.tensor([0], dtype=torch.int64, device=torch.cuda.current_device())
-        total_metrics['n_iters'] += 1
+    def _aggregated_metrics(self, metrics, total_metrics):
         for key in metrics[0].keys():
-            if key not in total_metrics:
-                total_metrics[key] = torch.tensor([0.0], dtype=torch.float32, device=torch.cuda.current_device())
             val = [x[key].view(-1) for x in metrics]
             val = torch.stack(val, dim=0)
             if val[0].numel() == 2:
                 val = val.sum(dim=0)
-                total_metrics[key] += val[0] / val[1]
+                if val[1] == 0:
+                    continue
             elif val[0].numel() == 1:
-                total_metrics[key] += val.mean()
+                val = val.new_tensor([val.sum(), val.shape[0]])
             else:
                 raise ValueError(f'Invalid value shape: {val[0].shape} for key {key}')
+            if key not in total_metrics:
+                total_metrics[key] = torch.tensor([0.0, 0.0], dtype=torch.float32, device=torch.cuda.current_device())
+            total_metrics[key] += val
 
     def prepare_dataloader(self, train_dataset, val_dataset):
         args = self.args

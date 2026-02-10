@@ -57,8 +57,8 @@ class PrintCallback(MegatronCallback):
         n_steps = state.iteration - self.start_step
         train_speed = elapsed / n_steps if n_steps > 0 else 0.0
         logs['remaining_time'] = format_time((args.train_iters - state.iteration) * train_speed)
-        memory = reduce_max_stat_across_model_parallel_group(torch.cuda.max_memory_reserved())
-        logs['memory(GiB)'] = round(memory / 1024**3, 2)
+        memory = reduce_max_stat_across_model_parallel_group(torch.cuda.max_memory_reserved() / 1024**3)
+        logs['memory(GiB)'] = round(memory, 2)
         logs['train_speed(s/it)'] = round(train_speed, 6)
         logs = {k: round(v, 8) if isinstance(v, float) else v for k, v in logs.items()}
         self.jsonl_writer.append(logs)
