@@ -1485,6 +1485,7 @@ class GPTBridge:
                 - If True, exports only LoRA delta weights. If False, exports the complete model weights
                 (e.g., after merge-lora or full-parameter fine-tuning).
             tqdm_desc: Description text for the progress bar. Defaults to 'Exporting: '.
+            disable_tqdm: Whether to disable the tqdm progress bar. Defaults to True.
 
         Yields:
             Tuple[str, torch.Tensor]: Key-value pairs of parameter names and tensors.
