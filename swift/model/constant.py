@@ -157,6 +157,7 @@ class MLLMModelType:
     glm4v = 'glm4v'
     glm4v_moe = 'glm4v_moe'
     glm_edge_v = 'glm_edge_v'
+    glm_ocr = 'glm_ocr'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
     cogagent_chat = 'cogagent_chat'
