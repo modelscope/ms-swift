@@ -566,3 +566,64 @@ register_template(
         suffix=['<|endoftext|>'],
         template_cls=GLMEdgeVTemplate,
     ))
+
+
+class GLMOCRTemplate(Template):
+    begin_of_image_token = 59256
+    end_of_image_token = 59257
+    placeholder_tokens = ['<|image|>']
+
+    def init_processor(self, processor) -> None:
+        if processor is None:
+            return
+        super().init_processor(processor)
+        self.image_token = self._tokenize('<|image|>')[0]
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type in ['image']
+        if self.mode == 'vllm':
+            return ['<|begin_of_image|><|image|><|end_of_image|>']
+        return [[-100]]
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        processor = self.processor
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        image_idx_list = findall(input_ids, -100)
+        if image_idx_list:
+            images = inputs.images
+            image_inputs = processor.image_processor(images=images, return_tensors='pt')
+            encoded['pixel_values'] = image_inputs['pixel_values']
+            encoded['image_grid_thw'] = image_grid_thw = image_inputs['image_grid_thw']
+            merge_length = processor.image_processor.merge_size**2
+            added_tokens_len = 0
+            for i, idx in enumerate(image_idx_list):
+                num_image_tokens = image_grid_thw[i].prod() // merge_length
+                image_tokens = [self.begin_of_image_token
+                                ] + [self.image_token] * num_image_tokens + [self.end_of_image_token]
+
+                input_ids = input_ids[:added_tokens_len + idx] + image_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels is not None:
+                    labels = labels[:added_tokens_len + idx] + [-100] * len(image_tokens) + labels[added_tokens_len
+                                                                                                   + idx + 1:]
+                added_tokens_len += len(image_tokens) - 1
+
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        return encoded
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+        input_ids = inputs['input_ids']
+        inputs_embeds = model.get_input_embeddings()(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
+
+
+register_template(GLM4TemplateMeta(
+    MLLMTemplateType.glm_ocr,
+    template_cls=GLMOCRTemplate,
+))
