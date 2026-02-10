@@ -13,6 +13,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
                                            reduce_scatter_to_sequence_parallel_region)
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
+from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
@@ -502,6 +503,7 @@ class Qwen3NextBridge(GPTBridge):
 
 class Qwen3NextLoader(MegatronModelLoader):
     bridge_cls = Qwen3NextBridge
+    gated_delta_net = Qwen3NextGatedDeltaNet
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         config = self.config
@@ -527,13 +529,14 @@ class Qwen3NextLoader(MegatronModelLoader):
         for layer_type in args.layer_types:
             layer_spec = deepcopy(moe_layer_spec)
             if layer_type == 'linear_attention':
-                layer_spec.submodules.self_attention.module = Qwen3NextGatedDeltaNet
+                layer_spec.submodules.self_attention.module = self.gated_delta_net
             elif layer_type == 'full_attention':
                 layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
                 layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
             # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)
             layer_spec.submodules.input_layernorm = layer_norm_impl
-            if hasattr(layer_spec.submodules, 'pre_mlp_layernorm'):
+            if hasattr(layer_spec.submodules,
+                   'pre_mlp_layernorm') and layer_spec.submodules.pre_mlp_layernorm is not IdentityOp:
                 layer_spec.submodules.pre_mlp_layernorm = layer_norm_impl
             # Replace qk_layernorm if present
             if hasattr(layer_spec.submodules.self_attention.submodules, 'q_layernorm'):

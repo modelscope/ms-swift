@@ -118,8 +118,8 @@ class DataArguments:
         self._init_val_dataset_exists()
 
     def _init_val_dataset_exists(self):
-        self._val_dataset_exists = (
-            self.dataset and self.split_dataset_ratio > 0 or self.val_dataset or self.cached_val_dataset)
+        self._val_dataset_exists = bool(self.dataset and self.split_dataset_ratio > 0 or self.val_dataset
+                                        or self.cached_val_dataset)
 
     def get_dataset_kwargs(self):
         return {
