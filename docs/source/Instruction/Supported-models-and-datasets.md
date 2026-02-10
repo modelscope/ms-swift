@@ -305,7 +305,7 @@
 |[deepseek-ai/deepseek-coder-33b-base](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-base)|llama|deepseek|-|&#x2714;|coding|[deepseek-ai/deepseek-coder-33b-base](https://huggingface.co/deepseek-ai/deepseek-coder-33b-base)|
 |[deepseek-ai/deepseek-coder-33b-instruct](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-instruct)|llama|deepseek|-|&#x2714;|coding|[deepseek-ai/deepseek-coder-33b-instruct](https://huggingface.co/deepseek-ai/deepseek-coder-33b-instruct)|
 |[gongjy/MiniMind2](https://modelscope.cn/models/gongjy/MiniMind2)|llama|minimind|transformers>=4.57.1|&#x2714;|-|[jingyaogong/MiniMind2](https://huggingface.co/jingyaogong/MiniMind2)|
-|-|llama|minimind|transformers>=4.57.1|&#x2714;|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
+|-|llama|minimind|transformers>=4.57.1|pretrain, quality|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
 |[LLM-Research/Meta-Llama-3-8B-Instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)|
 |[LLM-Research/Meta-Llama-3-70B-Instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-70B-Instruct)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-70B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)|
 |[LLM-Research/Meta-Llama-3-8B](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B)|
@@ -801,6 +801,7 @@
 |[ZhipuAI/GLM-4.6V-FP8](https://modelscope.cn/models/ZhipuAI/GLM-4.6V-FP8)|glm4v_moe|glm4_5v|transformers>=5.0.0.dev|&#x2718;|-|[zai-org/GLM-4.6V-FP8](https://huggingface.co/zai-org/GLM-4.6V-FP8)|
 |[ZhipuAI/glm-edge-v-2b](https://modelscope.cn/models/ZhipuAI/glm-edge-v-2b)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-v-2b](https://huggingface.co/zai-org/glm-edge-v-2b)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge_v|glm_edge_v|transformers>=4.46|&#x2718;|vision|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
+|[ZhipuAI/GLM-OCR](https://modelscope.cn/models/ZhipuAI/GLM-OCR)|glm_ocr|glm_ocr|transformers>=5.0.1dev0|&#x2718;|-|[zai-org/GLM-OCR](https://huggingface.co/zai-org/GLM-OCR)|
 |[ZhipuAI/cogvlm-chat](https://modelscope.cn/models/ZhipuAI/cogvlm-chat)|cogvlm|cogvlm|transformers<4.42|&#x2718;|-|[zai-org/cogvlm-chat-hf](https://huggingface.co/zai-org/cogvlm-chat-hf)|
 |[ZhipuAI/cogagent-vqa](https://modelscope.cn/models/ZhipuAI/cogagent-vqa)|cogagent_vqa|cogagent_vqa|transformers<4.42|&#x2718;|-|[zai-org/cogagent-vqa-hf](https://huggingface.co/zai-org/cogagent-vqa-hf)|
 |[ZhipuAI/cogagent-chat](https://modelscope.cn/models/ZhipuAI/cogagent-chat)|cogagent_chat|cogagent_chat|transformers<4.42, timm|&#x2718;|-|[zai-org/cogagent-chat-hf](https://huggingface.co/zai-org/cogagent-chat-hf)|
