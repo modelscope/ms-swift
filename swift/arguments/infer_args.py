@@ -176,6 +176,8 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         if self.result_path is not None:
             self.result_path = to_abspath(self.result_path)
             return
+        # By default, a result_path file is automatically created
+        # when a validation or evaluation dataset is present.
         if self._val_dataset_exists or getattr(self, 'eval_dataset', None):
             self.result_path = self._get_result_path(folder_name)
             logger.info(f'args.result_path: {self.result_path}')

@@ -78,6 +78,7 @@ class DeployArguments(InferArguments):
     def _init_stream(self):
         return BaseArguments._init_stream(self)
 
+
 @dataclass
 class RolloutArguments(DeployArguments):
     """Arguments for the Rollout phase in online/reinforcement learning.
