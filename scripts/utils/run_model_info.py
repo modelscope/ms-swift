@@ -15,7 +15,8 @@ def get_cache_mapping(fpath):
     with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
     idx = text.find('| Model ID |')
-    text = text[idx:]
+    end_idx = text.find('| Dataset ID |')
+    text = text[idx:end_idx]
     text_list = text.split('\n')[2:]
     cache_mapping = {}
     for text in text_list:

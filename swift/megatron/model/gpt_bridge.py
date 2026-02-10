@@ -36,10 +36,10 @@ class GPTBridge:
     hf_score_key = 'score.weight'
     hf_state_dict_mapping = {}
 
-    def __init__(self, disable_tqmd: bool = False):
+    def __init__(self):
         from .register import get_megatron_model_meta
         self.args = get_args()
-        self.disable_tqmd = disable_tqmd or not is_last_rank()
+        self._disable_tqdm = False
         self._target_device = None
         self._only_last_rank = False
         self._peft_target_modules = set()
@@ -713,7 +713,7 @@ class GPTBridge:
         if self.args.hf_model_type in {
                 'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'dots1', 'ernie4_5_moe', 'glm4_moe',
                 'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
-                'qwen3_vl_moe'
+                'qwen3_vl_moe', 'qwen3_5_moe'
         }:
             return False, False
         return None, None
@@ -1345,7 +1345,8 @@ class GPTBridge:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
             hf_state_dict = {}
         layer_idx = 0
-        prog_bar = tqdm(range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=self.disable_tqmd)
+        disable_tqdm = self._disable_tqdm or not is_last_rank()
+        prog_bar = tqdm(range(self.args.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=disable_tqdm)
         while layer_idx < self.args.num_layers:
             lm_model = getattr(mg_model, 'language_model') if self.args.is_multimodal else mg_model
             if len(lm_model.decoder.layers) > 0:
@@ -1444,8 +1445,19 @@ class GPTBridge:
         return hf_state_dict
 
     def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
+        """Load weights from safetensors (HuggingFace) format into Megatron model.
+
+        Args:
+            mg_model: Megatron model instance to load weights into.
+                Note: If is_peft_format is True, you also need to pass in a GPTModel, not a PeftModel.
+            hf_model_dir: Path to the safetensors model directory.
+            is_peft_format: Whether the weights are in PEFT (LoRA, etc.) format. Defaults to False.
+                If True, loads LoRA delta weights. If False, loads the full model weights.
+            adapter_name: Name of the adapter for PEFT models. Defaults to 'default'.
+        """
         self._is_peft_format = is_peft_format
         self._adapter_name = adapter_name
+        self._disable_tqdm = False
         hf_model_dir = safe_snapshot_download(hf_model_dir, use_hf=self.args.use_hf, hub_token=self.args.hub_token)
         with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
@@ -1457,10 +1469,31 @@ class GPTBridge:
                        target_device=None,
                        only_last_rank: bool = False,
                        is_peft_format: bool = False,
-                       tqdm_desc: str = 'Exporting: '):
+                       tqdm_desc: str = 'Exporting: ',
+                       disable_tqdm: bool = True):
+        """Export Megatron model weights to safetensors (HuggingFace) format as a generator.
+
+        This method yields weight tensors one by one for streaming save operations or RL weight synchronization,
+        preventing all weights from being loaded into memory simultaneously.
+
+        Args:
+            mg_models: List of Megatron model instances to export.
+                Note: If is_peft_format is True, you also need to pass in a GPTModel, not a PeftModel.
+            target_device: Target device for exported tensors (e.g., 'cpu'). Defaults to None (current device, cuda).
+            only_last_rank: Whether to export only on the last rank in distributed settings. Defaults to False.
+            is_peft_format: Whether to export in PEFT (LoRA, etc.) format. Defaults to False.
+                - If True, exports only LoRA delta weights. If False, exports the complete model weights
+                (e.g., after merge-lora or full-parameter fine-tuning).
+            tqdm_desc: Description text for the progress bar. Defaults to 'Exporting: '.
+            disable_tqdm: Whether to disable the tqdm progress bar. Defaults to True.
+
+        Yields:
+            Tuple[str, torch.Tensor]: Key-value pairs of parameter names and tensors.
+        """
         self._target_device = target_device
         self._only_last_rank = only_last_rank
         self._is_peft_format = is_peft_format
+        self._disable_tqdm = disable_tqdm
         self._adapter_name = 'default'
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
@@ -1474,13 +1507,38 @@ class GPTBridge:
                      is_peft_format: bool = False,
                      processor=None,
                      config=None) -> None:
-        """Save the mg_model checkpoint in HF format"""
+        """Save Megatron model checkpoint in safetensors (HuggingFace) format.
+
+        This method converts and saves Megatron model weights to safetensors format,
+        supporting both full model and PEFT (LoRA, etc.) formats. The weights are
+        saved as safetensors files with appropriate configuration files.
+
+        Args:
+            mg_models: List of Megatron model instances to save.
+                Note: If is_peft_format is True, you also need to pass in a GPTModel, not a PeftModel.
+            output_dir: Directory path to save the model weights and configuration.
+            is_peft_format: Whether to save in PEFT (LoRA, etc.) format. Defaults to False.
+                If True, saves LoRA delta weights. If False, saves the complete model weights
+                (e.g., after merge-lora or full-parameter fine-tuning).
+            processor: Optional processor (tokenizer/feature extractor) to save. If None, uses self.processor.
+            config: Optional model configuration to save. If None, uses self.hf_model.config.
+
+        Note:
+            - Only the last rank performs the actual save operation in distributed settings.
+            - For PEFT format, saves adapter configuration and weights.
+            - For full model format, saves complete model configuration and weights.
+            - Automatically handles FP8 quantization configuration if enabled.
+        """
         torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         for k, v in self.export_weights(
-                mg_models, target_device='cpu', only_last_rank=True, is_peft_format=is_peft_format,
-                tqdm_desc='Saving: '):
+                mg_models,
+                target_device='cpu',
+                only_last_rank=True,
+                is_peft_format=is_peft_format,
+                tqdm_desc='Saving: ',
+                disable_tqdm=False):
             saver.add_tensor(k, v)
         saver.finalize()
         args = self.args

@@ -1111,6 +1111,46 @@ register_model(
         tags=['vision', 'video']))
 
 
+class Qwen3_5MoeLoader(Qwen3VLLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3_5MoeForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen3_5MoeForConditionalGeneration
+        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_5_moe, [
+            ModelGroup([], TemplateType.qwen3_5),
+        ],
+        Qwen3_5MoeLoader,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen3_5MoeForConditionalGeneration'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
+class Qwen3_5Loader(Qwen3VLLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3_5ForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen3_5ForConditionalGeneration
+        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_5, [
+            ModelGroup([], TemplateType.qwen3_5),
+        ],
+        Qwen3_5Loader,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen3_5ForConditionalGeneration'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
 class Qwen2_5OmniLoader(ModelLoader):
 
     def get_config(self, model_dir):

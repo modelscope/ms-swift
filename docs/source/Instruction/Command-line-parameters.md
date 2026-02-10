@@ -665,7 +665,7 @@ soft overlong 奖励参数
 - 🔥infer_backend: 推理加速后端，支持'transformers'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'transformers'。
   - 注意：这四种引擎使用的都是swift的template，使用`--template_backend`控制。
 - 🔥max_batch_size: 指定infer_backend为'transformers'时生效，用于批量推理，默认为1。若设置为-1，则不受限制。
-- 🔥result_path: 推理结果存储路径（jsonl），默认为None，保存在checkpoint目录（含args.json文件）或者'./result'目录，最终存储路径会在命令行中打印。
+- 🔥result_path: 推理结果存储路径（jsonl），默认为None。如果对数据集进行推理/评测，则默认保存在checkpoint目录（含args.json文件）或者'./result'目录，最终存储路径会在命令行中打印（交互式推理或部署默认不存储结果）。
   - 注意：若已存在`result_path`文件，则会进行追加写入。
 - write_batch_size: 结果写入`result_path`的batch_size。默认为1000。若设置为-1，则不受限制。
 - metric: 对推理的结果进行评估，目前支持'acc'和'rouge'。默认为None，即不进行评估。

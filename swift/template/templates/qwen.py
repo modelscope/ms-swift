@@ -552,6 +552,19 @@ register_template(
         MLLMTemplateType.qwen3_vl, template_cls=Qwen3VLTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
+class Qwen3_5Template(Qwen3VLTemplate):
+    image_token_id = 248056
+    video_token_id = 248057
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return Qwen2VLTemplate._post_encode(self, model, inputs)
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_5, template_cls=Qwen3_5Template, default_system=None, thinking_prefix='<think>\n'))
+
+
 class Qwen3VLEmbTemplate(Qwen3VLTemplate):
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:

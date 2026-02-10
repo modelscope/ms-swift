@@ -134,6 +134,8 @@ class MLLMTemplateType:
     qwen3_vl = 'qwen3_vl'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
+    qwen3_5 = 'qwen3_5'
+
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
