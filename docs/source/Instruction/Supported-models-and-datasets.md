@@ -305,7 +305,7 @@
 |[deepseek-ai/deepseek-coder-33b-base](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-base)|llama|deepseek|-|&#x2714;|coding|[deepseek-ai/deepseek-coder-33b-base](https://huggingface.co/deepseek-ai/deepseek-coder-33b-base)|
 |[deepseek-ai/deepseek-coder-33b-instruct](https://modelscope.cn/models/deepseek-ai/deepseek-coder-33b-instruct)|llama|deepseek|-|&#x2714;|coding|[deepseek-ai/deepseek-coder-33b-instruct](https://huggingface.co/deepseek-ai/deepseek-coder-33b-instruct)|
 |[gongjy/MiniMind2](https://modelscope.cn/models/gongjy/MiniMind2)|llama|minimind|transformers>=4.57.1|&#x2714;|-|[jingyaogong/MiniMind2](https://huggingface.co/jingyaogong/MiniMind2)|
-|-|llama|minimind|transformers>=4.57.1|pretrain, quality|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
+|-|llama|minimind|transformers>=4.57.1|&#x2714;|-|[jingyaogong/MiniMind2-Small](https://huggingface.co/jingyaogong/MiniMind2-Small)|
 |[LLM-Research/Meta-Llama-3-8B-Instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-8B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct)|
 |[LLM-Research/Meta-Llama-3-70B-Instruct](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-70B-Instruct)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-70B-Instruct](https://huggingface.co/meta-llama/Meta-Llama-3-70B-Instruct)|
 |[LLM-Research/Meta-Llama-3-8B](https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B)|llama|llama3|-|&#x2714;|-|[meta-llama/Meta-Llama-3-8B](https://huggingface.co/meta-llama/Meta-Llama-3-8B)|
