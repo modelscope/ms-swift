@@ -28,8 +28,9 @@ from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (copy_original_module_weight, get_optimizer_param_scheduler, get_padding_to,
-                                  load_mcore_checkpoint, patch_merge_fn, prepare_mcore_model, save_mcore_checkpoint,
-                                  wrap_model)
+                                  load_mcore_checkpoint, logical_and_across_model_parallel_group, patch_merge_fn,
+                                  prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
+                                  save_mcore_checkpoint, wrap_model)
 from swift.metrics import MeanMetric
 from swift.template import Template
 from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
@@ -37,8 +38,7 @@ from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, is_last_rank,
                          ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .utils import (TrainerState, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
-                    logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group)
+from .utils import TrainerState, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -83,13 +83,6 @@ class BaseMegatronTrainer(ABC):
                 })
                 check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
-        def _get_mean_metric():
-            return MeanMetric(nan_value=None, group=mpu.get_data_parallel_group(with_context_parallel=True))
-
-        self.custom_metrics = {
-            'train': collections.defaultdict(_get_mean_metric),
-            'eval': collections.defaultdict(_get_mean_metric)
-        }
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         self.callbacks = []
         for callback in self.args.callbacks:
@@ -107,24 +100,24 @@ class BaseMegatronTrainer(ABC):
             # TODO: check
             self.state.iteration = self._load_iteration()
 
-    def call_event(self, event, *args, **kwargs):
+    def call_event(self, event, **kwargs):
         if event == 'on_log':
-            self._log_callback(*args, **kwargs)
+            logs = kwargs.get('logs')
+            n_iters = logs.pop('n_iters', None)
+            if n_iters is None:
+                n_iters = logs.pop('eval_n_iters', None)
+            if n_iters is not None:
+                n_iters = n_iters.item()
+                self._log_callback(n_iters=n_iters, **kwargs)
         for callback in self.callbacks:
-            getattr(callback, event)(*args, **kwargs)
+            getattr(callback, event)(**kwargs)
 
-    def _log_callback(self, logs):
+    def _log_callback(self, logs, n_iters: int):
         """This function is used to normalize logs for easier use with wandb/swanlab callbacks."""
-        n_iters = logs.pop('n_iters', None)
-        if n_iters is None:
-            n_iters = logs.pop('eval_n_iters', None)
-        n_iters = n_iters.item()
         for k, v in logs.items():
             v = v / n_iters
             if isinstance(v, torch.Tensor):
                 v = v.item()
-            if isinstance(v, float):
-                v = round(v, 8)
             logs[k] = v
 
     def prepare_model(self):
@@ -425,12 +418,12 @@ class BaseMegatronTrainer(ABC):
         torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
 
-    def _get_metrics(self, total_loss_dict, mode):
-        advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
-        return {
-            k: torch.tensor([v * advanced_iters], device='cuda')
-            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
-        }
+    # def _get_metrics(self, total_loss_dict, mode):
+    #     advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
+    #     return {
+    #         k: torch.tensor([v * advanced_iters], device='cuda')
+    #         for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
+    #     }
 
     # def _remove_log(self, total_loss_dict):
     #     pass
@@ -516,7 +509,7 @@ class BaseMegatronTrainer(ABC):
                     train_metrics['learning_rate'] = learning_rate
             if state.should_log:
                 state.should_log = False
-                self.call_event('on_log', train_metrics)
+                self.call_event('on_log', logs=train_metrics)
                 train_metrics = {}
 
             if state.should_eval:
@@ -602,7 +595,7 @@ class BaseMegatronTrainer(ABC):
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
                     self.aggregated_metrics(metrics, eval_metrics)
         eval_metrics = {f'eval_{k}': v for k, v in eval_metrics.items()}
-        self.call_event('on_log', eval_metrics)
+        self.call_event('on_log', logs=eval_metrics)
         self.call_event('on_eval_end')
 
     def train_step(self, train_data_iterator):

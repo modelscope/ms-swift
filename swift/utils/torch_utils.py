@@ -290,3 +290,12 @@ def get_generative_reranker_logits(lm_head_weight, tokenizer, hidden_states):
     weight = lm_head_weight[[positive_token_id, negative_token_id]]
     logits = F.linear(hidden_states, weight)
     return logits[..., 0:1] - logits[..., 1:2]
+
+
+def get_max_reserved_memory() -> float:
+    devices = list(range(get_device_count())) if is_mp() else [None]
+    try:
+        mems = [get_torch_device().max_memory_reserved(device=device) for device in devices]
+    except AttributeError:
+        return 0  # fix mps
+    return sum(mems) / 1024**3

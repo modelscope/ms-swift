@@ -61,6 +61,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         if loss_scale is not None:
             losses = losses * loss_scale
         if args.enable_channel_loss and channels is not None:
+            # TODO: fix
             mode = 'train' if self.unwrapped_models[0].training else 'eval'
             metrics = self.custom_metrics[mode]
             if args.padding_free:

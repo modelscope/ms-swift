@@ -612,7 +612,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         total_model_size = (
             self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)
         self.data_parallel_size = self.world_size // total_model_size
-        self.num_micro_batches = self.global_batch_size // self.data_parallel_size
+        # Gradient Accumulation
+        self.num_micro_batches = self.global_batch_size // self.data_parallel_size // self.micro_batch_size
 
     def _init_vpp_size(self):
         # TODO:

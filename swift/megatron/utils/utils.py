@@ -332,6 +332,7 @@ def get_local_layer_specs(config, layer_specs, vp_stage=None):
     return local_layer_specs
 
 
+# TODO: remove
 class MegatronTrainerState:
     """
     A lightweight trainer state class for Megatron training, providing compatibility

@@ -9,20 +9,11 @@ from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
 
-from swift.utils import (append_to_jsonl, format_time, get_device_count, get_logger, get_torch_device, is_mp,
-                         is_pai_training_job)
+from swift.utils import (append_to_jsonl, format_time, get_device_count, get_logger, get_max_reserved_memory,
+                         get_torch_device, is_mp, is_pai_training_job)
 from .arguments import TrainingArguments
 
 logger = get_logger()
-
-
-def get_max_reserved_memory() -> float:
-    devices = list(range(get_device_count())) if is_mp() else [None]
-    try:
-        mems = [get_torch_device().max_memory_reserved(device=device) for device in devices]
-    except AttributeError:
-        return 0  # fix mps
-    return sum(mems) / 1024**3
 
 
 def add_train_message(logs, state, start_time, start_step) -> None:
