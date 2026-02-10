@@ -189,6 +189,8 @@ class MegatronModelConfig(TransformerConfig):
         self._format_config()
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
+        if self.moe_shared_expert_intermediate_size == 0:
+            self.moe_shared_expert_intermediate_size = None
         if self.num_moe_experts is not None:
             if self.moe_ffn_hidden_size is None:
                 self.moe_ffn_hidden_size = self.ffn_hidden_size

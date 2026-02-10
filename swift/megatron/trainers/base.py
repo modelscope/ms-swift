@@ -2,13 +2,10 @@
 import collections
 import dataclasses
 import logging
-import math
 import os
 import shutil
-import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, nullcontext
-from datetime import datetime
 from functools import partial
 from typing import Callable, Dict, List, Literal, Optional
 
@@ -16,24 +13,16 @@ import megatron.core
 import torch
 import torch.nn
 from megatron.core import mpu, tensor_parallel
-from megatron.core.datasets.utils import Split
 from megatron.core.distributed import finalize_model_grads
-from megatron.core.enums import ModelType
 from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
-from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import Float16Module, MegatronModule
-from megatron.core.transformer.moe.moe_utils import track_moe_metrics
-from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 # from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer,
 #                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
 #                                print_rank_last, training)
 # from megatron.training.checkpointing import check_checkpoint_args, set_checkpoint_version
-# from megatron.training.theoretical_memory_usage import report_theoretical_memory
-# from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory
 from modelscope import check_local_model_is_latest
 from packaging import version
-from tqdm.auto import tqdm
 
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
@@ -50,11 +39,6 @@ from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (TrainerState, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params,
                     logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group)
-
-# try:
-#     from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
-# except ImportError:
-#     from megatron.legacy.data.data_samplers import MegatronPretrainingSampler
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -82,17 +66,7 @@ class BaseMegatronTrainer(ABC):
         if args.tuner_type != 'full' and args.modules_to_save:
             for m in self.unwrapped_models:
                 copy_original_module_weight(m)
-        if args.mcore_model is not None:
-            self.state.iteration = load_mcore_checkpoint(
-                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_model')
-        if args.ref_mcore_adapter is not None:
-            with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_mcore_adapter')
-        if args.mcore_adapter is not None:
-            self.state.iteration = load_mcore_checkpoint(
-                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_adapter')
-        if not args.finetune:
-            self.state.iteration = self._load_iteration()
+        self._load_checkpoint()
 
         self.eval_metrics = None
         logging_path = os.path.join(args.output_dir, 'logging.jsonl')
@@ -121,6 +95,18 @@ class BaseMegatronTrainer(ABC):
         for callback in self.args.callbacks:
             self.callbacks.append(megatron_callbacks_map[callback](self))
 
+    def _load_checkpoint(self):
+        args = self.args
+        if args.mcore_model is not None:
+            self.state.iteration = load_mcore_checkpoint(
+                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_model')
+        if args.mcore_adapter is not None:
+            self.state.iteration = load_mcore_checkpoint(
+                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_adapter')
+        if not args.finetune:
+            # TODO: check
+            self.state.iteration = self._load_iteration()
+
     def call_event(self, event, *args, **kwargs):
         if event == 'on_log':
             self._log_callback(*args, **kwargs)
@@ -134,33 +120,32 @@ class BaseMegatronTrainer(ABC):
             n_iters = logs.pop('eval_n_iters', None)
         n_iters = n_iters.item()
         for k, v in logs.items():
+            v = v / n_iters
             if isinstance(v, torch.Tensor):
                 v = v.item()
             if isinstance(v, float):
                 v = round(v, 8)
-            logs[k] = v / n_iters
+            logs[k] = v
 
     def prepare_model(self):
         args = self.args
-        hf_config = self.template.config
         self.peft_models = []
         self.wrapped_models = []
-        self.unwrapped_models = get_mcore_model(args, hf_config)
+        self.unwrapped_models = get_mcore_model(args, self.template.config)
         for model in self.unwrapped_models:
-            if args.mcore_model is None:
-                self.bridge.load_weights(model, args.model_dir)
-
-            peft_model = prepare_mcore_model(args, model)
-            if args.tuner_type == 'lora':
-                if args.adapters and args.mcore_adapter is None:
-                    assert len(args.adapters) == 1, 'Currently only support one adapter.'
-                    self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
-                if args.ref_adapters and args.ref_mcore_adapter is None:
-                    assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
-                    self.bridge.load_weights(
-                        model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+            peft_model = self._prepare_peft_model(model)
             self.peft_models.append(peft_model)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
+
+    def _prepare_peft_model(self, model):
+        args = self.args
+        if args.mcore_model is None:
+            self.bridge.load_weights(model, args.model_dir)
+        peft_model = prepare_mcore_model(args, model)
+        if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
+            assert len(args.adapters) == 1, 'Currently only support one adapter.'
+            self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
+        return peft_model
 
     def get_optimizer_and_scheduler(self):
         args = self.args
@@ -532,6 +517,7 @@ class BaseMegatronTrainer(ABC):
             if state.should_log:
                 state.should_log = False
                 self.call_event('on_log', train_metrics)
+                train_metrics = {}
 
             if state.should_eval:
                 state.should_eval = False

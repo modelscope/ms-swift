@@ -59,7 +59,6 @@ class MegatronSft(SwiftSft):
         self._prepare_template()
         args.save_args(args.output_dir)
         self.template.use_megatron = True
-        self.trainer = self.prepare_trainer()
 
     def run(self):
         args = self.args
@@ -69,9 +68,9 @@ class MegatronSft(SwiftSft):
         #     train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
         #     if val_dataset is not None:
         #         val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
-
+        trainer = self.prepare_trainer()
         try:
-            self.trainer.train(train_dataset, val_dataset)
+            trainer.train(train_dataset, val_dataset)
         finally:
             # Visualization
             if is_last_rank():

@@ -4,7 +4,6 @@ from typing import List, Optional, Union
 
 from swift.megatron.arguments import MegatronRLHFArguments
 from swift.pipelines.train import prepare_kto_dataset
-from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, is_last_rank
 from .sft import MegatronSft
 
@@ -38,11 +37,6 @@ class MegatronRLHF(MegatronSft):
         super()._prepare_template()
         model_mapping = {'grpo': 'train', 'gkd': 'train', 'kto': 'kto'}
         self.template.set_mode(model_mapping.get(self.args.rlhf_type, 'rlhf'))
-
-    def _get_data_collator(self):
-        if self.args.rlhf_type in ('grpo', 'gkd'):
-            return identity_data_collator
-        return super()._get_data_collator()
 
     def _get_dataset(self):
         args = self.args

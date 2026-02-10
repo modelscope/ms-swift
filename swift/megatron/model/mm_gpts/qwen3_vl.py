@@ -49,8 +49,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
         del self.thinker.model
         del self.thinker.lm_head
 
-    @staticmethod
-    def _get_inputs_embeds(inputs_embeds, inputs, visual, processor, config):
+    def _get_inputs_embeds(self, inputs_embeds, inputs, visual, processor, hf_config):
         from ...trainers.utils import split_cp_inputs
         input_ids = inputs['input_ids']
         packed_seq_params = inputs.get('packed_seq_params')
@@ -102,8 +101,8 @@ class Qwen3Omni_Vit(HuggingFaceModule):
                 image_embeds = mixed_embeds[:image_tokens]
                 video_embeds = mixed_embeds[image_tokens:]
 
-            image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-            video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            image_mask = (input_ids == hf_config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            video_mask = (input_ids == hf_config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             if image_embeds is not None:
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 image_mask = image_mask.to(inputs_embeds.device)
@@ -130,8 +129,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             deepstack_visual_embeds = torch.stack(deepstack_visual_embeds, dim=0)
             visual_pos_masks = visual_pos_masks.transpose(0, 1)
             # compat cp
-            args = get_args()
-            if args.context_parallel_size > 1:
+            if self.config.context_parallel_size > 1:
                 device = visual_pos_masks.device
                 cp_mask = torch.full(visual_pos_masks.shape[:1], -1, dtype=torch.long, device=device)
                 cp_mask[visual_pos_masks[:, 0]] = torch.arange(visual_pos_masks.sum(), device=device)
@@ -142,7 +140,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             # compat sp
             tp_world_size = parallel_state.get_tensor_model_parallel_world_size()
             tp_rank = parallel_state.get_tensor_model_parallel_rank()
-            if args.sequence_parallel and tp_world_size > 1:
+            if self.config.sequence_parallel and tp_world_size > 1:
                 visual_pos_masks = visual_pos_masks.view(tp_world_size, -1, *visual_pos_masks.shape[1:])
                 mask_tokens = visual_pos_masks.sum(dim=(1, 2)).tolist()
                 visual_start = 0 if tp_rank == 0 else sum(mask_tokens[:tp_rank])
@@ -158,8 +156,8 @@ class Qwen3Omni_Vit(HuggingFaceModule):
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         input_ids = kwargs['input_ids']
         visual = self.thinker.visual
-        config = self.hf_config.thinker_config
-        res = self._get_inputs_embeds(inputs_embeds, kwargs, visual, self.processor, config)
+        hf_config = self.hf_config.thinker_config
+        res = self._get_inputs_embeds(inputs_embeds, kwargs, visual, self.processor, hf_config)
         inputs_embeds = res['inputs_embeds']
         input_features = kwargs.get('input_features')
         feature_attention_mask = kwargs.get('feature_attention_mask')
@@ -171,7 +169,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
             audio_embeds = self.thinker.get_audio_features(input_features, feature_attention_mask)
-            audio_mask = (input_ids == config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            audio_mask = (input_ids == hf_config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
         res['inputs_embeds'] = inputs_embeds

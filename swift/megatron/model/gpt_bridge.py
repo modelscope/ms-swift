@@ -1461,7 +1461,7 @@ class GPTBridge:
         Args:
             mg_model: Megatron model instance to load weights into.
                 Note: If is_peft_format is True, you also need to pass in a GPTModel, not a PeftModel.
-            hf_model_dir: Path to the safetensors model directory.
+            hf_model_dir: Path/Id to the safetensors model directory.
             is_peft_format: Whether the weights are in PEFT (LoRA, etc.) format. Defaults to False.
                 If True, loads LoRA delta weights. If False, loads the full model weights.
             adapter_name: Name of the adapter for PEFT models. Defaults to 'default'.
