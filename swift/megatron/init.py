@@ -685,7 +685,7 @@ def _patch_mrope():
         return freqs_t
 
     # Code borrowed from NVIDIA/Megatron-LM
-    def forward(self, position_ids, mrope_section: List[int], packed_seq: bool = False) -> torch.Tensor:
+    def forward(self, position_ids, mrope_section: List[int], mrope_interleaved: bool = False) -> torch.Tensor:
         seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
 
         if self.seq_len_interpolation_factor is not None:
@@ -697,7 +697,7 @@ def _patch_mrope():
         seq_expanded = seq[:, :, None, :].float()
         # shape (3, bs, seq_length, dim)
         freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
-        if self.config.mrope_interleaved:
+        if mrope_interleaved:
             freqs = apply_interleaved_mrope(freqs, mrope_section)
             emb = torch.cat((freqs, freqs), dim=-1)
         else:

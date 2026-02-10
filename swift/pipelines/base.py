@@ -22,10 +22,11 @@ class SwiftPipeline(ABC, ProcessorMixin):
         self._compat_dsw_gradio(args)
 
     def _set_seed(self):
-        args = self.self
+        args = self.args
         if hasattr(args, 'seed'):
             seed = args.seed + max(getattr(args, 'rank', -1), 0)
             seed_everything(seed)
+            logger.info(f'Global seed set to {seed}')
 
     def _parse_args(self, args: Optional[Union[List[str], args_class]] = None) -> args_class:
         if isinstance(args, self.args_class):

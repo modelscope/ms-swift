@@ -439,7 +439,7 @@ class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
         self.to(dtype=extra_kwargs['params_dtype'], device=extra_kwargs['device'])
 
     def forward(self, hidden_states: torch.Tensor, **kwargs):
-        args = get_args()
+        args = self.config.args
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
         seq_len = hidden_states.shape[0]
@@ -482,7 +482,7 @@ class Qwen3NextBridge(GPTBridge):
     # which implements Zero-Centered RMSNorm (1 + weight) matching HuggingFace exactly.
 
     def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
-        layer_type = self.args.layer_types[layer_idx]
+        layer_type = self.config.layer_types[layer_idx]
         mg_attn = None if mg_layer is None else mg_layer.self_attention
         if layer_type == 'linear_attention':
             hf_state_dict.update(self._set_module(mg_attn, hf_state_dict, 'linear_attn.', to_mcore))
@@ -525,7 +525,7 @@ class Qwen3NextLoader(MegatronModelLoader):
             **kwargs,
         )
         layer_specs = []
-        for layer_type in args.layer_types:
+        for layer_type in self.config.layer_types:
             layer_spec = deepcopy(moe_layer_spec)
             if layer_type == 'linear_attention':
                 layer_spec.submodules.self_attention.module = self.gated_delta_net

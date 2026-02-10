@@ -8,7 +8,6 @@ from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
                                            reduce_scatter_to_sequence_parallel_region)
 from megatron.core.transformer.attention import SelfAttentionSubmodules
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.training import get_args
 
 from swift.model import ModelType
 from swift.template import Template
@@ -34,7 +33,7 @@ class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
         self.to(dtype=extra_kwargs['params_dtype'], device=extra_kwargs['device'])
 
     def forward(self, hidden_states: torch.Tensor, **kwargs):
-        args = get_args()
+        args = self.config.args
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             hidden_states = gather_from_sequence_parallel_region(hidden_states)
         seq_len = hidden_states.shape[0]

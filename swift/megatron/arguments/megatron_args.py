@@ -8,6 +8,7 @@ import json
 import megatron.core
 import torch
 from megatron.core import mpu
+from megatron.core.transformer.enums import AttnBackend
 from packaging import version
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
@@ -603,6 +604,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._init_multimodal_full()
         self._map_dtype()
         self._init_weigh_decay()
+        self.attention_backend = AttnBackend[self.attention_backend]
+        if self.sequence_parallel and self.tensor_model_parallel_size <= 1:
+            self.sequence_parallel = False
 
         initialize_megatron(self)
         total_model_size = (

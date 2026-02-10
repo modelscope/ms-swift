@@ -119,14 +119,14 @@ def get_rope_inv_freq(config, seq_len=None):
 
 
 # borrowed from huggingface/transformers
-def longrope_frequency_update(args, model, inv_freq, seq_len: int):
-    if args.original_max_position_embeddings is not None:
-        original_max_position_embeddings = args.original_max_position_embeddings
+def longrope_frequency_update(config, model, inv_freq, seq_len: int):
+    if config.original_max_position_embeddings is not None:
+        original_max_position_embeddings = config.original_max_position_embeddings
     else:
-        original_max_position_embeddings = args.max_position_embeddings
+        original_max_position_embeddings = config.max_position_embeddings
 
     if not hasattr(model, 'long_inv_freq'):
-        model.long_inv_freq, _ = get_rope_inv_freq(args, seq_len=original_max_position_embeddings + 1)
+        model.long_inv_freq, _ = get_rope_inv_freq(config, seq_len=original_max_position_embeddings + 1)
         model.original_inv_freq = inv_freq.clone()
 
     if seq_len > original_max_position_embeddings:
@@ -136,14 +136,14 @@ def longrope_frequency_update(args, model, inv_freq, seq_len: int):
 
 
 # borrowed from huggingface/transformers
-def dynamic_frequency_update(args, model, inv_freq, seq_len: int):
+def dynamic_frequency_update(config, model, inv_freq, seq_len: int):
     if not hasattr(model, 'max_seq_len_cached'):
-        model.max_seq_len_cached = args.max_position_embeddings
-        model.original_max_seq_len = args.max_position_embeddings
+        model.max_seq_len_cached = config.max_position_embeddings
+        model.original_max_seq_len = config.max_position_embeddings
         model.original_inv_freq = inv_freq.clone()
     attention_scaling = None
     if seq_len > model.max_seq_len_cached:  # growth
-        new_inv_freq, attention_scaling = get_rope_inv_freq(args, seq_len=seq_len)
+        new_inv_freq, attention_scaling = get_rope_inv_freq(config, seq_len=seq_len)
         inv_freq.data.copy_(new_inv_freq)
         model.max_seq_len_cached = seq_len
 
@@ -154,13 +154,13 @@ def dynamic_frequency_update(args, model, inv_freq, seq_len: int):
 
 
 def dynamic_rope_update(model, inv_freq, seq_len: int):
-    args = get_args()
-    rope_type = _get_rope_type(args.rope_scaling)
+    config = model.config
+    rope_type = _get_rope_type(config.rope_scaling)
     attention_scaling = None
     if rope_type == 'dynamic':
-        attention_scaling = dynamic_frequency_update(args, model, inv_freq, seq_len)
+        attention_scaling = dynamic_frequency_update(config, model, inv_freq, seq_len)
     elif rope_type == 'longrope':
-        attention_scaling = longrope_frequency_update(args, model, inv_freq, seq_len)
+        attention_scaling = longrope_frequency_update(config, model, inv_freq, seq_len)
     return attention_scaling
 
 

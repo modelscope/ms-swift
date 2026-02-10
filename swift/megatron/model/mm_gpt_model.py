@@ -21,23 +21,21 @@ class MultimodalGPTModel(MegatronModule):
     def __init__(self,
                  config: MegatronModelConfig,
                  transformer_layer_spec: ModuleSpec,
-                 vocab_size: int,
-                 max_sequence_length: int,
                  pre_process: bool = True,
                  post_process: bool = True,
-                 *args,
+                 *_args,
                  **kwargs):
         from .register import get_megatron_model_meta
         super().__init__(config)
+        self.args = config.args
         self.pre_process = pre_process
         self.post_process = post_process
-        self.language_model = GPTModel(config, transformer_layer_spec, vocab_size, max_sequence_length, pre_process,
-                                       post_process, *args, **kwargs)
+        self.language_model = GPTModel(config, transformer_layer_spec, pre_process, post_process, *_args, **kwargs)
         self.vp_stage = self.language_model.vp_stage
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
-        self.megatron_model_meta = get_megatron_model_meta(args.model_type)
+        self.megatron_model_meta = get_megatron_model_meta(self.args.model_type)
         self.visual = None
-        if args.mtp_num_layers:
+        if self.args.mtp_num_layers:
             raise ValueError('MTP currently does not support multimodal models.')
         if pre_process and self.megatron_model_meta.visual_cls is not None:
             self.visual = self.megatron_model_meta.visual_cls(config)
@@ -62,12 +60,13 @@ class MultimodalGPTModel(MegatronModule):
                     inputs_embeds = res.pop('inputs_embeds')
                     kwargs.update(res)
                     res = inputs_embeds
-            if args.context_parallel_size > 1:
+            if self.args.context_parallel_size > 1:
                 res = split_cp_inputs(res, getattr(packed_seq_params, 'cu_seqlens_q', None), 1)
             if reduce_scatter_embeddings:
                 res = res.transpose(0, 1).contiguous()
                 group_kwargs = {'group': _self.tp_group} if mcore_013 else {}
-                res = reduce_scatter_to_sequence_parallel_region(res, **group_kwargs) / args.tensor_model_parallel_size
+                res = reduce_scatter_to_sequence_parallel_region(res, **
+                                                                 group_kwargs) / self.args.tensor_model_parallel_size
             return res
 
         VocabParallelEmbedding.forward = forward

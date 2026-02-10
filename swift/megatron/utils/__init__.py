@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
-from .config import convert_hf_config
 from .convert_utils import test_convert_precision
 from .megatron_lm_utils import (get_optimizer_param_scheduler, initialize_megatron, load_mcore_checkpoint,
                                 save_mcore_checkpoint, wrap_model)

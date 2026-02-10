@@ -113,7 +113,7 @@ def deep_getattr(obj, attr: str, default=None):
     return obj
 
 
-def seed_everything(seed: Optional[int] = None, full_determinism: bool = False, *, verbose: bool = True) -> int:
+def seed_everything(seed: Optional[int] = None, full_determinism: bool = False) -> int:
 
     if seed is None:
         seed_max = np.iinfo(np.int32).max
@@ -123,8 +123,6 @@ def seed_everything(seed: Optional[int] = None, full_determinism: bool = False, 
         enable_full_determinism(seed)
     else:
         set_seed(seed)
-    if verbose:
-        logger.info(f'Global seed set to {seed}')
     return seed
 
 

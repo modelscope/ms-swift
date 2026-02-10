@@ -209,7 +209,7 @@ class GPTModel(McoreGPTModel):
                     rotary_pos_emb = self.rotary_pos_emb(
                         position_ids,
                         mrope_section=self.mrope_section,
-                        packed_seq=packed_seq,
+                        mrope_interleaved=self.config.mrope_interleaved,
                     )
                 else:
                     rotary_pos_emb = self.rotary_pos_emb(

@@ -47,6 +47,7 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
 
     def __init__(self, config, ignore_init_model_cls=None):
         super().__init__(config)
+        args = config.args
         attn_impl = getattr(args, 'attn_impl', None) or 'flash_attn'
         kwargs = {'attn_impl': attn_impl} if config.attention_backend.name == 'flash' else {}
         ignore_init_model_cls = ignore_init_model_cls or []
@@ -54,7 +55,6 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
             ignore_init_model_cls = [ignore_init_model_cls]
         context_list = [patch_device_map_meta(model_cls) for model_cls in ignore_init_model_cls]
         context_list.append(patch_hf_initialize_weight())
-        args = config.args
         kwargs['model_type'] = args.model_type
         with ContextManagers(context_list), disable_safe_ddp_context_use_barrier():
             model, self.processor = get_model_processor(

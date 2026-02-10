@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import megatron.core
 from megatron.core import mpu
+from megatron.core.enums import ModelType
 from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,
                                                       get_gpt_layer_with_transformer_engine_spec,
                                                       get_gpt_mtp_block_spec)
@@ -115,7 +116,7 @@ class MegatronModelLoader:
             self.config, transformer_layer_spec_for_mtp, use_transformer_engine=True, **kwargs)
 
     def _set_shared_expert_gate(self, transformer_layer_spec):
-        if (self.config.use_shared_expert_gate and self.config.num_experts
+        if (self.config.use_shared_expert_gate and self.config.num_moe_experts
                 and self.config.moe_shared_expert_intermediate_size):
             for layer_spec in transformer_layer_spec.layer_specs:
                 if hasattr(layer_spec.submodules.mlp.submodules, 'shared_experts'):
@@ -173,15 +174,19 @@ def get_mcore_model(
     hf_config,
 ):
     loader = args.megatron_model_meta.loader(args, hf_config)
+    model_type = ModelType.encoder_or_decoder
     if (mpu.get_pipeline_model_parallel_world_size() > 1 and args.virtual_pipeline_model_parallel_size is not None):
         models = []
         for i in range(args.virtual_pipeline_model_parallel_size):
             pre_process = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=i)
             post_process = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=i)
             model = loader.build_model(pre_process, post_process, vp_stage=i)
+            model.model_type = model_type
             models.append(model)
     else:
         pre_process = mpu.is_pipeline_first_stage()
         post_process = mpu.is_pipeline_last_stage()
-        models = [loader.build_model(pre_process=pre_process, post_process=post_process)]
+        model = loader.build_model(pre_process=pre_process, post_process=post_process)
+        model.model_type = model_type
+        models = [model]
     return models

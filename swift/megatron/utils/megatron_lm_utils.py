@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Parts of the functions in this file are code borrowed from NVIDIA/Megatron-LM
+import copy
 import dataclasses
 import os
 import random

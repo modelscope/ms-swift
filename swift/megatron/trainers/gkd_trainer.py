@@ -17,7 +17,7 @@ from swift.model import get_model_info_meta
 from swift.template import Template
 from swift.utils import get_logger, to_device
 from ..model import get_megatron_model_meta
-from ..utils import convert_hf_config, forward_step_helper, get_padding_to
+from ..utils import forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import get_swift_datasets_provider, load_megatron_model_to_gpu, offload_megatron_model_to_cpu

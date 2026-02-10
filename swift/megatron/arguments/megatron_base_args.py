@@ -3,7 +3,6 @@ from dataclasses import dataclass, fields
 
 from swift.arguments import BaseArguments
 from swift.megatron.model import get_megatron_model_meta
-from swift.megatron.utils import convert_hf_config
 from swift.utils import get_logger
 from .megatron_args import MegatronArguments
 
