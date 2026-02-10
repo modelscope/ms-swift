@@ -640,7 +640,7 @@ class BaseMegatronTrainer(ABC):
                 val = val.sum(dim=0)
                 total_metrics[key] += val[0] / val[1]
             elif val[0].numel() == 1:
-                total_metrics[key] += val.sum()
+                total_metrics[key] += val.mean()
             else:
                 raise ValueError(f'Invalid value shape: {val[0].shape} for key {key}')
 
