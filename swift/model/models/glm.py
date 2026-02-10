@@ -468,3 +468,30 @@ register_model(
         architectures=['Glm4vMoeForConditionalGeneration'],
         requires=['transformers>=4.56'],
     ))
+
+
+class GLMOCRLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForImageTextToText
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        model = super().get_model(model_dir, *args, **kwargs)
+        if hasattr(model, 'visual'):
+            patch_get_input_embeddings(model.visual, 'patch_embed')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm_ocr,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-OCR', 'zai-org/GLM-OCR'),
+            ]),
+        ],
+        GLMOCRLoader,
+        template=TemplateType.glm_ocr,
+        model_arch=ModelArch.glm4v,
+        architectures=['GlmOcrForConditionalGeneration'],
+        requires=['transformers>=5.0.1dev0'],
+    ))
