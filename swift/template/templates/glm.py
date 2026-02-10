@@ -571,8 +571,13 @@ register_template(
 class GLMOCRTemplate(Template):
     begin_of_image_token = 59256
     end_of_image_token = 59257
-    image_token = 59280
     placeholder_tokens = ['<|image|>']
+
+    def init_processor(self, processor) -> None:
+        if processor is None:
+            return
+        super().init_processor(processor)
+        self.image_token = self._tokenize('<|image|>')[0]
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
