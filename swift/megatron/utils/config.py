@@ -166,7 +166,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
         ]
     elif llm_model_type == 'minimax_m2':
         res['add_qkv_bias'] = False
-    elif llm_model_type == 'llama4':
+    elif hf_model_type == 'llama4':
         qk_layernorm = res.pop('qk_layernorm', False)
         if qk_layernorm:
             res['qk_l2_norm'] = True
