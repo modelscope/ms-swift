@@ -176,7 +176,7 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         if self.result_path is not None:
             self.result_path = to_abspath(self.result_path)
             return
-        if self._val_dataset_exists:
+        if self._val_dataset_exists or getattr(self, 'eval_dataset', None):
             self.result_path = self._get_result_path(folder_name)
             logger.info(f'args.result_path: {self.result_path}')
 
