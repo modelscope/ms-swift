@@ -502,7 +502,6 @@ class Qwen3NextBridge(GPTBridge):
 
 
 class Qwen3NextLoader(MegatronModelLoader):
-    bridge_cls = Qwen3NextBridge
     gated_delta_net = Qwen3NextGatedDeltaNet
 
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
@@ -536,7 +535,7 @@ class Qwen3NextLoader(MegatronModelLoader):
             # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)
             layer_spec.submodules.input_layernorm = layer_norm_impl
             if hasattr(layer_spec.submodules,
-                   'pre_mlp_layernorm') and layer_spec.submodules.pre_mlp_layernorm is not IdentityOp:
+                       'pre_mlp_layernorm') and layer_spec.submodules.pre_mlp_layernorm is not IdentityOp:
                 layer_spec.submodules.pre_mlp_layernorm = layer_norm_impl
             # Replace qk_layernorm if present
             if hasattr(layer_spec.submodules.self_attention.submodules, 'q_layernorm'):
@@ -560,10 +559,12 @@ class Qwen3NextLoader(MegatronModelLoader):
         return mtp_block_spec
 
 
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.qwen3_next,
-    [
-        ModelType.qwen3_next,
-    ],
-    Qwen3NextLoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen3_next,
+        [
+            ModelType.qwen3_next,
+        ],
+        bridge_cls=Qwen3NextBridge,
+        loader=Qwen3NextLoader,
+    ))

@@ -13,7 +13,7 @@ from megatron.training import get_args
 from swift.model import ModelType
 from swift.template import Template
 from ..constant import MegatronModelType
-from ..gpts.qwen3_next import Qwen3NextBridge, get_qwen3_next_mtp_block_spec, get_qwen3_next_transformer_layer_spec
+from ..gpts.qwen3_next import Qwen3NextBridge, Qwen3NextLoader
 from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
@@ -90,6 +90,10 @@ class Qwen3_5Bridge(Qwen3NextBridge):
     hf_final_layernorm_key = 'model.language_model.norm.weight'
 
 
+class Qwen3_5Loader(Qwen3NextLoader):
+    gated_delta_net = Qwen3_5MoeGatedDeltaNet
+
+
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.qwen3_5,
@@ -97,9 +101,7 @@ register_megatron_model(
             ModelType.qwen3_5,
             ModelType.qwen3_5_moe,
         ],
-        get_transformer_layer_spec=partial(
-            get_qwen3_next_transformer_layer_spec, gated_delta_net=Qwen3_5MoeGatedDeltaNet),
-        get_mtp_block_spec=get_qwen3_next_mtp_block_spec,
         bridge_cls=Qwen3_5Bridge,
         visual_cls=Qwen3_5Vit,
+        loader=Qwen3_5Loader,
     ))

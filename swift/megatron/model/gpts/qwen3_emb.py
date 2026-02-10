@@ -16,14 +16,11 @@ class Qwen3EmbBridge(GPTBridge):
         return res
 
 
-class Qwen3EmbLoader(MegatronModelLoader):
-    bridge_cls = Qwen3EmbBridge
-
-
-register_megatron_model(MegatronModelMeta(
-    MegatronModelType.qwen3_emb,
-    [
-        ModelType.qwen3_emb,
-    ],
-    Qwen3EmbLoader,
-))
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen3_emb,
+        [
+            ModelType.qwen3_emb,
+        ],
+        bridge_cls=Qwen3EmbBridge,
+    ))
