@@ -54,12 +54,11 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
         metric = self._all_reduce_metric(metric)
         return loss, metric
 
-    def setup_model_and_optimizer(self, *_args, **kwargs):
-        res = super().setup_model_and_optimizer(*_args, **kwargs)
+    def prepare_model(self):
+        super().prepare_model()
         for model in self.unwrapped_models:
             lm_model = model.language_model if hasattr(model, 'language_model') else model
             lm_model.tokenizer = self.template.tokenizer
-        return res
 
     def forward_step(self, data_iterator, model):
         # Get the batch.

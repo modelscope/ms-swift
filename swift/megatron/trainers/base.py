@@ -114,7 +114,7 @@ class BaseMegatronTrainer(ABC):
         """This function is used to normalize logs for easier use with wandb/swanlab callbacks."""
         for k, v in logs.items():
             if isinstance(v, torch.Tensor):
-                if v.shape[0] == 2:
+                if v.numel() == 2:
                     v = v[0] / v[1]
                 v = v.item()
             logs[k] = v
@@ -164,7 +164,11 @@ class BaseMegatronTrainer(ABC):
 
     def cyclic_iter(self, iterable):
         training = self.unwrapped_models[0].training
-        assert training, 'training must be True'
+        if not training:
+            while True:
+                for x in iterable:
+                    yield x
+            return
 
         args = self.args
         state = self.state
@@ -576,7 +580,7 @@ class BaseMegatronTrainer(ABC):
             m.eval()
         eval_metrics = {}
         forward_backward_func = get_forward_backward_func()
-        val_data_iterator = iter(val_dataloader)
+        val_data_iterator = iter(self.cyclic_iter(val_dataloader))
 
         self.call_event('on_eval_begin')
         with torch.no_grad():
@@ -593,8 +597,16 @@ class BaseMegatronTrainer(ABC):
                 self.call_event('on_eval_step')
                 if mpu.is_pipeline_last_stage(ignore_virtual=True):
                     self._aggregated_metrics(metrics, eval_metrics)
+        self.compute_eval_metrics(eval_metrics)
         self.on_log(logs=eval_metrics, prefix='eval_')
         self.call_event('on_eval_end')
+
+    def compute_eval_metrics(self, metrics):
+        if self.eval_metrics is not None:
+            metric = self.eval_metrics.compute()
+            for k, v in metric.items():
+                metrics[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
+            self.eval_metrics.reset()
 
     def train_step(self, train_data_iterator):
         args = self.args
