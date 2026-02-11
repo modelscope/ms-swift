@@ -8,7 +8,6 @@ megatron sft \
     --model Qwen/Qwen3-235B-A22B-Instruct-2507 \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --load_from_cache_file true \
@@ -35,11 +34,11 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-235B-A22B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-235B-A22B-Instruct-2507 \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 2048 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

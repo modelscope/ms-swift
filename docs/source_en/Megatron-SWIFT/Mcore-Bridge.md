@@ -27,7 +27,6 @@ FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-VL-8B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
@@ -49,11 +48,11 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --max_epochs 1 \
-    --save megatron_output/Qwen3-VL-8B-Instruct \
+    --output_dir megatron_output/Qwen3-VL-8B-Instruct \
     --save_interval 200 \
     --vit_gradient_checkpointing false \
     --max_length 2048 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 8
@@ -84,7 +83,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT#20000' \
     --load_from_cache_file true \
@@ -108,12 +106,12 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 500 \
     --save_interval 500 \
     --max_length 8192 \
     --packing true \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
@@ -139,7 +137,8 @@ In addition to supporting full parameter import/export, Mcore-Bridge also suppor
 Below is an example of self-cognition training using LoRA for the text-only model Qwen3-Moe:
 
 - If you want to export merged weights instead of LoRA delta weights, please set `--merge_lora true`. Setting `--merge_lora true` has better compatibility and supports all model series.
-- Note: Since the model structures of transformers and Megatron are not necessarily identical (for example, the expert part of transformers' Qwen3-VL-Moe is not implemented as Linear, but as Parameters), some models cannot convert LoRA delta weights (however, if Qwen3-VL-Moe only sets linear_proj and linear_qkv for LoRA training, conversion is also supported). But most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
+- Note: Transformers 5.0 has refactored the model architecture for MoE models. This new structure does not support MoE LoRA inference and may cause inference errors. It is recommended to merge LoRA weights for MoE models (vLLM is not affected).
+- Note: The expert structure differs between Transformers and Megatron models. For example, the expert layers in Transformers' Qwen3-VL-MoE are implemented as Parameters rather than Linear layers. As a result, some models cannot convert LoRA delta weights (though Qwen3-VL-MoE supports conversion if LoRA is trained only on linear_proj and linear_qkv). However, most models support LoRA conversion, such as Qwen3-MoE, Qwen3-Omni-MoE, and GLM4.5-V.
 
 ```shell
 # 50GiB
@@ -148,7 +147,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
@@ -175,11 +173,11 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 2048 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
@@ -215,7 +213,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --save Qwen3-30B-A3B-Instruct-2507-mcore \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-mcore \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -229,7 +227,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
-    --save Qwen3-30B-A3B-Instruct-2507-hf \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -248,7 +246,7 @@ NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -264,7 +262,7 @@ NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
     --merge_lora false \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
@@ -281,7 +279,7 @@ NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \
     --tensor_model_parallel_size 2 \

@@ -4,7 +4,6 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 megatron rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --context_parallel_size 2 \
@@ -42,7 +41,7 @@ megatron rlhf \
     --log_interval 1 \
     --recompute_granularity selective \
     --finetune \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim \
     --no_save_rng \

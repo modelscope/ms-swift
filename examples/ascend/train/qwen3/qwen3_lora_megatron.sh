@@ -2,7 +2,6 @@ NPROC_PER_NODE=2 \
 ASCEND_RT_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-8B \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -24,11 +23,11 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --max_epochs 1 \
-    --save megatron_output/Qwen3-8B \
+    --output_dir megatron_output/Qwen3-8B \
     --save_interval 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \

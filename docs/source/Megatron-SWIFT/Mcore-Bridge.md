@@ -23,7 +23,6 @@ FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-VL-8B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
@@ -45,11 +44,11 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --max_epochs 1 \
-    --save megatron_output/Qwen3-VL-8B-Instruct \
+    --output_dir megatron_output/Qwen3-VL-8B-Instruct \
     --save_interval 200 \
     --vit_gradient_checkpointing false \
     --max_length 2048 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 8
@@ -78,7 +77,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT#20000' \
     --load_from_cache_file true \
@@ -102,12 +100,12 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 500 \
     --save_interval 500 \
     --max_length 8192 \
     --packing true \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
@@ -131,7 +129,8 @@ Mcore-Bridge除了支持全参数的导入导出，还支持单独对LoRA增量�
 
 以下为纯文本模型Qwen3-Moe模型使用LoRA自我认知训练的例子：
 - 若你希望导出merge后的权重，而不是LoRA增量权重，请设置`--merge_lora true`。设置`--merge_lora true`的兼容性更好，支持所有系列模型。
-- 注意：由于transformers和Megatron模型结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换LoRA增量权重（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
+- 注意：transformers 5.0对Moe的模型组织结构进行了重构，该结构不支持Moe LoRA的推理，可能造成推理异常。建议对Moe模型进行Merge LoRA（vLLM不受影响）。
+- 注意：由于transformers和Megatron模型专家结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换LoRA增量权重（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
 ```shell
 # 50GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -139,7 +138,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
@@ -166,11 +164,11 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 2048 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
@@ -204,7 +202,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --save Qwen3-30B-A3B-Instruct-2507-mcore \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-mcore \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -218,7 +216,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --load Qwen3-30B-A3B-Instruct-2507-mcore \
-    --save Qwen3-30B-A3B-Instruct-2507-hf \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -236,7 +234,7 @@ NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -252,7 +250,7 @@ NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
     --merge_lora false \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
@@ -269,7 +267,7 @@ NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \
     --tensor_model_parallel_size 2 \

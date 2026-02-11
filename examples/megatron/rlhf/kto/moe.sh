@@ -5,7 +5,6 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type kto \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'AI-ModelScope/ultrafeedback-binarized-preferences-cleaned-kto#20000' \
@@ -32,11 +31,11 @@ megatron rlhf \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 100 \
     --save_interval 100 \
     --max_length 8192 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

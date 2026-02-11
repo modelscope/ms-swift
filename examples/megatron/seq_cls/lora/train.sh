@@ -5,7 +5,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora true \
     --dataset 'DAMO_NLP/jd:cls' \
@@ -33,13 +32,13 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --max_epochs 1 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 2048 \
     --task_type seq_cls \
     --num_labels 2 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4

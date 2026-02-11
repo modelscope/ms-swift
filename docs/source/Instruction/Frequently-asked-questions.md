@@ -572,12 +572,12 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --max_epochs 2 \
-    --save "$OUTPUT_PATH" \
+    --output_dir "$OUTPUT_PATH" \
     --split_dataset_ratio 0.02 \
     --save_interval 25 \
     --max_length 8192 \
     --finetune false \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_load_rng true \
     --no_load_optim true \
     --no_save_optim true \

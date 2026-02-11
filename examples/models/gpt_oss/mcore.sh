@@ -6,7 +6,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model openai-mirror/gpt-oss-20b \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -32,11 +31,11 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/gpt-oss-20b \
+    --output_dir megatron_output/gpt-oss-20b \
     --eval_interval 100 \
     --save_interval 100 \
     --max_length 2048 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --dataset_num_proc 4 \
     --no_save_optim true \
     --no_save_rng true \

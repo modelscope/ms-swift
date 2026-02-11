@@ -263,8 +263,6 @@ lora训练：
 - use_rslora: 默认为`False`，是否使用`RS-LoRA`。
 
 **Mcore-Bridge参数**
-- 🔥load_safetensors: 该参数在"ms-swift>=3.12"将失效（之前版本默认为False），将根据优先级加载权重：若`--load`不存在，则加载safetensors权重`--model`；`--adapters`和`--adapter_load`等同理。
-  - 注意：在"ms-swift>=3.12"，为保持shell脚本兼容性，该参数被保留，但不再发挥任何作用。
 - 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。该参数在"ms-swift>=3.12"支持了对优化器权重、随机数状态等断点续训内容进行保存（额外存储mcore格式权重），使用`--no_save_optim`和`--no_save_rng`控制。断点续训时使用`--load/--adapter_load`参数加载mcore格式权重。
 - model: safetensors权重的model_id或者model_path。默认为None。
 - model_type: 模型类型。介绍参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md)。
@@ -423,7 +421,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - 🔥to_hf: Megatron格式权重转成HF格式。默认为False。
 - 🔥merge_lora: 默认为None，若`to_hf`设置为True，该参数默认值为`True`，否则为False。即默认情况下，存储为safetensors格式时会合并LoRA；存储为torch_dist格式时，不会合并LoRA。合并后的权重存储在`--save`目录下。
-  - 注意：由于transformers和Megatron模型结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
+  - 注意：transformers 5.0对Moe的模型组织结构进行了重构，该结构不支持Moe LoRA的推理，可能造成推理异常。建议对Moe模型进行Merge LoRA（vLLM不受影响）。
+  - 注意：由于transformers和Megatron模型专家结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。
 - test_convert_dtype: 转换精度测试使用的dtype，默认为'float32'。
 - exist_ok: 如果`args.save`存在，不抛出异常，进行覆盖。默认为False。

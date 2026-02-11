@@ -6,7 +6,6 @@ NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --model OpenGVLab/InternVL3_5-GPT-OSS-20B-A4B-Preview \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -30,11 +29,11 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/InternVL3_5-GPT-OSS-20B-A4B-Preview \
+    --output_dir megatron_output/InternVL3_5-GPT-OSS-20B-A4B-Preview \
     --eval_interval 500 \
     --save_interval 500 \
     --max_length 4096 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

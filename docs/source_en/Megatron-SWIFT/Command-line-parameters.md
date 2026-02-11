@@ -280,8 +280,6 @@ LoRA Training:
 
 **Mcore-Bridge Parameters**
 
-- 🔥load_safetensors: This parameter will become ineffective in "ms-swift>=3.12" (defaults to False in previous versions). Weights will be loaded based on priority: if `--load` does not exist, safetensors weights `--model` will be loaded; the same applies to `--adapters` and `--adapter_load`, etc.
-  - Note: In "ms-swift>=3.12", this parameter is retained for shell script compatibility but no longer has any effect.
 - 🔥save_safetensors: Defaults to True, whether to directly save as safetensors weights. This parameter in "ms-swift>=3.12" supports saving checkpoint resume content such as optimizer weights and random number states (additionally storing mcore format weights), controlled by `--no_save_optim` and `--no_save_rng`. When resuming from checkpoint, use the `--load/--adapter_load` parameter to load mcore format weights.
 - model: The model_id or model_path of safetensors weights. Default is None. Supports resume training from checkpoint using `--no_load_optim false --no_load_rng false`.
 - model_type: Model type. For details, refer to [ms-swift command-line parameters documentation](../Instruction/Command-line-parameters.md).
@@ -448,7 +446,8 @@ This section introduces the parameters for `megatron export` (requires "ms-swift
 - 🔥to_mcore: Convert HF format weights to Megatron format. Defaults to False.
 - 🔥to_hf: Convert Megatron format weights to HF format. Defaults to False.
 - 🔥merge_lora: Defaults to None. If `to_hf` is set to True, this parameter defaults to `True`, otherwise False. In other words, by default, LoRA will be merged when saving in safetensors format; when saving in torch_dist format, LoRA will not be merged. The merged weights are stored in the `--save` directory.
-  - Note: Since the model structures of transformers and Megatron are not necessarily identical (for example, the expert part of transformers' Qwen3-VL-Moe is not implemented as Linear, but as Parameters), some models cannot be converted (though Qwen3-VL-Moe can be converted if only linear_proj and linear_qkv are set for LoRA training). However, most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
+  - Note: Transformers 5.0 has refactored the model architecture for MoE models. This new structure does not support MoE LoRA inference and may cause inference errors. It is recommended to merge LoRA weights for MoE models (vLLM is not affected).
+  - Note: The expert structure differs between Transformers and Megatron models. For example, the expert layers in Transformers' Qwen3-VL-MoE are implemented as Parameters rather than Linear layers. As a result, some models cannot convert LoRA delta weights (though Qwen3-VL-MoE supports conversion if LoRA is trained only on linear_proj and linear_qkv). However, most models support LoRA conversion, such as Qwen3-MoE, Qwen3-Omni-MoE, and GLM4.5-V.
 - 🔥test_convert_precision: Test the precision error of HF and Megatron format weight conversion. Defaults to False.
 - test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.
 - exist_ok: If `args.save` exists, do not throw an exception and perform overwriting. Defaults to False.

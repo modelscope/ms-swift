@@ -7,7 +7,6 @@ INFONCE_TEMPERATURE=0.1 \
 megatron sft \
     --model Qwen/Qwen3-Embedding-8B \
     --task_type embedding \
-    --load_safetensors true \
     --save_safetensors true \
     --tuner_type full \
     --dataset sentence-transformers/stsb:positive \
@@ -26,12 +25,12 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-7 \
     --max_epochs 5 \
-    --save megatron_output/Qwen3-Embedding-8B \
+    --output_dir megatron_output/Qwen3-Embedding-8B \
     --save_interval 200 \
     --eval_interval 100 \
     --max_length 8192 \
     --loss_type infonce \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4

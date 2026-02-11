@@ -21,7 +21,7 @@ megatron export \
     --tensor_model_parallel_size 2 \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --save Qwen2.5-7B-Instruct-mcore \
+    --output_dir Qwen2.5-7B-Instruct-mcore \
     --test_convert_precision true
 
 # swift export
@@ -66,11 +66,11 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
@@ -91,7 +91,7 @@ megatron export \
     --tensor_model_parallel_size 2 \
     --merge_lora false \
     --torch_dtype bfloat16 \
-    --save megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --test_convert_precision true
 
 # swift export
@@ -127,7 +127,7 @@ megatron export \
     --to_mcore true \
     --merge_lora true \
     --torch_dtype bfloat16 \
-    --save megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \
     --test_convert_precision true
 
 # swift export
@@ -152,7 +152,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -175,11 +174,11 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
