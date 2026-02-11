@@ -39,8 +39,8 @@ from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
                     get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
-                    patch_profiling_context, patch_profiling_decorator, patch_vllm_load_adapter,
-                    patch_vllm_moe_model_weight_loader, set_expandable_segments)
+                    patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
+                    set_expandable_segments)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -369,7 +369,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         parameters_no_lora = [remove_lora_and_prefix(p_list) for p_list in parameters]
         return parameters, parameters_no_lora
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _move_model_to_vllm(self, skip_async_check=False):
         """Synchronize model weights to vLLM engine"""
         args = self.args
@@ -1066,7 +1066,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         use_tqdm: Optional[bool] = False,
     ) -> List[RolloutOutput]:
         """Perform inference using configured engine"""
-        with patch_profiling_context(self, 'generate'), self._disable_sp_context():
+        with profiling_context(self, 'generate'), self._disable_sp_context():
             if self.vllm_mode == 'server':
                 res = self.vllm_client.infer([asdict(req) for req in infer_requests],
                                              asdict(request_config),
@@ -1555,7 +1555,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         with seed_context():
             self.truncated_resample_iterator = cyclic_iter(self.get_train_dataloader())
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def resample_encode_failed_inputs(self, inputs: DataType, max_resample_rounds: int = 10) -> DataType:
         """
         Attempt to encode each input using the template. If encoding fails,

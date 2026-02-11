@@ -14,7 +14,6 @@ from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
-# from megatron.training import get_wandb_writer
 from packaging import version
 from transformers.utils import is_torch_npu_available
 
@@ -117,30 +116,6 @@ def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
                 batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
 
     return batch
-
-
-@contextmanager
-def profiling_context(trainer, name: str):
-    start_time = time.perf_counter()
-    yield
-    end_time = time.perf_counter()
-    duration = end_time - start_time
-
-    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
-    wandb_writer = get_wandb_writer()
-    if wandb_writer and trainer.is_main_process:
-        step = getattr(getattr(wandb_writer, 'run', None), 'step', None)
-        wandb_writer.log(profiling_metrics, step=step)
-
-
-def profiling_decorator(func):
-
-    @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
-        with profiling_context(self, func.__name__):
-            return func(self, *args, **kwargs)
-
-    return wrapper
 
 
 def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):
@@ -371,3 +346,9 @@ class TrainerState:
     eval_iteration: int = 0
     epoch: int = 0
     consumed_train_samples = 0
+    # compat transformers
+    max_steps: Optional[int] = None
+
+    @property
+    def global_step(self) -> int:
+        return self.iteration

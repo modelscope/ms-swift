@@ -629,15 +629,6 @@ def _patch_TELinear():
     TELinear.__repr__ = __repr__
 
 
-def _patch_build_train_valid_test_datasets():
-
-    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider, *args, **kwargs):
-        train_valid_test_num_samples = training.get_train_valid_test_num_samples()
-        return build_train_valid_test_datasets_provider(train_valid_test_num_samples)
-
-    training.build_train_valid_test_datasets = build_train_valid_test_datasets
-
-
 def _patch__write_item():
     import megatron.core
     if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
@@ -797,42 +788,6 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
-def _patch_megatron_swanlab():
-
-    def _set_wandb_writer(*_args, **kwargs):
-        args = get_args()
-        assert global_vars._GLOBAL_WANDB_WRITER is None
-        if args.report_to is None or not is_last_rank():
-            return
-        config = vars(args)
-        save_dir = args.wandb_save_dir
-        if save_dir is None:
-            save_dir = os.path.join(args.save, args.report_to)
-        if args.report_to == 'wandb':
-            import wandb
-            wandb.init(dir=save_dir, name=args.wandb_exp_name, project=args.wandb_project, config=config)
-            writer = wandb
-        elif args.report_to == 'swanlab':
-            import swanlab
-            swanlab.init(
-                logdir=save_dir, experiment_name=args.wandb_exp_name, project=args.wandb_project, config=config)
-            writer = swanlab
-
-        global_vars._GLOBAL_WANDB_WRITER = writer
-
-    global_vars._set_wandb_writer = _set_wandb_writer
-
-    origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
-
-    def on_save_checkpoint_success(*_args, **kwargs):
-        args = get_args()
-        if args.report_to == 'swanlab':
-            return
-        origin_on_save_checkpoint_success(*_args, **kwargs)
-
-    wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
-
-
 def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
@@ -845,11 +800,9 @@ def init_megatron_env():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
-    # _patch_build_train_valid_test_datasets()
     _patch_mrope()
     _patch__write_item()
     _patch_mtp()
-    # _patch_megatron_swanlab()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:

@@ -7,8 +7,6 @@ from megatron.core.dist_checkpointing.strategies.torch import TorchDistSaveShard
 
 from swift.utils import get_logger
 
-# from megatron.training import checkpointing
-
 logger = get_logger()
 
 

@@ -71,14 +71,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.resample_data_iterator = None
         self._train_valid_test_dataset_provider = None
 
-    def train(self, train_dataset, val_dataset, data_collator):
+    def train(self, train_dataset, val_dataset):
         """Override train to initialize resample iterator for truncation_strategy='delete'."""
         # Store dataset provider for lazy resample iterator initialization
         if self.truncation_strategy == 'delete':
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
 
-        super().train(train_dataset, val_dataset, data_collator)
+        super().train(train_dataset, val_dataset)
 
     def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
         """Setup model and optimizer, including teacher model.
@@ -445,7 +445,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     teacher_logits = teacher_logits.detach()
             encoded_batch['teacher_logits'] = teacher_logits
 
-    def _replace_data_iterator(self, data_iterator, model):
+    def _replace_data_iterator(self, data_iterator):
         num_microbatches = self._get_num_microbatches()
 
         # Determine data source once for the entire global batch

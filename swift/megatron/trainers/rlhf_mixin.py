@@ -3,7 +3,6 @@ from contextlib import contextmanager
 
 import torch
 from megatron.core import mpu
-# from megatron.training import get_args, get_model
 from megatron.core.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers

@@ -17,10 +17,6 @@ from megatron.core.distributed import finalize_model_grads
 from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import Float16Module, MegatronModule
-# from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer,
-#                                get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
-#                                print_rank_last, training)
-# from megatron.training.checkpointing import check_checkpoint_args, set_checkpoint_version
 from modelscope import check_local_model_is_latest
 from packaging import version
 
@@ -59,7 +55,7 @@ class BaseMegatronTrainer(ABC):
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
         # TODO: resume_from_checkpoint
-        self.state = TrainerState()
+        self.state = TrainerState(max_steps=args.train_iters)
         if args.initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
@@ -348,6 +344,7 @@ class BaseMegatronTrainer(ABC):
             optimizer._get_param_groups = _get_param_groups
 
     def _load_iteration(self):
+        # TODO
         args = self.args
         ckpt_dir = None
         if args.tuner_type == 'full':
@@ -585,6 +582,7 @@ class BaseMegatronTrainer(ABC):
         self.call_event('on_eval_begin')
         with torch.no_grad():
             while self.state.eval_iteration < args.eval_iters:
+                val_data_iterator = self._replace_data_iterator(val_data_iterator)
                 metrics = forward_backward_func(
                     forward_step_func=self.forward_step,
                     data_iterator=val_data_iterator,
@@ -608,12 +606,17 @@ class BaseMegatronTrainer(ABC):
                 metrics[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
             self.eval_metrics.reset()
 
+    def _replace_data_iterator(self, data_iterator):
+        return data_iterator
+
     def train_step(self, train_data_iterator):
         args = self.args
         forward_backward_func = get_forward_backward_func()
         for m in self.wrapped_models:
             m.zero_grad_buffer()
         self.optimizer.zero_grad()
+        # TODO: refactor _replace_data_iterator
+        train_data_iterator = self._replace_data_iterator(train_data_iterator)
         metrics = forward_backward_func(
             forward_step_func=self.forward_step,
             data_iterator=train_data_iterator,

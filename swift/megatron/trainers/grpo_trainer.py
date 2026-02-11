@@ -24,24 +24,20 @@ from megatron.core.rerun_state_machine import RerunDataIterator
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
-from swift.megatron.utils import MegatronTrainerState, forward_step_helper, get_padding_to
+from swift.megatron.utils import forward_step_helper, get_padding_to
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch,
-                                       replace_assistant_response_with_ids, set_expandable_segments)
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch, profiling_context,
+                                       profiling_decorator, replace_assistant_response_with_ids,
+                                       set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template, TemplateInputs
 from swift.utils import (get_logger, get_packed_seq_params, is_wandb_available, remove_response,
                          shutdown_event_loop_in_daemon, start_event_loop_in_daemon, to_device)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
-from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator
+from .utils import gather, gather_object
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
-
-# from megatron.training import get_wandb_writer, training
-
-if is_wandb_available():
-    import wandb
 
 logger = get_logger()
 
@@ -59,17 +55,15 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
-        # Initialize trainer state for reward functions to access training progress
-        # Will be updated with actual values from Megatron args during training
-        self.state = MegatronTrainerState()
 
-    def train(self, train_dataset, val_dataset, data_collator):
+    def train(self, train_dataset, val_dataset):
         # Store dataset provider for lazy resample iterator initialization
         # Used by both dynamic_sample and truncation_strategy='raise'(delete)
         if self.dynamic_sample or self.truncation_strategy == 'raise':
+            # TODO:
             self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
             self._train_valid_test_dataset_provider.is_distributed = True
-        super().train(train_dataset, val_dataset, data_collator)
+        super().train(train_dataset, val_dataset)
 
     def _init_grpo_params(self):
         """Initialize GRPO-specific parameters.
@@ -273,7 +267,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             )
         return resample_data_iterator
 
-    def _replace_data_iterator(self, data_iterator, model):
+    def _replace_data_iterator(self, data_iterator):
         if self._step % self.steps_per_generation == 0:
             num_iters_per_step = self.get_num_iters_per_step()
             rollout_batch = []
@@ -672,7 +666,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         completions = [inp['messages'][-1]['content'] for inp in batch]
 
         # Common reward kwargs
-        reward_kwargs = {'trainer_state': self.get_trainer_state()}
+        reward_kwargs = {'trainer_state': self.state}
         reward_kwargs.update(RowPreprocessor.rows_to_batched(batch))
 
         # Use pre-computed indices for async reward functions
@@ -1071,31 +1065,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def on_policy(self):
         return self.steps_per_generation == 1
 
-    @contextmanager
-    def patch_megatron_data_collator(self, data_collator):
-        """
-        Context manager that temporarily patches Megatron's data-loader factory so each
-        prompt-level micro-batch size equals (original micro-batch size // num_generations),
-        required by GRPO.  Restores the original size and loader on exit.
-        """
-        origin_build_pretraining_data_loader = training.build_pretraining_data_loader
-
-        def build_pretraining_data_loader(*_args, **kwargs):
-            args = self.args
-            org_micro_batch_size = args.micro_batch_size
-            # args.micro_batch_size = org_micro_batch_size // self.num_generations
-            res = origin_build_pretraining_data_loader(*_args, **kwargs)
-            args.micro_batch_size = org_micro_batch_size
-            if res is not None and args.dataloader_type != 'external':
-                res.collate_fn = data_collator
-            return res
-
-        training.build_pretraining_data_loader = build_pretraining_data_loader
-        try:
-            yield
-        finally:
-            training.build_pretraining_data_loader = origin_build_pretraining_data_loader
-
     @profiling_decorator
     def forward_step(self, data_iterator, model):
         args = self.args
@@ -1458,25 +1427,21 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 'advantages': list(self._logs['advantages']),
             }
             self.jsonl_writer.append(table)
-            wandb_writer = get_wandb_writer()
             args = self.args
-            if wandb_writer:
-                if args.report_to == 'wandb':
-                    df = pd.DataFrame(table)
-                    if self.wandb_log_unique_prompts:
-                        df = df.drop_duplicates(subset=['prompt'])
-                    # if not self.init_custom_metric:
-                    #     wandb_writer.define_metric('completions', step_metric='gen_step')
-                    #     self.init_custom_metric = True
-                    wandb_writer.log({'completions': wandb.Table(dataframe=df)})
-                elif args.report_to == 'swanlab':
-                    import swanlab
-                    headers = list(table.keys())
-                    rows = []
-                    for i in range(len(table['gen_step'])):
-                        row = [table[header][i] for header in headers]
-                        rows.append(row)
-                    swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
+            if 'wandb' in args.report_to:
+                import wandb
+                df = pd.DataFrame(table)
+                if self.wandb_log_unique_prompts:
+                    df = df.drop_duplicates(subset=['prompt'])
+                wandb.log({'completions': wandb.Table(dataframe=df)})
+            if 'swanlab' in args.report_to:
+                import swanlab
+                headers = list(table.keys())
+                rows = []
+                for i in range(len(table['gen_step'])):
+                    row = [table[header][i] for header in headers]
+                    rows.append(row)
+                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
 
             self._last_logged_step = self._step
 
@@ -1734,7 +1699,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         from collections import deque
         self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
-        self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'), write_on_rank='last')
+        self.jsonl_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
         self._last_logged_step = -1
         self._logs = {
