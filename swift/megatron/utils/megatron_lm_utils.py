@@ -52,14 +52,15 @@ def _initialize_mpu(args):
     """Initialize torch.distributed and core model parallel."""
     if not torch.distributed.is_initialized():
         set_device()
-        init_process_group(args.distributed_backend, args.ddp_timeout)
+        init_process_group(args.ddp_backend, args.ddp_timeout)
     args.rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
 
     if mpu.model_parallel_is_initialized():
         logger.info('model parallel is already initialized')
     else:
-        with _patch_megatron_timeout(args.distributed_timeout_minutes):
+        distributed_timeout_minutes = args.ddp_timeout // 60
+        with _patch_megatron_timeout(distributed_timeout_minutes):
             mpu.initialize_model_parallel(
                 args.tensor_model_parallel_size,
                 args.pipeline_model_parallel_size,
@@ -67,7 +68,7 @@ def _initialize_mpu(args):
                 context_parallel_size=args.context_parallel_size,
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 expert_tensor_parallel_size=args.expert_tensor_parallel_size,
-                distributed_timeout_minutes=args.distributed_timeout_minutes,
+                distributed_timeout_minutes=distributed_timeout_minutes,
             )
         if is_master():
             logger.info(f'TP: {args.tensor_model_parallel_size}, PP: {args.pipeline_model_parallel_size}, '

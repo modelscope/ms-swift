@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import json
 
-from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank, to_abspath
+from swift.utils import get_logger, to_abspath
 from .megatron_base_args import MegatronBaseArguments
 
 logger = get_logger()
@@ -14,17 +14,6 @@ logger = get_logger()
 class MegatronSftArguments(MegatronBaseArguments):
     add_version: bool = True
     load_args: bool = False
-
-    def _init_output_dir(self):
-        init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
-        if self.output_dir is None:
-            self.output_dir = f'megatron_output/{self.model_suffix}'
-        self.output_dir = to_abspath(self.output_dir)
-        if self.add_version:
-            self.output_dir = add_version_to_work_dir(self.output_dir)
-            logger.info(f'args.output_dir: {self.output_dir}')
-        if is_last_rank():
-            os.makedirs(self.output_dir, exist_ok=True)
 
     def _init_ckpt_dir(self, adapters=None):
         super()._init_ckpt_dir(adapters)

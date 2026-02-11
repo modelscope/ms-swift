@@ -36,7 +36,6 @@ class MegatronExportArguments(MegatronBaseArguments):
 
     def __post_init__(self):
         super().__post_init__()
-        self._init_output_dir()
         self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
         extra_config = MegatronArguments.load_args_config(self.ckpt_dir)
         extra_config['mcore_adapter'] = self.mcore_adapter

@@ -387,7 +387,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     async_save: bool = False
 
     # dist
-    distributed_backend: Literal['nccl', 'gloo'] = 'nccl'
     local_rank: Optional[int] = None
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
@@ -397,12 +396,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     account_for_embedding_in_pipeline_split: bool = False
     account_for_loss_in_pipeline_split: bool = False
 
+    ddp_timeout: int = 18000000
+    ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
-    distributed_timeout_minutes: int = 300000
     num_layers_per_virtual_pipeline_stage: Optional[int] = None
     num_virtual_stages_per_pipeline_rank: Optional[int] = None
     microbatch_group_size_per_virtual_pipeline_stage: Optional[int] = None
@@ -573,8 +573,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
                              'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
-        if hasattr(self, 'ddp_timeout'):
-            self.distributed_timeout_minutes = self.ddp_timeout // 60
         self.fp8 = self.fp8_format  # compat megatron-lm
         if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True

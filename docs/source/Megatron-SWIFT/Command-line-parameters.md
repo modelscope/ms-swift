@@ -105,7 +105,8 @@
 **分布式参数**:
 并行技术的选择请参考[训练技巧文档](Quick-start.md#训练技巧)。
 
-- distributed_backend: 分布式后端，可选为'nccl', 'gloo'。默认为nccl。
+- ddp_backend: 分布式后端，可选为'nccl', 'gloo'。默认为nccl。
+- ddp_timeout: 默认为18000000，单位为秒。
 - 🔥use_distributed_optimizer: 使用分布式优化器（即zero1）。默认为True。
 - 🔥tensor_model_parallel_size: tp数，默认为1。
 - 🔥pipeline_model_parallel_size: pp数，默认为1。
@@ -119,7 +120,6 @@
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
 - 🔥overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
 - 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
-- distributed_timeout_minutes: torch.distributed的timeout时间（单位为分钟），该参数失效，使用[基础参数](../Instruction/Command-line-parameters.md#基本参数)中的ddp_timeout控制，默认为300000分钟。
 - num_layers_per_virtual_pipeline_stage: 每个虚拟流水线阶段的层数。默认为None。该参数和`--num_virtual_stages_per_pipeline_rank`参数都可以用来设置vpp并行。
 - num_virtual_stages_per_pipeline_rank: 每个流水线并行 rank 的虚拟流水线阶段数量。默认为None。vpp并行，用于减少pp并行的计算空泡，提高GPU利用率，但会略微提高通信量。
 - microbatch_group_size_per_virtual_pipeline_stage: 每个虚拟流水线阶段处理的连续微批次数量。默认为None，等于pipeline_model_parallel_size。
