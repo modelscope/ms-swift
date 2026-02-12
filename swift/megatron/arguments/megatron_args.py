@@ -327,15 +327,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     recompute_num_layers: Optional[int] = None
     recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
     use_cpu_initialization: bool = False
-    deterministic_mode: bool = False
     train_iters: Optional[int] = None
     masked_softmax_fusion: bool = True
-    bias_dropout_fusion: bool = True  # TODO: gpt-oss
-    bias_swiglu_fusion: bool = True
-    bias_gelu_fusion: bool = True
-    apply_rope_fusion: Optional[bool] = None
+    bias_dropout_fusion: bool = True
+    bias_activation_fusion: bool = True
+    apply_rope_fusion: bool = True
     gradient_accumulation_fusion: bool = True
-    cross_entropy_loss_fusion: bool = False
+    cross_entropy_loss_fusion: bool = True
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: Optional[bool] = None
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
@@ -349,16 +347,20 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     exp_avg_sq_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     manual_gc: bool = False
     manual_gc_interval: int = 0
+    manual_gc_eval: bool = True
 
     # learning rate
     lr_warmup_init: float = 0.
     lr: Optional[float] = None
-    lr_decay_style: Literal['cosine', 'linear', 'constant'] = 'cosine'
+    lr_decay_style: Literal['constant', 'linear', 'cosine', 'inverse-square-root', 'WSD'] = 'cosine'
     # The default is None, which will be set to `train_iters`.
     lr_decay_iters: Optional[int] = None
     lr_warmup_iters: int = 0
     lr_warmup_fraction: Optional[float] = None
     min_lr: float = 0
+    # wsd
+    lr_wsd_decay_style: Literal['exponential', 'linear', 'cosine', 'minus_sqrt'] = 'exponential'
+    lr_wsd_decay_iters: Optional[int] = None
 
     # regularization
     weight_decay: float = 0.1
@@ -373,7 +375,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # checkpoint
     save_interval: int = 500
-    save_retain_interval: Optional[int] = None
+    save_retain_interval: Optional[int] = None  # TODO
     no_save_optim: bool = False
     no_save_rng: bool = False
     mcore_model: Optional[str] = None
@@ -382,12 +384,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     no_load_rng: bool = False
     finetune: bool = False
     output_dir: Optional[str] = None
-    # ckpt_format: Literal['torch', 'torch_dist', 'zarr'] = 'torch_dist'
     perform_initialization: bool = False
-    async_save: bool = False
+    async_save: bool = False  # TODO
 
     # dist
-    local_rank: Optional[int] = None
+    local_rank: Optional[int] = None  # Compatible with DeepSpeed launch
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
@@ -402,16 +403,16 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
     sequence_parallel: bool = False
     context_parallel_size: int = 1
-    tp_comm_overlap: bool = False
-    overlap_grad_reduce: bool = False
-    overlap_param_gather: bool = False
+    tp_comm_overlap: bool = False  # TODO
+    overlap_grad_reduce: bool = False  # TODO
+    overlap_param_gather: bool = False  # TODO
     virtual_pipeline_model_parallel_size: Optional[int] = None
     microbatch_group_size_per_vp_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
 
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1
-    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex', 'alltoall_seq'] = 'alltoall'
+    moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = True
     moe_permute_fusion: bool = False
@@ -422,8 +423,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_expert_capacity_factor: Optional[float] = None
     moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
-    apply_wd_to_qk_layernorm: bool = False
 
+    apply_wd_to_qk_layernorm: bool = False
     # mtp
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1
@@ -452,7 +453,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     data_sharding: bool = False
 
     check_model: bool = True
-    initialize_embedding: bool = False
+    initialize_embedding: bool = False  # TODO
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
@@ -481,7 +482,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
-    enable_channel_loss: bool = False
+    enable_channel_loss: bool = False  # TODO
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'generative_reranker'] = None
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
@@ -499,7 +500,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     swanlab_exp_name: Optional[str] = None
 
     # visual
-    vit_gradient_checkpointing: bool = True
+    vit_gradient_checkpointing: Optional[bool] = None
     vit_lr: Optional[float] = None
     aligner_lr: Optional[float] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
@@ -555,8 +556,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
+        if self.recompute_granularity == 'selective' and self.recompute_method is not None:
+            raise ValueError('recompute method is not yet supported for selective recomputing granularity')
+
         self._set_default()
         self._init_vpp_size()
+        if self.vit_gradient_checkpointing is None:
+            self.vit_gradient_checkpointing = not self.freeze_vit
         if isinstance(self.report_to, str):
             self.report_to = [self.report_to]
         self.model_info, self.model_meta = get_model_info_meta(
@@ -739,13 +745,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.main_params_dtype = dtype_map[self.main_params_dtype]
         self.exp_avg_dtype = dtype_map[self.exp_avg_dtype]
         self.exp_avg_sq_dtype = dtype_map[self.exp_avg_sq_dtype]
-        self.params_dtype = torch.float32
         if self.fp16:
-            self.params_dtype = torch.float16
+            self.torch_dtype = torch.float16
         elif self.bf16:
-            self.params_dtype = torch.bfloat16
+            self.torch_dtype = torch.bfloat16
             if self.main_grads_dtype == torch.float32:
                 self.accumulate_allreduce_grads_in_fp32 = True
+        self.params_dtype = self.torch_dtype
 
     def _init_weigh_decay(self):
         if self.weight_decay_incr_style == 'constant':

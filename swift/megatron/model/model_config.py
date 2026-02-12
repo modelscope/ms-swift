@@ -442,16 +442,9 @@ def convert_hf_config(config) -> Dict[str, Any]:
 def create_mcore_model_config(args, hf_config):
     from swift.megatron.arguments import MegatronArguments
     kwargs = convert_hf_config(hf_config)
-    add_bias_linear = kwargs.get('add_bias_linear', False)
-    position_embedding_type = kwargs.get('position_embedding_type', 'rope')
-    if position_embedding_type != 'rope':
-        args.apply_rope_fusion = False
-    if not add_bias_linear:
-        args.bias_gelu_fusion = False
-
     for f in fields(MegatronModelConfig):
         # TODO: fix this
-        if getattr(args, f.name, None) is not None and f.name not in kwargs:
+        if getattr(args, f.name, None) is not None:
             kwargs[f.name] = getattr(args, f.name)
 
     if args.task_type == 'seq_cls':
@@ -465,7 +458,15 @@ def create_mcore_model_config(args, hf_config):
     kwargs['inference_sampling_seed'] = args.seed
     kwargs['batch_p2p_comm'] = not args.overlap_p2p_comm
     swiglu = kwargs.get('swiglu', True)
-    kwargs['bias_activation_fusion'] = args.bias_swiglu_fusion if swiglu else args.bias_gelu_fusion
+    add_bias_linear = kwargs.get('add_bias_linear', False)
+    position_embedding_type = kwargs.get('position_embedding_type', 'rope')
+    num_moe_experts = kwargs.get('num_moe_experts', None)
+    if position_embedding_type != 'rope':
+        kwargs['apply_rope_fusion'] = False
+    if not swiglu and not add_bias_linear:
+        kwargs['bias_activation_fusion'] = False
+    if add_bias_linear and num_moe_experts and args.moe_grouped_gemm:
+        kwargs['bias_dropout_fusion'] = False
     config = MegatronModelConfig(**kwargs)
     config.hf_config = hf_config
     config.args = args

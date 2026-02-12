@@ -4,6 +4,12 @@ from .base import MegatronCallback
 
 class DefaultFlowCallback(MegatronCallback):
 
+    def on_train_begin(self):
+        args = self.args
+        if args.manual_gc:
+            gc.disable()
+            gc.collect()
+
     def on_step_end(self):
         args = self.args
         state = self.state
@@ -21,9 +27,19 @@ class DefaultFlowCallback(MegatronCallback):
         if state.iteration >= args.train_iters:
             self.state.should_eval = True
             self.state.should_save = True
+        if args.manual_gc and args.manual_gc_interval != 0 and state.iteration % args.manual_gc_interval == 0:
+            gc.collect()
 
     def on_eval_begin(self):
+        args = self.args
         self.state.eval_iteration = 0
+        if args.manual_gc and args.manual_gc_eval:
+            gc.collect()
 
     def on_eval_step(self):
         self.state.eval_iteration += 1
+
+    def on_eval_end(self):
+        args = self.args
+        if args.manual_gc and args.manual_gc_eval:
+            gc.collect(generation=0)
