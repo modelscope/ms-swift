@@ -396,6 +396,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     account_for_embedding_in_pipeline_split: bool = False
     account_for_loss_in_pipeline_split: bool = False
     overlap_p2p_comm: bool = True
+    align_param_gather: bool = True
 
     ddp_timeout: int = 18000000
     ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
@@ -642,6 +643,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.virtual_pipeline_model_parallel_size = self.virtual_pipeline_model_parallel_size
         if self.virtual_pipeline_model_parallel_size == 1:
             self.virtual_pipeline_model_parallel_size = None
+        if self.virtual_pipeline_model_parallel_size is None:
+            self.overlap_p2p_comm = False
+            self.align_param_gather = False
 
     def _load_adapter_config(self):
         assert len(self.adapters) == 1, 'Currently only support one adapter'
