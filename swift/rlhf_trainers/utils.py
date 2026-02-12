@@ -57,6 +57,26 @@ if is_vllm_available():
             return self.lora_embeddings
 
 
+def chunk_list(lst: list, n: int) -> list[list]:
+    """
+    Split list `lst` into `n` evenly distributed sublists.
+
+    Example:
+    ```python
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 2)
+    [[1, 2, 3], [4, 5, 6]]
+
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 4)
+    [[1, 2], [3, 4], [5], [6]]
+
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 8)
+    [[1], [2], [3], [4], [5], [6], [], []]
+    ```
+    """
+    k, r = divmod(len(lst), n)
+    return [lst[i * k + min(i, r):(i + 1) * k + min(i + 1, r)] for i in range(n)]
+
+
 def is_valid_ipv6_address(address: str) -> bool:
     """Check if the given address is a valid IPv6 address."""
     try:
