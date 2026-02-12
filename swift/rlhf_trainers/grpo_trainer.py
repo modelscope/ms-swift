@@ -2201,7 +2201,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         reward_func_kwargs['tokenizer'] = self.processing_class
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
-                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
 
         self.reward_funcs = reward_funcs
         self.reward_func_names = []
@@ -2228,7 +2228,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 rm_template.set_mode('train')
                 rm_template.max_length = None
                 if rm_plugin not in rm_plugins:
-                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.plugins')
+                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.rewards')
                 self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])

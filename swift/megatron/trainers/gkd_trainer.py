@@ -472,11 +472,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         loss = jsd_loss
 
-        metric = {
-            'jsd_loss': jsd_loss.detach().clone(),
-        }
-
         # Add SFT loss if enabled (skip for student-generated responses)
+        sft_loss = None
         if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
             args = self.args
             logits_sbv = student_logits.transpose(0, 1).contiguous()
@@ -496,9 +493,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             sft_loss = sft_loss_sum / sft_loss_count
 
             loss = loss + self.sft_alpha * sft_loss
-            metric['sft_loss'] = sft_loss.detach().clone()
 
-        metric['loss'] = loss.detach().clone()
+        metric = {'loss': loss.detach().clone()}
+        if sft_loss is not None:
+            metric['jsd_loss'] = jsd_loss.detach().clone()
+            metric['sft_loss'] = sft_loss.detach().clone()
         metric = self._all_reduce_metric(metric)
 
         loss = loss / mpu.get_context_parallel_world_size()

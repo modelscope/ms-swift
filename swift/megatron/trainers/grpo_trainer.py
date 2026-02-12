@@ -158,7 +158,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                         reward_func_kwargs['tokenizer'] = self.processing_class
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
-                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
 
         # get reward name for logging
         self.reward_funcs = reward_funcs
