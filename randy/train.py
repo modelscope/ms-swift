@@ -9,7 +9,7 @@ def parse_config():
         if not arg.startswith('-') and arg.endswith('.yaml'):
             conf = OmegaConf.load(arg)
             conf = OmegaConf.to_container(conf, resolve=True)
-            mode = conf.pop('stage')
+            mode = f"swift/cli/{conf.pop('stage')}.py"
             for key, value in conf.items():
                 result.append(f'--{key}')
                 if isinstance(value, dict):
