@@ -1590,7 +1590,6 @@ class GPTBridge:
                 config = self.config
                 if config.mtp_num_layers:
                     hf_config.num_nextn_predict_layers = config.mtp_num_layers
-                hf_config.vocab_size = config.padded_vocab_size
                 if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param_gather:
                     if getattr(hf_config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config

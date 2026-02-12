@@ -56,7 +56,8 @@ class BaseMegatronTrainer(ABC):
         self.data_collator = self._get_data_collator()
         # TODO: resume_from_checkpoint
         self.state = TrainerState(max_steps=args.train_iters)
-        if args.initialize_embedding:
+        initialize_embedding = args.new_special_tokens or args.task_type == 'seq_cls'
+        if initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
         if args.tuner_type != 'full' and args.modules_to_save:

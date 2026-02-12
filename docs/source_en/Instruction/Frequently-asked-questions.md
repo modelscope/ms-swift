@@ -431,7 +431,7 @@ The path must be set to a shared disk directory.
 Check this [issue](https://github.com/modelscope/ms-swift/issues/4030).
 
 ### Q125: How do I configure resuming training from a checkpoint in megatron-swift?
-Configure `--load` to load the checkpoint. Additionally, configure these parameters as needed: `--finetune`, `--no_load_optim`, and `--no_load_rng`. For resuming LoRA training, configure --adapter_load; other settings are the same as for full-parameter training. For details, refer to the [megatron-swift command-line-parameters documentation](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Command-line-parameters.html).
+Configure `--mcore_model` to load the checkpoint. Additionally, configure these parameters as needed: `--finetune`, `--no_load_optim`, and `--no_load_rng`. For resuming LoRA training, configure --mcore_adapter; other settings are the same as for full-parameter training. For details, refer to the [megatron-swift command-line-parameters documentation](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Command-line-parameters.html).
 
 ### Q126: Has anyone encountered the following error while reproducing Kimi-VL-A3B-Instruct?
 ```text
@@ -552,7 +552,7 @@ Add all-router to target_modules as well.
 ### Q161: With the script below, is it possible to save checkpoints per epoch?
 ```shell
 megatron sft \
-    --load "$MODEL_PATH" \
+    --mcore_model "$MODEL_PATH" \
     --dataset "$DATA_PATH"  \
     --tuner_type lora \
     --lora_rank 8 \

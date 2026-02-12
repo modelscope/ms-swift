@@ -182,7 +182,7 @@ def prepare_adapter(args, model):
     logger.info(f'lora_config: {lora_config}')
     with _patch_deepcopy():
         model = Swift.prepare_model(model, lora_config)
-    if args.ref_mcore_adapter or args.ref_adapters:
+    if args.mcore_ref_adapter or args.ref_adapters:
         model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
         for n, p in model.named_parameters():

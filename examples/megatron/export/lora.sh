@@ -2,7 +2,7 @@
 # If you need to perform merge-lora and test precision alignment after merge-lora,
 # simply set `--merge_lora true`
 
-# You can also change `--model safetensors-path` to `--load torch-dist-path`.
+# You can also change `--model safetensors-path` to `--mcore_model torch-dist-path`.
 # These two methods are equivalent, and mcore-bridge will handle it automatically.
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \

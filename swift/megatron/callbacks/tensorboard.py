@@ -29,7 +29,7 @@ class TensorboardCallback(MegatronCallback):
             for k, v in logs.items():
                 self.writer.add_scalar(k, v, self.state.iteration)
 
-    def on_train_end(self, args, state, control, **kwargs):
+    def on_train_end(self):
         if self.writer:
             self.writer.close()
             self.writer = None

@@ -215,7 +215,7 @@ megatron export \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
-    --load Qwen3-30B-A3B-Instruct-2507-mcore \
+    --mcore_model Qwen3-30B-A3B-Instruct-2507-mcore \
     --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -228,12 +228,12 @@ LoRA权重：
 ```shell
 # torch_dist -> safetensors
 # 若你需要进行merge-lora，并测试merge-lora后的精度对齐，你只需要设置`--merge_lora true`即可
-# 你也可以将`--model safetensors-path`修改为`--load torch-dist-path`。这两种方式是等价的，mcore-bridge会自动处理。
+# 你也可以将`--model safetensors-path`修改为`--mcore_model torch-dist-path`。这两种方式是等价的，mcore-bridge会自动处理。
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
@@ -266,7 +266,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \

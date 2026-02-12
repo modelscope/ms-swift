@@ -431,7 +431,7 @@ vl模型的目前仅支持flash-attn，纯文本两种都支持。
 查看这个[issue](https://github.com/modelscope/ms-swift/issues/4030)。
 
 ### Q125: 请问megatron-swift如何配置断点续训？
-配置`--load`加载checkpoint，另外根据需要配置这几个参数，`--finetune`，`--no_load_optim`，`--no_load_rng`。如果是lora断点续训，配置`--adapter_load`，其他同全参数训练，详见[megatron-swift命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
+配置`--mcore_model`加载checkpoint，另外根据需要配置这几个参数，`--finetune`，`--no_load_optim`，`--no_load_rng`。如果是lora断点续训，配置`--mcore_adapter`，其他同全参数训练，详见[megatron-swift命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
 
 ### Q126: 有没有人在复现Kimi-VL-A3B-Instruct的时候出现了如下的报错？
 ```text
@@ -552,7 +552,7 @@ all-router也加到target_modules。
 ### Q161: 下面的脚本，可以按epoch保存checkpoint吗？
 ```shell
 megatron sft \
-    --load "$MODEL_PATH" \
+    --mcore_model "$MODEL_PATH" \
     --dataset "$DATA_PATH"  \
     --tuner_type lora \
     --lora_rank 8 \

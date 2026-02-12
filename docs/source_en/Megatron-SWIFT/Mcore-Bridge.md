@@ -226,7 +226,7 @@ megatron export \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
-    --load Qwen3-30B-A3B-Instruct-2507-mcore \
+    --mcore_model Qwen3-30B-A3B-Instruct-2507-mcore \
     --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -240,12 +240,12 @@ LoRA weights:
 ```shell
 # torch_dist -> safetensors
 # If you need to perform merge-lora and test precision alignment after merge-lora, simply set `--merge_lora true`
-# You can also change `--model safetensors-path` to `--load torch-dist-path`. These two methods are equivalent, and mcore-bridge will handle it automatically.
+# You can also change `--model safetensors-path` to `--mcore_model torch-dist-path`. These two methods are equivalent, and mcore-bridge will handle it automatically.
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
@@ -278,7 +278,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \

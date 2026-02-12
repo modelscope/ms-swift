@@ -47,7 +47,7 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-7B-Instruct-mcore \
+    --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -89,7 +89,7 @@ megatron sft \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron export \
-    --adapter_load megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --tensor_model_parallel_size 2 \
     --merge_lora false \
@@ -107,7 +107,7 @@ megatron export \
 #     --test_convert_precision true
 ```
 
-- Note: The `--adapter_load/--mcore_adapter` folder contains an `args.json` file. The conversion process will read the `--model/--mcore_model` and LoRA-related parameter information from this file. `swift export` does not currently support conversion of LoRA incremental weights. With `megatron export`, you can use the `--merge_lora` parameter to control whether to merge weights.
+- Note: The `--mcore_adapter` folder contains an `args.json` file. The conversion process will read the `--model/--mcore_model` and LoRA-related parameter information from this file. `swift export` does not currently support conversion of LoRA incremental weights. With `megatron export`, you can use the `--merge_lora` parameter to control whether to merge weights.
 
 
 ### Inference
@@ -130,7 +130,7 @@ If you only want to merge the LoRA weights without converting them to Hugging Fa
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron export \
-    --adapter_load megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --tensor_model_parallel_size 2 \
     --to_mcore true \
     --merge_lora true \

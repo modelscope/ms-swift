@@ -44,7 +44,7 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-7B-Instruct-mcore \
+    --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -86,7 +86,7 @@ megatron sft \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron export \
-    --adapter_load megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --tensor_model_parallel_size 2 \
     --merge_lora false \
@@ -103,7 +103,7 @@ megatron export \
 #     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
 #     --test_convert_precision true
 ```
-- 注意：`--adapter_load/--mcore_adapter`文件夹中包含`args.json`文件，转换过程会读取文件中`--model/--mcore_model`以及LoRA相关的参数信息。`swift export`暂不支持LoRA增量权重的转换。`megatron export`你可以使用`--merge_lora`参数控制是否进行权重合并。
+- 注意：`--mcore_adapter`文件夹中包含`args.json`文件，转换过程会读取文件中`--model/--mcore_model`以及LoRA相关的参数信息。`swift export`暂不支持LoRA增量权重的转换。`megatron export`你可以使用`--merge_lora`参数控制是否进行权重合并。
 
 ### 推理
 ```shell
@@ -122,7 +122,7 @@ swift infer \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron export \
-    --adapter_load megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --tensor_model_parallel_size 2 \
     --to_mcore true \
     --merge_lora true \

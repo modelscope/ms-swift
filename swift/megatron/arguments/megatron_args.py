@@ -27,8 +27,8 @@ logger = get_logger()
 class RLHFMegatronArgumentsMixin:
     rlhf_type: Literal['dpo', 'kto', 'grpo', 'gkd', 'rm'] = None
     loss_type: Optional[str] = None  # rlhf / plugins
-    ref_mcore_model: Optional[str] = None
-    ref_mcore_adapter: Optional[str] = None
+    mcore_ref_model: Optional[str] = None
+    mcore_ref_adapter: Optional[str] = None
 
     beta: Optional[float] = None
     rpo_alpha: Optional[float] = None
@@ -326,8 +326,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     recompute_method: Literal['uniform', 'block'] = None
     recompute_num_layers: Optional[int] = None
     recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
-    use_cpu_initialization: bool = False
     train_iters: Optional[int] = None
+    max_epochs: Optional[int] = None
+
     masked_softmax_fusion: bool = True
     bias_dropout_fusion: bool = True
     bias_activation_fusion: bool = True
@@ -447,13 +448,21 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     eval_iters: int = -1
     eval_interval: Optional[int] = None
 
+    # dataloader
+    train_dataloader_shuffle: bool = True
+    dataloader_num_workers: int = 4
+    dataloader_pin_memory: bool = True
+    dataloader_persistent_workers: bool = True
+    dataloader_prefetch_factor: int = 2
+    group_by_length: bool = False
+
     # other
     seed: int = 42
     data_parallel_random_init: Optional[bool] = False
     data_sharding: bool = False
+    use_cpu_initialization: bool = False
 
     check_model: bool = True
-    initialize_embedding: bool = False  # TODO
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
@@ -472,15 +481,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     merge_lora: Optional[bool] = None
     max_shard_size: str = '5GB'
 
-    # dataloader
-    train_dataloader_shuffle: bool = True
-    dataloader_num_workers: int = 4
-    dataloader_pin_memory: bool = True
-    dataloader_persistent_workers: bool = True
-    dataloader_prefetch_factor: int = 2
-    group_by_length: bool = False
-
-    max_epochs: Optional[int] = None
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False  # TODO
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'generative_reranker'] = None
@@ -515,7 +515,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             with open(args_path, 'r', encoding='utf-8') as f:
                 old_args = json.load(f)
             keys = list(f.name for f in fields(MegatronTunerMixin))
-            keys += ['mcore_model', 'padded_vocab_size', 'task_type', 'num_labels']  # TODO: padded_vocab_size
+            keys += ['mcore_model', 'task_type', 'num_labels']
             for key in keys:
                 old_value = old_args.get(key)
                 if old_value is not None:
@@ -538,7 +538,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.task_type is None:
             self.task_type = 'causal_lm'
         if self.calculate_per_token_loss is None:
-            self.calculate_per_token_loss = self.task_type == 'causal_lm'
+            self.calculate_per_token_loss = (self.task_type == 'causal_lm' and self.rlhf_type is None)
 
     def _init_mixed_precision(self):
         ModelArguments._init_mixed_precision(self)
@@ -601,7 +601,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.eval_interval = self.save_interval
         if self.merge_lora is None:
             self.merge_lora = self.save_safetensors
-        if self.adapters or self.ref_adapters or self.mcore_adapter or self.ref_mcore_adapter:
+        if self.adapters or self.ref_adapters or self.mcore_adapter or self.mcore_ref_adapter:
             if self.tuner_type == 'full':
                 self.tuner_type = 'lora'
                 logger.info('Setting args.tuner_type: lora')
@@ -614,8 +614,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.attention_backend = AttnBackend[self.attention_backend]
         if self.sequence_parallel and self.tensor_model_parallel_size <= 1:
             self.sequence_parallel = False
-        if self.tp_comm_overlap:
-            assert args.sequence_parallel, 'Tensor parallel communication/GEMM overlap can happen only when sequence parallelism is enabled'
+        if self.tp_comm_overlap and not args.sequence_parallel:
+            raise ValueError('Tensor parallel communication/GEMM overlap can happen only when '
+                             'sequence parallelism is enabled')
 
         initialize_megatron(self)
         total_model_size = (

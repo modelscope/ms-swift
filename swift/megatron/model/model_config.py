@@ -157,7 +157,6 @@ class MegatronModelConfig(TransformerConfig):
     moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: bool = False
     moe_router_topk_scaling_factor: Optional[float] = None
-    # TODO: fix this
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn',
                                             'none'] = 'aux_loss'
     use_shared_expert_gate: bool = False

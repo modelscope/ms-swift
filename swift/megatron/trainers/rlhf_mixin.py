@@ -20,10 +20,10 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
     def _load_checkpoint(self):
         args = self.args
-        if args.ref_mcore_model is not None:
-            load_mcore_checkpoint(args, self.ref_models, load_arg='ref_mcore_model')
-        if args.ref_mcore_adapter is not None:
-            load_mcore_checkpoint(args, self.wrapped_models, load_arg='ref_mcore_adapter')
+        if args.mcore_ref_model is not None:
+            load_mcore_checkpoint(args, self.ref_models, load_arg='mcore_ref_model')
+        if args.mcore_ref_adapter is not None:
+            load_mcore_checkpoint(args, self.wrapped_models, load_arg='mcore_ref_adapter')
         super()._load_checkpoint()
 
     def prepare_model(self):
@@ -35,10 +35,10 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         for ref_model in self.ref_models:
             ref_model.requires_grad_(False)
             ref_model.eval()
-            if args.ref_mcore_model is None:
+            if args.mcore_ref_model is None:
                 ref_model_id_or_path = args.ref_model or args.model
                 self.bridge.load_weights(m, ref_model_id_or_path)
-        if args.tuner_type == 'lora' and args.ref_adapters and args.ref_mcore_adapter is None:
+        if args.tuner_type == 'lora' and args.ref_adapters and args.mcore_ref_adapter is None:
             assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
             self.bridge.load_weights(model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
 
@@ -51,7 +51,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
     def null_ref_context(self):
         args = self.args
         contexts = []
-        has_ref_adapter = bool(args.ref_mcore_adapter or args.ref_adapters)
+        has_ref_adapter = bool(args.mcore_ref_adapter or args.ref_adapters)
         if args.tuner_type == 'full':
             ref_models = self.ref_models
         else:
