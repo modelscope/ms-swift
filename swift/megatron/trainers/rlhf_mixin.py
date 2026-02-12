@@ -7,6 +7,7 @@ from megatron.core.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
+from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import load_mcore_checkpoint
 from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_logger
@@ -32,6 +33,8 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if args.tuner_type == 'full' and args.rlhf_type not in ['rm', 'gkd']:
             self.ref_models = get_mcore_model(args, self.template.config)
         for ref_model in self.ref_models:
+            ref_model.requires_grad_(False)
+            ref_model.eval()
             if args.ref_mcore_model is None:
                 ref_model_id_or_path = args.ref_model or args.model
                 self.bridge.load_weights(m, ref_model_id_or_path)

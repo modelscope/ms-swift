@@ -11,12 +11,12 @@
 - 🔥recompute_method: 该参数需将recompute_granularity设置为'full'才生效，可选项为'uniform', 'block'。默认为None。
 - 🔥recompute_num_layers: 该参数需将recompute_granularity设置为'full'才生效，默认为None。若`recompute_method`设置为uniform，该参数含义为每个均匀划分的重新计算单元的transformer layers数量。例如你可以指定为`--recompute_granularity full --recompute_method uniform --recompute_num_layers 4`。recompute_num_layers越大，显存占用越小，计算成本越大。注意：当前进程中的模型层数需能被`recompute_num_layers`整除。默认为None。
 - 🔥recompute_modules: 选项包括"core_attn", "moe_act", "layernorm", "mla_up_proj", "mlp", "moe"，默认值为`["core_attn"]`。该参数在`--recompute_granularity selective`时生效。例如在MoE训练时，你可以通过指定`--recompute_granularity selective --recompute_modules core_attn moe`降低显存。其中"core_attn"、"mlp" 和 "moe" 使用常规检查点，"moe_act"、"layernorm" 和 "mla_up_proj" 使用输出丢弃检查点。
-  - "core_attn"：重新计算 Transformer 层中的核心注意力部分。
-  - "mlp"：重新计算密集的 MLP 层。
-  - "moe"：重新计算 MoE 层。
-  - "moe_act"：重新计算 MoE 中的 MLP 激活函数部分。
-  - "layernorm"：重新计算 input_layernorm 和 pre_mlp_layernorm。
-  - "mla_up_proj"：重新计算 MLA 上投影和 RoPE 应用部分。
+  - "core_attn": 重新计算 Transformer 层中的核心注意力部分。
+  - "mlp": 重新计算密集的 MLP 层。
+  - "moe": 重新计算 MoE 层。
+  - "moe_act": 重新计算 MoE 中的 MLP 激活函数部分。
+  - "layernorm": 重新计算 input_layernorm 和 pre_mlp_layernorm。
+  - "mla_up_proj": 重新计算 MLA 上投影和 RoPE 应用部分。
 - deterministic_mode: 确定性模式，这会导致训练速度下降，默认为False。
 - 🔥train_iters: 训练的总迭代次数，默认为None。
   - 提示：你可以通过设置`--max_epochs`来设置训练的epochs数。在使用非流式数据集时，会自动根据数据集数量计算`train_iters`（兼容packing）。
@@ -352,7 +352,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - beta: KL正则系数，默认为0.04，设置为0时不加载ref model。
 - micro_batch_size: 每个device的批次大小，默认为1。
 - global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
-- steps_per_generation：每轮生成的优化步数，即采样批量大小相对global_batch_size的倍数，默认为1。
+- steps_per_generation: 每轮生成的优化步数，即采样批量大小相对global_batch_size的倍数，默认为1。
 - generation_batch_size: 采样批量大小，需要是global_batch_size的倍数，默认等于global_batch_size*steps_per_generation。
 - num_generations: 每个prompt采样的数量，论文中的G值，默认为8。
 - num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
@@ -386,12 +386,12 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - num_iterations: 每条数据的更新次数，[GRPO论文](https://arxiv.org/abs/2402.03300)中的 $\mu$ 值，默认为1。
 - epsilon: clip 系数，默认为0.2。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
-- dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
-- max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
-- overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
+- dynamic_sample: 筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
+- max_resample_times: dynamic_sample设置下限制重采样次数，默认3次。
+- overlong_filter: 跳过超长截断的样本，不参与loss计算，默认为False。
 - delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
 - importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
-- scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）、`gdpo`（对每个奖励函数分别进行组内归一化后加权聚合，参考 [GDPO 论文](https://arxiv.org/abs/2601.05242)）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
+- scale_rewards: 指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）、`gdpo`（对每个奖励函数分别进行组内归一化后加权聚合，参考 [GDPO 论文](https://arxiv.org/abs/2601.05242)）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
   - 注意：`gdpo` 模式不支持 `kl_in_reward=True`，若同时设置会自动将 `kl_in_reward` 设为 `False`。
   - GDPO 适用于多奖励优化场景：当使用多个奖励函数时，GDPO 会对每个奖励函数分别在组内进行标准化（减均值、除标准差），然后使用 `reward_weights` 进行加权求和，最后再进行批次级别的标准化。这种方式可以更好地保留各个奖励的相对差异，避免不同奖励组合坍塌成相同的 advantage 值。
 - rollout_importance_sampling_mode: 训推不一致校正模式，可选项为 `token_truncate`、`token_mask`、`sequence_truncate`、`sequence_mask`。默认为None，不启用校正。具体参考[文档](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md)。

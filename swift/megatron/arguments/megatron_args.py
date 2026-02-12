@@ -567,6 +567,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.megatron_model_meta = get_megatron_model_meta(self.model_type)
         if self.megatron_model_meta is None:
             raise ValueError(f'Model: {self.model} is not supported.')
+        self._init_teacher_model()
         if self.apply_wd_to_qk_layernorm and self.model_type != 'qwen3_next':
             raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next')
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
@@ -611,12 +612,20 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)
         self.data_parallel_size = self.world_size // total_model_size
         # Gradient Accumulation
-        self.num_micro_batches = self.global_batch_size // self.data_parallel_size // self.micro_batch_size
+        self.num_microbatches = self.global_batch_size // self.data_parallel_size // self.micro_batch_size
+
+    def _init_teacher_model(self):
+        if self.teacher_model is None:
+            return
+        self.teacher_model_info, self.teacher_model_meta = get_model_info_meta(
+            self.teacher_model, model_type=self.teacher_model_type, use_hf=self.use_hf, hub_token=self.hub_token)
+        self.teacher_model_type = self.teacher_model_info.model_type
+        self.teacher_model_dir = self.teacher_model_info.model_dir
+        self.teacher_megatron_model_meta = get_megatron_model_meta(self.teacher_model_type)
+        if self.teacher_megatron_model_meta is None:
+            raise ValueError(f'Model: {self.teacher_model} is not supported.')
 
     def _init_vpp_size(self):
-        # TODO:
-        self.virtual_pipeline_model_parallel_size = None
-        return
         if self.pipeline_model_parallel_layout is not None:
             # Parse the input flattened layout to a list and get the vpp size.
             # We will validate the layout more carefully in the TransformerConfig constructor.
@@ -626,72 +635,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 f' by pipeline_model_parallel_size ({num_stages=},'
                 f' {self.pipeline_model_parallel_size=})')
             self.virtual_pipeline_model_parallel_size = num_stages // self.pipeline_model_parallel_size
-            if self.virtual_pipeline_model_parallel_size == 1:
-                self.virtual_pipeline_model_parallel_size = None
         elif self.num_layers_per_virtual_pipeline_stage is not None or self.num_virtual_stages_per_pipeline_rank is not None:
-            if self.num_virtual_stages_per_pipeline_rank is None:
-                assert self.decoder_first_pipeline_num_layers is None and self.decoder_last_pipeline_num_layers is None, \
-                    'please use --num-virtual-stages-per-pipeline-rank to specify virtual pipeline parallel degree when enable uneven pipeline parallelism'
-                if self.num_layers is not None:
-                    num_layers = self.num_layers
-                else:
-                    num_layers = self.decoder_num_layers
-
-                if args.account_for_embedding_in_pipeline_split:
-                    num_layers += 1
-
-                if args.account_for_loss_in_pipeline_split:
-                    num_layers += 1
-
-                assert num_layers % args.transformer_pipeline_model_parallel_size == 0, \
-                    'number of layers of the model must be divisible pipeline model parallel size'
-                num_layers_per_pipeline_stage = num_layers // args.transformer_pipeline_model_parallel_size
-
-                assert num_layers_per_pipeline_stage % args.num_layers_per_virtual_pipeline_stage == 0, \
-                    'number of layers per pipeline stage must be divisible number of layers per virtual pipeline stage'
-                args.virtual_pipeline_model_parallel_size = num_layers_per_pipeline_stage // \
-                                                            args.num_layers_per_virtual_pipeline_stage
-            else:
-                args.virtual_pipeline_model_parallel_size = args.num_virtual_stages_per_pipeline_rank
-            if args.virtual_pipeline_model_parallel_size == 1:
-                args.virtual_pipeline_model_parallel_size = None
-        else:
-            args.virtual_pipeline_model_parallel_size = None
-
-            if args.decoder_first_pipeline_num_layers is None and args.decoder_last_pipeline_num_layers is None:
-                # Divisibility check not applicable for T5 models which specify encoder_num_layers
-                # and decoder_num_layers.
-                if args.num_layers is not None:
-                    num_layers = args.num_layers
-
-                    if args.account_for_embedding_in_pipeline_split:
-                        num_layers += 1
-
-                    if args.account_for_loss_in_pipeline_split:
-                        num_layers += 1
-
-                    assert num_layers % args.transformer_pipeline_model_parallel_size == 0, \
-                        'Number of layers should be divisible by the pipeline-model-parallel size'
-
-        if args.virtual_pipeline_model_parallel_size is not None:
-            if args.overlap_p2p_comm:
-                assert args.pipeline_model_parallel_size > 1, \
-                    'When interleaved schedule is used, pipeline-model-parallel size ' \
-                    'should be greater than 1'
-            else:
-                assert args.pipeline_model_parallel_size > 2, \
-                    'When interleaved schedule is used and p2p communication overlap is disabled, ' \
-                    'pipeline-model-parallel size should be greater than 2 to avoid having multiple ' \
-                    'p2p sends and recvs between same 2 ranks per communication batch'
-        else:
-            # Overlap P2P communication is disabled if not using the interleaved schedule.
-            args.overlap_p2p_comm = False
-            args.align_param_gather = False
-            # Only print warning if PP size > 1.
-            if args.rank == 0 and args.pipeline_model_parallel_size > 1:
-                print('WARNING: Setting args.overlap_p2p_comm and args.align_param_gather to False '
-                      'since non-interleaved schedule does not support overlapping p2p communication '
-                      'and aligned param AG')
+            self.virtual_pipeline_model_parallel_size = self.num_virtual_stages_per_pipeline_rank
+        if self.virtual_pipeline_model_parallel_size == 1:
+            self.virtual_pipeline_model_parallel_size = None
 
     def _load_adapter_config(self):
         assert len(self.adapters) == 1, 'Currently only support one adapter'

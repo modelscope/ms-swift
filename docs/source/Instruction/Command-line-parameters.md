@@ -520,7 +520,7 @@ RLHF参数继承于[训练参数](#训练参数)。
 - loss_type: 损失类型。默认为None，使用不同的rlhf算法，其默认值不同。
   - DPO: 可选项参考[文档](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions)，支持传入多个值实现混合训练([MPO](https://arxiv.org/abs/2411.10442)), 传入多个值时需要设置参数 loss_weights。默认为`sigmoid`。
   - GRPO: 参考[GRPO参数](#grpo参数)。
-- loss_weights：在 DPO 训练中设置多个 loss_type 时，用于指定各个损失项的权重。
+- loss_weights: 在 DPO 训练中设置多个 loss_type 时，用于指定各个损失项的权重。
 - cpo_alpha: CPO/SimPO loss 中 nll loss的系数, 默认为`1.`。
 - simpo_gamma: SimPO算法中的reward margin项，论文建议设置为0.5-1.5，默认为`1.`。
 - desirable_weight: KTO算法中用于抵消 desirable 和 undesirable 数量不均衡的影响，对 desirable 损失按该系数进行加权，默认为`1.`。
@@ -535,7 +535,7 @@ RLHF参数继承于[训练参数](#训练参数)。
 - seq_kd: 默认为False。该参数在GKD中使用。控制是否执行序列级知识蒸馏（Sequence-Level KD）的 seq_kd 参数（可视为对教师模型生成输出的监督式微调）。
   - 注意：你可以提前对数据集内容使用teacher模型进行推理（使用vllm/sglang/lmdeploy等推理引擎加速），并在训练时将`seq_kd`设置为False。或者将`seq_kd`设置为True，在训练时使用teacher模型生成序列（能保证多个epoch生成数据的不同，但效率较慢）。
 - offload_teacher_model: 卸载教师模型以节约显存，只在采样/计算logps时加载，默认为False。
-- truncation_strategy：用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
+- truncation_strategy: 用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
   - 仅记录 vLLM 采样结果。
@@ -584,7 +584,7 @@ reward模型参数将在PPO、GRPO中使用。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
 - reward_model_plugin: 奖励模型逻辑，默认为orm逻辑, 详细见[自定义奖励模型](./GRPO/DeveloperGuide/reward_model.md#自定义奖励模型)。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True。
-- truncation_strategy：用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
+- truncation_strategy: 用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo'], 默认为'grpo', 具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
@@ -618,19 +618,19 @@ reward模型参数将在PPO、GRPO中使用。
 - epsilon_high: upper clip 系数，默认为None，设置后与epsilon共同构成[epsilon, epsilon_high]裁剪范围。
 - tau_pos: [SAPO](https://arxiv.org/abs/2511.20347)算法中正优势的温度参数，控制软门控函数的锐度。较大值使门控更锐利（接近硬裁剪），较小值使门控更平滑。默认为1.0。
 - tau_neg: SAPO算法中负优势的温度参数，控制软门控函数的锐度。通常设置`tau_neg > tau_pos`以对负优势施加更强约束。默认为1.05。
-- dynamic_sample：筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
-- max_resample_times：dynamic_sample设置下限制重采样次数，默认3次。
-- overlong_filter：跳过超长截断的样本，不参与loss计算，默认为False。
+- dynamic_sample: 筛除group内奖励标准差为0的数据，额外采样新数据，默认为False。
+- max_resample_times: dynamic_sample设置下限制重采样次数，默认3次。
+- overlong_filter: 跳过超长截断的样本，不参与loss计算，默认为False。
 - delta: [INTELLECT-2 tech report](https://huggingface.co/papers/2505.07291)中双侧 GRPO 上界裁剪值。若设置，建议大于 1 + epsilon。默认为None。
 - importance_sampling_level: 控制重要性采样比计算，可选项为 `token` 和 `sequence`，`token` 模式下保留原始的每个 token 的对数概率比，`sequence` 模式下则会对序列中所有有效 token 的对数概率比进行平均。[GSPO论文](https://arxiv.org/abs/2507.18071)中使用sequence级别计算来稳定训练，默认为`token`。
 - advantage_estimator: 优势计算函数，默认为 `grpo`，即计算组内相对优势，可选项为 `grpo`、[`rloo`](./GRPO/AdvancedResearch/RLOO.md)、[`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md)。
 - kl_in_reward: 控制 KL 散度正则项的处理位置；`false`表示作为损失函数的独立正则项，`true`表示将 KL 直接并入奖励（从奖励中扣除）。默认情况与advantage_estimator绑定，`grpo`下默认为`false`，`rloo` 和 `reinforce_plus_plus` 下默认为 `true`。
-- scale_rewards：指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）、`gdpo`（对每个奖励函数分别进行组内归一化后加权聚合，参考 [GDPO 论文](https://arxiv.org/abs/2601.05242)）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
+- scale_rewards: 指定奖励的缩放策略。可选值包括 `group`（按组内标准差缩放）、`batch`（按整个批次的标准差缩放）、`none`（不进行缩放）、`gdpo`（对每个奖励函数分别进行组内归一化后加权聚合，参考 [GDPO 论文](https://arxiv.org/abs/2601.05242)）。在 ms-swift < 3.10 版本中，该参数为布尔类型，`true` 对应 `group`，`false` 对应 `none`。默认值与 `advantage_estimator` 绑定：`grpo` 对应 `group`，`rloo` 对应 `none`，`reinforce_plus_plus` 对应 `batch`。
   - 注意：`gdpo` 模式不支持 `kl_in_reward=True`，若同时设置会自动将 `kl_in_reward` 设为 `False`。
   - GDPO 适用于多奖励优化场景：当使用多个奖励函数时，GDPO 会对每个奖励函数分别在组内进行标准化（减均值、除标准差），然后使用 `reward_weights` 进行加权求和，最后再进行批次级别的标准化。这种方式可以更好地保留各个奖励的相对差异，避免不同奖励组合坍塌成相同的 advantage 值。
 - sync_ref_model: 是否定期同步ref_model，默认为False。
   - ref_model_mixup_alpha: 控制在更新过程中model和先前ref_model之间的混合。更新公式为 $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$。默认为0.6。
-  - ref_model_sync_steps：同步频率，默认为512。
+  - ref_model_sync_steps: 同步频率，默认为512。
 - move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
 - multi_turn_scheduler: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
 - max_turns: 多轮GRPO的轮数上限。默认为None，不做限制。
@@ -644,15 +644,15 @@ reward模型参数将在PPO、GRPO中使用。
 ##### 奖励函数参数
 内置的奖励函数参考[文档](./GRPO/DeveloperGuide/reward_function.md)
 cosine 奖励参数
-- cosine_min_len_value_wrong：cosine 奖励函数参数，生成错误答案时，最小长度对应的奖励值。默认值为-0.5。
-- cosine_max_len_value_wrong：生成错误答案时，最大长度对应的奖励值。默认值为0.0。
-- cosine_min_len_value_correct：生成正确答案时，最小长度对应的奖励值。默认值为1.0。
-- cosine_max_len_value_correct：生成正确答案时，最大长度对应的奖励值。默认值为0.5。
-- cosine_max_len：生成文本的最大长度限制。默认等于 max_completion_length。
+- cosine_min_len_value_wrong: cosine 奖励函数参数，生成错误答案时，最小长度对应的奖励值。默认值为-0.5。
+- cosine_max_len_value_wrong: 生成错误答案时，最大长度对应的奖励值。默认值为0.0。
+- cosine_min_len_value_correct: 生成正确答案时，最小长度对应的奖励值。默认值为1.0。
+- cosine_max_len_value_correct: 生成正确答案时，最大长度对应的奖励值。默认值为0.5。
+- cosine_max_len: 生成文本的最大长度限制。默认等于 max_completion_length。
 
 repetition 奖励参数
-- repetition_n_grams：用于检测重复的 n-gram 大小。默认值为3。
-- repetition_max_penalty：最大惩罚值，用于控制惩罚的强度。默认值为-1.0。
+- repetition_n_grams: 用于检测重复的 n-gram 大小。默认值为3。
+- repetition_max_penalty: 最大惩罚值，用于控制惩罚的强度。默认值为-1.0。
 
 soft overlong 奖励参数
 - soft_max_length: 论文中的L_max，模型的最大生成长度，默认等于max_completion_length。
@@ -756,21 +756,21 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 
 - prm_model: 过程奖励模型的类型，可以是模型id（以'transformers'方式拉起），或者plugin中定义的prm key（自定义推理过程）。
 - orm_model: 结果奖励模型的类型，通常是通配符或测试用例等，一般定义在plugin中。
-- sampler_type：采样类型，目前支持 sample, distill
-- sampler_engine：支持`transformers`, `lmdeploy`, `vllm`, `client`, `no`，默认为`transformers`，采样模型的推理引擎。
-- output_dir：输出目录，默认为`sample_output`。
-- output_file：输出文件名称，默认为`None`使用时间戳作为文件名。传入时不需要传入目录，仅支持jsonl格式。
-- override_exist_file：如`output_file`存在，是否覆盖。
-- num_sampling_batch_size：每次采样的batch_size。
-- num_sampling_batches：共采样多少batch。
-- n_best_to_keep：返回多少最佳sequences。
-- data_range：本采样处理数据集的分片。传入格式为`2 3`，代表数据集分为3份处理（这意味着通常有三个`swift sample`在并行处理），本实例正在处理第3个分片。
-- temperature：在这里默认为1.0。
-- prm_threshold：PRM阈值，低于该阈值的结果会被过滤掉，默认值为`0`。
-- easy_query_threshold：单个query的所有采样中，ORM评估如果正确，大于该比例的query会被丢弃，防止过于简单的query出现在结果中，默认为`None`，代表不过滤。
-- engine_kwargs：传入sampler_engine的额外参数，以json string传入，例如`{"cache_max_entry_count":0.7}`。
-- num_return_sequences：采样返回的原始sequence数量。默认为64，本参数对`sample`采样有效。
-- cache_files：为避免同时加载prm和generator造成显存OOM，可以分两步进行采样，第一步将prm和orm置为`None`，则所有结果都会输出到文件中，第二次运行采样将sampler_engine置为`no`并传入`--cache_files`为上次采样的输出文件，则会使用上次输出的结果进行prm和orm评估并输出最终结果。
+- sampler_type: 采样类型，目前支持 sample, distill
+- sampler_engine: 支持`transformers`, `lmdeploy`, `vllm`, `client`, `no`，默认为`transformers`，采样模型的推理引擎。
+- output_dir: 输出目录，默认为`sample_output`。
+- output_file: 输出文件名称，默认为`None`使用时间戳作为文件名。传入时不需要传入目录，仅支持jsonl格式。
+- override_exist_file: 如`output_file`存在，是否覆盖。
+- num_sampling_batch_size: 每次采样的batch_size。
+- num_sampling_batches: 共采样多少batch。
+- n_best_to_keep: 返回多少最佳sequences。
+- data_range: 本采样处理数据集的分片。传入格式为`2 3`，代表数据集分为3份处理（这意味着通常有三个`swift sample`在并行处理），本实例正在处理第3个分片。
+- temperature: 在这里默认为1.0。
+- prm_threshold: PRM阈值，低于该阈值的结果会被过滤掉，默认值为`0`。
+- easy_query_threshold: 单个query的所有采样中，ORM评估如果正确，大于该比例的query会被丢弃，防止过于简单的query出现在结果中，默认为`None`，代表不过滤。
+- engine_kwargs: 传入sampler_engine的额外参数，以json string传入，例如`{"cache_max_entry_count":0.7}`。
+- num_return_sequences: 采样返回的原始sequence数量。默认为64，本参数对`sample`采样有效。
+- cache_files: 为避免同时加载prm和generator造成显存OOM，可以分两步进行采样，第一步将prm和orm置为`None`，则所有结果都会输出到文件中，第二次运行采样将sampler_engine置为`no`并传入`--cache_files`为上次采样的输出文件，则会使用上次输出的结果进行prm和orm评估并输出最终结果。
   - 注意：使用cache_files时，`--dataset`仍然需要传入，这是因为cache_files的id是由原始数据计算的md5，需要把两部分信息结合使用。
 
 ## 特定模型参数

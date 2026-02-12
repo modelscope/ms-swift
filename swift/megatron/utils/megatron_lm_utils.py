@@ -359,7 +359,7 @@ def load_mcore_checkpoint(args,
         iteration=iteration,
         model_sd_kwargs=model_sd_kwargs,
         optim_sd_kwargs=optim_sd_kwargs)
-    if args.tuner_type == 'lora':
+    if args.tuner_type == 'lora' and not args.merge_lora:
         _filter_adapter_state_dict(sharded_state_dict, is_peft_format, adapter_name=adapter_name)
     model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
     for k in model_keys:

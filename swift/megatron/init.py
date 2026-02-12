@@ -33,17 +33,15 @@ def _patch_transformer_engine():
         try:
             transformer_engine.pytorch.attention.apply_rotary_pos_emb = (
                 transformer_engine.pytorch.attention.rope.apply_rotary_pos_emb)
-            logger.info('Patch apply_rotary_pos_emb successfully applied.')
         except (ImportError, AttributeError):
-            pass
+            logger.warning('Failed to patch apply_rotary_pos_emb.')
     try:
         from transformer_engine.pytorch.attention import _SplitAlongDim
     except ImportError:
         try:
             transformer_engine.pytorch.attention._SplitAlongDim = (transformer_engine.pytorch.utils.SplitAlongDim)
-            logger.info('Patch _SplitAlongDim successfully applied.')
         except (ImportError, AttributeError):
-            pass
+            logger.warning('Failed to patch _SplitAlongDim.')
 
 
 def _patch__batched_p2p_ops():
@@ -807,9 +805,8 @@ def init_megatron_env():
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()
-        logger.info('Patch FileSystemReader successfully applied.')
     except Exception:
-        pass
+        logger.warning('Failed to patch FileSystemReader.')
     try:
         _patch_validate_non_overlapping_shards_metadata()
     except Exception:
@@ -818,9 +815,8 @@ def init_megatron_env():
     try:
         _patch_peft_BaseTuner()
         _patch_peft_ModulesToSaveWrapper()
-        logger.info('Patch peft successfully applied.')
     except Exception:
-        pass
+        logger.warning('Failed to patch peft.')
 
     import megatron.core
     logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
