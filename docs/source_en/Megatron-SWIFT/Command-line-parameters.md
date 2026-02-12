@@ -127,7 +127,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
 - num_layers_per_virtual_pipeline_stage: Number of layers in each virtual pipeline stage. Default is `None`. This parameter and `--num_virtual_stages_per_pipeline_rank` can both be used to configure VPP (Virtual Pipeline Parallelism).
 - num_virtual_stages_per_pipeline_rank: Number of virtual pipeline stages per pipeline-parallel rank. Default is `None`. VPP is used to reduce computational bubbles in pipeline parallelism (PP) and improve GPU utilization, at the cost of slightly increased communication overhead.
-- microbatch_group_size_per_virtual_pipeline_stage: Number of consecutive microbatches processed by each virtual pipeline stage. Default is `None`, which equals `pipeline_model_parallel_size`.
+- microbatch_group_size_per_vp_stage: Number of consecutive microbatches processed by each virtual pipeline stage. Default is `None`, which equals `pipeline_model_parallel_size`.
 - 🔥pipeline_model_parallel_layout: A string describing a custom pipeline (pp/vpp) model parallel layout. For example: "E|(t|)*3,m|m||L". Here, E, L, t, and m denote the embedding layer, loss layer, Transformer decoder layer, and MTP layer, respectively. Stages are separated by "|". Repeated stages or layers can be expressed using multiplication. Commas are only for cosmetic readability and have no syntactic meaning. The default value is None, indicating that this argument is not used to set the layout.
   - This parameter is typically used on heterogeneous GPU clusters.
 

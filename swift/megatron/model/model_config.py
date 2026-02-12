@@ -157,6 +157,7 @@ class MegatronModelConfig(TransformerConfig):
     moe_router_bias_update_rate: Optional[float] = None
     moe_router_enable_expert_bias: bool = False
     moe_router_topk_scaling_factor: Optional[float] = None
+    # TODO: fix this
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn',
                                             'none'] = 'aux_loss'
     use_shared_expert_gate: bool = False
@@ -182,7 +183,6 @@ class MegatronModelConfig(TransformerConfig):
     # Override
     persist_layer_norm: bool = True
     deallocate_pipeline_outputs: bool = True
-    batch_p2p_comm: bool = True
     cp_comm_type: str = 'p2p'
 
     def __post_init__(self):
@@ -199,6 +199,8 @@ class MegatronModelConfig(TransformerConfig):
             if 'type' in self.rope_scaling and 'rope_type' not in self.rope_scaling:
                 self.rope_scaling['rope_type'] = self.rope_scaling['type']
 
+        if self.add_bias_linear:
+            self.add_qkv_bias = True
         if self.swiglu:
             self.activation_func = F.silu
             self.gated_linear_unit = True
@@ -440,8 +442,16 @@ def convert_hf_config(config) -> Dict[str, Any]:
 def create_mcore_model_config(args, hf_config):
     from swift.megatron.arguments import MegatronArguments
     kwargs = convert_hf_config(hf_config)
+    add_bias_linear = kwargs.get('add_bias_linear', False)
+    position_embedding_type = kwargs.get('position_embedding_type', 'rope')
+    if position_embedding_type != 'rope':
+        args.apply_rope_fusion = False
+    if not add_bias_linear:
+        args.bias_gelu_fusion = False
+
     for f in fields(MegatronModelConfig):
-        if hasattr(args, f.name) and f.name not in kwargs:
+        # TODO: fix this
+        if getattr(args, f.name, None) is not None and f.name not in kwargs:
             kwargs[f.name] = getattr(args, f.name)
 
     if args.task_type == 'seq_cls':
@@ -453,6 +463,7 @@ def create_mcore_model_config(args, hf_config):
     kwargs['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
     kwargs['fp8_param'] = args.fp8_param_gather
     kwargs['inference_sampling_seed'] = args.seed
+    kwargs['batch_p2p_comm'] = not args.overlap_p2p_comm
     swiglu = kwargs.get('swiglu', True)
     kwargs['bias_activation_fusion'] = args.bias_swiglu_fusion if swiglu else args.bias_gelu_fusion
     config = MegatronModelConfig(**kwargs)

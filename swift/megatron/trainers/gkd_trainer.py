@@ -46,6 +46,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.seq_kd = args.seq_kd  # Sequential KD: use teacher-generated responses
         self.offload_teacher_model = args.offload_teacher_model  # Offload teacher to CPU
         self.teacher_bridge = args.megatron_model_meta.bridge_cls(args, attr_prefix='teacher_')
+        self.teacher_config = self.teacher_bridge.processor.model_info.config
         self.sft_alpha = getattr(args, 'sft_alpha', 0.0)  # Weight for SFT loss
         assert args.teacher_model is not None, 'Teacher model path is required for GKD training'
         self.use_vllm = getattr(args, 'use_vllm', False)
@@ -79,8 +80,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size')
         assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
-        teacher_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
-        self.teacher_models = get_mcore_model(args, teacher_config)
+        self.teacher_models = get_mcore_model(args, self.teacher_config)
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()

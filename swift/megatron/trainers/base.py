@@ -476,9 +476,12 @@ class BaseMegatronTrainer(ABC):
         else:
             raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
+    def _prepare_data_iterator(self, train_dataset, val_dataset):
+        train_dataloader, val_dataloader = self._prepare_dataloader(train_dataset, val_dataset)
+        return (iter(self.cyclic_iter(train_dataloader)), iter(self.cyclic_iter(val_dataloader)))
+
     def train(self, train_dataset, val_dataset):
         args = self.args
-        train_dataloader, val_dataloader = self.prepare_dataloader(train_dataset, val_dataset)
         for m in self.wrapped_models:
             m.train()
 
@@ -490,7 +493,14 @@ class BaseMegatronTrainer(ABC):
         # TODO: manual_gc
         self.call_event('on_train_begin')
         train_metrics = {}
-        train_data_iterator = iter(self.cyclic_iter(train_dataloader))
+        if self.args.virtual_pipeline_model_parallel_size is not None:
+            train_data_iterator, val_data_iterator = [], []
+            for _ in range(self.args.virtual_pipeline_model_parallel_size):
+                train_it, val_it = self._prepare_data_iterator(train_dataset, val_dataset)
+                train_data_iterator.append(train_it)
+                val_data_iterator.append(train_it)
+        else:
+            train_data_iterator, val_data_iterator = self._prepare_data_iterator(train_dataset, val_dataset)
         state = self.state
         while state.iteration < args.train_iters:
             self.call_event('on_step_begin')
@@ -514,7 +524,7 @@ class BaseMegatronTrainer(ABC):
 
             if state.should_eval:
                 state.should_eval = False
-                self.evaluate(val_dataloader)
+                self.evaluate(val_data_iterator)
                 for m in self.wrapped_models:
                     m.train()
 
@@ -570,15 +580,13 @@ class BaseMegatronTrainer(ABC):
             learning_rate = param_group['lr']
         logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, learning_rate: {learning_rate}')
 
-    def evaluate(self, val_dataloader):
+    def evaluate(self, val_data_iterator):
         # TODO: 兼容transformers callback, eval_metrics等
         args = self.args
         for m in self.wrapped_models:
             m.eval()
         eval_metrics = {}
         forward_backward_func = get_forward_backward_func()
-        val_data_iterator = iter(self.cyclic_iter(val_dataloader))
-
         self.call_event('on_eval_begin')
         with torch.no_grad():
             while self.state.eval_iteration < args.eval_iters:
@@ -649,7 +657,7 @@ class BaseMegatronTrainer(ABC):
                 total_metrics[key] = torch.tensor([0.0, 0.0], dtype=torch.float32, device=torch.cuda.current_device())
             total_metrics[key] += val
 
-    def prepare_dataloader(self, train_dataset, val_dataset):
+    def _prepare_dataloader(self, train_dataset, val_dataset):
         args = self.args
 
         train_batch_sampler = MegatronPretrainingRandomSampler(

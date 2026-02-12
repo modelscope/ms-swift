@@ -395,6 +395,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     decoder_last_pipeline_num_layers: Optional[int] = None
     account_for_embedding_in_pipeline_split: bool = False
     account_for_loss_in_pipeline_split: bool = False
+    overlap_p2p_comm: bool = True
 
     ddp_timeout: int = 18000000
     ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
@@ -403,9 +404,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     tp_comm_overlap: bool = False
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
-    num_layers_per_virtual_pipeline_stage: Optional[int] = None
-    num_virtual_stages_per_pipeline_rank: Optional[int] = None
-    microbatch_group_size_per_virtual_pipeline_stage: Optional[int] = None
+    virtual_pipeline_model_parallel_size: Optional[int] = None
+    microbatch_group_size_per_vp_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
 
     expert_model_parallel_size: int = 1
@@ -439,6 +439,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     bf16: Optional[bool] = None
     apply_query_key_layer_scaling: Optional[bool] = None
     attention_softmax_in_fp32: bool = True
+    accumulate_allreduce_grads_in_fp32: bool = False
 
     # evaluate
     eval_iters: int = -1
@@ -606,6 +607,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.attention_backend = AttnBackend[self.attention_backend]
         if self.sequence_parallel and self.tensor_model_parallel_size <= 1:
             self.sequence_parallel = False
+        if self.tp_comm_overlap:
+            assert args.sequence_parallel, 'Tensor parallel communication/GEMM overlap can happen only when sequence parallelism is enabled'
 
         initialize_megatron(self)
         total_model_size = (
@@ -635,8 +638,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 f' by pipeline_model_parallel_size ({num_stages=},'
                 f' {self.pipeline_model_parallel_size=})')
             self.virtual_pipeline_model_parallel_size = num_stages // self.pipeline_model_parallel_size
-        elif self.num_layers_per_virtual_pipeline_stage is not None or self.num_virtual_stages_per_pipeline_rank is not None:
-            self.virtual_pipeline_model_parallel_size = self.num_virtual_stages_per_pipeline_rank
+        elif self.virtual_pipeline_model_parallel_size is not None:
+            self.virtual_pipeline_model_parallel_size = self.virtual_pipeline_model_parallel_size
         if self.virtual_pipeline_model_parallel_size == 1:
             self.virtual_pipeline_model_parallel_size = None
 
@@ -732,6 +735,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.main_params_dtype = dtype_map[self.main_params_dtype]
         self.exp_avg_dtype = dtype_map[self.exp_avg_dtype]
         self.exp_avg_sq_dtype = dtype_map[self.exp_avg_sq_dtype]
+        self.params_dtype = torch.float32
+        if self.fp16:
+            self.params_dtype = torch.float16
+        elif self.bf16:
+            self.params_dtype = torch.bfloat16
+            if self.main_grads_dtype == torch.float32:
+                self.accumulate_allreduce_grads_in_fp32 = True
 
     def _init_weigh_decay(self):
         if self.weight_decay_incr_style == 'constant':
