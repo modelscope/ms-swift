@@ -39,4 +39,4 @@ class QatCallback(TrainerCallback):
         quantized_output_dir = os.path.join(args.output_dir, "quantized_model")
         pqt_model.save_pretrained(quantized_output_dir)
         self.trainer.tokenizer.save_pretrained(quantized_output_dir)
-        logger.info(f"Quantized model saved to: {checkpoint_dir}")
+        logger.info(f"Quantized model saved to: {quantized_output_dir}")
