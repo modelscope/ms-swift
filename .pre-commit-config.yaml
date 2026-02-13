@@ -30,7 +30,7 @@ repos:
                 tests/run.py
             )$
   - repo: https://github.com/pre-commit/pre-commit-hooks.git
-    rev: v3.1.0
+    rev: v4.5.0
     hooks:
       - id: trailing-whitespace
         exclude: thirdparty/|tests/run.py
