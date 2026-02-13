@@ -33,7 +33,9 @@ Megatron GKD currently supports the following features:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `--teacher_model` | str | Required | Path or model ID of the teacher model |
+| `--teacher_model` | str | - | Path or model ID of the teacher model<br>*Can be omitted when using `teacher_model_server` |
+| `--teacher_model_server` | str | None | Teacher model service URL, e.g. `http://localhost:8000` |
+| `--gkd_logits_topk` | int | None | Number of Top-K logits; required when using external API |
 | `--beta` | float | 0.5 | JSD divergence interpolation coefficient:<br>• 0.0: Forward KL<br>• 0.5: Symmetric JSD<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | On-Policy learning probability:<br>• 0.0: Pure Off-Policy<br>• 1.0: Pure On-Policy |
 | `--seq_kd` | bool | False | Use teacher-generated responses (not yet supported) |
@@ -71,3 +73,5 @@ GKD supports three training modes, controlled by `lmbda` and `seq_kd` parameters
 For more parameters, please refer to [Command-line Parameters](./Command-line-parameters.md)
 
 For training scripts, please refer to [Megatron GKD Scripts](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/rlhf/gkd)
+
+Training script using Teacher Server reference [here](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/rlhf/gkd/teacher_server.sh)

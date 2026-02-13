@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .args_mixin import VllmArguments, GRPOArgumentsMixin
     from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, _ForwardRedirection
     from .vllm_client import VLLMClient
+    from .teacher_api_client import TeacherAPIClient
     from .arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig, GRPOConfig, GKDConfig
 else:
     _import_structure = {
@@ -31,6 +32,7 @@ else:
         'args_mixin': ['VllmArguments', 'GRPOArgumentsMixin'],
         'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
         'vllm_client': ['VLLMClient'],
+        'teacher_api_client': ['TeacherAPIClient'],
         'arguments':
         ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig']
     }

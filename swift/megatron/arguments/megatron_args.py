@@ -44,6 +44,21 @@ class RLHFMegatronArgumentsMixin:
     teacher_model: Optional[str] = field(default=None)
     teacher_model_type: Optional[str] = field(default=None)
     teacher_model_revision: Optional[str] = field(default=None)
+    teacher_model_server: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'URL of the teacher model server (e.g., http://localhost:8000). '
+            'When set, teacher logprobs are fetched via API instead of loading a local model.'
+        })
+    gkd_logits_topk: Optional[int] = field(
+        default=None,
+        metadata={
+            'help':
+            'Number of top-k logits for KL computation in GKD. '
+            'None = full vocabulary, positive integer = top-k only. '
+            'When using teacher_model_server, limited by server max_logprobs (vLLM default: 20).'
+        })
     lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
     seq_kd: bool = False  # Sequential KD: use teacher-generated responses when not on-policy
     offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
@@ -193,6 +208,21 @@ class RLHFMegatronArgumentsMixin:
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
+        if self.rlhf_type == 'gkd':
+            if self.teacher_model is None and self.teacher_model_server is None:
+                raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set.')
+
+            if self.teacher_model is not None and self.teacher_model_server is not None:
+                raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
+
+            # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
+            if self.teacher_model_server is not None:
+                if self.gkd_logits_topk is None:
+                    raise ValueError('gkd_logits_topk is required when using teacher_model_server')
+
+            # Validate gkd_logits_topk
+            if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
+                raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
 
     def _init_grpo(self):
 
