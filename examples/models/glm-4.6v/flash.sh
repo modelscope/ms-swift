@@ -24,7 +24,7 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --output_dir megatron_output/GLM-4.6V-Flash \
     --save_interval 200 \
     --vit_gradient_checkpointing false \

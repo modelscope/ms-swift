@@ -18,8 +18,8 @@
   - "layernorm": 重新计算 input_layernorm 和 pre_mlp_layernorm。
   - "mla_up_proj": 重新计算 MLA 上投影和 RoPE 应用部分。
 - 🔥train_iters: 训练的总迭代次数，默认为None。
-  - 提示：你可以通过设置`--max_epochs`来设置训练的epochs数。在使用非流式数据集时，会自动根据数据集数量计算`train_iters`（兼容packing）。
-- 🔥max_epochs: 指定训练的epochs数。当使用非流式数据集时，该参数会为你自动计算train_iters而不需要手动传入`train_iters`。当使用流式数据集时，该参数会在训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。默认为None。
+  - 提示：你可以通过设置`--num_train_epochs`来设置训练的epochs数。在使用非流式数据集时，会自动根据数据集数量计算`train_iters`（兼容packing）。
+- 🔥num_train_epochs: 指定训练的epochs数。当使用非流式数据集时，该参数会为你自动计算train_iters而不需要手动传入`train_iters`。当使用流式数据集时，该参数会在训练到`num_train_epochs`时强制退出训练，并对权重进行验证和保存。默认为None。
 - masked_softmax_fusion: 默认为True。用于开启query_key_value的scaling, masking, and softmax融合。
 - bias_dropout_fusion: 默认为True。用于开启bias和dropout的融合。
 - bias_activation_fusion: 如果为True，则在可能的情况下融合偏置加法和激活函数。默认为True。
@@ -284,7 +284,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
 - streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）
-  - 注意：因为流式数据集无法获得其长度，因此需要设置`--train_iters`参数。设置`max_epochs`参数确保训练到对应epochs时退出训练，并对权重进行验证和保存。
+  - 注意：因为流式数据集无法获得其长度，因此需要设置`--train_iters`参数。设置`num_train_epochs`参数确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。
 - enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。

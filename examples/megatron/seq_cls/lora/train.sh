@@ -31,7 +31,7 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 200 \
     --save_interval 200 \

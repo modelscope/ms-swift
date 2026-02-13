@@ -35,7 +35,7 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --output_dir megatron_output/Llama-4-Scout-17B-16E-Instruct \
     --eval_interval 100 \
     --save_interval 100 \

@@ -26,7 +26,7 @@ megatron rlhf \
     --tensor_model_parallel_size 1 \
     --pipeline_model_parallel_size 1 \
     --dataset AI-ModelScope/clevr_cogen_a_train#10000 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --global_batch_size 96 \
     --micro_batch_size 4 \
     --steps_per_generation 4 \

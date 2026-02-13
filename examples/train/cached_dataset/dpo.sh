@@ -51,7 +51,7 @@ megatron rlhf \
     --eval_interval 500 \
     --save_interval 500 \
     --max_length 8192 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \

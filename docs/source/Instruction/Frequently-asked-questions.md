@@ -571,7 +571,7 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 2 \
+    --num_train_epochs 2 \
     --output_dir "$OUTPUT_PATH" \
     --split_dataset_ratio 0.02 \
     --save_interval 25 \

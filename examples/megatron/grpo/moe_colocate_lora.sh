@@ -11,7 +11,7 @@ megatron rlhf \
     --expert_model_parallel_size 4 \
     --pipeline_model_parallel_size 2 \
     --dataset open-r1/DAPO-Math-17k-Processed \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --global_batch_size 64 \
     --micro_batch_size 2 \
     --steps_per_generation 2 \

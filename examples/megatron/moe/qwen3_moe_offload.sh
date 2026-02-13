@@ -28,7 +28,7 @@ megatron sft \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 8192 \
-    --max_epochs 3 \
+    --num_train_epochs 3 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \

@@ -17,7 +17,7 @@ megatron sft \
     --global_batch_size 16 \
     --packing true \
     --recompute_granularity selective \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --cross_entropy_fusion_impl te \

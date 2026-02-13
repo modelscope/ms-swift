@@ -43,7 +43,7 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-VL-8B-Instruct \
     --save_interval 200 \
     --vit_gradient_checkpointing false \
@@ -94,7 +94,7 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
@@ -158,7 +158,7 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-4 \

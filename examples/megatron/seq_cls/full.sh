@@ -25,7 +25,7 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-VL-7B-Instruct \
     --save_interval 200 \
     --eval_interval 200 \

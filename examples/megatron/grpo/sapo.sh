@@ -32,7 +32,7 @@ megatron rlhf \
   --epsilon 0.2 \
   --epsilon_high 0.2 \
   --overlong_filter true \
-  --max_epochs 1 \
+  --num_train_epochs 1 \
   --eval_interval 1000 \
   --save_interval 1000 \
   --sleep_level 2 \

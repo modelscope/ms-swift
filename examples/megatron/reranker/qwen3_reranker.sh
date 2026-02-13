@@ -23,7 +23,7 @@ megatron sft \
     --lr 5e-6 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-7 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-Reranker-8B \
     --save_interval 200 \
     --eval_interval 50 \
