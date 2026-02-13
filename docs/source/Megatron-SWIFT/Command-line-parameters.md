@@ -17,24 +17,21 @@
   - "moe_act": 重新计算 MoE 中的 MLP 激活函数部分。
   - "layernorm": 重新计算 input_layernorm 和 pre_mlp_layernorm。
   - "mla_up_proj": 重新计算 MLA 上投影和 RoPE 应用部分。
-- deterministic_mode: 确定性模式，这会导致训练速度下降，默认为False。
 - 🔥train_iters: 训练的总迭代次数，默认为None。
   - 提示：你可以通过设置`--max_epochs`来设置训练的epochs数。在使用非流式数据集时，会自动根据数据集数量计算`train_iters`（兼容packing）。
 - 🔥max_epochs: 指定训练的epochs数。当使用非流式数据集时，该参数会为你自动计算train_iters而不需要手动传入`train_iters`。当使用流式数据集时，该参数会在训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。默认为None。
 - masked_softmax_fusion: 默认为True。用于开启query_key_value的scaling, masking, and softmax融合。
 - bias_dropout_fusion: 默认为True。用于开启bias和dropout的融合。
-- bias_swiglu_fusion: 默认为True。用于开启bias和swiglu融合。
+- bias_activation_fusion: 如果为True，则在可能的情况下融合偏置加法和激活函数。默认为True。
 - apply_rope_fusion: 默认为True。用于开启rope融合。
   - **当使用mrope等不支持rope_fusion的位置编码时，该参数会自动设置为False**。
 - gradient_accumulation_fusion: 默认为True。用于开启梯度累加融合。
-- 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为False。
+- 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为True。
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
-- calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为True。
-  - 注意：该参数在rlhf训练或者`task_type`不等于'causal_lm'时，默认为False。
+- calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为None，`task_type`为'causal_lm'且为预训练/微调时，默认为True，否则默认为False。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
-  - **注意：推荐flash_attn版本：2.8.3**。在"ms-swift<3.7"的版本中，该参数的默认为'auto'。
   - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_3，请设置`--attn_impl flash_attention_3`。
-  - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4, GPT-OSS。
+  - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4、GPT-OSS。
 - optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
@@ -45,17 +42,14 @@
 - main_params_dtype: 启用 use_precision_aware_optimizer 时主参数的 dtype。可选为'fp32', 'fp16'。默认为'fp32'。
 - exp_avg_dtype: 启用 use_precision_aware_optimizer 时，adam 优化器中 exp_avg（即一阶矩）的 dtype。该 dtype 用于在训练过程中将优化器状态存储在内存中，但不会影响内核计算时的精度。可选为'fp32', 'fp16', 'bf16', 'fp8'。默认为'fp32'。
 - exp_avg_sq_dtype: 启用 use_precision_aware_optimizer 时，adam 优化器中 exp_avg_sq（即二阶矩）的 dtype。该 dtype 用于在训练过程中将优化器状态存储在内存中，但不会影响内核计算的精度。可选为'fp32', 'fp16', 'bf16', 'fp8'。默认为'fp32'。
-- dataloader_type: 默认为'cyclic'，可选为'single', 'cyclic', 'external'。若开启`--streaming`，则设置为`external`。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 手动触发垃圾回收的间隔。默认为0。
+- manual_gc_eval: 当使用手动垃圾回收时（`--manual_gc true`），在每次评估运行的开始和结束时禁用垃圾回收。默认为True。
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
-- 🔥num_workers: dataloader的workers数量，默认为4。
+- 🔥dataloder_num_workers: dataloader的workers数量，默认为4。
   - 注意：若设置`--streaming true`，则设置为1。
 - data_sharding: 当`--train_dataloader_shuffle true`时对 train_dataloader 生效，默认为False。该参数控制数据集随机的范围。若设置为True，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为False，则先对数据集进行随机，再进行分片（更好的随机效果）。
-- seq_length: 默认为None，即设置为`max_length`。对数据集长度进行限制建议使用“基本参数”中的`--max_length`控制，无需设置此参数。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。通常不需要修改该值。
-- 🔥megatron_extra_kwargs: 额外需要透传入megatron的其他参数，使用json传递。默认为None。
-  - 在"ms-swift<3.10"，该参数名为`--extra_megatron_kwargs`。
 
 **学习率参数**:
 - 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率。默认为None，**全参数训练默认为1e-5，LoRA训练默认为1e-4**。
@@ -86,21 +80,16 @@
 - 🔥load: 加载的checkpoint目录，默认None。对于断点续训的介绍，请查看`--finetune`参数的介绍。
   - 注意：若未使用ms-swift提供的`swift export`进行权重转换，你需要额外设置`--model <hf-repo>`用于加载`config.json`配置文件。
   - 注意：在"ms-swift>3.10"，支持直接加载和存储safetensors权重，参考[mcore-bridge文档](./Mcore-Bridge.md)。
-  - `--model`与`--load`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--load/--adapter_load/--ref_load/--ref_adapter_load`后加mcore权重目录。`--model/--adapters`不支持加载断点续训状态，因此在"ms-swift>=3.12"，若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--load/--adapter_load`来加载断点续训的状态。
+  - `--model`与`--mcore_model`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`后加mcore权重目录。`--model/--adapters`不支持加载断点续训状态，因此在"ms-swift>=3.12"，若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--mcore_model/--mcore_adapter`来加载断点续训的状态。
 - 🔥no_load_optim: 不载入optimizer，默认为False。
   - 注意：断点续训时，设置`--no_load_optim false`读取优化器状态通常比`--no_load_optim true`不读取优化器状态消耗更大的显存资源。
 - 🔥no_load_rng: 不载入rng，默认为False。
-- 🔥finetune: 将模型加载并微调。**不加载检查点的优化器和随机种子状态，并将迭代数设置为0**。默认为False。
-  - 注意：**断点续训**你需要设置`--load`（lora训练需要额外设置`--adapter_load`），若设置`--finetune true`，将不加载优化器状态和随机种子状态并将迭代数设置为0，不会进行数据集跳过；若设置`--finetune false`，将读取迭代数并跳过之前训练的数据集数量，优化器状态和随机种子状态的读取通过`--no_load_optim`和`--no_load_rng`控制。
+- 🔥finetune: 将模型加载并微调。**不加载检查点的优化器和随机种子状态，并将迭代数设置为0**。默认为True。
+  - 注意：**断点续训**你需要设置`--mcore_model`（lora训练需要额外设置`--mcore_adapter`），若设置`--finetune true`，将不加载优化器状态和随机种子状态并将迭代数设置为0，不会进行数据集跳过；若设置`--finetune false`，将读取迭代数并跳过之前训练的数据集数量，优化器状态和随机种子状态的读取通过`--no_load_optim`和`--no_load_rng`控制。
   - 流式数据集`--streaming`，暂不支持跳过数据集。
-- ckpt_format: checkpoint的格式。可选为'torch', 'torch_dist', 'zarr'。默认为'torch_dist'。（暂时权重转换只支持'torch_dist'格式）
 - perform_initialization: 对权重进行初始化，默认为False。
 - auto_detect_ckpt_format: 自动检测ckpt format为legacy还是distributed格式。默认为True。
-- exit_on_missing_checkpoint: 如果设置了`–-load`，但**找不到检查点，则直接退出**，而不是初始化。默认为True。
 - 🔥async_save: 使用异步检查点保存。目前仅适用于`torch_dist`分布式检查点格式。默认为False。
-- use_persistent_ckpt_worker: 使用持久化检查点工作进程用于异步保存，即创建专门后台进程来处理异步保存。默认为False。
-- ckpt_fully_parallel_load: 跨 DP 对分布式检查点使用完全加载并行化，加速权重加载速度。默认为False。
-- ckpt_assume_constant_structure: 如果在单个训练中，模型和优化器状态字典结构保持不变，允许Megatron进行额外检查点性能优化。默认为False。
 
 **分布式参数**:
 并行技术的选择请参考[训练技巧文档](Quick-start.md#训练技巧)。
@@ -120,8 +109,7 @@
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
 - 🔥overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
 - 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
-- num_layers_per_virtual_pipeline_stage: 每个虚拟流水线阶段的层数。默认为None。该参数和`--num_virtual_stages_per_pipeline_rank`参数都可以用来设置vpp并行。
-- num_virtual_stages_per_pipeline_rank: 每个流水线并行 rank 的虚拟流水线阶段数量。默认为None。vpp并行，用于减少pp并行的计算空泡，提高GPU利用率，但会略微提高通信量。
+- virtual_pipeline_model_parallel_size: 每个流水线并行 rank 的虚拟流水线阶段数量。默认为None。vpp并行，用于减少pp并行的计算空泡，提高GPU利用率，但会略微提高通信量。
 - microbatch_group_size_per_vp_stage: 每个虚拟流水线阶段处理的连续微批次数量。默认为None，等于pipeline_model_parallel_size。
 - 🔥pipeline_model_parallel_layout: 一个描述自定义流水线（pp/vpp）模型并行布局的字符串。例如："E|(t|)*3,m|m||L"。其中 E、L、t、m 分别表示嵌入层（embedding）、损失层（loss）、Transformer 解码器层和 MTP 层。阶段之间用 "|" 分隔。重复的阶段或层可以通过乘法表示。逗号仅用于提升可读性（无实际语法作用）。默认值为 None，表示不使用此参数设置布局。
   - 该参数通常在异构GPU集群上使用。
@@ -263,7 +251,7 @@ lora训练：
 - use_rslora: 默认为`False`，是否使用`RS-LoRA`。
 
 **Mcore-Bridge参数**
-- 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。该参数在"ms-swift>=3.12"支持了对优化器权重、随机数状态等断点续训内容进行保存（额外存储mcore格式权重），使用`--no_save_optim`和`--no_save_rng`控制。断点续训时使用`--load/--adapter_load`参数加载mcore格式权重。
+- 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。该参数在"ms-swift>=3.12"支持了对优化器权重、随机数状态等断点续训内容进行保存（额外存储mcore格式权重），使用`--no_save_optim`和`--no_save_rng`控制。断点续训时使用`--mcore_model/--mcore_adapter`参数加载mcore格式权重。
 - model: safetensors权重的model_id或者model_path。默认为None。
 - model_type: 模型类型。介绍参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md)。
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。
@@ -325,8 +313,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 
 
 ### DPO参数
-- ref_load: ref_model的加载路径。采用DPO/GRPO/KTO算法且使用全参数训练时需要传入。默认为None，即设置为`load`。
-- ref_adapter_load: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并在训练时设置`--adapter_load sft_ckpt --ref_adapter_load sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--adapter_load rlhf_ckpt --ref_adapter_load sft_ckpt --finetune false`。
+- mcore_ref_model: ref_model的加载路径。采用DPO/GRPO/KTO算法且使用全参数训练时需要传入。默认为None，即设置为`load`。
+- mcore_ref_adapter: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并在训练时设置`--mcore_adapter sft_ckpt --mcore_ref_adapter sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--mcore_adapter rlhf_ckpt --mcore_ref_adapter sft_ckpt --finetune false`。
 - beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
 - 🔥rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
   - **注意**：在"ms-swift<3.8"，其默认值为`1.`。在"ms-swift>=3.8"该默认值修改为`None`。
@@ -336,8 +324,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - loss_type: 默认为'sigmoid'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer#loss-functions)。
 
 ### KTO参数
-- ref_load: 含义同DPO。
-- ref_adapter_load: 含义同DPO。
+- mcore_ref_model: 含义同DPO。
+- mcore_ref_adapter: 含义同DPO。
 - beta: 控制与 ref_model 偏离程度的参数。较高的 beta 表示与 ref_model 偏离更小。默认为`0.1`。
 - loss_type: 默认为'kto'。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/kto_trainer#trl.KTOConfig.loss_type)。
 - desirable_weight: 抵消 desirable 和 undesirable 数量不均衡的影响，对 desirable 损失按该系数进行加权，默认为`1.`。
@@ -347,8 +335,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - center_rewards_coefficient: 用于激励奖励模型输出均值为零的奖励的系数，具体查看这篇[论文](https://huggingface.co/papers/2312.09244)。推荐值：0.01。
 
 ### GRPO参数
-- ref_load: 含义同DPO。
-- ref_adapter_load: 含义同DPO。
+- mcore_ref_model: 含义同DPO。
+- mcore_ref_adapter: 含义同DPO。
 - beta: KL正则系数，默认为0.04，设置为0时不加载ref model。
 - micro_batch_size: 每个device的批次大小，默认为1。
 - global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
