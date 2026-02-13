@@ -19,13 +19,14 @@ class DefaultFlowCallback(MegatronCallback):
 
         if state.iteration == 1 or state.iteration % args.log_interval == 0:
             self.state.should_log = True
-        if args.eval_interval and state.iteration % args.eval_interval == 0:
+        if args.eval_interval and state.iteration % args.eval_interval == 0 and args.eval_iters > 0:
             self.state.should_eval = True
         if args.save_interval and state.iteration % args.save_interval == 0:
             self.state.should_save = True
 
         if state.iteration >= args.train_iters:
-            self.state.should_eval = True
+            if args.eval_iters > 0:
+                self.state.should_eval = True
             self.state.should_save = True
         if args.manual_gc and args.manual_gc_interval != 0 and state.iteration % args.manual_gc_interval == 0:
             gc.collect()

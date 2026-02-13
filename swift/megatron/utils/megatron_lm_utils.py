@@ -178,9 +178,11 @@ def _filter_adapter_state_dict(state_dict, is_peft_format: bool = True, adapter_
 
     This function ensures it is called when tuner_type != 'full'.
     """
-    n_models = 1
-    if 'model' not in state_dict:
-        while f'model{n_models - 1}' in state_dict:
+    if 'model' in state_dict:
+        n_models = 1
+    else:
+        n_models = 0
+        while f'model{n_models}' in state_dict:
             n_models += 1
 
     for i in range(n_models):

@@ -545,8 +545,11 @@ class BaseMegatronTrainer(ABC):
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
-        save_mcore_checkpoint(
-            self.args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, iteration=iteration)
+        if args.save_safetensors and args.no_save_optim:
+            model = []
+        else:
+            model = self.wrapped_models
+        save_mcore_checkpoint(self.args, model, self.optimizer, self.opt_param_scheduler, iteration=iteration)
         args.output_dir = origin_output_dir
         # safetensors
         if args.save_safetensors:
@@ -556,9 +559,9 @@ class BaseMegatronTrainer(ABC):
                 origin_output_dir = output_dir
                 output_dir = f'{output_dir}-merged'
                 os.makedirs(output_dir, exist_ok=True)
-                # for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
-                #     src_path = os.path.join(origin_output_dir, fname)
-                #     self.copy_path(src_path, os.path.join(output_dir, fname))
+                for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
+                    src_path = os.path.join(origin_output_dir, fname)
+                    self.copy_path(src_path, os.path.join(output_dir, fname))
                 # # common.pt
                 # common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
                 # tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
@@ -582,7 +585,6 @@ class BaseMegatronTrainer(ABC):
         logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, learning_rate: {learning_rate}')
 
     def evaluate(self, val_data_iterator):
-        # TODO: 兼容transformers callback, eval_metrics等
         args = self.args
         for m in self.wrapped_models:
             m.eval()
