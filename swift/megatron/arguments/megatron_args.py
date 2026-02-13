@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-import sys
-from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from dataclasses import dataclass, field, fields
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import json
 import megatron.core
@@ -10,7 +9,6 @@ import torch
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
 from packaging import version
-from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.arguments import ModelArguments
@@ -18,7 +16,7 @@ from swift.megatron.model import get_megatron_model_meta
 from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
-
+from megatron.core.transformer.pipeline_parallel_layer_layout import PipelineParallelLayerLayout
 mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 logger = get_logger()
 
@@ -614,13 +612,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.attention_backend = AttnBackend[self.attention_backend]
         if self.sequence_parallel and self.tensor_model_parallel_size <= 1:
             self.sequence_parallel = False
-        if self.tp_comm_overlap and not args.sequence_parallel:
+        if self.tp_comm_overlap and not self.sequence_parallel:
             raise ValueError('Tensor parallel communication/GEMM overlap can happen only when '
                              'sequence parallelism is enabled')
 
         initialize_megatron(self)
         total_model_size = (
             self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)
+        # world_size is initialized in initialize_megatron
         self.data_parallel_size = self.world_size // total_model_size
         # Gradient Accumulation
         self.num_microbatches = self.global_batch_size // self.data_parallel_size // self.micro_batch_size
@@ -640,7 +639,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.pipeline_model_parallel_layout is not None:
             # Parse the input flattened layout to a list and get the vpp size.
             # We will validate the layout more carefully in the TransformerConfig constructor.
-            num_stages = PipelineParallelLayerLayout.get_num_stages_from_str(args.pipeline_model_parallel_layout)
+            num_stages = PipelineParallelLayerLayout.get_num_stages_from_str(self.pipeline_model_parallel_layout)
             assert num_stages % self.pipeline_model_parallel_size == 0, (
                 f'The length of pipeline_model_parallel_layout must be divisible'
                 f' by pipeline_model_parallel_size ({num_stages=},'
