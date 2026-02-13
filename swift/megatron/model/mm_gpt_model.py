@@ -10,6 +10,7 @@ from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.spec_utils import ModuleSpec
 from packaging import version
 
+from swift.megatron.utils import split_cp_inputs
 from .gpt_model import GPTModel
 from .model_config import MegatronModelConfig
 
@@ -45,7 +46,6 @@ class MultimodalGPTModel(MegatronModule):
         origin_forward = VocabParallelEmbedding.forward
 
         def forward(_self, input_):
-            from ..trainers.utils import split_cp_inputs
             reduce_scatter_embeddings = _self.reduce_scatter_embeddings
             _self.reduce_scatter_embeddings = False
             input_ = torch.masked_fill(input_, input_ < 0, 0)

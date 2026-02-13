@@ -24,6 +24,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from megatron.core.utils import WrappedTensor, deprecate_inference_params
 from packaging import version
 
+from swift.megatron.utils import split_cp_inputs
 from swift.utils import get_logger
 from .model_config import MegatronModelConfig
 from .rope import dynamic_rope_update, get_rope_inv_freq
@@ -367,7 +368,6 @@ class GPTModel(McoreGPTModel):
             hidden_states = hidden_states_list[0]
 
             if labels is not None:
-                from ..trainers.utils import split_cp_inputs
                 mtp_labels = labels.clone()
                 if loss_mask is None:
                     # if loss_mask is not provided, use all ones as loss_mask

@@ -61,7 +61,6 @@ def _patch_word_embeddings(self, kwargs):
     origin_forward = VocabParallelEmbedding.forward
 
     def forward(_self, input_):
-        from ..trainers.utils import split_cp_inputs
         args = get_args()
         reduce_scatter_embeddings = _self.reduce_scatter_embeddings
         _self.reduce_scatter_embeddings = False
@@ -104,7 +103,6 @@ def _patch_word_embeddings(self, kwargs, emb):          # 修改1
     origin_forward = emb.word_embeddings.forward        # 修改2
 
     def forward(input_):                                # 修改3
-        from ..trainers.utils import split_cp_inputs
         args = get_args()
         _self = emb.word_embeddings                     # 修改4
         reduce_scatter_embeddings = _self.reduce_scatter_embeddings

@@ -50,7 +50,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
         del self.thinker.lm_head
 
     def _get_inputs_embeds(self, inputs_embeds, inputs, visual, processor, hf_config):
-        from ...trainers.utils import split_cp_inputs
+        from swift.megatron.trainers import split_cp_inputs
         input_ids = inputs['input_ids']
         packed_seq_params = inputs.get('packed_seq_params')
         pixel_values = inputs.get('pixel_values')
