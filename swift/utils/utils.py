@@ -87,7 +87,7 @@ def format_time(seconds):
     days = int(seconds // (24 * 3600))
     hours = int((seconds % (24 * 3600)) // 3600)
     minutes = int((seconds % 3600) // 60)
-    seconds = round(seconds % 60, 2)
+    seconds = round(seconds % 60)
 
     if days > 0:
         time_str = f'{days}d {hours}h {minutes}m {seconds}s'
