@@ -34,7 +34,8 @@ from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, is_last_rank,
                          ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .utils import TrainerState, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank, get_packed_seq_params
+from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
+                    get_packed_seq_params)
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -655,7 +656,12 @@ class BaseMegatronTrainer(ABC):
 
     def _prepare_dataloader(self, train_dataset, val_dataset):
         args = self.args
-
+        val_dataloader = None
+        if args.streaming:
+            train_dataloader = build_streaming_dataloader(args, train_dataset, self.data_collator)
+            if val_dataset is not None:
+                val_dataloader = build_streaming_dataloader(args, val_dataset, self.data_collator)
+            return train_dataloader, val_dataloader
         train_batch_sampler = MegatronPretrainingRandomSampler(
             train_dataset,
             total_samples=len(train_dataset),
@@ -668,7 +674,6 @@ class BaseMegatronTrainer(ABC):
             group_by_length=args.group_by_length,
         )
         train_dataloader = self._create_dataloader(train_dataset, train_batch_sampler)
-        val_dataloader = None
         if val_dataset is not None:
             val_batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(val_dataset),

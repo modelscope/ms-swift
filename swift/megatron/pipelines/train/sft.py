@@ -11,7 +11,6 @@ from swift.megatron.arguments import MegatronSftArguments
 from swift.megatron.trainers import MegatronEmbeddingTrainer, MegatronRerankerTrainer, MegatronTrainer
 from swift.pipelines import SwiftSft
 from swift.utils import get_logger, is_last_rank, plot_images
-from .utils import build_streaming_dataloader
 
 if is_torch_npu_available():
     # Enable Megatron on Ascend NPU
@@ -64,10 +63,6 @@ class MegatronSft(SwiftSft):
         args = self.args
         train_dataset, val_dataset = self._prepare_dataset()
         args.init_iters(train_dataset, val_dataset)
-        # if args.streaming:
-        #     train_dataset = build_streaming_dataloader(args, train_dataset, data_collator)
-        #     if val_dataset is not None:
-        #         val_dataset = build_streaming_dataloader(args, val_dataset, data_collator)
         trainer = self.prepare_trainer()
         try:
             trainer.train(train_dataset, val_dataset)

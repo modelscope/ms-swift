@@ -17,6 +17,7 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from packaging import version
 from transformers.utils import is_torch_npu_available
 
+from swift.dataloader import DataLoaderDispatcher
 from swift.utils import empty_cache, get_current_device, get_logger
 from swift.utils import get_packed_seq_params as _get_packed_seq_params
 from swift.utils import to_device
@@ -351,3 +352,23 @@ class TrainerState:
     @property
     def global_step(self) -> int:
         return self.iteration
+
+
+class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
+
+    @property
+    def group(self):
+        return mpu.get_data_parallel_group()
+
+
+def build_streaming_dataloader(args, dataset, collate_fn):
+    base_dataloader = torch.utils.data.DataLoader(
+        dataset,
+        num_workers=args.dataloader_num_workers,
+        pin_memory=args.dataloader_pin_memory,
+        collate_fn=collate_fn,
+        batch_size=args.micro_batch_size,
+        prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
+        persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+    )
+    return MegatronDataLoaderDispatcher(base_dataloader)

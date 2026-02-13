@@ -22,10 +22,11 @@ class PrintCallback(MegatronCallback):
         self.is_write_rank = is_last_rank()
 
     def on_train_begin(self):
-        self.current_step = 0
         self.training_bar = tqdm(
             total=self.args.train_iters, dynamic_ncols=True, disable=not self.is_write_rank, desc='Train: ')
         self.start_step = self.state.iteration
+        self.training_bar.update(self.state.iteration)
+        self.current_step = self.state.iteration
         self.start_time = time.time()
         logging_path = os.path.join(self.args.output_dir, 'logging.jsonl')
         logger.info(f'logging_path: {logging_path}')
