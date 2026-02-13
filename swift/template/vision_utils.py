@@ -337,7 +337,7 @@ def load_video_minicpmv4_5(video: Union[str, bytes],
             packing_nums = max_num_packing
 
     frame_idx = [i for i in range(0, len(vr))]
-    frame_idx =  np.array(_uniform_sample(frame_idx, choose_frames))
+    frame_idx = np.array(_uniform_sample(frame_idx, choose_frames))
 
     if force_packing:
         packing_nums = min(force_packing, max_num_packing)
@@ -353,7 +353,7 @@ def load_video_minicpmv4_5(video: Union[str, bytes],
 
     frames = [Image.fromarray(v.astype('uint8')).convert('RGB') for v in frames]
     frame_ts_id_group = group_array(frame_ts_id, packing_nums)
-    
+
     return frames, frame_ts_id_group
 
 
