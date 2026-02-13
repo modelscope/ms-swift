@@ -35,21 +35,22 @@ class MegatronExport(SwiftPipeline):
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         hf_config = self.processor.model_info.config
-        megatron_model_meta = args.megatron_model_meta
-
-        pre_process = mpu.is_pipeline_first_stage()
-        post_process = mpu.is_pipeline_last_stage()
-        mg_model = megatron_model_meta.model_provider(args, pre_process=pre_process, post_process=post_process)
-        bridge = megatron_model_meta.bridge_cls(args)
+        mg_model = get_mcore_model(args, hf_config)[0]
+        logger.info('Megatron model created successfully.')
+        bridge = args.megatron_model_meta.bridge_cls(args)
         if args.mcore_model is not None:
             load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
         elif args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         else:
             raise ValueError('Please specify `--mcore_model` or `--model`.')
-        if args.mcore_adapter is not None:
-            peft_model = prepare_mcore_model(mg_model)
-            load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
+        if args.adapters or args.mcore_adapter is not None:
+            peft_model = prepare_mcore_model(args, mg_model)
+            if args.mcore_adapter is not None:
+                load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
+            elif args.adapters:
+                assert len(args.adapters) == 1, 'Currently only support one adapter'
+                bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
@@ -90,13 +91,12 @@ class MegatronExport(SwiftPipeline):
         if args.model is not None:
             bridge.load_weights(mg_model, args.model_info.model_dir)
         elif args.mcore_model is not None:
-            with patch_load_base_checkpoint():
-                load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
+            load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
         else:
             raise ValueError('Please specify `--mcore_model` or `--model`.')
         dist.barrier()
         if args.adapters or args.mcore_adapter is not None:
-            peft_model = prepare_mcore_model(mg_model, load_adapters=True)
+            peft_model = prepare_mcore_model(args, mg_model)
             if args.adapters:
                 assert len(args.adapters) == 1, 'Currently only support one adapter'
                 bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
