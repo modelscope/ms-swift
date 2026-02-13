@@ -297,7 +297,7 @@ def _load_iteration(tracker_path: str):
 
 
 def load_mcore_checkpoint(args,
-                          model: list,
+                          ddp_model: list,
                           optimizer=None,
                           opt_param_scheduler=None,
                           load_arg: str = 'mcore_model',
@@ -315,7 +315,7 @@ def load_mcore_checkpoint(args,
         no_load_optim = True
         no_load_rng = True
         finetune = False
-    model = [unwrap_model(m) for m in model]
+    model = [unwrap_model(m) for m in ddp_model]
     tracker_path = os.path.join(load_dir, 'latest_checkpointed_iteration.txt')
     iteration = _load_iteration(tracker_path)
     checkpoint_dir = os.path.join(load_dir, f'iter_{iteration:07d}')
@@ -375,10 +375,10 @@ def load_mcore_checkpoint(args,
         checkpoint_args = state_dict['args']
         args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
 
-    if len(model) == 1:
-        model[0].load_state_dict(state_dict['model'], strict=False)
+    if len(ddp_model) == 1:
+        ddp_model[0].load_state_dict(state_dict['model'], strict=False)
     else:
-        for i, m in enumerate(model):
+        for i, m in enumerate(ddp_model):
             if f'model{i}' not in state_dict:
                 continue
             m.load_state_dict(state_dict[f'model{i}'])
@@ -388,6 +388,8 @@ def load_mcore_checkpoint(args,
             optimizer.load_state_dict(state_dict['optimizer'])
         if opt_param_scheduler is not None:
             opt_param_scheduler.load_state_dict(state_dict['opt_param_scheduler'])
+    elif (args.fp16 or args.bf16) and optimizer is not None:
+        optimizer.reload_model_params()
 
     if not args.finetune and not args.no_load_rng:
         if 'rng_state' in state_dict:
