@@ -46,7 +46,6 @@ class MegatronTrainer(BaseMegatronTrainer):
         metric = self._all_reduce_metric(metric)
         return loss, metric
 
-    # Code borrowed from NVIDIA/Megatron-LM
     def loss_func(self,
                   output_tensor: torch.Tensor,
                   *,
@@ -62,9 +61,6 @@ class MegatronTrainer(BaseMegatronTrainer):
             losses = losses * torch.exp(-losses.detach())
         if loss_scale is not None:
             losses = losses * loss_scale
-        metrics = {}
-        if args.enable_channel_loss and channels is not None:
-            metrics.update(self._compute_channel_loss(losses, loss_mask, channels, packed_seq_params))
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
         if args.context_parallel_size > 1 and not self.mcore_013:
@@ -82,7 +78,9 @@ class MegatronTrainer(BaseMegatronTrainer):
         else:
             lm_loss = lm_loss.clone()
         local_num_tokens = loss[1].detach().clone().to(torch.int)
-        metrics['loss'] = reporting_loss
+        metrics = {'loss': reporting_loss}
+        if args.enable_channel_loss and channels is not None:
+            metrics.update(self._compute_channel_loss(losses, loss_mask, channels, packed_seq_params))
         return (lm_loss, local_num_tokens, metrics)
 
     def _compute_channel_loss(self, losses, loss_mask, channels, packed_seq_params=None):
