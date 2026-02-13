@@ -852,8 +852,8 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - MAX_NUM_FRAMES: 默认为180，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)。
 - MAX_NUM_PACKING: 默认为3，合法范围为1到6，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)。
 - TIME_SCALE: 默认为0.1，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)。
-- CHOOSE_FPS，默认为3，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)。
-- FORCE_PACKING，默认为None，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)。
+- CHOOSE_FPS: 默认为3，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)。
+- FORCE_PACKING: 默认为None，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)。
 
 ### minicpmo
 - INIT_TTS: 默认为False。

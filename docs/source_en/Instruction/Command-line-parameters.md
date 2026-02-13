@@ -877,8 +877,8 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - MAX_NUM_FRAMES: Default is 180, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)
 - MAX_NUM_PACKING: Default is 3, where the valid range is 1-6, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)
 - TIME_SCALE: Default is 0.1, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)
-- CHOOSE_FPS, Default is 3, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)
-- FORCE_PACKING, Default is None, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)
+- CHOOSE_FPS: Default is 3, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)
+- FORCE_PACKING: Default is None, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)
 
 ### minicpmo
 - INIT_TTS: Default is False
