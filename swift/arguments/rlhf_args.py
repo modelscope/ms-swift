@@ -453,14 +453,13 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         import trl
         trl_version = version.parse(trl.__version__)
-        assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
+        assert trl_version >= version.parse('0.20'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
         if is_mp() and self.use_vllm:
             raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
             liger_kernel_version = version.parse(importlib.metadata.version('liger-kernel'))
-            assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             if self.sequence_parallel_size > 1:
@@ -486,12 +485,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
-
-        if self.generation_batch_size or self.steps_per_generation:
-            from trl.trainer.grpo_config import GRPOConfig
-            assert 'generation_batch_size' in GRPOConfig.__dict__, (
-                'generation_batch_size or steps_per_generation needs trl >= 0.18, '
-                'please install trl `pip install trl>=0.18')
 
     def _external_vllm_warning(self):
         if self.rlhf_type not in rlhf_support_vllm_types or not self.vllm_server_host:
