@@ -2031,9 +2031,3 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'loss_type': str(self.args.loss_type)
         }
         return config
-
-    def get_trainer_state(self):
-        args = self.args
-        self.state.update(
-            global_step=getattr(args, 'curr_iteration', 0) or 0, max_steps=getattr(args, 'train_iters', 0) or 0)
-        return self.state

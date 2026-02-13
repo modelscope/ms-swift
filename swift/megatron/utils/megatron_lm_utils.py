@@ -333,7 +333,7 @@ def load_mcore_checkpoint(args,
     )
     mismatch_msg = f'(TP, PP) mismatch after resume ({run_tp_pp} vs {ckpt_tp_pp} from checkpoint)'
     # Determine if RNG state will be loaded
-    if (ckpt_tp_pp == run_tp_pp and not args.finetune and not args.no_load_rng
+    if (ckpt_tp_pp == run_tp_pp and not finetune and not no_load_rng
             and not getattr(state_dict['args'], 'no_save_rng', False)):
         gen_sd_rng_state = _get_rng_state()  # we can load the rng state
     else:
@@ -341,7 +341,7 @@ def load_mcore_checkpoint(args,
         if ckpt_tp_pp != run_tp_pp:
             logger.info(f'{mismatch_msg}: RNG state will be ignored')
     sharded_sd_metadata = dist_checkpointing.load_content_metadata(preloaded_state_dict=state_dict)
-    if (not args.finetune and not args.no_load_optim and not getattr(state_dict['args'], 'no_save_optim', False)):
+    if (not finetune and not no_load_optim and not getattr(state_dict['args'], 'no_save_optim', False)):
         gen_sd_optim = optimizer
         gen_sd_opt_param_scheduler = opt_param_scheduler
 
@@ -371,11 +371,10 @@ def load_mcore_checkpoint(args,
                                                      mpu.get_data_parallel_group(with_context_parallel=True))
     state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_dir, load_strategy)
 
-    if args.finetune:
+    if finetune:
         iteration = 0
-    if 'args' in state_dict and not args.finetune:
-        checkpoint_args = state_dict['args']
-        args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
+    if 'args' in state_dict and not finetune:
+        args.consumed_train_samples = getattr(state_dict['args'], 'consumed_train_samples', 0)
 
     if len(ddp_model) == 1:
         ddp_model[0].load_state_dict(state_dict['model'], strict=False)
@@ -385,7 +384,7 @@ def load_mcore_checkpoint(args,
                 continue
             m.load_state_dict(state_dict[f'model{i}'])
 
-    if not args.finetune and not args.no_load_optim:
+    if not finetune and not no_load_optim:
         if optimizer is not None:
             optimizer.load_state_dict(state_dict['optimizer'])
         if opt_param_scheduler is not None:
@@ -393,7 +392,7 @@ def load_mcore_checkpoint(args,
     elif (args.fp16 or args.bf16) and optimizer is not None:
         optimizer.reload_model_params()
 
-    if not args.finetune and not args.no_load_rng:
+    if not finetune and not no_load_rng:
         if 'rng_state' in state_dict:
             rng_state = state_dict['rng_state']
             if args.data_parallel_random_init:

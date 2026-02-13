@@ -383,7 +383,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mcore_adapter: Optional[str] = None
     no_load_optim: bool = False
     no_load_rng: bool = False
-    finetune: bool = False
+    finetune: bool = True
     output_dir: Optional[str] = None
     perform_initialization: bool = False
     async_save: bool = False  # TODO

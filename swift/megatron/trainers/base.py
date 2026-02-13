@@ -54,7 +54,7 @@ class BaseMegatronTrainer(ABC):
         self.config = self.unwrapped_models[0].config
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
-        # TODO: resume_from_checkpoint
+
         self.state = TrainerState(max_steps=args.train_iters)
         initialize_embedding = args.new_special_tokens or args.task_type == 'seq_cls'
         if initialize_embedding:
@@ -66,9 +66,6 @@ class BaseMegatronTrainer(ABC):
         self._load_checkpoint()
 
         self.eval_metrics = None
-        logging_path = os.path.join(args.output_dir, 'logging.jsonl')
-        logger.info(f'logging_path: {logging_path}')
-
         if args.check_model and hasattr(args, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), patch_modelscope_hub_timeout():
                 config_info = self._collect_config_info()
@@ -94,8 +91,8 @@ class BaseMegatronTrainer(ABC):
             self.state.iteration = load_mcore_checkpoint(
                 args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_adapter')
         if not args.finetune:
-            # TODO: check
             self.state.iteration = self._load_iteration()
+        self.state.consumed_train_samples = getattr(args, 'consumed_train_samples', 0)
 
     def call_event(self, event, **kwargs):
         for callback in self.callbacks:
@@ -345,13 +342,12 @@ class BaseMegatronTrainer(ABC):
             optimizer._get_param_groups = _get_param_groups
 
     def _load_iteration(self):
-        # TODO
         args = self.args
         ckpt_dir = None
         if args.tuner_type == 'full':
             ckpt_dir = args.model
-        elif args.tuner_type == 'lora' and args.adapters:
-            ckpt_dir = args.adapters[0]
+        elif args.tuner_type == 'lora':
+            ckpt_dir = args.adapters[0] if args.adapters else args.model
         if ckpt_dir is None:
             return 0
         logger.info(f'checkpoint_dir: {ckpt_dir}')
@@ -366,13 +362,9 @@ class BaseMegatronTrainer(ABC):
             return iteration
 
         state_dict = torch.load(common_path)
-        set_checkpoint_version(state_dict.get('checkpoint_version', 0))
-        if 'args' in state_dict and not args.finetune:
-            checkpoint_args = state_dict['args']
-            check_checkpoint_args(checkpoint_args)
-            args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
-        else:
-            print_rank_0('could not find arguments in the checkpoint ...')
+        if 'args' not in state_dict:
+            return iteration
+        self.args.consumed_train_samples = getattr(state_dict['args'], 'consumed_train_samples', 0)
 
         return iteration
 
@@ -491,7 +483,6 @@ class BaseMegatronTrainer(ABC):
                 self._prepare_vit_gradient_checkpointing(m)
 
         self.config.finalize_model_grads_func = finalize_model_grads
-        # TODO: manual_gc
         self.call_event('on_train_begin')
         train_metrics = {}
         if self.args.virtual_pipeline_model_parallel_size is not None:
@@ -506,6 +497,7 @@ class BaseMegatronTrainer(ABC):
         while state.iteration < args.train_iters:
             self.call_event('on_step_begin')
             metrics, grad_norm = self.train_step(train_data_iterator)
+            state.iteration += 1
             self.call_event('on_step_end')
             if mpu.is_pipeline_last_stage(ignore_virtual=True):
                 self._aggregated_metrics(metrics, train_metrics)
@@ -537,6 +529,7 @@ class BaseMegatronTrainer(ABC):
 
     def save_checkpoint(self):
         args = self.args
+        args.consumed_train_samples = self.state.consumed_train_samples
         iteration = self.state.iteration
         output_dir = os.path.join(args.output_dir, f'checkpoint-{iteration}')
         os.makedirs(output_dir, exist_ok=True)
@@ -549,7 +542,7 @@ class BaseMegatronTrainer(ABC):
             model = []
         else:
             model = self.wrapped_models
-        save_mcore_checkpoint(self.args, model, self.optimizer, self.opt_param_scheduler, iteration=iteration)
+        save_mcore_checkpoint(args, model, self.optimizer, self.opt_param_scheduler, iteration=iteration)
         args.output_dir = origin_output_dir
         # safetensors
         if args.save_safetensors:
@@ -562,11 +555,11 @@ class BaseMegatronTrainer(ABC):
                 for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
                     src_path = os.path.join(origin_output_dir, fname)
                     self.copy_path(src_path, os.path.join(output_dir, fname))
-                # # common.pt
-                # common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
-                # tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
-                # os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
-                # self.copy_path(common_path, tgt_common_path)
+                # common.pt
+                common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
+                tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
+                os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
+                self.copy_path(common_path, tgt_common_path)
             self.bridge.save_weights(
                 self.unwrapped_models,
                 output_dir,
@@ -592,7 +585,7 @@ class BaseMegatronTrainer(ABC):
         forward_backward_func = get_forward_backward_func()
         self.call_event('on_eval_begin')
         with torch.no_grad():
-            while self.state.eval_iteration < args.eval_iters:
+            for _ in range(args.eval_iters):
                 val_data_iterator = self._replace_data_iterator(val_data_iterator)
                 metrics = forward_backward_func(
                     forward_step_func=self.forward_step,

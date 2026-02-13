@@ -343,7 +343,6 @@ class TrainerState:
     should_log: bool = False
 
     iteration: int = 0
-    eval_iteration: int = 0
     epoch: int = 0
     consumed_train_samples = 0
     # compat transformers

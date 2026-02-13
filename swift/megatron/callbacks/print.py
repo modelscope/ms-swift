@@ -22,6 +22,7 @@ class PrintCallback(MegatronCallback):
         self.is_write_rank = is_last_rank()
 
     def on_train_begin(self):
+        self.current_step = 0
         self.training_bar = tqdm(
             total=self.args.train_iters, dynamic_ncols=True, disable=not self.is_write_rank, desc='Train: ')
         self.start_step = self.state.iteration
@@ -35,7 +36,9 @@ class PrintCallback(MegatronCallback):
         self.training_bar = None
 
     def on_step_end(self):
-        self.training_bar.update()
+        n_step = self.state.iteration - self.current_step
+        self.current_step = self.state.iteration
+        self.training_bar.update(n_step)
 
     def on_eval_begin(self):
         self.eval_bar = tqdm(
