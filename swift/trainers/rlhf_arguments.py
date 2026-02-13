@@ -75,24 +75,30 @@ class GRPOConfig(GRPOArgumentsMixin, SwiftArgumentsMixin, HfGRPOConfig):
         # https://github.com/modelscope/ms-swift/issues/3863
         self.dataloader_drop_last = True
 
+        # from trl https://github.com/huggingface/trl/blob/7a39ff3995f2f8b7cb4f8ca29a09390ac587a43d/trl/trainer/grpo_config.py#L843 # noqa: E501
         num_processes = self.world_size
-        if self.steps_per_generation is None:
+        # The current default effective batch size
+        if self.generation_batch_size is None and self.steps_per_generation is None:
             self.steps_per_generation = self.gradient_accumulation_steps
-        if self.generation_batch_size is None:
             self.generation_batch_size = self.per_device_train_batch_size * num_processes * self.steps_per_generation
+        elif self.generation_batch_size is not None and self.steps_per_generation is None:
+            # Just ensure the value is divisible by the global batch size
+            if self.generation_batch_size % (self.per_device_train_batch_size * num_processes) != 0:
+                raise ValueError(
+                    f'generation_batch_size ({self.generation_batch_size}) must be divisible by the global batch size '
+                    f'({self.per_device_train_batch_size * num_processes}).')
+            self.steps_per_generation = self.generation_batch_size // (self.per_device_train_batch_size * num_processes)
+        elif self.generation_batch_size is None and self.steps_per_generation is not None:
+            self.generation_batch_size = self.per_device_train_batch_size * num_processes * self.steps_per_generation
+        else:
+            raise ValueError(
+                "'generation_batch_size' and 'steps_per_generation' can not be both configured at the same time")
 
         self.check_num_generations()
 
     def check_num_generations(self):
         # check num_generations for trl < 0.18
         num_processes = self.world_size
-
-        if self.generation_batch_size % (self.per_device_train_batch_size * num_processes) != 0:
-            raise ValueError(
-                f'generation_batch_size ({self.generation_batch_size}) must be divisible by the global batch size '
-                f'({self.per_device_train_batch_size * num_processes}).')
-
-        self.steps_per_generation = self.generation_batch_size // (self.per_device_train_batch_size * num_processes)
 
         # Check if the effective batch size can be divided by the number of generations
         if self.num_generations < 2:
