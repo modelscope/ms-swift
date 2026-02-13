@@ -134,6 +134,8 @@ class MLLMTemplateType:
     qwen3_vl = 'qwen3_vl'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
+    qwen3_5 = 'qwen3_5'
+
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
@@ -194,13 +196,15 @@ class MLLMTemplateType:
     glm_edge_v = 'glm_edge_v'
     glm4v = 'glm4v'
     glm4_5v = 'glm4_5v'
+    glm_ocr = 'glm_ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
-    minicpmo2_6 = 'minicpmo2_6'
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
+    minicpmo = 'minicpmo'
+    minicpmo4_5 = 'minicpmo4_5'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'

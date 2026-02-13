@@ -275,7 +275,7 @@ class MegatronRolloutMixin:
     def bridge(self):
         """Lazy initialization of weight bridge for Megatron-to-vLLM weight transfer."""
         if self._bridge is None:
-            self._bridge = self.args.megatron_model_meta.bridge_cls(disable_tqmd=True)
+            self._bridge = self.args.megatron_model_meta.bridge_cls()
         return self._bridge
 
     @profiling_decorator

@@ -587,9 +587,9 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - beta: KL regularization coefficient; default 0.04. Setting it to 0 disables the reference model.
 - per_device_train_batch_size: The training batch size per device. In GRPO, this refers to the batch size of completions during training.
 - per_device_eval_batch_size: The evaluation batch size per device. In GRPO, this refers to the batch size of completions during evaluation.
-- generation_batch_size: Batch size to use for generation. It defaults to the effective training batch size: per_device_train_batch_size * num_processes * gradient_accumulation_steps`
-- steps_per_generation: Number of optimization steps per generation. It defaults to gradient_accumulation_steps. This parameter and generation_batch_size cannot be set simultaneously
-- num_generations: The number of samples generated per prompt (corresponding to the G value in the paper). The sampling batch size (generation_batch_size or steps_per_generation × per_device_batch_size × num_processes) must be divisible by num_generations. The default value is 8.
+- steps_per_generation: Number of optimization steps per generation. It defaults to gradient_accumulation_steps. This parameter and generation_batch_size cannot be set simultaneously.
+- generation_batch_size: Total batch size of sampling completions. It should be a multiple of num_processes * per_device_train_batch_size. It defaults to per_device_train_batch_size * steps_per_generation * num_processes.
+- num_generations: The number of samples generated per prompt (corresponding to the G value in the paper). generation_batch_size must be divisible by num_generations. The default value is 8.
 - num_generations_eval: Number of generations to sample during evaluation. This allows using fewer generations during evaluation to save computation. If `None`, uses the value of `num_generations`. Default is None.
 - ds3_gather_for_generation: This parameter applies to DeepSpeed ZeRO-3. If enabled, the policy model weights are gathered for generation, improving generation speed. However, disabling this option allows training models that exceed the VRAM capacity of a single GPU, albeit at the cost of slower generation. Disabling this option is not compatible with vLLM generation. The default is True.
 - reward_funcs: Reward functions in the GRPO algorithm; options include `accuracy`,`format`,`cosine`,`repetition` and `soft_overlong`, as seen in `swift/rewards/orm.py`. You can also customize your own reward functions in the plugin. Default is `[]`.
@@ -685,8 +685,8 @@ Inference arguments include the [base arguments](#base-arguments), [merge argume
 - 🔥infer_backend: Inference acceleration backend, supporting four inference engines: 'transformers', 'vllm', 'sglang', and 'lmdeploy'. The default is 'transformers'.
   - Note: All four engines use SWIFT's template, controlled by `--template_backend`.
 - 🔥max_batch_size: Effective when infer_backend is set to 'transformers'; used for batch inference, with a default value of 1. If set to -1, there is no restriction.
-- 🔥result_path: Path to store inference results (jsonl). The default is None, meaning results are saved in the checkpoint directory (with args.json file) or './result' directory. The final storage path will be printed in the command line.
-  - Note: If the `result_path` file already exists, it will be appended to.
+- 🔥result_path: Path to store inference results (jsonl). Defaults to None. When performing inference/evaluation on datasets, results are saved by default in the checkpoint directory (containing args.json file) or the './result' directory. The final storage path will be printed in the command line (interactive inference or deployment does not save results by default).
+  - Note: If the `result_path` file already exists, results will be appended to it.
 - write_batch_size: The batch size for writing results to result_path. Defaults to 1000. If set to -1, there is no restriction.
 - metric: Evaluate the results of the inference, currently supporting 'acc' and 'rouge'. The default is None, meaning no evaluation is performed.
 - val_dataset_sample: Number of samples from the inference dataset, default is None.
@@ -866,12 +866,12 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - VIDEO_MAX_NUM: Default is 1, which is the MAX_NUM for videos
 - VIDEO_SEGMENTS: Default is 8
 
-### minicpmv2_6, minicpmo2_6, minicpmv4
+### minicpmv2_6, minicpmv4, minicpmo
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 
-### minicpmo2_6
+### minicpmo
 - INIT_TTS: Default is False
 - INIT_AUDIO: Default is False
 

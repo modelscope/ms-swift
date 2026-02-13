@@ -574,9 +574,9 @@ reward模型参数将在PPO、GRPO中使用。
 - beta: KL正则系数，默认为0.04，设置为0时不加载ref model。
 - per_device_train_batch_size: 每个设备训练批量大小，在GRPO中，指 completion 的批次大小。
 - per_device_eval_batch_size: 每个设备评估批量大小，在GRPO中，指 completion 的批次大小。
-- generation_batch_size: 采样completion批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于 per_device_batch_size * gradient_accumulation_steps * num_processes
-- steps_per_generation: 每轮生成的优化步数，默认等于gradient_accumulation_steps。与generation_batch_size 只能同时设置一个
-- num_generations: 每个prompt采样的数量，论文中的G值，采样批量大小(generation_batch_size 或 steps_per_generation × per_device_batch_size × num_processes) 必须能被 num_generations 整除。默认为 8。
+- steps_per_generation: 每轮生成的优化步数，默认等于 gradient_accumulation_steps。与 generation_batch_size 只能同时设置一个。
+- generation_batch_size: 总的采样 completion 批量大小，需要是 num_processes * per_device_train_batch_size 的倍数，默认等于 per_device_train_batch_size * steps_per_generation * num_processes。
+- num_generations: 每个prompt采样的数量，论文中的G值，generation_batch_size 必须能被 num_generations 整除。默认为 8。
 - num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
 - ds3_gather_for_generation: 该参数适用于DeepSpeed ZeRO-3。如果启用，策略模型权重将被收集用于生成，从而提高生成速度。然而，禁用此选项允许训练超出单个GPU VRAM的模型，尽管生成速度会变慢。禁用此选项与vLLM生成不兼容。默认为True。
 - reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/rewards/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
@@ -665,7 +665,7 @@ soft overlong 奖励参数
 - 🔥infer_backend: 推理加速后端，支持'transformers'、'vllm'、'sglang'、'lmdeploy'四种推理引擎。默认为'transformers'。
   - 注意：这四种引擎使用的都是swift的template，使用`--template_backend`控制。
 - 🔥max_batch_size: 指定infer_backend为'transformers'时生效，用于批量推理，默认为1。若设置为-1，则不受限制。
-- 🔥result_path: 推理结果存储路径（jsonl），默认为None，保存在checkpoint目录（含args.json文件）或者'./result'目录，最终存储路径会在命令行中打印。
+- 🔥result_path: 推理结果存储路径（jsonl），默认为None。如果对数据集进行推理/评测，则默认保存在checkpoint目录（含args.json文件）或者'./result'目录，最终存储路径会在命令行中打印（交互式推理或部署默认不存储结果）。
   - 注意：若已存在`result_path`文件，则会进行追加写入。
 - write_batch_size: 结果写入`result_path`的batch_size。默认为1000。若设置为-1，则不受限制。
 - metric: 对推理的结果进行评估，目前支持'acc'和'rouge'。默认为None，即不进行评估。
@@ -841,12 +841,12 @@ qwen2_5_omni除了包含qwen2_5_vl和qwen2_audio的模型特定参数外，还�
 - VIDEO_SEGMENTS: 默认为8。
 
 
-### minicpmv2_6, minicpmo2_6, minicpmv4
+### minicpmv2_6, minicpmv4, minicpmo
 - MAX_SLICE_NUMS: 默认为9，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)。
 - VIDEO_MAX_SLICE_NUMS: 默认为1，视频的MAX_SLICE_NUMS，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)。
 - MAX_NUM_FRAMES: 默认为64，参考[这里](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)。
 
-### minicpmo2_6
+### minicpmo
 - INIT_TTS: 默认为False。
 - INIT_AUDIO: 默认为False。
 

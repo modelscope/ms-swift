@@ -106,13 +106,14 @@ def convert_hf_config(config) -> Dict[str, Any]:
     interleave_moe_layer_step = res.pop('interleave_moe_layer_step', None)
     window_size = res.pop('window_size', None)
     rope_scaling = res.get('rope_scaling') or {}
-    if llm_model_type in {'qwen3', 'qwen3_moe', 'qwen3_next'
-                          } or hf_model_type in {'qwen3_omni_moe', 'qwen3_omni', 'qwen3_vl', 'qwen3_vl_moe'}:
+    if llm_model_type in {'qwen3', 'qwen3_moe', 'qwen3_next'} or hf_model_type in {
+            'qwen3_omni_moe', 'qwen3_omni', 'qwen3_vl', 'qwen3_vl_moe', 'qwen3_5', 'qwen3_5_moe'
+    }:
         res['qk_layernorm'] = True
     if llm_model_type in {'qwen2_moe', 'qwen3_moe', 'qwen3_next'
-                          } or hf_model_type in {'qwen3_omni_moe', 'qwen3_vl_moe'}:
+                          } or hf_model_type in {'qwen3_omni_moe', 'qwen3_vl_moe', 'qwen3_5_moe'}:
         res.pop('ffn_hidden_size', None)
-        if llm_model_type in {'qwen2_moe', 'qwen3_next'}:
+        if llm_model_type in {'qwen2_moe', 'qwen3_next'} or hf_model_type == 'qwen3_5_moe':
             res['use_shared_expert_gate'] = True
     if llm_model_type in {
             'deepseek',
@@ -156,8 +157,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         if llm_model_type == 'glm4_moe_lite':
             res['qk_layernorm'] = True
             res.pop('num_query_groups', None)
-    elif llm_model_type == 'qwen3_next':
-        full_attention_interval = res.pop('full_attention_interval')
+    elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
+        full_attention_interval = res.pop('full_attention_interval', 4)
         num_layers = res['num_layers']
         res['layer_types'] = [
             'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
@@ -165,7 +166,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
         ]
     elif llm_model_type == 'minimax_m2':
         res['add_qkv_bias'] = False
-    elif llm_model_type == 'llama4':
+    elif hf_model_type == 'llama4':
         qk_layernorm = res.pop('qk_layernorm', False)
         if qk_layernorm:
             res['qk_l2_norm'] = True

@@ -122,11 +122,11 @@ def _set_property(model, key):
     if not hasattr(model, 'model'):
         return
     text_model = model.model
-    if not hasattr(text_model, key):
+    if not hasattr(text_model, key) or hasattr(model.__class__, key):
         return
 
     def _value(self):
-        return getattr(text_model, key)
+        return getattr(self.model, key)
 
     setattr(model.__class__, key, property(_value))
 
