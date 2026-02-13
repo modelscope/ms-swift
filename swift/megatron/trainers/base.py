@@ -407,35 +407,13 @@ class BaseMegatronTrainer(ABC):
 
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
-                           reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
+                           reduction=torch.distributed.ReduceOp.AVG,
+                           group=None) -> Dict[str, torch.Tensor]:
+        if group is None:
+            group = mpu.get_data_parallel_group()
         reporting_metric = torch.stack(list(metric.values()), dim=0)
-        torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
+        torch.distributed.all_reduce(reporting_metric, reduction, group=group)
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
-
-    # def _get_metrics(self, total_loss_dict, mode):
-    #     advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
-    #     return {
-    #         k: torch.tensor([v * advanced_iters], device='cuda')
-    #         for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
-    #     }
-
-    # def _remove_log(self, total_loss_dict):
-    #     pass
-
-    # def custom_log(self, total_loss_dict, mode: Literal['train', 'eval'], iteration=None) -> None:
-    #     writer = get_tensorboard_writer()
-    #     wandb_writer = get_wandb_writer()
-    #     metrics = self._get_metrics(total_loss_dict, mode)
-    #     total_loss_dict.update(metrics)
-    #     self._remove_log(total_loss_dict)
-    #     if iteration is None:
-    #         args = self.args
-    #         iteration = state.iteration + 1
-    #     if writer:
-    #         for k, v in metrics.items():
-    #             writer.add_scalar(k, v, iteration)
-    #     if wandb_writer:
-    #         wandb_writer.log(metrics, iteration)
 
     def merge_lora_adapters(self, adapter_name='default'):
         """Merge LoRA adapters into base model weights for vLLM inference."""
@@ -640,7 +618,7 @@ class BaseMegatronTrainer(ABC):
 
     def _aggregated_metrics(self, metrics, total_metrics):
         for key in metrics[0].keys():
-            val = [x[key].view(-1) for x in metrics]
+            val = [x[key].view(-1) for x in metrics if key in x]
             val = torch.stack(val, dim=0)
             if val[0].numel() == 2:
                 val = val.sum(dim=0)

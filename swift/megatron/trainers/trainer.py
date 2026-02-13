@@ -1,8 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from collections import defaultdict
 from functools import partial
 from typing import List, Optional
 
 import torch
+import torch.distributed as dist
 import torch.nn
 from megatron.core import mpu
 from torch.distributed.nn import all_reduce
@@ -60,21 +62,9 @@ class MegatronTrainer(BaseMegatronTrainer):
             losses = losses * torch.exp(-losses.detach())
         if loss_scale is not None:
             losses = losses * loss_scale
+        metrics = {}
         if args.enable_channel_loss and channels is not None:
-            # TODO: fix
-            mode = 'train' if self.unwrapped_models[0].training else 'eval'
-            metrics = self.custom_metrics[mode]
-            if args.padding_free:
-                num_samples = packed_seq_params.num_samples
-                cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
-                for i in range(cu_seqlens.shape[0] - 1):
-                    channel = channels[i]
-                    slice_ = slice(cu_seqlens[i], cu_seqlens[i + 1])
-                    metrics[f'loss_{channel}'].update(losses[0, slice_][loss_mask[0, slice_]])
-            else:
-                for i in range(losses.shape[0]):
-                    channel = channels[i]
-                    metrics[f'loss_{channel}'].update(losses[i][loss_mask[i]])
+            metrics.update(self._compute_channel_loss(losses, loss_mask, channels, packed_seq_params))
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
         if args.context_parallel_size > 1 and not self.mcore_013:
@@ -92,13 +82,36 @@ class MegatronTrainer(BaseMegatronTrainer):
         else:
             lm_loss = lm_loss.clone()
         local_num_tokens = loss[1].detach().clone().to(torch.int)
-        return (
-            lm_loss,
-            local_num_tokens,
-            {
-                'loss': reporting_loss
-            },
-        )
+        metrics['loss'] = reporting_loss
+        return (lm_loss, local_num_tokens, metrics)
+
+    def _compute_channel_loss(self, losses, loss_mask, channels, packed_seq_params=None):
+        args = self.args
+        metrics = defaultdict(lambda: torch.tensor([0.0, 0.0], dtype=torch.float32, device=torch.cuda.current_device()))
+        if args.padding_free:
+            num_samples = packed_seq_params.num_samples
+            cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
+            for i in range(cu_seqlens.shape[0] - 1):
+                channel = channels[i]
+                slice_ = slice(cu_seqlens[i], cu_seqlens[i + 1])
+                c_loss = losses[0, slice_][loss_mask[0, slice_]]
+                metrics[f'loss_{channel}'][0] += c_loss.sum()
+                metrics[f'loss_{channel}'][1] += c_loss.shape[0]
+        else:
+            for i in range(losses.shape[0]):
+                channel = channels[i]
+                c_loss = losses[i][loss_mask[i]]
+                metrics[f'loss_{channel}'][0] += c_loss.sum()
+                metrics[f'loss_{channel}'][1] += c_loss.shape[0]
+
+        # Synchronize keys to avoid getting stuck.
+        all_keys = [None] * dist.get_world_size()
+        dist.all_gather_object(all_keys, list(metrics.keys()))
+        new_metrics = {}
+        for key in sorted(set().union(*all_keys)):
+            new_metrics[key] = metrics[key]
+
+        return metrics
 
     def forward_step(self, data_iterator, model):
         # Get the batch.
