@@ -58,7 +58,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         args.save_args()
         logger.info('Saving the model...')
         save_mcore_checkpoint(megatron_args, [mg_model])
-        logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
     # Place it at the end to avoid test_convert_precision affecting precision.
     if args.test_convert_precision:
         test_convert_precision(megatron_args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
@@ -106,7 +105,6 @@ def convert_mcore2hf(args: ExportArguments) -> None:
                 shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
             else:
                 args.save_args(args.output_dir)
-        logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
             hf_model, template = prepare_model_template(args, model=args.output_dir)
             test_convert_precision(
@@ -120,4 +118,3 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         args.save_args()
         logger.info('Saving the model...')
         save_mcore_checkpoint(megatron_args, [mg_model])
-        logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')

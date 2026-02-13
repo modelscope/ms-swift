@@ -171,7 +171,7 @@ def _generate_state_dict(args,
     return state_dict
 
 
-def _filter_adapter_state_dict(state_dict, is_peft_format: bool = True, adapter_name: str = 'default'):
+def _filter_adapter_state_dict(state_dict, is_peft_format: bool, adapter_name: str = 'default'):
     """
     When is_peft_format is True, keep only the PEFT format state_dict;
     when False, remove the PEFT format state_dict.
@@ -201,6 +201,8 @@ def _filter_adapter_state_dict(state_dict, is_peft_format: bool = True, adapter_
                     continue
                 k = k.replace('base_layer.', '')
                 k = k.replace(f'modules_to_save.{adapter_name}.', '')
+                v.key = v.key.replace('base_layer.', '')
+                v.key = v.key.replace(f'modules_to_save.{adapter_name}.', '')
                 new_state_dict[k] = v
         state_dict[model_key] = new_state_dict
 
@@ -237,7 +239,7 @@ def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler
         optim_sd_kwargs={'metadata': sharded_sd_metadata},
     )
 
-    if args.tuner_type == 'lora':
+    if args.tuner_type == 'lora' and not args.merge_lora:
         _filter_adapter_state_dict(state_dict, True)
 
     save_strategy = get_default_save_sharded_strategy()
@@ -361,8 +363,7 @@ def load_mcore_checkpoint(args,
         iteration=iteration,
         model_sd_kwargs=model_sd_kwargs,
         optim_sd_kwargs=optim_sd_kwargs)
-    if args.tuner_type == 'lora' and not args.merge_lora:
-        _filter_adapter_state_dict(sharded_state_dict, is_peft_format, adapter_name=adapter_name)
+    _filter_adapter_state_dict(sharded_state_dict, is_peft_format, adapter_name=adapter_name)
     model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
     for k in model_keys:
         patch_merge_fn(sharded_state_dict[k])

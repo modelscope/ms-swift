@@ -66,7 +66,6 @@ class MegatronExport(SwiftPipeline):
                 shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
         else:
             args.save_args(args.output_dir)
-        logger.info(f'Successfully saved HF model weights in `{args.output_dir}`.')
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
                 if save_peft_format:
@@ -112,7 +111,6 @@ class MegatronExport(SwiftPipeline):
             args.save_args(args.output_dir)
             logger.info('Saving the model...')
             save_mcore_checkpoint(args, [mg_model])
-            logger.info_if(f'Successfully saved Megatron model weights in `{args.output_dir}`.', cond=is_last_rank())
         # hf_model does not support loading args.mcore_adapter, so test_convert_precision cannot be performed
         support_convert_precision = args.mcore_adapter is None
         if args.test_convert_precision:
