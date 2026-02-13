@@ -25,6 +25,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     pip uninstall autoawq -y
     pip install optimum
     pip install diffusers
+    pip install "transformers<5.0"
     # pip install autoawq -U --no-deps
 
     # test with install
