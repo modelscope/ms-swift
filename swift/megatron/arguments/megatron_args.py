@@ -327,7 +327,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     recompute_num_layers: Optional[int] = None
     recompute_modules: List[str] = field(default_factory=lambda: ['core_attn'])
     train_iters: Optional[int] = None
-    max_epochs: Optional[int] = None
+    num_train_epochs: Optional[int] = None
 
     masked_softmax_fusion: bool = True
     bias_dropout_fusion: bool = True
@@ -688,10 +688,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 #     self.save_retain_interval *= self.save_interval
             else:
                 raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
-        if self.max_epochs is not None:
+        if self.num_train_epochs is not None:
             if hasattr(train_dataset, '__len__'):
                 dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
-                self.train_iters = dataset_sample * self.max_epochs // self.global_batch_size
+                self.train_iters = dataset_sample * self.num_train_epochs // self.global_batch_size
             elif self.train_iters is None:
                 raise ValueError(
                     'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')

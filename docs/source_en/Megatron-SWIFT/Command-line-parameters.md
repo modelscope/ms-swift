@@ -97,14 +97,8 @@
 - 🔥finetune: Load and fine-tune the model. **Optimizer and random seed states from the checkpoint will not be loaded, and the number of iterations will be set to 0**. The default is False.
   - Note: For resuming training from a checkpoint, you should set `--mcore_model` (and additionally `--mcore_adapter` for LoRA training). If `--finetune true` is set, the optimizer and RNG states will not be loaded, the iteration count will be reset to 0, and no dataset skipping will occur. If `--finetune false` is set, the iteration count will be restored, and the corresponding number of previously trained samples will be skipped in the dataset. Loading of the optimizer and RNG states is controlled by `--no_load_optim` and `--no_load_rng`, respectively.
   - Streaming datasets (`--streaming`) are currently not supported for skipping datasets.
-- ckpt_format: Format of the checkpoint. Options are 'torch', 'torch_dist', 'zarr'. Default is 'torch_dist'. (Currently, weight conversion only supports the 'torch_dist' format.)
 - perform_initialization: Perform weight initialization. Default is False.
-- auto_detect_ckpt_format: Automatically detect whether the checkpoint format is legacy or distributed. Default is True.
-- exit_on_missing_checkpoint: If `--mcore_model` is set but **no checkpoint is found, exit directly** instead of initializing. Default is True.
 - 🔥async_save: Use asynchronous checkpoint saving. Currently only applicable to the `torch_dist` distributed checkpoint format. Defaults to False.
-- use_persistent_ckpt_worker: Use a persistent checkpoint worker process for async saving, i.e., create a dedicated background process to handle asynchronous saving. Defaults to False.
-- ckpt_fully_parallel_load: Apply full load parallelization across DP for distributed checkpoints to accelerate weight loading speed. Defaults to False.
-- ckpt_assume_constant_structure: If the model and optimizer state dict structure remains constant throughout a single training job, allows Megatron to perform additional checkpoint performance optimizations. Defaults to False.
 
 
 **Distributed Parameters**:
@@ -265,7 +259,7 @@ Full-parameter Training:
 
 LoRA Training:
 
-- adapter_load: The path to the adapter weights for loading, used for resuming LoRA training from a checkpoint. The default is None. The method for resuming LoRA training from a checkpoint is the same as for full-parameter training. Please pay attention to the meaning of the `--finetune` parameter.
+- mcore_adapter: The path to the adapter weights for loading, used for resuming LoRA training from a checkpoint. The default is None. The method for resuming LoRA training from a checkpoint is the same as for full-parameter training. Please pay attention to the meaning of the `--finetune` parameter.
 - 🔥target_modules: Specifies the suffixes of modules to apply LoRA to. For example, you can set it as `--target_modules linear_qkv linear_proj`. The default is `['all-linear']`, which means all linear layers will be set as target modules.
   - Note: The behavior of `'all-linear'` differs between LLMs and multimodal LLMs. For standard LLMs, it automatically finds all linear layers except `lm_head` and attaches tuners. **For multimodal LLMs, tuners are by default only attached to the LLM component; this behavior can be controlled via `freeze_llm`, `freeze_vit`, and `freeze_aligner`**.
   - Note: If you want to set all router layers as target modules, you can specify `--target_modules all-router ...`. For example: `--target_modules all-router all-linear`.

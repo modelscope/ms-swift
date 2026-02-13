@@ -174,7 +174,7 @@ class BaseMegatronTrainer(ABC):
             for x in iterable:
                 yield x
             # streaming
-            if training and args.max_epochs and state.epoch >= args.max_epochs - 1:
+            if training and args.num_train_epochs and state.epoch >= args.num_train_epochs - 1:
                 is_finished = True
             state.epoch += 1
             if is_finished:
