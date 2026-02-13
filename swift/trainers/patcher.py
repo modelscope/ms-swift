@@ -9,8 +9,7 @@ from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
 
-from swift.utils import (append_to_jsonl, format_time, get_device_count, get_logger, get_max_reserved_memory,
-                         get_torch_device, is_mp, is_pai_training_job)
+from swift.utils import append_to_jsonl, format_time, get_logger, get_max_reserved_memory, is_pai_training_job
 from .arguments import TrainingArguments
 
 logger = get_logger()

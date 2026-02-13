@@ -7,7 +7,7 @@ def test_kto():
     from swift.megatron import megatron_rlhf_main, MegatronRLHFArguments
     megatron_rlhf_main(
         MegatronRLHFArguments(
-            load='Qwen2.5-7B-Instruct-mcore',
+            mcore_model='Qwen2.5-7B-Instruct-mcore',
             rlhf_type='kto',
             tuner_type='lora',
             load_from_cache_file=True,
@@ -24,7 +24,7 @@ def test_kto():
             save_interval=10,
             log_interval=1,
             finetune=True,
-            max_epochs=1,
+            num_train_epochs=1,
             max_length=2048,
             packing=True,
             dataset_num_proc=8,
