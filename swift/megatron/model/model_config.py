@@ -5,11 +5,15 @@ from typing import Any, Dict, List, Literal, Optional, Union
 
 import torch.nn.functional as F
 from megatron.core import mpu
-from megatron.core.fusions.fused_bias_geglu import quick_gelu
 from megatron.core.transformer import TransformerConfig
 from transformers.utils import is_torch_npu_available
 
 from swift.utils import get_logger, json_parse_to_dict
+
+try:
+    from megatron.core.fusions.fused_bias_geglu import quick_gelu
+except ImportError:
+    from megatron.core.activations import quick_gelu
 
 logger = get_logger()
 
@@ -451,7 +455,6 @@ def create_mcore_model_config(args, hf_config):
     kwargs['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
     kwargs['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
     kwargs['fp8_param'] = args.fp8_param_gather
-    kwargs['inference_sampling_seed'] = args.seed
     kwargs['batch_p2p_comm'] = not args.overlap_p2p_comm
     swiglu = kwargs.get('swiglu', True)
     add_bias_linear = kwargs.get('add_bias_linear', False)

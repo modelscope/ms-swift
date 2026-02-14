@@ -238,7 +238,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         from megatron.training.initialize import _set_random_seed
         from megatron.training import training
         training.cyclic_iter = self._origin_cyclic_iter
-        args = self.args()
+        args = self.args
 
         train_valid_test_dataset_provider = self._train_valid_test_dataset_provider
         # Use different seed for resample iterator (offset by 1 to avoid overlap)
