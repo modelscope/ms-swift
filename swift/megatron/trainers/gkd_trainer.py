@@ -9,7 +9,6 @@ import torch
 import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
-from megatron.core.utils import unwrap_model
 from transformers import AutoConfig
 
 from swift.megatron.arguments import MegatronArguments
@@ -84,7 +83,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()
-            self.teacher_bridge.load_weights(teacher_model, args.teacher_model_dir)
+        self.teacher_bridge.load_weights(self.teacher_models, args.teacher_model_dir)
 
         # Offload teacher models to CPU if enabled
         if self.offload_teacher_model:

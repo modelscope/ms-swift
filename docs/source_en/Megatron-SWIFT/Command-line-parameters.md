@@ -82,8 +82,6 @@
   - Note: **When training on multiple machines, ensure that the save paths on each node point to the same location**. Otherwise, you will need to manually consolidate these weights after training.
 - 🔥save_interval: Checkpoint saving interval (steps), default is 500.
   - Note: Weights will always be saved at the end of training.
-- 🔥save_retain_interval: Interval (in iterations) for retaining checkpoints. Checkpoints not at a multiple of this interval are deleted, except for the final one.
-  - Tip: You can set it to a very large value to only save the final checkpoint.
 - 🔥no_save_optim: Do not save optimizer, default is False. When performing full-parameter training, this can significantly reduce storage time.
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥load: The directory of the checkpoint to load. Default is None. For details on resuming training from a checkpoint, please refer to the description of the `--finetune` argument.
@@ -317,7 +315,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 - 🔥task_type: Defaults to 'causal_lm'. Options include 'causal_lm', 'seq_cls', 'embedding' and 'generative_reranker'.
 - num_labels: Required for classification models (i.e., `--task_type seq_cls`). Represents the number of labels; default is None.
 - problem_type: Required for classification models (i.e., `--task_type seq_cls`). Options: "regression", "single_label_classification", "multi_label_classification". Defaults to None. If the model is a reward_model or num_labels equals 1, this parameter is 'regression'; otherwise it is 'single_label_classification'.
-- 🔥save_strategy: Save strategy, optional values are `'steps'` and `'epoch'`, default is `'steps'`. When set to `'epoch'`, both `save_interval` and `eval_interval` are forcibly set to `1`, meaning weights are saved every epoch. `save_retain_interval` can be set to an integer, indicating after how many epochs a checkpoint is retained.
+- 🔥save_strategy: Save strategy, optional values are `'steps'` and `'epoch'`, default is `'steps'`. When set to `'epoch'`, both `save_interval` and `eval_interval` are forcibly set to `1`, meaning weights are saved every epoch.
 - dataset_shuffle: Whether to perform random shuffling on the dataset. Defaults to True.
 - Note: **Randomization in Megatron-SWIFT consists of two parts**: dataset-level shuffling, controlled by `dataset_shuffle`; and train_dataloader-level shuffling, controlled by `train_dataloader_shuffle`.
 - train_dataloader_shuffle: Whether to use shuffling for train_dataloader. Default is True. Requires "ms-swift>=3.12".

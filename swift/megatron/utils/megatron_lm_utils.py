@@ -139,7 +139,7 @@ def _get_rng_state():
 
 
 def _generate_state_dict(args,
-                         model: list,
+                         models,
                          optimizer=None,
                          opt_param_scheduler=None,
                          rng_state=None,
@@ -153,11 +153,11 @@ def _generate_state_dict(args,
     }
     if iteration is not None:
         state_dict['iteration'] = iteration
-    for i, m in enumerate(model):
+    for i, m in enumerate(models):
         key = 'model'
-        if len(model) > 1:
+        if len(models) > 1:
             key = f'model{i}'
-        model_sd = model[i].sharded_state_dict(**model_sd_kwargs)
+        model_sd = models[i].sharded_state_dict(**model_sd_kwargs)
         state_dict[key] = model_sd
 
     if not args.no_save_optim:
@@ -217,8 +217,8 @@ def _preprocess_common_before_consistancy_check(common_state_dict):
     return preprocessed_common_state_dict
 
 
-def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler=None, iteration=1):
-    model = unwrap_model(model)
+def save_mcore_checkpoint(args, models, optimizer=None, opt_param_scheduler=None, iteration=1):
+    models = unwrap_model(models)
     rng_state = _get_rng_state()
     checkpoint_dir = os.path.join(args.output_dir, f'iter_{iteration:07d}')
     sharded_sd_metadata = {
@@ -230,7 +230,7 @@ def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler
 
     state_dict = _generate_state_dict(
         args,
-        model,
+        models,
         optimizer,
         opt_param_scheduler,
         rng_state,
@@ -266,19 +266,12 @@ def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler
     if is_master():
 
         def iter_finalize_fn():
-            # TODO: delete_checkpoint
+            # TODO: save_total_limit
             tracker_path = os.path.join(args.output_dir, 'latest_checkpointed_iteration.txt')
-            prev_iteration = 0
-            save_retain_interval = getattr(args, 'save_retain_interval', None)
-            if save_retain_interval is not None:
-                if os.path.exists(tracker_path):
-                    with open_file(tracker_path, 'r') as f:
-                        prev_iteration = int(f.read().strip())
-
             with open_file(tracker_path, 'w') as f:
                 f.write(str(iteration))
-
-            logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
+            if models:
+                logger.info(f'Successfully saved Megatron model weights in `{args.output_dir}`.')
 
         if args.async_save:
             assert async_save_request is not None
@@ -301,7 +294,7 @@ def _load_iteration(tracker_path: str):
 
 
 def load_mcore_checkpoint(args,
-                          ddp_model: list,
+                          ddp_models: list,
                           optimizer=None,
                           opt_param_scheduler=None,
                           load_arg: str = 'mcore_model',
@@ -319,7 +312,7 @@ def load_mcore_checkpoint(args,
         no_load_optim = True
         no_load_rng = True
         finetune = False
-    model = [unwrap_model(m) for m in ddp_model]
+    models = unwrap_model(ddp_models)
     tracker_path = os.path.join(load_dir, 'latest_checkpointed_iteration.txt')
     iteration = _load_iteration(tracker_path)
     checkpoint_dir = os.path.join(load_dir, f'iter_{iteration:07d}')
@@ -356,7 +349,7 @@ def load_mcore_checkpoint(args,
     # TODO: check no_save_optim
     sharded_state_dict = _generate_state_dict(
         args,
-        model,
+        models,
         gen_sd_optim,
         gen_sd_opt_param_scheduler,
         gen_sd_rng_state,
@@ -377,10 +370,10 @@ def load_mcore_checkpoint(args,
     if 'args' in state_dict and not finetune:
         args.consumed_train_samples = getattr(state_dict['args'], 'consumed_train_samples', 0)
 
-    if len(ddp_model) == 1:
-        ddp_model[0].load_state_dict(state_dict['model'], strict=False)
+    if len(ddp_models) == 1:
+        ddp_models[0].load_state_dict(state_dict['model'], strict=False)
     else:
-        for i, m in enumerate(ddp_model):
+        for i, m in enumerate(ddp_models):
             if f'model{i}' not in state_dict:
                 continue
             m.load_state_dict(state_dict[f'model{i}'])
@@ -412,20 +405,20 @@ def load_mcore_checkpoint(args,
     return iteration
 
 
-def wrap_model(args, model: list, wrap_with_ddp: bool = True):
+def wrap_model(args, models, wrap_with_ddp: bool = True):
     # Set tensor model parallel attributes if not set.
     # Only parameters that are already tensor model parallel have these
     # attributes set for them. We should make sure the default attributes
     # are set for all params so the optimizer can use them.
-    for m in model:
+    for m in models:
         for param in m.parameters():
             tensor_parallel.set_defaults_if_not_set_tensor_model_parallel_attributes(param)
         if not args.use_cpu_initialization:
             m.cuda(torch.cuda.current_device())
     # Fp16
-    config = model[0].config
+    config = models[0].config
     if args.fp16 or args.bf16:
-        model = [Float16Module(config, model_module) for model_module in model]
+        models = [Float16Module(config, model_module) for model_module in models]
 
     # DDP
     if not wrap_with_ddp:
@@ -449,7 +442,7 @@ def wrap_model(args, model: list, wrap_with_ddp: bool = True):
         ddp_config.bucket_size = None
 
     with torch.cuda.stream(torch.cuda.Stream()):
-        model = [
+        models = [
             DDP(
                 config=config,
                 ddp_config=ddp_config,
@@ -457,15 +450,15 @@ def wrap_model(args, model: list, wrap_with_ddp: bool = True):
                 # Turn off bucketing for model_chunk 2 onwards, since communication for these
                 # model chunks is overlapped with compute anyway.
                 disable_bucketing=model_chunk_idx > 0,
-            ) for (model_chunk_idx, model_chunk) in enumerate(model)
+            ) for (model_chunk_idx, model_chunk) in enumerate(models)
         ]
 
         # Broadcast params from data parallel src rank to other data parallel ranks.
     if args.data_parallel_random_init:
-        for m in model:
+        for m in models:
             m.broadcast_params()
 
-    return model
+    return models
 
 
 def get_optimizer_param_scheduler(args, optimizer):

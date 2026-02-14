@@ -41,7 +41,7 @@ class MegatronExport(SwiftPipeline):
         if args.mcore_model is not None:
             load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
         elif args.model is not None:
-            bridge.load_weights(mg_model, args.model_info.model_dir)
+            bridge.load_weights([mg_model], args.model_info.model_dir)
         else:
             raise ValueError('Please specify `--mcore_model` or `--model`.')
         if args.adapters or args.mcore_adapter is not None:
@@ -50,7 +50,7 @@ class MegatronExport(SwiftPipeline):
                 load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
             elif args.adapters:
                 assert len(args.adapters) == 1, 'Currently only support one adapter'
-                bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
+                bridge.load_weights([mg_model], args.adapters[0], is_peft_format=True)
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
@@ -89,7 +89,7 @@ class MegatronExport(SwiftPipeline):
         logger.info('Megatron model created successfully.')
         bridge = args.megatron_model_meta.bridge_cls(args)
         if args.model is not None:
-            bridge.load_weights(mg_model, args.model_info.model_dir)
+            bridge.load_weights([mg_model], args.model_info.model_dir)
         elif args.mcore_model is not None:
             load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
         else:
@@ -99,7 +99,7 @@ class MegatronExport(SwiftPipeline):
             peft_model = prepare_mcore_model(args, mg_model)
             if args.adapters:
                 assert len(args.adapters) == 1, 'Currently only support one adapter'
-                bridge.load_weights(mg_model, args.adapters[0], is_peft_format=True)
+                bridge.load_weights([mg_model], args.adapters[0], is_peft_format=True)
             elif args.mcore_adapter is not None:
                 load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
             if args.merge_lora:

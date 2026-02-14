@@ -375,7 +375,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # checkpoint
     save_interval: int = 500
-    save_retain_interval: Optional[int] = None  # TODO
     no_save_optim: bool = False
     no_save_rng: bool = False
     mcore_model: Optional[str] = None
@@ -684,9 +683,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
                 self.save_interval = dataset_sample // self.global_batch_size
                 self.eval_interval = self.save_interval
-                # TODO
-                # if getattr(self, 'save_retain_interval', None) is not None:
-                #     self.save_retain_interval *= self.save_interval
             else:
                 raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
         if self.num_train_epochs is not None:

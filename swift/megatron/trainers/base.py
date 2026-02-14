@@ -102,16 +102,17 @@ class BaseMegatronTrainer(ABC):
             getattr(callback, event)(**kwargs)
 
     def on_log(self, logs, prefix=''):
-        self._log_callback(logs)
+        n_steps = logs.pop('n_steps')
+        self._log_callback(logs, n_steps)
         if prefix:
             logs = {f'{prefix}{k}': v for k, v in logs.items()}
         self.call_event('on_log', logs=logs)
 
-    def _log_callback(self, logs):
+    def _log_callback(self, logs, n_steps):
         args = self.args
         config = self.config
         if config.num_moe_experts is not None:
-            moe_loss_scale = 1 / args.num_microbatches
+            moe_loss_scale = 1 / args.num_microbatches / n_steps
             track_names = []
             # TODO: support moe_router_load_balancing_type list
             if config.moe_router_load_balancing_type in ['aux_loss', 'seq_aux_loss']:
@@ -130,7 +131,7 @@ class BaseMegatronTrainer(ABC):
                 moe_layer_freq=config.moe_layer_freq,
                 **track_moe_kwargs)
         if args.mtp_num_layers is not None:
-            mtp_loss_scale = 1 / args.num_microbatches
+            mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
             logs.update({k.replace(' ', '_'): v for k, v in mtp_logs.items()})
@@ -143,23 +144,20 @@ class BaseMegatronTrainer(ABC):
 
     def prepare_model(self):
         args = self.args
-        self.peft_models = []
         self.wrapped_models = []
         self.unwrapped_models = get_mcore_model(args, self.template.config)
-        for model in self.unwrapped_models:
-            peft_model = self._prepare_peft_model(model)
-            self.peft_models.append(peft_model)
+        self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
 
-    def _prepare_peft_model(self, model):
+    def _prepare_peft_model(self, models):
         args = self.args
         if args.mcore_model is None:
-            self.bridge.load_weights(model, args.model_dir)
-        peft_model = prepare_mcore_model(args, model)
+            self.bridge.load_weights(models, args.model_dir)
+        peft_models = [prepare_mcore_model(args, model) for model in models]
         if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
             assert len(args.adapters) == 1, 'Currently only support one adapter.'
-            self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
-        return peft_model
+            self.bridge.load_weights(models, args.adapters[0], is_peft_format=True, adapter_name='default')
+        return peft_models
 
     def get_optimizer_and_scheduler(self):
         args = self.args
@@ -644,6 +642,9 @@ class BaseMegatronTrainer(ABC):
         return metrics, grad_norm
 
     def _aggregated_metrics(self, metrics, total_metrics):
+        if 'n_steps' not in total_metrics:
+            total_metrics['n_steps'] = 0
+        total_metrics['n_steps'] += 1
         for key in metrics[0].keys():
             val = [x[key].view(-1) for x in metrics if key in x]
             val = torch.stack(val, dim=0)
