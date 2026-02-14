@@ -201,7 +201,6 @@ def prepare_adapter(args, model):
 
 
 def prepare_mcore_model(args, model):
-    from .megatron_lm_utils import load_mcore_checkpoint
     if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:

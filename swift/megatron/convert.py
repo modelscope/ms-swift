@@ -13,8 +13,8 @@ from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
 from .model import get_mcore_model, get_megatron_model_meta
-from .utils import (initialize_megatron, load_mcore_checkpoint, patch_torch_dist_shard, save_mcore_checkpoint,
-                    test_convert_precision)
+from .utils import (initialize_megatron, load_mcore_checkpoint, patch_torch_dist_shard, prepare_mcore_model,
+                    save_mcore_checkpoint, test_convert_precision)
 
 logger = get_logger()
 
@@ -64,7 +64,6 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
-    from swift.megatron import prepare_mcore_model
     _, template = prepare_model_template(args, load_model=False)
     processor = template.processor
 
@@ -89,7 +88,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         raise ValueError('Please specify `--mcore_model`.')
     load_mcore_checkpoint(megatron_args, [mg_model], load_arg='mcore_model')
     if megatron_args.mcore_adapter is not None:
-        peft_model = prepare_mcore_model(mg_model)
+        peft_model = prepare_mcore_model(megatron_args, mg_model)
         load_mcore_checkpoint(megatron_args, [mg_model], load_arg='mcore_adapter')
         logger.info('Merge LoRA...')
         mg_model = peft_model.merge_and_unload()
