@@ -144,23 +144,20 @@ class BaseMegatronTrainer(ABC):
 
     def prepare_model(self):
         args = self.args
-        self.peft_models = []
         self.wrapped_models = []
         self.unwrapped_models = get_mcore_model(args, self.template.config)
-        for model in self.unwrapped_models:
-            peft_model = self._prepare_peft_model(model)
-            self.peft_models.append(peft_model)
+        self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
 
-    def _prepare_peft_model(self, model):
+    def _prepare_peft_model(self, models):
         args = self.args
         if args.mcore_model is None:
-            self.bridge.load_weights(model, args.model_dir)
-        peft_model = prepare_mcore_model(args, model)
+            self.bridge.load_weights(models, args.model_dir)
+        peft_models = [prepare_mcore_model(args, model) for model in models]
         if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
             assert len(args.adapters) == 1, 'Currently only support one adapter.'
-            self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
-        return peft_model
+            self.bridge.load_weights(models, args.adapters[0], is_peft_format=True, adapter_name='default')
+        return peft_models
 
     def get_optimizer_and_scheduler(self):
         args = self.args

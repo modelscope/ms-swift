@@ -51,7 +51,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
     mg_model = get_mcore_model(megatron_args, hf_config)[0]
     logger.info('Megatron model created successfully.')
     bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
-    bridge.load_weights(mg_model, args.model_info.model_dir)
+    bridge.load_weights([mg_model], args.model_info.model_dir)
     logger.info('Successfully transferred HF model weights to MG model.')
     _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
     if not _test_convert_precision:

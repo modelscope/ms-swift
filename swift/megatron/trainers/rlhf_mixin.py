@@ -3,7 +3,6 @@ from contextlib import contextmanager
 
 import torch
 from megatron.core import mpu
-from megatron.core.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
@@ -35,12 +34,13 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         for ref_model in self.ref_models:
             ref_model.requires_grad_(False)
             ref_model.eval()
-            if args.mcore_ref_model is None:
-                ref_model_id_or_path = args.ref_model or args.model
-                self.bridge.load_weights(m, ref_model_id_or_path)
+        if args.mcore_ref_model is None:
+            ref_model_id_or_path = args.ref_model or args.model
+            self.bridge.load_weights(self.ref_models, ref_model_id_or_path)
         if args.tuner_type == 'lora' and args.ref_adapters and args.mcore_ref_adapter is None:
             assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
-            self.bridge.load_weights(model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+            self.bridge.load_weights(
+                self.ref_models, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
 
     def _get_data_collator(self):
         if self.args.rlhf_type in ('grpo', 'gkd'):

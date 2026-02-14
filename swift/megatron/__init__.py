@@ -22,7 +22,8 @@ if TYPE_CHECKING:
     from .utils import prepare_mcore_model, initialize_megatron
     from .arguments import (MegatronSftArguments, MegatronPretrainArguments, MegatronRLHFArguments,
                             MegatronExportArguments, MegatronArguments)
-    from .model import MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model
+    from .model import (MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model,
+                        create_mcore_model_config, convert_hf_config, get_mcore_model)
     from .trainers import MegatronTrainer, MegatronDPOTrainer
     from .tuners import LoraParallelLinear
 else:
@@ -34,7 +35,10 @@ else:
             'MegatronSftArguments', 'MegatronPretrainArguments', 'MegatronRLHFArguments', 'MegatronExportArguments',
             'MegatronArguments'
         ],
-        'model': ['MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model'],
+        'model': [
+            'MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model',
+            'create_mcore_model_config', 'convert_hf_config', 'get_mcore_model'
+        ],
         'trainers': ['MegatronTrainer', 'MegatronDPOTrainer'],
         'tuners': ['LoraParallelLinear'],
     }

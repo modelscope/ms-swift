@@ -1460,11 +1460,11 @@ class GPTBridge:
             hf_state_dict.update(origin_hf_state_dict)
         return hf_state_dict
 
-    def load_weights(self, mg_model, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
+    def load_weights(self, mg_models, hf_model_dir: str, is_peft_format: bool = False, adapter_name: str = 'default'):
         """Load weights from safetensors (HuggingFace) format into Megatron model.
 
         Args:
-            mg_model: Megatron model instance to load weights into.
+            mg_models: List of Megatron model instances to export.
                 Note: If is_peft_format is True, you also need to pass in a GPTModel, not a PeftModel.
             hf_model_dir: Path/Id to the safetensors model directory.
             is_peft_format: Whether the weights are in PEFT (LoRA, etc.) format. Defaults to False.
@@ -1473,14 +1473,14 @@ class GPTBridge:
         """
         self._is_peft_format = is_peft_format
         self._adapter_name = adapter_name
-        mg_model = unwrap_model(mg_model)
-        self.config = mg_model.config
+        mg_models = unwrap_model(mg_models)
+        self.config = mg_models[0].config
         self._disable_tqdm = False
         hf_model_dir = safe_snapshot_download(hf_model_dir, use_hf=self.args.use_hf, hub_token=self.args.hub_token)
         with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
             hf_prefix = 'base_model.model.' if is_peft_format else ''
-            list(self._convert([mg_model], state_dict, hf_prefix, True, 'Loading: '))
+            list(self._convert(mg_models, state_dict, hf_prefix, True, 'Loading: '))
 
     def export_weights(self,
                        mg_models,
@@ -1516,7 +1516,7 @@ class GPTBridge:
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         hf_prefix = 'base_model.model.' if is_peft_format else ''
-        mg_models = [unwrap_model(mg_model) for mg_model in mg_models]
+        mg_models = unwrap_model(mg_models)
         self.config = mg_models[0].config
         with torch.no_grad():
             yield from self._convert(mg_models, {}, hf_prefix, False, tqdm_desc=tqdm_desc)
@@ -1552,7 +1552,7 @@ class GPTBridge:
         torch.cuda.empty_cache()
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
-        mg_models = [unwrap_model(mg_model) for mg_model in mg_models]
+        mg_models = unwrap_model(mg_models)
         for k, v in self.export_weights(
                 mg_models,
                 target_device='cpu',
