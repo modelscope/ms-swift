@@ -3,6 +3,7 @@
 import math
 import os
 import shutil
+
 import torch
 from transformers.utils import strtobool
 
@@ -11,8 +12,8 @@ from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
 from .model import get_mcore_model
-from .utils import (load_mcore_checkpoint, patch_torch_dist_shard, prepare_mcore_model,
-                    save_mcore_checkpoint, test_convert_precision)
+from .utils import (load_mcore_checkpoint, patch_torch_dist_shard, prepare_mcore_model, save_mcore_checkpoint,
+                    test_convert_precision)
 
 logger = get_logger()
 

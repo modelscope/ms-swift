@@ -25,14 +25,12 @@ from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (copy_original_module_weight, get_optimizer_param_scheduler, get_padding_to,
-                                  load_mcore_checkpoint,
-                                  prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
-                                  save_mcore_checkpoint, wrap_model)
+                                  load_mcore_checkpoint, prepare_mcore_model,
+                                  reduce_max_stat_across_model_parallel_group, save_mcore_checkpoint, wrap_model)
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
-from swift.utils import (deep_getattr, get_last_valid_indices, get_logger, is_last_rank,
-                         ms_logger_context)
+from swift.utils import deep_getattr, get_last_valid_indices, get_logger, is_last_rank, ms_logger_context
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
                     get_packed_seq_params)

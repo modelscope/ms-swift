@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
@@ -11,7 +10,6 @@ from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec
                                                       get_gpt_mtp_block_spec)
 from packaging import version
 from torch import nn
-from transformers.utils import is_torch_npu_available
 
 from swift.model import MODEL_MAPPING
 from swift.utils import get_logger
