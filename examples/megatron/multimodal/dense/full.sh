@@ -28,7 +28,6 @@ megatron sft \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-VL-7B-Instruct \
     --save_interval 200 \
-    --vit_gradient_checkpointing true \
     --max_length 2048 \
     --dataloader_num_workers 4 \
     --no_save_optim true \

@@ -8,6 +8,7 @@ from argparse import Namespace
 from contextlib import contextmanager
 from datetime import timedelta
 
+import megatron.core
 import numpy as np
 import torch
 from megatron.core import dist_checkpointing, mpu, tensor_parallel
@@ -18,14 +19,16 @@ from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyPar
                                                                         FullyParallelSaveStrategyWrapper)
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
-from megatron.core.msc_utils import open_file
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module
+from packaging import version
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
 from .patcher import patch_merge_fn
 
 logger = get_logger()
+
+mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 @contextmanager
@@ -159,6 +162,8 @@ def _generate_state_dict(args,
         state_dict[key] = model_sd
 
     if not args.no_save_optim:
+        if not mcore_013:
+            optim_sd_kwargs = None
         if optimizer is not None:
             state_dict['optimizer'] = optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
         if opt_param_scheduler is not None:
@@ -245,14 +250,15 @@ def save_mcore_checkpoint(args, models, optimizer=None, opt_param_scheduler=None
         save_strategy,
         mpu.get_data_parallel_group(with_context_parallel=True),
     )
+    kwargs = {'content_metadata': sharded_sd_metadata} if mcore_013 else {}
     async_save_request = dist_checkpointing.save(
         state_dict,
         checkpoint_dir,
         save_strategy,
         async_sharded_save=args.async_save,
         validate_access_integrity=True,
-        content_metadata=sharded_sd_metadata,
-        preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check)
+        preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check,
+        **kwargs)
 
     if not args.async_save:
         # TODO: test async_save
@@ -266,6 +272,10 @@ def save_mcore_checkpoint(args, models, optimizer=None, opt_param_scheduler=None
         def iter_finalize_fn():
             # TODO: save_total_limit
             tracker_path = os.path.join(args.output_dir, 'latest_checkpointed_iteration.txt')
+            try:
+                from megatron.core.msc_utils import open_file
+            except ImportError:
+                open_file = open
             with open_file(tracker_path, 'w') as f:
                 f.write(str(iteration))
             if models:
@@ -495,14 +505,17 @@ def get_optimizer_param_scheduler(args, optimizer):
 
 def unwrap_model(models, module_instances=None):
     """Unwrap_model to return the final model instance"""
+    try:
+        from megatron.core.utils import unwrap_model
+        return unwrap_model(models, module_instances)
+    except ImportError:
+        pass
     if module_instances is None:
         from megatron.core.distributed import DistributedDataParallel as DDP
         from megatron.core.distributed import TorchFullyShardedDataParallel as torch_FSDP
-        from megatron.core.distributed.fsdp.mcore_fsdp_adapter import (
-            FullyShardedDataParallel as megatron_FSDP, )
         from megatron.core.transformer.module import Float16Module
 
-        module_instances = (DDP, torch_FSDP, megatron_FSDP, Float16Module)
+        module_instances = (DDP, torch_FSDP, Float16Module)
 
     return_list = True
     if not isinstance(models, list):

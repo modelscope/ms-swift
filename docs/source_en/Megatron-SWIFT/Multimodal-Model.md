@@ -42,7 +42,6 @@ megatron sft \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-VL-7B-Instruct \
     --save_interval 200 \
-    --vit_gradient_checkpointing true \
     --max_length 2048 \
     --dataloader_num_workers 4 \
     --no_save_optim true \
@@ -90,7 +89,6 @@ megatron sft \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-VL-7B-Instruct \
     --save_interval 200 \
-    --vit_gradient_checkpointing true \
     --max_length 2048 \
     --dataloader_num_workers 4 \
     --no_save_optim true \
@@ -169,7 +167,6 @@ megatron sft \
     --output_dir megatron_output/InternVL3_5-30B-A3B \
     --eval_interval 200 \
     --save_interval 200 \
-    --vit_gradient_checkpointing true \
     --max_length 2048 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

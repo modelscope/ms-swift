@@ -40,6 +40,8 @@ class MegatronTrainer(BaseMegatronTrainer):
         elif args.problem_type == 'multi_label_classification':
             loss_fct = BCEWithLogitsLoss()
             loss = loss_fct(logits, labels)
+            preds = logits.sigmoid() > 0.5
+            acc = (labels == preds).all(dim=-1).float().mean()
         metric = {'loss': loss.detach().clone()}
         if acc is not None:
             metric['acc'] = acc

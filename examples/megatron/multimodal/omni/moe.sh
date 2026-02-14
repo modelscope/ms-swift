@@ -43,7 +43,6 @@ megatron sft \
     --output_dir megatron_output/Qwen3-Omni-30B-A3B-Instruct \
     --eval_interval 100 \
     --save_interval 100 \
-    --vit_gradient_checkpointing true \
     --max_length 4096 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

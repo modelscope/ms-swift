@@ -34,7 +34,6 @@ megatron sft \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-Omni-7B \
     --save_interval 100 \
-    --vit_gradient_checkpointing true \
     --max_length 4096 \
     --dataloader_num_workers 4 \
     --no_save_optim true \

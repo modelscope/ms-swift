@@ -10,11 +10,6 @@ from transformers.utils import is_torch_npu_available
 
 from swift.utils import get_logger, json_parse_to_dict
 
-try:
-    from megatron.core.fusions.fused_bias_geglu import quick_gelu
-except ImportError:
-    from megatron.core.activations import quick_gelu
-
 logger = get_logger()
 
 
@@ -207,6 +202,11 @@ class MegatronModelConfig(TransformerConfig):
             self.activation_func = F.silu
             self.gated_linear_unit = True
         if self.quick_geglu:
+            # megatron-core>=0.14.0
+            try:
+                from megatron.core.fusions.fused_bias_geglu import quick_gelu
+            except ImportError:
+                from megatron.core.activations import quick_gelu
             assert not self.swiglu
             self.gated_linear_unit = True
             self.activation_func = quick_gelu

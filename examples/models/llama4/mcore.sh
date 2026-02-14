@@ -39,7 +39,6 @@ megatron sft \
     --output_dir megatron_output/Llama-4-Scout-17B-16E-Instruct \
     --eval_interval 100 \
     --save_interval 100 \
-    --vit_gradient_checkpointing false \
     --max_length 4096 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

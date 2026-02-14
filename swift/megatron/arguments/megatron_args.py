@@ -8,7 +8,6 @@ import megatron.core
 import torch
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
-from megatron.core.transformer.pipeline_parallel_layer_layout import PipelineParallelLayerLayout
 from packaging import version
 from transformers.utils.versions import require_version
 
@@ -638,6 +637,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     def _init_vpp_size(self):
         if self.pipeline_model_parallel_layout is not None:
+            from megatron.core.transformer.pipeline_parallel_layer_layout import PipelineParallelLayerLayout
             # Parse the input flattened layout to a list and get the vpp size.
             # We will validate the layout more carefully in the TransformerConfig constructor.
             num_stages = PipelineParallelLayerLayout.get_num_stages_from_str(self.pipeline_model_parallel_layout)

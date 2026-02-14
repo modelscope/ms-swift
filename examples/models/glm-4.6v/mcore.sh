@@ -37,10 +37,9 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
-    --output_dir megatron_output/GLM-4.5V-mcore \
+    --output_dir megatron_output/GLM-4.6V \
     --eval_interval 200 \
     --save_interval 200 \
-    --vit_gradient_checkpointing true \
     --max_length 2048 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
