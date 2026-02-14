@@ -9,12 +9,12 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import transformers
 from megatron.core import mpu
-from megatron.core.utils import unwrap_model
 from packaging import version
 from peft.utils import ModulesToSaveWrapper
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
+from swift.megatron.utils import unwrap_model
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, gc_collect,
                          get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank,

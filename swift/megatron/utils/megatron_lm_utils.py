@@ -20,9 +20,7 @@ from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.msc_utils import open_file
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
-from megatron.core.transformer.module import Float16Module, MegatronModule
-from megatron.core.utils import unwrap_model
-from peft import PeftModel
+from megatron.core.transformer.module import Float16Module
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
 from .patcher import patch_merge_fn
@@ -493,3 +491,28 @@ def get_optimizer_param_scheduler(args, optimizer):
     )
 
     return opt_param_scheduler
+
+
+def unwrap_model(models, module_instances=None):
+    """Unwrap_model to return the final model instance"""
+    if module_instances is None:
+        from megatron.core.distributed import DistributedDataParallel as DDP
+        from megatron.core.distributed import TorchFullyShardedDataParallel as torch_FSDP
+        from megatron.core.distributed.fsdp.mcore_fsdp_adapter import (
+            FullyShardedDataParallel as megatron_FSDP, )
+        from megatron.core.transformer.module import Float16Module
+
+        module_instances = (DDP, torch_FSDP, megatron_FSDP, Float16Module)
+
+    return_list = True
+    if not isinstance(models, list):
+        models = [models]
+        return_list = False
+    unwrapped_model = []
+    for model in models:
+        while isinstance(model, module_instances):
+            model = model.module
+        unwrapped_model.append(model)
+    if not return_list:
+        return unwrapped_model[0]
+    return unwrapped_model
