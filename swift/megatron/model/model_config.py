@@ -154,7 +154,7 @@ class MegatronModelConfig(TransformerConfig):
     moe_router_pre_softmax: bool = False
     moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_router_score_function: Literal['sigmoid', 'softmax'] = 'softmax'
-    moe_router_bias_update_rate: Optional[float] = None
+    moe_router_bias_update_rate: float = 1e-3
     moe_router_enable_expert_bias: bool = False
     moe_router_topk_scaling_factor: Optional[float] = None
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn',
@@ -442,9 +442,9 @@ def create_mcore_model_config(args, hf_config):
     from swift.megatron.arguments import MegatronArguments
     kwargs = convert_hf_config(hf_config)
     for f in fields(MegatronModelConfig):
-        # TODO: fix this
-        if getattr(args, f.name, None) is not None:
-            kwargs[f.name] = getattr(args, f.name)
+        key, value = f.name, getattr(args, f.name, None)
+        if value:
+            kwargs[key] = value
 
     if args.task_type == 'seq_cls':
         args.problem_type = args.problem_type or getattr(hf_config, 'problem_type', None)

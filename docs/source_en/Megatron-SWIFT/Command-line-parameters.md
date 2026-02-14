@@ -440,7 +440,7 @@ This section introduces the parameters for `megatron export` (requires "ms-swift
 - 🔥to_mcore: Convert HF format weights to Megatron format. Defaults to False.
 - 🔥to_hf: Convert Megatron format weights to HF format. Defaults to False.
 - 🔥merge_lora: Defaults to None. If `to_hf` is set to True, this parameter defaults to `True`, otherwise False. In other words, by default, LoRA will be merged when saving in safetensors format; when saving in torch_dist format, LoRA will not be merged. The merged weights are stored in the `--save` directory.
-  - Note: Transformers 5.0 has refactored the model architecture for MoE models. This new structure does not support MoE LoRA inference and may cause inference errors. It is recommended to merge LoRA weights for MoE models (vLLM is not affected).
+  - Note: Transformers 5.0 has refactored the model architecture for MoE models. This new structure does not support MoE LoRA inference and may cause inference errors. **It is recommended to merge LoRA weights for MoE models** (vLLM is not affected).
   - Note: The expert structure differs between Transformers and Megatron models. For example, the expert layers in Transformers' Qwen3-VL-MoE are implemented as Parameters rather than Linear layers. As a result, some models cannot convert LoRA delta weights (though Qwen3-VL-MoE supports conversion if LoRA is trained only on linear_proj and linear_qkv). However, most models support LoRA conversion, such as Qwen3-MoE, Qwen3-Omni-MoE, and GLM4.5-V.
 - 🔥test_convert_precision: Test the precision error of HF and Megatron format weight conversion. Defaults to False.
 - test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.

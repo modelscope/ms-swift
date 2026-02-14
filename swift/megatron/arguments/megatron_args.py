@@ -8,6 +8,7 @@ import megatron.core
 import torch
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
+from megatron.core.transformer.pipeline_parallel_layer_layout import PipelineParallelLayerLayout
 from packaging import version
 from transformers.utils.versions import require_version
 
@@ -16,7 +17,7 @@ from swift.megatron.model import get_megatron_model_meta
 from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
-from megatron.core.transformer.pipeline_parallel_layer_layout import PipelineParallelLayerLayout
+
 mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 logger = get_logger()
 
@@ -411,6 +412,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1
+    moe_router_load_balancing_type: Optional[List[str]] = None
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = True

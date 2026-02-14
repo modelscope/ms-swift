@@ -169,10 +169,7 @@ class MegatronModelLoader:
         )
 
 
-def get_mcore_model(
-    args,
-    hf_config,
-):
+def get_mcore_model(args, hf_config):
     loader = args.megatron_model_meta.loader(args, hf_config)
     model_type = ModelType.encoder_or_decoder
     if (mpu.get_pipeline_model_parallel_world_size() > 1 and args.virtual_pipeline_model_parallel_size is not None):

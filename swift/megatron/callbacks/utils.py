@@ -10,5 +10,10 @@ def rewrite_logs(logs):
         if k.startswith('eval_'):
             k = k[len('eval_'):]
             k = f'eval/{k}'
+        elif k.startswith('test_'):
+            k = k[len('test_'):]
+            k = f'test/{k}'
+        else:
+            k = f'train/{k}'
         new_logs[k] = v
     return new_logs

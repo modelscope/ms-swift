@@ -31,7 +31,6 @@ class MegatronSftArguments(MegatronBaseArguments):
         if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
                              'Please input the training dataset.')
-        self._init_output_dir()
         if self.tensorboard_dir is None and self.output_dir is not None:
             self.tensorboard_dir = f'{self.output_dir}/runs'
         self.tensorboard_dir = to_abspath(self.tensorboard_dir)

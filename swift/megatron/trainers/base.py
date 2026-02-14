@@ -17,6 +17,8 @@ from megatron.core.distributed import finalize_model_grads
 from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import Float16Module, MegatronModule
+from megatron.core.transformer.moe.moe_utils import track_moe_metrics
+from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from modelscope import check_local_model_is_latest
 from packaging import version
 
@@ -106,7 +108,32 @@ class BaseMegatronTrainer(ABC):
         self.call_event('on_log', logs=logs)
 
     def _log_callback(self, logs):
-        """This function is used to normalize logs for easier use with wandb/swanlab callbacks."""
+        args = self.args
+        config = self.config
+        if config.num_moe_experts is not None:
+            moe_loss_scale = 1 / args.num_microbatches
+            track_names = []
+            # TODO: support moe_router_load_balancing_type list
+            if config.moe_router_load_balancing_type in ['aux_loss', 'seq_aux_loss']:
+                track_names.append('load_balancing_loss')
+            if args.moe_z_loss_coeff is not None:
+                track_names.append('z_loss')
+            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
+            track_moe_metrics(
+                loss_scale=moe_loss_scale,
+                iteration=self.state.iteration,
+                writer=None,
+                total_loss_dict=logs,
+                force_initialize=True,
+                track_names=track_names,
+                num_layers=config.num_layers,
+                moe_layer_freq=config.moe_layer_freq,
+                **track_moe_kwargs)
+        if args.mtp_num_layers is not None:
+            mtp_loss_scale = 1 / args.num_microbatches
+            mtp_logs = {}
+            MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
+            logs.update({k.replace(' ', '_'): v for k, v in mtp_logs.items()})
         for k, v in logs.items():
             if isinstance(v, torch.Tensor):
                 if v.numel() == 2:

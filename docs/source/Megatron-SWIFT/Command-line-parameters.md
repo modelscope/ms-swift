@@ -409,7 +409,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - 🔥to_hf: Megatron格式权重转成HF格式。默认为False。
 - 🔥merge_lora: 默认为None，若`to_hf`设置为True，该参数默认值为`True`，否则为False。即默认情况下，存储为safetensors格式时会合并LoRA；存储为torch_dist格式时，不会合并LoRA。合并后的权重存储在`--save`目录下。
-  - 注意：transformers 5.0对Moe的模型组织结构进行了重构，该结构不支持Moe LoRA的推理，可能造成推理异常。建议对Moe模型进行Merge LoRA（vLLM不受影响）。
+  - 注意：transformers 5.0对Moe的模型组织结构进行了重构，该结构不支持Moe LoRA的推理，可能造成推理异常。**建议对Moe模型进行Merge LoRA**（vLLM不受影响）。
   - 注意：由于transformers和Megatron模型专家结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
 - 🔥test_convert_precision: 测试HF和Megatron格式权重转换的精度误差。默认为False。
 - test_convert_dtype: 转换精度测试使用的dtype，默认为'float32'。
