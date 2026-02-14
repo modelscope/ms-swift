@@ -1,8 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+import re
 from dataclasses import dataclass
 from typing import Literal, Optional
 
+from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils.versions import require_version
 
 from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
@@ -156,6 +158,10 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         deepspeed_autotp_size (Optional[int]): The tensor parallelism size for DeepSpeed AutoTP. To use this, the
             `--deepspeed` argument must be set to 'zero0', 'zero1', or 'zero2'. Note: This feature only supports
             full-parameter fine-tuning. Defaults to None.
+        resume_from_checkpoint (Optional[str]): In addition to specifying a checkpoint path directly, you can pass
+            ``"true"`` (case-insensitive) to automatically detect the last checkpoint from `output_dir`.
+            If `output_dir` uses versioned subdirectories (e.g. ``v0-<timestamp>``), the latest version is
+            scanned first. When no checkpoint is found, training starts from scratch.
     """
     add_version: bool = True
     create_checkpoint_symlink: bool = False
@@ -194,13 +200,17 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
-            self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
-            # The non-resume_only_model will have its weights loaded in the trainer.
-            if self.resume_only_model:
-                if self.tuner_type == 'full':
-                    self.model = self.resume_from_checkpoint
-                else:
-                    self.adapters = [self.resume_from_checkpoint]
+            # Support resume_from_checkpoint=True to auto-find last checkpoint from output_dir.
+            if isinstance(self.resume_from_checkpoint, str) and self.resume_from_checkpoint.lower() == 'true':
+                self.resume_from_checkpoint = self._resolve_last_checkpoint()
+            if self.resume_from_checkpoint:
+                self.resume_from_checkpoint = to_abspath(self.resume_from_checkpoint, True)
+                # The non-resume_only_model will have its weights loaded in the trainer.
+                if self.resume_only_model:
+                    if self.tuner_type == 'full':
+                        self.model = self.resume_from_checkpoint
+                    else:
+                        self.adapters = [self.resume_from_checkpoint]
         BaseArguments.__post_init__(self)
         self._init_override()
         TunerArguments.__post_init__(self)
@@ -387,6 +397,48 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         if self.output_dir is None:
             self.output_dir = f'output/{self.model_suffix}'
         self.output_dir = to_abspath(self.output_dir)
+
+    def _resolve_last_checkpoint(self) -> Optional[str]:
+        """Resolve the last checkpoint from output_dir when resume_from_checkpoint is set to True.
+
+        Searches for checkpoint-* directories in output_dir. If output_dir uses versioned
+        subdirectories, scans from the latest version backward until a checkpoint is found.
+
+        Returns:
+            The path to the last checkpoint, or None if no checkpoint is found.
+        """
+        if self.output_dir is None:
+            logger.warning('resume_from_checkpoint is set to True but output_dir is not specified. '
+                           'Cannot auto-detect checkpoint. Training will start from scratch.')
+            return None
+
+        output_dir = self.output_dir
+        output_dir = to_abspath(output_dir)
+
+        # First, try finding checkpoints directly in output_dir.
+        last_ckpt = get_last_checkpoint(output_dir) if os.path.isdir(output_dir) else None
+        if last_ckpt is not None:
+            logger.info(f'Auto-detected last checkpoint: {last_ckpt}')
+            return last_ckpt
+
+        # If not found, scan versioned subdirectories (v0-*, v1-*, ...) from latest to earliest.
+        if os.path.isdir(output_dir):
+            subdirs = []
+            for name in os.listdir(output_dir):
+                m = re.match(r'v(\d+)', name)
+                if m is not None and os.path.isdir(os.path.join(output_dir, name)):
+                    subdirs.append((int(m.group(1)), name))
+            subdirs.sort(reverse=True)  # latest version first
+            for _, subdir_name in subdirs:
+                candidate = os.path.join(output_dir, subdir_name)
+                last_ckpt = get_last_checkpoint(candidate)
+                if last_ckpt is not None:
+                    logger.info(f'Auto-detected last checkpoint from versioned subdir: {last_ckpt}')
+                    return last_ckpt
+
+        logger.warning(f'resume_from_checkpoint=True but no checkpoint found in {output_dir}. '
+                       'Training will start from scratch.')
+        return None
 
     def _init_eval_strategy(self):
         if self.eval_strategy is None:
