@@ -16,8 +16,9 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 
 from swift.model import get_model_processor, save_checkpoint
-from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, get_logger,
-                         get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank, safe_snapshot_download)
+from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, gc_collect,
+                         get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank,
+                         safe_snapshot_download)
 from ..tuners import LoraParallelLinear
 
 logger = get_logger()
@@ -1549,7 +1550,7 @@ class GPTBridge:
             - For full model format, saves complete model configuration and weights.
             - Automatically handles FP8 quantization configuration if enabled.
         """
-        torch.cuda.empty_cache()
+        gc_collect()
         saver = StreamingSafetensorSaver(
             save_dir=output_dir, max_shard_size=self.args.max_shard_size, is_peft_format=is_peft_format)
         mg_models = [unwrap_model(mg_model) for mg_model in mg_models]

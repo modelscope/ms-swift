@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import gc
+
 from .base import MegatronCallback
 
 

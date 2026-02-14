@@ -1,6 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-
 from swift.utils import check_json_format, is_last_rank
 from .base import MegatronCallback
 from .utils import rewrite_logs

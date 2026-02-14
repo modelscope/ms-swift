@@ -15,7 +15,7 @@ from transformers.utils import is_torch_npu_available
 
 from swift.metrics import Metric
 from swift.model import get_processor
-from swift.template import Template, TemplateMeta
+from swift.template import Template
 from swift.utils import get_device, get_dist_setting, get_logger, is_dist
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
