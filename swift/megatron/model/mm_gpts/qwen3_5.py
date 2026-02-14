@@ -1,6 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from functools import partial
-
 import torch
 from megatron.core.extensions.transformer_engine import _get_extra_te_kwargs
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule

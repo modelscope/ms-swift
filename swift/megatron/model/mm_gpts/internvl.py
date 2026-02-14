@@ -4,7 +4,7 @@ import torch
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
-from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 

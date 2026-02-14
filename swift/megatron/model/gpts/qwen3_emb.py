@@ -2,7 +2,7 @@
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
-from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelMeta, register_megatron_model
 
 
 class Qwen3EmbBridge(GPTBridge):

@@ -17,7 +17,6 @@ from swift.model import ModelType
 from swift.utils import to_device
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
-from ..mm_gpt_model import MultimodalGPTModel
 from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 

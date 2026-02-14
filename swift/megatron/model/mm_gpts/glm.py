@@ -4,7 +4,7 @@ from swift.template import Template
 from ..constant import MegatronModelType
 from ..gpt_bridge import MultimodalGPTBridge
 from ..gpts.glm4 import Glm4Bridge, Glm4Loader
-from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 

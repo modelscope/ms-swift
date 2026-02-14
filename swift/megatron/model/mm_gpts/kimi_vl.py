@@ -6,7 +6,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import MultimodalGPTBridge
-from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 
@@ -24,7 +24,7 @@ class KimiVLVit(HuggingFaceModule):
     _aligner = ['multi_modal_projector']
 
     def __init__(self, config):
-        args = get_args()
+        args = config.args
         model_cls = get_class_from_dynamic_module('modeling_kimi_vl.DeepseekV3ForCausalLM', args.model_dir)
         super().__init__(config, [model_cls])
 
