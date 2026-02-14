@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 import megatron.core
 import torch
-from megatron.core import InferenceParams, mpu
+from megatron.core import InferenceParams
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import VocabParallelEmbedding, reduce_scatter_to_sequence_parallel_region
 from megatron.core.transformer.module import MegatronModule

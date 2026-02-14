@@ -1,8 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import functools
 import gc
-import time
-from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 

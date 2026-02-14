@@ -156,7 +156,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             res = torch.concat([output_tensor, ref_output_tensor], dim=dim)
         return res, partial(self.loss_func, data=data, kl_data=kl_data, label=label)
 
-    def _prepare_batch(self, data, vp_stage):
+    def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         res = []
         num_samples = data.pop('num_samples')
         for key in ['completion_', 'KL_completion_']:
@@ -169,7 +169,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         res[0]['label'] = data['label']
         return res
 
-    def _log_callback(self, logs):
-        super()._log_callback(logs)
+    def _log_callback(self, logs, n_steps):
+        super()._log_callback(logs, n_steps)
         if 'rewards/chosen' in logs and 'rewards/rejected' in logs:
             logs['rewards/margins'] = logs['rewards/chosen'] - logs['rewards/rejected']

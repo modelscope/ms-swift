@@ -4,13 +4,12 @@ import shutil
 from typing import List, Optional, Union
 
 import torch.distributed as dist
-from megatron.core import mpu
 from transformers.utils import strtobool
 
 from swift.megatron.arguments import MegatronExportArguments
 from swift.megatron.convert import test_convert_precision
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import initialize_megatron, load_mcore_checkpoint, prepare_mcore_model, save_mcore_checkpoint
+from swift.megatron.utils import load_mcore_checkpoint, prepare_mcore_model, save_mcore_checkpoint
 from swift.pipelines import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
 

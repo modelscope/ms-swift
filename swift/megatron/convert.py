@@ -3,8 +3,6 @@
 import math
 import os
 import shutil
-from dataclasses import fields
-
 import torch
 from transformers.utils import strtobool
 
@@ -12,8 +10,8 @@ from swift.arguments import ExportArguments
 from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
-from .model import get_mcore_model, get_megatron_model_meta
-from .utils import (initialize_megatron, load_mcore_checkpoint, patch_torch_dist_shard, prepare_mcore_model,
+from .model import get_mcore_model
+from .utils import (load_mcore_checkpoint, patch_torch_dist_shard, prepare_mcore_model,
                     save_mcore_checkpoint, test_convert_precision)
 
 logger = get_logger()

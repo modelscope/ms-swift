@@ -54,7 +54,7 @@ class OutputLayerLinear(TELinear):
 
 
 class GPTModel(McoreGPTModel):
-
+    config: MegatronModelConfig
     def __init__(
         self,
         config: MegatronModelConfig,

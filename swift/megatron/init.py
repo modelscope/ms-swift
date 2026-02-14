@@ -8,7 +8,6 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from copy import copy
-from datetime import timedelta
 from functools import partial
 from typing import List, Optional, Tuple
 
@@ -20,7 +19,7 @@ from packaging import version
 from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
 
-from swift.utils import get_logger, is_flash_attn_3_available, is_last_rank, split_list
+from swift.utils import get_logger, is_flash_attn_3_available, split_list
 
 logger = get_logger()
 
@@ -516,7 +515,6 @@ def _patch_peft_ModulesToSaveWrapper():
 def _patch_TransformerLayer():
     import megatron.core
     from megatron.core.transformer import TransformerLayer
-    from megatron.core import mpu
     _origin_forward = TransformerLayer.forward
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 

@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import collections
 import dataclasses
 import logging
 import os
@@ -7,16 +6,16 @@ import shutil
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, nullcontext
 from functools import partial
-from typing import Callable, Dict, List, Literal, Optional
+from typing import Callable, Dict, List, Optional
 
 import megatron.core
 import torch
 import torch.nn
-from megatron.core import mpu, tensor_parallel
+from megatron.core import mpu
 from megatron.core.distributed import finalize_model_grads
 from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
-from megatron.core.transformer.module import Float16Module, MegatronModule
+from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from modelscope import check_local_model_is_latest
@@ -26,14 +25,13 @@ from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (copy_original_module_weight, get_optimizer_param_scheduler, get_padding_to,
-                                  load_mcore_checkpoint, logical_and_across_model_parallel_group, patch_merge_fn,
+                                  load_mcore_checkpoint,
                                   prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
                                   save_mcore_checkpoint, wrap_model)
-from swift.metrics import MeanMetric
 from swift.template import Template
-from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
+from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
-from swift.utils import (JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, is_last_rank,
+from swift.utils import (deep_getattr, get_last_valid_indices, get_logger, is_last_rank,
                          ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
@@ -475,7 +473,7 @@ class BaseMegatronTrainer(ABC):
 
     def _prepare_data_iterator(self, train_dataset, val_dataset):
         train_dataloader, val_dataloader = self._prepare_dataloader(train_dataset, val_dataset)
-        return (iter(self.cyclic_iter(train_dataloader)), iter(self.cyclic_iter(val_dataloader)))
+        return iter(self.cyclic_iter(train_dataloader)), iter(self.cyclic_iter(val_dataloader))
 
     def train(self, train_dataset, val_dataset):
         args = self.args

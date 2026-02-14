@@ -3,7 +3,6 @@ import re
 from dataclasses import dataclass, fields
 from typing import Any, Dict, List, Literal, Optional, Union
 
-import torch
 import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.core.fusions.fused_bias_geglu import quick_gelu
@@ -236,7 +235,6 @@ class MegatronModelConfig(TransformerConfig):
                                f'(num_experts / {MAX_NPU_EXPERTS_PER_EP}) or higher.')
 
 
-logger = get_logger()
 config_mapping = {
     'num_layers': ['num_hidden_layers'],
     'hidden_size': ['hidden_size'],
@@ -439,7 +437,6 @@ def convert_hf_config(config) -> Dict[str, Any]:
 
 
 def create_mcore_model_config(args, hf_config):
-    from swift.megatron.arguments import MegatronArguments
     kwargs = convert_hf_config(hf_config)
     for f in fields(MegatronModelConfig):
         key, value = f.name, getattr(args, f.name, None)

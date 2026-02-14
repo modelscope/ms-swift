@@ -301,7 +301,8 @@ def load_mcore_checkpoint(args,
                           adapter_name: str = 'default'):
     if load_arg in {'mcore_adapter', 'mcore_ref_adapter'}:
         is_peft_format = True
-    elif load_arg in {'mcore_model', 'mcore_ref_model'}:
+    else:
+        # 'mcore_model', 'mcore_ref_model'
         is_peft_format = False
     load_dir = getattr(args, load_arg)
 

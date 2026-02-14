@@ -9,14 +9,11 @@ import torch
 import torch.nn.functional as F
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
-from transformers import AutoConfig
 
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
-from swift.model import get_model_info_meta
 from swift.template import Template
 from swift.utils import get_logger, to_device
-from ..model import get_megatron_model_meta
 from ..utils import forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin

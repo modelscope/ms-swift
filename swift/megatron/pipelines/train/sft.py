@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from dataclasses import asdict
-from functools import partial
 from typing import List, Optional, Union
 
 import torch
