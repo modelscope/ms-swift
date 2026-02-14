@@ -266,15 +266,8 @@ def save_mcore_checkpoint(args, model: list, optimizer=None, opt_param_scheduler
     if is_master():
 
         def iter_finalize_fn():
-            # TODO: delete_checkpoint
+            # TODO: save_total_limit
             tracker_path = os.path.join(args.output_dir, 'latest_checkpointed_iteration.txt')
-            prev_iteration = 0
-            save_retain_interval = getattr(args, 'save_retain_interval', None)
-            if save_retain_interval is not None:
-                if os.path.exists(tracker_path):
-                    with open_file(tracker_path, 'r') as f:
-                        prev_iteration = int(f.read().strip())
-
             with open_file(tracker_path, 'w') as f:
                 f.write(str(iteration))
 

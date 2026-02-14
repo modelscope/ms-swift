@@ -102,16 +102,17 @@ class BaseMegatronTrainer(ABC):
             getattr(callback, event)(**kwargs)
 
     def on_log(self, logs, prefix=''):
-        self._log_callback(logs)
+        n_steps = logs.pop('n_steps')
+        self._log_callback(logs, n_steps)
         if prefix:
             logs = {f'{prefix}{k}': v for k, v in logs.items()}
         self.call_event('on_log', logs=logs)
 
-    def _log_callback(self, logs):
+    def _log_callback(self, logs, n_steps):
         args = self.args
         config = self.config
         if config.num_moe_experts is not None:
-            moe_loss_scale = 1 / args.num_microbatches
+            moe_loss_scale = 1 / args.num_microbatches / n_steps
             track_names = []
             # TODO: support moe_router_load_balancing_type list
             if config.moe_router_load_balancing_type in ['aux_loss', 'seq_aux_loss']:
@@ -130,7 +131,7 @@ class BaseMegatronTrainer(ABC):
                 moe_layer_freq=config.moe_layer_freq,
                 **track_moe_kwargs)
         if args.mtp_num_layers is not None:
-            mtp_loss_scale = 1 / args.num_microbatches
+            mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
             logs.update({k.replace(' ', '_'): v for k, v in mtp_logs.items()})
@@ -644,6 +645,9 @@ class BaseMegatronTrainer(ABC):
         return metrics, grad_norm
 
     def _aggregated_metrics(self, metrics, total_metrics):
+        if 'n_steps' not in total_metrics:
+            total_metrics['n_steps'] = 0
+        total_metrics['n_steps'] += 1
         for key in metrics[0].keys():
             val = [x[key].view(-1) for x in metrics if key in x]
             val = torch.stack(val, dim=0)
