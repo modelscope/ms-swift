@@ -60,7 +60,7 @@ alpaca格式:
 {"messages": [{"role": "system", "content": "你是个有用无害的数学计算器"}, {"role": "user", "content": "1+1等于几"}, {"role": "assistant", "content": "等于2"}, {"role": "user", "content": "再加1呢"}, {"role": "assistant", "content": "等于3"}]}
 ```
 
-- 可以通过增加"loss"字段，控制对应的模型回复部分是否计算损失（需ms-swift>=3.8）。默认该字段为None。若"loss"设置为true，则对应content进行损失计算（对应loss_scale为1）；若"loss"设置为false，则对应content不进行损失计算。需要注意的是，该功能只对"role"为"assistant"的部分生效；该功能优先级高于命令行参数 `--loss_scale`。示例数据格式如下：
+- 可以通过增加"loss"字段，控制对应的模型回复部分是否计算损失。默认该字段为None。若"loss"设置为true，则对应content进行损失计算（对应loss_scale为1）；若"loss"设置为false，则对应content不进行损失计算。需要注意的是，该功能只对"role"为"assistant"的部分生效；该功能优先级高于命令行参数 `--loss_scale`。示例数据格式如下：
 ```jsonl
 {"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2", "loss": true}]}
 ```
@@ -88,7 +88,7 @@ alpaca格式:
 
 > 注: RM 额外支持 margin 列，参考[RM文档](../Instruction/RLHF.md#rm)
 
-当然，你也可以直接使用`rejected_messages`，而不是只提供`rejected_response`/`rejected_images`（需ms-swift>=3.8），这将提供更大的灵活度（例如多模态/agent场景）。若使用rejected_messages，在多模态场景下，你需要额外传入"rejected_images"，"rejected_audios"，"rejected_videos"等内容；在Agent场景下，你需要额外传入"rejected_tools"等内容。多模态数据格式例子如下：
+当然，你也可以直接使用`rejected_messages`，而不是只提供`rejected_response`/`rejected_images`，这将提供更大的灵活度（例如多模态/agent场景）。若使用rejected_messages，在多模态场景下，你需要额外传入"rejected_images"，"rejected_audios"，"rejected_videos"等内容；在Agent场景下，你需要额外传入"rejected_tools"等内容。多模态数据格式例子如下：
 - 若使用`rejected_response`，'rejected_images/rejected_audios/rejected_videos/rejected_tools'的默认值为'images/audios/videos/tools'；若使用`rejected_messages`，则需要额外传入。
 
 ```jsonl
@@ -100,11 +100,11 @@ alpaca格式:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": "这是一只小狗。"}
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_images": ["dog.png"]}
-# 例子一也可写成：(ms-swift>=3.12)
+# 例子一也可写成：
 {"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只小猫咪。"}], "images": ["cat.png"], "rejected_response": [{"role": "assistant", "content": "这是一只小狗。"}]}
 ```
 
-ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
+你也可以将Agent数据集组织成以下形式：
 ```jsonl
 # 会寻找`messages`最后一个user的位置，并替换之后的内容为`rejected_response`组成`rejected_messages`
 {"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"天气预报。获取实时空气质量。当前空气质量，PM2.5，PM10信息\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"城市名，例如：上海\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。"}], "rejected_response": [{"role": "assistant", "content": "我不知道。"}]}
@@ -196,7 +196,7 @@ ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
   - videos: video, videos.
   - audios: audio, audios.
 - 如果需要传入base64格式而不是文件路径，以下为样本例子：`"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`。
-- 若你希望直接传入视频帧，而不是视频，你可以使用以下格式（需"ms-swift>=3.8.3"）：`"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`。该格式只有部分模型支持，包括Qwen2/2.5/3-VL、Qwen2.5/3-Omni以及其衍生模型。
+- 若你希望直接传入视频帧，而不是视频，你可以使用以下格式：`"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`。该格式只有部分模型支持，包括Qwen2/2.5/3-VL、Qwen2.5/3-Omni以及其衍生模型。
 
 多模态模型的RLHF和序列分类的数据格式可以参考纯文本大模型的格式，并在此基础上增加`images`等字段。
 
@@ -229,7 +229,7 @@ ms-swift>=3.12，你可以将Agent数据集组织成以下形式：
 - bbox_type: 可选项为'real'，'norm1'。默认为'real'，即bbox为真实bbox值。若是'norm1'，则bbox已经归一化为0~1。
 - image_id: 通常用于多图grounding任务。该参数只有当bbox_type为'real'时生效，代表bbox对应的图片是第几张，用于缩放bbox。索引从0开始，默认全为第0张。image_id的数量需要和bbox的数量一致。例如：若bbox的长度为10，images的长度为2，那么image_id的长度需要是10，其值需要在`{0, 1}`集合内。
 
-对于Qwen2.5-VL/Qwen3-VL，你可以使用环境`QWENVL_BBOX_FORMAT='new'`（默认为'legacy'，需"ms-swift>=3.9.1"），以兼容[官方cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb)格式。并将数据集定义成以下格式：
+对于Qwen2.5-VL/Qwen3-VL，你可以使用环境`QWENVL_BBOX_FORMAT='new'`（默认为'legacy'），以兼容[官方cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb)格式。并将数据集定义成以下格式：
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>找到图像中的<ref-object>"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"},\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["羊", "羊", "羊"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
 ```

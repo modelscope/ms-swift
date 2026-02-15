@@ -7,7 +7,7 @@
 - 🔥micro_batch_size: Batch size per device, default is 1.
 - 🔥global_batch_size: Total batch size, equivalent to `micro_batch_size * data parallel size * gradient accumulation steps`. Default is 16.
   - Here, `Data Parallelism size (DP) = Total number of GPUs / (TP × PP × CP)`.
-- 🔥recompute_granularity: Granularity of activation recomputation, options are 'full', 'selective' and 'none' (the 'none' option requires ms-swift>=3.12.3). 'full' means recomputing the entire transformer layer, while 'selective' means only recomputing the core attention part of the transformer layer. 'selective' is generally recommended. Default is 'selective'.
+- 🔥recompute_granularity: Granularity of activation recomputation, options are 'full', 'selective' and 'none'. 'full' means recomputing the entire transformer layer, while 'selective' means only recomputing the core attention part of the transformer layer. 'selective' is generally recommended. Default is 'selective'.
   - When you set it to 'selective', you can specify `--recompute_modules` to choose which parts to recompute.
 - 🔥recompute_method: This parameter takes effect only when recompute_granularity is set to 'full', options are 'uniform', 'block'. Default is None.
 - 🔥recompute_num_layers: This parameter takes effect only when recompute_granularity is set to 'full'. Default is None. If `recompute_method` is set to uniform, this parameter specifies the number of transformer layers in each uniformly divided recomputation unit. For example, you can specify `--recompute_granularity full --recompute_method uniform --recompute_num_layers 4`. The larger the recompute_num_layers, the smaller the memory usage but higher computation cost. Note: The number of model layers in the current process must be divisible by `recompute_num_layers`. Default is None.
@@ -53,15 +53,14 @@
 - seed: Random seed for python, numpy, pytorch, and cuda, default is 42.
 - dataset_shuffle: Whether to shuffle the dataset. Defaults to True.
   - Note: **Megatron-SWIFT's shuffling includes two parts**: dataset shuffling, controlled by `dataset_shuffle`; and shuffling in train_dataloader, controlled by `train_dataloader_shuffle`.
-- train_dataloader_shuffle: Whether to use shuffling for train_dataloader. Defaults to True. This parameter requires "ms-swift>=3.12".
-  - In "ms-swift>3.12", val_dataset will no longer be shuffled.
+- train_dataloader_shuffle: Whether to use shuffling for train_dataloader. Defaults to True. val_dataset is not shuffled.
 - 🔥dataloader_num_workers: Number of workers for the dataloader. Defaults to 4.
   - Note: If `--streaming true` is set, it will be set to 1.
 - dataloader_pin_memory: Defaults to True.
 - dataloader_persistent_workers: Defaults to True.
 - dataloader_prefetch_factor: Defaults to 2.
 - data_sharding: Takes effect on train_dataloader when `--train_dataloader_shuffle true`. Defaults to False. This parameter controls the scope of dataset shuffling. If set to True, the dataset is first sharded, then each shard is shuffled (slightly saves memory); if set to False, the dataset is shuffled first, then sharded (better shuffling effect).
-- 🔥group_by_length: (ms-swift>=3.12) Whether to group samples with roughly similar lengths together in the training dataset (with randomness), to minimize padding and ensure load balancing across nodes and processes for improved efficiency. Defaults to False. For the specific algorithm, refer to `transformers.trainer_pt_utils.get_length_grouped_indices`.
+- 🔥group_by_length: Whether to group samples with roughly similar lengths together in the training dataset (with randomness), to minimize padding and ensure load balancing across nodes and processes for improved efficiency. Defaults to False. For the specific algorithm, refer to `transformers.trainer_pt_utils.get_length_grouped_indices`.
 - te_rng_tracker: Use the Transformer Engine version of the random number generator. Defaults to False.
 - data_parallel_random_init: Enable different random initializations across data parallel ranks. Defaults to False.
 - padding_free: Flatten the data in a batch to avoid data padding, thereby reducing memory usage and accelerating training. Defaults to True.
@@ -104,8 +103,8 @@
 - 🔥no_save_optim: Do not save optimizer, default is False. When performing full-parameter training, this can significantly reduce storage time.
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥mcore_model: The checkpoint directory to load (mcore storage format). Defaults to None. For information about resuming training from checkpoints, please refer to the description of the `--finetune` parameter.
-  - Note: In "ms-swift>3.10", direct loading and saving of safetensors weights is supported, refer to [mcore-bridge documentation](./Mcore-Bridge.md).
-  - Difference between `--model` and `--mcore_model`: `--model/--adapters/--ref_model/--ref_adapters` are followed by safetensors weight directories, while `--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter` are followed by mcore weight directories. `--model/--adapters` do not support loading checkpoint resumption states. Therefore, in "ms-swift>=3.12", if you set `--no_save_optim false`, mcore weight format will be additionally stored for checkpoint resumption, and you need to use `--mcore_model/--mcore_adapter` to load the checkpoint resumption state.
+  - megatron-swift recommends directly loading and storing safetensors weights, refer to [mcore-bridge documentation](./Mcore-Bridge.md).
+  - Difference between `--model` and `--mcore_model`: `--model/--adapters/--ref_model/--ref_adapters` are followed by safetensors weight directories, while `--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter` are followed by mcore weight directories. `--model/--adapters` do not support loading checkpoint resumption states. Therefore, if you set `--no_save_optim false`, mcore weight format will be additionally stored for checkpoint resumption, and you need to use `--mcore_model/--mcore_adapter` to load the checkpoint resumption state.
 - 🔥no_load_optim: Do not load optimizer, default is False.
   - Note: When resuming training from a checkpoint, setting `--no_load_optim false` (i.e., loading the optimizer state) typically consumes significantly more GPU memory than setting `--no_load_optim true` (i.e., skipping the optimizer state).
 - 🔥no_load_rng: Do not load RNG, default is False.
@@ -146,7 +145,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 
 **Logging Parameters**:
-- report_to: (ms-swift>=3.12) Enabled logging backends. Defaults to `['tensorboard']`. Options are 'tensorboard', 'wandb', and 'swanlab'. Login for 'wandb' and 'swanlab' can use `WANDB_API_KEY` and `SWANLAB_API_KEY` environment variables.
+- report_to: Enabled logging backends. Defaults to `['tensorboard']`. Options are 'tensorboard', 'wandb', and 'swanlab'. Login for 'wandb' and 'swanlab' can use `WANDB_API_KEY` and `SWANLAB_API_KEY` environment variables.
 - 🔥log_interval: Time interval for logging (unit: iters). Defaults to 5.
 - tensorboard_dir: Directory where tensorboard logs are written. Defaults to None, which means logs are stored in the `f'{save}/runs'` directory.
 - tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
@@ -234,7 +233,7 @@ LoRA Training:
 
 - model: The model_id or model_path of safetensors weights. Default is None. Supports resume training from checkpoint using `--no_load_optim false --no_load_rng false`.
 - model_type: Model type. For details, refer to [ms-swift command-line parameters documentation](../Instruction/Command-line-parameters.md).
-- 🔥save_safetensors: Defaults to True, whether to directly save as safetensors weights. This parameter in "ms-swift>=3.12" supports saving checkpoint resumption content such as optimizer weights and random number states (additionally stores mcore format weights), controlled by `--no_save_optim` and `--no_save_rng`. When resuming from checkpoint, use `--mcore_model/--mcore_adapter` parameters to load mcore format weights.
+- 🔥save_safetensors: Defaults to True, whether to directly save as safetensors weights. If `--no_save_optim false` is set, additional mcore format weights and optimizer weights will be saved. When resuming from checkpoint, use `--mcore_model/--mcore_adapter/--no_load_optim/--no_load_rng` parameters to load mcore format weights.
 - adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.
 - ref_model: model_id or model_path of ref_model safetensors weights. Required when using DPO/GRPO/KTO algorithms with full-parameter training. Default is None, set to `--model`.
 - ref_adapters: List of adapter_id or adapter_path of ref_adapters safetensors weights (currently only supports length of 1). Default is `[]`.
@@ -260,7 +259,7 @@ LoRA Training:
   - **Currently the rope_scaling module uses transformers implementation and supports all rope_scaling supported by transformers.**
 - apply_wd_to_qk_layernorm: Used for Qwen3-Next full-parameter training to apply weight decay to qk layernorm. Defaults to False.
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss in SFT training. Defaults to False.
-- enable_channel_loss: Enable channel loss. Defaults to `False`. You need to prepare a "channel" field in the dataset, and ms-swift will group and calculate loss based on this field (if the "channel" field is not prepared, it will be classified under the default `None` channel). For dataset format, refer to [channel loss](https://idealab.alibaba-inc.com/Customization/Custom-dataset.md#channel-loss). Channel loss is compatible with techniques such as packing/padding_free/loss_scale.
+- enable_channel_loss: Enable channel loss. Defaults to `False`. You need to prepare a "channel" field in the dataset, and ms-swift will group and calculate loss based on this field (if the "channel" field is not prepared, it will be classified under the default `None` channel). For dataset format, refer to [channel loss](../Customization/Custom-dataset.md#channel-loss). Channel loss is compatible with techniques such as packing/padding_free/loss_scale.
 - 🔥task_type: Defaults to 'causal_lm'. Options are 'causal_lm', 'seq_cls', 'embedding', and 'generative_reranker'.
 - num_labels: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Represents the number of labels. Defaults to None.
 - problem_type: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Options are 'regression', 'single_label_classification', 'multi_label_classification'. Defaults to None. If the model is reward_model or num_labels is 1, this parameter is 'regression'; otherwise, it is 'single_label_classification'.
@@ -296,10 +295,9 @@ In addition to inheriting the training parameters, the following parameters are 
 ### DPO Parameters
 
 - mcore_ref_model: Loading path for ref_model. Required when using DPO/GRPO/KTO algorithms with full parameter training. Defaults to None, which sets it to `mcore_model`.
-- mcore_ref_adapter: Weight loading path for ref_adapter. Defaults to None. If you want to use LoRA weights generated from SFT for DPO, please use "ms-swift>=3.8" and set `--mcore_adapter sft_ckpt --mcore_ref_adapter sft_ckpt --finetune true` during training. For checkpoint resumption in this scenario, set `--mcore_adapter rlhf_ckpt --mcore_ref_adapter sft_ckpt --finetune false`.
+- mcore_ref_adapter: Weight loading path for ref_adapter. Defaults to None. If you want to use LoRA weights generated from SFT for DPO, set `--mcore_adapter sft_ckpt --mcore_ref_adapter sft_ckpt --finetune true` during training. For checkpoint resumption in this scenario, set `--mcore_adapter rlhf_ckpt --mcore_ref_adapter sft_ckpt --finetune false`.
 - beta: Has the same meaning as in [TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig). It controls the degree of deviation from the reference model. A higher beta value indicates less deviation from the reference model. For the IPO loss function (`loss_type="ipo"`), beta is the regularization parameter as mentioned in the [paper](https://huggingface.co/papers/2310.12036). Default is 0.1.
 - 🔥rpo_alpha: A parameter from the [RPO paper](https://huggingface.co/papers/2404.19733) that controls the weight of the NLL term (i.e., the SFT loss) in the loss function, where `loss = dpo_loss + rpo_alpha * sft_loss`. The paper recommends setting it to `1.`. The default value is `None`, meaning the SFT loss is not included by default.
-  - **Note**: In "ms-swift<3.8", the default value was `1.`. Starting from "ms-swift>=3.8", the default has been changed to `None`.
 - reference_free: Whether to ignore the provided reference model and implicitly use a reference model that assigns equal probability to all responses. Default is `False`.
 - label_smoothing: Default is 0.
 - f_divergence_type: Default is `reverse_kl`. See the [TRL documentation](https://huggingface.co/docs/trl/main/en/dpo_trainer) for possible values.
@@ -391,7 +389,7 @@ Built-in reward function parameters refer to the [documentation](../Instruction/
 
 ## Export Parameters
 
-This section introduces the parameters for `megatron export` (requires "ms-swift>=3.10"). To use the `swift export` command for exporting, please refer to the [ms-swift Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#export-arguments). Compared to `swift export`, `megatron export` supports distributed and multi-node exporting. Megatron export parameters inherit from Megatron parameters and basic parameters.
+This section introduces the parameters for `megatron export`. To use the `swift export` command for exporting, please refer to the [ms-swift Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#export-arguments). Compared to `swift export`, `megatron export` supports distributed and multi-node exporting. Megatron export parameters inherit from Megatron parameters and basic parameters.
 - 🔥to_mcore: Convert HF format weights to Megatron format. Defaults to False.
 - 🔥to_hf: Convert Megatron format weights to HF format. Defaults to False.
 - 🔥merge_lora: Defaults to None. If `to_hf` is set to True, this parameter defaults to `True`, otherwise False. In other words, by default, LoRA will be merged when saving in safetensors format; when saving in torch_dist format, LoRA will not be merged. The merged weights are stored in the `--save` directory.

@@ -6,7 +6,7 @@
 - 🔥micro_batch_size: 每个device的批次大小，默认为1。
 - 🔥global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
   - 其中，`数据并行大小 (DP) = 总GPU数 / (TP × PP × CP)`。
-- 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective' and 'none'（其中'none'为 ms-swift>=3.12.3支持）。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
+- 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective' and 'none'。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
   - 当你设置为'selective'时，你可以通过指定`--recompute_modules`来选择对哪些部分进行重新计算。
 - 🔥recompute_method: 该参数需将recompute_granularity设置为'full'才生效，可选项为'uniform', 'block'。默认为None。
 - 🔥recompute_num_layers: 该参数需将recompute_granularity设置为'full'才生效，默认为None。若`recompute_method`设置为uniform，该参数含义为每个均匀划分的重新计算单元的transformer layers数量。例如你可以指定为`--recompute_granularity full --recompute_method uniform --recompute_num_layers 4`。recompute_num_layers越大，显存占用越小，计算成本越大。注意：当前进程中的模型层数需能被`recompute_num_layers`整除。默认为None。
@@ -50,15 +50,14 @@
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
 - dataset_shuffle: 是否对dataset进行随机操作。默认为True。
   - 注意：**Megatron-SWIFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
-- train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。该参数需"ms-swift>=3.12"。
-  - 在"ms-swift>3.12"，将不再对val_dataset进行随机操作。
+- train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。val_dataset不进行随机操作。
 - 🔥dataloader_num_workers: dataloader的workers数量，默认为4。
   - 注意：若设置`--streaming true`，则设置为1。
 - dataloader_pin_memory: 默认为True。
 - dataloader_persistent_workers: 默认为True。
 - dataloader_prefetch_factor: 默认为2。
 - data_sharding: 当`--train_dataloader_shuffle true`时对 train_dataloader 生效，默认为False。该参数控制数据集随机的范围。若设置为True，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为False，则先对数据集进行随机，再进行分片（更好的随机效果）。
-- 🔥group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
+- 🔥group_by_length: 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
 - te_rng_tracker: 使用 Transformer Engine 版本的随机数生成器。默认为False。
 - data_parallel_random_init: 在数据并行的各个 rank 之间启用不同的随机初始化。默认为False。
 - padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
@@ -97,9 +96,9 @@
   - 注意：训练结束时一定会保存权重。
 - 🔥no_save_optim: 不保存optimizer，默认为False。在全参数训练时，可以显著降低存储时间。
 - 🔥no_save_rng: 不保存rng，默认为False。
-- 🔥mcore_model: 加载的checkpoint目录（mcore存储格式），默认None。对于断点续训的介绍，请查看`--finetune`参数的介绍。
-  - 注意：在"ms-swift>3.10"，支持直接加载和存储safetensors权重，参考[mcore-bridge文档](./Mcore-Bridge.md)。
-  - `--model`与`--mcore_model`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`后加mcore权重目录。`--model/--adapters`不支持加载断点续训状态，因此在"ms-swift>=3.12"，若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--mcore_model/--mcore_adapter`来加载断点续训的状态。
+- 🔥mcore_model: 加载的checkpoint目录（mcore存储格式），默认None。对于断点续训的介绍，请查看`--finetune false`参数的介绍。
+  - megatron-swift推荐直接加载和存储safetensors权重，参考[mcore-bridge文档](./Mcore-Bridge.md)。
+  - `--model`与`--mcore_model`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`后加mcore权重目录。`--model/--adapters`不支持加载断点续训状态，因此若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--mcore_model/--mcore_adapter`来加载断点续训的状态。
 - 🔥no_load_optim: 不载入optimizer，默认为False。
   - 注意：断点续训时，设置`--no_load_optim false`读取优化器状态通常比`--no_load_optim true`不读取优化器状态消耗更大的显存资源。
 - 🔥no_load_rng: 不载入rng，默认为False。
@@ -139,7 +138,7 @@
 
 
 **日志参数**:
-- report_to: (ms-swift>=3.12) 启用的日志后端。默认为`['tensorboard']`。可选项为'tensorboard', 'wandb'和'swanlab'。'wandb'和'swanlab'登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
+- report_to: 启用的日志后端。默认为`['tensorboard']`。可选项为'tensorboard', 'wandb'和'swanlab'。'wandb'和'swanlab'登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
 - 🔥log_interval: log的时间间隔（单位：iters），默认为5。
 - tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
 - tensorboard_queue_size: 用于暂存事件和摘要的 TensorBoard 队列大小；当队列中待处理的事件和摘要数量达到该大小时，下一次调用 "add" 相关方法会触发将数据刷新写入磁盘。默认为50。
@@ -217,7 +216,7 @@ lora训练：
 **Mcore-Bridge参数**
 - model: safetensors权重的model_id或者model_path。默认为None。
 - model_type: 模型类型。介绍参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md)。
-- 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。该参数在"ms-swift>=3.12"支持了对优化器权重、随机数状态等断点续训内容进行保存（额外存储mcore格式权重），使用`--no_save_optim`和`--no_save_rng`控制。断点续训时使用`--mcore_model/--mcore_adapter`参数加载mcore格式权重。
+- 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。若设置了`--no_save_optim false`则额外mcore格式权重和优化器权重。断点续训时使用`--mcore_model/--mcore_adapter/--no_load_optim/--no_load_rng`参数加载mcore格式权重。
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。
 - ref_model: ref_model safetensors权重的model_id或者model_path。采用grpo、dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
 - ref_adapters: ref_adapters safetensors权重的adapter_id或者adapter_path的列表（目前只支持长度为1），默认为`[]`。
@@ -272,10 +271,9 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 
 ### DPO参数
 - mcore_ref_model: ref_model的加载路径。采用DPO/GRPO/KTO算法且使用全参数训练时需要传入。默认为None，即设置为`mcore_model`。
-- mcore_ref_adapter: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，请使用"ms-swift>=3.8"，并在训练时设置`--mcore_adapter sft_ckpt --mcore_ref_adapter sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--mcore_adapter rlhf_ckpt --mcore_ref_adapter sft_ckpt --finetune false`。
+- mcore_ref_adapter: 加载ref_adapter的权重路径，默认为None。若你要使用SFT产生的LoRA权重进行DPO，，请在训练时设置`--mcore_adapter sft_ckpt --mcore_ref_adapter sft_ckpt --finetune true`。若是此场景的断点续训，则设置`--mcore_adapter rlhf_ckpt --mcore_ref_adapter sft_ckpt --finetune false`。
 - beta: 含义与[TRL](https://huggingface.co/docs/trl/main/en/dpo_trainer#trl.DPOConfig)相同。控制与参考模型偏差程度的参数。beta值越高，表示与参考模型的偏差越小。对于 IPO 损失函数 (loss_type="ipo")，beta是[论文](https://huggingface.co/papers/2310.12036)中所指的正则化参数。默认为0.1。
 - 🔥rpo_alpha: 来自[RPO 论文](https://huggingface.co/papers/2404.19733)中的参数，用于控制损失函数中NLL项的权重（即SFT损失），`loss = dpo_loss + rpo_alpha * sft_loss`，论文中推荐设置为`1.`。默认为`None`，即默认不引入sft_loss。
-  - **注意**：在"ms-swift<3.8"，其默认值为`1.`。在"ms-swift>=3.8"该默认值修改为`None`。
 - reference_free: 是否忽略提供的参考模型，并隐式地使用一个对所有响应赋予相等概率的参考模型。默认为False。
 - label_smoothing: 默认为0.。
 - f_divergence_type: 默认为`reverse_kl`。可选值参考[TRL文档](https://huggingface.co/docs/trl/main/en/dpo_trainer)。
@@ -362,7 +360,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 当 `lmbda > 0` 但未启用 vLLM 时，将自动回退到 Off-Policy 模式。
 
 ## 导出参数
-这里介绍`megatron export`的参数（需"ms-swift>=3.10"），若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。
+这里介绍`megatron export`的参数，若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - 🔥to_hf: Megatron格式权重转成HF格式。默认为False。
 - 🔥merge_lora: 默认为None，若`to_hf`设置为True，该参数默认值为`True`，否则为False。即默认情况下，存储为safetensors格式时会合并LoRA；存储为torch_dist格式时，不会合并LoRA。合并后的权重存储在`--save`目录下。

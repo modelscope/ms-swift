@@ -172,7 +172,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ### Mcore-Bridge [Recommended]
 
-In "ms-swift>=3.10", Mcore-Bridge is supported, eliminating the cumbersome process of model conversion. For details, refer to [Mcore-Bridge Documentation](./Mcore-Bridge.md).
+Mcore-Bridge eliminates the tedious process of model conversion. For details, refer to the [Mcore-Bridge Documentation](./Mcore-Bridge.md).
 
 Training script:
 

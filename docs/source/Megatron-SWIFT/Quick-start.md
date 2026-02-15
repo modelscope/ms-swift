@@ -170,7 +170,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ### Mcore-Bridge【推荐】
 
-在"ms-swift>=3.10"，支持了Mcore-Bridge，去除模型转换的繁琐过程。具体参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
+Mcore-Bridge去除模型转换的繁琐过程。具体参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
 
 训练脚本：
 ```bash
