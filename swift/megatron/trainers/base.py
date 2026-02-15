@@ -83,14 +83,14 @@ class BaseMegatronTrainer(ABC):
 
     def _load_checkpoint(self):
         args = self.args
+        if not args.finetune:
+            self.state.iteration = self._load_iteration()
         if args.mcore_model is not None:
             self.state.iteration = load_mcore_checkpoint(
                 args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_model')
         if args.mcore_adapter is not None:
             self.state.iteration = load_mcore_checkpoint(
                 args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_adapter')
-        if not args.finetune:
-            self.state.iteration = self._load_iteration()
         self.state.consumed_train_samples = getattr(args, 'consumed_train_samples', 0)
 
     def call_event(self, event, **kwargs):
