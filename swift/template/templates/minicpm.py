@@ -12,7 +12,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3
+from ..vision_utils import load_video_minicpmv_mplug_owl3, load_video_minicpmv4_5
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, Qwen3MixedTemplateMeta, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
@@ -251,9 +251,50 @@ register_template(
 
 class MiniCPMV4_5Template(MiniCPMV2_6Template):
 
+    def init_env_args(self):
+        super().init_env_args()
+        self.max_num_frames = get_env_args('max_num_frames', int, 180)
+        self.max_num_packing = get_env_args('max_num_packing', int, 3)
+        assert 1 <= self.max_num_packing <= 6
+        self.time_scale = get_env_args('time_scale', float, 0.1)
+        self.choose_fps = get_env_args('choose_fps', float, 3)
+        self.force_packing = get_env_args('force_packing', int, None)
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type in {'image', 'video'}
+        load_video = partial(load_video_minicpmv4_5,
+                             max_num_frames=self.max_num_frames,
+                             max_num_packing=self.max_num_packing,
+                             time_scale=self.time_scale,
+                             choose_fps=self.choose_fps,
+                             force_packing=self.force_packing)
+        image_context = super().replace_tag('image', index, inputs)
+        if media_type == 'image':
+            return image_context
+        elif media_type == 'video':
+            return self.replace_video2image(load_video, inputs, lambda i: image_context)
+
+    def replace_video2image(self, load_video_func, inputs: StdTemplateInputs, replace_tag) -> List[Context]:
+        context_list = []
+        if self.mode in {'vllm', 'lmdeploy'}:
+            video = inputs.videos.pop(inputs.video_idx)
+            inputs.video_idx -= 1
+        else:
+            video = inputs.videos[inputs.video_idx]
+        images = inputs.images
+        new_images, temporal_ids = load_video_func(video)
+        inputs.images = images[:inputs.image_idx] + new_images + images[inputs.image_idx:]
+        for i in range(len(new_images)):
+            context_list += replace_tag(i)
+        inputs.image_idx += len(new_images)
+        inputs.extra_kwargs['temporal_ids'] = temporal_ids
+        return context_list
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = Template._encode(self, inputs)
         images = inputs.images
+        temporal_ids = inputs.extra_kwargs.get('temporal_ids', None)
         use_video = bool(inputs.videos)
         use_image_id = True
         max_slice_nums = self.max_slice_nums
@@ -267,12 +308,16 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
 
         image_processor = self.processor.image_processor
         image_inputs = image_processor([images], return_tensors='pt',
-                                       max_slice_nums=max_slice_nums).to(self.model_info.torch_dtype)
+                                       max_slice_nums=max_slice_nums,
+                                       temporal_ids=temporal_ids).to(self.model_info.torch_dtype)
 
         def _get_new_tokens(i):
-            placeholder = image_processor.get_slice_image_placeholder(
-                image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
-            placeholder += '\n'
+            if i in image_inputs.skip_image_idx[0]:
+                placeholder = ''
+            else:
+                placeholder = image_processor.get_slice_image_placeholder(
+                    image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
+                placeholder += '\n'
             return self.processor.encode(placeholder, add_special_tokens=False)
 
         input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)

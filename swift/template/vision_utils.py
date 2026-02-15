@@ -276,14 +276,15 @@ def load_video_llava(video: Union[str, bytes]) -> np.ndarray:
     return np.stack([x.to_ndarray(format='rgb24') for x in frames])
 
 
+def _uniform_sample(_l, _n):
+    gap = len(_l) / _n
+    idxs = [int(i * gap + gap / 2) for i in range(_n)]
+    return [_l[i] for i in idxs]
+
+
 def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
 
     from decord import VideoReader, cpu  # pip install decord
-
-    def uniform_sample(_l, _n):
-        gap = len(_l) / _n
-        idxs = [int(i * gap + gap / 2) for i in range(_n)]
-        return [_l[i] for i in idxs]
 
     video_io = load_file(video)
     vr = VideoReader(video_io, ctx=cpu(0))
@@ -291,10 +292,69 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     frame_idx = [i for i in range(0, len(vr), sample_fps)]
 
     if len(frame_idx) > max_num_frames:
-        frame_idx = uniform_sample(frame_idx, max_num_frames)
+        frame_idx = _uniform_sample(frame_idx, max_num_frames)
     frames = vr.get_batch(frame_idx).asnumpy()
     frames = [Image.fromarray(v.astype('uint8')) for v in frames]
     return frames
+
+
+def load_video_minicpmv4_5(video: Union[str, bytes],
+                           max_num_frames: int,
+                           max_num_packing: int,
+                           time_scale: float,
+                           choose_fps: float = None,
+                           force_packing: int = None):
+
+    from decord import VideoReader, cpu  # pip install decord
+    from scipy.spatial import cKDTree
+
+    def map_to_nearest_scale(values, scale):
+        tree = cKDTree(np.asarray(scale)[:, None])
+        _, indices = tree.query(np.asarray(values)[:, None])
+        return np.asarray(scale)[indices]
+
+    def group_array(arr, size):
+        return [arr[i:i+size] for i in range(0, len(arr), size)]
+
+    video_io = load_file(video)
+    vr = VideoReader(video_io, ctx=cpu(0))
+    fps = vr.get_avg_fps()
+    duration = len(vr) / fps
+
+    if choose_fps is None:
+        choose_fps = round(fps / 1)  # Get choose FPS based on the original FPS
+
+    # Prepare packing
+    if choose_fps * int(duration) <= max_num_frames:
+        packing_nums = 1
+        choose_frames = round(min(choose_fps, round(fps)) * min(max_num_frames, duration))
+    else:
+        packing_nums = math.ceil(duration * choose_fps / max_num_frames)
+        if packing_nums <= max_num_packing:
+            choose_frames = round(duration * choose_fps)
+        else:
+            choose_frames = round(max_num_frames * max_num_packing)
+            packing_nums = max_num_packing
+
+    frame_idx = [i for i in range(0, len(vr))]
+    frame_idx = np.array(_uniform_sample(frame_idx, choose_frames))
+
+    if force_packing:
+        packing_nums = min(force_packing, max_num_packing)
+
+    frames = vr.get_batch(frame_idx).asnumpy()
+
+    frame_idx_ts = frame_idx / fps
+    scale = np.arange(0, duration, time_scale)
+
+    frame_ts_id = map_to_nearest_scale(frame_idx_ts, scale) / time_scale
+    frame_ts_id = frame_ts_id.astype(np.int32)
+    assert len(frames) == len(frame_ts_id)
+
+    frames = [Image.fromarray(v.astype('uint8')).convert('RGB') for v in frames]
+    frame_ts_id_group = group_array(frame_ts_id, packing_nums)
+
+    return frames, frame_ts_id_group
 
 
 def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
