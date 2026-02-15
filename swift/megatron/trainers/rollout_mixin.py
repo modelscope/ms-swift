@@ -298,7 +298,6 @@ class MegatronRolloutMixin:
         target_device = 'cpu' if self.args.offload_bridge else None
 
         with profiling_context(self, 'export_weights'):
-            # TODO: fix profiling_context
             weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
 
         if self.vllm_mode == 'colocate':

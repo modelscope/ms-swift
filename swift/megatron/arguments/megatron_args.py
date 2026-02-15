@@ -503,7 +503,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     apply_wd_to_qk_layernorm: bool = False
 
     enable_dft_loss: bool = False
-    enable_channel_loss: bool = False  # TODO
+    enable_channel_loss: bool = False
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'generative_reranker'] = None
     num_labels: Optional[int] = None
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
