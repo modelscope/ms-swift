@@ -150,7 +150,6 @@ class MegatronModelConfig(TransformerConfig):
     moe_router_num_groups: Optional[int] = None
     moe_router_group_topk: Optional[int] = None
     moe_router_pre_softmax: bool = False
-    moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_router_score_function: Literal['sigmoid', 'softmax'] = 'softmax'
     moe_router_bias_update_rate: float = 1e-3
     moe_router_enable_expert_bias: bool = False

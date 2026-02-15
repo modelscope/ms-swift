@@ -362,6 +362,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     group_by_length: bool = False
     te_rng_tracker: bool = False
     data_parallel_random_init: Optional[bool] = False
+    padding_free: bool = True
+    mlp_padding_free: bool = False
 
     # learning rate
     lr_warmup_init: float = 0.
@@ -423,6 +425,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     virtual_pipeline_model_parallel_size: Optional[int] = None
     microbatch_group_size_per_vp_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
+    expert_model_parallel_size: int = 1
+    expert_tensor_parallel_size: int = 1
 
     # 'wandb', 'swanlab', 'tensorboard'
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
@@ -453,9 +457,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     accumulate_allreduce_grads_in_fp32: bool = False
 
     # moe
-    expert_model_parallel_size: int = 1
-    expert_tensor_parallel_size: int = 1
     moe_router_load_balancing_type: Optional[List[str]] = None
+    moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex'] = 'alltoall'
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = True
@@ -463,22 +466,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_aux_loss_coeff: float = 0.
     moe_z_loss_coeff: Optional[float] = None
     moe_shared_expert_overlap: bool = False
-    moe_layer_recompute: bool = False
+    moe_layer_recompute: bool = False  # compat mcore 0.12
     moe_expert_capacity_factor: Optional[float] = None
     moe_pad_expert_input_to_capacity: bool = False
     moe_token_drop_policy: Literal['probs', 'position'] = 'probs'
 
-    apply_wd_to_qk_layernorm: bool = False
     # mtp
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1
-
-    # other
-    check_model: bool = True
-    torch_dtype: Optional[Union[torch.dtype, str]] = None
-    padding_free: bool = True
-    mlp_padding_free: bool = False
-    rope_scaling: Optional[Union[dict, str]] = None
 
     # mcore-bridge
     model: Optional[str] = None
@@ -494,6 +489,19 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     merge_lora: Optional[bool] = None
     max_shard_size: str = '5GB'
 
+    # visual
+    vit_gradient_checkpointing: Optional[bool] = None
+    vit_lr: Optional[float] = None
+    aligner_lr: Optional[float] = None
+    attn_impl: Optional[str] = None
+    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+
+    # other
+    check_model: bool = True
+    torch_dtype: Optional[Union[torch.dtype, str]] = None
+    rope_scaling: Optional[Union[dict, str]] = None
+    apply_wd_to_qk_layernorm: bool = False
+
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False  # TODO
     task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'generative_reranker'] = None
@@ -501,12 +509,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
     callbacks: List[str] = field(default_factory=list)
-
-    # visual
-    vit_gradient_checkpointing: Optional[bool] = None
-    vit_lr: Optional[float] = None
-    aligner_lr: Optional[float] = None
-    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
 
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:

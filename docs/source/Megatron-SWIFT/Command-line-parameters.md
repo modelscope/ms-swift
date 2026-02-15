@@ -61,6 +61,11 @@
 - 🔥group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
 - te_rng_tracker: 使用 Transformer Engine 版本的随机数生成器。默认为False。
 - data_parallel_random_init: 在数据并行的各个 rank 之间启用不同的随机初始化。默认为False。
+- padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
+  - 若要自定义attention_mask，你可以设置`--padding_free false`。
+  - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
+- mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
+
 
 **学习率参数**:
 - lr_warmup_init: 学习率warmup的初始值。学习率调度器从这个值开始进行预热。默认为0。
@@ -130,6 +135,9 @@
 - microbatch_group_size_per_vp_stage: 每个虚拟流水线阶段处理的连续微批次数量。默认为None，等于pipeline_model_parallel_size。
 - 🔥pipeline_model_parallel_layout: 一个描述自定义流水线（pp/vpp）模型并行布局的字符串。例如："E|(t|)*3,m|m||L"。其中 E、L、t、m 分别表示嵌入层（embedding）、损失层（loss）、Transformer 解码器层和 MTP 层。阶段之间用 "|" 分隔。重复的阶段或层可以通过乘法表示。逗号仅用于提升可读性（无实际语法作用）。默认值为 None，表示不使用此参数设置布局。
   - 该参数通常在异构GPU集群上使用。
+- 🔥expert_model_parallel_size: 专家并行数，默认为1。
+- 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为1。
+
 
 **日志参数**:
 - report_to: (ms-swift>=3.12) 启用的日志后端。默认为`['tensorboard']`。可选项为'tensorboard', 'wandb'和'swanlab'。'wandb'和'swanlab'登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
@@ -161,43 +169,18 @@
 - accumulate_allreduce_grads_in_fp32: 在 fp32 精度下进行梯度累积和全规约操作。如果开启`--bf16`且`main_params_dtype`为'fp32'，则设置为True。否则默认设置为False。
 
 **MoE参数**:
-- num_moe_experts: MoE的专家数，默认为None。自动从config.json读取。
-- moe_layer_freq: MoE 层与 Dense 层之间的分布频率。默认为None。从config.json中读取。
-- moe_ffn_hidden_size: 每个专家的前馈网络（ffn）的隐藏层大小。默认为None，自动从config.json读取。若未读取到且`num_moe_experts`不为None，则设置为ffn_hidden_size。
-- moe_shared_expert_intermediate_size: 共享专家的总FFN隐藏层大小。如果有多个共享专家，它应等于 `num_shared_experts * ffn_size_of_each_shared_expert`。 默认为None。自动从config.json读取。
-- moe_router_topk: 每个token路由到的专家数量。默认为None。自动从config.json读取。
-- moe_router_num_groups: 将专家分成的组数，用于组限制路由。参考DeepSeek-V2和DeepSeek-V3。默认为None。自动从config.json读取。
-- moe_router_group_topk: 组限制路由中选择的组数。默认为None。自动从config.json读取。
-- moe_router_pre_softmax: 为MoE启用预softmax路由，这意味着softmax会在top-k选择之前进行。默认为None。自动从config.json读取。
-- 🔥moe_router_dtype: 用于路由计算和专家输出加权平均的数据类型。可选为'none', 'fp32'、'fp64'，这增强了数值稳定性，尤其是在专家数量较多时。与`moe_permute_fusion`一起使用时，性能影响可以忽略不计。默认为'fp32'。'none'代表不改变数据类型。
-- moe_router_score_function: MoE TopK 路由的评分函数。可以为 "softmax" 或 "sigmoid"。默认为None，从config.json中读取。
-- moe_router_bias_update_rate: 在无辅助损失负载均衡策略中，专家偏置的更新速率。专家偏置根据每个专家在全局批次中被分配的 token 数量进行更新，对于分配到的 token 较少的专家，偏置会增加；对于分配到的 token 较多的专家，偏置会减少。默认为None，从config.json中读取。
-- moe_router_enable_expert_bias: 在无辅助损失负载均衡策略中，带有动态专家偏置的 TopK 路由。路由决策基于路由分数与专家偏置之和。详情请参见：https://arxiv.org/abs/2408.15664。默认为None，自动从config.json读取。
-- moe_router_topk_scaling_factor: 默认为None。从config.json中读取。
 - moe_router_load_balancing_type: 确定路由器的负载均衡策略。可选项为"aux_loss"、"seq_aux_loss"、"global_aux_loss"、"sinkhorn"、"none"。其中, "global_aux_loss"需要"megatron-core>=0.15"。默认值为 None。从config.json中读取。
-- 🔥expert_model_parallel_size: 专家并行数，默认为1。
-- 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为1。
-  - 在"ms-swift<3.9"，其默认值为None，即等于`--tensor_model_parallel_size` 的数值，该默认值将在"ms-swift>=3.9"被修改。
+- 🔥moe_router_dtype: 用于路由计算和专家输出加权平均的数据类型。可选为'none', 'fp32'、'fp64'，这增强了数值稳定性，尤其是在专家数量较多时。与`moe_permute_fusion`一起使用时，性能影响可以忽略不计。默认为'fp32'。'none'代表不改变数据类型。
 - moe_token_dispatcher_type: 要使用的token分发器类型。可选选项包括 'allgather'、'alltoall'、'flex'和'alltoall_seq'。默认值为'alltoall'。
 - moe_enable_deepep: 启用 DeepEP 以实现 MoE 模型中的高效 token 调度和合并。仅在通过设置 `--moe_token_dispatcher_type flex` 使用弹性 token 调度器时有效。
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为True。
-  - 在"ms-swift>=3.10"，该参数默认值从False修改为True。
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
 - 🔥moe_aux_loss_coeff: 默认为0，不使用aux_loss。**通常情况下，该值设置的越大，训练效果越差，但MoE负载越均衡**，请根据实验效果，选择合适的值。
-  - 注意：在"ms-swift<3.7.1"，其默认为None，自动从config.json读取。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
 - 🔥moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
 - 🔥moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。通过设置 `--moe_expert_capacity_factor`，超出专家容量的 token 会基于其被选中的概率被丢弃。可以**令训练负载均匀，提升训练速度**（例如设置为1或2）。
 - moe_pad_expert_input_to_capacity: 对每个专家（expert）的输入进行填充，使其长度与专家容量（expert capacity length）对齐，默认为False。该操作仅在设置了 `--moe_expert_capacity_factor` 参数后才生效。
 - moe_token_drop_policy: 可选为'probs', 'position'。默认为'probs'。
-
-**mla参数**
-- multi_latent_attention: 是否使用MLA。默认为False。
-- q_lora_rank: Query 张量低秩表示的rank值。默认为None，自动从config.json读取。
-- kv_lora_rank: Key 和 Value 张量低秩表示的秩（rank）值。默认为None，自动从config.json读取。
-- qk_head_dim: QK 投影中 head 的维度。 `q_head_dim = qk_head_dim + qk_pos_emb_head_dim`。默认为None，自动从config.json读取。
-- qk_pos_emb_head_dim: QK 投影中位置嵌入的维度。默认为None，自动从config.json读取。
-- v_head_dim: V 投影中的 head 维度。默认为None，自动从config.json读取。
 
 **MTP参数**
 - mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。（需要"megatron-core>=0.14"）
@@ -233,9 +216,9 @@ lora训练：
 - use_rslora: 默认为`False`，是否使用`RS-LoRA`。
 
 **Mcore-Bridge参数**
-- 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。该参数在"ms-swift>=3.12"支持了对优化器权重、随机数状态等断点续训内容进行保存（额外存储mcore格式权重），使用`--no_save_optim`和`--no_save_rng`控制。断点续训时使用`--mcore_model/--mcore_adapter`参数加载mcore格式权重。
 - model: safetensors权重的model_id或者model_path。默认为None。
 - model_type: 模型类型。介绍参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md)。
+- 🔥save_safetensors: 默认为True，是否直接保存成safetensors权重。该参数在"ms-swift>=3.12"支持了对优化器权重、随机数状态等断点续训内容进行保存（额外存储mcore格式权重），使用`--no_save_optim`和`--no_save_rng`控制。断点续训时使用`--mcore_model/--mcore_adapter`参数加载mcore格式权重。
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。
 - ref_model: ref_model safetensors权重的model_id或者model_path。采用grpo、dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
 - ref_adapters: ref_adapters safetensors权重的adapter_id或者adapter_path的列表（目前只支持长度为1），默认为`[]`。
@@ -243,23 +226,34 @@ lora训练：
 - hub_token: hub token. modelscope的hub token可以查看[这里](https://modelscope.cn/my/myaccesstoken)。默认为None。
 - merge_lora: 是否存储合并后的权重。默认为None，若`save_safetensors`设置为True，该参数默认值为`True`，否则为False。即默认情况下，存储为safetensors格式时会合并LoRA；存储为torch_dist格式时，不会合并LoRA。
 - max_shard_size: safetensors格式存储文件最大大小，默认'5GB'。
-- 🔥offload_bridge: Megatron导出的用于vLLM更新HF格式权重使用CPU主存存放，以降低 GPU 显存占用。默认为 False。
+- 🔥offload_bridge: Megatron导出的用于vLLM更新HF格式权重使用CPU主存存放，以降低 GPU 显存占用。默认为 False。（在GRPO/GKD算法中生效）
 
-
-**其他参数**:
-- padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
-  - 若要自定义attention_mask，你可以设置`--padding_free false`。
-  - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
-- mlp_padding_free: 默认为False。用于padding_free设置为false时，对mlp进行padding_free优化。这可以在自定义attention_mask的同时，提升训练速度和减少显存占用。
+**多模态参数**:
 - vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为True。（**Megatron-SWIFT的vit实现使用transformers实现**）
 - attn_impl: 多模态模型训练时，设置vit部分的attn_impl实现。默认为'flash_attn'。
 - vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
   - 提示：在日志中打印的"learning rate"为llm的学习率。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
+
+**其他参数**:
+- check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
   - **目前rope_scaling模块使用transformers实现，支持transformers支持的所有rope_scaling。**
 - apply_wd_to_qk_layernorm: 用于Qwen3-Next全参数训练，对 qk layernorm 应用权重衰减。默认为False。
+- enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
+- enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
+- 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'、'embedding'和'generative_reranker'。
+- num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
+- problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
+- 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重。
+- callbacks: 自定义trainer callback，默认为`[]`。
+
+## 训练参数
+
+Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用dataset、template等参数，也支持ms-swift中的特定模型参数**）。基本参数的内容可以参考[这里](../Instruction/Command-line-parameters.md#基本参数)。此外还包括以下参数：
+
+- add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - 🔥packing: 使用`padding_free`的方式将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见（除Qwen3-Next，因为含有linear-attention）。该参数默认为`False`。Megatron-SWIFT的所有训练任务都支持该参数。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
@@ -267,22 +261,8 @@ lora训练：
   - 注意：因为流式数据集无法获得其长度，因此需要设置`--train_iters`参数。设置`num_train_epochs`参数确保训练到对应epochs时退出训练，并对权重进行验证和保存。
   - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
 - lazy_tokenize: 是否使用lazy_tokenize。若该参数设置为False，则在训练之前对所有的数据集样本进行tokenize（多模态模型则包括从磁盘中读取图片）。该参数默认为None，在LLM训练中默认为False，而MLLM训练默认为True，节约内存。
-- enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
-- enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
 - new_special_tokens: 需要新增的特殊tokens。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora/new_special_tokens.sh)。
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
-- 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'、'embedding'和'generative_reranker'。
-- num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
-- problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
-- 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重。
-
-
-## 训练参数
-
-Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用dataset、template等参数，也支持ms-swift中的特定模型参数**）。基本参数的内容可以参考[这里](../Instruction/Command-line-parameters.md#基本参数)。此外还包括以下参数：
-
-- add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
-- check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：
@@ -326,8 +306,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/rewards/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。
 - reward_weights: 每个奖励函数的权重。必须与奖励函数和奖励模型的总数量匹配。默认为 None，即所有奖励的权重都相等，为`1.0`。
   - 提示：如果GRPO训练中包含`--reward_model`，则其加在奖励函数的最后位置。
-- truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`。注意对于多模态模型，
-左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
+- truncation_strategy: 对输入长度超过 `max_length`的处理方式，支持`delete`和`left`，代表删除、左侧裁剪，默认为`left`。注意对于多模态模型，左裁剪可能会裁剪掉多模态token导致模型前向报错shape mismatch。使用`delete`方式，对于超长数据和编码失败的样例会在原数据集中重采样其他数据作为补充。
 - loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo'], 默认为'grpo', 具体查看该[pr](https://github.com/huggingface/trl/pull/3256#discussion_r2033213348)。
 - log_completions: 是否记录训练中的模型生成内容，默认为False。
 - vllm_mode: vLLM 集成模式，可选项为 `server` 和 `colocate`。server 模式使用 `swift rollout` 拉起的 vLLM 服务器进行采样，colocate 模式在程序内部署 vLLM。使用server端时，
