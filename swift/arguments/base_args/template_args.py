@@ -32,8 +32,8 @@ class TemplateArguments:
         truncation_strategy (Literal['delete', 'left', 'right', 'split']): Strategy for handling samples exceeding
             `max_length`. Options are 'delete', 'left' (truncate from the left), 'right' (truncate from the right),
             and 'split' (split into multiple samples). Defaults to 'delete'.
-            Note: The 'split' strategy is only supported during pre-training (e.g., `swift/megatron pt`), and is incompatible with `cached_dataset`. It splits long samples to avoid wasting
-            tokens.
+            Note: The 'split' strategy is only supported during pre-training (e.g., `swift/megatron pt`),
+            and is incompatible with `cached_dataset`. It splits long samples to avoid wasting tokens.
             Note: For multimodal models, setting this to 'left' or 'right' preserves all image tokens, which may lead
             to OOM errors.
         max_pixels (Optional[int]): The maximum number of pixels (H*W) for an input image in a multimodal model.
