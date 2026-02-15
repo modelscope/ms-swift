@@ -1,8 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import functools
 import gc
-import time
-from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import megatron.core
@@ -13,46 +11,21 @@ from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.training import get_args, get_wandb_writer
 from packaging import version
 from transformers.utils import is_torch_npu_available
 
+from swift.dataloader import DataLoaderDispatcher
+from swift.megatron.utils import split_cp_inputs
 from swift.utils import empty_cache, get_current_device, get_logger
 from swift.utils import get_packed_seq_params as _get_packed_seq_params
 from swift.utils import to_device
-
-try:
-    from megatron.training.datasets.data_samplers import RandomSeedDataset
-except ImportError:
-    from megatron.legacy.data.data_samplers import RandomSeedDataset
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 logger = get_logger()
 
 
-def get_swift_datasets_provider(train_dataset, val_dataset):
-
-    def swift_datasets_provider(train_val_test_num_samples, vp_stage=None):
-        nonlocal val_dataset
-        args = get_args()
-        data_parallel_size = mpu.get_data_parallel_world_size()
-        step_batch_size = args.micro_batch_size * data_parallel_size
-        # To avoid errors caused by the validation set being insufficient to complete a single step.
-        if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) < step_batch_size:
-            val_dataset = None
-        if val_dataset is None:
-            args.eval_iters = 0
-        else:
-            val_dataset.dataset_type = 'validation'
-        return train_dataset, val_dataset, None
-
-    return swift_datasets_provider
-
-
 # Code borrowed from NVIDIA/Megatron-LM
-def get_batch_on_this_tp_rank(data, vp_stage=None):
-    args = get_args()
-
+def get_batch_on_this_tp_rank(args, data, vp_stage=None):
     if args.task_type == 'causal_lm':
         data['labels'] = torch.roll(data['labels'], -1, dims=-1)
         if 'loss_scale' in data:
@@ -91,30 +64,7 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     return packed
 
 
-def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: Optional[torch.Tensor], dim: int):
-    if dim < 0:
-        dim = (dim + inputs.ndim) % inputs.ndim
-    new_inputs = []
-    cp_size = mpu.get_context_parallel_world_size()
-    cp_rank = mpu.get_context_parallel_rank()
-    for i in range(1 if cu_seqlens is None else (cu_seqlens.shape[0] - 1)):
-        if cu_seqlens is None:
-            val = inputs
-        else:
-            slices = [slice(None)] * inputs.ndim
-            slices[dim] = slice(cu_seqlens[i], cu_seqlens[i + 1])
-            val = inputs[tuple(slices)]
-        view_shape = (*inputs.shape[:dim], 2 * cp_size, val.shape[dim] // (2 * cp_size), *inputs.shape[dim + 1:])
-        val = val.view(view_shape)
-        index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
-                             pin_memory=True).cuda(non_blocking=True)
-        val = val.index_select(dim, index)
-        view_shape = (*inputs.shape[:dim], -1, *inputs.shape[dim + 1:])
-        new_inputs.append(val.view(view_shape))
-    return torch.cat(new_inputs, dim=dim)
-
-
-def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
+def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
     """Slice batch input along sequence dimension into multiple chunks,
     which are parallelized across GPUs in a context parallel group.
     """
@@ -127,8 +77,7 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     # that we can get balanced workload among GPUs in a context parallel group.
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
-        args = get_args()
-        keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
+        keys = ['labels', 'position_ids', 'loss_scale']
         if not args.is_multimodal:
             # Multimodal models will handle CP in input_embeds.
             keys.append('input_ids')
@@ -143,30 +92,6 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
                 batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
 
     return batch
-
-
-@contextmanager
-def profiling_context(trainer, name: str):
-    start_time = time.perf_counter()
-    yield
-    end_time = time.perf_counter()
-    duration = end_time - start_time
-
-    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
-    wandb_writer = get_wandb_writer()
-    if wandb_writer and trainer.is_main_process:
-        step = getattr(getattr(wandb_writer, 'run', None), 'step', None)
-        wandb_writer.log(profiling_metrics, step=step)
-
-
-def profiling_decorator(func):
-
-    @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
-        with profiling_context(self, func.__name__):
-            return func(self, *args, **kwargs)
-
-    return wrapper
 
 
 def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):
@@ -387,98 +312,38 @@ def log_gpu_memory(prefix: str = '', info_once: bool = False):
         logger.info(log_msg)
 
 
-# Code borrowed from megatron-lm
-class MegatronPretrainingRandomSampler:
+@dataclass
+class TrainerState:
+    should_save: bool = False
+    should_eval: bool = False
+    should_log: bool = False
 
-    def __init__(
-        self,
+    iteration: int = 0
+    epoch: int = 0
+    consumed_train_samples = 0
+    # compat transformers
+    max_steps: Optional[int] = None
+
+    @property
+    def global_step(self) -> int:
+        return self.iteration
+
+
+class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
+
+    @property
+    def group(self):
+        return mpu.get_data_parallel_group()
+
+
+def build_streaming_dataloader(args, dataset, collate_fn):
+    base_dataloader = torch.utils.data.DataLoader(
         dataset,
-        total_samples,
-        consumed_samples,
-        micro_batch_size,
-        data_parallel_rank,
-        data_parallel_size,
-        data_sharding,
-        shuffle: bool = True,
-        group_by_length: bool = False,
-    ):
-        # Keep a copy of input params for later use.
-        self.dataset = dataset
-        self.total_samples = total_samples
-        self.consumed_samples = consumed_samples
-        self.micro_batch_size = micro_batch_size
-        self.data_parallel_rank = data_parallel_rank
-        self.data_parallel_size = data_parallel_size
-        if group_by_length:
-            if data_sharding:
-                data_sharding = False
-                logger.warning('`group_by_length=True` is incompatible with `data_sharding=True`. '
-                               'Setting `data_sharding=False` to enable length grouping.')
-            if not shuffle:
-                raise ValueError('shuffle must be True when group_by_length is True')
-        self.data_sharding = data_sharding
-        self.shuffle = shuffle
-        self.group_by_length = group_by_length
-        self.lengths = self.dataset['lengths'] if group_by_length else None
-        if self.lengths is not None:
-            self.lengths = [max(length) if isinstance(length, list) else length for length in self.lengths]
-        self.micro_batch_times_data_parallel_size = self.micro_batch_size * data_parallel_size
-        self.last_batch_size = self.total_samples % self.micro_batch_times_data_parallel_size
-
-        # Sanity checks.
-        assert self.total_samples > 0, 'no sample to consume: {}'.format(self.total_samples)
-        assert self.micro_batch_size > 0
-        assert data_parallel_size > 0
-        assert self.data_parallel_rank < data_parallel_size, (
-            'data_parallel_rank should be smaller than data size: {}, '
-            '{}'.format(self.data_parallel_rank, data_parallel_size))
-
-    def __len__(self):
-        return self.total_samples
-
-    def __iter__(self):
-        active_total_samples = self.total_samples - self.last_batch_size
-        self.epoch = self.consumed_samples // active_total_samples
-        current_epoch_samples = self.consumed_samples % active_total_samples
-        assert current_epoch_samples % self.micro_batch_times_data_parallel_size == 0
-
-        if isinstance(self.dataset, RandomSeedDataset):
-            self.dataset.set_epoch(self.epoch)
-
-        if self.shuffle:
-            # data sharding and random sampling
-            if self.data_sharding:
-                bucket_size = (self.total_samples // self.micro_batch_times_data_parallel_size) * self.micro_batch_size
-                bucket_offset = current_epoch_samples // self.data_parallel_size
-                start_idx = self.data_parallel_rank * bucket_size
-
-                g = torch.Generator()
-                g.manual_seed(self.epoch)
-                random_idx = torch.randperm(bucket_size, generator=g).tolist()
-                idx_range = [start_idx + x for x in random_idx[bucket_offset:]]
-            else:
-                full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
-                full_bucket_offset = current_epoch_samples
-                g = torch.Generator()
-                g.manual_seed(self.epoch)
-                if self.group_by_length:
-                    from transformers.trainer_pt_utils import get_length_grouped_indices
-                    idx_range_total = get_length_grouped_indices(
-                        self.lengths, self.micro_batch_times_data_parallel_size, generator=g)
-                else:
-                    idx_range_total = torch.randperm(full_bucket_size, generator=g).tolist()
-                idx_range_active = idx_range_total[full_bucket_offset:]
-                idx_range = idx_range_active[self.data_parallel_rank::self.data_parallel_size]
-        else:
-            full_bucket_size = (self.total_samples // self.micro_batch_size) * self.micro_batch_size
-            full_bucket_offset = current_epoch_samples
-            idx_range = range(full_bucket_offset + self.data_parallel_rank, full_bucket_size, self.data_parallel_size)
-
-        batch = []
-        # Last batch if not complete will be dropped.
-        for idx in idx_range:
-            batch.append(idx)
-            if len(batch) == self.micro_batch_size:
-                self.consumed_samples += self.micro_batch_times_data_parallel_size
-                yield batch
-                batch = []
+        num_workers=args.dataloader_num_workers,
+        pin_memory=args.dataloader_pin_memory,
+        collate_fn=collate_fn,
+        batch_size=args.micro_batch_size,
+        prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
+        persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+    )
+    return MegatronDataLoaderDispatcher(base_dataloader)

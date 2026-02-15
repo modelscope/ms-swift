@@ -5,7 +5,6 @@ from typing import Any, Dict
 
 import torch
 from megatron.core import mpu
-from megatron.training import get_args, get_timers
 from trl import KTOTrainer
 
 from swift.utils import get_current_device, get_logger
@@ -85,13 +84,13 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             'kl': kl.squeeze().detach(),
         }
         metric = self._all_reduce_metric(mean_metric)
+        chosen_count = chosen_rewards.shape[0]
+        rejected_count = rejected_rewards.shape[0]
         sum_metric = {
-            'logps/chosen_sum': policy_chosen_logps.nansum(),
-            'logps/rejected_sum': policy_rejected_logps.nansum(),
-            'rewards/chosen_sum': chosen_rewards.nansum(),
-            'rewards/rejected_sum': rejected_rewards.nansum(),
-            'count/chosen': loss.new_tensor(chosen_rewards.shape[0]),
-            'count/rejected': loss.new_tensor(rejected_rewards.shape[0]),
+            'logps/chosen': loss.new_tensor([policy_chosen_logps.detach().nansum(), chosen_count]),
+            'logps/rejected': loss.new_tensor([policy_rejected_logps.detach().nansum(), rejected_count]),
+            'rewards/chosen': loss.new_tensor([chosen_rewards.nansum(), chosen_count]),
+            'rewards/rejected': loss.new_tensor([rejected_rewards.nansum(), rejected_count]),
         }
         metric.update(self._all_reduce_metric(sum_metric, torch.distributed.ReduceOp.SUM))
         # fix megatron-lm bug
@@ -113,16 +112,12 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return res
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
         # Get the batch.
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            # not support loss_scale
-            data, kl_data = self.get_batch(data_iterator, vp_stage)
-        timers('batch-generator').stop()
+        # not support loss_scale
+        data, kl_data = self.get_batch(data_iterator, vp_stage)
         label = data.pop('label')
         data.pop('loss_scale', None)
         kl_data.pop('loss_scale', None)
@@ -149,8 +144,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(self._get_input_tensor(input_tensor, False, False, length, 0))
-        with self.stimer:
-            output_tensor = model(**data)
+        output_tensor = model(**data)
         if self.mcore_013:
             is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
         else:
@@ -162,7 +156,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             res = torch.concat([output_tensor, ref_output_tensor], dim=dim)
         return res, partial(self.loss_func, data=data, kl_data=kl_data, label=label)
 
-    def _prepare_batch(self, data, vp_stage):
+    def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         res = []
         num_samples = data.pop('num_samples')
         for key in ['completion_', 'KL_completion_']:
@@ -175,19 +169,7 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         res[0]['label'] = data['label']
         return res
 
-    def _get_metrics(self, total_loss_dict, mode):
-        metrics = super()._get_metrics(total_loss_dict, mode)
-        for key in ['chosen', 'rejected']:
-            count = total_loss_dict.get(f'count/{key}')
-            if count is None or count.item() == 0:
-                continue
-            metrics[f'logps/{key}'] = total_loss_dict[f'logps/{key}_sum'] / count
-            metrics[f'rewards/{key}'] = total_loss_dict[f'rewards/{key}_sum'] / count
-        if 'rewards/chosen' in metrics and 'rewards/rejected' in metrics:
-            metrics['rewards/margins'] = metrics['rewards/chosen'] - metrics['rewards/rejected']
-        return metrics
-
-    def _remove_log(self, total_loss_dict) -> None:
-        for k, v in total_loss_dict.copy().items():
-            if k.startswith('count/') or k.endswith('_sum'):
-                total_loss_dict.pop(k)
+    def _log_callback(self, logs, n_steps):
+        super()._log_callback(logs, n_steps)
+        if 'rewards/chosen' in logs and 'rewards/rejected' in logs:
+            logs['rewards/margins'] = logs['rewards/chosen'] - logs['rewards/rejected']

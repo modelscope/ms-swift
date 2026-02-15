@@ -4,7 +4,6 @@ from contextlib import contextmanager
 
 import torch
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
-from megatron.training import get_args
 from transformers import PreTrainedModel
 from transformers.utils import ContextManagers
 
@@ -48,19 +47,19 @@ class HuggingFaceModule(_HuggingFaceModule, ABC):
 
     def __init__(self, config, ignore_init_model_cls=None):
         super().__init__(config)
-        args = get_args()
+        args = config.args
         attn_impl = getattr(args, 'attn_impl', None) or 'flash_attn'
-        kwargs = {'attn_impl': attn_impl} if args.attention_backend.name == 'flash' else {}
+        kwargs = {'attn_impl': attn_impl} if config.attention_backend.name == 'flash' else {}
         ignore_init_model_cls = ignore_init_model_cls or []
         if not isinstance(ignore_init_model_cls, list):
             ignore_init_model_cls = [ignore_init_model_cls]
         context_list = [patch_device_map_meta(model_cls) for model_cls in ignore_init_model_cls]
         context_list.append(patch_hf_initialize_weight())
-        kwargs['model_type'] = args.hf_model_type
+        kwargs['model_type'] = args.model_type
         with ContextManagers(context_list), disable_safe_ddp_context_use_barrier():
             model, self.processor = get_model_processor(
                 args.model_dir, torch_dtype=args.torch_dtype, return_dummy_model=True, **kwargs)
-        self.model_config = model.config
+        self.hf_config = model.config
         for hf_prefix, mg_prefix in self.module_mapping.items():
             setattr(self, mg_prefix, deep_getattr(model, hf_prefix))
         self._hf_model = [model]

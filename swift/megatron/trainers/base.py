@@ -1,56 +1,39 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import collections
+import dataclasses
 import logging
-import math
 import os
 import shutil
-import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, nullcontext
-from datetime import datetime
 from functools import partial
-from typing import Callable, Dict, List, Literal, Optional
+from typing import Callable, Dict, List, Optional
 
 import megatron.core
 import torch
 import torch.nn
 from megatron.core import mpu
-from megatron.core.datasets.utils import Split
-from megatron.core.enums import ModelType
-from megatron.core.num_microbatches_calculator import get_num_microbatches, update_num_microbatches
-from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
+from megatron.core.distributed import finalize_model_grads
+from megatron.core.optimizer import OptimizerConfig, _update_min_and_max_lr_in_param_groups, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
-from megatron.core.rerun_state_machine import RerunMode, get_rerun_state_machine
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
-from megatron.core.utils import StragglerDetector
-from megatron.training import (checkpointing, ft_integration, get_args, get_model, get_tensorboard_writer, get_timers,
-                               get_wandb_writer, initialize, is_last_rank, one_logger_utils, pretrain, print_rank_0,
-                               print_rank_last, training)
-from megatron.training.checkpointing import check_checkpoint_args, load_checkpoint, set_checkpoint_version
-from megatron.training.dist_signal_handler import DistributedSignalHandler
-from megatron.training.theoretical_memory_usage import report_theoretical_memory
-from megatron.training.training import num_floating_point_operations
-from megatron.training.utils import reduce_max_stat_across_model_parallel_group, report_memory, unwrap_model
 from modelscope import check_local_model_is_latest
 from packaging import version
-from tqdm.auto import tqdm
 
+from swift.megatron.callbacks import megatron_callbacks_map
+from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
-from swift.megatron.utils import (adapter_state_dict_context, copy_original_module_weight, patch_merge_fn,
-                                  prepare_mcore_model)
-from swift.metrics import MeanMetric
+from swift.megatron.utils import (copy_original_module_weight, get_optimizer_param_scheduler, get_padding_to,
+                                  load_mcore_checkpoint, prepare_mcore_model,
+                                  reduce_max_stat_across_model_parallel_group, save_mcore_checkpoint, wrap_model)
 from swift.template import Template
-from swift.trainers import SwiftMixin, dynamic_gradient_checkpointing
-from swift.utils import JsonlWriter, deep_getattr, format_time, get_last_valid_indices, get_logger, ms_logger_context
-from .utils import (MegatronPretrainingRandomSampler, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
-                    get_packed_seq_params, get_swift_datasets_provider)
-
-try:
-    from megatron.training.datasets.data_samplers import MegatronPretrainingSampler
-except ImportError:
-    from megatron.legacy.data.data_samplers import MegatronPretrainingSampler
+from swift.trainers import dynamic_gradient_checkpointing
+from swift.trainers.utils import patch_modelscope_hub_timeout
+from swift.utils import deep_getattr, get_last_valid_indices, get_logger, is_last_rank, ms_logger_context
+from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
+from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_tp_rank,
+                    get_packed_seq_params)
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -65,19 +48,25 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args, template: Template):
         self.args = args
         self.template = template
-        self.stimer = StragglerDetector()
-        self.unwrapped_models = []
-        self.wrapped_models = []
-        self.peft_models = []
-        self._bridge = None
-        self.eval_metrics = None
-        logging_path = os.path.join(args.save, 'logging.jsonl')
-        logger.info(f'logging_path: {logging_path}')
-        self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')  # for evaluate
-        self._patch_megatron()
+        self.bridge = args.megatron_model_meta.bridge_cls(args)
+        self.prepare_model()
+        self.config = self.unwrapped_models[0].config
+        self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
+        self.data_collator = self._get_data_collator()
 
-        if args.check_model and hasattr(args, 'model_info') and hasattr(args.model_info, 'model_dir'):
-            with ms_logger_context(logging.CRITICAL), self._patch_timeout():
+        self.state = TrainerState(max_steps=args.train_iters)
+        initialize_embedding = args.new_special_tokens or args.task_type == 'seq_cls'
+        if initialize_embedding:
+            for m in self.unwrapped_models:
+                self._initialize_embedding(m)
+        if args.tuner_type != 'full' and args.modules_to_save:
+            for m in self.unwrapped_models:
+                copy_original_module_weight(m)
+        self._load_checkpoint()
+
+        self.eval_metrics = None
+        if args.check_model and hasattr(args, 'model_dir'):
+            with ms_logger_context(logging.CRITICAL), patch_modelscope_hub_timeout():
                 config_info = self._collect_config_info()
                 config_info.update({
                     'invoked_by': 'local_trainer',
@@ -87,196 +76,132 @@ class BaseMegatronTrainer(ABC):
                 })
                 check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
-        def _get_mean_metric():
-            return MeanMetric(nan_value=None, group=mpu.get_data_parallel_group(with_context_parallel=True))
-
-        self.custom_metrics = {
-            'train': collections.defaultdict(_get_mean_metric),
-            'eval': collections.defaultdict(_get_mean_metric)
-        }
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+        self.callbacks = []
+        for callback in self.args.callbacks:
+            self.callbacks.append(megatron_callbacks_map[callback](self))
 
-    @property
-    def bridge(self):
-        if self._bridge is None:
-            self._bridge = self.args.megatron_model_meta.bridge_cls()
-        return self._bridge
+    def _load_checkpoint(self):
+        args = self.args
+        if not args.finetune:
+            self.state.iteration = self._load_iteration()
+        if args.mcore_model is not None:
+            self.state.iteration = load_mcore_checkpoint(
+                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_model')
+        if args.mcore_adapter is not None:
+            self.state.iteration = load_mcore_checkpoint(
+                args, self.wrapped_models, self.optimizer, self.opt_param_scheduler, load_arg='mcore_adapter')
+        self.state.consumed_train_samples = getattr(args, 'consumed_train_samples', 0)
 
-    @contextmanager
-    def _get_iters(self, train_dataset, val_dataset):
-        origin_initialize_megatron = training.initialize_megatron
-        origin_validate_args = initialize.validate_args
+    def call_event(self, event, **kwargs):
+        for callback in self.callbacks:
+            getattr(callback, event)(**kwargs)
 
-        def initialize_megatron(*_args, **kwargs):
-            res = origin_initialize_megatron(*_args, **kwargs)
-            args = get_args()
-            data_parallel_size = mpu.get_data_parallel_world_size()
-            step_batch_size = args.micro_batch_size * data_parallel_size
-            num_generations = args.num_generations if args.rlhf_type == 'grpo' else 1
-            if args.save_strategy == 'epoch':
-                if hasattr(train_dataset, '__len__'):
-                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
-                    args.save_interval = dataset_sample // args.global_batch_size
-                    args.eval_interval = args.save_interval
-                    if getattr(args, 'save_retain_interval', None) is not None:
-                        args.save_retain_interval *= args.save_interval
-                else:
-                    raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
-            if args.max_epochs is not None:
-                if hasattr(train_dataset, '__len__'):
-                    dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
-                    args.train_iters = dataset_sample * args.max_epochs // args.global_batch_size
-                elif args.train_iters is None:
-                    raise ValueError(
-                        'You are using a streaming training dataset. Please explicitly specify `--train_iters`.')
-            if args.eval_iters < 0:
-                if val_dataset is None:
-                    args.eval_iters = 0
-                elif hasattr(val_dataset, '__len__'):
-                    dataset_sample = len(val_dataset) // step_batch_size * step_batch_size
-                    dataset_sample = dataset_sample * num_generations
-                    args.eval_iters = max(dataset_sample // args.global_batch_size, 1)
-                else:
-                    raise ValueError(
-                        'You are using a streaming validation dataset. Please explicitly specify `--eval_iters`.')
-                logger.info(f'Setting args.eval_iters: {args.eval_iters}')
-            return res
+    def on_log(self, logs, prefix=''):
+        n_steps = logs.pop('n_steps')
+        self._log_callback(logs, n_steps)
+        if prefix:
+            logs = {f'{prefix}{k}': v for k, v in logs.items()}
+        self.call_event('on_log', logs=logs)
 
-        self._origin_validate_args = origin_validate_args
+    def _log_callback(self, logs, n_steps):
+        args = self.args
+        config = self.config
+        if config.num_moe_experts is not None:
+            moe_loss_scale = 1 / args.num_microbatches / n_steps
+            track_names = []
+            # TODO: support moe_router_load_balancing_type list
+            if config.moe_router_load_balancing_type in ['aux_loss', 'seq_aux_loss']:
+                track_names.append('load_balancing_loss')
+            if args.moe_z_loss_coeff is not None:
+                track_names.append('z_loss')
+            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
+            track_moe_metrics(
+                loss_scale=moe_loss_scale,
+                iteration=self.state.iteration,
+                writer=None,
+                total_loss_dict=logs,
+                force_initialize=True,
+                track_names=track_names,
+                num_layers=config.num_layers,
+                moe_layer_freq=config.moe_layer_freq,
+                **track_moe_kwargs)
+        if args.mtp_num_layers is not None:
+            mtp_loss_scale = 1 / args.num_microbatches / n_steps
+            mtp_logs = {}
+            MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
+            logs.update({k.replace(' ', '_'): v for k, v in mtp_logs.items()})
+        for k, v in logs.items():
+            if isinstance(v, torch.Tensor):
+                if v.numel() == 2:
+                    v = v[0] / v[1]
+                v = v.item()
+            logs[k] = v
 
-        training.initialize_megatron = initialize_megatron
-        initialize.validate_args = self.patched_validate_args
-        try:
-            yield
-        finally:
-            training.initialize_megatron = origin_initialize_megatron
-            initialize.validate_args = self._origin_validate_args
+    def prepare_model(self):
+        args = self.args
+        self.wrapped_models = []
+        self.unwrapped_models = get_mcore_model(args, self.template.config)
+        self.peft_models = self._prepare_peft_model(self.unwrapped_models)
+        self.wrapped_models = wrap_model(args, self.unwrapped_models)
 
-    def new_cyclic_iter(self, iterable):
+    def _prepare_peft_model(self, models):
+        args = self.args
+        if args.mcore_model is None:
+            self.bridge.load_weights(models, args.model_dir)
+        peft_models = [prepare_mcore_model(args, model) for model in models]
+        if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
+            assert len(args.adapters) == 1, 'Currently only support one adapter.'
+            self.bridge.load_weights(models, args.adapters[0], is_peft_format=True, adapter_name='default')
+        return peft_models
+
+    def get_optimizer_and_scheduler(self):
+        args = self.args
+        kwargs = {}
+        for f in dataclasses.fields(OptimizerConfig):
+            if hasattr(args, f.name) and f.name != 'loss_scale':
+                kwargs[f.name] = getattr(args, f.name)
+        config = OptimizerConfig(**kwargs)
+        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
+            param_groups_context = self._patch_get_param_groups()
+        else:
+            param_groups_context = nullcontext()
+        with param_groups_context:
+            optimizer = get_megatron_optimizer(config, self.wrapped_models)
+        opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
+        return optimizer, opt_param_scheduler
+
+    def _get_data_collator(self):
+        data_collator = self.template.data_collator
+        padding_to = get_padding_to(self.args)
+        logger.info(f'padding_to: {padding_to}')
+        data_collator = partial(data_collator, padding_to=padding_to)
+        return data_collator
+
+    def cyclic_iter(self, iterable, use_origin_cyclic: bool = False):
         training = self.unwrapped_models[0].training
-        if not training:
-            yield from self._origin_cyclic_iter(iterable)
+        if not training or use_origin_cyclic:
+            while True:
+                for x in iterable:
+                    yield x
             return
 
-        args = get_args()
-        n_epoch = 0
+        args = self.args
+        state = self.state
         is_finished = False
         while True:
             if not is_finished:
-                logger.info(f'The training of Epoch {n_epoch} starts...')
+                logger.info(f'The training of Epoch {state.epoch} starts...')
             for x in iterable:
                 yield x
-            if training and args.max_epochs and n_epoch >= args.max_epochs - 1:
+            # streaming
+            if training and args.num_train_epochs and state.epoch >= args.num_train_epochs - 1:
                 is_finished = True
-            n_epoch += 1
+            state.epoch += 1
             if is_finished:
-                # streaming
                 # Note that this approach will train for one additional step.
-                logger.info(f'Training of {n_epoch} epochs has been completed, the training has finished.')
-                args.train_iters = args.curr_iteration + 1
-
-    def _replace_data_iterator(self, data_iterator, model):
-        return data_iterator
-
-    def _load_adapter_base_checkpoint(self, *_args, **kwargs):
-        adapter_name = kwargs.pop('adapter_name', None) or 'ref_adapter'
-        sharded_state_dict = kwargs.get('sharded_state_dict')
-        if sharded_state_dict is None:
-            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
-        mapping = {}
-        for model_k in model_keys:
-            mapping[model_k] = {}
-            state_dict_model = {}
-            for k, v in sharded_state_dict[model_k].items():
-                if adapter_name not in k:
-                    continue
-                # lora
-                origin_k = k
-                k = k.replace(f'.{adapter_name}.', '.default.')
-                mapping[model_k][k] = origin_k
-                v.key = v.key.replace(f'.{adapter_name}.', '.default.')
-                state_dict_model[k] = v
-            sharded_state_dict[model_k] = state_dict_model
-            patch_merge_fn(state_dict_model)
-        res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        for model_k in model_keys:
-            state_dict = res[0][model_k]
-            for k, origin_k in mapping[model_k].items():
-                v = state_dict.pop(k)
-                state_dict[origin_k] = v
-        return res
-
-    def _load_base_checkpoint(self, *_args, **kwargs):
-        sharded_state_dict = kwargs.get('sharded_state_dict')
-        if sharded_state_dict is None:
-            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]
-        if self.args.tuner_type == 'full':
-            for k in model_keys:
-                patch_merge_fn(sharded_state_dict[k])
-            return checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        mapping = {}
-        for model_k in model_keys:
-            mapping[model_k] = {}
-            state_dict_model = {}
-            for k, v in sharded_state_dict[model_k].items():
-                if 'lora_A' in k or 'lora_B' in k or 'original_module' in k:
-                    continue
-                # lora
-                if '.base_layer' in k:
-                    origin_k = k
-                    k = k.replace('.base_layer', '')
-                    mapping[model_k][k] = origin_k
-                    v.key = v.key.replace('.base_layer', '')
-                elif '.modules_to_save' in k:
-                    if '.modules_to_save.default' not in k:
-                        # e.g. ref_adapter
-                        continue
-                    # modules to save
-                    origin_k = k
-                    k = k.replace('.modules_to_save.default', '')
-                    mapping[model_k][k] = origin_k
-                    v.key = v.key.replace('.modules_to_save.default', '')
-                state_dict_model[k] = v
-            sharded_state_dict[model_k] = state_dict_model
-            patch_merge_fn(state_dict_model)
-        res = checkpointing.origin__load_base_checkpoint(*_args, **kwargs)
-        for model_k in model_keys:
-            state_dict = res[0][model_k]
-            for k, origin_k in mapping[model_k].items():
-                v = state_dict.pop(k)
-                state_dict[origin_k] = v
-        return res
-
-    @contextmanager
-    def _patch_load_state_dict(self, load_base_checkpoint):
-        checkpointing.origin__load_base_checkpoint = checkpointing._load_base_checkpoint
-        checkpointing._load_base_checkpoint = load_base_checkpoint
-
-        args = get_args()
-        origin_load_state_dict = torch.nn.Module.load_state_dict
-        origin_no_load_optim = args.no_load_optim
-        origin_no_load_rng = args.no_load_rng
-        origin_finetune = args.finetune
-
-        def load_state_dict(self, state_dict, strict: bool = True, *args, **kwargs):
-            strict = False
-            return origin_load_state_dict(self, state_dict, strict, *args, **kwargs)
-
-        if args.tuner_type != 'full':
-            torch.nn.Module.load_state_dict = load_state_dict
-            args.no_load_optim = True
-            args.no_load_rng = True
-            args.finetune = True
-        try:
-            yield
-        finally:
-            checkpointing._load_base_checkpoint = checkpointing.origin__load_base_checkpoint
-            torch.nn.Module.load_state_dict = origin_load_state_dict
-            args.no_load_optim = origin_no_load_optim
-            args.no_load_rng = origin_no_load_rng
-            args.finetune = origin_finetune
+                logger.info(f'Training of {state.epoch} epochs has been completed, the training has finished.')
+                args.train_iters = state.iteration + 1
 
     # Code borrowed from Megatron-LM
     def _get_param_groups(
@@ -317,13 +242,13 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
-        args = get_args()
-        is_multimodal = self.args.megatron_model_meta.is_multimodal
-        if self.args.vit_lr is not None or self.args.aligner_lr is not None:
+        args = self.args
+        is_multimodal = args.megatron_model_meta.is_multimodal
+        if args.vit_lr is not None or args.aligner_lr is not None:
             assert is_multimodal, 'vit_lr and aligner_lr are only supported for multimodal models.'
-            vit_lr = self.args.vit_lr if self.args.vit_lr is not None else self.args.lr
-            aligner_lr = self.args.aligner_lr if self.args.aligner_lr is not None else self.args.lr
-            logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {self.args.lr}')
+            vit_lr = args.vit_lr if args.vit_lr is not None else args.lr
+            aligner_lr = args.aligner_lr if args.aligner_lr is not None else args.lr
+            logger.info(f'vit_lr: {vit_lr}, aligner_lr: {aligner_lr}, llm_lr: {args.lr}')
         use_decoupled_learning_rate = decoupled_lr is not None
 
         # Map (wd_mult, lr_mult, is_expert_parallel, is_decoupled_lr) to params.
@@ -362,12 +287,12 @@ class BaseMegatronTrainer(ABC):
                                      for k in visual._vision_tower) and not is_aligner
                     else:
                         is_aligner, is_vit = False, False
-                    if is_vit and self.args.vit_lr:
+                    if is_vit and args.vit_lr:
                         scale_lr = True
-                        _lr_mult = self.args.vit_lr / lr
-                    elif is_aligner and self.args.aligner_lr:
+                        _lr_mult = args.vit_lr / lr
+                    elif is_aligner and args.aligner_lr:
                         scale_lr = True
-                        _lr_mult = self.args.aligner_lr / lr
+                        _lr_mult = args.aligner_lr / lr
 
                 if not no_wd and not scale_lr:
                     wd_mult, _lr_mult = 1.0, 1.0
@@ -443,88 +368,27 @@ class BaseMegatronTrainer(ABC):
         ckpt_dir = None
         if args.tuner_type == 'full':
             ckpt_dir = args.model
-        elif args.tuner_type == 'lora' and args.adapters:
-            ckpt_dir = args.adapters[0]
+        elif args.tuner_type == 'lora':
+            ckpt_dir = args.adapters[0] if args.adapters else args.model
         if ckpt_dir is None:
-            return 0, 0
+            return 0
         logger.info(f'checkpoint_dir: {ckpt_dir}')
-        iteration_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
-        if not os.path.exists(iteration_path):
-            return 0, 0
-        with open(iteration_path, 'r') as f:
+        tracker_path = os.path.join(ckpt_dir, 'latest_checkpointed_iteration.txt')
+        if not os.path.exists(tracker_path):
+            return 0
+        with open(tracker_path, 'r') as f:
             iteration = int(f.read())
 
         common_path = os.path.join(ckpt_dir, f'iter_{iteration:07d}', 'common.pt')
         if not os.path.exists(common_path):
-            return iteration, 0
+            return iteration
 
         state_dict = torch.load(common_path)
-        set_checkpoint_version(state_dict.get('checkpoint_version', 0))
-        num_floating_point_operations_so_far = state_dict.get('num_floating_point_operations_so_far', 0)
-        if 'args' in state_dict and not args.finetune:
-            checkpoint_args = state_dict['args']
-            check_checkpoint_args(checkpoint_args)
-            args.consumed_train_samples = getattr(checkpoint_args, 'consumed_train_samples', 0)
-            args.skipped_train_samples = getattr(checkpoint_args, 'skipped_train_samples', 0)
-            update_num_microbatches(consumed_samples=args.consumed_train_samples, verbose=True)
-            args.consumed_valid_samples = getattr(checkpoint_args, 'consumed_valid_samples', 0)
-        else:
-            print_rank_0('could not find arguments in the checkpoint ...')
+        if 'args' not in state_dict:
+            return iteration
+        self.args.consumed_train_samples = getattr(state_dict['args'], 'consumed_train_samples', 0)
 
-        return iteration, num_floating_point_operations_so_far
-
-    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
-
-        args = get_args()
-
-        def new_model_provider_func(*_args, **kwargs):
-            model = model_provider_func(*_args, **kwargs)
-            if args.load is None:
-                self.bridge.load_weights(model, args.model_dir)
-            self.unwrapped_models.append(model)
-            peft_model = prepare_mcore_model(model)
-            if args.tuner_type == 'lora':
-                if args.adapters and args.adapter_load is None:
-                    assert len(args.adapters) == 1, 'Currently only support one adapter.'
-                    self.bridge.load_weights(model, args.adapters[0], is_peft_format=True, adapter_name='default')
-                if args.ref_adapters and args.ref_adapter_load is None:
-                    assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
-                    self.bridge.load_weights(
-                        model, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
-
-            self.peft_models.append(peft_model)
-            return model
-
-        self._init_multimodal_full()
-        # read iteration
-        if not args.finetune:
-            args.iteration, args.num_floating_point_operations_so_far = self._load_iteration()
-
-        if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
-            param_groups_context = self._patch_get_param_groups()
-        else:
-            param_groups_context = nullcontext()
-        with self._patch_load_state_dict(self._load_base_checkpoint), param_groups_context:
-            model, optimizer, opt_param_scheduler = self._origin_setup_model_and_optimizer(
-                new_model_provider_func, model_type, *_args, **kwargs)
-        self.wrapped_models = model
-        if args.initialize_embedding:
-            for m in self.unwrapped_models:
-                self._initialize_embedding(m)
-        if args.tuner_type != 'full' and args.modules_to_save:
-            for m in self.unwrapped_models:
-                copy_original_module_weight(m)
-        if args.ref_adapter_load is not None:
-            with self._patch_load_state_dict(self._load_adapter_base_checkpoint):
-                load_checkpoint(model, optimizer, opt_param_scheduler, load_arg='ref_adapter_load', strict=False)
-        if args.adapter_load is not None:
-            with adapter_state_dict_context():
-                args.iteration, args.num_floating_point_operations_so_far = load_checkpoint(
-                    model, optimizer, opt_param_scheduler, load_arg='adapter_load', strict=False)
-        if args.is_multimodal:
-            for m in self.unwrapped_models:
-                self._prepare_vit_gradient_checkpointing(m)
-        return model, optimizer, opt_param_scheduler
+        return iteration
 
     def _prepare_vit_gradient_checkpointing(self, model):
         visual = model.visual
@@ -564,547 +428,13 @@ class BaseMegatronTrainer(ABC):
 
     def _all_reduce_metric(self,
                            metric: Dict[str, torch.Tensor],
-                           reduction=torch.distributed.ReduceOp.AVG) -> Dict[str, torch.Tensor]:
+                           reduction=torch.distributed.ReduceOp.AVG,
+                           group=None) -> Dict[str, torch.Tensor]:
+        if group is None:
+            group = mpu.get_data_parallel_group()
         reporting_metric = torch.stack(list(metric.values()), dim=0)
-        torch.distributed.all_reduce(reporting_metric, reduction, group=mpu.get_data_parallel_group())
+        torch.distributed.all_reduce(reporting_metric, reduction, group=group)
         return {k: reporting_metric[i] for i, k in enumerate(metric.keys())}
-
-    def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_param_scheduler, config, *args,
-                   **kwargs):
-        new_data_iterator = self._replace_data_iterator(data_iterator, model)
-        return self._origin_train_step(forward_step_func, new_data_iterator, model, optimizer, opt_param_scheduler,
-                                       config, *args, **kwargs)
-
-    # Code borrowed from NVIDIA/Megatron-LM
-    def evaluate(
-        self,
-        forward_step_func,
-        data_iterator,
-        model,
-        process_non_loss_data_func,
-        config,
-        verbose=False,
-        non_loss_data_func=None,
-        eval_iters=None,
-    ):
-        """Evaluation."""
-        args = get_args()
-        timers = get_timers()
-
-        timers('evaluate', log_level=0).start(barrier=True)
-        if args.vision_pretraining and args.vision_pretraining_type == 'dino':
-            from megatron.legacy.model.vision.knn_monitor import compute_feature_bank
-            compute_feature_bank(model)
-
-        # Turn on evaluation mode which disables dropout.
-        for model_module in model:
-            model_module.eval()
-
-        # Disable result validation during evaluation
-        rerun_state_machine = get_rerun_state_machine()
-        rerun_mode = rerun_state_machine.get_mode()
-        rerun_state_machine.set_mode(RerunMode.DISABLED)
-
-        total_loss_dict = {}
-
-        # make validation batch size independent from training batch size
-        eval_batch_size = args.global_batch_size
-        eval_num_microbatches = eval_batch_size // (args.micro_batch_size * args.data_parallel_size)
-        forward_backward_func = get_forward_backward_func()
-        if args.enable_cuda_graph and args.cuda_graph_scope == 'full_iteration':
-            from megatron.core.full_cuda_graph import FullCudaGraphWrapper
-            forward_backward_func = FullCudaGraphWrapper(
-                forward_backward_func, cuda_graph_warmup_steps=args.cuda_graph_warmup_steps)
-
-        if eval_iters is None:
-            eval_iters = args.eval_iters
-
-        with torch.no_grad(), tqdm(
-                total=eval_iters, dynamic_ncols=True, disable=not is_last_rank(), desc='Evaluate: ') as prog_bar:
-            iteration = 0
-            if verbose:
-                print_rank_0(f'Evaluating on {eval_iters * eval_batch_size} samples')
-            while iteration < eval_iters:
-                iteration += 1
-                prog_bar.update()
-                if verbose:
-                    print_rank_0(f'Evaluating iter {iteration}/{eval_iters}')
-
-                # Don't care about timing during evaluation
-                config.timers = None
-                ft_integration.on_eval_step_start()
-                new_data_iterator = self._replace_data_iterator(data_iterator, model)
-                loss_dicts = forward_backward_func(
-                    forward_step_func=forward_step_func,
-                    data_iterator=new_data_iterator,
-                    model=model,
-                    num_microbatches=eval_num_microbatches,
-                    seq_length=args.seq_length,
-                    micro_batch_size=args.micro_batch_size,
-                    decoder_seq_length=args.decoder_seq_length,
-                    forward_only=True,
-                )
-                ft_integration.on_eval_step_end()
-                config.timers = get_timers()
-
-                # Empty unused memory
-                if args.empty_unused_memory_level >= 1:
-                    torch.cuda.empty_cache()
-
-                if mpu.is_pipeline_last_stage(ignore_virtual=True):
-                    if self.mcore_013:
-                        for key in loss_dicts[0].keys():
-                            if key not in total_loss_dict:
-                                total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
-                            val = [x[key].view(-1) for x in loss_dicts]
-                            if val[0].numel() == 2:
-                                val = torch.vstack(val).sum(dim=0)
-                                torch.distributed.all_reduce(
-                                    val, group=mpu.get_data_parallel_group(with_context_parallel=True))
-                                total_loss_dict[key] += val
-                            elif val[0].numel() == 1:
-                                val = torch.cat(val).sum()
-                                total_loss_dict[key][0] += val
-                                total_loss_dict[key][1] += len(loss_dicts)
-                            else:
-                                raise ValueError(f'Invalid value shape: {val[0].shape} for key {key}')
-                    else:
-                        # Reduce across processes.
-                        for loss_dict in loss_dicts:
-                            for key in loss_dict:
-                                if key not in total_loss_dict:
-                                    total_loss_dict[key] = torch.tensor([0.0, 0.0], dtype=torch.float).cuda()
-                                val = loss_dict[key]
-                                if isinstance(val, tuple) or isinstance(val, list):
-                                    total_loss_dict[key][0] += val[0]
-                                    total_loss_dict[key][1] += val[1]
-                                else:
-                                    total_loss_dict[key][0] += val
-                                    total_loss_dict[key][1] += 1
-                args.consumed_valid_samples += eval_batch_size
-
-                if args.exit_duration_in_mins:
-                    train_time = (time.time() - training._TRAIN_START_TIME) / 60.0
-                    done_cuda = torch.tensor([train_time > args.exit_duration_in_mins], dtype=torch.int, device='cuda')
-                    torch.distributed.all_reduce(done_cuda, op=torch.distributed.ReduceOp.MAX)
-                    done = done_cuda.item()
-                    if done:
-                        rerun_state_machine.set_mode(rerun_mode)
-                        print_rank_0('Exiting during evaluation, timelimit reached')
-                        return None, None, True
-
-            collected_non_loss_data = None
-            if non_loss_data_func is not None:
-                collected_non_loss_data = non_loss_data_func(model)
-            elif process_non_loss_data_func is not None and is_last_rank():
-                collected_non_loss_data = forward_backward_func(
-                    forward_step_func=forward_step_func,
-                    data_iterator=data_iterator,
-                    model=model,
-                    num_microbatches=get_num_microbatches(),
-                    seq_length=args.seq_length,
-                    micro_batch_size=args.micro_batch_size,
-                    decoder_seq_length=args.decoder_seq_length,
-                    forward_only=True,
-                    collect_non_loss_data=True,
-                )
-
-        # Move model back to the train mode.
-        for model_module in model:
-            model_module.train()
-
-        for key in total_loss_dict:
-            numerator, denominator = total_loss_dict[key]
-            total_loss_dict[key] = numerator / denominator
-        if self.eval_metrics is not None:
-            metric = self.eval_metrics.compute()
-            for k, v in metric.items():
-                total_loss_dict[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
-            self.eval_metrics.reset()
-        timers('evaluate').stop()
-        timers.log(['evaluate'])
-        self.custom_log(total_loss_dict, 'eval')
-        rerun_state_machine.set_mode(rerun_mode)
-        if is_last_rank():
-            logs = {}
-            for key, val in total_loss_dict.items():
-                logs[f'eval_{key}'] = round(val.item(), 8)
-            self.jsonl_writer.append(logs)
-        return total_loss_dict, collected_non_loss_data, False
-
-    def evaluate_and_print_results(
-        self,
-        prefix,
-        forward_step_func,
-        data_iterator,
-        model,
-        iteration,
-        process_non_loss_data_func,
-        config,
-        verbose=False,
-        write_to_tensorboard=True,
-        non_loss_data_func=None,
-    ):
-        """Helper function to evaluate and dump results on screen."""
-
-        args = get_args()
-        if write_to_tensorboard:
-            writer = get_tensorboard_writer()
-        else:
-            writer = None
-
-        wandb_writer = get_wandb_writer()
-
-        data_iterators = data_iterator if args.multiple_validation_sets else [data_iterator]
-
-        if not args.multiple_validation_sets:
-            eval_iters = [args.eval_iters]
-        else:
-            eval_iters = args.eval_iters
-
-        if args.full_validation:
-            assert len(eval_iters) == len(data_iterators)
-
-            # with full validation we need to distribute eval_iters to all ranks
-            if mpu.get_tensor_model_parallel_rank() == 0:
-                eval_iters = torch.tensor(args.eval_iters, dtype=torch.long, device='cuda')
-            else:
-                eval_iters = torch.tensor([0] * len(eval_iters), dtype=torch.long, device='cuda')
-            torch.distributed.broadcast(eval_iters, 0)
-            eval_iters = eval_iters.tolist()
-            args.eval_iters = eval_iters[0] if not args.multiple_validation_sets else eval_iters
-        elif not args.multiple_validation_sets:
-            eval_iters = [args.eval_iters]
-        else:
-            eval_iters = args.eval_iters
-
-        for index, (iterator, iterations) in enumerate(zip(data_iterators, eval_iters)):
-            suffix = ''
-            if args.multiple_validation_sets:
-                suffix = f'-{index}'
-            total_loss_dict, collected_non_loss_data, timelimit = self.evaluate(
-                forward_step_func,
-                iterator,
-                model,
-                process_non_loss_data_func,
-                config,
-                verbose,
-                non_loss_data_func,
-                eval_iters=iterations,
-            )
-            # Timelimit hit during evaluation
-            if timelimit:
-                return
-            string = f' validation{suffix} loss at {prefix} | '
-            for key in total_loss_dict:
-                string += '{} value: {:.6E} | '.format(key, total_loss_dict[key].item())
-                ppl = None
-                if key == 'loss':
-                    ppl = math.exp(min(20, total_loss_dict[key].item()))
-                    string += '{} PPL: {:.6E} | '.format(key, ppl)
-                if writer:
-                    writer.add_scalar('{} validation{}'.format(key, suffix), total_loss_dict[key].item(), iteration)
-                    writer.add_scalar(
-                        '{} validation{} vs samples'.format(key, suffix),
-                        total_loss_dict[key].item(),
-                        args.consumed_train_samples,
-                    )
-                    if args.log_validation_ppl_to_tensorboard and ppl is not None:
-                        writer.add_scalar('{} validation{} ppl'.format(key, suffix), ppl, iteration)
-                        writer.add_scalar('{} validation{} ppl vs samples'.format(key, suffix), ppl,
-                                          args.consumed_train_samples)
-                    if wandb_writer and is_last_rank():
-                        wandb_writer.log({'{} validation{}'.format(key, suffix): total_loss_dict[key].item()},
-                                         iteration)
-
-            if process_non_loss_data_func is not None and writer and is_last_rank():
-                process_non_loss_data_func(collected_non_loss_data, iteration, writer)
-
-            length = len(string) + 1
-            print_rank_last('-' * length)
-            print_rank_last(string)
-            print_rank_last('-' * length)
-
-    def _get_metrics(self, total_loss_dict, mode):
-        advanced_iters = total_loss_dict['advanced iterations'] if mode == 'train' else 1
-        return {
-            k: torch.tensor([v * advanced_iters], device='cuda')
-            for k, v in SwiftMixin.compute_custom_metrics(self.custom_metrics[mode]).items()
-        }
-
-    def _remove_log(self, total_loss_dict):
-        pass
-
-    def custom_log(self, total_loss_dict, mode: Literal['train', 'eval'], iteration=None) -> None:
-        writer = get_tensorboard_writer()
-        wandb_writer = get_wandb_writer()
-        metrics = self._get_metrics(total_loss_dict, mode)
-        total_loss_dict.update(metrics)
-        self._remove_log(total_loss_dict)
-        if iteration is None:
-            args = get_args()
-            iteration = args.curr_iteration + 1
-        if writer:
-            for k, v in metrics.items():
-                writer.add_scalar(k, v, iteration)
-        if wandb_writer:
-            wandb_writer.log(metrics, iteration)
-
-    # Code borrowed from NVIDIA/Megatron-LM
-    def training_log(self, loss_dict, total_loss_dict, learning_rate, decoupled_learning_rate, iteration, loss_scale,
-                     report_memory_flag, skipped_iter, grad_norm, params_norm, num_zeros_in_grad):
-        """Log training information such as losses, timing, ...."""
-        args = get_args()
-        timers = get_timers()
-        writer = get_tensorboard_writer()
-        wandb_writer = get_wandb_writer()
-
-        # Advanced, skipped, and Nan iterations.
-        advanced_iters_key = 'advanced iterations'
-        skipped_iters_key = 'skipped iterations'
-        nan_iters_key = 'nan iterations'
-        # Advanced iterations.
-        if not skipped_iter:
-            total_loss_dict[advanced_iters_key] = total_loss_dict.get(advanced_iters_key, 0) + 1
-        else:
-            if advanced_iters_key not in total_loss_dict:
-                total_loss_dict[advanced_iters_key] = 0
-        # Skipped iterations.
-        total_loss_dict[skipped_iters_key] = total_loss_dict.get(skipped_iters_key, 0) + skipped_iter
-        # Update losses and set nan iterations
-        got_nan = False
-        for key in loss_dict:
-            if not skipped_iter:
-                total_loss_dict[key] = total_loss_dict.get(key, torch.tensor([0.0], dtype=torch.float,
-                                                                             device='cuda')) + loss_dict[key]
-            else:
-                value = loss_dict[key].float().sum().item()
-                is_nan = value == float('inf') or value == -float('inf') or value != value
-                got_nan = got_nan or is_nan
-        total_loss_dict[nan_iters_key] = total_loss_dict.get(nan_iters_key, 0) + int(got_nan)
-
-        # Logging.
-        timers_to_log = [
-            'forward-backward', 'forward-compute', 'backward-compute', 'batch-generator', 'forward-recv',
-            'forward-send', 'backward-recv', 'backward-send', 'forward-send-forward-recv', 'forward-send-backward-recv',
-            'backward-send-forward-recv', 'backward-send-backward-recv', 'forward-backward-send-forward-backward-recv',
-            'layernorm-grads-all-reduce', 'embedding-grads-all-reduce', 'all-grads-sync', 'params-all-gather',
-            'optimizer-copy-to-main-grad', 'optimizer-unscale-and-check-inf', 'optimizer-clip-main-grad',
-            'optimizer-count-zeros', 'optimizer-inner-step', 'optimizer-copy-main-to-model-params', 'optimizer'
-        ]
-
-        # Calculate batch size.
-        batch_size = args.micro_batch_size * args.data_parallel_size * get_num_microbatches()
-
-        # Track app tag & app tag ID
-        one_logger_utils.track_app_tag(batch_size, args.world_size, args.seq_length)
-
-        total_iterations = total_loss_dict[advanced_iters_key] + total_loss_dict[skipped_iters_key]
-
-        # learning rate will be None on ranks without trainable params, so we must gather across mp ranks
-        learning_rate = reduce_max_stat_across_model_parallel_group(learning_rate)
-        # Tensorboard values.
-        # Timer requires all the ranks to call.
-        if args.log_timers_to_tensorboard and (iteration % args.tensorboard_log_interval == 0):
-            timers.write(timers_to_log, writer, iteration, normalizer=total_iterations)
-        if writer and (iteration % args.tensorboard_log_interval == 0):
-            if wandb_writer:
-                wandb_writer.log({'samples vs steps': args.consumed_train_samples}, iteration)
-            writer.add_scalar('learning-rate', learning_rate, iteration)
-            writer.add_scalar('learning-rate vs samples', learning_rate, args.consumed_train_samples)
-            if wandb_writer:
-                wandb_writer.log({'learning-rate': learning_rate}, iteration)
-            if args.decoupled_lr is not None:
-                writer.add_scalar('decoupled-learning-rate', decoupled_learning_rate, iteration)
-            if args.skipped_train_samples > 0:
-                writer.add_scalar('skipped-train-samples', args.skipped_train_samples, iteration)
-                if wandb_writer:
-                    wandb_writer.log({'skipped-train-samples': args.skipped_train_samples}, iteration)
-            writer.add_scalar('batch-size', batch_size, iteration)
-            writer.add_scalar('batch-size vs samples', batch_size, args.consumed_train_samples)
-            if wandb_writer:
-                wandb_writer.log({'batch-size': batch_size}, iteration)
-            log_loss_dict = loss_dict.copy()
-            self._remove_log(log_loss_dict)
-            for key in log_loss_dict:
-                writer.add_scalar(key, loss_dict[key], iteration)
-                writer.add_scalar(key + ' vs samples', loss_dict[key], args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({key: loss_dict[key]}, iteration)
-            if args.log_loss_scale_to_tensorboard:
-                writer.add_scalar('loss-scale', loss_scale, iteration)
-                writer.add_scalar('loss-scale vs samples', loss_scale, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'loss-scale': loss_scale}, iteration)
-            if args.log_world_size_to_tensorboard:
-                writer.add_scalar('world-size', args.world_size, iteration)
-                writer.add_scalar('world-size vs samples', args.world_size, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'world-size': args.world_size}, iteration)
-            if grad_norm is not None:
-                writer.add_scalar('grad-norm', grad_norm, iteration)
-                writer.add_scalar('grad-norm vs samples', grad_norm, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'grad-norm': grad_norm}, iteration)
-            if num_zeros_in_grad is not None:
-                writer.add_scalar('num-zeros', num_zeros_in_grad, iteration)
-                writer.add_scalar('num-zeros vs samples', num_zeros_in_grad, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'num-zeros': num_zeros_in_grad}, iteration)
-            if params_norm is not None:
-                writer.add_scalar('params-norm', params_norm, iteration)
-                writer.add_scalar('params-norm vs samples', params_norm, args.consumed_train_samples)
-                if wandb_writer:
-                    wandb_writer.log({'params-norm': params_norm}, iteration)
-            if args.log_memory_to_tensorboard:
-                mem_stats = torch.cuda.memory_stats()
-                writer.add_scalar(
-                    'mem-reserved-bytes',
-                    mem_stats['reserved_bytes.all.current'],
-                    iteration,
-                )
-                writer.add_scalar(
-                    'mem-allocated-bytes',
-                    mem_stats['allocated_bytes.all.current'],
-                    iteration,
-                )
-                writer.add_scalar(
-                    'mem-max-allocated-bytes',
-                    mem_stats['allocated_bytes.all.peak'],
-                    iteration,
-                )
-                writer.add_scalar(
-                    'mem-allocated-count',
-                    mem_stats['allocation.all.current'],
-                    iteration,
-                )
-        if args.num_experts is not None:
-            moe_loss_scale = 1 / get_num_microbatches()
-            track_names = []
-            if args.moe_router_load_balancing_type in ['aux_loss', 'seq_aux_loss']:
-                track_names.append('load_balancing_loss')
-            if args.moe_z_loss_coeff is not None:
-                track_names.append('z_loss')
-            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
-            track_moe_metrics(
-                loss_scale=moe_loss_scale,
-                iteration=iteration,
-                writer=writer,
-                wandb_writer=wandb_writer,
-                total_loss_dict=total_loss_dict,
-                per_layer_logging=args.moe_per_layer_logging,
-                force_initialize=True,
-                track_names=track_names,
-                num_layers=args.num_layers,
-                moe_layer_freq=args.moe_layer_freq,
-                **track_moe_kwargs)
-        if args.mtp_num_layers is not None:
-            mtp_loss_scale = 1 / get_num_microbatches()
-            MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, iteration, writer, wandb_writer, total_loss_dict)
-        if iteration % args.log_interval == 0 or iteration == 1:
-            self.custom_log(total_loss_dict, 'train')
-            origin_total_loss_dict = total_loss_dict.copy()
-
-            if args.record_memory_history and is_last_rank():
-                snapshot = torch.cuda.memory._snapshot()
-                from pickle import dump
-                with open(args.memory_snapshot_path, 'wb') as f:
-                    dump(snapshot, f)
-
-            elapsed_time = timers('interval-time').elapsed(barrier=True)
-            elapsed_time_per_iteration = elapsed_time / total_iterations
-            train_percentage = iteration / args.train_iters
-            total_elapsed_time = timers('interval-time').active_time()
-            memory_GiB = round(torch.cuda.max_memory_reserved() / 1024**3, 2)
-            remaining_time = total_elapsed_time / train_percentage - total_elapsed_time
-            total_elapsed_time = format_time(total_elapsed_time)
-            remaining_time = format_time(remaining_time)
-
-            throughput = num_floating_point_operations(args, batch_size) / (
-                elapsed_time_per_iteration * 10**12 * args.world_size)
-
-            one_logger_utils.track_e2e_metrics(args.log_throughput, throughput)
-
-            if args.log_timers_to_tensorboard:
-                if writer:
-                    writer.add_scalar('iteration-time', elapsed_time_per_iteration, iteration)
-                if wandb_writer:
-                    wandb_writer.log({'iteration-time': elapsed_time_per_iteration}, iteration)
-            log_string = f" [{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}]"
-            log_string += ' iteration {:8d}/{:8d} |'.format(iteration, args.train_iters)
-            log_string += ' consumed samples: {:12d} |'.format(args.consumed_train_samples)
-            if args.skipped_train_samples > 0:
-                log_string += ' skipped samples: {:12d} |'.format(args.skipped_train_samples)
-            log_string += ' elapsed time per iteration (ms): {:.1f} |'.format(elapsed_time_per_iteration * 1000.0)
-            log_string += (f' memory(GiB): {memory_GiB} |'
-                           f' elapsed time: {total_elapsed_time} | remaining time: {remaining_time} |')
-            if args.log_throughput:
-                log_string += f' throughput per GPU (TFLOP/s/GPU): {throughput:.1f} |'
-                if args.log_timers_to_tensorboard:
-                    if writer:
-                        writer.add_scalar('throughput', throughput, iteration)
-                    if wandb_writer:
-                        wandb_writer.log({'throughput': throughput}, iteration)
-            # Decoupled_learning_rate should be not None only on first and last pipeline stage.
-            log_string += f' learning rate: {learning_rate:.6E} |'
-            if args.decoupled_lr is not None and (mpu.is_pipeline_first_stage(ignore_virtual=True)
-                                                  or mpu.is_pipeline_last_stage(ignore_virtual=True)):
-                assert decoupled_learning_rate is not None
-                log_string += f' decoupled learning rate: {decoupled_learning_rate:.6E} |'
-            else:
-                assert decoupled_learning_rate is None
-            log_string += f' global batch size: {batch_size:5d} |'
-            for key in total_loss_dict:
-                if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
-                    avg = total_loss_dict[key].item() / float(max(1, total_loss_dict[advanced_iters_key]))
-                    log_string += ' {}: {:.6E} |'.format(key, avg)
-                    total_loss_dict[key] = torch.tensor([0.0], dtype=torch.float, device='cuda')
-            log_string += f' loss scale: {loss_scale:.1f} |'
-            if grad_norm is not None:
-                log_string += f' grad norm: {grad_norm:.3f} |'
-            if num_zeros_in_grad is not None:
-                log_string += f' num zeros: {num_zeros_in_grad} |'
-            if params_norm is not None:
-                log_string += f' params norm: {params_norm:.3f} |'
-            log_string += ' number of skipped iterations: {:3d} |'.format(total_loss_dict[skipped_iters_key])
-            log_string += ' number of nan iterations: {:3d} |'.format(total_loss_dict[nan_iters_key])
-            total_loss_dict[advanced_iters_key] = 0
-            total_loss_dict[skipped_iters_key] = 0
-            total_loss_dict[nan_iters_key] = 0
-            print_rank_last(log_string)
-            if report_memory_flag:
-                # Report memory after optimizer state has been initialized.
-                if torch.distributed.get_rank() == 0:
-                    num_microbatches = get_num_microbatches()
-                    report_theoretical_memory(args, num_microbatches=num_microbatches, verbose=True)
-                report_memory(f'(after {iteration} iterations)')
-                report_memory_flag = False
-            timers.log(timers_to_log, normalizer=args.log_interval)
-
-            if is_last_rank():
-                logs = {}
-                for key in origin_total_loss_dict:
-                    if key not in [advanced_iters_key, skipped_iters_key, nan_iters_key]:
-                        avg = origin_total_loss_dict[key].item() / float(
-                            max(1, origin_total_loss_dict[advanced_iters_key]))
-                        logs[key] = round(avg, 8)
-                if grad_norm is not None:
-                    logs['grad_norm'] = round(grad_norm, 8)
-                if params_norm is not None:
-                    logs['params_norm'] = round(params_norm, 8)
-                logs['learning_rate'] = round(learning_rate, 8)
-                logs['elapsed_time_per_iteration'] = round(elapsed_time_per_iteration, 8)
-                logs['memory(GiB)'] = memory_GiB
-                logs['elapsed_time'] = total_elapsed_time
-                logs['remaining_time'] = remaining_time
-                if args.log_throughput:
-                    logs['throughput'] = round(throughput, 8)
-                logs['loss_scale'] = round(loss_scale, 8)
-                logs['consumed_samples'] = args.consumed_train_samples
-                logs['global_step/max_steps'] = f'{iteration}/{args.train_iters}'
-                self.jsonl_writer.append(logs)
-
-        return report_memory_flag
 
     def merge_lora_adapters(self, adapter_name='default'):
         """Merge LoRA adapters into base model weights for vLLM inference."""
@@ -1139,20 +469,84 @@ class BaseMegatronTrainer(ABC):
         else:
             raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
-    def save_checkpoint(self, iteration, model, *_args, **kwargs):
-        args = get_args()
-        output_dir = os.path.join(args.save, f'checkpoint-{iteration}')
+    def _prepare_data_iterator(self, train_dataset, val_dataset=None, use_origin_cyclic: bool = False):
+        train_dataloader, val_dataloader = self._prepare_dataloader(train_dataset, val_dataset)
+        train_data_iterator = iter(self.cyclic_iter(train_dataloader, use_origin_cyclic=use_origin_cyclic))
+        val_data_iterator = None
+        if val_dataset is not None:
+            val_data_iterator = iter(self.cyclic_iter(val_dataloader, use_origin_cyclic=use_origin_cyclic))
+        return train_data_iterator, val_data_iterator
+
+    def train(self, train_dataset, val_dataset):
+        args = self.args
+        for m in self.wrapped_models:
+            m.train()
+
+        if args.is_multimodal:
+            for m in self.unwrapped_models:
+                self._prepare_vit_gradient_checkpointing(m)
+
+        self.config.finalize_model_grads_func = finalize_model_grads
+        self.call_event('on_train_begin')
+        train_metrics = {}
+        if self.args.virtual_pipeline_model_parallel_size is not None:
+            train_data_iterator, val_data_iterator = [], []
+            for _ in range(self.args.virtual_pipeline_model_parallel_size):
+                train_it, val_it = self._prepare_data_iterator(train_dataset, val_dataset)
+                train_data_iterator.append(train_it)
+                val_data_iterator.append(train_it)
+        else:
+            train_data_iterator, val_data_iterator = self._prepare_data_iterator(train_dataset, val_dataset)
+        state = self.state
+        while state.iteration < args.train_iters:
+            self.call_event('on_step_begin')
+            metrics, grad_norm = self.train_step(train_data_iterator)
+            state.iteration += 1
+            self.call_event('on_step_end')
+            if mpu.is_pipeline_last_stage(ignore_virtual=True):
+                self._aggregated_metrics(metrics, train_metrics)
+                train_metrics['grad_norm'] = grad_norm
+                learning_rate = None
+                for param_group in self.optimizer.param_groups:
+                    if len(param_group['params']) == 0:
+                        continue
+                    learning_rate = param_group['lr']
+                if learning_rate is not None:
+                    train_metrics['learning_rate'] = learning_rate
+            if state.should_log:
+                state.should_log = False
+                self.on_log(logs=train_metrics)
+                train_metrics = {}
+
+            if state.should_eval:
+                state.should_eval = False
+                self.evaluate(val_data_iterator)
+                for m in self.wrapped_models:
+                    m.train()
+
+            if state.should_save:
+                state.should_save = False
+                self.save_checkpoint()
+
+        self.call_event('on_train_end')
+
+    def save_checkpoint(self):
+        args = self.args
+        args.consumed_train_samples = self.state.consumed_train_samples
+        iteration = self.state.iteration
+        output_dir = os.path.join(args.output_dir, f'checkpoint-{iteration}')
         os.makedirs(output_dir, exist_ok=True)
-        origin_save = args.save
-        args.save = output_dir
+        origin_output_dir = args.output_dir
+        args.output_dir = output_dir
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
-        with adapter_state_dict_context(is_peft_format=args.tuner_type == 'lora'):
-            self._origin_save_checkpoint(iteration, model, *_args, **kwargs)
-        args.save = origin_save
+        else:
+            model = self.wrapped_models
+        save_mcore_checkpoint(args, model, self.optimizer, self.opt_param_scheduler, iteration=iteration)
+        args.output_dir = origin_output_dir
         # safetensors
         if args.save_safetensors:
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
@@ -1174,156 +568,151 @@ class BaseMegatronTrainer(ABC):
                 output_dir,
                 is_peft_format=save_peft_format,
                 processor=self.template.processor,
-                config=self.template.config)
+                hf_config=self.template.config)
             if args.tuner_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
-    def _patch_megatron(self):
-        # support max_epochs
-        self._origin_train_step = training.train_step
-        training.train_step = self.train_step
-        self._origin_cyclic_iter = training.cyclic_iter
-        training.cyclic_iter = self.new_cyclic_iter
-        # patch training_log
-        self._origin_training_log = training.training_log
-        training.training_log = self.training_log
-        # patch evaluate
-        self._origin_evaluate_and_print_results = training.evaluate_and_print_results
-        training.evaluate_and_print_results = self.evaluate_and_print_results
-        # patch model and optimizer
-        self._origin_setup_model_and_optimizer = training.setup_model_and_optimizer
-        training.setup_model_and_optimizer = self.setup_model_and_optimizer
-        # patch save_checkpoint
-        self._origin_save_checkpoint = training.save_checkpoint
-        training.save_checkpoint = self.save_checkpoint
+    def training_log(self, metrics, grad_norm):
+        learning_rate = None
+        for param_group in self.optimizer.param_groups:
+            if len(param_group['params']) == 0:
+                continue
+            learning_rate = param_group['lr']
+        logger.info(f'metrics: {metrics}, grad_norm: {grad_norm}, learning_rate: {learning_rate}')
 
-    def _init_multimodal_full(self):
-        args = get_args()
-        visual_cls = self.args.megatron_model_meta.visual_cls
-        if args.tuner_type == 'full' and args.is_multimodal and visual_cls is not None:
-            vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
-            aligner = [f'visual.{aligner}' for aligner in getattr(visual_cls, '_aligner', [])]
-            generator = [f'visual.{generator}' for generator in getattr(visual_cls, '_generator', [])]
-            if args.freeze_llm:
-                args.freeze_parameters.append('language_model')
-            if args.freeze_vit:
-                args.freeze_parameters += vision_tower
-            if args.freeze_aligner:
-                args.freeze_parameters += aligner
-            else:
-                args.trainable_parameters += aligner
-            args.freeze_parameters += generator
-            if args.freeze_parameters:
-                logger.info(f'freeze_parameters: {args.freeze_parameters}')
-            if args.trainable_parameters:
-                logger.info(f'additional trainable_parameters: {args.trainable_parameters}')
-
-    def train(self, train_dataset, val_dataset, data_collator):
+    def evaluate(self, val_data_iterator):
         args = self.args
-        datasets_provider = get_swift_datasets_provider(train_dataset, val_dataset)
-        datasets_provider.is_distributed = True
-        with self.patch_megatron_data_collator(data_collator), self._get_iters(train_dataset, val_dataset):
-            extra_args_provider = args.megatron_model_meta.extra_args_provider
-            pretrain(
-                datasets_provider,
-                args.megatron_model_meta.model_provider,
-                ModelType.encoder_or_decoder,
-                self.forward_step,
-                extra_args_provider=extra_args_provider,
-                args_defaults=args.extra_args)
+        for m in self.wrapped_models:
+            m.eval()
+        eval_metrics = {}
+        forward_backward_func = get_forward_backward_func()
+        self.call_event('on_eval_begin')
+        with torch.no_grad():
+            for _ in range(args.eval_iters):
+                val_data_iterator = self._replace_data_iterator(val_data_iterator)
+                metrics = forward_backward_func(
+                    forward_step_func=self.forward_step,
+                    data_iterator=val_data_iterator,
+                    model=self.wrapped_models,
+                    num_microbatches=self.args.num_microbatches,
+                    seq_length=args.max_length,
+                    micro_batch_size=args.micro_batch_size,
+                    forward_only=True,
+                )
+                self.call_event('on_eval_step')
+                if mpu.is_pipeline_last_stage(ignore_virtual=True):
+                    self._aggregated_metrics(metrics, eval_metrics)
+        self.compute_eval_metrics(eval_metrics)
+        self.on_log(logs=eval_metrics, prefix='eval_')
+        self.call_event('on_eval_end')
 
-    # Code borrowed from NVIDIA/Megatron-LM
-    def build_pretraining_data_loader(self, dataset, consumed_samples, data_collator=None):
-        """Build dataloader given an input dataset."""
+    def compute_eval_metrics(self, metrics):
+        if self.eval_metrics is not None:
+            metric = self.eval_metrics.compute()
+            for k, v in metric.items():
+                metrics[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
+            self.eval_metrics.reset()
 
-        if dataset is None:
-            return None
+    def _replace_data_iterator(self, data_iterator):
+        return data_iterator
 
-        args = get_args()
-        if args.dataloader_type == 'external':
-            # External dataloaders are passed through. User is expected to provide a
-            # torch-compatible dataloader and define samplers, if needed.
-            return dataset
+    def train_step(self, train_data_iterator):
+        args = self.args
+        forward_backward_func = get_forward_backward_func()
+        for m in self.wrapped_models:
+            m.zero_grad_buffer()
+        self.optimizer.zero_grad()
+        # TODO: refactor _replace_data_iterator
+        train_data_iterator = self._replace_data_iterator(train_data_iterator)
+        metrics = forward_backward_func(
+            forward_step_func=self.forward_step,
+            data_iterator=train_data_iterator,
+            model=self.wrapped_models,
+            num_microbatches=args.num_microbatches,
+            seq_length=args.max_length,
+            micro_batch_size=args.micro_batch_size,
+            forward_only=False,
+        )
 
-        if hasattr(dataset, 'split'):
-            split = dataset.split
-        elif hasattr(dataset, 'index_split'):
-            split = dataset.index_split
-        else:
-            split = None
+        _, grad_norm, _ = self.optimizer.step()
+        grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
+        self.opt_param_scheduler.step(increment=args.global_batch_size)
 
-        is_val_dataset = getattr(dataset, 'dataset_type', None) == 'validation'
+        return metrics, grad_norm
 
-        if split == Split.valid and args.full_validation:
-            batch_sampler = MegatronPretrainingSampler(
-                total_samples=len(dataset),
+    def _aggregated_metrics(self, metrics, total_metrics):
+        if 'n_steps' not in total_metrics:
+            total_metrics['n_steps'] = 0
+        total_metrics['n_steps'] += 1
+        for key in metrics[0].keys():
+            val = [x[key].view(-1) for x in metrics if key in x]
+            val = torch.stack(val, dim=0)
+            if val[0].numel() == 2:
+                val = val.sum(dim=0)
+                if val[1] == 0:
+                    continue
+            elif val[0].numel() == 1:
+                val = val.new_tensor([val.sum(), val.shape[0]])
+            else:
+                raise ValueError(f'Invalid value shape: {val[0].shape} for key {key}')
+            if key not in total_metrics:
+                total_metrics[key] = torch.tensor([0.0, 0.0], dtype=torch.float32, device=torch.cuda.current_device())
+            total_metrics[key] += val
+
+    def _prepare_dataloader(self, train_dataset, val_dataset=None):
+        args = self.args
+        val_dataloader = None
+        if args.streaming:
+            train_dataloader = build_streaming_dataloader(args, train_dataset, self.data_collator)
+            if val_dataset is not None:
+                val_dataloader = build_streaming_dataloader(args, val_dataset, self.data_collator)
+            return train_dataloader, val_dataloader
+        train_batch_sampler = MegatronPretrainingRandomSampler(
+            train_dataset,
+            total_samples=len(train_dataset),
+            consumed_samples=self.state.consumed_train_samples,
+            micro_batch_size=args.micro_batch_size,
+            data_parallel_rank=mpu.get_data_parallel_rank(),
+            data_parallel_size=mpu.get_data_parallel_world_size(),
+            data_sharding=args.data_sharding,
+            shuffle=args.train_dataloader_shuffle,
+            group_by_length=args.group_by_length,
+        )
+        train_dataloader = self._create_dataloader(train_dataset, train_batch_sampler)
+        if val_dataset is not None:
+            val_batch_sampler = MegatronPretrainingSampler(
+                total_samples=len(val_dataset),
                 consumed_samples=0,
                 micro_batch_size=args.micro_batch_size,
                 data_parallel_rank=mpu.get_data_parallel_rank(),
                 data_parallel_size=mpu.get_data_parallel_world_size(),
             )
-        elif args.dataloader_type == 'single' or is_val_dataset:
-            if is_val_dataset:
-                consumed_samples = 0
-            # Megatron sampler
-            batch_sampler = MegatronPretrainingSampler(
-                total_samples=len(dataset),
-                consumed_samples=consumed_samples,
-                micro_batch_size=args.micro_batch_size,
-                data_parallel_rank=mpu.get_data_parallel_rank(),
-                data_parallel_size=mpu.get_data_parallel_world_size(),
-            )
-        elif args.dataloader_type == 'cyclic':
-            batch_sampler = MegatronPretrainingRandomSampler(
-                dataset,
-                total_samples=len(dataset),
-                consumed_samples=consumed_samples,
-                micro_batch_size=args.micro_batch_size,
-                data_parallel_rank=mpu.get_data_parallel_rank(),
-                data_parallel_size=mpu.get_data_parallel_world_size(),
-                data_sharding=args.data_sharding,
-                shuffle=args.train_dataloader_shuffle,
-                group_by_length=args.group_by_length,
-            )
-        else:
-            raise Exception('{} dataloader type is not supported.'.format(args.dataloader_type))
+            val_dataloader = self._create_dataloader(val_dataset, val_batch_sampler)
+        return train_dataloader, val_dataloader
 
-        def worker_init_fn(_):
-            DistributedSignalHandler(args.exit_signal).__enter__()
+    def _create_dataloader(self, dataset, batch_sampler):
+        args = self.args
 
-        maybe_worker_init_fn = (worker_init_fn if args.exit_signal_handler and args.num_workers > 0 else None)
-        # Torch dataloader.
         dataloader = torch.utils.data.DataLoader(
             dataset,
             batch_sampler=batch_sampler,
-            num_workers=args.num_workers,
+            num_workers=args.dataloader_num_workers,
             pin_memory=args.dataloader_pin_memory,
-            persistent_workers=args.dataloader_persistent_workers if args.num_workers > 0 else False,
-            prefetch_factor=args.dataloader_prefetch_factor if args.num_workers > 0 else None,
-            worker_init_fn=maybe_worker_init_fn,
-            collate_fn=data_collator,
+            persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+            prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
+            collate_fn=self.data_collator,
         )
         return dataloader
-
-    @contextmanager
-    def patch_megatron_data_collator(self, data_collator):
-        origin_build_pretraining_data_loader = training.build_pretraining_data_loader
-        training.build_pretraining_data_loader = partial(
-            self.build_pretraining_data_loader, data_collator=data_collator)
-        try:
-            yield
-        finally:
-            training.build_pretraining_data_loader = origin_build_pretraining_data_loader
 
     @abstractmethod
     def forward_step(self, data_iterator, model):
         pass
 
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
-        batch = get_batch_on_this_tp_rank(data, vp_stage=vp_stage)
+        batch = get_batch_on_this_tp_rank(self.args, data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
-        args = get_args()
+        args = self.args
         text_position_ids = batch.pop('text_position_ids', None)
         batch.pop('attention_mask_2d', None)
         if text_position_ids is None:
@@ -1332,30 +721,12 @@ class BaseMegatronTrainer(ABC):
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples
         # slice batch along sequence dimension for context parallelism
-        batch = get_batch_on_this_cp_rank(batch)
+        batch = get_batch_on_this_cp_rank(args, batch)
         return batch
 
     def get_batch(self, data_iterator, vp_stage=None):
         """Generate a batch."""
         return self._prepare_batch(next(data_iterator), vp_stage)
-
-    @contextmanager
-    def _patch_timeout(self):
-        from modelscope.hub.api import HubApi
-        __init__ = HubApi.__init__
-
-        def __new_init__(self, *args, **kwargs):
-            timeout = kwargs.get('timeout')
-            if timeout is not None and timeout > 5:
-                kwargs['timeout'] = 5
-            __init__(self, *args, **kwargs)
-
-        HubApi.__init__ = __new_init__
-
-        try:
-            yield
-        finally:
-            HubApi.__init__ = __init__
 
     def _collect_config_info(self) -> Dict[str, str]:
         """
@@ -1387,6 +758,3 @@ class BaseMegatronTrainer(ABC):
             last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
             last_tokens = output_tensor[0, last_token_idx]
         return last_tokens
-
-    def patched_validate_args(self, args, *_args, **kwargs):
-        return self._origin_validate_args(args, *_args, **kwargs)

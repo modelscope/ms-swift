@@ -3,7 +3,6 @@ from collections import namedtuple
 from functools import partial
 
 import torch.nn
-from megatron.training import get_args, get_timers
 
 from swift.loss import loss_map
 from swift.metrics import eval_metrics_map
@@ -55,25 +54,18 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
         metric = self._all_reduce_metric(metric)
         return loss, metric
 
-    def setup_model_and_optimizer(self, *_args, **kwargs):
-        res = super().setup_model_and_optimizer(*_args, **kwargs)
+    def prepare_model(self):
+        super().prepare_model()
         for model in self.unwrapped_models:
             lm_model = model.language_model if hasattr(model, 'language_model') else model
             lm_model.tokenizer = self.template.tokenizer
-        return res
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
-
         # Get the batch.
         vp_stage = model.module.module.vp_stage
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator, vp_stage)
-        timers('batch-generator').stop()
+        data = self.get_batch(data_iterator, vp_stage)
         labels = data.pop('labels', None)
-        with self.stimer:
-            output_tensor = model(**data)
+        output_tensor = model(**data)
         packed_seq_params = data.get('packed_seq_params')
         loss_func = partial(self.loss_func, labels=labels, packed_seq_params=packed_seq_params)
         return output_tensor, loss_func

@@ -5,7 +5,6 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --model ZhipuAI/GLM-4.5-Air \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora true \
     --mtp_num_layers 1 \
@@ -28,18 +27,18 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 2 \
+    --num_train_epochs 2 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/GLM-4.5-Air \
+    --output_dir megatron_output/GLM-4.5-Air \
     --eval_interval 200 \
     --save_interval 200 \
     --packing true \
     --max_length 8192 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

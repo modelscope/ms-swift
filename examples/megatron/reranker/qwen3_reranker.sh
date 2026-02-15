@@ -6,7 +6,6 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-Reranker-8B \
     --task_type generative_reranker \
-    --load_safetensors true \
     --save_safetensors true \
     --tuner_type full \
     --dataset MTEB/scidocs-reranking \
@@ -24,13 +23,13 @@ megatron sft \
     --lr 5e-6 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-7 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen3-Reranker-8B \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen3-Reranker-8B \
     --save_interval 200 \
     --eval_interval 50 \
     --max_length 4096 \
     --loss_type pointwise_reranker \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4

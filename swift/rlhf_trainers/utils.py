@@ -538,7 +538,7 @@ def patch_lora_unmerge(model):
 
 
 @contextmanager
-def patch_profiling_context(trainer, name: str):
+def profiling_context(trainer, name: str):
     start_time = time.perf_counter()
     yield
     end_time = time.perf_counter()
@@ -553,11 +553,11 @@ def patch_profiling_context(trainer, name: str):
         swanlab.log(profiling_metrics)
 
 
-def patch_profiling_decorator(func):
+def profiling_decorator(func):
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        with patch_profiling_context(self, func.__name__):
+        with profiling_context(self, func.__name__):
             return func(self, *args, **kwargs)
 
     return wrapper

@@ -3,12 +3,12 @@ from contextlib import contextmanager
 
 import torch
 from megatron.core import mpu
-from megatron.training import get_args, get_model
-from megatron.training.checkpointing import load_checkpoint
-from megatron.training.utils import unwrap_model
 from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
+from swift.megatron.model import get_mcore_model
+from swift.megatron.utils import load_mcore_checkpoint
+from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
 
@@ -17,28 +17,41 @@ logger = get_logger()
 
 class MegatronRLHFTrainer(BaseMegatronTrainer):
 
-    def setup_model_and_optimizer(self, model_provider_func, model_type, *_args, **kwargs):
-        args = get_args()
+    def _load_checkpoint(self):
+        args = self.args
+        if args.mcore_ref_model is not None:
+            load_mcore_checkpoint(args, self.ref_models, load_arg='mcore_ref_model')
+        if args.mcore_ref_adapter is not None:
+            load_mcore_checkpoint(args, self.wrapped_models, load_arg='mcore_ref_adapter')
+        super()._load_checkpoint()
+
+    def prepare_model(self):
+        super().prepare_model()
+        args = self.args
+        self.ref_models = []
         if args.tuner_type == 'full' and args.rlhf_type not in ['rm', 'gkd']:
-            ref_models = get_model(model_provider_func, model_type, wrap_with_ddp=False)
-            args.ref_model = args.ref_model or args.model
-            if args.ref_load is None:
-                args.ref_load = args.load
-            for m in ref_models:
-                m = unwrap_model(m)
-                if args.ref_load is None:
-                    self.bridge.load_weights(m, args.ref_model)
-                m.requires_grad_(False).eval()
-            if args.ref_load:
-                load_checkpoint(ref_models, None, None, load_arg='ref_load')
-            self.ref_models = ref_models
-        return super().setup_model_and_optimizer(model_provider_func, model_type, *_args, **kwargs)
+            self.ref_models = get_mcore_model(args, self.template.config)
+        for ref_model in self.ref_models:
+            ref_model.requires_grad_(False)
+            ref_model.eval()
+        if self.ref_models and args.mcore_ref_model is None:
+            ref_model_id_or_path = args.ref_model or args.model
+            self.bridge.load_weights(self.ref_models, ref_model_id_or_path)
+        if args.tuner_type == 'lora' and args.ref_adapters and args.mcore_ref_adapter is None:
+            assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
+            self.bridge.load_weights(
+                self.ref_models, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+
+    def _get_data_collator(self):
+        if self.args.rlhf_type in ('grpo', 'gkd'):
+            return identity_data_collator
+        return super()._get_data_collator()
 
     @contextmanager
     def null_ref_context(self):
-        args = get_args()
+        args = self.args
         contexts = []
-        has_ref_adapter = bool(args.ref_adapter_load or args.ref_adapters)
+        has_ref_adapter = bool(args.mcore_ref_adapter or args.ref_adapters)
         if args.tuner_type == 'full':
             ref_models = self.ref_models
         else:
@@ -56,7 +69,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                     m.set_adapter('default')
 
     def get_logps(self, output_tensor, labels, packed_seq_params, num_samples, per_token=False):
-        args = get_args()
+        args = self.args
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
@@ -92,7 +105,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         Returns:
             output_full: [1, packed_len] in padding_free mode, or [batch_size, seq_len] otherwise
         """
-        args = get_args()
+        args = self.args
         cp_size = args.context_parallel_size
         cp_rank = mpu.get_context_parallel_rank()
 

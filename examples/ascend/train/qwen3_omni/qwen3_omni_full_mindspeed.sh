@@ -8,7 +8,6 @@ VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 megatron sft \
     --model Qwen/Qwen3-Omni-30B-A3B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -37,13 +36,12 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen3-Omni-30B-A3B-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen3-Omni-30B-A3B-Instruct \
     --eval_interval 100 \
     --save_interval 100 \
-    --vit_gradient_checkpointing true \
     --max_length 1024 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

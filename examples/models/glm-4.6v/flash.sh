@@ -4,7 +4,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model ZhipuAI/GLM-4.6V-Flash \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
@@ -25,12 +24,11 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/GLM-4.6V-Flash \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/GLM-4.6V-Flash \
     --save_interval 200 \
-    --vit_gradient_checkpointing false \
     --max_length 2048 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 8

@@ -54,7 +54,7 @@ from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, g
 from . import patcher
 from .arguments import TrainingArguments
 from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, get_resume_dir,
-                    is_instance_of_ms_model, replace_index_file)
+                    is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
 
 try:
     from trl import AutoModelForCausalLMWithValueHead
@@ -85,7 +85,7 @@ class SwiftMixin:
         self.task_type = self.template.task_type
         self.problem_type = getattr(model.config, 'problem_type', None)
         if args.check_model and hasattr(model, 'model_dir'):
-            with ms_logger_context(logging.CRITICAL), self._patch_timeout():
+            with ms_logger_context(logging.CRITICAL), patch_modelscope_hub_timeout():
                 config_info = self._collect_config_info()
                 config_info.update({
                     'invoked_by': 'local_trainer',
@@ -148,25 +148,7 @@ class SwiftMixin:
 
     def _add_callbacks(self):
         for callback in self.args.callbacks:
-            self.add_callback(callbacks_map[callback](self.args, self))
-
-    @contextmanager
-    def _patch_timeout(self):
-        from modelscope.hub.api import HubApi
-        __init__ = HubApi.__init__
-
-        def __new_init__(self, *args, **kwargs):
-            timeout = kwargs.get('timeout')
-            if timeout is not None and timeout > 5:
-                kwargs['timeout'] = 5
-            __init__(self, *args, **kwargs)
-
-        HubApi.__init__ = __new_init__
-
-        try:
-            yield
-        finally:
-            HubApi.__init__ = __init__
+            self.add_callback(callbacks_map[callback](self))
 
     def _collect_config_info(self) -> Dict[str, str]:
         """

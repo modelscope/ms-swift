@@ -20,10 +20,11 @@ from megatron.core import mpu
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
-                                       patch_vllm_moe_model_weight_loader, set_expandable_segments)
+                                       patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
+                                       set_expandable_segments)
 from swift.utils import get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, to_device
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
-                    offload_megatron_optimizer, profiling_context, profiling_decorator)
+                    offload_megatron_optimizer)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -270,13 +271,6 @@ class MegatronRolloutMixin:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
 
         return engine
-
-    @property
-    def bridge(self):
-        """Lazy initialization of weight bridge for Megatron-to-vLLM weight transfer."""
-        if self._bridge is None:
-            self._bridge = self.args.megatron_model_meta.bridge_cls()
-        return self._bridge
 
     @profiling_decorator
     def _move_model_to_vllm(self):

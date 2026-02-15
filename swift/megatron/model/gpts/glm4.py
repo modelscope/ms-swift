@@ -4,19 +4,18 @@ from typing import Optional
 import megatron.core
 from megatron.core.dist_checkpointing.mapping import ShardedStateDict
 from megatron.core.extensions.transformer_engine import TENorm
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.transformer import transformer_layer
 from megatron.core.transformer.attention import SelfAttention
 from megatron.core.transformer.mlp import MLP, apply_swiglu_sharded_factory
 from megatron.core.transformer.spec_utils import build_module
-from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.utils import sharded_state_dict_default
 from packaging import version
 
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
-from ..register import MegatronModelMeta, register_megatron_model
+from ..model_config import MegatronModelConfig
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -25,7 +24,7 @@ class Glm4SelfAttention(SelfAttention):
 
     def __init__(
         self,
-        config: TransformerConfig,
+        config: MegatronModelConfig,
         *args,
         **kwargs,
     ):
@@ -48,7 +47,7 @@ class Glm4MLP(MLP):
 
     def __init__(
         self,
-        config: TransformerConfig,
+        config: MegatronModelConfig,
         *args,
         **kwargs,
     ):
@@ -94,20 +93,14 @@ class Glm4Bridge(GPTBridge):
         return hf_state_dict
 
 
-def get_glm4_transformer_layer_spec(config, vp_stage=None):
-    kwargs = {'use_kitchen': config.use_kitchen} if mcore_013 else {}
-    layer_spec = get_gpt_layer_with_transformer_engine_spec(
-        num_experts=config.num_moe_experts,
-        moe_grouped_gemm=config.moe_grouped_gemm,
-        qk_layernorm=config.qk_layernorm,
-        multi_latent_attention=config.multi_latent_attention,
-        moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
-        **kwargs,
-    )
-    layer_spec.submodules.self_attention.module = Glm4SelfAttention
-    layer_spec.submodules.mlp.module = Glm4MLP
-    transformer_layer.MLP = Glm4MLP  # patch
-    return layer_spec
+class Glm4Loader(MegatronModelLoader):
+
+    def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
+        layer_spec = self._get_transformer_layer_spec()
+        layer_spec.submodules.self_attention.module = Glm4SelfAttention
+        layer_spec.submodules.mlp.module = Glm4MLP
+        transformer_layer.MLP = Glm4MLP  # patch
+        return layer_spec
 
 
 register_megatron_model(
@@ -116,6 +109,6 @@ register_megatron_model(
         [
             ModelType.glm4,
         ],
-        get_transformer_layer_spec=get_glm4_transformer_layer_spec,
         bridge_cls=Glm4Bridge,
+        loader=Glm4Loader,
     ))

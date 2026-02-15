@@ -12,7 +12,6 @@ megatron rlhf \
   --tensor_model_parallel_size 1 \
   --pipeline_model_parallel_size 1 \
   --dataset AI-ModelScope/clevr_cogen_a_train \
-  --load_safetensors true \
   --save_safetensors true \
   --external_plugins examples/train/grpo/plugin/plugin.py \
   --reward_funcs external_r1v_acc format \
@@ -33,7 +32,7 @@ megatron rlhf \
   --epsilon 0.2 \
   --epsilon_high 0.2 \
   --overlong_filter true \
-  --max_epochs 1 \
+  --num_train_epochs 1 \
   --eval_interval 1000 \
   --save_interval 1000 \
   --sleep_level 2 \
@@ -43,7 +42,7 @@ megatron rlhf \
   --recompute_granularity selective \
   --finetune \
   --lr 1e-6 \
-  --num_workers 8 \
+  --dataloader_num_workers 8 \
   --dataset_num_proc 8 \
   --no_save_optim \
   --no_save_rng \

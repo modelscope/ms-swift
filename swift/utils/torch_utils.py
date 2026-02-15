@@ -17,6 +17,7 @@ from datasets.utils.filelock import FileLock
 from modelscope.hub.utils.utils import get_cache_dir
 from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 
+from swift.utils import is_mp
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master
 from .logger import get_logger
 
@@ -290,3 +291,12 @@ def get_generative_reranker_logits(lm_head_weight, tokenizer, hidden_states):
     weight = lm_head_weight[[positive_token_id, negative_token_id]]
     logits = F.linear(hidden_states, weight)
     return logits[..., 0:1] - logits[..., 1:2]
+
+
+def get_max_reserved_memory() -> float:
+    devices = list(range(get_device_count())) if is_mp() else [None]
+    try:
+        mems = [get_torch_device().max_memory_reserved(device=device) for device in devices]
+    except AttributeError:
+        return 0  # fix mps
+    return sum(mems) / 1024**3

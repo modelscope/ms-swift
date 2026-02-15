@@ -32,9 +32,8 @@ class TemplateArguments:
         truncation_strategy (Literal['delete', 'left', 'right', 'split']): Strategy for handling samples exceeding
             `max_length`. Options are 'delete', 'left' (truncate from the left), 'right' (truncate from the right),
             and 'split' (split into multiple samples). Defaults to 'delete'.
-            Note: The 'split' strategy is only supported during pre-training (e.g., `swift/megatron pt`), requires
-            `ms-swift>=3.11`, and is incompatible with `cached_dataset`. It splits long samples to avoid wasting
-            tokens.
+            Note: The 'split' strategy is only supported during pre-training (e.g., `swift/megatron pt`),
+            and is incompatible with `cached_dataset`. It splits long samples to avoid wasting tokens.
             Note: For multimodal models, setting this to 'left' or 'right' preserves all image tokens, which may lead
             to OOM errors.
         max_pixels (Optional[int]): The maximum number of pixels (H*W) for an input image in a multimodal model.
@@ -68,16 +67,15 @@ class TemplateArguments:
             'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc.
             For available options, refer to
             [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
-            ms-swift>=3.12 supports mixing basic strategies with other strategies,
+            ms-swift supports mixing basic strategies with other strategies,
             for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`.
             If no basic strategy is specified, it defaults to 'default',
             for example: 'hermes' is equivalent to 'default+hermes'.
             - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss
             (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are
             not included in loss calculation**). (**Default value for SFT**)
-            - 'last_round': Only calculate loss for the last round response. In "ms-swift>=3.12", the last round
-            means all content after the last "user", previously it only included the last "assistant".
-            (**Default value for RLHF**)
+            - 'last_round': Only calculate loss for the last round response. The last round
+            means all content after the last "user". (**Default value for RLHF**)
             - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
             - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'`
             (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
@@ -90,7 +88,7 @@ class TemplateArguments:
             token range for loss calculation.
         response_prefix (Optional[str]): A prefix string for the response, e.g., '<think>\\n' for Qwen-32B. This
             parameter only affects inference. Defaults to None, which is auto-set based on the model.
-        enable_thinking (Optional[bool]): (ms-swift>=3.12) This parameter takes effect during inference,
+        enable_thinking (Optional[bool]): This parameter takes effect during inference,
             indicating whether to enable thinking mode. Default is None, the default value is determined by the
             template (model) type (True for thinking/hybrid thinking templates, False for non-thinking templates).
             If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking

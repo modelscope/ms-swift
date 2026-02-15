@@ -9,7 +9,6 @@ FPS_MAX_FRAMES=12 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen2.5-Omni-7B \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -32,12 +31,11 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-Omni-7B \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-Omni-7B \
     --save_interval 100 \
-    --vit_gradient_checkpointing true \
     --max_length 4096 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 8

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from .embedding_trainer import MegatronEmbeddingTrainer
     from .reranker_trainer import MegatronRerankerTrainer
     from .trainer import MegatronTrainer
+    from .base import BaseMegatronTrainer
 else:
     _import_structure = {
         'dpo_trainer': ['MegatronDPOTrainer'],
@@ -24,6 +25,7 @@ else:
         'embedding_trainer': ['MegatronEmbeddingTrainer'],
         'reranker_trainer': ['MegatronRerankerTrainer'],
         'trainer': ['MegatronTrainer'],
+        'base': ['BaseMegatronTrainer'],
     }
     import sys
 

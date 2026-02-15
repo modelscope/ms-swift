@@ -8,7 +8,6 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from copy import copy
-from datetime import timedelta
 from functools import partial
 from typing import List, Optional, Tuple
 
@@ -20,8 +19,7 @@ from packaging import version
 from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
 
-from swift.utils import (get_logger, git_clone_github, is_flash_attn_3_available, is_megatron_available,
-                         safe_ddp_context, split_list, subprocess_run)
+from swift.utils import get_logger, is_flash_attn_3_available, split_list
 
 logger = get_logger()
 
@@ -34,17 +32,15 @@ def _patch_transformer_engine():
         try:
             transformer_engine.pytorch.attention.apply_rotary_pos_emb = (
                 transformer_engine.pytorch.attention.rope.apply_rotary_pos_emb)
-            logger.info('Patch apply_rotary_pos_emb successfully applied.')
         except (ImportError, AttributeError):
-            pass
+            logger.warning('Failed to patch apply_rotary_pos_emb.')
     try:
         from transformer_engine.pytorch.attention import _SplitAlongDim
     except ImportError:
         try:
             transformer_engine.pytorch.attention._SplitAlongDim = (transformer_engine.pytorch.utils.SplitAlongDim)
-            logger.info('Patch _SplitAlongDim successfully applied.')
         except (ImportError, AttributeError):
-            pass
+            logger.warning('Failed to patch _SplitAlongDim.')
 
 
 def _patch__batched_p2p_ops():
@@ -384,15 +380,6 @@ def _patch_TEGroupedLinear():
     TEGroupedLinear.sharded_state_dict = sharded_state_dict
 
 
-def _patch_megatron_tokenizer():
-    from megatron.training import global_vars
-
-    def build_tokenizer(args):
-        return 'dummy_tokenizer'
-
-    global_vars.build_tokenizer = build_tokenizer
-
-
 def _patch_mtp():
     from megatron.core import InferenceParams
     from megatron.core.transformer.multi_token_prediction import MultiTokenPredictionLayer
@@ -527,7 +514,6 @@ def _patch_peft_ModulesToSaveWrapper():
 
 def _patch_TransformerLayer():
     import megatron.core
-    from megatron.training import get_args
     from megatron.core.transformer import TransformerLayer
     _origin_forward = TransformerLayer.forward
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
@@ -542,7 +528,7 @@ def _patch_TransformerLayer():
         if not mcore_013:
             return _origin_forward(self, *_args, **kwargs)
         hidden_states, context = self._forward_attention(*_args, **kwargs)
-        args = get_args()
+        args = self.config.args
         mlp_padding_free = args.mlp_padding_free and 'attention_mask' in kwargs
         mask = None
         if mlp_padding_free and hidden_states.shape[1] > 1:
@@ -639,16 +625,6 @@ def _patch_TELinear():
     TELinear.__repr__ = __repr__
 
 
-def _patch_build_train_valid_test_datasets():
-    from megatron.training import training
-
-    def build_train_valid_test_datasets(build_train_valid_test_datasets_provider, *args, **kwargs):
-        train_valid_test_num_samples = training.get_train_valid_test_num_samples()
-        return build_train_valid_test_datasets_provider(train_valid_test_num_samples)
-
-    training.build_train_valid_test_datasets = build_train_valid_test_datasets
-
-
 def _patch__write_item():
     import megatron.core
     if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
@@ -671,9 +647,9 @@ def _patch__write_item():
 def _patch_mrope():
     from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     import megatron.core
+    from megatron.core import mpu
     from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
     from megatron.core.models.common.embeddings import rope_utils
-    from megatron.training import get_args
 
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -696,7 +672,7 @@ def _patch_mrope():
         return freqs_t
 
     # Code borrowed from NVIDIA/Megatron-LM
-    def forward(self, position_ids, mrope_section: List[int], packed_seq: bool = False) -> torch.Tensor:
+    def forward(self, position_ids, mrope_section: List[int], mrope_interleaved: bool = False) -> torch.Tensor:
         seq = position_ids.to(device=self.inv_freq.device, dtype=self.inv_freq.dtype)
 
         if self.seq_len_interpolation_factor is not None:
@@ -708,8 +684,7 @@ def _patch_mrope():
         seq_expanded = seq[:, :, None, :].float()
         # shape (3, bs, seq_length, dim)
         freqs = (inv_freq_expanded @ seq_expanded).transpose(2, 3)
-        args = get_args()
-        if args.mrope_interleaved:
+        if mrope_interleaved:
             freqs = apply_interleaved_mrope(freqs, mrope_section)
             emb = torch.cat((freqs, freqs), dim=-1)
         else:
@@ -756,8 +731,7 @@ def _patch_mrope():
         if cp_group is not None:
             cp_size = cp_group.size()
         else:
-            args = get_args()
-            cp_size = args.context_parallel_size
+            cp_size = mpu.get_context_parallel_world_size()
         cu_seqlens_for_batched = cu_seqlens // cp_size
         use_batched_rope = (freqs.dim() >= 1 and freqs.shape[0] == cu_seqlens_for_batched[-1]).item()
         if not use_batched_rope:
@@ -810,73 +784,7 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
-def _patch_megatron_timeout():
-    from megatron.training import get_args
-    from megatron.core import parallel_state
-
-    create_group_origin = parallel_state.create_group
-
-    def create_group(ranks=None, timeout=None, *_args, **kwargs):
-        args = get_args()
-        if timeout is None:
-            timeout = timedelta(minutes=args.distributed_timeout_minutes)
-        return create_group_origin(ranks, timeout, *_args, **kwargs)
-
-    parallel_state.create_group = create_group
-
-
-def _patch_megatron_swanlab():
-    from megatron.training import global_vars, is_last_rank, wandb_utils, get_args
-
-    def _set_wandb_writer(*_args, **kwargs):
-        args = get_args()
-        assert global_vars._GLOBAL_WANDB_WRITER is None
-        if args.report_to is None or not is_last_rank():
-            return
-        config = vars(args)
-        save_dir = args.wandb_save_dir
-        if save_dir is None:
-            save_dir = os.path.join(args.save, args.report_to)
-        if args.report_to == 'wandb':
-            import wandb
-            wandb.init(dir=save_dir, name=args.wandb_exp_name, project=args.wandb_project, config=config)
-            writer = wandb
-        elif args.report_to == 'swanlab':
-            import swanlab
-            swanlab.init(
-                logdir=save_dir, experiment_name=args.wandb_exp_name, project=args.wandb_project, config=config)
-            writer = swanlab
-
-        global_vars._GLOBAL_WANDB_WRITER = writer
-
-    global_vars._set_wandb_writer = _set_wandb_writer
-
-    origin_on_save_checkpoint_success = wandb_utils.on_save_checkpoint_success
-
-    def on_save_checkpoint_success(*_args, **kwargs):
-        args = get_args()
-        if args.report_to == 'swanlab':
-            return
-        origin_on_save_checkpoint_success(*_args, **kwargs)
-
-    wandb_utils.on_save_checkpoint_success = on_save_checkpoint_success
-
-
-def _patch_modelopt():
-    from megatron.training import checkpointing
-    if not hasattr(checkpointing, 'save_sharded_modelopt_state'):
-        return
-    save_sharded_modelopt_state = checkpointing.save_sharded_modelopt_state
-
-    def new_save_sharded_modelopt_state(model, *args, **kwargs):
-        if not model:
-            return
-        save_sharded_modelopt_state(model, *args, **kwargs)
-
-    checkpointing.save_sharded_modelopt_state = new_save_sharded_modelopt_state
-
-
-def _patch_megatron():
+def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_flash_attn()
@@ -888,21 +796,15 @@ def _patch_megatron():
     _patch_TEGroupedLinear()
     _patch_TransformerLayer()
     _patch_compile_helpers()
-    _patch_build_train_valid_test_datasets()
     _patch_mrope()
     _patch__write_item()
-    _patch_megatron_tokenizer()
     _patch_mtp()
-    _patch_megatron_timeout()
-    _patch_megatron_swanlab()
-    _patch_modelopt()
     logging.root.setLevel(logging_level)  # revert logger level
     from swift.megatron import tuners  # patch lora
     try:
         _patch_torch_FileSystemReader()
-        logger.info('Patch FileSystemReader successfully applied.')
     except Exception:
-        pass
+        logger.warning('Failed to patch FileSystemReader.')
     try:
         _patch_validate_non_overlapping_shards_metadata()
     except Exception:
@@ -911,22 +813,8 @@ def _patch_megatron():
     try:
         _patch_peft_BaseTuner()
         _patch_peft_ModulesToSaveWrapper()
-        logger.info('Patch peft successfully applied.')
     except Exception:
-        pass
+        logger.warning('Failed to patch peft.')
 
     import megatron.core
     logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
-
-
-def init_megatron_env() -> None:
-    if 'MEGATRON_LM_PATH' not in os.environ:
-        # TODO: Synchronization issues may occur in DDP scenarios
-        # if the distributed environment has not been initialized.
-        os.environ['MEGATRON_LM_PATH'] = git_clone_github(
-            'https://github.com/NVIDIA/Megatron-LM', branch='core_r0.15.0')
-    with safe_ddp_context(hash_id='megatron-lm'):
-        if not is_megatron_available():
-            subprocess_run([sys.executable, '-m', 'pip', 'install', '-e', os.environ['MEGATRON_LM_PATH']])
-    sys.path.insert(0, os.environ['MEGATRON_LM_PATH'])
-    _patch_megatron()

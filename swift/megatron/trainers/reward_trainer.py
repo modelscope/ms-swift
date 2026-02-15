@@ -2,7 +2,6 @@
 from functools import partial
 
 import torch
-from megatron.training import get_args, get_timers
 from torch import nn
 
 from swift.utils import get_logger
@@ -45,15 +44,9 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
-
         # Get the batch.
         vp_stage = model.module.module.vp_stage
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator, vp_stage)
-        timers('batch-generator').stop()
+        data = self.get_batch(data_iterator, vp_stage)
         data.pop('loss_scale', None)
-        with self.stimer:
-            output_tensor = model(**data)
+        output_tensor = model(**data)
         return output_tensor, partial(self.loss_func, data=data)

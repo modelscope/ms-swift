@@ -314,3 +314,22 @@ def replace_index_file(output_dir: str):
     from contextlib import suppress
     with suppress(FileNotFoundError):
         os.remove(os.path.join(output_dir, WEIGHTS_INDEX_NAME))
+
+
+@contextmanager
+def patch_modelscope_hub_timeout():
+    from modelscope.hub.api import HubApi
+    __init__ = HubApi.__init__
+
+    def __new_init__(self, *args, **kwargs):
+        timeout = kwargs.get('timeout')
+        if timeout is not None and timeout > 5:
+            kwargs['timeout'] = 5
+        __init__(self, *args, **kwargs)
+
+    HubApi.__init__ = __new_init__
+
+    try:
+        yield
+    finally:
+        HubApi.__init__ = __init__

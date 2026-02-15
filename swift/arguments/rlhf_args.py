@@ -172,8 +172,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             'last_round'.
         rpo_alpha (Optional[float]): The alpha parameter from the RPO paper, controlling the weight of the SFT loss
             (NLL term). The loss is calculated as `dpo_loss + rpo_alpha * sft_loss`. If None, the SFT loss is not
-            included. Note: The default was 1.0 in `ms-swift<3.8` and changed to None in `ms-swift>=3.8`. Defaults to
-            None.
+            included.
         ld_alpha (Optional[float]): The alpha parameter from the LD-DPO paper, which weights the log probabilities of
             the sequence part beyond the common prefix to mitigate length preference. Defaults to None.
         discopop_tau (float): The temperature parameter from the DiscoPOP paper, used to scale the log-ratio. Effective
@@ -319,9 +318,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'left'
-        assert self.truncation_strategy in ['left', 'delete'
-                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
-                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
+        if self.truncation_strategy not in {'left', 'delete'}:
+            raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                             f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:

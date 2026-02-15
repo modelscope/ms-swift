@@ -17,7 +17,7 @@ megatron rlhf \
     --torch_dtype bfloat16 \
     --micro_batch_size 2 \
     --global_batch_size 16 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --lr 5e-6 \
     --log_interval 1 \
     --max_length 8192 \

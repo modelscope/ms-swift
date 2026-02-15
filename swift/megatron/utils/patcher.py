@@ -4,7 +4,6 @@ from contextlib import contextmanager
 import torch
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.dist_checkpointing.strategies.torch import TorchDistSaveShardedStrategy
-from megatron.training import checkpointing
 
 from swift.utils import get_logger
 
@@ -42,23 +41,3 @@ def patch_merge_fn(state_dict_model):
     for v in state_dict_model.values():
         if isinstance(v, ShardedTensorFactory) and 'apply_swiglu_sharded_factory' in v.merge_fn.__qualname__:
             v.merge_fn = sh_ten_merge_fn
-
-
-@contextmanager
-def patch_load_base_checkpoint():
-    origin__load_base_checkpoint = checkpointing._load_base_checkpoint
-
-    def _load_base_checkpoint(*_args, **kwargs):
-        sharded_state_dict = kwargs.get('sharded_state_dict')
-        if sharded_state_dict is None:
-            return origin__load_base_checkpoint(*_args, **kwargs)
-        model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
-        for k in model_keys:
-            patch_merge_fn(sharded_state_dict[k])
-        return origin__load_base_checkpoint(*_args, **kwargs)
-
-    checkpointing._load_base_checkpoint = _load_base_checkpoint
-    try:
-        yield
-    finally:
-        checkpointing._load_base_checkpoint = origin__load_base_checkpoint

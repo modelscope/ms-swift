@@ -88,7 +88,7 @@ The format of multimodal data should follow the specifications in [Multimodal Da
 
 > Note: RM additionally supports the margin column. For details, refer to the [RM documentation](../Instruction/RLHF.md#rm).
 
-Sure, you can also directly use `rejected_messages` instead of only providing `rejected_response` / `rejected_images` (requires ms-swift>=3.8), which offers greater flexibility (e.g., for multimodal or agent scenarios). If you use "rejected_messages", then in multimodal scenarios you must also provide "rejected_images", "rejected_audios", "rejected_videos", etc.; in Agent scenarios you must also provide "rejected_tools", etc. An example of the multimodal data format is as follows:
+Sure, you can also directly use `rejected_messages` instead of only providing `rejected_response` / `rejected_images`, which offers greater flexibility (e.g., for multimodal or agent scenarios). If you use "rejected_messages", then in multimodal scenarios you must also provide "rejected_images", "rejected_audios", "rejected_videos", etc.; in Agent scenarios you must also provide "rejected_tools", etc. An example of the multimodal data format is as follows:
 - If using `rejected_response`, the default values for 'rejected_images/rejected_audios/rejected_videos/rejected_tools' are 'images/audios/videos/tools'; if using `rejected_messages`, they need to be passed in additionally.
 
 ```jsonl
@@ -101,11 +101,11 @@ The above format is equivalent to:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": "This is a puppy."}
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_images": ["puppy.png"]}
-# Example 1 can also be written as: (ms-swift>=3.12)
+# Example 1 can also be written as:
 {"messages": [{"role": "user", "content": "<image>What is this?"}, {"role": "assistant", "content": "This is a kitten."}], "images": ["kitten.png"], "rejected_response": [{"role": "assistant", "content": "This is a puppy."}]}
 ```
 
-For ms-swift>=3.12, you can organize the Agent dataset in the following format:
+You can also organize the Agent dataset in the following format:
 
 ```jsonl
 # It will find the position of the last user in `messages`, and replace the subsequent content with `rejected_response` to form `rejected_messages`
@@ -206,7 +206,7 @@ Supervised Fine-tuning:
   - videos: video, videos.
   - audios: audio, audios.
 - If you need to pass base64 data instead of file paths, here are sample examples: `"videos": ['data:video/mp4;base64,{base64_encoded}']`, `"images": ['data:image/jpg;base64,{base64_encoded}']`.
-- If you wish to directly pass in video frames instead of a video file, you can use the following format (requires `ms-swift>=3.8.3`): `"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`. This format is supported only by certain models, including Qwen2/2.5/3-VL, Qwen2.5/3-Omni, and their derivative models.
+- If you wish to directly pass in video frames instead of a video file, you can use the following format: `"videos": [["/xxx/x.png", "/xxx/y.png"], ["/xxx/a.png", "/xxx/b.png", "/xxx/c.png"]]`. This format is supported only by certain models, including Qwen2/2.5/3-VL, Qwen2.5/3-Omni, and their derivative models.
 
 The data format for RLHF and sequence classification of multimodal models can reference the format of pure text large models, with additional fields such as `images` added on top of that.
 
@@ -245,7 +245,7 @@ The format will automatically convert the dataset format to the corresponding mo
 - bbox_type: Optional values are 'real' and 'norm1'. The default is 'real', meaning the bbox represents the actual bounding box value. If set to 'norm1', the bbox is normalized to the range 0~1.
 - image_id: Typically used for multi-image grounding tasks. This parameter only takes effect when bbox_type is 'real', representing which image the bbox corresponds to, used for scaling the bbox. The index starts from 0, and defaults to all being the 0th image. The length of image_id needs to be consistent with the length of bbox. For example: if the length of bbox is 10 and the length of images is 2, then the length of image_id needs to be 10, with values within the set `{0, 1}`.
 
-For Qwen2.5-VL/Qwen3-VL, you can set the environment variable `QWENVL_BBOX_FORMAT='new'` (default is `'legacy'`, requires "ms-swift>=3.9.1") to be compatible with the [official cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb) format. Define your dataset in the following format:
+For Qwen2.5-VL/Qwen3-VL, you can set the environment variable `QWENVL_BBOX_FORMAT='new'` (default is `'legacy'`) to be compatible with the [official cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb) format. Define your dataset in the following format:
 ```jsonl
 {"messages": [{"role": "user", "content": "<image>Locate the <ref-object> in the image"}, {"role": "assistant", "content": "[\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"},\n\t{\"bbox_2d\": <bbox>, \"label\": \"<ref-object>\"}\n]"}], "images": ["cat.png"], "objects": {"ref": ["sheep", "sheep", "sheep"], "bbox": [[90.9, 160.8, 135, 212.8], [360.9, 480.8, 495, 532.8]]}}
 ```

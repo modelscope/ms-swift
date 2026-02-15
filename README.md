@@ -381,11 +381,10 @@ ms-swift supports using Megatron parallelism techniques to accelerate training, 
 ```shell
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --tuner_type lora \
-    --save output \
+    --output_dir output \
     ...
 ```
 

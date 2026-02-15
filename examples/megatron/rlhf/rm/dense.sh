@@ -6,7 +6,6 @@ CUDA_VISIBLE_DEVICES=0,1 \
 megatron rlhf \
     --rlhf_type rm \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
@@ -18,17 +17,17 @@ megatron rlhf \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen2.5-VL-7B-Instruct \
+    --output_dir megatron_output/Qwen2.5-VL-7B-Instruct \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 8192 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
