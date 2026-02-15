@@ -2,7 +2,7 @@
 
 from .convert_utils import test_convert_precision
 from .megatron_lm_utils import (get_optimizer_param_scheduler, initialize_megatron, load_mcore_checkpoint,
-                                save_mcore_checkpoint, unwrap_model, wrap_model)
+                                save_mcore_checkpoint, set_random_seed, unwrap_model, wrap_model)
 from .parallel_utils import (logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group,
                              split_cp_inputs)
 from .patcher import patch_merge_fn, patch_torch_dist_shard

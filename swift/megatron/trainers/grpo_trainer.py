@@ -24,7 +24,7 @@ from megatron.core.rerun_state_machine import RerunDataIterator
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
-from swift.megatron.utils import forward_step_helper, get_padding_to
+from swift.megatron.utils import forward_step_helper, get_padding_to, set_random_seed
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch, profiling_context,
@@ -55,14 +55,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
+        self._train_dataset = None
 
     def train(self, train_dataset, val_dataset):
         # Store dataset provider for lazy resample iterator initialization
-        # Used by both dynamic_sample and truncation_strategy='raise'(delete)
-        if self.dynamic_sample or self.truncation_strategy == 'raise':
-            # TODO:
-            self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
-            self._train_valid_test_dataset_provider.is_distributed = True
+        # Used by both dynamic_sample and truncation_strategy='delete'
+        if self.dynamic_sample or self.truncation_strategy == 'delete':
+            self._train_dataset = train_dataset
         super().train(train_dataset, val_dataset)
 
     def _init_grpo_params(self):
@@ -119,7 +118,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
 
         # truncation_strategy support
-        self.truncation_strategy = self.template.truncation_strategy
+        self.truncation_strategy = args.truncation_strategy
 
     def _init_rollout_engine(self):
         """Initialize rollout engine with GRPO-specific extensions."""
@@ -218,52 +217,34 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
 
     def _init_resample_data_iterator(self):
-        """
-        Initialize an independent data iterator for dynamic resampling (lazy initialization).
+        """Initialize an independent data iterator for dynamic resampling (lazy initialization).
 
-        This method is called lazily during the first dynamic resampling, ensuring that
-        pretrain() has already called initialize_megatron() to properly set up all args.
         Uses a different seed (args.seed + 1) to avoid overlapping with training samples.
-
-        Note: pretrain() will automatically reset the random seed back to args.seed
-        after this method completes, so we don't need manual state restoration.
-
-        Args:
-            train_valid_test_dataset_provider: Dataset provider function
 
         Returns:
             train_data_iterator: Independent data iterator with different random seed
         """
-        from megatron.training.training import build_train_valid_test_data_iterators
-        from megatron.training.initialize import _set_random_seed
-        from megatron.training import training
-        training.cyclic_iter = self._origin_cyclic_iter
         args = self.args
-
-        train_valid_test_dataset_provider = self._train_valid_test_dataset_provider
         # Use different seed for resample iterator (offset by 1 to avoid overlap)
         resample_seed = getattr(args, 'seed', 42) + 1
         try:
             # Set new seed for resample iterator creation
-            _set_random_seed(
+            set_random_seed(
                 resample_seed,
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
-                args.inference_rng_tracker,
-                use_cudagraphable_rng=args.enable_cuda_graph,
             )
 
             # Build data iterators with new seed
             # TODO: VPP (Virtual Pipeline Parallelism)
-            resample_data_iterator, _, _ = (build_train_valid_test_data_iterators(train_valid_test_dataset_provider))
+            resample_data_iterator = self._prepare_data_iterator(self._train_dataset, use_origin_cyclic=True)
+            self._train_dataset = None
         finally:
             # Restore original random states to avoid affecting training
-            _set_random_seed(
+            set_random_seed(
                 args.seed,
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
-                args.inference_rng_tracker,
-                use_cudagraphable_rng=args.enable_cuda_graph,
             )
         return resample_data_iterator
 
@@ -399,10 +380,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         rollout_group = self._get_rollout_group()
 
-        # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
+        # Resample for encoding failed data when truncation_strategy is 'delete'
         # This handles: (1) prompt length exceeds max_length, (2) multimodal encoding failures
         # Do this before get_local_rollout_batch to process prompt-level data
-        if self.truncation_strategy == 'raise':
+        if self.truncation_strategy == 'delete':
             batch = self.resample_encode_failed_inputs(batch)
 
         rollout_batch = self.get_local_rollout_batch(batch)
@@ -930,16 +911,15 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 break
 
             # Lazy initialization of resample_data_iterator
-            # Only initialize when needed, after pretrain() has set up args
-            if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
+            if not hasattr(self, 'resample_data_iterator') or self._train_dataset is None:
                 self.resample_data_iterator = self._init_resample_data_iterator()
             num_iters_per_step = self.get_num_iters_per_step()
             next_rollout_prompt_batch = []
             for _ in range(num_iters_per_step):
                 next_rollout_prompt_batch.extend(next(self.resample_data_iterator))
 
-            # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
-            if self.truncation_strategy == 'raise':
+            # Resample for encoding failed data when truncation_strategy is 'delete'
+            if self.truncation_strategy == 'delete':
                 next_rollout_prompt_batch = self.resample_encode_failed_inputs(next_rollout_prompt_batch)
 
             # Repeat num_generations times and get local slice

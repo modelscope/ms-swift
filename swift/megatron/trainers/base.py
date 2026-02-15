@@ -178,9 +178,9 @@ class BaseMegatronTrainer(ABC):
         data_collator = partial(data_collator, padding_to=padding_to)
         return data_collator
 
-    def cyclic_iter(self, iterable):
+    def cyclic_iter(self, iterable, use_origin_cyclic: bool = False):
         training = self.unwrapped_models[0].training
-        if not training:
+        if not training or use_origin_cyclic:
             while True:
                 for x in iterable:
                     yield x
@@ -469,9 +469,12 @@ class BaseMegatronTrainer(ABC):
         else:
             raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
-    def _prepare_data_iterator(self, train_dataset, val_dataset):
+    def _prepare_data_iterator(self, train_dataset, val_dataset=None, use_origin_cyclic: bool = False):
         train_dataloader, val_dataloader = self._prepare_dataloader(train_dataset, val_dataset)
-        return iter(self.cyclic_iter(train_dataloader)), iter(self.cyclic_iter(val_dataloader))
+        train_data_iterator = iter(self.cyclic_iter(train_dataloader, use_origin_cyclic=use_origin_cyclic))
+        if val_dataset is not None:
+            val_data_iterator = iter(self.cyclic_iter(val_dataloader, use_origin_cyclic=use_origin_cyclic))
+        return train_data_iterator, val_data_iterator
 
     def train(self, train_dataset, val_dataset):
         args = self.args
@@ -502,7 +505,6 @@ class BaseMegatronTrainer(ABC):
             if mpu.is_pipeline_last_stage(ignore_virtual=True):
                 self._aggregated_metrics(metrics, train_metrics)
                 train_metrics['grad_norm'] = grad_norm
-                # TODO: check vit_lr
                 learning_rate = None
                 for param_group in self.optimizer.param_groups:
                     if len(param_group['params']) == 0:
@@ -656,7 +658,7 @@ class BaseMegatronTrainer(ABC):
                 total_metrics[key] = torch.tensor([0.0, 0.0], dtype=torch.float32, device=torch.cuda.current_device())
             total_metrics[key] += val
 
-    def _prepare_dataloader(self, train_dataset, val_dataset):
+    def _prepare_dataloader(self, train_dataset, val_dataset=None):
         args = self.args
         val_dataloader = None
         if args.streaming:

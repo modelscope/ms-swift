@@ -105,7 +105,7 @@ def initialize_megatron(args):
 
     # Random seeds for reproducibility.
     logger.info(f'Setting random seeds to {args.seed}.')
-    set_random_seed(args.seed, args.data_parallel_random_init)
+    set_random_seed(args.seed, args.data_parallel_random_init, args.te_rng_tracker)
 
     # Setup MoE aux loss scale value.
     if args.model_info.is_moe_model:
@@ -242,8 +242,8 @@ def save_mcore_checkpoint(args, models, optimizer=None, opt_param_scheduler=None
         optim_sd_kwargs={'metadata': sharded_sd_metadata},
     )
 
-    if args.tuner_type == 'lora' and not args.merge_lora:
-        _filter_adapter_state_dict(state_dict, True)
+    if args.tuner_type == 'lora':
+        _filter_adapter_state_dict(state_dict, not args.merge_lora)
 
     save_strategy = get_default_save_sharded_strategy()
     save_strategy = FullyParallelSaveStrategyWrapper(

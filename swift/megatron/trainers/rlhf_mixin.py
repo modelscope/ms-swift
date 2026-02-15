@@ -34,7 +34,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         for ref_model in self.ref_models:
             ref_model.requires_grad_(False)
             ref_model.eval()
-        if args.mcore_ref_model is None:
+        if self.ref_models and args.mcore_ref_model is None:
             ref_model_id_or_path = args.ref_model or args.model
             self.bridge.load_weights(self.ref_models, ref_model_id_or_path)
         if args.tuner_type == 'lora' and args.ref_adapters and args.mcore_ref_adapter is None:

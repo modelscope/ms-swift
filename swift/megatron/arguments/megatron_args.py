@@ -456,6 +456,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # other
     seed: int = 42
+    te_rng_tracker: bool = False
     data_parallel_random_init: Optional[bool] = False
     data_sharding: bool = False
     use_cpu_initialization: bool = False

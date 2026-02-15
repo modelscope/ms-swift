@@ -12,6 +12,7 @@ from megatron.core.rerun_state_machine import RerunDataIterator
 
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
+from swift.megatron.utils import set_random_seed
 from swift.template import Template
 from swift.utils import get_logger, to_device
 from ..utils import forward_step_helper, get_padding_to
@@ -60,14 +61,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # Resample iterator will be initialized lazily
         self.resample_data_iterator = None
-        self._train_valid_test_dataset_provider = None
+        self._train_dataset = None
 
     def train(self, train_dataset, val_dataset):
         """Override train to initialize resample iterator for truncation_strategy='delete'."""
         # Store dataset provider for lazy resample iterator initialization
         if self.truncation_strategy == 'delete':
-            self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
-            self._train_valid_test_dataset_provider.is_distributed = True
+            self._train_dataset = train_dataset
 
         super().train(train_dataset, val_dataset)
 
@@ -193,28 +193,21 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Returns:
             train_data_iterator: Independent data iterator with different random seed
         """
-        from megatron.training.training import build_train_valid_test_data_iterators
-        from megatron.training.initialize import _set_random_seed
         args = self.args
-
         resample_seed = getattr(args, 'seed', 42) + 1
         try:
-            _set_random_seed(
+            set_random_seed(
                 resample_seed,
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
-                args.inference_rng_tracker,
-                use_cudagraphable_rng=args.enable_cuda_graph,
             )
-            resample_data_iterator, _, _ = build_train_valid_test_data_iterators(
-                self._train_valid_test_dataset_provider)
+            resample_data_iterator = self._prepare_data_iterator(self._train_dataset, use_origin_cyclic=True)
+            self._train_dataset = None
         finally:
-            _set_random_seed(
+            set_random_seed(
                 args.seed,
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
-                args.inference_rng_tracker,
-                use_cudagraphable_rng=args.enable_cuda_graph,
             )
         return resample_data_iterator
 
@@ -291,7 +284,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             raw_batch = next(data_iterator)
 
             # Resample for encoding failed data when truncation_strategy is 'delete'
-            if self.truncation_strategy == 'delete' and self._train_valid_test_dataset_provider is not None:
+            if self.truncation_strategy == 'delete' and self._train_dataset is not None:
                 raw_batch = self.resample_encode_failed_inputs(raw_batch)
 
             global_batch.extend(raw_batch)
