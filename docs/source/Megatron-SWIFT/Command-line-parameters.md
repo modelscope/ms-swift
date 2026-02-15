@@ -108,7 +108,6 @@
   - 流式数据集`--streaming`，暂不支持跳过数据集。
 - perform_initialization: 对权重进行初始化，默认为False。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。通常不需要修改该值。
-- auto_detect_ckpt_format: 自动检测ckpt format为legacy还是distributed格式。默认为True。
 - 🔥async_save: 使用异步检查点保存。目前仅适用于`torch_dist`分布式检查点格式。默认为False。
 
 **分布式参数**:
