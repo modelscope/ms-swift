@@ -33,7 +33,7 @@ if __name__ == '__main__':
             importance_sampling_level='token',
             epsilon=0.2,
             epsilon_high=0.2,
-            dynamic_sample=False,
+            dynamic_sample=True,
             overlong_filter=True,
             loss_type='grpo',
             sleep_level=2,
