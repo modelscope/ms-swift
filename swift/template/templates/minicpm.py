@@ -312,9 +312,12 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
                                        temporal_ids=temporal_ids).to(self.model_info.torch_dtype)
 
         def _get_new_tokens(i):
-            placeholder = image_processor.get_slice_image_placeholder(
-                image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
-            placeholder += '\n'
+            if i in image_inputs.skip_image_idx[0]:
+                placeholder = ''
+            else:
+                placeholder = image_processor.get_slice_image_placeholder(
+                    image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
+                placeholder += '\n'
             return self.processor.encode(placeholder, add_special_tokens=False)
 
         input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
