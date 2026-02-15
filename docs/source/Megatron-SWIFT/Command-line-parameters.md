@@ -45,22 +45,39 @@
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
 - manual_gc_interval: 手动触发垃圾回收的间隔。默认为0。
 - manual_gc_eval: 当使用手动垃圾回收时（`--manual_gc true`），在每次评估运行的开始和结束时禁用垃圾回收。默认为True。
+
+**数据参数**:
 - seed: python、numpy、pytorch和cuda的随机种子，默认为42。
-- 🔥dataloder_num_workers: dataloader的workers数量，默认为4。
+- dataset_shuffle: 是否对dataset进行随机操作。默认为True。
+  - 注意：**Megatron-SWIFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
+- train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。该参数需"ms-swift>=3.12"。
+  - 在"ms-swift>3.12"，将不再对val_dataset进行随机操作。
+- 🔥dataloader_num_workers: dataloader的workers数量，默认为4。
   - 注意：若设置`--streaming true`，则设置为1。
+- dataloader_pin_memory: 默认为True。
+- dataloader_persistent_workers: 默认为True。
+- dataloader_prefetch_factor: 默认为2。
 - data_sharding: 当`--train_dataloader_shuffle true`时对 train_dataloader 生效，默认为False。该参数控制数据集随机的范围。若设置为True，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为False，则先对数据集进行随机，再进行分片（更好的随机效果）。
-- use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。通常不需要修改该值。
+- 🔥group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
+- te_rng_tracker: 使用 Transformer Engine 版本的随机数生成器。默认为False。
+- data_parallel_random_init: 在数据并行的各个 rank 之间启用不同的随机初始化。默认为False。
 
 **学习率参数**:
+- lr_warmup_init: 学习率warmup的初始值。学习率调度器从这个值开始进行预热。默认为0。
 - 🔥lr: 初始学习率，最终会根据学习率预热策略和衰减策略决定每个迭代的学习率。默认为None，**全参数训练默认为1e-5，LoRA训练默认为1e-4**。
-- lr_decay_style: 学习率衰减策略，默认为'cosine'。通常设置为'cosine', 'linear', 'constant'。
+- lr_decay_style: 学习率衰减策略，默认为'cosine'。通常设置为'constant', 'linear', 'cosine', 'inverse-square-root', 'WSD'。
 - 🔥lr_decay_iters: 学习率衰减的迭代次数。默认为None，则设置为`--train_iters`。
 - lr_warmup_iters: 线性学习率预热的迭代次数，默认为0。
 - 🔥lr_warmup_fraction: 线性学习率预热阶段所占比例，默认为None。
 - 🔥min_lr: 学习率的最小值，将低于该阈值的学习率裁剪为该值，默认为0。
+- lr_wsd_decay_style: WSD 退火阶段的衰减方式。默认为'exponential'。
+- lr_wsd_decay_iters: 学习率衰减的迭代次数。默认为 None。
 
 **正则化参数**:
 - 🔥weight_decay: 默认为0.1。
+- weight_decay_incr_style: 权重衰减的递增函数。可选为'constant', 'linear', 'cosine'。默认为'constant'。
+- start_weight_decay: L2 正则化的初始权重衰减系数。
+- end_weight_decay: 训练结束时 L2 正则化的权重衰减系数。
 - 🔥clip_grad: l2梯度裁剪，默认为1.0。
   - 日志中打印的grad_norm为未裁剪前的值。
 - adam_beta1: 默认0.9。
@@ -69,14 +86,13 @@
 - sgd_momentum: 设置`--optimizer sgd`时生效，默认为0.9。
 
 **checkpoint参数**:
-- 🔥save: checkpoint的输出目录，默认None。在训练中，若未设置该参数，则默认为`f'megatron_output/{model_suffix}'`，例如`'megatron_output/Qwen2.5-7B-Instruct'`。
+- 🔥output_dir: checkpoint的输出目录，默认None。在训练中，若未设置该参数，则默认为`f'megatron_output/{model_suffix}'`，例如`'megatron_output/Qwen2.5-7B-Instruct'`。
   - 注意：**若在多机训练时，请确保每个节点的保存路径指向相同位置**，否则你需要在训练后手动集中这些权重。
 - 🔥save_interval: checkpoint保存的间隔（steps），默认为500。
   - 注意：训练结束时一定会保存权重。
 - 🔥no_save_optim: 不保存optimizer，默认为False。在全参数训练时，可以显著降低存储时间。
 - 🔥no_save_rng: 不保存rng，默认为False。
-- 🔥load: 加载的checkpoint目录，默认None。对于断点续训的介绍，请查看`--finetune`参数的介绍。
-  - 注意：若未使用ms-swift提供的`swift export`进行权重转换，你需要额外设置`--model <hf-repo>`用于加载`config.json`配置文件。
+- 🔥mcore_model: 加载的checkpoint目录（mcore存储格式），默认None。对于断点续训的介绍，请查看`--finetune`参数的介绍。
   - 注意：在"ms-swift>3.10"，支持直接加载和存储safetensors权重，参考[mcore-bridge文档](./Mcore-Bridge.md)。
   - `--model`与`--mcore_model`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`后加mcore权重目录。`--model/--adapters`不支持加载断点续训状态，因此在"ms-swift>=3.12"，若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--mcore_model/--mcore_adapter`来加载断点续训的状态。
 - 🔥no_load_optim: 不载入optimizer，默认为False。
@@ -86,6 +102,7 @@
   - 注意：**断点续训**你需要设置`--mcore_model`（lora训练需要额外设置`--mcore_adapter`），若设置`--finetune true`，将不加载优化器状态和随机种子状态并将迭代数设置为0，不会进行数据集跳过；若设置`--finetune false`，将读取迭代数并跳过之前训练的数据集数量，优化器状态和随机种子状态的读取通过`--no_load_optim`和`--no_load_rng`控制。
   - 流式数据集`--streaming`，暂不支持跳过数据集。
 - perform_initialization: 对权重进行初始化，默认为False。
+- use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。通常不需要修改该值。
 - auto_detect_ckpt_format: 自动检测ckpt format为legacy还是distributed格式。默认为True。
 - 🔥async_save: 使用异步检查点保存。目前仅适用于`torch_dist`分布式检查点格式。默认为False。
 
@@ -102,6 +119,8 @@
 - 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
 - account_for_embedding_in_pipeline_split: 如果设置为 True，在流水线并行的划分和放置策略中，输入 embedding 层会被视为一个标准的 Transformer 层来处理。默认为False。
 - account_for_loss_in_pipeline_split: 如果设置为 True，在流水线并行的划分和放置策略中，loss 层会被视为一个标准的 Transformer 层来处理。默认为False。
+- overlap_p2p_comm: 在 1F1B 中将流水线并行通信与前向和反向块重叠，默认为True。
+- align_param_gather: 设置为True，所有 PP 阶段将同时启动参数全收集（all-gather）操作。否则，每个 PP 阶段将根据需要独立启动。默认为True。
 - 🔥sequence_parallel: 启动序列并行优化，该参数需要设置`tensor_model_parallel_size`才生效。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
@@ -113,7 +132,7 @@
   - 该参数通常在异构GPU集群上使用。
 
 **日志参数**:
-- report_to: (ms-swift>=3.12) 启用的日志后端。默认为`['tensorboard']`。可选项为'tensorboard', 'wandb'和'swanlab'。登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
+- report_to: (ms-swift>=3.12) 启用的日志后端。默认为`['tensorboard']`。可选项为'tensorboard', 'wandb'和'swanlab'。'wandb'和'swanlab'登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
 - 🔥log_interval: log的时间间隔（单位：iters），默认为5。
 - tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
 - tensorboard_queue_size: 用于暂存事件和摘要的 TensorBoard 队列大小；当队列中待处理的事件和摘要数量达到该大小时，下一次调用 "add" 相关方法会触发将数据刷新写入磁盘。默认为50。
@@ -139,42 +158,7 @@
 - bf16: bf16模式。默认为None，会根据模型的torch_dtype进行设置，即torch_dtype为bfloat16则bf16设置为True。
 - apply_query_key_layer_scaling: 将`Q * K^T` 缩放为 `1 / 层数`（例如：第layer_num层则除以layer_num）。这对fp16训练很有帮助。默认为None，即若使用`--fp16`，则设置为True。
 - 🔥attention_softmax_in_fp32: 在attention_mask和softmax中使用fp32进行计算。默认为True。
-
-**模型参数**: （**以下参数通常不需要进行设置，会根据HF模型的config.json进行配置**，用户无需关心）
-- num_layers: transformer layers的层数，默认为None。
-- hidden_size: transformer hidden size，默认为None。
-- ffn_hidden_size: transformer FFN层的hidden size。默认为None，设置为`4*hidden_size`。
-- num_attention_heads: transformer attention heads的个数，默认为None。
-- group_query_attention: 默认为None。若`num_query_groups>1`，group_query_attention设置为True，否则为False。
-- num_query_groups: 默认为1。
-- softmax_type: 用于注意力机制的 softmax 类型。支持固定偏移和可学习偏移两种方式。可选项为'vanilla'、'off-by-one'和'learnable'，默认为'vanilla'。
-- window_size: 窗口注意力（window attention）的窗口大小，例如`'128,0'`。如果未提供，则禁用窗口注意力。默认为None。
-- window_attn_skip_freq: 跳过窗口注意力层的频率。默认为None。
-- max_position_embeddings: 位置编码的最大长度，默认为None。
-- position_embedding_type: 位置编码的类型，可选为'learned_absolute'、'rope'、'mrope'、'relative'和'none'，默认为'rope'。
-- rotary_base: 默认为10000。
-- rotary_percent: 默认为1.。
-- normalization: 可选为'LayerNorm', 'RMSNorm'，默认为RMSNorm。
-- norm_epsilon: 默认为1e-5。
-- swiglu: 使用swiglu替代默认的gelu。默认为True。
-- quick_geglu: 使用快速 geglu 激活函数而不是默认的 gelu。默认为False。
-- activation_func_clamp_value: 限制激活函数中 linear_fc1 的输出值范围。仅在 `activation_func` 为 `quick_gelu` 时使用。默认为None。
-- glu_linear_offset: GLU 激活函数中的偏移项：`activation_func(x[0]) * (x[1] + offset)`。仅在 gated_linear_unit 为 True 时使用。默认为0.。
-- untie_embeddings_and_output_weights: 解开embedding和输出权重的绑定，默认为True。
-- add_bias_linear: 开启linear层的bias。默认为True。
-- add_qkv_bias: 仅在QKV的linear中增加bias，默认为True。
-- attention_dropout: 默认为0.。
-- hidden_dropout: 默认为0.。
-- kv_channels: 默认为None，设置为`args.hidden_size // args.num_attention_heads`。
-- qk_layernorm: 是否对Q和K进行层归一化。
-- qk_l2_norm: 使用 Llama 4 的 QK L2 范数。
-- no_rope_freq: 控制在哪些层上跳过应用旋转位置编码（RoPE）。默认该参数为None，表示在每一层都执行 RoPE。
-- moe_apply_probs_on_input: 在 MoE 路由中，在 MLP 激活函数之前应用概率（probs）。
-- transformer_impl: 使用哪种transformer实现，可选项为'local'和'transformer_engine'。默认为transformer_engine。
-- padded_vocab_size: 完整词表大小，默认为None。
-- rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
-  - **目前rope_scaling模块使用transformers实现，支持transformers支持的所有rope_scaling。**
-
+- accumulate_allreduce_grads_in_fp32: 在 fp32 精度下进行梯度累积和全规约操作。如果开启`--bf16`且`main_params_dtype`为'fp32'，则设置为True。否则默认设置为False。
 
 **MoE参数**:
 - num_moe_experts: MoE的专家数，默认为None。自动从config.json读取。
@@ -261,12 +245,8 @@ lora训练：
 - max_shard_size: safetensors格式存储文件最大大小，默认'5GB'。
 - 🔥offload_bridge: Megatron导出的用于vLLM更新HF格式权重使用CPU主存存放，以降低 GPU 显存占用。默认为 False。
 
-## 训练参数
 
-Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用dataset、template等参数，也支持ms-swift中的特定模型参数**）。基本参数的内容可以参考[这里](../Instruction/Command-line-parameters.md#基本参数)。此外还包括以下参数：
-
-- add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
-- check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
+**其他参数**:
 - padding_free: 将一个batch中的数据进行展平而避免数据padding，从而降低显存占用并加快训练。默认为True。
   - 若要自定义attention_mask，你可以设置`--padding_free false`。
   - 注意：**Megatron-SWIFT训练特性优先支持padding_free格式**，若非特殊情况，请勿修改该值。
@@ -277,6 +257,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
   - 提示：在日志中打印的"learning rate"为llm的学习率。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
+- rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
+  - **目前rope_scaling模块使用transformers实现，支持transformers支持的所有rope_scaling。**
 - apply_wd_to_qk_layernorm: 用于Qwen3-Next全参数训练，对 qk layernorm 应用权重衰减。默认为False。
 - 🔥packing: 使用`padding_free`的方式将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见（除Qwen3-Next，因为含有linear-attention）。该参数默认为`False`。Megatron-SWIFT的所有训练任务都支持该参数。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
 - packing_length: packing的长度。默认为None，设置为max_length。
@@ -293,15 +275,14 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
 - 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重。
-- dataset_shuffle: 是否对dataset进行随机操作。默认为True。
-  - 注意：**Megatron-SWIFT的随机包括两个部分**：数据集的随机，由`dataset_shuffle`控制；train_dataloader中的随机，由`train_dataloader_shuffle`控制。
-- train_dataloader_shuffle: 是否对train_dataloader使用随机，默认为True。该参数需"ms-swift>=3.12"。
-  - 在"ms-swift>3.12"，将不再对val_dataset进行随机操作。
-- dataloader_pin_memory: 默认为True。使用该参数需"ms-swift>=3.12"。
-- dataloader_persistent_workers: 默认为True。使用该参数需"ms-swift>=3.12"。
-- dataloader_prefetch_factor: 默认为2。使用该参数需"ms-swift>=3.12"。
-- 🔥group_by_length: (ms-swift>=3.12) 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
 
+
+## 训练参数
+
+Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用dataset、template等参数，也支持ms-swift中的特定模型参数**）。基本参数的内容可以参考[这里](../Instruction/Command-line-parameters.md#基本参数)。此外还包括以下参数：
+
+- add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
+- check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：

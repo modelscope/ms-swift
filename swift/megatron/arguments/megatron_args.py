@@ -168,6 +168,9 @@ class RLHFMegatronArgumentsMixin:
 
     num_iterations: int = 1
 
+    # dataset
+    dataset_shuffle: Optional[bool] = True
+
     def _init_kto(self):
         if self.calculate_KL is None:
             # Not all losses require a KL calculation
@@ -348,6 +351,18 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     manual_gc_interval: int = 0
     manual_gc_eval: bool = True
 
+    # data
+    seed: int = 42
+    train_dataloader_shuffle: bool = True
+    dataloader_num_workers: int = 4
+    dataloader_pin_memory: bool = True
+    dataloader_persistent_workers: bool = True
+    dataloader_prefetch_factor: int = 2
+    data_sharding: bool = False
+    group_by_length: bool = False
+    te_rng_tracker: bool = False
+    data_parallel_random_init: Optional[bool] = False
+
     # learning rate
     lr_warmup_init: float = 0.
     lr: Optional[float] = None
@@ -373,6 +388,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     sgd_momentum: float = 0.9
 
     # checkpoint
+    output_dir: Optional[str] = None
     save_interval: int = 500
     no_save_optim: bool = False
     no_save_rng: bool = False
@@ -381,12 +397,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     no_load_optim: bool = False
     no_load_rng: bool = False
     finetune: bool = True
-    output_dir: Optional[str] = None
     perform_initialization: bool = False
+    use_cpu_initialization: bool = False
     async_save: bool = False  # TODO
 
     # dist
     local_rank: Optional[int] = None  # Compatible with DeepSpeed launch
+    ddp_timeout: int = 18000000
+    ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
     use_distributed_optimizer: bool = True
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
@@ -397,8 +415,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     overlap_p2p_comm: bool = True
     align_param_gather: bool = True
 
-    ddp_timeout: int = 18000000
-    ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False  # TODO
@@ -408,6 +424,35 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     microbatch_group_size_per_vp_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
 
+    # 'wandb', 'swanlab', 'tensorboard'
+    report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
+    log_interval: int = 5
+    tensorboard_dir: Optional[str] = None
+    tensorboard_queue_size: int = 50
+    wandb_project: str = 'megatron-swift'
+    wandb_exp_name: Optional[str] = None
+    swanlab_project: str = 'megatron-swift'
+    swanlab_exp_name: Optional[str] = None
+
+    # evaluate
+    eval_iters: int = -1
+    eval_interval: Optional[int] = None
+
+    # fp8
+    fp8_format: Literal['e4m3', 'hybrid'] = None
+    fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
+    fp8_amax_history_len: int = 1024
+    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
+    fp8_param_gather: bool = False
+
+    # mixed precision
+    fp16: Optional[bool] = None
+    bf16: Optional[bool] = None
+    apply_query_key_layer_scaling: Optional[bool] = None
+    attention_softmax_in_fp32: bool = True
+    accumulate_allreduce_grads_in_fp32: bool = False
+
+    # moe
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1
     moe_router_load_balancing_type: Optional[List[str]] = None
@@ -428,43 +473,12 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1
 
-    # fp8
-    fp8_format: Literal['e4m3', 'hybrid'] = None
-    fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
-    fp8_amax_history_len: int = 1024
-    fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
-    fp8_param_gather: bool = False
-
-    # mixed precision
-    fp16: Optional[bool] = None
-    bf16: Optional[bool] = None
-    apply_query_key_layer_scaling: Optional[bool] = None
-    attention_softmax_in_fp32: bool = True
-    accumulate_allreduce_grads_in_fp32: bool = False
-
-    # evaluate
-    eval_iters: int = -1
-    eval_interval: Optional[int] = None
-
-    # dataloader
-    train_dataloader_shuffle: bool = True
-    dataloader_num_workers: int = 4
-    dataloader_pin_memory: bool = True
-    dataloader_persistent_workers: bool = True
-    dataloader_prefetch_factor: int = 2
-    group_by_length: bool = False
-
     # other
-    seed: int = 42
-    te_rng_tracker: bool = False
-    data_parallel_random_init: Optional[bool] = False
-    data_sharding: bool = False
-    use_cpu_initialization: bool = False
-
     check_model: bool = True
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     padding_free: bool = True
     mlp_padding_free: bool = False
+    rope_scaling: Optional[Union[dict, str]] = None
 
     # mcore-bridge
     model: Optional[str] = None
@@ -487,16 +501,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
     callbacks: List[str] = field(default_factory=list)
-
-    # 'wandb', 'swanlab', 'tensorboard'
-    report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
-    log_interval: int = 5
-    tensorboard_dir: Optional[str] = None
-    tensorboard_queue_size: int = 50
-    wandb_project: str = 'megatron-swift'
-    wandb_exp_name: Optional[str] = None
-    swanlab_project: str = 'megatron-swift'
-    swanlab_exp_name: Optional[str] = None
 
     # visual
     vit_gradient_checkpointing: Optional[bool] = None

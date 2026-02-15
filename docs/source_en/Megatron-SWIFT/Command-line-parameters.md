@@ -160,7 +160,6 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - hidden_size: Transformer hidden size, default is None.
 - ffn_hidden_size: Hidden size of the FFN layer in the transformer. Default is None, set to `4*hidden_size`.
 - num_attention_heads: Number of transformer attention heads, default is None.
-- group_query_attention: Default is None. If `num_query_groups > 1`, group_query_attention is set to True, otherwise False.
 - num_query_groups: Default is 1.
 - softmax_type: The softmax type used for attention mechanism. Supports both fixed offset and learnable offset approaches. Options are 'vanilla', 'off-by-one', and 'learnable', default is 'vanilla'.
 - window_size: The window size for window attention, e.g. `'128,0'`. If not provided, window attention is disabled. Defaults to `None`.
