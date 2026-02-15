@@ -149,7 +149,6 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - report_to: (ms-swift>=3.12) Enabled logging backends. Defaults to `['tensorboard']`. Options are 'tensorboard', 'wandb', and 'swanlab'. Login for 'wandb' and 'swanlab' can use `WANDB_API_KEY` and `SWANLAB_API_KEY` environment variables.
 - 🔥log_interval: Time interval for logging (unit: iters). Defaults to 5.
 - tensorboard_dir: Directory where tensorboard logs are written. Defaults to None, which means logs are stored in the `f'{save}/runs'` directory.
-- tensorboard_dir: Directory where TensorBoard logs are written. Default is None, meaning logs will be stored in the `f'{save}/runs'` directory.
 - tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
 - wandb_project: Wandb project name. Defaults to 'megatron-swift'.
 - wandb_exp_name: Wandb experiment name. Defaults to the value of `--output_dir`.
