@@ -911,8 +911,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 break
 
             # Lazy initialization of resample_data_iterator
-            if not hasattr(self, 'resample_data_iterator') or self._train_dataset is None:
-                self.resample_data_iterator = self._init_resample_data_iterator()
+            if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
+                self.resample_data_iterator = self._init_resample_data_iterator()[0]
             num_iters_per_step = self.get_num_iters_per_step()
             next_rollout_prompt_batch = []
             for _ in range(num_iters_per_step):
@@ -1567,7 +1567,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         pending_samples = list(inputs)
         # Lazy initialization of resample_data_iterator
         if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
-            self.resample_data_iterator = self._init_resample_data_iterator()
+            self.resample_data_iterator = self._init_resample_data_iterator()[0]
         for _ in range(max_resample_rounds + 1):
             # Calculate how many more samples we need
             still_needed = required_count - len(valid_samples)

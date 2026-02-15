@@ -228,7 +228,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # Lazy initialization of resample_data_iterator
         if self.resample_data_iterator is None:
-            self.resample_data_iterator = self._init_resample_data_iterator()
+            self.resample_data_iterator = self._init_resample_data_iterator()[0]
 
         for _ in range(max_resample_rounds + 1):
             still_needed = required_count - len(valid_samples)

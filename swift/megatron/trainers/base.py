@@ -472,6 +472,7 @@ class BaseMegatronTrainer(ABC):
     def _prepare_data_iterator(self, train_dataset, val_dataset=None, use_origin_cyclic: bool = False):
         train_dataloader, val_dataloader = self._prepare_dataloader(train_dataset, val_dataset)
         train_data_iterator = iter(self.cyclic_iter(train_dataloader, use_origin_cyclic=use_origin_cyclic))
+        val_data_iterator = None
         if val_dataset is not None:
             val_data_iterator = iter(self.cyclic_iter(val_dataloader, use_origin_cyclic=use_origin_cyclic))
         return train_data_iterator, val_data_iterator
