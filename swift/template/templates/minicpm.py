@@ -356,6 +356,9 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
         res.update(Template._data_collator(self, batch, padding_to=padding_to))
         return res
 
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return inputs
+
 
 register_template(
     Qwen3MixedTemplateMeta(
