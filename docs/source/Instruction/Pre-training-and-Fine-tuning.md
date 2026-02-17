@@ -15,9 +15,9 @@
 | [CPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅ | ✅            | ✅ | ✅ | ✅ | ✅                                                                                            |
 | [SimPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅ | ✅          | ✅ | ✅| ✅ | ✅                                                                                            |
 | [ORPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅ | ✅           | ✅ | ✅ | ✅ | ✅                                                                                            |
-| [序列分类](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | [Embedding](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅  |
 | [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/train/reranker) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| [序列分类](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 ## 环境准备
 推荐的第三方库版本参考[SWIFT安装文档](../GetStarted/SWIFT-installation.md)

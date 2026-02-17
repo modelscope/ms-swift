@@ -7,7 +7,7 @@ def test_sft():
     from swift.megatron import megatron_sft_main, MegatronSftArguments
     megatron_sft_main(
         MegatronSftArguments(
-            load='Qwen2-7B-Instruct-mcore',
+            mcore_model='Qwen2-7B-Instruct-mcore',
             dataset=[
                 'AI-ModelScope/alpaca-gpt4-data-zh#500', 'swift/self-cognition#500',
                 'AI-ModelScope/alpaca-gpt4-data-en#500'
@@ -25,7 +25,7 @@ def test_pt():
     from swift.megatron import megatron_pretrain_main, MegatronPretrainArguments
     megatron_pretrain_main(
         MegatronPretrainArguments(
-            load='Qwen2-7B-mcore',
+            mcore_model='Qwen2-7B-mcore',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#500', 'AI-ModelScope/alpaca-gpt4-data-en#500'],
             split_dataset_ratio=0.01,
             tensor_model_parallel_size=2,

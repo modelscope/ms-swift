@@ -19,29 +19,28 @@ class MegatronExportArguments(MegatronBaseArguments):
     exist_ok: bool = False
     merge_lora: Optional[bool] = None
 
-    def _init_save(self):
-        if self.save is None:
+    def _init_output_dir(self):
+        if self.output_dir is None:
             ckpt_dir = self.ckpt_dir or f'./{self.model_suffix}'
             ckpt_dir, ckpt_name = os.path.split(ckpt_dir)
             if self.to_mcore:
                 suffix = 'mcore'
             elif self.to_hf:
                 suffix = 'hf'
-            self.save = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
+            self.output_dir = os.path.join(ckpt_dir, f'{ckpt_name}-{suffix}')
 
-        self.save = to_abspath(self.save)
-        if not self.exist_ok and os.path.exists(self.save):
-            raise FileExistsError(f'args.save: `{self.save}` already exists.')
-        logger.info(f'args.save: `{self.save}`')
+        self.output_dir = to_abspath(self.output_dir)
+        if not self.exist_ok and os.path.exists(self.output_dir):
+            raise FileExistsError(f'args.output_dir: `{self.output_dir}` already exists.')
+        logger.info(f'args.output_dir: `{self.output_dir}`')
 
-    def __post_init__(self):
-        super().__post_init__()
-        self._init_save()
+    def _init_megatron_args(self):
+        self._init_output_dir()
         self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
         extra_config = MegatronArguments.load_args_config(self.ckpt_dir)
-        extra_config['adapter_load'] = self.adapter_load
-        if self.load:
-            extra_config['load'] = self.load
+        extra_config['mcore_adapter'] = self.mcore_adapter
+        if self.mcore_model:
+            extra_config['mcore_model'] = self.mcore_model
         for k, v in extra_config.items():
             setattr(self, k, v)
         if self.to_hf or self.to_mcore:
@@ -51,6 +50,7 @@ class MegatronExportArguments(MegatronBaseArguments):
                 logger.info('Settting args.sequence_parallel: True')
             if self.merge_lora is None:
                 self.merge_lora = self.to_hf
+        super()._init_megatron_args()
 
     def _init_convert(self):
         convert_kwargs = {

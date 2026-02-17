@@ -211,7 +211,6 @@ class TrainArgumentsMixin:
             return origin_LigerForCausalLMLoss(hidden_states, *args, **kwargs)
 
         loss_utils.LigerForCausalLMLoss = LigerForCausalLMLoss
-        logger.info('Patch liger_kernel successfully.')
 
     def _init_liger(self):
         if self.use_liger_kernel:
@@ -219,7 +218,7 @@ class TrainArgumentsMixin:
             try:
                 self._patch_liger_kernel()
             except Exception:
-                pass
+                logger.warning('Failed to patch liger_kernel')
 
     def _init_callbacks(self):
         if self.lisa_activated_layers > 0:
@@ -228,6 +227,9 @@ class TrainArgumentsMixin:
             self.callbacks.append('adalora')
         if self.early_stop_interval is not None and self.early_stop_interval > 0:
             self.callbacks.append('early_stop')
+        fsdp_config = getattr(self, 'fsdp_config', {})
+        if isinstance(fsdp_config, dict) and fsdp_config.get('activation_cpu_offload', False):
+            self.callbacks.append('activation_cpu_offload')
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):

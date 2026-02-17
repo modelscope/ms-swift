@@ -115,6 +115,8 @@ class LLMTemplateType:
     minimind = 'minimind'
     iquestcoder = 'iquestcoder'
     youtu_llm = 'youtu_llm'
+    olmoe = 'olmoe'
+    olmoe_0924 = 'olmoe_0924'
 
 
 class RMTemplateType:
@@ -132,6 +134,8 @@ class MLLMTemplateType:
     qwen3_vl = 'qwen3_vl'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
+    qwen3_5 = 'qwen3_5'
+
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'
     ovis1_6 = 'ovis1_6'
@@ -192,19 +196,22 @@ class MLLMTemplateType:
     glm_edge_v = 'glm_edge_v'
     glm4v = 'glm4v'
     glm4_5v = 'glm4_5v'
+    glm_ocr = 'glm_ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
-    minicpmo2_6 = 'minicpmo2_6'
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
+    minicpmo = 'minicpmo'
+    minicpmo4_5 = 'minicpmo4_5'
 
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
+    deepseek_ocr2 = 'deepseek_ocr2'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'
@@ -240,7 +247,9 @@ class MLLMTemplateType:
     mistral_2512 = 'mistral_2512'
     mistral_2512_thinking = 'mistral_2512_thinking'
     paddle_ocr = 'paddle_ocr'
+    paddle_ocr_1_5 = 'paddle_ocr_1_5'
     hunyuan_ocr = 'hunyuan_ocr'
+    step3_vl = 'step3_vl'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

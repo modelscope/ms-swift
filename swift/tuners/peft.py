@@ -86,17 +86,7 @@ class LoraConfig(peft.LoraConfig):
 
 
 def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **kwargs):
-    all_supported_names = ('linear', )
-    all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D, lora.Linear)
-    target_modules = getattr(peft_config, 'target_modules', None)
-    target_parameters = getattr(peft_config, 'target_parameters', None)
     if target is None:
-        return
-
-    if isinstance(target_modules, str) and not any(
-        [name in target.__class__.__name__.lower()
-         for name in all_supported_names]) and not any([isinstance(target, type_)
-                                                        for type_ in all_supported_types]) and not target_parameters:
         return
 
     if target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':

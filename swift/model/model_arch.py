@@ -59,6 +59,7 @@ class MLLMModelArch:
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
     deepseek_ocr = 'deepseek_ocr'
+    deepseek_ocr2 = 'deepseek_ocr2'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
@@ -86,6 +87,8 @@ class MLLMModelArch:
     midashenglm = 'midashenglm'
     step_audio2_mini = 'step_audio2_mini'
     hunyuan_vl = 'hunyuan_vl'
+    step3_vl = 'step3_vl'
+    paddle_ocr_1_5 = 'paddle_ocr_1_5'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -451,6 +454,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.deepseek_ocr2,
+        language_model='model.layers',
+        vision_tower=['model.sam_model', 'model.qwen2_model'],
+        aligner='model.projector',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.deepseek_vl2,
         language_model='language',
         vision_tower='vision',
@@ -732,6 +743,22 @@ register_model_arch(
         language_model='model',
         aligner='vit.perceive',
         vision_tower='vit',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.step3_vl,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.vit_large_projector',
+        vision_tower='model.vision_model',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.paddle_ocr_1_5,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.projector',
+        vision_tower='model.visual',
     ))
 
 

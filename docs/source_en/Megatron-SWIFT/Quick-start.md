@@ -12,6 +12,8 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Embedding](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/embedding) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/reranker) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [Sequence Classification](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls)    | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 ## Environment Setup
@@ -26,7 +28,7 @@ pip install pybind11
 pip install --no-build-isolation transformer_engine[pytorch]
 
 # apex
-# Note: Megatron-SWIFT can run in environments without apex by setting `--no_gradient_accumulation_fusion true`.
+# Note: Megatron-SWIFT can run in environments without apex by setting `--gradient_accumulation_fusion false`.
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
@@ -52,9 +54,9 @@ MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
 
 # cu129 (fp8 training)
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
@@ -106,7 +108,7 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-7B-Instruct-mcore \
+    --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -123,12 +125,12 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
@@ -170,7 +172,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ### Mcore-Bridge [Recommended]
 
-In "ms-swift>=3.10", Mcore-Bridge is supported, eliminating the cumbersome process of model conversion. For details, refer to [Mcore-Bridge Documentation](./Mcore-Bridge.md).
+Mcore-Bridge eliminates the tedious process of model conversion. For details, refer to the [Mcore-Bridge Documentation](./Mcore-Bridge.md).
 
 Training script:
 
@@ -180,7 +182,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -197,12 +198,12 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \

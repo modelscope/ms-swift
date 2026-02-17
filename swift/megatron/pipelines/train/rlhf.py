@@ -1,11 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import importlib
 from typing import List, Optional, Union
 
 from swift.megatron.arguments import MegatronRLHFArguments
-from swift.megatron.trainers import (MegatronDPOTrainer, MegatronGKDTrainer, MegatronGRPOTrainer, MegatronKTOTrainer,
-                                     MegatronRewardTrainer)
 from swift.pipelines.train import prepare_kto_dataset
-from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, is_last_rank
 from .sft import MegatronSft
 
@@ -19,15 +17,17 @@ class MegatronRLHF(MegatronSft):
     def prepare_trainer(self):
         args = self.args
         trainer_mapping = {
-            'dpo': MegatronDPOTrainer,
-            'gkd': MegatronGKDTrainer,
-            'grpo': MegatronGRPOTrainer,
-            'kto': MegatronKTOTrainer,
-            'rm': MegatronRewardTrainer
+            'dpo': 'MegatronDPOTrainer',
+            'gkd': 'MegatronGKDTrainer',
+            'grpo': 'MegatronGRPOTrainer',
+            'kto': 'MegatronKTOTrainer',
+            'rm': 'MegatronRewardTrainer'
         }
-        trainer_cls = trainer_mapping.get(args.rlhf_type)
-        if trainer_cls is None:
+        module = importlib.import_module('swift.megatron.trainers')
+        trainer_cls_name = trainer_mapping.get(args.rlhf_type)
+        if trainer_cls_name is None:
             raise ValueError(f'The current Megatron-SWIFT does not support rlhf_type: {args.rlhf_type}.')
+        trainer_cls = getattr(module, trainer_cls_name)
         kwargs = {}
         if args.rlhf_type in ('grpo', 'gkd'):
             kwargs['vllm_client'] = self._prepare_vllm_client()
@@ -37,11 +37,6 @@ class MegatronRLHF(MegatronSft):
         super()._prepare_template()
         model_mapping = {'grpo': 'train', 'gkd': 'train', 'kto': 'kto'}
         self.template.set_mode(model_mapping.get(self.args.rlhf_type, 'rlhf'))
-
-    def _get_data_collator(self):
-        if self.args.rlhf_type in ('grpo', 'gkd'):
-            return identity_data_collator
-        return super()._get_data_collator()
 
     def _get_dataset(self):
         args = self.args

@@ -78,11 +78,6 @@ class DeployArguments(InferArguments):
     def _init_stream(self):
         return BaseArguments._init_stream(self)
 
-    def _init_result_path(self, folder_name: str) -> None:
-        if folder_name == 'infer_result':
-            folder_name = 'deploy_result'
-        return super()._init_result_path(folder_name)
-
 
 @dataclass
 class RolloutArguments(DeployArguments):

@@ -44,7 +44,10 @@ def _patch_minicpmv_device_map(model) -> None:
             if len(pixel_values) == 0:
                 return _old_get_vision_embedding(self, pixel_values)
             output = _old_get_vision_embedding(self, pixel_values)
-            return output.to(device=device)
+            if isinstance(output, list):
+                return [x.to(device=device) for x in output]
+            else:
+                return output.to(device=device)
 
         model.__class__._old_get_vision_embedding = _old_get_vision_embedding
         model.__class__.get_vision_embedding = _get_vision_embedding
@@ -130,22 +133,28 @@ register_model(
 
 class MiniCPMO2Loader(MiniCPMV2Loader):
 
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, *args, **kwargs) -> PreTrainedModel:
         config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
         config.init_audio = strtobool(get_env_args('init_audio', str, 'false'))
-        return super().get_model(model_dir, *args, **kwargs)
+        return super().get_model(model_dir, config, *args, **kwargs)
 
 
 register_model(
     ModelMeta(
-        MLLMModelType.minicpmo2_6,
+        MLLMModelType.minicpmo,
         [
             ModelGroup([
                 Model('OpenBMB/MiniCPM-o-2_6', 'openbmb/MiniCPM-o-2_6'),
-            ]),
+            ], template=TemplateType.minicpmo),
+            ModelGroup(
+                [
+                    Model('OpenBMB/MiniCPM-o-4_5', 'openbmb/MiniCPM-o-4_5'),
+                ],
+                template=TemplateType.minicpmo4_5,
+                requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile'],
+            ),
         ],
         MiniCPMO2Loader,
-        template=TemplateType.minicpmo2_6,
         architectures=['MiniCPMO'],
         model_arch=ModelArch.minicpmv,
         requires=['timm', 'transformers>=4.36', 'decord', 'soundfile'],

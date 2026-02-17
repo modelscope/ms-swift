@@ -15,8 +15,6 @@ class RerankerTrainer(Trainer):
         self.gather_function = gather_for_unpadded_tensors
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        if inputs.get('attention_mask') is None and self.template.padding_side != 'left':
-            raise ValueError('When using padding_free, padding_side must be set to "left".')
         # Check if we have a custom loss function
         if self.compute_loss_func is not None:
             # Get labels and compute outputs

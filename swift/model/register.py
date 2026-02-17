@@ -26,6 +26,8 @@ from .utils import AttnImpl, InitModelStrategy, get_default_device_map
 
 logger = get_logger()
 
+transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0.dev')
+
 
 def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
     """
@@ -120,11 +122,11 @@ def _set_property(model, key):
     if not hasattr(model, 'model'):
         return
     text_model = model.model
-    if not hasattr(text_model, key):
+    if not hasattr(text_model, key) or hasattr(model.__class__, key):
         return
 
     def _value(self):
-        return getattr(text_model, key)
+        return getattr(self.model, key)
 
     setattr(model.__class__, key, property(_value))
 
@@ -218,6 +220,11 @@ class ModelLoader(BaseModelLoader):
         HfConfigFactory.compat_zero3(config)
 
         if self.rope_scaling:
+            if transformers_5:
+                rope_parameters = HfConfigFactory.get_config_attr(config, 'rope_parameters') or {}
+                for key in ['rope_theta', 'partial_rotary_factor']:
+                    if self.rope_scaling.get(key) is None and rope_parameters.get(key) is not None:
+                        self.rope_scaling[key] = rope_parameters[key]
             HfConfigFactory.set_config_attr(config, 'rope_scaling', self.rope_scaling)
         if self.max_model_len:
             HfConfigFactory.set_max_model_len(config, self.max_model_len)
@@ -308,6 +315,8 @@ class ModelLoader(BaseModelLoader):
             patch_output_normalizer(model, model_meta=model_meta)
         elif model_info.task_type == 'generative_reranker':
             self._patch_generative_reranker(model, processor)
+        if transformers_5:
+            self._compat_transformers5(model)
         return model
 
     def _patch_generative_reranker(self, model, processor):
@@ -315,7 +324,7 @@ class ModelLoader(BaseModelLoader):
         lm_head_model = get_lm_head_model(model, self.model_meta).lm_head
 
         def lm_head_forward(module, hidden_states):
-            return get_generative_reranker_logits(module, tokenizer, hidden_states)
+            return get_generative_reranker_logits(module.weight, tokenizer, hidden_states)
 
         patch_module_forward(lm_head_model, lm_head_forward)
 
@@ -328,29 +337,27 @@ class ModelLoader(BaseModelLoader):
         if self.leaf_modules is not None or model_info.is_moe_model:
             # deepspeed zero3
             self._deepspeed_set_z3_leaf_modules(model, self.leaf_modules)
-        if version.parse(transformers.__version__) >= version.parse('5.0.0.dev'):
-            self._compat_transformers5(model)
         model.model_info = self.model_info
         model.model_meta = self.model_meta
         model.model_dir = model_dir
         self._init_generation_config(model, model_dir)
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
 
-    def _add_new_special_tokens(self, model, tokenizer):
+    def _add_new_special_tokens(self, model, processor, config):
         if not self.new_special_tokens:
             return
+        tokenizer = self._get_tokenizer(processor)
         num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': self.new_special_tokens})
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
-
-            if model is not None and not self.return_dummy_model:
-                llm_model = get_lm_head_model(model, self.model_meta)
-                origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
-                if origin_vocab_size < len(tokenizer):
-                    vocab_size = math.ceil(len(tokenizer) / 128) * 128
+            origin_vocab_size = HfConfigFactory.get_config_attr(config, 'vocab_size')
+            if origin_vocab_size < len(tokenizer):
+                vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                # fix transformers==4.52.4 qwen2.5-vl
+                HfConfigFactory.set_config_attr(config, 'vocab_size', vocab_size)
+                if model is not None and not self.return_dummy_model:
+                    llm_model = get_lm_head_model(model, self.model_meta)
                     llm_model.resize_token_embeddings(vocab_size)
-                    # fix transformers==4.52.4 qwen2.5-vl
-                    HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
     def _postprocess_processor(self, processor: Processor):
         tokenizer = self._get_tokenizer(processor)
@@ -414,6 +421,9 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'qwen3_next':
                 from transformers.models.qwen3_next.modeling_qwen3_next import Qwen3NextSparseMoeBlock
                 z3_leaf_modules = [Qwen3NextSparseMoeBlock]
+            elif hf_model_type == 'olmoe':
+                from transformers.models.olmoe.modeling_olmoe import OlmoeSparseMoeBlock
+                z3_leaf_modules = [OlmoeSparseMoeBlock]
 
         if z3_leaf_modules:
             from deepspeed.utils import set_z3_leaf_modules
@@ -446,7 +456,7 @@ class ModelLoader(BaseModelLoader):
             self._postprocess_processor(processor)
             if model:
                 self._postprocess_model(model_dir, model)
-        self._add_new_special_tokens(model, processor)
+        self._add_new_special_tokens(model, processor, config)
         return model, processor
 
 
@@ -606,7 +616,7 @@ def get_processor(
     download_model: Optional[bool] = None,
     # model kwargs
     model_type: Optional[str] = None,
-    task_type: Literal['causal_lm', 'seq_cls', 'reranker', 'generative_reranker'] = None,
+    task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'reranker', 'generative_reranker'] = None,
     num_labels: Optional[int] = None,
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None,
     **kwargs,

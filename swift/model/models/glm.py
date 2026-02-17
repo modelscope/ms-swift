@@ -237,25 +237,27 @@ register_model(
                 [
                     Model('ZhipuAI/GLM-4.1V-9B-Base', 'zai-org/GLM-4.1V-9B-Base'),
                     Model('ZhipuAI/GLM-4.1V-9B-Thinking', 'zai-org/GLM-4.1V-9B-Thinking'),
+                    Model('ZhipuAI/AutoGLM-Phone-9B', 'zai-org/AutoGLM-Phone-9B')
                 ],
+                template=TemplateType.glm4v,
                 requires=['transformers>=4.53'],
             ),
             ModelGroup(
                 [
                     Model('ZhipuAI/Glyph', 'zai-org/Glyph'),
                 ],
+                template=TemplateType.glm4_5v,
                 requires=['transformers>=4.57'],
             ),
             ModelGroup(
                 [
                     Model('ZhipuAI/GLM-4.6V-Flash', 'zai-org/GLM-4.6V-Flash'),
-                    Model('ZhipuAI/AutoGLM-Phone-9B', 'zai-org/AutoGLM-Phone-9B')
                 ],
+                template=TemplateType.glm4_5v,
                 requires=['transformers>=5.0.0.dev'],
             ),
         ],
         GLM4vLoader,
-        template=TemplateType.glm4v,
         model_arch=ModelArch.glm4v,
         architectures=['Glm4vForConditionalGeneration'],
     ))
@@ -465,4 +467,31 @@ register_model(
         model_arch=ModelArch.glm4v,
         architectures=['Glm4vMoeForConditionalGeneration'],
         requires=['transformers>=4.56'],
+    ))
+
+
+class GLMOCRLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForImageTextToText
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        model = super().get_model(model_dir, *args, **kwargs)
+        if hasattr(model, 'visual'):
+            patch_get_input_embeddings(model.visual, 'patch_embed')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.glm_ocr,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-OCR', 'zai-org/GLM-OCR'),
+            ]),
+        ],
+        GLMOCRLoader,
+        template=TemplateType.glm_ocr,
+        model_arch=ModelArch.glm4v,
+        architectures=['GlmOcrForConditionalGeneration'],
+        requires=['transformers>=5.0.1dev0'],
     ))

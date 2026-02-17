@@ -89,10 +89,8 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
 
     def _output_embedding_hook(module, args, kwargs, output):
         attention_mask = kwargs.get('attention_mask', None)
-        if attention_mask is None:
-            attention_mask = output.get('attention_mask', None)
         hidden_states = output.logits
-        sequence_lengths = get_last_valid_indices(attention_mask)
+        sequence_lengths = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
         embeddings = hidden_states[torch.arange(hidden_states.shape[0], device=hidden_states.device), sequence_lengths]
         embeddings = F.normalize(embeddings, p=2, dim=1)
         return {
@@ -194,11 +192,7 @@ def transformers_seq_cls_forward(self, *args, origin_forward, padding_side=None,
         if self.config.pad_token_id is None:
             sequence_lengths = -1
         else:
-            if output.get('attention_mask') is not None:
-                # When use padding_free in seq_cls tasks, `revert_padding_free` will add a attention_mask in the output
-                batch_size = output.get('attention_mask').shape[0]
-                sequence_lengths = output.get('attention_mask').sum(dim=1) - 1
-            elif input_ids is not None:
+            if input_ids is not None:
                 # if no pad token found, use modulo instead of reverse indexing for ONNX compatibility
                 sequence_lengths = torch.eq(input_ids, self.config.pad_token_id).int().argmax(-1) - 1
                 sequence_lengths = sequence_lengths % input_ids.shape[-1]
@@ -545,28 +539,20 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
 
     max_length = max(seq_lengths)
     unpacked_logits = []
-    attention_mask = []
 
     start = 0
     for length in seq_lengths:
         seq_state = last_hidden_state[start:start + length]
-        mask = torch.ones((seq_state.shape[0])).to(last_hidden_state.device)
         padding = torch.zeros(
             (max_length - length, last_hidden_state.shape[-1])).to(last_hidden_state.dtype).to(last_hidden_state.device)
-        attention_padding = torch.zeros((max_length - length)).to(last_hidden_state.device)
         # re-padding
         if padding_side == 'left':
             seq_state = torch.cat((padding, seq_state), dim=0)
-            mask = torch.cat((attention_padding, mask), dim=0)
         else:
             seq_state = torch.cat((seq_state, padding), dim=0)
-            mask = torch.cat((mask, attention_padding), dim=0)
         unpacked_logits.append(seq_state)
-        attention_mask.append(mask)
         start += length
     outputs[hidden_state_key] = torch.stack(unpacked_logits, dim=0)
-    inputs['attention_mask'] = torch.stack(attention_mask, dim=0).to(torch.int64)
-    outputs['attention_mask'] = inputs['attention_mask']
     return outputs
 
 

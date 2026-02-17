@@ -237,6 +237,7 @@ register_template(DeepseekVLTemplateMeta(MLLMTemplateType.deepseek_janus, templa
 
 
 class DeepseekOCR(Template):
+    version = 'v1'
     image_placeholder = ['<image>\n']
 
     def init_env_args(self):
@@ -247,15 +248,28 @@ class DeepseekOCR(Template):
         self._dynamic_preprocess = None
         self.crop_mode = get_env_args('crop_mode', bool, True)
         self.base_size = get_env_args('base_size', int, 1024)
-        self.image_size = get_env_args('image_size', int, 640)
+        # image_size will be set after detecting version (v1: 640, v2: 768)
+        self._image_size_override = get_env_args('image_size', int, None)
+
+    @property
+    def image_size(self):
+        if self._image_size_override is not None:
+            return self._image_size_override
+        return 768 if self.version == 'v2' else 640
+
+    @property
+    def crop_threshold(self):
+        # v1: 640, v2: 768
+        return 768 if self.version == 'v2' else 640
 
     def _load_dynamic_modules(self):
         """Lazily load dynamic modules from model repository."""
         if self._BasicImageTransform is None:
             model_dir = self.model_info.model_dir
-            self._BasicImageTransform = get_class_from_dynamic_module('modeling_deepseekocr.BasicImageTransform',
+            model_type_name = 'deepseekocr2' if self.version == 'v2' else 'deepseekocr'
+            self._BasicImageTransform = get_class_from_dynamic_module(f'modeling_{model_type_name}.BasicImageTransform',
                                                                       model_dir)
-            self._dynamic_preprocess = get_class_from_dynamic_module('modeling_deepseekocr.dynamic_preprocess',
+            self._dynamic_preprocess = get_class_from_dynamic_module(f'modeling_{model_type_name}.dynamic_preprocess',
                                                                      model_dir)
 
     @property
@@ -271,12 +285,15 @@ class DeepseekOCR(Template):
     def _preprocess_image(self, images, image_token_id):
         # Code borrowed from
         # https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR/file/view/master/modeling_deepseekocr.py?status=1
+        # https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR-2/file/view/master/modeling_deepseekocr2.py?status=1
         crop_mode = self.crop_mode
         patch_size = 16
         downsample_ratio = 4
         valid_img_tokens = 0
         w, h = images[0].size
         ratio = 1 - ((max(w, h) - min(w, h)) / (max(w, h)))
+        crop_threshold = self.crop_threshold
+        image_size = self.image_size
 
         image_transform = self.BasicImageTransform(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5), normalize=True)
         images_list, images_crop_list = [], []
@@ -284,7 +301,7 @@ class DeepseekOCR(Template):
         images_spatial_crop = []
         for image in images:
             if crop_mode:
-                if image.size[0] <= 640 and image.size[1] <= 640:
+                if image.size[0] <= crop_threshold and image.size[1] <= crop_threshold:
                     crop_ratio = [1, 1]
                 else:
                     if crop_mode:
@@ -292,7 +309,6 @@ class DeepseekOCR(Template):
                     else:
                         crop_ratio = [1, 1]
                 """process the global view"""
-                # image = image.resize((base_size, base_size))
                 global_view = ImageOps.pad(
                     image, (self.base_size, self.base_size), color=tuple(int(x * 255) for x in image_transform.mean))
 
@@ -308,30 +324,37 @@ class DeepseekOCR(Template):
 
                 if width_crop_num > 1 or height_crop_num > 1:
                     """process the local views"""
-
                     for i in range(len(images_crop_raw)):
                         images_crop_list.append(image_transform(images_crop_raw[i]).to(torch.bfloat16))
 
-                if self.image_size == 640:
+                if image_size == 640:
                     valid_img_tokens += len(images_crop_list) * 100
+                elif image_size == 768:
+                    valid_img_tokens += len(images_crop_list) * 144
 
-                num_queries = math.ceil((self.image_size // patch_size) / downsample_ratio)
+                num_queries = math.ceil((image_size // patch_size) / downsample_ratio)
                 num_queries_base = math.ceil((self.base_size // patch_size) / downsample_ratio)
                 """add image tokens"""
-
-                tokenized_image = ([image_token_id] * num_queries_base + [image_token_id]) * num_queries_base
-                tokenized_image += [image_token_id]
-                if width_crop_num > 1 or height_crop_num > 1:
-                    tokenized_image += ([image_token_id] * (num_queries * width_crop_num) + [image_token_id]) * (
-                        num_queries * height_crop_num)
+                # v1: adds newline token after each row, v2: no newline tokens in rows
+                if self.version == 'v2':
+                    tokenized_image = ([image_token_id] * num_queries_base) * num_queries_base
+                    tokenized_image += [image_token_id]
+                    if width_crop_num > 1 or height_crop_num > 1:
+                        tokenized_image += ([image_token_id] * (num_queries * width_crop_num)) * (
+                            num_queries * height_crop_num)
+                else:
+                    tokenized_image = ([image_token_id] * num_queries_base + [image_token_id]) * num_queries_base
+                    tokenized_image += [image_token_id]
+                    if width_crop_num > 1 or height_crop_num > 1:
+                        tokenized_image += ([image_token_id] * (num_queries * width_crop_num) + [image_token_id]) * (
+                            num_queries * height_crop_num)
                 tokenized_str.append(tokenized_image)
             else:
                 """process the global view"""
-                if self.image_size <= 640:
-                    image = image.resize((self.image_size, self.image_size))
-                # else:
+                if image_size <= crop_threshold:
+                    image = image.resize((image_size, image_size))
                 global_view = ImageOps.pad(
-                    image, (self.image_size, self.image_size), color=tuple(int(x * 255) for x in image_transform.mean))
+                    image, (image_size, image_size), color=tuple(int(x * 255) for x in image_transform.mean))
                 images_list.append(image_transform(global_view).to(torch.bfloat16))
 
                 if self.base_size == 1024:
@@ -342,15 +365,22 @@ class DeepseekOCR(Template):
                     valid_img_tokens += int(100 * 1)
                 elif self.base_size == 512:
                     valid_img_tokens += int(64 * 1)
+                elif self.base_size == 768:
+                    valid_img_tokens += int(144 * 1)
 
                 width_crop_num, height_crop_num = 1, 1
 
                 images_spatial_crop.append([width_crop_num, height_crop_num])
                 """add image tokens"""
-                num_queries = math.ceil((self.image_size // patch_size) / downsample_ratio)
+                num_queries = math.ceil((image_size // patch_size) / downsample_ratio)
 
-                tokenized_image = ([image_token_id] * num_queries + [image_token_id]) * num_queries
-                tokenized_image += [image_token_id]
+                # v1: adds newline token after each row, v2: no newline tokens in rows
+                if self.version == 'v2':
+                    tokenized_image = ([image_token_id] * num_queries) * num_queries
+                    tokenized_image += [image_token_id]
+                else:
+                    tokenized_image = ([image_token_id] * num_queries + [image_token_id]) * num_queries
+                    tokenized_image += [image_token_id]
                 tokenized_str.append(tokenized_image)
         if len(images_list) == 0:
             images_ori = torch.zeros((1, 3, self.image_size, self.image_size))
@@ -412,6 +442,19 @@ register_template(
         prompt=['{{QUERY}}'],
         chat_sep=None,
         template_cls=DeepseekOCR))
+
+
+class DeepseekOCR2(DeepseekOCR):
+    version = 'v2'
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.deepseek_ocr2,
+        prefix=['<｜begin▁of▁sentence｜>'],
+        prompt=['{{QUERY}}'],
+        chat_sep=None,
+        template_cls=DeepseekOCR2))
 
 
 @dataclass

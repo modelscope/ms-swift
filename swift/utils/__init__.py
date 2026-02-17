@@ -13,11 +13,13 @@ from .logger import get_logger, ms_logger_context
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .processor_utils import Processor, ProcessorMixin
 from .safetensors import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
+from .shutdown_manager import ShutdownManager
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
 from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_context_use_barrier, empty_cache, gc_collect,
                           get_current_device, get_device, get_device_count, get_generative_reranker_logits,
-                          get_last_valid_indices, get_torch_device, init_process_group, safe_ddp_context,
-                          set_default_ddp_config, set_device, time_synchronize, to_device, to_float_dtype)
+                          get_last_valid_indices, get_max_reserved_memory, get_torch_device, init_process_group,
+                          safe_ddp_context, set_default_ddp_config, set_device, time_synchronize, to_device,
+                          to_float_dtype)
 from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, find_all_linears, find_embedding,
                                  find_layers, find_norm, find_sub_module, freeze_parameters,
                                  get_cu_seqlens_from_position_ids, get_model_parameter_info, get_modules_to_not_convert,

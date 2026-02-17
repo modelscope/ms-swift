@@ -23,8 +23,7 @@ from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
 
-from swift.utils import (Processor, ProcessorMixin, get_env_args, get_generative_reranker_logits, get_logger,
-                         remove_response, retry_decorator, to_device)
+from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import load_audio, load_batch, load_image, rescale_image
@@ -482,16 +481,6 @@ class Template(ProcessorMixin):
             _encoded['labels'] = labels
         else:
             anchor = inputs.chosen
-            # Ensure that load_data_args true runs through inference successfully
-            # if len(anchor.messages) == 1:
-            #     docs = inputs.positive + inputs.negative
-            #     if docs:
-            #         assistant_messages = docs[0].messages
-            #         assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
-            #         anchor.messages = anchor.messages + assistant_messages
-            #         anchor.images = anchor.images + docs[0].images
-            #         anchor.audios = anchor.audios + docs[0].audios
-            #         anchor.videos = anchor.videos + docs[0].videos
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
@@ -678,14 +667,14 @@ class Template(ProcessorMixin):
         return model.generate(*args, **kwargs)
 
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
-        # Do not print template_meta.suffix[-1] and eos_token.
+        # Do not print template_meta.suffix_stop and eos_token.
         # However, other stop_words will be printed.
         tokenizer = self.tokenizer
 
         if len(generate_ids) > 0 and generate_ids[-1] == tokenizer.eos_token_id:
             generate_ids = generate_ids[:-1]
         # skip suffix and eos_token
-        template_suffix = self.template_meta.suffix[-1]
+        template_suffix = self.template_meta.suffix_stop
         if isinstance(template_suffix, str):
             # [-1:]: fix OpenGVLab/Mini-InternVL-Chat-4B-V1-5
             template_suffix = tokenizer.encode(template_suffix, add_special_tokens=False)[-1:]
@@ -1547,6 +1536,8 @@ class Template(ProcessorMixin):
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
+        if 'num_samples' in res:
+            num_samples = res.pop('num_samples')
         if self.use_megatron:
             res['num_samples'] = num_samples
         return res
@@ -1651,7 +1642,9 @@ class Template(ProcessorMixin):
                 for prefix in indexes:
                     new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', []))
+        num_samples = len(new_batch)
         res = self._data_collator(new_batch, padding_to=padding_to)
+        res['num_samples'] = num_samples
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
@@ -1682,8 +1675,9 @@ class Template(ProcessorMixin):
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
                         })
                         labels_list.append(0)
-
+            num_samples = len(new_batch)
             res = self._data_collator(new_batch, padding_to=padding_to)
+            res['num_samples'] = num_samples
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         else:
@@ -2108,6 +2102,8 @@ class Template(ProcessorMixin):
             media_inputs = to_device(media_inputs, input_ids.device)
             pixel_values = media_inputs['pixel_values'].type(dtype)
             image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+            if hasattr(image_embeds, 'pooler_output'):
+                image_embeds = image_embeds.pooler_output
             inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         else:
             if pixel_values is None:
@@ -2121,6 +2117,8 @@ class Template(ProcessorMixin):
                 grid_thw = torch.concat([image_grid_thw, video_grid_thw], dim=0)
             pixel_values_mixed = pixel_values_mixed.type(dtype)
             mixed_embeds = visual(pixel_values_mixed, grid_thw=grid_thw)
+            if hasattr(mixed_embeds, 'pooler_output'):
+                mixed_embeds = mixed_embeds.pooler_output
             if pixel_values is None:
                 image_embeds = None
                 video_embeds = mixed_embeds

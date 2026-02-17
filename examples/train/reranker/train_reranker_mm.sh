@@ -17,7 +17,7 @@ swift sft \
     --per_device_eval_batch_size 4 \
     --gradient_accumulation_steps 8 \
     --dataset_num_proc 8 \
-    --learning_rate 6e-6 \
+    --learning_rate 6e-5 \
     --label_names labels \
     --dataloader_drop_last true \
     --attn_impl flash_attn \

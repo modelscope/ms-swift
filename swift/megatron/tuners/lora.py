@@ -2,7 +2,7 @@
 # Code borrowed from huggingface/peft
 import math
 import warnings
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Any, List, Optional, Tuple
 
 import megatron.core
@@ -16,7 +16,7 @@ from megatron.core.extensions.transformer_engine import (TEColumnParallelGrouped
                                                          TERowParallelGroupedLinear, TERowParallelLinear)
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.parallel_state import get_expert_tensor_parallel_world_size, get_tensor_model_parallel_world_size
-from megatron.core.tensor_parallel import gather_from_sequence_parallel_region, scatter_to_sequence_parallel_region
+from megatron.core.tensor_parallel.random import get_cuda_rng_tracker, get_expert_parallel_rng_tracker_name
 from megatron.core.transformer.mlp import apply_swiglu_sharded_factory
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.router import TopKRouter
@@ -66,6 +66,8 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         self.sequence_parallel = getattr(base_layer, 'sequence_parallel', False)
         if self.is_expert:
             self.tp_size = get_expert_tensor_parallel_world_size()
+            if self.tp_size > 1:
+                raise ValueError('Currently, LoRA does not support ETP.')  # TODO: init/all-reduce
         else:
             self.tp_size = get_tensor_model_parallel_world_size()
         self.update_layer(
@@ -198,15 +200,13 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                     **kwargs,
                 )
                 lora_b.parallel_mode = self.base_layer.parallel_mode  # fix moe_shared_expert_overlap
-        # https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/core/transformer/moe/shared_experts.py#L93
         for lora in [lora_a, lora_b]:
-            if isinstance(lora, (TERowParallelLinear, TEColumnParallelLinear)) and lora.parallel_mode is None:
-                lora.ub_overlap_rs_fprop = False
-                lora.ub_overlap_ag_dgrad = False
-                lora.ub_overlap_ag_fprop = False
-                lora.ub_overlap_rs_dgrad = False
-        lora_a.sequence_parallel = False
-        lora_b.sequence_parallel = False
+            if getattr(lora, 'parallel_mode', None) is None and hasattr(lora, 'weight'):  # TODO: experts
+                if isinstance(self.base_layer, TopKRouter):
+                    sequence_parallel = self.base_layer.weight.sequence_parallel
+                else:
+                    sequence_parallel = self.sequence_parallel
+                lora.weight.sequence_parallel = sequence_parallel
         self.lora_A[adapter_name] = lora_a
         self.lora_B[adapter_name] = lora_b
         if hasattr(self, 'lora_bias'):
@@ -220,6 +220,15 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
 
         self._move_adapter_to_device_of_base_layer(adapter_name)
         self.set_adapter(self.active_adapters)
+
+    def _get_rng_context(self, lora):
+        if self.is_expert:
+            rng_context = get_cuda_rng_tracker().fork(get_expert_parallel_rng_tracker_name())
+        elif getattr(lora, 'parallel_mode', None) is None:
+            rng_context = nullcontext()
+        else:
+            rng_context = get_cuda_rng_tracker().fork()
+        return rng_context
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:
@@ -236,15 +245,16 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 weights_b = [getattr(lora_b, f'weight{i}') for i in range(lora_b.num_gemms)]
             else:
                 weights_b = [lora_b.weight]
-            for weight_a in weights_a:
-                if init_lora_weights is True:
-                    # initialize A the same way as the default for nn.Linear and B to zero
-                    # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
-                    nn.init.kaiming_uniform_(weight_a, a=math.sqrt(5))
-                elif init_lora_weights.lower() == 'gaussian':
-                    nn.init.normal_(weight_a, std=1 / self.r[adapter_name])
-                else:
-                    raise ValueError(f'Unknown initialization {init_lora_weights=}')
+            with self._get_rng_context(lora_a):
+                for weight_a in weights_a:
+                    if init_lora_weights is True:
+                        # initialize A the same way as the default for nn.Linear and B to zero
+                        # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
+                        nn.init.kaiming_uniform_(weight_a, a=math.sqrt(5))
+                    elif init_lora_weights.lower() == 'gaussian':
+                        nn.init.normal_(weight_a, std=1 / self.r[adapter_name])
+                    else:
+                        raise ValueError(f'Unknown initialization {init_lora_weights=}')
             for weight_b in weights_b:
                 nn.init.zeros_(weight_b)
         if adapter_name in self.lora_embedding_A.keys():
@@ -297,7 +307,34 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
             else:
                 self.base_layer.return_layernorm_output = True
                 if is_torch_npu_available():
-                    result, bias = self.base_layer(x, *args, **kwargs)
+                    # NPU: base_layer only returns (output, bias); it does not expose the LayerNorm/RMSNorm output.
+                    inp = x  # Keep the original pre-norm input.
+                    result, bias = self.base_layer(inp, *args, **kwargs)
+
+                    # Key: For LoRA we need the same "x" as in the non-NPU branch, i.e. the post-norm activation
+                    # (LayerNorm/RMSNorm output, which is the actual input to the fused linear).
+                    if hasattr(self.base_layer, 'config') and (hasattr(self.base_layer, '_layernorm')
+                                                               or hasattr(self.base_layer, '_rmsnorm')):
+                        norm_type = getattr(self.base_layer.config, 'normalization', None)
+
+                        if norm_type == 'LayerNorm':
+                            if not hasattr(self.base_layer, '_layernorm'):
+                                raise RuntimeError(
+                                    'NPU LoRA path expects base_layer to provide `_layernorm`, but it is missing. '
+                                    'Cannot reconstruct the post-LayerNorm activation for LoRA.')
+                            x = self.base_layer._layernorm(inp)
+                        else:
+                            # Default to RMSNorm path when normalization is not LayerNorm.
+                            if not hasattr(self.base_layer, '_rmsnorm'):
+                                raise RuntimeError(
+                                    'NPU LoRA path expects base_layer to provide `_rmsnorm`, but it is missing. '
+                                    'Cannot reconstruct the post-RMSNorm activation for LoRA.')
+                            x = self.base_layer._rmsnorm(inp)
+                    else:
+                        raise RuntimeError('NPU LoRA path requires base_layer to expose post-norm activations '
+                                           '(LayerNorm/RMSNorm output). Expected base_layer to have `config` '
+                                           'and either `_layernorm` or `_rmsnorm`. '
+                                           f'Got base_layer type: {type(self.base_layer)}. ')
                 else:
                     (result, x), bias = self.base_layer(x, *args, **kwargs)
         elif isinstance(self.base_layer, (TELinear, TEGroupedLinear)):
@@ -308,8 +345,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
         else:
             raise ValueError(f'Unsupported base layer type: {type(self.base_layer)}')
         if not isinstance(self.base_layer, TopKRouter) and not self.disable_adapters and not self.merged:
-            if self.sequence_parallel and self.base_layer.parallel_mode == 'column':
-                x = gather_from_sequence_parallel_region(x)
             for active_adapter in self.active_adapters:
                 if active_adapter not in self.lora_A.keys():
                     continue
@@ -329,8 +364,6 @@ class LoraParallelLinear(MegatronModule, LoraLayer):
                 if isinstance(lora_result, tuple):
                     lora_result = lora_result[0]
                 lora_result = lora_result * scaling
-                if self.sequence_parallel and self.base_layer.parallel_mode == 'row':
-                    lora_result = scatter_to_sequence_parallel_region(lora_result)
                 result = result + lora_result
 
         result = result.to(previous_dtype)

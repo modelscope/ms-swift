@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
-from swift.template import TEMPLATE_MAPPING
+from swift.template import TEMPLATE_MAPPING, get_template_meta
 from swift.utils import get_logger
 
 logger = get_logger()
@@ -32,9 +32,8 @@ class TemplateArguments:
         truncation_strategy (Literal['delete', 'left', 'right', 'split']): Strategy for handling samples exceeding
             `max_length`. Options are 'delete', 'left' (truncate from the left), 'right' (truncate from the right),
             and 'split' (split into multiple samples). Defaults to 'delete'.
-            Note: The 'split' strategy is only supported during pre-training (e.g., `swift/megatron pt`), requires
-            `ms-swift>=3.11`, and is incompatible with `cached_dataset`. It splits long samples to avoid wasting
-            tokens.
+            Note: The 'split' strategy is only supported during pre-training (e.g., `swift/megatron pt`),
+            and is incompatible with `cached_dataset`. It splits long samples to avoid wasting tokens.
             Note: For multimodal models, setting this to 'left' or 'right' preserves all image tokens, which may lead
             to OOM errors.
         max_pixels (Optional[int]): The maximum number of pixels (H*W) for an input image in a multimodal model.
@@ -54,7 +53,7 @@ class TemplateArguments:
             is typically used for pre-training. Defaults to True.
             Note: Defaults to False for `swift pt`, which uses the generation template. This parameter is compatible
             with multimodal models.
-        padding_side (Literal['left', 'right', None]): The side to pad on when `batch_size >= 2` during training.
+        padding_side (Literal['left', 'right']): The side to pad on when `batch_size >= 2` during training.
             Options are 'left' or 'right'. Defaults to 'right'. For inference with `batch_size >= 2`, padding is always
             on the left.
             Note: Defaults to 'left' for PPO and GKD.
@@ -68,16 +67,15 @@ class TemplateArguments:
             'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc.
             For available options, refer to
             [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
-            ms-swift>=3.12 supports mixing basic strategies with other strategies,
+            ms-swift supports mixing basic strategies with other strategies,
             for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`.
             If no basic strategy is specified, it defaults to 'default',
             for example: 'hermes' is equivalent to 'default+hermes'.
             - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss
             (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are
             not included in loss calculation**). (**Default value for SFT**)
-            - 'last_round': Only calculate loss for the last round response. In "ms-swift>=3.12", the last round
-            means all content after the last "user", previously it only included the last "assistant".
-            (**Default value for RLHF**)
+            - 'last_round': Only calculate loss for the last round response. The last round
+            means all content after the last "user". (**Default value for RLHF**)
             - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
             - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'`
             (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
@@ -90,7 +88,7 @@ class TemplateArguments:
             token range for loss calculation.
         response_prefix (Optional[str]): A prefix string for the response, e.g., '<think>\\n' for Qwen-32B. This
             parameter only affects inference. Defaults to None, which is auto-set based on the model.
-        enable_thinking (Optional[bool]): (ms-swift>=3.12) This parameter takes effect during inference,
+        enable_thinking (Optional[bool]): This parameter takes effect during inference,
             indicating whether to enable thinking mode. Default is None, the default value is determined by the
             template (model) type (True for thinking/hybrid thinking templates, False for non-thinking templates).
             If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking
@@ -124,7 +122,7 @@ class TemplateArguments:
     agent_template: Optional[str] = None
     norm_bbox: Literal['norm1000', 'none', None] = None
     use_chat_template: Optional[bool] = None
-    padding_side: Literal['left', 'right', None] = None
+    padding_side: Literal['left', 'right'] = 'right'
     # train
     padding_free: bool = False
     loss_scale: str = 'default'
@@ -137,8 +135,9 @@ class TemplateArguments:
     add_non_thinking_prefix: bool = True
 
     def __post_init__(self):
-        if self.template is None and getattr(self, 'model_meta', None):
-            self.template = self.model_meta.template
+        if getattr(self, 'model_meta', None) is not None:
+            self.template_meta = get_template_meta(self.model_info, self.model_meta, template_type=self.template)
+            self.template = self.template_meta.template_type
         if self.use_chat_template is None:
             self.use_chat_template = True
         if self.system is not None:
@@ -152,12 +151,6 @@ class TemplateArguments:
             self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
-        if self.padding_side is None:
-            if getattr(self, 'task_type', None) in ('reranker', 'generative_reranker'):
-                self.padding_side = 'left'
-                logger.info(f'Setting args.padding_side to {self.padding_side} for task_type={self.task_type}')
-            else:
-                self.padding_side = 'right'
 
     def get_template_kwargs(self):
         from ..sft_args import SftArguments

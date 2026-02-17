@@ -10,7 +10,10 @@ if TYPE_CHECKING:
     from .kto_trainer import MegatronKTOTrainer
     from .reward_trainer import MegatronRewardTrainer
     from .rollout_mixin import MegatronRolloutMixin
+    from .embedding_trainer import MegatronEmbeddingTrainer
+    from .reranker_trainer import MegatronRerankerTrainer
     from .trainer import MegatronTrainer
+    from .base import BaseMegatronTrainer
 else:
     _import_structure = {
         'dpo_trainer': ['MegatronDPOTrainer'],
@@ -19,7 +22,10 @@ else:
         'kto_trainer': ['MegatronKTOTrainer'],
         'reward_trainer': ['MegatronRewardTrainer'],
         'rollout_mixin': ['MegatronRolloutMixin'],
+        'embedding_trainer': ['MegatronEmbeddingTrainer'],
+        'reranker_trainer': ['MegatronRerankerTrainer'],
         'trainer': ['MegatronTrainer'],
+        'base': ['BaseMegatronTrainer'],
     }
     import sys
 

@@ -2,8 +2,11 @@
 class LLMMegatronModelType:
     gpt = 'gpt'
     qwen3_next = 'qwen3_next'
+    olmoe = 'olmoe'
     glm4 = 'glm4'
     minimax_m2 = 'minimax_m2'
+
+    qwen3_emb = 'qwen3_emb'
 
 
 class MLLMMegatronModelType:
@@ -12,6 +15,7 @@ class MLLMMegatronModelType:
     qwen3_vl = 'qwen3_vl'
     qwen2_5_omni = 'qwen2_5_omni'
     qwen3_omni = 'qwen3_omni'
+    qwen3_5 = 'qwen3_5'
     ovis2_5 = 'ovis2_5'
 
     internvl3 = 'internvl3'

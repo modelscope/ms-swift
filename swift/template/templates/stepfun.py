@@ -3,7 +3,9 @@ import itertools
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_env_args
+import torch
+
+from swift.utils import get_env_args, to_float_dtype
 from ..base import Template
 from ..constant import MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -296,4 +298,119 @@ register_template(
         system_prefix=['<s><|BOT|>system\n{{SYSTEM}}<|EOT|>'],
         chat_sep=['<|EOT|>'],
         suffix=['<|EOT|>'],
+    ))
+
+
+class Step3VLTemplate(Template):
+    use_model = True
+    support_padding_free = False
+    image_token_id = 151679
+    placeholder_tokens = ['<im_patch>']
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'image'
+        return ['<im_patch>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+
+        images = inputs.images
+        if images:
+            processor = self.processor
+            idx_list = findall(input_ids, self.image_token_id)
+            splitted_images_data = processor._split_images(images)
+            pixel_values_lst = []
+            patch_pixel_values_lst = []
+            patch_newline_mask_lst = []
+            image_repl_ids_lst = []
+            num_patches = []
+            for raw_img, img_patches, patch_newline_mask in splitted_images_data:
+                pixel_values_lst.extend(processor._convert_images_to_pixel_values([raw_img]))
+                if len(img_patches) > 0:
+                    patch_pixel_values_lst.extend(processor._convert_images_to_pixel_values(img_patches, is_patch=True))
+                num_patches.append(len(img_patches))
+                _, image_repl_ids = processor._get_image_repl_features(1, len(img_patches), patch_newline_mask)
+                image_repl_ids_lst.append(image_repl_ids)
+                if patch_newline_mask is not None:
+                    patch_newline_mask_lst.extend(patch_newline_mask)
+
+            image_inputs = {
+                'pixel_values': torch.cat(pixel_values_lst),
+                'num_patches': num_patches,
+            }
+            if patch_pixel_values_lst:
+                image_inputs['patch_pixel_values'] = torch.cat(patch_pixel_values_lst)
+            if patch_newline_mask_lst:
+                image_inputs['patch_newline_mask'] = torch.tensor(patch_newline_mask_lst, dtype=torch.bool)
+            image_inputs = to_float_dtype(image_inputs, self.model_info.torch_dtype)
+
+            def _get_new_tokens(i):
+                return image_repl_ids_lst[i]
+
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
+
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        encoded.update(image_inputs)
+        return encoded
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+
+        input_ids = inputs['input_ids']
+        # Only one image is supported per sample. # File: modeling_step_vl.py line 319, in _process_image_input
+        #           cur_feature.append(image_features[i].view(-1, image_features.shape[-1]))
+        pixel_values = inputs.get('pixel_values')
+        num_patches = inputs.get('num_patches')
+        patch_pixel_values = inputs.get('patch_pixel_values')
+
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
+        if pixel_values is not None:
+            img_inputs = base_model.model._parse_and_validate_image_input(
+                pixel_values=pixel_values, num_patches=num_patches, patch_pixel_values=patch_pixel_values)
+
+            # [image embedding or concatenation of image embedding and patch image embedding]
+            img_embeddings = base_model.model._process_image_input(img_inputs)
+
+            is_multimodal = input_ids == self.image_token_id
+            is_multimodal = is_multimodal.to(inputs_embeds.device)
+            bs = is_multimodal.shape[0]
+            for i in range(bs):
+                assert is_multimodal[i].sum() == img_embeddings[i].shape[0]
+            B, L, D = inputs_embeds.shape
+            flat_img_embeds = torch.cat(img_embeddings, dim=0)
+            flat_mask = is_multimodal.view(-1)
+            flat_inputs_embeds = inputs_embeds.view(-1, D)
+            flat_inputs_embeds[flat_mask] = flat_img_embeds
+            inputs_embeds = flat_inputs_embeds.view(B, L, D)
+        return {'inputs_embeds': inputs_embeds}
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        num_patches = self.gather_list(batch, 'num_patches')
+        if num_patches:
+            res['num_patches'] = num_patches
+        patch_pixel_values = [b['patch_pixel_values'] for b in batch if b.get('patch_pixel_values') is not None]
+        patch_newline_mask = [b['patch_newline_mask'] for b in batch if b.get('patch_newline_mask') is not None]
+        if patch_pixel_values:
+            res['patch_pixel_values'] = torch.concat(patch_pixel_values)
+            res['patch_newline_mask'] = torch.concat(patch_newline_mask)
+        return res
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.step3_vl,
+        template_cls=Step3VLTemplate,
+        default_system=None,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
     ))

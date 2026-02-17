@@ -74,7 +74,7 @@ cd ..
 # 2. 获取并安装 MindSpeed
 git clone https://gitcode.com/Ascend/MindSpeed.git
 cd MindSpeed
-git checkout 0016137f0dcfeab3308e0d16994046740c0e4ad9
+git checkout 2.3.0_core_r0.12.1
 pip install -e .
 cd ..
 

@@ -10,7 +10,7 @@ kwargs = {
 }
 
 
-def test_llm():
+def test_embedding():
     from swift import sft_main, SftArguments
     result = sft_main(
         SftArguments(
@@ -84,5 +84,5 @@ def test_reranker2():
 
 
 if __name__ == '__main__':
-    # test_llm()
+    # test_embedding()
     test_reranker()

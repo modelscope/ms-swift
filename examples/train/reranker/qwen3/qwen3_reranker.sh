@@ -9,7 +9,7 @@ swift sft \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --learning_rate 5e-6 \
+    --learning_rate 5e-5 \
     --target_modules all-linear \
     --dataset MTEB/scidocs-reranking \
     --attn_impl flash_attn \

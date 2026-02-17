@@ -5,9 +5,25 @@ import numpy as np
 from transformers import EvalPrediction
 
 from .base import EvalMetrics
+from .utils import Metric
 
 
-class RerankerMetrics(EvalMetrics):
+class RerankerMetrics(EvalMetrics, Metric):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        Metric.__init__(self)
+        self.add_state('logits', default_factory=list)
+        self.add_state('labels', default_factory=list)
+
+    def update(self, logits, labels):
+        self.logits.append(logits.cpu().numpy())
+        self.labels.append(labels.cpu().numpy())
+
+    def compute(self):
+        predictions = np.concatenate(self.logits)
+        labels = np.concatenate(self.labels)
+        return self._calculate_metrics(predictions, labels)
 
     def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         return self._calculate_metrics(eval_prediction.predictions, eval_prediction.label_ids)
