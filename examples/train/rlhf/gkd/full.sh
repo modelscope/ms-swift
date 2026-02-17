@@ -4,8 +4,8 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rlhf \
     --rlhf_type gkd \
-    --model Qwen/Qwen2.5-7B \
-    --teacher_model Qwen/Qwen2.5-14B-Instruct \
+    --model Qwen/Qwen2.5-0.5B \
+    --teacher_model Qwen/Qwen2.5-0.5B-Instruct \
     --tuner_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-en#2000' 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
     --split_dataset_ratio 0.01 \

@@ -78,7 +78,7 @@ Recommended Operating Environment:
 | transformers | >=4.33       | 4.57.6      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
-| trl          | >=0.15,<0.25 |       |      RLHF        |
+| trl          | >=0.15,<0.29 |       |      RLHF        |
 
 
 ## Quick Start Example
