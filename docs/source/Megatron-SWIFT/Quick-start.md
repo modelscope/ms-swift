@@ -78,7 +78,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | transformers | >=4.33       | 4.57.6      |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
-| trl          | >=0.15,<0.25 |       |      RLHF        |
+| trl          | >=0.15,<0.29 |       |      RLHF        |
 
 
 ## 快速入门案例

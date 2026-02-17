@@ -11,11 +11,15 @@ from accelerate.utils import gather_object
 from packaging import version
 from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
-from trl.trainer.utils import print_rich_table
 
+from swift.trainers import SwiftMixin
 from swift.utils import get_logger
-from ..mixin import SwiftMixin
 from .rlhf_mixin import RLHFTrainerMixin
+
+try:
+    from trl.trainer.utils import print_rich_table
+except ImportError:
+    from trl.experimental.ppo.ppo_trainer import print_rich_table
 
 del HFRewardTrainer.__init__
 
