@@ -314,7 +314,7 @@ def load_video_minicpmv4_5(video: Union[str, bytes],
         return np.asarray(scale)[indices]
 
     def group_array(arr, size):
-        return [arr[i:i+size] for i in range(0, len(arr), size)]
+        return [arr[i:i + size] for i in range(0, len(arr), size)]
 
     video_io = load_file(video)
     vr = VideoReader(video_io, ctx=cpu(0))

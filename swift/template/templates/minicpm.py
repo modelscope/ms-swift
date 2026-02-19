@@ -12,7 +12,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3, load_video_minicpmv4_5
+from ..vision_utils import load_video_minicpmv4_5, load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, Qwen3MixedTemplateMeta, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
@@ -263,12 +263,13 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type in {'image', 'video'}
-        load_video = partial(load_video_minicpmv4_5,
-                             max_num_frames=self.max_num_frames,
-                             max_num_packing=self.max_num_packing,
-                             time_scale=self.time_scale,
-                             choose_fps=self.choose_fps,
-                             force_packing=self.force_packing)
+        load_video = partial(
+            load_video_minicpmv4_5,
+            max_num_frames=self.max_num_frames,
+            max_num_packing=self.max_num_packing,
+            time_scale=self.time_scale,
+            choose_fps=self.choose_fps,
+            force_packing=self.force_packing)
         image_context = super().replace_tag('image', index, inputs)
         if media_type == 'image':
             return image_context
@@ -307,7 +308,8 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
         idx_list = findall(input_ids, -100)
 
         image_processor = self.processor.image_processor
-        image_inputs = image_processor([images], return_tensors='pt',
+        image_inputs = image_processor([images],
+                                       return_tensors='pt',
                                        max_slice_nums=max_slice_nums,
                                        temporal_ids=temporal_ids).to(self.model_info.torch_dtype)
 
@@ -316,7 +318,10 @@ class MiniCPMV4_5Template(MiniCPMV2_6Template):
                 placeholder = ''
             else:
                 placeholder = image_processor.get_slice_image_placeholder(
-                    image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
+                    image_inputs.image_sizes[0][i],
+                    image_idx=i,
+                    max_slice_nums=max_slice_nums,
+                    use_image_id=use_image_id)
                 placeholder += '\n'
             return self.processor.encode(placeholder, add_special_tokens=False)
 
