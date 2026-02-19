@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
-from megatron.training import get_args
 from PIL import Image
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
@@ -25,7 +24,7 @@ class KimiVLVit(HuggingFaceModule):
     _aligner = ['multi_modal_projector']
 
     def __init__(self, config):
-        args = get_args()
+        args = config.args
         model_cls = get_class_from_dynamic_module('modeling_kimi_vl.DeepseekV3ForCausalLM', args.model_dir)
         super().__init__(config, [model_cls])
 
@@ -49,6 +48,11 @@ class KimiVLVit(HuggingFaceModule):
 
 
 register_megatron_model(
-    MegatronModelMeta(MegatronModelType.kimi_vl, [
-        ModelType.kimi_vl,
-    ], bridge_cls=KimiVLBridge, visual_cls=KimiVLVit))
+    MegatronModelMeta(
+        MegatronModelType.kimi_vl,
+        [
+            ModelType.kimi_vl,
+        ],
+        bridge_cls=KimiVLBridge,
+        visual_cls=KimiVLVit,
+    ))

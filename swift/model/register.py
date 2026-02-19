@@ -343,22 +343,21 @@ class ModelLoader(BaseModelLoader):
         self._init_generation_config(model, model_dir)
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
 
-    def _add_new_special_tokens(self, model, processor):
+    def _add_new_special_tokens(self, model, processor, config):
         if not self.new_special_tokens:
             return
         tokenizer = self._get_tokenizer(processor)
         num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': self.new_special_tokens})
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
-
-            if model is not None and not self.return_dummy_model:
-                llm_model = get_lm_head_model(model, self.model_meta)
-                origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
-                if origin_vocab_size < len(tokenizer):
-                    vocab_size = math.ceil(len(tokenizer) / 128) * 128
+            origin_vocab_size = HfConfigFactory.get_config_attr(config, 'vocab_size')
+            if origin_vocab_size < len(tokenizer):
+                vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                # fix transformers==4.52.4 qwen2.5-vl
+                HfConfigFactory.set_config_attr(config, 'vocab_size', vocab_size)
+                if model is not None and not self.return_dummy_model:
+                    llm_model = get_lm_head_model(model, self.model_meta)
                     llm_model.resize_token_embeddings(vocab_size)
-                    # fix transformers==4.52.4 qwen2.5-vl
-                    HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
     def _postprocess_processor(self, processor: Processor):
         tokenizer = self._get_tokenizer(processor)
@@ -457,7 +456,7 @@ class ModelLoader(BaseModelLoader):
             self._postprocess_processor(processor)
             if model:
                 self._postprocess_model(model_dir, model)
-        self._add_new_special_tokens(model, processor)
+        self._add_new_special_tokens(model, processor, config)
         return model, processor
 
 

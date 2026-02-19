@@ -23,7 +23,6 @@ FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-VL-8B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
@@ -44,12 +43,11 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen3-VL-8B-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen3-VL-8B-Instruct \
     --save_interval 200 \
-    --vit_gradient_checkpointing false \
     --max_length 2048 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 8
@@ -78,7 +76,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT#20000' \
     --load_from_cache_file true \
@@ -96,18 +93,18 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 500 \
     --save_interval 500 \
     --max_length 8192 \
     --packing true \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
@@ -131,7 +128,8 @@ Mcore-Bridge除了支持全参数的导入导出，还支持单独对LoRA增量�
 
 以下为纯文本模型Qwen3-Moe模型使用LoRA自我认知训练的例子：
 - 若你希望导出merge后的权重，而不是LoRA增量权重，请设置`--merge_lora true`。设置`--merge_lora true`的兼容性更好，支持所有系列模型。
-- 注意：由于transformers和Megatron模型结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换LoRA增量权重（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
+- 注意：transformers 5.0对Moe的模型组织结构进行了重构，该结构不支持Moe LoRA的推理，可能造成推理异常。建议对Moe模型进行Merge LoRA（vLLM不受影响）。
+- 注意：由于transformers和Megatron模型专家结构并不一定一致（例如transformers的Qwen3-VL-Moe的专家部分并不是Linear实现，而是Parameters），因此部分模型无法转换LoRA增量权重（若Qwen3-VL-Moe只设置linear_proj和linear_qkv训练LoRA也支持转换）。但大多数的模型支持LoRA转换，例如：Qwen3-Moe，Qwen3-Omni-Moe，GLM4.5-V等。
 ```shell
 # 50GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
@@ -139,7 +137,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
@@ -160,17 +157,17 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
     --eval_interval 200 \
     --save_interval 200 \
     --max_length 2048 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
@@ -204,7 +201,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --save Qwen3-30B-A3B-Instruct-2507-mcore \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-mcore \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -217,8 +214,8 @@ megatron export \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
-    --load Qwen3-30B-A3B-Instruct-2507-mcore \
-    --save Qwen3-30B-A3B-Instruct-2507-hf \
+    --mcore_model Qwen3-30B-A3B-Instruct-2507-mcore \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -230,13 +227,13 @@ LoRA权重：
 ```shell
 # torch_dist -> safetensors
 # 若你需要进行merge-lora，并测试merge-lora后的精度对齐，你只需要设置`--merge_lora true`即可
-# 你也可以将`--model safetensors-path`修改为`--load torch-dist-path`。这两种方式是等价的，mcore-bridge会自动处理。
+# 你也可以将`--model safetensors-path`修改为`--mcore_model torch-dist-path`。这两种方式是等价的，mcore-bridge会自动处理。
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -252,7 +249,7 @@ NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
     --merge_lora false \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
@@ -268,8 +265,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
@@ -285,32 +282,26 @@ megatron export \
 ```python
 import torch
 
-from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
+from swift.megatron import MegatronArguments, get_mcore_model
 from swift.model import get_processor
-from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-4B-Instruct-2507'
 processor = get_processor(model_id, download_model=True)
-model_info = processor.model_info
-megatron_model_meta = get_megatron_model_meta(model_info.model_type)
-config_kwargs = convert_hf_config(model_info.config)
-megatron_args = MegatronArguments(
+hf_config = processor.model_info.config
+args = MegatronArguments(
     model=model_id,
     tensor_model_parallel_size=2,
     torch_dtype=torch.bfloat16,
-    **config_kwargs,
 )
-extra_args = megatron_args.parse_to_megatron()
-initialize_megatron(args_defaults=extra_args)
-mg_model = megatron_model_meta.model_provider()
-bridge = megatron_model_meta.bridge_cls()
+mg_models = get_mcore_model(args, hf_config)
+bridge = args.megatron_model_meta.bridge_cls(args)
 # 加载权重
-bridge.load_weights(mg_model, model_info.model_dir)
+bridge.load_weights(mg_models, args.model_dir)
 # 导出权重
-for name, parameters in bridge.export_weights([mg_model]):
+for name, parameters in bridge.export_weights(mg_models):
     pass
 # 保存权重
-bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-new')
+bridge.save_weights(mg_models, 'output/Qwen3-4B-Instruct-2507-new')
 ```
 
 推理新产生的权重：
@@ -318,7 +309,8 @@ bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-new')
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model output/Qwen3-4B-Instruct-2507-new \
-    --model_type qwen3_nothinking \
+    --model_type qwen3 \
+    --template qwen3_nothinking \
     --stream true
 ```
 
@@ -326,18 +318,13 @@ LoRA权重的加载、导出和存储同理，运行`CUDA_VISIBLE_DEVICES=0,1,2,
 ```python
 import torch
 
-from swift.megatron import (
-    MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
-)
+from swift.megatron import MegatronArguments, get_mcore_model, prepare_mcore_model
 from swift.model import get_processor
-from megatron.training.initialize import initialize_megatron
 
 model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
 processor = get_processor(model_id, download_model=True)
-model_info = processor.model_info
-megatron_model_meta = get_megatron_model_meta(model_info.model_type)
-config_kwargs = convert_hf_config(model_info.config)
-megatron_args = MegatronArguments(
+hf_config = processor.model_info.config
+args = MegatronArguments(
     model=model_id,
     tensor_model_parallel_size=2,
     pipeline_model_parallel_size=2,
@@ -345,22 +332,20 @@ megatron_args = MegatronArguments(
     sequence_parallel=True,
     torch_dtype=torch.bfloat16,
     tuner_type='lora',
-    **config_kwargs,
 )
-extra_args = megatron_args.parse_to_megatron()
-initialize_megatron(args_defaults=extra_args)
-mg_model = megatron_model_meta.model_provider()
+mg_models = get_mcore_model(args, hf_config)
+bridge = args.megatron_model_meta.bridge_cls(args)
 # 加载权重
-bridge = megatron_model_meta.bridge_cls()
-bridge.load_weights(mg_model, model_info.model_dir)
+bridge.load_weights(mg_models, args.model_dir)
 # 准备LoRA并加载
-peft_model = prepare_mcore_model(mg_model)
-print(f'peft_model: {peft_model}')
-# bridge.load_weights(mg_model, 'adapter-path', is_peft_format=True)
+peft_models = [prepare_mcore_model(args, mg_model) for mg_model in mg_models]
+print(f'peft_model: {peft_models[0]}')
+# bridge.load_weights(mg_models, 'adapter-path', is_peft_format=True)
 # 导出权重
-for name, parameters in bridge.export_weights([mg_model], is_peft_format=True):
+for name, parameters in bridge.export_weights(mg_models, is_peft_format=True):
     pass
-bridge.save_weights([mg_model], 'output/Qwen3-30B-A3B-Instruct-2507-lora', is_peft_format=True)
+# 保存权重
+bridge.save_weights(mg_models, 'output/Qwen3-30B-A3B-Instruct-2507-lora', is_peft_format=True)
 ```
 
 推理新产生的权重：

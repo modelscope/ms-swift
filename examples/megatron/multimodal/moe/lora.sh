@@ -4,7 +4,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model OpenGVLab/InternVL3_5-30B-A3B \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -34,13 +33,12 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/InternVL3_5-30B-A3B \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/InternVL3_5-30B-A3B \
     --eval_interval 200 \
     --save_interval 200 \
-    --vit_gradient_checkpointing true \
     --max_length 2048 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

@@ -10,7 +10,6 @@ from megatron.core.transformer.attention import SelfAttention as SelfAttentionBa
 from megatron.core.transformer.attention import SelfAttentionSubmodules
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
-from megatron.core.transformer.transformer_config import TransformerConfig
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from packaging import version
 
@@ -18,14 +17,15 @@ from swift.megatron.tuners import LoraParallelLinear
 from swift.model import ModelType
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge
-from ..register import MegatronModelMeta, register_megatron_model
+from ..model_config import MegatronModelConfig
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
 
 class OLMoESelfAttention(SelfAttentionBase):
 
-    def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
+    def __init__(self, config: MegatronModelConfig, submodules: SelfAttentionSubmodules, *args, **kwargs):
         super().__init__(config, submodules, *args, **kwargs)
         self.q_layernorm = build_module(
             submodules.q_layernorm,
@@ -74,7 +74,7 @@ class OLMoESelfAttention(SelfAttentionBase):
 
 
 def get_olmoe_decoder_block_spec(
-    config: TransformerConfig,
+    config: MegatronModelConfig,
     vp_stage: Optional[int] = None,
 ) -> TransformerBlockSubmodules:
     """GPT block spec."""
@@ -217,10 +217,16 @@ class OLMoEBridge(GPTBridge):
         return hf_state_dict
 
 
+class OlMoELoader(MegatronModelLoader):
+
+    def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
+        return get_olmoe_decoder_block_spec(self.config, vp_stage)
+
+
 register_megatron_model(
     MegatronModelMeta(
         MegatronModelType.olmoe,
         [ModelType.olmoe],
-        get_transformer_layer_spec=get_olmoe_decoder_block_spec,
         bridge_cls=OLMoEBridge,
+        loader=OlMoELoader,
     ))

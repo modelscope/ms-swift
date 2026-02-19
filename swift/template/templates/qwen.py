@@ -562,7 +562,12 @@ class Qwen3_5Template(Qwen3VLTemplate):
 
 register_template(
     QwenTemplateMeta(
-        MLLMTemplateType.qwen3_5, template_cls=Qwen3_5Template, default_system=None, thinking_prefix='<think>\n'))
+        MLLMTemplateType.qwen3_5,
+        template_cls=Qwen3_5Template,
+        default_system=None,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        is_thinking=True))
 
 
 class Qwen3VLEmbTemplate(Qwen3VLTemplate):

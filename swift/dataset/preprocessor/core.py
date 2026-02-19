@@ -166,7 +166,7 @@ class RowPreprocessor:
 
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
                            ignore_max_length_error: bool) -> Dict[str, Any]:
-        from ...template import MaxLengthError
+        from swift.template import MaxLengthError
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
         self._remove_prefix_keys(batched_row, '__@')  # compat streaming
@@ -330,7 +330,7 @@ class RowPreprocessor:
             if columns:
                 dataset = dataset.rename_columns(columns)
 
-        ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
+        ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
@@ -340,7 +340,7 @@ class RowPreprocessor:
                     self.batched_preprocess,
                     fn_kwargs={
                         'strict': strict,
-                        'ignore_max_length_error': ignore_max_length_error
+                        'ignore_max_length_error': ignore_max_length_error,
                     },
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)

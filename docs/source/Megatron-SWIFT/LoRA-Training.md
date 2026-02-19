@@ -10,7 +10,7 @@ Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：
 
 以下，我们分别介绍使用`swift export`和`megatron export`命令进行权重转换。相比于`swift export`，`megatron export`支持多机和LoRA增量权重转换，但也更加复杂，需要在导出时额外指定并行参数，例如`--tensor_model_parallel_size`, `--export_model_parallel_size`，具体参考[Mcore-Bridge文档](./Mcore-Bridge.md)。若要使用`swift export`命令，参考[快速开始文档](./Quick-start.md)。
 - `swift export`使用单进程，将HF权重放置在gpu中，并使用device_map并行；mcore权重放置在cpu中，且不开启并行。这种方式非常易于debug，并测试HF和mcore的精度对齐情况。
-- `megatron export`使用torchrun启动多进程，mcore权重放置在gpu中，支持开启各种并行、fp8和mtp等，功能完善。如果需测试精度对齐情况，最后一个rank会加载HF权重，并放置在cpu中。
+- `megatron export`使用torchrun启动多进程，mcore权重放置在gpu中，支持开启各种并行、fp8和mtp等功能。如果需测试精度对齐情况，最后一个rank会加载HF权重，并放置在cpu中。
 
 ```shell
 # megatron export
@@ -21,7 +21,7 @@ megatron export \
     --tensor_model_parallel_size 2 \
     --to_mcore true \
     --torch_dtype bfloat16 \
-    --save Qwen2.5-7B-Instruct-mcore \
+    --output_dir Qwen2.5-7B-Instruct-mcore \
     --test_convert_precision true
 
 # swift export
@@ -44,7 +44,7 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-7B-Instruct-mcore \
+    --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -65,12 +65,12 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
@@ -86,24 +86,24 @@ megatron sft \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron export \
-    --adapter_load megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --to_hf true \
     --tensor_model_parallel_size 2 \
     --merge_lora false \
     --torch_dtype bfloat16 \
-    --save megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
     --test_convert_precision true
 
 # swift export
 # CUDA_VISIBLE_DEVICES=0 \
 # swift export \
-#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+#     --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_hf true \
 #     --torch_dtype bfloat16 \
 #     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
 #     --test_convert_precision true
 ```
-- 注意：`--adapter_load/--mcore_adapters`文件夹中包含`args.json`文件，转换过程会读取文件中`--model/--mcore_model`以及LoRA相关的参数信息。`swift export`暂不支持LoRA增量权重的转换。`megatron export`你可以使用`--merge_lora`参数控制是否进行权重合并。
+- 注意：`--mcore_adapter`文件夹中包含`args.json`文件，转换过程会读取文件中`--model/--mcore_model`以及LoRA相关的参数信息。`swift export`暂不支持LoRA增量权重的转换。`megatron export`你可以使用`--merge_lora`参数控制是否进行权重合并。
 
 ### 推理
 ```shell
@@ -122,18 +122,18 @@ swift infer \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron export \
-    --adapter_load megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --tensor_model_parallel_size 2 \
     --to_mcore true \
     --merge_lora true \
     --torch_dtype bfloat16 \
-    --save megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \
     --test_convert_precision true
 
 # swift export
 # CUDA_VISIBLE_DEVICES=0 \
 # swift export \
-#     --mcore_adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+#     --mcore_adapter megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
 #     --to_mcore true \
 #     --torch_dtype bfloat16 \
 #     --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-mcore \
@@ -152,7 +152,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
@@ -174,12 +173,12 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
     --save_interval 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
