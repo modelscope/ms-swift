@@ -99,7 +99,7 @@ class BaseMegatronTrainer(ABC):
             getattr(callback, event)(**kwargs)
 
     def on_log(self, logs, prefix=''):
-        n_steps = logs.get('n_steps', 1)
+        n_steps = logs.pop('n_steps', 1)
         self._log_callback(logs, n_steps)
         if prefix:
             logs = {f'{prefix}{k}': v for k, v in logs.items()}
