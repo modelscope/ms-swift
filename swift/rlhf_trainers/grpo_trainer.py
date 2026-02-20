@@ -53,8 +53,8 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
-                    load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch, patch_profiling_context,
-                    patch_profiling_decorator, patch_save_last_checkpoint, replace_assistant_response_with_ids)
+                    load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch, patch_save_last_checkpoint,
+                    profiling_context, profiling_decorator, replace_assistant_response_with_ids)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -173,7 +173,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         else:
             return super()._get_train_sampler(train_dataset)
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _prepare_inputs(self, generation_batch: Dict[str, Union[torch.Tensor,
                                                                 Any]]) -> Dict[str, Union[torch.Tensor, Any]]:
         # Prepares inputs for model training/evaluation by managing completion generation and batch handling.
@@ -221,7 +221,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return results
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _generate_and_score_completions(self, inputs: DataType) -> DataType:
         # resample for encoding failed data when set truncation_strategy 'delete'
         if self.template.truncation_strategy == 'raise':
@@ -256,7 +256,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             all_advantages = torch.stack([data['advantages'] for data in batch])
             batch_encoded['advantages'] = all_advantages
 
-        with patch_profiling_context(self, 'log_metrics'):
+        with profiling_context(self, 'log_metrics'):
             # --- logs (prompts + completions) ---
             messages = [inp['messages'][:-1] for inp in inputs]
             completions = [deepcopy(inp['messages'][-1]['content']) for inp in inputs]
@@ -293,7 +293,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return batch_encoded_inputs
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _score_completions(self, inputs: DataType) -> torch.Tensor:
         """Score completions using all reward functions.
 
@@ -346,7 +346,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
                 zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
             template = None if not hasattr(reward_model_plugin, 'template') else reward_model_plugin.template
-            with patch_profiling_context(self, reward_func_name), self._disable_sp_context(template):
+            with profiling_context(self, reward_func_name), self._disable_sp_context(template):
                 # Reward model (nn.Module)
                 if isinstance(reward_func, nn.Module):
                     output_reward_func = reward_model_plugin(inputs=reward_inputs, **reward_kwargs)
@@ -368,7 +368,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             async def _invoke_async_reward(index):
                 func = self.reward_funcs[index]
                 func_name = self.reward_func_names[index]
-                with patch_profiling_context(self, func_name):
+                with profiling_context(self, func_name):
                     output = await func(completions, **reward_kwargs)
                     output = [r if r is not None else torch.nan for r in output]
                     return index, output
@@ -679,7 +679,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return advantages
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _dynamic_sampling(self, inputs, rewards_per_func):
         """
         Perform dynamic sampling to replace samples with zero-reward-variance groups.
@@ -854,7 +854,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.ref_adapter_name:
                 self.model.set_adapter(self.model_adapter_name or 'default')
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _prepare_batch_inputs(self, inputs: DataType) -> List[DataType]:
         """
         Prepare the final batch inputs with ref/old_policy logps and other fields for RL training.
@@ -1054,7 +1054,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             prompts_text.append(self.template.safe_decode(res['input_ids']))
         return prompts_text
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Compute the per-token log probabilities for the model, return_outputs=True in mini-batch training
         if isinstance(inputs, list):
@@ -1651,7 +1651,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return logps, entropies
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _get_per_token_logps_and_entropies(self,
                                            model,
                                            inputs,
@@ -1787,7 +1787,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         return final_logps, final_entropies
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def _get_last_hidden_state(self, unwrapped_model, inputs, logits_to_keep):
         # unwrap the model to access the model.model
         if is_peft_model(unwrapped_model):
@@ -2201,7 +2201,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         reward_func_kwargs['tokenizer'] = self.processing_class
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
-                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
 
         self.reward_funcs = reward_funcs
         self.reward_func_names = []
@@ -2228,7 +2228,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 rm_template.set_mode('train')
                 rm_template.max_length = None
                 if rm_plugin not in rm_plugins:
-                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.plugins')
+                    raise ValueError(f'rm_plugin {rm_plugin} is not implemented in swift.rewards')
                 self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])

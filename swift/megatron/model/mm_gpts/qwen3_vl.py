@@ -10,15 +10,14 @@ from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.gpt import gpt_model
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import WrappedTensor, deprecate_inference_params, make_viewless_tensor
-from megatron.training import get_args
 from PIL import Image
 
+from swift.megatron.utils import split_cp_inputs
 from swift.model import ModelType
 from swift.utils import to_device
 from ..constant import MegatronModelType
 from ..gpt_bridge import GPTBridge, MultimodalGPTBridge
-from ..mm_gpt_model import MultimodalGPTModel
-from ..register import MegatronModelMeta, register_megatron_model
+from ..register import MegatronModelLoader, MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 te_checkpoint = None
@@ -50,9 +49,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
         del self.thinker.model
         del self.thinker.lm_head
 
-    @staticmethod
-    def _get_inputs_embeds(inputs_embeds, inputs, visual, processor, config):
-        from ...trainers.utils import split_cp_inputs
+    def _get_inputs_embeds(self, inputs_embeds, inputs, visual, processor, hf_config):
         input_ids = inputs['input_ids']
         packed_seq_params = inputs.get('packed_seq_params')
         pixel_values = inputs.get('pixel_values')
@@ -103,8 +100,8 @@ class Qwen3Omni_Vit(HuggingFaceModule):
                 image_embeds = mixed_embeds[:image_tokens]
                 video_embeds = mixed_embeds[image_tokens:]
 
-            image_mask = (input_ids == config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-            video_mask = (input_ids == config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            image_mask = (input_ids == hf_config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            video_mask = (input_ids == hf_config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             if image_embeds is not None:
                 image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
                 image_mask = image_mask.to(inputs_embeds.device)
@@ -131,8 +128,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             deepstack_visual_embeds = torch.stack(deepstack_visual_embeds, dim=0)
             visual_pos_masks = visual_pos_masks.transpose(0, 1)
             # compat cp
-            args = get_args()
-            if args.context_parallel_size > 1:
+            if self.config.context_parallel_size > 1:
                 device = visual_pos_masks.device
                 cp_mask = torch.full(visual_pos_masks.shape[:1], -1, dtype=torch.long, device=device)
                 cp_mask[visual_pos_masks[:, 0]] = torch.arange(visual_pos_masks.sum(), device=device)
@@ -143,7 +139,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             # compat sp
             tp_world_size = parallel_state.get_tensor_model_parallel_world_size()
             tp_rank = parallel_state.get_tensor_model_parallel_rank()
-            if args.sequence_parallel and tp_world_size > 1:
+            if self.config.sequence_parallel and tp_world_size > 1:
                 visual_pos_masks = visual_pos_masks.view(tp_world_size, -1, *visual_pos_masks.shape[1:])
                 mask_tokens = visual_pos_masks.sum(dim=(1, 2)).tolist()
                 visual_start = 0 if tp_rank == 0 else sum(mask_tokens[:tp_rank])
@@ -159,8 +155,8 @@ class Qwen3Omni_Vit(HuggingFaceModule):
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
         input_ids = kwargs['input_ids']
         visual = self.thinker.visual
-        config = self.model_config.thinker_config
-        res = self._get_inputs_embeds(inputs_embeds, kwargs, visual, self.processor, config)
+        hf_config = self.hf_config.thinker_config
+        res = self._get_inputs_embeds(inputs_embeds, kwargs, visual, self.processor, hf_config)
         inputs_embeds = res['inputs_embeds']
         input_features = kwargs.get('input_features')
         feature_attention_mask = kwargs.get('feature_attention_mask')
@@ -172,7 +168,7 @@ class Qwen3Omni_Vit(HuggingFaceModule):
             inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
             audio_embeds = self.thinker.get_audio_features(input_features, feature_attention_mask)
-            audio_mask = (input_ids == config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            audio_mask = (input_ids == hf_config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
         res['inputs_embeds'] = inputs_embeds
@@ -454,35 +450,12 @@ class Qwen3VLTransformerBlock(gpt_model.TransformerBlock):
         return hidden_states
 
 
-class Qwen3VLGPTModel(MultimodalGPTModel):
-
-    def _patch_transformer_block(self):
-        if hasattr(gpt_model, 'OriginTransformerBlock'):
-            return
-        gpt_model.OriginTransformerBlock = gpt_model.TransformerBlock
-        gpt_model.TransformerBlock = Qwen3VLTransformerBlock
-
-    def __init__(self, *args, **kwargs):
-        self._patch_transformer_block()
-        super().__init__(*args, **kwargs)
-
-
 class Qwen3OmniBridge(GPTBridge):
     hf_layers_prefix = 'thinker.model.layers'
     hf_embed_key = 'thinker.model.embed_tokens.weight'
     hf_final_layernorm_key = 'thinker.model.norm.weight'
     hf_lm_head_key = 'thinker.lm_head.weight'
     hf_score_key = 'thinker.score.weight'
-
-
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.qwen3_omni, [
-            ModelType.qwen3_omni_moe,
-        ],
-        model_cls=Qwen3VLGPTModel,
-        bridge_cls=Qwen3OmniBridge,
-        visual_cls=Qwen3Omni_Vit))
 
 
 class Qwen3VL_Vit(HuggingFaceModule):
@@ -496,17 +469,44 @@ class Qwen3VL_Vit(HuggingFaceModule):
         super().__init__(config, [Qwen3VLTextModel, Qwen3VLMoeTextModel])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        return Qwen3Omni_Vit._get_inputs_embeds(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
+        return Qwen3Omni_Vit._get_inputs_embeds(self, inputs_embeds, kwargs, self.visual, self.processor,
+                                                self.hf_config)
+
+
+class Qwen3VLLoader(MegatronModelLoader):
+
+    def _patch_transformer_block(self):
+        if hasattr(gpt_model, 'OriginTransformerBlock'):
+            return
+        gpt_model.OriginTransformerBlock = gpt_model.TransformerBlock
+        gpt_model.TransformerBlock = Qwen3VLTransformerBlock
+
+    def __init__(self, args, hf_config):
+        super().__init__(args, hf_config)
+        self._patch_transformer_block()
 
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.qwen3_vl, [
+        MegatronModelType.qwen3_vl,
+        [
             ModelType.qwen3_vl,
             ModelType.qwen3_vl_moe,
             ModelType.qwen3_vl_emb,
             ModelType.qwen3_vl_reranker,
         ],
-        model_cls=Qwen3VLGPTModel,
         bridge_cls=MultimodalGPTBridge,
-        visual_cls=Qwen3VL_Vit))
+        visual_cls=Qwen3VL_Vit,
+        loader=Qwen3VLLoader,
+    ))
+
+register_megatron_model(
+    MegatronModelMeta(
+        MegatronModelType.qwen3_omni,
+        [
+            ModelType.qwen3_omni_moe,
+        ],
+        bridge_cls=Qwen3OmniBridge,
+        visual_cls=Qwen3Omni_Vit,
+        loader=Qwen3VLLoader,
+    ))

@@ -513,7 +513,7 @@ class SequenceParallel:
 
         if self.rp_world_size > 1:
             input_dim = local_output.dim()
-            assert input_dim >= 2 and local_output.shape[0] == 1
+            assert input_dim >= 2
 
             if position_ids is not None:
                 position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
@@ -537,7 +537,8 @@ class SequenceParallel:
                 padding_length = math.ceil(length / (self.world_size * 2)) * (self.world_size * 2)
                 all_tensor_length.append(padding_length)
 
-            full_output = torch.zeros([sum(all_tensor_length), *local_output.shape[2:]], device=local_output.device)
+            full_output = torch.zeros(
+                [local_output.shape[0], sum(all_tensor_length), *local_output.shape[2:]], device=local_output.device)
             for idx_rp, rp_tensor in enumerate(gathered_rp):  # rp world size
                 # re-group the zigzag to the correct order
                 accumulated_length = 0
@@ -547,14 +548,14 @@ class SequenceParallel:
                     chunk_size = local_length // 2
                     left_idx = accumulated_length * self.rp_world_size + idx_rp * chunk_size
                     right_idx = accumulated_length * self.rp_world_size + (idx_rp + 1) * chunk_size
-                    full_output[left_idx:right_idx] = local_tensor[:, :chunk_size]
+                    full_output[:, left_idx:right_idx] = local_tensor[:, :chunk_size]
                     left_idx = accumulated_length * self.rp_world_size + (2 * self.rp_world_size - idx_rp
                                                                           - 1) * chunk_size
                     right_idx = accumulated_length * self.rp_world_size + (2 * self.rp_world_size - idx_rp) * chunk_size
-                    full_output[left_idx:right_idx] = local_tensor[:, chunk_size:]
+                    full_output[:, left_idx:right_idx] = local_tensor[:, chunk_size:]
                     accumulated_length += local_length
 
-            return full_output.unsqueeze(0).contiguous()
+            return full_output.contiguous()
         else:
             gathered_sp = torch.empty(
                 [local_output.shape[0] * self.sp_world_size] + list(local_output.shape[1:]),

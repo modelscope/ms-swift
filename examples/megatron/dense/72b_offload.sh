@@ -4,7 +4,6 @@ NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --model Qwen/Qwen2.5-72B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
@@ -16,17 +15,17 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 5 \
+    --num_train_epochs 5 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen2.5-72B-Instruct \
+    --output_dir megatron_output/Qwen2.5-72B-Instruct \
     --eval_interval 500 \
     --save_interval 500 \
     --max_length 8192 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

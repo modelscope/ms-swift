@@ -10,7 +10,7 @@ HCCL_SOCKET_IFNAME=xxx \
 megatron sft \
     --model 'Qwen/Qwen3-8B' \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#1000' \
-    --save './SAVE' \
+    --output_dir './SAVE' \
     --tuner_type 'lora' \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -24,10 +24,10 @@ megatron sft \
     --recompute_granularity selective \
     --recompute_modules core_attn \
     --cross_entropy_loss_fusion true \
-    --no_gradient_accumulation_fusion true \
+    --gradient_accumulation_fusion false \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --log_interval 5 \
-    --num_workers 4
+    --dataloader_num_workers 4

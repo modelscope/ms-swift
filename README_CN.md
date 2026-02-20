@@ -134,7 +134,7 @@ pip install -e .
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
-| trl          | >=0.15,<0.25 | 0.24.0              | RLHF               |
+| trl          | >=0.15,<0.29 | 0.24.0              | RLHF               |
 | deepspeed    | >=0.14       | 0.17.6              | 训练                 |
 | vllm         | >=0.5.1      | 0.11.0/0.13.0        | 推理/部署              |
 | sglang       | >=0.4.6      | 0.5.5.post3         | 推理/部署              |
@@ -368,11 +368,10 @@ ms-swift支持使用Megatron并行技术加速训练，包括大规模集群训�
 ```shell
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --tuner_type lora \
-    --save output \
+    --output_dir output \
     ...
 ```
 

@@ -1206,6 +1206,28 @@ def test_paddle_ocr_1_5():
                         '中体验SWIFT web-ui功能了。')
 
 
+def test_glm_ocr():
+    engine = TransformersEngine('ZhipuAI/GLM-OCR')
+    query = 'Text Recognition:'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(engine, messages=messages, images=images, max_tokens=512)
+    assert response == ('简介\n\nSWIFT支持250+ LLM和35+ MLLM（多模态大模型）的训练、推理、\n'
+                        '评测和部署。开发者可以直接将我们的框架应用到自己的Research和\n'
+                        '生产环境中，实现模型训练评测到应用的完整链路。我们除支持了\n'
+                        'PEFT提供的轻量训练方案外，也提供了一个完整的Adapters库以支持\n'
+                        '最新的训练技术，如NEFTune、LoRA+、LLaMA-PRO等，这个适配器\n'
+                        '库可以脱离训练脚本直接使用在自己的自定流程中。\n\n'
+                        '为方便不熟悉深度学习的用户使用，我们提供了一个Gradio的web-ui用\n'
+                        '于控制训练和推理，并提供了配套的深度学习课程和最佳实践供新手入\n'
+                        '门。\n\n'
+                        '此外，我们也在拓展其他模态的能力，目前我们支持了AnimateDiff的\n'
+                        '全参数训练和LoRA训练。\n\n'
+                        'SWIFT具有丰富的文档体系，如有使用问题请请查看这里.\n\n'
+                        '可以在Huggingface space 和 ModelScope创空间 中体验SWIFT web-\n'
+                        'ui功能了。')
+
+
 if __name__ == '__main__':
     from swift.infer_engine import TransformersEngine, RequestConfig
     from swift.utils import get_logger, seed_everything
@@ -1291,4 +1313,5 @@ if __name__ == '__main__':
     # test_medgemma3_vision()
     # test_deepseek_ocr_2()
     # test_step3_vl()
-    test_paddle_ocr_1_5()
+    # test_paddle_ocr_1_5()
+    test_glm_ocr()

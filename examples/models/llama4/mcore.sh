@@ -5,7 +5,6 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --model LLM-Research/Llama-4-Scout-17B-16E-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
@@ -36,13 +35,12 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Llama-4-Scout-17B-16E-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Llama-4-Scout-17B-16E-Instruct \
     --eval_interval 100 \
     --save_interval 100 \
-    --vit_gradient_checkpointing false \
     --max_length 4096 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

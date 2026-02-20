@@ -13,7 +13,6 @@ from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.transformer_block import get_num_layers_to_build
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
-from megatron.training import checkpointing, get_args
 from packaging import version
 from peft.tuners.lora import Linear as LoraLinear
 from peft.utils.other import ModulesToSaveWrapper
@@ -58,7 +57,7 @@ def get_multimodal_target_regex(
     include_router: bool = False,
 ) -> str:
     from ..model import get_megatron_model_meta
-    megatron_model_meta = get_megatron_model_meta(args.hf_model_type)
+    megatron_model_meta = get_megatron_model_meta(args.model_type)
     modules = []
     visual_cls = megatron_model_meta.visual_cls
     vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
@@ -165,9 +164,8 @@ def _patch_deepcopy():
         copy.deepcopy = _origin_deepcopy
 
 
-def prepare_adapter(model):
+def prepare_adapter(args, model):
     from swift.megatron.tuners import LoraParallelLinear
-    args = get_args()
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
     modules_to_save = get_modules_to_save(args, model)
@@ -184,7 +182,7 @@ def prepare_adapter(model):
     logger.info(f'lora_config: {lora_config}')
     with _patch_deepcopy():
         model = Swift.prepare_model(model, lora_config)
-    if args.ref_adapter_load or args.ref_adapters:
+    if args.mcore_ref_adapter or args.ref_adapters:
         model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
         for n, p in model.named_parameters():
@@ -194,7 +192,7 @@ def prepare_adapter(model):
     for m in model.modules():
         if isinstance(m, LoraLinear):
             # just check
-            assert args.is_multimodal or args.hf_model_type == 'qwen3_next'
+            assert args.is_multimodal or args.model_type == 'qwen3_next'
             assert not isinstance(m, LoraParallelLinear)
             for p in m.parameters():
                 if p.requires_grad:
@@ -202,53 +200,19 @@ def prepare_adapter(model):
     return model
 
 
-def prepare_mcore_model(model):
-    args = get_args()
+def prepare_mcore_model(args, model):
     if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
     elif args.tuner_type == 'lora':
         model.prepare_inputs_for_generation = None  # fix error
-        model = prepare_adapter(model)
+        model = prepare_adapter(args, model)
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
         cond=mpu.get_data_parallel_rank() == 0)
     return model
-
-
-@contextmanager
-def adapter_state_dict_context(is_peft_format: bool = True):
-    if not is_peft_format:
-        yield
-        return
-    _origin_generate_state_dict = checkpointing.generate_state_dict
-
-    def generate_state_dict(args, model, *_args, **kwargs):
-        state_dict = _origin_generate_state_dict(args, model, *_args, **kwargs)
-        if 'model' not in state_dict:
-            return state_dict
-        new_state_dict = {}
-        state_dict_model = state_dict['model']
-        for n, p in model[0].named_parameters():
-            if not p.requires_grad:
-                continue
-            if n in state_dict_model:
-                new_state_dict[n] = state_dict_model[n]
-            key = n.replace('.weight', '._extra_state')
-            if key.endswith('._extra_state0'):
-                key = key.replace('._extra_state0', '._extra_state')
-            if key in state_dict_model:
-                new_state_dict[key] = state_dict_model[key]
-        state_dict['model'] = new_state_dict
-        return state_dict
-
-    checkpointing.generate_state_dict = generate_state_dict
-    try:
-        yield
-    finally:
-        checkpointing.generate_state_dict = _origin_generate_state_dict
 
 
 def tuners_sharded_state_dict(
@@ -302,16 +266,16 @@ def copy_ref_adapter_weight(model, ref_adapter_name: str):
                 sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
 
 
-def forward_step_helper(model, inputs, dtype=None):
-    args = get_args()
+def forward_step_helper(args, model, inputs, dtype=None):
+    config = model.config
     if mpu.is_pipeline_first_stage():
         micro_batch_size = 1  # use qkv_format 'thd'
         if not args.padding_free:
             micro_batch_size = args.micro_batch_size
         seq_length = inputs['position_ids'].shape[-1]
-        if args.sequence_parallel:
+        if config.sequence_parallel:
             seq_length //= mpu.get_tensor_model_parallel_world_size()
-        recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, args.hidden_size],
+        recv_shape_buffer = torch.tensor([seq_length, micro_batch_size, config.hidden_size],
                                          device=torch.cuda.current_device(),
                                          dtype=torch.int64)
     else:
@@ -322,7 +286,7 @@ def forward_step_helper(model, inputs, dtype=None):
     shape = recv_shape_buffer.tolist()
 
     if not mpu.is_pipeline_first_stage():
-        dtype = dtype or args.params_dtype
+        dtype = dtype or config.params_dtype
         recv_buffer = torch.empty(shape, device=torch.cuda.current_device(), dtype=dtype)
         recv_from_prev_pipeline_rank_(recv_buffer)
         model.set_input_tensor(recv_buffer)
@@ -365,45 +329,3 @@ def get_local_layer_specs(config, layer_specs, vp_stage=None):
         offset = get_transformer_layer_offset(config, **kwargs)
         local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
     return local_layer_specs
-
-
-class MegatronTrainerState:
-    """
-    A lightweight trainer state class for Megatron training, providing compatibility
-    with transformers TrainerState interface.
-
-    This class allows reward functions to access training progress information
-    (current step and total steps) in the same way as they would with
-    transformers Trainer.
-
-    Attributes:
-        global_step (int): The current training step (number of update steps completed).
-        max_steps (int): The total number of training steps.
-    """
-
-    def __init__(self, global_step: int = 0, max_steps: int = 0):
-        """
-        Initialize MegatronTrainerState.
-
-        Args:
-            global_step: The current training step. Defaults to 0.
-            max_steps: The total number of training steps. Defaults to 0.
-        """
-        self.global_step = global_step
-        self.max_steps = max_steps
-
-    def update(self, global_step: Optional[int] = None, max_steps: Optional[int] = None):
-        """
-        Update the trainer state.
-
-        Args:
-            global_step: The current training step. If None, keeps the current value.
-            max_steps: The total number of training steps. If None, keeps the current value.
-        """
-        if global_step is not None:
-            self.global_step = global_step
-        if max_steps is not None:
-            self.max_steps = max_steps
-
-    def __repr__(self) -> str:
-        return f'MegatronTrainerState(global_step={self.global_step}, max_steps={self.max_steps})'

@@ -7,7 +7,7 @@ def test_dpo():
     from swift.megatron import megatron_rlhf_main, MegatronRLHFArguments
     megatron_rlhf_main(
         MegatronRLHFArguments(
-            load='Qwen2.5-3B-Instruct-mcore',
+            mcore_model='Qwen2.5-3B-Instruct-mcore',
             dataset=['hjh0119/shareAI-Llama3-DPO-zh-en-emoji#10000'],
             split_dataset_ratio=0.01,
             micro_batch_size=16,
@@ -15,7 +15,7 @@ def test_dpo():
             eval_interval=5,
             log_interval=1,
             finetune=True,
-            max_epochs=1,
+            num_train_epochs=1,
         ))
 
 

@@ -7,7 +7,7 @@ def test_sft():
     from swift.megatron import megatron_sft_main, MegatronSftArguments
     megatron_sft_main(
         MegatronSftArguments(
-            load='Qwen2.5-3B-Instruct-mcore',
+            mcore_model='Qwen2.5-3B-Instruct-mcore',
             dataset=['AI-ModelScope/function-calling-chatml#10000'],
             loss_scale='hermes',
             split_dataset_ratio=0.01,
@@ -32,7 +32,7 @@ def test_moe():
     from swift.megatron import megatron_sft_main, MegatronSftArguments
     megatron_sft_main(
         MegatronSftArguments(
-            load='Qwen1.5-MoE-A2.7B-mcore',
+            mcore_model='Qwen1.5-MoE-A2.7B-mcore',
             dataset=['AI-ModelScope/alpaca-gpt4-data-zh#5000'],
             split_dataset_ratio=0.01,
             moe_shared_expert_overlap=True,
@@ -59,7 +59,7 @@ def test_convert():
     from swift import export_main, ExportArguments
     export_main(
         ExportArguments(
-            mcore_adapters=['megatron_output/vx-xxx/checkpoint-xxx'],
+            mcore_adapter='megatron_output/vx-xxx/checkpoint-xxx',
             to_hf=True,
             test_convert_precision=True,
         ))

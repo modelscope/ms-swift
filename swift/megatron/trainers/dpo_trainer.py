@@ -4,7 +4,6 @@ from functools import partial
 
 import torch
 from megatron.core import mpu
-from megatron.training import get_args, get_timers
 from torch.distributed.nn import all_reduce
 
 from swift.rlhf_trainers import DPOTrainer
@@ -38,7 +37,7 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params):
         ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
         output_tensor = output_tensor[output_tensor.shape[0] // 2:]
-        args = get_args()
+        args = self.args
         num_samples = labels.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
 
         logps = self.get_logps(output_tensor, labels, packed_seq_params, num_samples * 2)
@@ -80,15 +79,11 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
         # Get the batch.
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator, vp_stage)
-        timers('batch-generator').stop()
+        data = self.get_batch(data_iterator, vp_stage)
         data.pop('loss_scale', None)
         # ref_model
         with torch.no_grad(), self.null_ref_context() as ref_models:
@@ -99,7 +94,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
 
         if input_tensor is not None:
             unwrapped_model.set_input_tensor(input_tensor[input_tensor.shape[0] // 2:])
-        with self.stimer:
-            output_tensor = model(**data)
+        output_tensor = model(**data)
         return torch.concat([ref_output_tensor, output_tensor], dim=0), partial(
             self.loss_func, labels=data.get('labels'), packed_seq_params=data.get('packed_seq_params'))

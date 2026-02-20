@@ -20,27 +20,24 @@ from accelerate.utils import broadcast_object_list
 from dacite import from_dict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
-from megatron.training import get_args, get_wandb_writer, training
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
-from swift.megatron.utils import MegatronTrainerState, forward_step_helper, get_padding_to
+from swift.megatron.utils import forward_step_helper, get_padding_to, set_random_seed
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch,
-                                       replace_assistant_response_with_ids, set_expandable_segments)
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch, profiling_context,
+                                       profiling_decorator, replace_assistant_response_with_ids,
+                                       set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template, TemplateInputs
-from swift.utils import (get_logger, get_packed_seq_params, is_wandb_available, remove_response,
-                         shutdown_event_loop_in_daemon, start_event_loop_in_daemon, to_device)
+from swift.utils import (get_logger, get_packed_seq_params, remove_response, shutdown_event_loop_in_daemon,
+                         start_event_loop_in_daemon, to_device)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
-from .utils import gather, gather_object, get_swift_datasets_provider, profiling_context, profiling_decorator
+from .utils import gather, gather_object
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
-
-if is_wandb_available():
-    import wandb
 
 logger = get_logger()
 
@@ -58,17 +55,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
-        # Initialize trainer state for reward functions to access training progress
-        # Will be updated with actual values from Megatron args during training
-        self.state = MegatronTrainerState()
+        self._train_dataset = None
 
-    def train(self, train_dataset, val_dataset, data_collator):
+    def train(self, train_dataset, val_dataset):
         # Store dataset provider for lazy resample iterator initialization
-        # Used by both dynamic_sample and truncation_strategy='raise'(delete)
-        if self.dynamic_sample or self.truncation_strategy == 'raise':
-            self._train_valid_test_dataset_provider = get_swift_datasets_provider(train_dataset, val_dataset)
-            self._train_valid_test_dataset_provider.is_distributed = True
-        super().train(train_dataset, val_dataset, data_collator)
+        # Used by both dynamic_sample and truncation_strategy='delete'
+        if self.dynamic_sample or self.truncation_strategy == 'delete':
+            self._train_dataset = train_dataset
+        super().train(train_dataset, val_dataset)
 
     def _init_grpo_params(self):
         """Initialize GRPO-specific parameters.
@@ -124,7 +118,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.per_device_generation_batch_size = args.per_device_generation_batch_size
 
         # truncation_strategy support
-        self.truncation_strategy = self.template.truncation_strategy
+        self.truncation_strategy = args.truncation_strategy
 
     def _init_rollout_engine(self):
         """Initialize rollout engine with GRPO-specific extensions."""
@@ -145,7 +139,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _prepare_rewards(self):
         # TODO: reward model
         args = self.args
-        reward_funcs = args.reward_funcs
+        reward_funcs = args.reward_funcs.copy()
         if not isinstance(reward_funcs, list):
             reward_funcs = [reward_funcs]
 
@@ -163,7 +157,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                         reward_func_kwargs['tokenizer'] = self.processing_class
                     reward_funcs[i] = reward_func_class(**reward_func_kwargs)
                 elif not callable(reward_func):
-                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.plugin')
+                    raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
 
         # get reward name for logging
         self.reward_funcs = reward_funcs
@@ -223,56 +217,38 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
 
     def _init_resample_data_iterator(self):
-        """
-        Initialize an independent data iterator for dynamic resampling (lazy initialization).
+        """Initialize an independent data iterator for dynamic resampling (lazy initialization).
 
-        This method is called lazily during the first dynamic resampling, ensuring that
-        pretrain() has already called initialize_megatron() to properly set up all args.
         Uses a different seed (args.seed + 1) to avoid overlapping with training samples.
-
-        Note: pretrain() will automatically reset the random seed back to args.seed
-        after this method completes, so we don't need manual state restoration.
-
-        Args:
-            train_valid_test_dataset_provider: Dataset provider function
 
         Returns:
             train_data_iterator: Independent data iterator with different random seed
         """
-        from megatron.training.training import build_train_valid_test_data_iterators
-        from megatron.training.initialize import _set_random_seed
-        from megatron.training import training
-        training.cyclic_iter = self._origin_cyclic_iter
-        args = get_args()
-
-        train_valid_test_dataset_provider = self._train_valid_test_dataset_provider
+        args = self.args
         # Use different seed for resample iterator (offset by 1 to avoid overlap)
         resample_seed = getattr(args, 'seed', 42) + 1
         try:
             # Set new seed for resample iterator creation
-            _set_random_seed(
+            set_random_seed(
                 resample_seed,
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
-                args.inference_rng_tracker,
-                use_cudagraphable_rng=args.enable_cuda_graph,
             )
 
             # Build data iterators with new seed
             # TODO: VPP (Virtual Pipeline Parallelism)
-            resample_data_iterator, _, _ = (build_train_valid_test_data_iterators(train_valid_test_dataset_provider))
+            resample_data_iterator = self._prepare_data_iterator(self._train_dataset, use_origin_cyclic=True)
+            self._train_dataset = None
         finally:
             # Restore original random states to avoid affecting training
-            _set_random_seed(
+            set_random_seed(
                 args.seed,
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
-                args.inference_rng_tracker,
-                use_cudagraphable_rng=args.enable_cuda_graph,
             )
         return resample_data_iterator
 
-    def _replace_data_iterator(self, data_iterator, model):
+    def _replace_data_iterator(self, data_iterator):
         if self._step % self.steps_per_generation == 0:
             num_iters_per_step = self.get_num_iters_per_step()
             rollout_batch = []
@@ -308,7 +284,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return batched_inputs, error_list
 
     def _get_encoded_batch(self, encoded_list, rollout_batch, template):
-        args = get_args()
+        args = self.args
         encoded_batch = to_device(template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
 
         labels = encoded_batch['labels']
@@ -404,10 +380,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         rollout_group = self._get_rollout_group()
 
-        # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
+        # Resample for encoding failed data when truncation_strategy is 'delete'
         # This handles: (1) prompt length exceeds max_length, (2) multimodal encoding failures
         # Do this before get_local_rollout_batch to process prompt-level data
-        if self.truncation_strategy == 'raise':
+        if self.truncation_strategy == 'delete':
             batch = self.resample_encode_failed_inputs(batch)
 
         rollout_batch = self.get_local_rollout_batch(batch)
@@ -671,7 +647,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         completions = [inp['messages'][-1]['content'] for inp in batch]
 
         # Common reward kwargs
-        reward_kwargs = {'trainer_state': self.get_trainer_state()}
+        reward_kwargs = {'trainer_state': self.state}
         reward_kwargs.update(RowPreprocessor.rows_to_batched(batch))
 
         # Use pre-computed indices for async reward functions
@@ -935,16 +911,15 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 break
 
             # Lazy initialization of resample_data_iterator
-            # Only initialize when needed, after pretrain() has set up args
             if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
-                self.resample_data_iterator = self._init_resample_data_iterator()
+                self.resample_data_iterator = self._init_resample_data_iterator()[0]
             num_iters_per_step = self.get_num_iters_per_step()
             next_rollout_prompt_batch = []
             for _ in range(num_iters_per_step):
                 next_rollout_prompt_batch.extend(next(self.resample_data_iterator))
 
-            # Resample for encoding failed data when truncation_strategy is 'raise'(delete)
-            if self.truncation_strategy == 'raise':
+            # Resample for encoding failed data when truncation_strategy is 'delete'
+            if self.truncation_strategy == 'delete':
                 next_rollout_prompt_batch = self.resample_encode_failed_inputs(next_rollout_prompt_batch)
 
             # Repeat num_generations times and get local slice
@@ -1070,34 +1045,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def on_policy(self):
         return self.steps_per_generation == 1
 
-    @contextmanager
-    def patch_megatron_data_collator(self, data_collator):
-        """
-        Context manager that temporarily patches Megatron's data-loader factory so each
-        prompt-level micro-batch size equals (original micro-batch size // num_generations),
-        required by GRPO.  Restores the original size and loader on exit.
-        """
-        origin_build_pretraining_data_loader = training.build_pretraining_data_loader
-
-        def build_pretraining_data_loader(*_args, **kwargs):
-            args = get_args()
-            org_micro_batch_size = args.micro_batch_size
-            # args.micro_batch_size = org_micro_batch_size // self.num_generations
-            res = origin_build_pretraining_data_loader(*_args, **kwargs)
-            args.micro_batch_size = org_micro_batch_size
-            if res is not None and args.dataloader_type != 'external':
-                res.collate_fn = data_collator
-            return res
-
-        training.build_pretraining_data_loader = build_pretraining_data_loader
-        try:
-            yield
-        finally:
-            training.build_pretraining_data_loader = origin_build_pretraining_data_loader
-
     @profiling_decorator
     def forward_step(self, data_iterator, model):
-        args = get_args()
+        args = self.args
         data = next(data_iterator)
         advantages = data.pop('advantages')
         truncated_mask = data.pop('truncated_mask')
@@ -1122,8 +1072,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.compute_entropy:
             # Forward without labels to get logits, then compute logps and entropy
             inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
-            with self.stimer:
-                output_tensor = model(**inputs_for_logits)
+            output_tensor = model(**inputs_for_logits)
 
             # Compute per_token_logps and per_token_entropy from logits on PP last stage
             if is_pp_last_stage and output_tensor is not None:
@@ -1160,8 +1109,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 data['per_token_entropy'] = per_token_entropy
         else:
             # Standard forward with labels, returns per-token loss (more efficient)
-            with self.stimer:
-                output_tensor = model(**inputs)
+            output_tensor = model(**inputs)
 
             # Convert output_tensor (per-token loss) to per_token_logps on PP last stage
             if is_pp_last_stage and output_tensor is not None:
@@ -1188,7 +1136,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     @profiling_decorator
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
-        args = get_args()
+        args = self.args
         # Get pre-padded data in batch format [batch_size, max_seq_len]
         advantages = data['advantages']  # [batch_size]
         completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
@@ -1459,25 +1407,21 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 'advantages': list(self._logs['advantages']),
             }
             self.jsonl_writer.append(table)
-            wandb_writer = get_wandb_writer()
-            args = get_args()
-            if wandb_writer:
-                if args.report_to == 'wandb':
-                    df = pd.DataFrame(table)
-                    if self.wandb_log_unique_prompts:
-                        df = df.drop_duplicates(subset=['prompt'])
-                    # if not self.init_custom_metric:
-                    #     wandb_writer.define_metric('completions', step_metric='gen_step')
-                    #     self.init_custom_metric = True
-                    wandb_writer.log({'completions': wandb.Table(dataframe=df)})
-                elif args.report_to == 'swanlab':
-                    import swanlab
-                    headers = list(table.keys())
-                    rows = []
-                    for i in range(len(table['gen_step'])):
-                        row = [table[header][i] for header in headers]
-                        rows.append(row)
-                    swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
+            args = self.args
+            if 'wandb' in args.report_to:
+                import wandb
+                df = pd.DataFrame(table)
+                if self.wandb_log_unique_prompts:
+                    df = df.drop_duplicates(subset=['prompt'])
+                wandb.log({'completions': wandb.Table(dataframe=df)})
+            if 'swanlab' in args.report_to:
+                import swanlab
+                headers = list(table.keys())
+                rows = []
+                for i in range(len(table['gen_step'])):
+                    row = [table[header][i] for header in headers]
+                    rows.append(row)
+                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
 
             self._last_logged_step = self._step
 
@@ -1496,15 +1440,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             data dict containing 'logps'
         """
         # used to calculate model forward (logps) in GRPO
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator)
+        data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
         input_ids = data.get('input_ids')
         labels = data.get('labels')
         context = torch.no_grad() if no_grad else nullcontext()
 
         with context:
-            output_tensor = forward_step_helper(model, data)
+            output_tensor = forward_step_helper(self.args, model, data)
 
         # packed_seq_params only exists in padding_free mode
         packed_seq_params = data.get('packed_seq_params')
@@ -1624,7 +1567,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         pending_samples = list(inputs)
         # Lazy initialization of resample_data_iterator
         if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
-            self.resample_data_iterator = self._init_resample_data_iterator()
+            self.resample_data_iterator = self._init_resample_data_iterator()[0]
         for _ in range(max_resample_rounds + 1):
             # Calculate how many more samples we need
             still_needed = required_count - len(valid_samples)
@@ -1736,7 +1679,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         from collections import deque
         self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
-        self.jsonl_writer = JsonlWriter(os.path.join(args.save, 'completions.jsonl'), write_on_rank='last')
+        self.jsonl_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
         self._last_logged_step = -1
         self._logs = {
@@ -2068,9 +2011,3 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'loss_type': str(self.args.loss_type)
         }
         return config
-
-    def get_trainer_state(self):
-        args = get_args()
-        self.state.update(
-            global_step=getattr(args, 'curr_iteration', 0) or 0, max_steps=getattr(args, 'train_iters', 0) or 0)
-        return self.state

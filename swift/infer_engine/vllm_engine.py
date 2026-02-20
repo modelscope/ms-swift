@@ -14,8 +14,8 @@ from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
 
 from swift.metrics import Metric
-from swift.model import get_processor
-from swift.template import Template, TemplateMeta
+from swift.model import get_model_info_meta, get_processor
+from swift.template import Template
 from swift.utils import get_device, get_dist_setting, get_logger, is_dist
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
@@ -141,6 +141,9 @@ class VllmEngine(InferEngine):
         if template is None:
             processor = self._get_processor()
             template = self._get_template(processor)
+        else:
+            get_model_info_meta(
+                model_id_or_path, hub_token=hub_token, use_hf=use_hf, revision=revision, download_model=True)
         super().__init__(template)
         if max_model_len is not None:
             self.max_model_len = max_model_len

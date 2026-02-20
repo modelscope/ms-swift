@@ -3,7 +3,6 @@ NPROC_PER_NODE=8 \
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --model Qwen/Qwen3-Next-80B-A3B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
     --tuner_type lora \
@@ -25,16 +24,16 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen3-Next-Instruct \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen3-Next-Instruct \
     --save_interval 100 \
     --max_length 1024 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
-    --no_gradient_accumulation_fusion true \
-    --no_masked_softmax_fusion true \
+    --gradient_accumulation_fusion false \
+    --masked_softmax_fusion false \
     --model_author swift \
     --model_name swift-robot

@@ -33,7 +33,7 @@ class Qwen2_5VL_Vit(HuggingFaceModule):
         super().__init__(config, ignore_init_model_cls)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.model_config)
+        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.hf_config)
 
 
 class Qwen2_5VLBridge(MultimodalGPTBridge):
@@ -48,9 +48,13 @@ class Qwen2_5VLBridge(MultimodalGPTBridge):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.qwen2_5_vl, [
+        MegatronModelType.qwen2_5_vl,
+        [
             ModelType.qwen2_5_vl,
-        ], bridge_cls=Qwen2_5VLBridge, visual_cls=Qwen2_5VL_Vit))
+        ],
+        bridge_cls=Qwen2_5VLBridge,
+        visual_cls=Qwen2_5VL_Vit,
+    ))
 
 
 class Qwen2VL_Vit(Qwen2_5VL_Vit):
@@ -59,9 +63,13 @@ class Qwen2VL_Vit(Qwen2_5VL_Vit):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.qwen2_vl, [
+        MegatronModelType.qwen2_vl,
+        [
             ModelType.qwen2_vl,
-        ], bridge_cls=Qwen2_5VLBridge, visual_cls=Qwen2VL_Vit))
+        ],
+        bridge_cls=Qwen2_5VLBridge,
+        visual_cls=Qwen2VL_Vit,
+    ))
 
 
 class Qwen2_5OmniBridge(GPTBridge):
@@ -87,7 +95,7 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
         del self.thinker.lm_head
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        thinker_config = self.model_config.thinker_config
+        thinker_config = self.hf_config.thinker_config
         inputs_embeds = Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.thinker.visual, self.processor,
                                                        thinker_config)
         input_ids = kwargs['input_ids']
@@ -110,11 +118,13 @@ class Qwen2_5Omni_Vit(HuggingFaceModule):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.qwen2_5_omni, [
+        MegatronModelType.qwen2_5_omni,
+        [
             ModelType.qwen2_5_omni,
         ],
         bridge_cls=Qwen2_5OmniBridge,
-        visual_cls=Qwen2_5Omni_Vit))
+        visual_cls=Qwen2_5Omni_Vit,
+    ))
 
 
 class Ovis2_5Bridge(GPTBridge):
@@ -166,6 +176,10 @@ class Ovis2_5Vit(HuggingFaceModule):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.ovis2_5, [
+        MegatronModelType.ovis2_5,
+        [
             ModelType.ovis2_5,
-        ], bridge_cls=Ovis2_5Bridge, visual_cls=Ovis2_5Vit))
+        ],
+        bridge_cls=Ovis2_5Bridge,
+        visual_cls=Ovis2_5Vit,
+    ))

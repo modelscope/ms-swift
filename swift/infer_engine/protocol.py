@@ -381,7 +381,7 @@ class ChatCompletionMessageToolCall:
 @dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
-    content: Union[str, List[Dict[str, Any]], int, float]
+    content: Union[str, List[Dict[str, Any]], int, float, List[float]]
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
     reasoning_content: Optional[str] = None
 
