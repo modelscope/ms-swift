@@ -79,7 +79,7 @@ Note:
 patch_vllm_load_adapter()
 
 
-class WeightSyncWorkerExtension():
+class WeightSyncWorkerExtension:
 
     # The following attributes are initialized when `init_communicator` method is called.
     communicator = None  # Communicator for weight updates

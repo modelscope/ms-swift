@@ -230,8 +230,10 @@ class VLLMClient:
                 if response.status_code != 200:
                     raise Exception(f'Server {i} update failed: {response.text}')
 
+                torch.cuda.synchronize()
                 self.pynccl_comms[i].broadcast(
                     weights, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
                 errors[i] = e
@@ -276,8 +278,10 @@ class VLLMClient:
                 if response.status_code != 200:
                     raise Exception(f'Server {i} update adapter failed: {response.text}')
 
+                torch.cuda.synchronize()
                 self.pynccl_comms[i].broadcast(
                     flattened_tensor, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
                 errors[i] = e
@@ -335,9 +339,11 @@ class VLLMClient:
                     raise Exception(f'Server {i} update adapter failed: {response.text}')
 
                 # Broadcast each tensor individually
+                torch.cuda.synchronize()
                 for name, param in lora_params.items():
                     self.pynccl_comms[i].broadcast(
                         param, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
                 errors[i] = e
@@ -375,8 +381,10 @@ class VLLMClient:
                 if response.status_code != 200:
                     raise Exception(f'Server {i} update flattened params failed: {response.text}')
 
+                torch.cuda.synchronize()
                 self.pynccl_comms[i].broadcast(
                     flattened_tensor, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
                 errors[i] = e
