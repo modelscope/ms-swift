@@ -1,7 +1,7 @@
 # please use python=3.10/3.11, cuda12.*
 # sh requirements/install_all.sh
 pip install "sglang<0.5.6" -U
-pip install "vllm>=0.5.1,<0.11.1" -U
+pip install "vllm>=0.5.1,<0.16.0" -U
 pip install "lmdeploy>=0.5,<0.10.2" -U
 pip install "transformers<4.58" "trl<0.25" peft -U
 pip install auto_gptq optimum bitsandbytes "gradio<5.33" -U
