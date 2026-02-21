@@ -143,7 +143,7 @@ class WeightSyncWorkerExtension():
         weight = torch.empty(shape, dtype=dtype, device=self.communicator.device)
 
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
-        self.communicator.broadcast(weight, src=self.client_rank)
+        self.communicator.broadcast(weight, src=self.client_rank, stream=torch.cuda.current_stream())
         self.communicator.group.barrier()
 
         # Patch MoE weight_loader if needed
@@ -162,7 +162,7 @@ class WeightSyncWorkerExtension():
         flatten_tensor_length = metadatas[-1].end_idx
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
         flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
-        self.communicator.broadcast(flatten_tensor, src=self.client_rank)
+        self.communicator.broadcast(flatten_tensor, src=self.client_rank, stream=torch.cuda.current_stream())
         self.communicator.group.barrier()
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
@@ -194,7 +194,7 @@ class WeightSyncWorkerExtension():
             dtype = getattr(torch, metadata['dtype'].split('.')[-1])
             shape = tuple(metadata['shape'])
             tensor = torch.empty(shape, dtype=dtype, device=self.communicator.device)
-            self.communicator.broadcast(tensor, src=self.client_rank)
+            self.communicator.broadcast(tensor, src=self.client_rank, stream=torch.cuda.current_stream())
             named_params[name] = tensor
 
         self.communicator.group.barrier()
@@ -222,7 +222,7 @@ class WeightSyncWorkerExtension():
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
         flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
 
-        self.communicator.broadcast(flatten_tensor, src=self.client_rank)
+        self.communicator.broadcast(flatten_tensor, src=self.client_rank, stream=torch.cuda.current_stream())
         self.communicator.group.barrier()
 
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
