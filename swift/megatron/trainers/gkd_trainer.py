@@ -58,16 +58,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.truncation_strategy = args.truncation_strategy
         self.max_completion_length = args.max_completion_length
 
-        # Resample iterator will be initialized lazily
         self.resample_data_iterator = None
-        self._train_dataset = None
 
     def train(self, train_dataset, val_dataset):
-        """Override train to initialize resample iterator for truncation_strategy='delete'."""
-        # Store dataset provider for lazy resample iterator initialization
         if self.truncation_strategy == 'delete':
-            self._train_dataset = train_dataset
-
+            self.resample_data_iterator = self._init_resample_data_iterator(train_dataset)
         super().train(train_dataset, val_dataset)
 
     def prepare_model(self):
@@ -184,13 +179,16 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # Mode 3: Off-Policy learning, use dataset responses
             return DataSource.DATASET
 
-    def _init_resample_data_iterator(self):
-        """Initialize an independent data iterator for dynamic resampling (lazy initialization).
+    def _init_resample_data_iterator(self, train_dataset):
+        """Initialize an independent data iterator for resampling.
 
         Uses a different seed (args.seed + 1) to avoid overlapping with training samples.
 
+        Args:
+            train_dataset: The training dataset to create the resample iterator from.
+
         Returns:
-            train_data_iterator: Independent data iterator with different random seed
+            The resample data iterator (first element of the iterator tuple).
         """
         args = self.args
         resample_seed = getattr(args, 'seed', 42) + 1
@@ -200,8 +198,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
             )
-            resample_data_iterator = self._prepare_data_iterator(self._train_dataset, use_origin_cyclic=True)
-            self._train_dataset = None
+            resample_data_iterator = self._prepare_data_iterator(train_dataset, use_origin_cyclic=True)[0]
         finally:
             set_random_seed(
                 args.seed,
@@ -224,10 +221,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         required_count = len(inputs)
         valid_samples = []
         pending_samples = list(inputs)
-
-        # Lazy initialization of resample_data_iterator
-        if self.resample_data_iterator is None:
-            self.resample_data_iterator = self._init_resample_data_iterator()[0]
 
         for _ in range(max_resample_rounds + 1):
             still_needed = required_count - len(valid_samples)
@@ -283,7 +276,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             raw_batch = next(data_iterator)
 
             # Resample for encoding failed data when truncation_strategy is 'delete'
-            if self.truncation_strategy == 'delete' and self._train_dataset is not None:
+            if self.truncation_strategy == 'delete' and self.resample_data_iterator is not None:
                 raw_batch = self.resample_encode_failed_inputs(raw_batch)
 
             global_batch.extend(raw_batch)

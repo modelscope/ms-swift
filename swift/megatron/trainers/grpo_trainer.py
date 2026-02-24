@@ -54,13 +54,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
-        self._train_dataset = None
+        self.resample_data_iterator = None
 
     def train(self, train_dataset, val_dataset):
-        # Store dataset provider for lazy resample iterator initialization
-        # Used by both dynamic_sample and truncation_strategy='delete'
         if self.dynamic_sample or self.truncation_strategy == 'delete':
-            self._train_dataset = train_dataset
+            self.resample_data_iterator = self._init_resample_data_iterator(train_dataset)
         super().train(train_dataset, val_dataset)
 
     def _init_grpo_params(self):
@@ -215,31 +213,28 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
                 self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
 
-    def _init_resample_data_iterator(self):
-        """Initialize an independent data iterator for dynamic resampling (lazy initialization).
+    def _init_resample_data_iterator(self, train_dataset):
+        """Initialize an independent data iterator for resampling.
 
         Uses a different seed (args.seed + 1) to avoid overlapping with training samples.
 
+        Args:
+            train_dataset: The training dataset to create the resample iterator from.
+
         Returns:
-            train_data_iterator: Independent data iterator with different random seed
+            The resample data iterator (first element of the iterator tuple).
         """
         args = self.args
-        # Use different seed for resample iterator (offset by 1 to avoid overlap)
         resample_seed = getattr(args, 'seed', 42) + 1
         try:
-            # Set new seed for resample iterator creation
             set_random_seed(
                 resample_seed,
                 args.data_parallel_random_init,
                 args.te_rng_tracker,
             )
-
-            # Build data iterators with new seed
             # TODO: VPP (Virtual Pipeline Parallelism)
-            resample_data_iterator = self._prepare_data_iterator(self._train_dataset, use_origin_cyclic=True)
-            self._train_dataset = None
+            resample_data_iterator = self._prepare_data_iterator(train_dataset, use_origin_cyclic=True)[0]
         finally:
-            # Restore original random states to avoid affecting training
             set_random_seed(
                 args.seed,
                 args.data_parallel_random_init,
@@ -909,9 +904,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if len(valid_samples) >= self.generation_batch_size:
                 break
 
-            # Lazy initialization of resample_data_iterator
-            if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
-                self.resample_data_iterator = self._init_resample_data_iterator()[0]
             num_iters_per_step = self.get_num_iters_per_step()
             next_rollout_prompt_batch = []
             for _ in range(num_iters_per_step):
@@ -1562,11 +1554,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         required_count = len(inputs)
         valid_samples = []
 
-        # Buffer for samples waiting to be validated
         pending_samples = list(inputs)
-        # Lazy initialization of resample_data_iterator
-        if not hasattr(self, 'resample_data_iterator') or self.resample_data_iterator is None:
-            self.resample_data_iterator = self._init_resample_data_iterator()[0]
         for _ in range(max_resample_rounds + 1):
             # Calculate how many more samples we need
             still_needed = required_count - len(valid_samples)
