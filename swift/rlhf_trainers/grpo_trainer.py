@@ -1367,7 +1367,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         max_chunks = max(chunks_per_device)
 
         # Re-compute chunk size so that max_chunks * new_chunk_size covers entire batch
-        new_chunk_size = (batch_size + max_chunks - 1) // max_chunks
+        new_chunk_size = (batch_size + max_chunks - 1) // max_chunks if max_chunks > 0 else 1
 
         losses, weights = [], []
         all_metrics_data = []
@@ -1376,24 +1376,32 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             start_idx = chunk_idx * new_chunk_size
             end_idx = min(start_idx + new_chunk_size, batch_size)
 
+            is_dummy = False
             if start_idx < batch_size:
                 chunk_inputs = self.get_chunked_inputs(inputs, start_idx, end_idx)
+                chunk_weight = end_idx - start_idx
+            else:
+                is_dummy = True
+                chunk_weight = 0
 
-            # Compute loss and metrics for this chunk (without updating global metrics)
+            # Compute loss and metrics for this chunk
             chunk_loss, chunk_metrics_data = self._compute_loss_and_metrics(model, chunk_inputs)
-            chunk_weight = end_idx - start_idx
 
-            if start_idx < batch_size:
+            if not is_dummy:
                 losses.append(chunk_loss * chunk_weight)
                 weights.append(chunk_weight)
                 all_metrics_data.append((chunk_metrics_data, chunk_weight))
+            else:
+                # append loss * 0 to the losses list after doing dummy forward
+                # Otherwise,the result of dummy forward won't be added to computation graph,so backward won't trigger ReduceScatter hook of ZeRO-3 ,leading to NCCL freezes
+                losses.append(chunk_loss * 0.0)
 
         # Compute weighted average loss
         total_weight = sum(weights)
         if total_weight > 0:
             final_loss = torch.stack(losses).sum() / total_weight
         else:
-            final_loss = torch.tensor(0.0, device=model.device)
+            final_loss = torch.stack(losses).sum()
 
         # Aggregate metrics across all chunks
         self._aggregate_and_update_metrics(all_metrics_data, mode)
