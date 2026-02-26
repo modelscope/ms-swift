@@ -1367,7 +1367,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         max_chunks = max(chunks_per_device)
 
         # Re-compute chunk size so that max_chunks * new_chunk_size covers entire batch
-        new_chunk_size = (batch_size + max_chunks - 1) // max_chunks if max_chunks > 0 else 1
+        new_chunk_size = (batch_size + max_chunks - 1) // max_chunks
 
         losses, weights = [], []
         all_metrics_data = []
@@ -1392,8 +1392,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 weights.append(chunk_weight)
                 all_metrics_data.append((chunk_metrics_data, chunk_weight))
             else:
-                # append loss * 0 to the losses list after doing dummy forward
-                # Otherwise,the result of dummy forward won't be added to computation graph,so backward won't trigger ReduceScatter hook of ZeRO-3 ,leading to NCCL freezes
+                # # Add dummy loss to computation graph to trigger ZeRO-3 backward hooks
                 losses.append(chunk_loss * 0.0)
 
         # Compute weighted average loss
