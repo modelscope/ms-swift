@@ -4,7 +4,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_dpo():
-    from swift.megatron import megatron_rlhf_main, MegatronRLHFArguments
+    from swift.megatron import MegatronRLHFArguments, megatron_rlhf_main
     megatron_rlhf_main(
         MegatronRLHFArguments(
             mcore_model='Qwen2.5-3B-Instruct-mcore',
@@ -12,15 +12,15 @@ def test_dpo():
             split_dataset_ratio=0.01,
             micro_batch_size=16,
             tensor_model_parallel_size=2,
-            eval_interval=5,
-            log_interval=1,
+            eval_steps=5,
+            logging_steps=1,
             finetune=True,
             num_train_epochs=1,
         ))
 
 
 def test_hf():
-    from swift import rlhf_main, RLHFArguments
+    from swift import RLHFArguments, rlhf_main
     rlhf_main(
         RLHFArguments(
             model='Qwen/Qwen2.5-3B-Instruct',

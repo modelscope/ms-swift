@@ -31,6 +31,7 @@ class LLMModelType:
     glm4 = 'glm4'
     glm4_moe = 'glm4_moe'
     glm4_moe_lite = 'glm4_moe_lite'
+    glm_moe_dsa = 'glm_moe_dsa'
 
     glm_edge = 'glm_edge'
     codefuse_codegeex2 = 'codefuse_codegeex2'

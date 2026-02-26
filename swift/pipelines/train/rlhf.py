@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from contextlib import nullcontext
-from typing import List, Optional, Union
-
 import peft
+from contextlib import nullcontext
 from packaging import version
+from typing import List, Optional, Union
 
 from swift.arguments import BaseArguments, RLHFArguments
 from swift.dataset import DatasetLoader, load_dataset
@@ -88,7 +87,7 @@ class SwiftRLHF(SwiftSft):
             model, processor = args.get_model_processor(
                 model=model_id_or_path,
                 model_type=model_type,
-                model_revision=model_revision,
+                revision=model_revision,
                 task_type=task_type,
                 num_labels=num_labels)
 

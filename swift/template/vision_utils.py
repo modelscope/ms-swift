@@ -1,16 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import base64
 import math
+import numpy as np
 import os
 import re
-from io import BytesIO
-from typing import Any, Callable, List, TypeVar, Union
-
-import numpy as np
 import requests
 import torch
+from io import BytesIO
 from PIL import Image
 from requests.adapters import HTTPAdapter
+from typing import Any, Callable, List, TypeVar, Union
 from urllib3.util.retry import Retry
 
 from swift.utils import get_env_args
@@ -240,7 +239,7 @@ def load_video_internvl(video: Union[str, bytes], bound=None, num_segments=32):
 
 
 def load_video_cogvlm2(video: Union[str, bytes]) -> np.ndarray:
-    from decord import cpu, VideoReader, bridge
+    from decord import VideoReader, bridge, cpu
     video_io = load_file(video)
     bridge.set_bridge('torch')
     clip_end_sec = 60

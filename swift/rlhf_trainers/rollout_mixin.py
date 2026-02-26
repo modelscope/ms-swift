@@ -2,29 +2,28 @@
 import base64
 import concurrent.futures
 import inspect
+import json
 import os
 import re
 import time
+import torch
+import torch.nn as nn
 import uuid
+from accelerate.utils import broadcast_object_list, gather_object, is_peft_model, set_seed
 from collections import OrderedDict
 from concurrent.futures import Future
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
+from dacite import from_dict
 from dataclasses import asdict, dataclass
 from math import ceil
-from queue import Queue
-from types import MethodType
-from typing import Any, Dict, List, Optional, Union
-
-import json
-import torch
-import torch.nn as nn
-from accelerate.utils import broadcast_object_list, gather_object, is_peft_model, set_seed
-from dacite import from_dict
 from peft.utils.save_and_load import get_peft_model_state_dict
+from queue import Queue
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
+from types import MethodType
+from typing import Any, Dict, List, Optional, Union
 
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
@@ -649,31 +648,34 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _move_full_model_to_vllm(self):
         """Transfer full model weights to vLLM engine.
 
-        Manages the lifecycle of gather and merge/unmerge:
-        - gather_if_zero3: once for the entire sync (DeepSpeed Zero3)
+        Manages the lifecycle of gather and merge/unmerge per parameter_group:
+        - gather_if_zero3: per parameter_group batch (DeepSpeed Zero3)
         - merge/unmerge: per parameter_group (must be within gather context)
         - No clone needed: unmerge happens after load completes
         """
         is_peft = is_peft_model(self.model)
-        # For DeepSpeed, merge within gather context; FSDP2 uses tensor-level merge
         should_merge = is_peft and not self._is_fsdp2
 
         gather_if_zero3 = get_gather_if_zero3_context(self)
-        parameters = [] if self._is_fsdp2 else list(self.model.parameters())
 
-        with gather_if_zero3(parameters):
-            for i, parameter_group in enumerate(self.parameter_groups):
-                parameter_group_no_lora = self.parameter_groups_no_lora[i]
+        for i, parameter_group in enumerate(self.parameter_groups):
+            parameter_group_no_lora = self.parameter_groups_no_lora[i]
 
-                # Merge must be within gather context (needs full parameters)
+            if not self._is_fsdp2:
+                parameters = [
+                    parameter for name, parameter in self.model.named_parameters()
+                    if not parameter_group or name in parameter_group
+                ]
+            else:
+                parameters = []
+
+            with gather_if_zero3(parameters):
                 if should_merge:
                     with patch_lora_merge(self.model, parameter_group):
                         self.model.merge_adapter()
 
                 try:
-                    # Collect without clone - unmerge happens after load
                     state_dict = self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
-                    # Data is copied here (FlattenedTensorBucket.copy_ or vLLM load_weights)
                     self._load_state_dict_to_vllm(state_dict)
                 finally:
                     if should_merge:

@@ -1,18 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import gc
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
-
 import megatron.core
 import torch
 from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
+from dataclasses import dataclass
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
 from packaging import version
 from transformers.utils import is_torch_npu_available
+from typing import Any, Dict, Optional
 
 from swift.dataloader import DataLoaderDispatcher
 from swift.megatron.utils import split_cp_inputs
@@ -24,8 +23,7 @@ mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0
 logger = get_logger()
 
 
-# Code borrowed from NVIDIA/Megatron-LM
-def get_batch_on_this_tp_rank(args, data, vp_stage=None):
+def get_batch_on_this_pp_rank(args, data, vp_stage=None):
     if args.task_type == 'causal_lm':
         data['labels'] = torch.roll(data['labels'], -1, dims=-1)
         if 'loss_scale' in data:
@@ -304,8 +302,8 @@ def offload_megatron_optimizer(optimizers):
 
 
 def log_gpu_memory(prefix: str = '', info_once: bool = False):
-    log_msg = (f'{prefix} GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
-               f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
+    log_msg = (f'{prefix} GPU memory: {torch.cuda.memory_allocated() / 1024**3:.2f}GB allocated, '
+               f'{torch.cuda.memory_reserved() / 1024**3:.2f}GB reserved')
     if info_once:
         logger.info_once(log_msg, hash_id=prefix)
     else:
@@ -323,6 +321,11 @@ class TrainerState:
     consumed_train_samples = 0
     # compat transformers
     max_steps: Optional[int] = None
+
+    best_metric: Optional[float] = None
+    best_global_step: Optional[int] = None
+    last_model_checkpoint: Optional[str] = None
+    best_model_checkpoint: Optional[str] = None
 
     @property
     def global_step(self) -> int:

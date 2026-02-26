@@ -33,8 +33,8 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 2048 \
     --task_type seq_cls \
     --num_labels 2 \

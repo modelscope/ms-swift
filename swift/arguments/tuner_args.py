@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional
-
 from transformers.utils import strtobool
+from typing import List, Literal, Optional
 
 from swift.utils import get_logger
 

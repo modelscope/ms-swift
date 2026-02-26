@@ -1,6 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
+import gradio as gr
+import json
+import matplotlib.pyplot as plt
 import os
+import psutil
 import re
 import subprocess
 import sys
@@ -8,14 +12,9 @@ import time
 import webbrowser
 from datetime import datetime
 from functools import partial
-from typing import Dict, List, Tuple, Type
-
-import gradio as gr
-import json
-import matplotlib.pyplot as plt
-import psutil
 from packaging import version
 from transformers import is_tensorboard_available
+from typing import Dict, List, Tuple, Type
 
 from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, format_time, get_logger, read_tensorboard_file, tensorboard_smoothing
 from ..base import BaseUI
@@ -537,7 +536,7 @@ class Runtime(BaseUI):
         create_time_formatted = datetime.fromtimestamp(create_time).strftime('%Y-%m-%d, %H:%M')
 
         return f'pid:{pid}/create:{create_time_formatted}' \
-               f'/running:{format_time(ts-create_time)}/cmd:{" ".join(proc.cmdline())}'
+               f'/running:{format_time(ts - create_time)}/cmd:{" ".join(proc.cmdline())}'
 
     @staticmethod
     def parse_info_from_cmdline(task):

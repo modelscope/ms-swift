@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import time
-from abc import ABC, abstractmethod
-
 import numpy as np
+import time
 import torch
 import torch.distributed as dist
+from abc import ABC, abstractmethod
 
 from swift.utils import get_current_device, get_logger
 

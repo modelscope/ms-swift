@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from contextlib import nullcontext
-from typing import List, Optional, Union
-
 from evalscope.constants import EvalBackend, EvalType
 from evalscope.run import TaskConfig, run_task
 from evalscope.summarizer import Summarizer
+from typing import List, Optional, Union
 
 from swift.arguments import EvalArguments
 from swift.dataset import MediaResource

@@ -9,6 +9,7 @@ try:
         from vllm.sampling_params import GuidedDecodingParams
     except ImportError:
         import vllm.sampling_params
+
         # removed in https://github.com/vllm-project/vllm/pull/22772
         vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
 except ImportError:
@@ -21,16 +22,14 @@ import concurrent.futures
 import inspect
 import os
 import time
-from collections import defaultdict, deque
-from contextlib import contextmanager, nullcontext
-from copy import copy, deepcopy
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import transformers
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
+from collections import defaultdict, deque
+from contextlib import contextmanager, nullcontext
+from copy import copy, deepcopy
 from packaging import version
 from transformers import PreTrainedModel
 from transformers.trainer import Trainer as HfTrainer
@@ -40,6 +39,7 @@ from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
 from trl.trainer.utils import selective_log_softmax
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine import TransformersEngine
@@ -1932,6 +1932,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             if report_to_wandb:
                 import pandas as pd
+
                 # Create a copy to avoid modifying the original table used by other loggers.
                 wandb_table = table.copy()
                 if self._logs.get('image'):

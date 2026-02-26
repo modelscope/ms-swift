@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import gradio as gr
 import os
 from functools import partial
-from typing import List, Optional, Union
-
-import gradio as gr
 from packaging import version
 from transformers.utils import strtobool
+from typing import List, Optional, Union
 
 import swift
 from swift.arguments import (DeployArguments, EvalArguments, ExportArguments, RLHFArguments, SamplingArguments,

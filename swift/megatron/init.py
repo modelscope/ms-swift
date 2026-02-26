@@ -4,20 +4,19 @@ import importlib.metadata
 import inspect
 import logging
 import os
+import peft
 import subprocess
 import sys
-from contextlib import contextmanager
-from copy import copy
-from functools import partial
-from typing import List, Optional, Tuple
-
-import peft
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from contextlib import contextmanager
+from copy import copy
+from functools import partial
 from packaging import version
 from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
+from typing import List, Optional, Tuple
 
 from swift.utils import get_logger, is_flash_attn_3_available, split_list
 
@@ -58,14 +57,13 @@ def _patch__batched_p2p_ops():
 def _patch_mla_attention():
     # support thd
     import megatron.core
-    from megatron.core.utils import deprecate_inference_params
     from megatron.core import parallel_state, tensor_parallel
-    from megatron.core.transformer.multi_latent_attention import MultiLatentAttention, MLASelfAttention
-    from megatron.core.tensor_parallel.mappings import (
-        gather_from_sequence_parallel_region,
-        gather_from_tensor_model_parallel_region,
-        scatter_to_sequence_parallel_region,
-    )
+    from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
+    from megatron.core.tensor_parallel.mappings import (gather_from_sequence_parallel_region,
+                                                        gather_from_tensor_model_parallel_region,
+                                                        scatter_to_sequence_parallel_region)
+    from megatron.core.transformer.multi_latent_attention import MLASelfAttention, MultiLatentAttention
+    from megatron.core.utils import deprecate_inference_params
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
     # Code borrowed from NVIDIA/Megatron-LM
@@ -100,7 +98,7 @@ def _patch_mla_attention():
         # Get the query, key and value tensors based on the type of attention -
         # self or cross attn.
         # query: [96, 1, 16, 128], key:[96, 1, 16, 128], value:[96, 1, 16, 128]
-        query, key, value = self.get_query_key_value_tensors(
+        query, key, value, q_compressed, kv_compressed = self.get_query_key_value_tensors(
             hidden_states,
             key_value_states,
             position_ids,
@@ -296,7 +294,6 @@ def _patch_mla_attention():
             # value: [num_tokens, n, v_head_dim]
             k_no_pe, value = torch.split(kv, [self.config.qk_head_dim, self.config.v_head_dim], dim=-1)
             # This function will be patched and supports mscale.
-            from megatron.core.transformer.attention import apply_rotary_pos_emb
             # q_pos_emb: [num_tokens, n, qk_pos_emb_head_dim]
             q_pos_emb = apply_rotary_pos_emb(
                 q_pos_emb,
@@ -343,7 +340,7 @@ def _patch_mla_attention():
         else:
             query, key, value = qkv_up_proj_and_rope_apply(q_compressed, kv_compressed, k_pos_emb, rotary_pos_emb)
 
-        return query, key, value
+        return query, key, value, q_compressed, kv_compressed
 
     MLASelfAttention.get_query_key_value_tensors = get_query_key_value_tensors
 
@@ -382,8 +379,8 @@ def _patch_TEGroupedLinear():
 
 def _patch_mtp():
     from megatron.core import InferenceParams
-    from megatron.core.transformer.multi_token_prediction import MultiTokenPredictionLayer
     from megatron.core.packed_seq_params import PackedSeqParams
+    from megatron.core.transformer.multi_token_prediction import MultiTokenPredictionLayer
 
     def forward(
         self,
@@ -481,6 +478,7 @@ def _patch_peft_ModulesToSaveWrapper():
     else:
         from peft.tuners import tuners_utils as peft_module
     from megatron.core.dist_checkpointing.mapping import ShardedStateDict
+
     from .utils import tuners_sharded_state_dict
 
     OriginModulesToSaveWrapper = peft_module.ModulesToSaveWrapper
@@ -608,11 +606,19 @@ def _patch_torch_FileSystemReader():
 def _patch_validate_non_overlapping_shards_metadata():
     # too slow
     from torch.distributed._shard.sharded_tensor import api
+    from torch.distributed._shard.sharding_spec import api as api2
+    from torch.distributed.checkpoint import default_planner
 
     def validate_non_overlapping_shards_metadata(*args, **kwargs):
         pass
 
     api.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
+    api2.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
+
+    def _validate_global_plan(*args, **kwargs):
+        return True
+
+    default_planner._validate_global_plan = _validate_global_plan
 
 
 def _patch_TELinear():
@@ -645,11 +651,10 @@ def _patch__write_item():
 
 
 def _patch_mrope():
-    from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
     import megatron.core
     from megatron.core import mpu
-    from megatron.core.models.common.embeddings.rope_utils import _apply_rotary_pos_emb_bshd
     from megatron.core.models.common.embeddings import rope_utils
+    from megatron.core.models.common.embeddings.rotary_pos_embedding import MultimodalRotaryEmbedding
 
     mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 
@@ -747,7 +752,7 @@ def _patch_mrope():
                 **kwargs,
             )
 
-        return _apply_rotary_pos_emb_bshd(
+        return rope_utils._apply_rotary_pos_emb_bshd(
             t.unsqueeze(1),
             freqs,
             rotary_interleaved=rotary_interleaved,

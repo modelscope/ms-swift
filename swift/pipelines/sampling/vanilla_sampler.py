@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-from copy import deepcopy
-
 import json
 import numpy as np
+import os
+from copy import deepcopy
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.ray import RayHelper

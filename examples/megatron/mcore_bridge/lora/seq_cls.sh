@@ -34,7 +34,7 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-VL-8B-Instruct \
-    --save_interval 200 \
+    --save_steps 200 \
     --max_length 2048 \
     --dataloader_num_workers 4 \
     --no_save_optim true \

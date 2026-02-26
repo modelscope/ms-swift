@@ -39,7 +39,7 @@
 - attn_impl: attention类型，可选项为'sdpa', 'eager', 'flash_attn', 'flash_attention_2', 'flash_attention_3'等。默认使用None，读取'config.json'。
   - 注意：这几种attention实现并不一定都支持，这取决于对应模型transformers实现的支持情况。
   - 若设置为'flash_attn'（兼容旧版本），则使用'flash_attention_2'。
-- experts_impl: 专家实现类型，可选项为'grouped_mm', 'batched_mm', 'eager'。默认为None。该特性需要"transformers>=5.0.0"。
+- 🔥experts_impl: 专家实现类型，可选项为'grouped_mm', 'batched_mm', 'eager'。默认为None。该特性需要"transformers>=5.0.0"。
 - new_special_tokens: 需要新增的特殊tokens。默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens)。
   - 注意：你也可以传入以`.txt`结尾的文件路径，每行为一个special token。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
@@ -120,7 +120,7 @@
 - response_prefix: response的前缀字符，该参数只在推理时生效。默认为None，根据enable_thinking参数和模版类型确定。
 - enable_thinking: 该参数在推理时生效，代表是否开启thinking模式。默认为None，默认值由模板（模型）类型确定（思考/混合思考模板为True，非思考模板为False）。若enable_thinking为False，则增加非思考前缀，例如Qwen3-8B混合思考模型增加前缀`'<think>\n\n</think>\n\n'`，Qwen3-8B-Thinking则不增加前缀。若enable_thinking为True，则增加思考前缀，例如`'<think>\n'`。注意：该参数的优先级低于response_prefix参数。
   - 注意：对于思考模型（思考/混合思考）或显式开启enable_thinking，我们会在推理和训练时，对历史的思考内容进行删除（最后一轮的思考内容保留，即最后一个user信息后的内容）。若训练时的loss_scale基本策略不为last_round，例如为'default'，则不对历史的思考内容进行删除。
-- add_non_thinking_prefix: 该参数只在训练时生效，代表是否对数据样本assistant部分不以思考标记`'<think>'`开头的数据样本增加非思考前缀（通常混合思考模型含非思考前缀）。该特性可以让swift内置的数据集可以训练混合思考模型。默认值为True。例如：例如Qwen3-8B混合思考模型的非思考前缀为`'<think>\n\n</think>\n\n'`，Qwen3-8B-Thinking/Instruct的非思考前缀为`''`。注意：训练时，loss_scale的基本策略为last_round，则只对最后一轮做此修改；否则，例如为'default'、'all'，则对每一轮数据做此修改。若设置为False，则不对数据样本增加非思考前缀。
+- add_non_thinking_prefix: 该参数只在训练时生效，代表是否对数据样本assistant部分**不以思考标记`'<think>'`开头**的数据样本增加非思考前缀（通常混合思考模型含非思考前缀）。该特性可以让swift内置的数据集可以训练混合思考模型。默认值为True。例如：例如Qwen3-8B混合思考模型的非思考前缀为`'<think>\n\n</think>\n\n'`，Qwen3-8B-Thinking/Instruct的非思考前缀为`''`。注意：训练时，loss_scale的基本策略为last_round，则只对最后一轮做此修改；否则，例如为'default'、'all'，则对每一轮数据做此修改。若设置为False，则不对数据样本增加非思考前缀。
 
 ### 生成参数
 参考[generation_config](https://huggingface.co/docs/transformers/main_classes/text_generation#transformers.GenerationConfig)文档。
@@ -233,7 +233,7 @@ gradient_checkpointing: true
   - 若不使用`val_dataset`和`eval_dataset`且`split_dataset_ratio`为0，则默认为'no'。
 - 🔥eval_steps: 默认为None，如果存在评估数据集，则跟随`save_steps`的策略。
 - eval_on_start: 是否在训练前执行一次评估步骤，以确保验证步骤能正常工作。默认为False。
-- 🔥save_total_limit: 最多保存的checkpoint数，会将过期的checkpoint进行删除。默认为None，保存所有的checkpoint。
+- 🔥save_total_limit: 最多保存的checkpoint数，会将过期的checkpoint进行删除。默认为None，保存所有的checkpoint。若设置为2，则保存best checkpoint和last checkpoint。
 - max_steps: 最大训练的steps数。在数据集为流式时需要被设置。默认为-1。
 - 🔥warmup_ratio: 默认为0.。
 - save_on_each_node: 在每一个节点都进行权重保存。默认为False。该参数在多机训练时需要被考虑。

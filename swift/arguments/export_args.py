@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from dataclasses import dataclass
-from typing import Literal, Optional
-
 import torch
 import torch.distributed as dist
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 from swift.utils import HfConfigFactory, get_logger, init_process_group, set_default_ddp_config, to_abspath
 from .base_args import BaseArguments

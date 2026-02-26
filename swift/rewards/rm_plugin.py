@@ -6,10 +6,9 @@
 
 import re
 import textwrap
+import torch
 from copy import deepcopy
 from typing import TYPE_CHECKING, Dict, List
-
-import torch
 
 from swift.infer_engine import ChatCompletionResponse, RequestConfig, TransformersEngine
 from swift.template import Template

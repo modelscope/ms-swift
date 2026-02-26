@@ -28,8 +28,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
-    --eval_interval 500 \
-    --save_interval 500 \
+    --eval_steps 500 \
+    --save_steps 500 \
     --max_length 8192 \
     --packing true \
     --dataloader_num_workers 8 \

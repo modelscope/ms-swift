@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
-
-import torch
 
 from swift.utils import get_packed_seq_params
 from ..base import Template
@@ -231,9 +230,9 @@ class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
             assert not image_idx_list, "GLM4.1V model doesn't support inputs containing both video and images"
 
             video_fnames = inputs.videos
-            from transformers.video_utils import load_video
-            from transformers.image_utils import load_image
             import numpy as np
+            from transformers.image_utils import load_image
+            from transformers.video_utils import load_video
             video_metadata = []
             videos = []
             for fname in video_fnames:

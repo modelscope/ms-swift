@@ -1,17 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import numpy as np
 import os
 import shutil
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass, field
-from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
-
-import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import concatenate_datasets, interleave_datasets
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.utils.config_ds import MS_CACHE_HOME
+from tempfile import TemporaryDirectory
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.utils import download_ms_file, get_logger, get_seed, safe_ddp_context
 from .preprocessor import DATASET_TYPE, AutoPreprocessor

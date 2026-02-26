@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
-from functools import partial
-from types import SimpleNamespace
-from typing import Any, Optional, Tuple
-
 import torch
 import torch.distributed as dist
+from functools import partial
 from torch.distributed import init_device_mesh
 from transformers import PreTrainedTokenizer
+from types import SimpleNamespace
+from typing import Any, Optional, Tuple
 
 from swift.model import get_llm_model
 from swift.utils import HfConfigFactory, get_cu_seqlens_from_position_ids, get_device, get_dist_setting

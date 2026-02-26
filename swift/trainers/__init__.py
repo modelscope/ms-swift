@@ -2,17 +2,18 @@
 from typing import TYPE_CHECKING
 
 from swift.utils.import_utils import _LazyModule
+from . import patcher
 
 if TYPE_CHECKING:
-    from .arguments import TrainArgumentsMixin, Seq2SeqTrainingArguments, TrainingArguments
+    from .arguments import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainingArguments
     from .embedding_trainer import EmbeddingTrainer
     from .mixin import DataLoaderMixin, SwiftMixin
     from .reranker_trainer import RerankerTrainer
     from .seq2seq_trainer import Seq2SeqTrainer
     from .trainer import Trainer
     from .trainer_factory import TrainerFactory
-    from .utils import (disable_gradient_checkpointing, dynamic_gradient_checkpointing, per_token_loss_func,
-                        calculate_max_steps)
+    from .utils import (calculate_max_steps, disable_gradient_checkpointing, dynamic_gradient_checkpointing,
+                        per_token_loss_func)
 else:
     _import_structure = {
         'arguments': ['TrainArgumentsMixin', 'Seq2SeqTrainingArguments', 'TrainingArguments'],

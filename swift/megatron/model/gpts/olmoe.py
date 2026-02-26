@@ -1,9 +1,7 @@
-from copy import deepcopy
-from typing import Optional
-
 import megatron.core
 import torch
 import torch.distributed as dist
+from copy import deepcopy
 from megatron.core.extensions.transformer_engine import SplitAlongDim, TENorm
 from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.transformer.attention import SelfAttention as SelfAttentionBase
@@ -12,6 +10,7 @@ from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules, get_num_layers_to_build
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from packaging import version
+from typing import Optional
 
 from swift.megatron.tuners import LoraParallelLinear
 from swift.model import ModelType

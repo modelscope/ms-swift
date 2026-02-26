@@ -1,7 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import dataclass
-from typing import Optional
-
 from transformers.utils.versions import require_version
 from trl import CPOConfig as HfCPOConfig
 from trl import DPOConfig as HfDPOConfig
@@ -11,6 +9,7 @@ from trl import KTOConfig as HfKTOConfig
 from trl import ORPOConfig as HfORPOConfig
 from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
+from typing import Optional
 
 from swift.trainers import TrainArgumentsMixin
 from .args_mixin import GRPOArgumentsMixin, RolloutTrainerArgumentsMixin

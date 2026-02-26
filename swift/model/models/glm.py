@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
-from typing import Any, Dict, Type
-
 import torch
 import transformers
 from packaging import version
 from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
+from typing import Any, Dict, Type
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_device_count, get_dist_setting, get_logger, safe_snapshot_download
@@ -494,4 +493,16 @@ register_model(
         model_arch=ModelArch.glm4v,
         architectures=['GlmOcrForConditionalGeneration'],
         requires=['transformers>=5.0.1dev0'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.glm_moe_dsa,
+        [
+            ModelGroup([
+                Model('ZhipuAI/GLM-5', 'zai-org/GLM-5'),
+            ], template=TemplateType.glm4_7),
+        ],
+        architectures=['GlmMoeDsaForCausalLM'],
+        requires=['transformers>=5.2.0'],
     ))

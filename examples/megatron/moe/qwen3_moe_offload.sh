@@ -25,8 +25,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --output_dir megatron_output/Qwen3-30B-A3B-Base \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 8192 \
     --num_train_epochs 3 \
     --dataloader_num_workers 8 \

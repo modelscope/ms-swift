@@ -4,10 +4,9 @@ import os
 import re
 import shutil
 import tempfile
+import torch
 import unittest
 from concurrent.futures import ThreadPoolExecutor
-
-import torch
 from modelscope import Model, Preprocessor
 from modelscope.models.nlp.structbert import SbertConfig, SbertForSequenceClassification
 from peft import PeftModel
@@ -381,8 +380,8 @@ class TestSwift(unittest.TestCase):
         self.assertTrue(model2.base_model.encoder.encoder.layer[0].attention.self.query.active_adapters == ['lora'])
 
     def test_swift_multiple_adapters_switching(self):
-        from swift.tuners.lora import Linear
         from swift.tuners.adapter import AdapterModule
+        from swift.tuners.lora import Linear
 
         def reset_lora_parameters(self, adapter_name, init_lora_weights):
             if init_lora_weights is False:

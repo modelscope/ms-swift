@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import aiohttp
 import os
 import shutil
-from typing import List, Literal, Optional, Union
-
-import aiohttp
 from modelscope.hub.utils.utils import get_cache_dir
+from typing import List, Literal, Optional, Union
 
 from swift.utils import get_logger, safe_ddp_context
 
@@ -80,7 +79,7 @@ class MediaResource:
         if isinstance(media_type, str) and media_type in MediaResource.media_type_urls:
             media_type = MediaResource.get_url(media_type)
 
-        from datasets.download.download_manager import DownloadManager, DownloadConfig
+        from datasets.download.download_manager import DownloadConfig, DownloadManager
         final_folder = os.path.join(MediaResource.cache_dir, media_name)
 
         if file_type == 'file':

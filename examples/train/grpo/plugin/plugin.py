@@ -1,14 +1,13 @@
 import asyncio
+import json
 import os
 import random
 import re
 import textwrap
+import torch
 from collections import Counter
 from copy import deepcopy
 from typing import Dict, List, Union
-
-import json
-import torch
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutInferRequest

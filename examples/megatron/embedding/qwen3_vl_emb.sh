@@ -26,8 +26,8 @@ megatron sft \
     --min_lr 1e-7 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-VL-Embedding-8B \
-    --save_interval 200 \
-    --eval_interval 100 \
+    --save_steps 200 \
+    --eval_steps 100 \
     --max_length 8192 \
     --loss_type infonce \
     --dataloader_num_workers 4 \

@@ -14,7 +14,7 @@ def test_full_vit():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
@@ -31,7 +31,7 @@ def test_full_aligner():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
@@ -48,7 +48,7 @@ def test_lora_vit():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',
@@ -65,7 +65,7 @@ def test_lora_aligner():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',

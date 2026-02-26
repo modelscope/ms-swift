@@ -3,7 +3,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 if __name__ == '__main__':
-    from swift.megatron import megatron_rlhf_main, MegatronRLHFArguments
+    from swift.megatron import MegatronRLHFArguments, megatron_rlhf_main
     megatron_rlhf_main(
         MegatronRLHFArguments(
             rlhf_type='gkd',
@@ -19,7 +19,7 @@ if __name__ == '__main__':
             global_batch_size=16,
             num_train_epochs=1,
             lr=5e-6,
-            log_interval=1,
+            logging_steps=1,
             max_length=2048,
             max_completion_length=1024,
             attention_backend='flash',

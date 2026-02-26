@@ -2,15 +2,14 @@
 # Parts of the functions in this file are code borrowed from NVIDIA/Megatron-LM
 import copy
 import dataclasses
+import megatron.core
+import numpy as np
 import os
 import random
+import torch
 from argparse import Namespace
 from contextlib import contextmanager
 from datetime import timedelta
-
-import megatron.core
-import numpy as np
-import torch
 from megatron.core import dist_checkpointing, mpu, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedObject
 from megatron.core.dist_checkpointing.serialization import (get_default_load_sharded_strategy,
@@ -22,8 +21,9 @@ from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module
-from megatron.core.utils import get_torch_version, is_torch_min_version
+from megatron.core.utils import get_te_version, get_torch_version, is_te_min_version, is_torch_min_version
 from packaging import version
+from typing import Optional
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
 from .patcher import patch_merge_fn
@@ -113,8 +113,6 @@ def initialize_megatron(args):
     if args.model_info.is_moe_model:
         from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
         MoEAuxLossAutoScaler.set_loss_scale(torch.ones(1, device=torch.cuda.current_device()))
-
-    # TODO: tp_comm_overlap, _compile_dependencies
 
 
 def _get_rng_state():
@@ -242,13 +240,17 @@ def get_sharded_sd_metadata(args):
     return sharded_sd_metadata
 
 
-def save_mcore_checkpoint(args,
-                          models,
-                          optimizer=None,
-                          opt_param_scheduler=None,
-                          iteration=1,
-                          is_peft_format: bool = False):
-    output_dir = args.output_dir
+def save_mcore_checkpoint(
+    args,
+    models,
+    optimizer=None,
+    opt_param_scheduler=None,
+    iteration=1,
+    output_dir: Optional[str] = None,
+    is_peft_format: bool = False,
+):
+    if output_dir is None:
+        output_dir = args.output_dir
     models = unwrap_model(models)
     rng_state = _get_rng_state() if models else None
     checkpoint_dir = os.path.join(output_dir, f'iter_{iteration:07d}')
@@ -298,7 +300,6 @@ def save_mcore_checkpoint(args,
     if is_master():
 
         def iter_finalize_fn():
-            # TODO: save_total_limit
             if models:
                 logger.info(f'Successfully saved Megatron model weights in `{output_dir}`.')
 
@@ -418,7 +419,12 @@ def load_mcore_checkpoint(args,
         gen_sd_optim = optimizer
         gen_sd_opt_param_scheduler = opt_param_scheduler
 
-        if args.use_distributed_optimizer and ckpt_tp_pp != run_tp_pp:
+        if (args.use_distributed_optimizer and ckpt_tp_pp != run_tp_pp
+                and (sharded_sd_metadata or {}).get('distrib_optim_sharding_type') not in {
+                    'fully_reshardable',
+                    'fully_sharded_model_space',
+                    'fsdp_dtensor',
+                }):
             raise RuntimeError(f'{mismatch_msg}: not supported for DistributedOptimizer')
     else:
         gen_sd_optim, gen_sd_opt_param_scheduler = None, None
@@ -527,11 +533,11 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
                 module=model_chunk,
                 # Turn off bucketing for model_chunk 2 onwards, since communication for these
                 # model chunks is overlapped with compute anyway.
-                disable_bucketing=model_chunk_idx > 0,
+                disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
             ) for (model_chunk_idx, model_chunk) in enumerate(models)
         ]
 
-        # Broadcast params from data parallel src rank to other data parallel ranks.
+    # Broadcast params from data parallel src rank to other data parallel ranks.
     if args.data_parallel_random_init:
         for m in models:
             m.broadcast_params()
@@ -580,10 +586,7 @@ def unwrap_model(models, module_instances=None):
     except ImportError:
         pass
     if module_instances is None:
-        from megatron.core.distributed import DistributedDataParallel as DDP
         from megatron.core.distributed import TorchFullyShardedDataParallel as torch_FSDP
-        from megatron.core.transformer.module import Float16Module
-
         module_instances = (DDP, torch_FSDP, Float16Module)
 
     return_list = True
@@ -598,3 +601,50 @@ def unwrap_model(models, module_instances=None):
     if not return_list:
         return unwrapped_model[0]
     return unwrapped_model
+
+
+def should_disable_forward_pre_hook(args):
+    """Block forward pre-hook for certain configurations."""
+    return args.use_distributed_optimizer and args.overlap_param_gather
+
+
+def enable_forward_pre_hook(model_chunks):
+    for model_chunk in model_chunks:
+        assert isinstance(model_chunk, DDP)
+        model_chunk.enable_forward_pre_hook()
+
+
+def disable_forward_pre_hook(model_chunks, param_sync=True):
+    for model_chunk in model_chunks:
+        assert isinstance(model_chunk, DDP)
+        model_chunk.disable_forward_pre_hook(param_sync=param_sync)
+
+
+def initialize_tp_communicators(args, config):
+    """initializing the communicators with user buffers for high-performance tensor-model-parallel
+    communication overlap"""
+    from transformer_engine.pytorch import module as te_module
+    input_shape = [
+        (args.seq_length * args.micro_batch_size) // args.context_parallel_size,
+        config.hidden_size,
+    ]
+
+    if is_te_min_version('2.7.0'):
+        UserBufferQuantizationMode = te_module.base.UserBufferQuantizationMode
+        quantization_modes = [UserBufferQuantizationMode.FP8 if args.fp8 else UserBufferQuantizationMode.NONE]
+        if args.fp8 is not None and args.first_last_layers_bf16 and (args.num_layers_at_start_in_bf16 > 0
+                                                                     or args.num_layers_at_end_in_bf16 > 0):
+            quantization_modes.append(UserBufferQuantizationMode.NONE)
+        # The process group with the target bootstrap backend is created in Transformer Engine.
+        te_module.base.initialize_ub(
+            shape=input_shape,
+            tp_size=args.tensor_model_parallel_size,
+            quantization_modes=quantization_modes,
+        )
+    elif is_te_min_version('1.9.0'):
+        # The process group with the target bootstrap backend is created in Transformer Engine.
+        te_module.base.initialize_ub(
+            shape=input_shape,
+            tp_size=args.tensor_model_parallel_size,
+            use_fp8=(args.fp8 is not None),
+        )

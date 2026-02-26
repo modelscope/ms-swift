@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import shutil
-from typing import List, Optional, Union
-
 import torch.distributed as dist
 from transformers.utils import strtobool
+from typing import List, Optional, Union
 
 from swift.megatron.arguments import MegatronExportArguments
 from swift.megatron.convert import test_convert_precision

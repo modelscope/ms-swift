@@ -1,7 +1,6 @@
 import os
-from typing import Literal
-
 import torch
+from typing import Literal
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'

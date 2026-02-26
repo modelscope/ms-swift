@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import math
-from contextlib import contextmanager
-from typing import Any, Dict
-
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from contextlib import contextmanager
 from megatron.core import mpu
+from typing import Any, Dict
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
 from .utils import forward_step_helper, get_padding_to

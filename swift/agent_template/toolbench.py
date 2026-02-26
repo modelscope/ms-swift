@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import List, Optional, Union
-
 import json
+from typing import List, Optional, Union
 
 from .base import BaseAgentTemplate
 

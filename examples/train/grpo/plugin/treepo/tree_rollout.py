@@ -1,11 +1,10 @@
 import re
+import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List
-
-import torch
 from modelscope.preprocessors.templates.utils import Messages
+from typing import List
 
 from swift.infer_engine.protocol import ChatCompletionResponseChoice
 

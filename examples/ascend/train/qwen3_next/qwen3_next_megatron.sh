@@ -26,7 +26,7 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-Next-Instruct \
-    --save_interval 100 \
+    --save_steps 100 \
     --max_length 1024 \
     --system 'You are a helpful assistant.' \
     --dataloader_num_workers 4 \

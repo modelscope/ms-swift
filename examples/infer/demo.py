@@ -31,7 +31,7 @@ def infer_stream(engine: 'InferEngine', infer_request: 'InferRequest'):
 
 
 if __name__ == '__main__':
-    from swift import (InferEngine, InferRequest, TransformersEngine, RequestConfig, load_dataset, InferStats)
+    from swift import InferEngine, InferRequest, InferStats, RequestConfig, TransformersEngine, load_dataset
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
     infer_backend = 'transformers'
 

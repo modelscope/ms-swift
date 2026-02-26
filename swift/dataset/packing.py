@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 import multiprocessing as mp
-from itertools import chain
-from typing import Optional
-
 import torch.distributed as dist
+from itertools import chain
 from torch.utils.data import Dataset, IterableDataset
 from tqdm import tqdm
+from typing import Optional
 
 from swift.template import MaxLengthError
 from swift.utils import get_logger, is_dist, is_master, split_list

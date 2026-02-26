@@ -4,7 +4,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def test_channel():
-    from swift import sft_main, SftArguments
+    from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-7B-Instruct',

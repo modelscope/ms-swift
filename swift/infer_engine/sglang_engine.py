@@ -2,20 +2,19 @@
 import asyncio
 import inspect
 import os
-from copy import deepcopy
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
-
 import sglang as sgl
 import torch
+from copy import deepcopy
 from PIL import Image
 from sglang.srt.sampling.sampling_params import SamplingParams
 from sglang.srt.server_args import ServerArgs
 from transformers import GenerationConfig
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
-from swift.model import get_model_info_meta, get_processor
+from swift.model import get_processor
 from swift.template import Template
-from swift.utils import get_logger
+from swift.utils import get_logger, safe_snapshot_download
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
@@ -86,8 +85,13 @@ class SglangEngine(InferEngine):
             processor = self._get_processor()
             template = self._get_template(processor)
         else:
-            get_model_info_meta(
-                model_id_or_path, hub_token=hub_token, use_hf=use_hf, revision=revision, download_model=True)
+            safe_snapshot_download(
+                model_id_or_path,
+                revision=revision,
+                download_model=True,
+                use_hf=use_hf,
+                ignore_patterns=getattr(template.model_meta, 'ignore_patterns', None),
+                hub_token=hub_token)
         super().__init__(template)
         self._prepare_server_args(engine_kwargs)
         self.engine = sgl.Engine(server_args=self.server_args)

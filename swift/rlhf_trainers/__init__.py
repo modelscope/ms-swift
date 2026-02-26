@@ -4,19 +4,19 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
+    from .args_mixin import GRPOArgumentsMixin, VllmArguments
+    from .arguments import CPOConfig, DPOConfig, GKDConfig, GRPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig
     from .cpo_trainer import CPOTrainer
     from .dpo_trainer import DPOTrainer
+    from .gkd_trainer import GKDTrainer
     from .grpo_trainer import GRPOTrainer
     from .kto_trainer import KTOTrainer
     from .orpo_trainer import ORPOTrainer
     from .ppo_trainer import PPOTrainer
     from .reward_trainer import RewardTrainer
-    from .gkd_trainer import GKDTrainer
     from .rlhf_mixin import RLHFTrainerMixin
-    from .args_mixin import VllmArguments, GRPOArgumentsMixin
-    from .utils import patch_lora_merge, patch_lora_unmerge, round_robin, _ForwardRedirection
+    from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, round_robin
     from .vllm_client import VLLMClient
-    from .arguments import DPOConfig, CPOConfig, KTOConfig, ORPOConfig, PPOConfig, RewardConfig, GRPOConfig, GKDConfig
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],

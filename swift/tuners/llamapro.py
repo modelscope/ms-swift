@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from copy import deepcopy
 from dataclasses import dataclass, field, fields
-from typing import Optional
-
-import torch
 from torch import nn
+from typing import Optional
 
 from swift.model import MODEL_ARCH_MAPPING, ModelKeys
 from swift.utils import HfConfigFactory, get_logger

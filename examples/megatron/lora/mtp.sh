@@ -34,8 +34,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --output_dir megatron_output/GLM-4.5-Air \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --packing true \
     --max_length 8192 \
     --dataloader_num_workers 8 \

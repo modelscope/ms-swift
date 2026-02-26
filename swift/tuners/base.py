@@ -1,23 +1,22 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Copyright 2023-present the HuggingFace Inc. team.
+import json
 import os
 import re
 import shutil
 import tempfile
+import torch
 from contextlib import contextmanager
 from copy import copy
 from functools import partial
 from inspect import Parameter, Signature, signature
-from types import MethodType
-from typing import Dict, List, Literal, Optional, Union
-
-import json
-import torch
 from modelscope import snapshot_download
 from peft.utils import CONFIG_NAME
 from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 from transformers import Trainer as HfTrainer
+from types import MethodType
+from typing import Dict, List, Literal, Optional, Union
 
 from swift.utils import get_device_count, get_logger
 from swift.utils.constants import DEFAULT_ADAPTER, SWIFT_TYPE_KEY
@@ -687,7 +686,7 @@ class SwiftModel(nn.Module):
         return f'trainable params: {trainable_params:,d} || all params: {all_param:,d} ' \
                f'|| trainable%: {100 * trainable_params / all_param:.4f}' \
                '|| cuda memory: ' \
-               f'{sum([torch.cuda.memory_allocated(i) for i in range(get_device_count())])/1024/1024/1024:.2f}' \
+               f'{sum([torch.cuda.memory_allocated(i) for i in range(get_device_count())]) / 1024 / 1024 / 1024:.2f}' \
                'GiB.'
 
 
@@ -728,7 +727,7 @@ class Swift:
         if isinstance(model, _PeftModel):
             model.merge_and_unload()
         elif isinstance(model, SwiftModel):
-            from swift.tuners import LoRAConfig, LoRA
+            from swift.tuners import LoRA, LoRAConfig
             adapter_name = kwargs.get('adapter_name', None)
             if isinstance(adapter_name, str):
                 adapter_name = [adapter_name]

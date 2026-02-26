@@ -1,11 +1,10 @@
 import os
 import re
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Type
-
 import torch
+from dataclasses import dataclass, field
 from torch import nn
 from transformers.utils import strtobool
+from typing import Any, Dict, List, Literal, Optional, Type
 
 from swift.utils import is_deepspeed_enabled
 from ..constant import LLMTemplateType, MLLMTemplateType

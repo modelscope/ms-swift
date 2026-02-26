@@ -1,23 +1,21 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from copy import deepcopy
-from typing import Optional, Tuple, Union
-
 import megatron.core
 import torch
+from copy import deepcopy
 from megatron.core.extensions.transformer_engine import TEColumnParallelLinear, _get_extra_te_kwargs
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.models.common.embeddings.rope_utils import apply_rotary_pos_emb
-from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec, get_gpt_mtp_block_spec
+from megatron.core.models.gpt.gpt_layer_specs import get_gpt_layer_with_transformer_engine_spec
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
                                            reduce_scatter_to_sequence_parallel_region)
 from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubmodules
-from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import build_module
 from megatron.core.transformer.transformer_block import TransformerBlockSubmodules
 from megatron.core.utils import deprecate_inference_params, is_fa_min_version
 from packaging import version
+from typing import Optional, Tuple, Union
 
 from swift.megatron.utils import get_local_layer_specs
 from swift.model import ModelType
@@ -534,9 +532,11 @@ class Qwen3NextLoader(MegatronModelLoader):
                 layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
             # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)
             layer_spec.submodules.input_layernorm = layer_norm_impl
-            if hasattr(layer_spec.submodules,
-                       'pre_mlp_layernorm') and layer_spec.submodules.pre_mlp_layernorm is not IdentityOp:
+            if hasattr(layer_spec.submodules, 'pre_mlp_layernorm'):
                 layer_spec.submodules.pre_mlp_layernorm = layer_norm_impl
+            # qwen3.5 dense
+            if config.hf_model_type == 'qwen3_5':
+                layer_spec.submodules.mlp.submodules.linear_fc1 = TEColumnParallelLinear
             # Replace qk_layernorm if present
             if hasattr(layer_spec.submodules.self_attention.submodules, 'q_layernorm'):
                 layer_spec.submodules.self_attention.submodules.q_layernorm = layer_norm_impl

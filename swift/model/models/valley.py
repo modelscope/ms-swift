@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 from functools import wraps
-from typing import Any, Dict
-
 from transformers import PreTrainedModel
+from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import git_clone_github, safe_snapshot_download

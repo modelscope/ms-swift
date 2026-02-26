@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
 from dataclasses import dataclass
-
-import json
 
 from swift.utils import add_version_to_work_dir, get_logger, init_process_group, is_last_rank, to_abspath
 from .megatron_base_args import MegatronBaseArguments
@@ -13,6 +12,7 @@ logger = get_logger()
 @dataclass
 class MegatronSftArguments(MegatronBaseArguments):
     add_version: bool = True
+    create_checkpoint_symlink: bool = False
     load_args: bool = False
 
     def _init_output_dir(self):

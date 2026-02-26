@@ -38,7 +38,7 @@ megatron rlhf \
     --offload_model true \
     --offload_bridge false \
     --offload_optimizer true \
-    --log_interval 1 \
+    --logging_steps 1 \
     --recompute_granularity selective \
     --finetune \
     --dataloader_num_workers 8 \

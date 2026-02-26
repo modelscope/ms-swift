@@ -1,8 +1,9 @@
 def test_model_arch():
-    from swift.model import MODEL_MAPPING
-    from transformers import PretrainedConfig
-    from swift.utils import JsonlWriter, safe_snapshot_download
     import random
+    from transformers import PretrainedConfig
+
+    from swift.model import MODEL_MAPPING
+    from swift.utils import JsonlWriter, safe_snapshot_download
     jsonl_writer = JsonlWriter('model_arch.jsonl')
     for i, (model_type, model_meta) in enumerate(MODEL_MAPPING.items()):
         if i < 0:

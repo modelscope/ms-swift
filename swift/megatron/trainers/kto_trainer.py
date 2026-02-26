@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from collections import namedtuple
 from functools import partial
-from typing import Any, Dict
-
-import torch
 from megatron.core import mpu
 from trl import KTOTrainer
+from typing import Any, Dict
 
 from swift.utils import get_current_device, get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
@@ -94,7 +93,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         }
         metric.update(self._all_reduce_metric(sum_metric, torch.distributed.ReduceOp.SUM))
         # fix megatron-lm bug
-        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, metric
 

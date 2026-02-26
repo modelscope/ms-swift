@@ -33,12 +33,12 @@ megatron rlhf \
   --epsilon_high 0.2 \
   --overlong_filter true \
   --num_train_epochs 1 \
-  --eval_interval 1000 \
-  --save_interval 1000 \
+  --eval_steps 1000 \
+  --save_steps 1000 \
   --sleep_level 2 \
   --offload_model true \
   --offload_optimizer true \
-  --log_interval 1 \
+  --logging_steps 1 \
   --recompute_granularity selective \
   --finetune \
   --lr 1e-6 \

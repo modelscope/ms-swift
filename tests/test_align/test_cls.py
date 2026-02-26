@@ -19,11 +19,11 @@ def calc_acc(infer_result):
     for res in infer_result:
         if res['response'] == res['labels']:
             n_correct += 1
-    return f'acc: {n_correct/len(infer_result)}, n_correct: {n_correct}, len(res): {len(infer_result)}'
+    return f'acc: {n_correct / len(infer_result)}, n_correct: {n_correct}, len(res): {len(infer_result)}'
 
 
 def test_llm():
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     res = []
     for model in ['Qwen/Qwen2.5-0.5B-Instruct', 'Qwen/Qwen2.5-0.5B', 'AI-ModelScope/bert-base-chinese']:
         dataset = ['DAMO_NLP/jd:cls#2000']

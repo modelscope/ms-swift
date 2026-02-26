@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from functools import partial
-
 import torch.nn
+from functools import partial
 
 from swift.loss import loss_map
 from swift.metrics import eval_metrics_map

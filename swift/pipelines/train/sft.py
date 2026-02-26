@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from typing import List, Optional, Union
-
 from datasets import Dataset as HfDataset
+from typing import List, Optional, Union
 
 from swift.arguments import SftArguments
 from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
@@ -200,25 +199,29 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _get_trainer_kwargs(self):
         return {}
 
-    def _save_trainer_state(self, trainer):
-        training_args = trainer.args
+    def _handle_trainer_state(self, trainer, is_write_rank: bool):
         state = trainer.state
         if hasattr(state, 'last_model_checkpoint'):
             if self.args.create_checkpoint_symlink:
                 last_checkpoint = os.path.join(self.args.output_dir, 'last')
                 best_checkpoint = os.path.join(self.args.output_dir, 'best')
-                if is_master():
+                if is_write_rank:
                     os.symlink(state.last_model_checkpoint, last_checkpoint)
                     os.symlink(state.best_model_checkpoint, best_checkpoint)
                 state.last_model_checkpoint = last_checkpoint
                 state.best_model_checkpoint = best_checkpoint
         else:
             state.last_model_checkpoint = None
-        logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
-        logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
+        logger.info_if(f'last_model_checkpoint: {state.last_model_checkpoint}', cond=is_write_rank)
+        logger.info_if(f'best_model_checkpoint: {state.best_model_checkpoint}', cond=is_write_rank)
 
-        # Visualization
+    def _save_trainer_state(self, trainer):
+        training_args = trainer.args
+        state = trainer.state
+        self._handle_trainer_state(trainer, is_master())
+
         if is_master():
+            # Visualization
             if 'tensorboard' in training_args.report_to:
                 images_dir = os.path.join(training_args.output_dir, 'images')
                 logger.info(f'images_dir: {images_dir}')
@@ -339,6 +342,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     load_from_cache_file=args.load_from_cache_file,
                     strict=args.strict,
                     batch_size=batch_size)
+                if len(dataset) == 0:
+                    dataset = None
             datasets[i] = dataset
         template.model = origin_template_model
 

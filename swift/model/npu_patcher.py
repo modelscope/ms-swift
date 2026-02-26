@@ -1,18 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
-from functools import wraps
-from typing import Any
 
 import accelerate.utils.fsdp_utils as fsdp_utils
 import torch
 import torch.nn.functional as F
 import torch_npu
 from accelerate.accelerator import Accelerator
+from functools import wraps
 from torch import nn
 from transformers.models.qwen2 import modeling_qwen2
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_moe import modeling_qwen3_moe
 from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
+from typing import Any
 
 
 class NPUCastError(RuntimeError):

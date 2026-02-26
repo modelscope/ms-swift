@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch.nn
 from collections import namedtuple
 from functools import partial
-
-import torch.nn
 
 from swift.loss import loss_map
 from swift.metrics import eval_metrics_map

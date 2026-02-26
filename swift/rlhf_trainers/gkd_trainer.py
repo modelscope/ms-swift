@@ -2,21 +2,19 @@
 import inspect
 import os
 import random
-from collections import defaultdict, deque
-from contextlib import contextmanager, nullcontext
-from copy import deepcopy
-from enum import Enum
-from typing import Dict, Optional, Union
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import trl
 from accelerate.utils import gather_object, is_peft_model
+from collections import defaultdict, deque
+from contextlib import contextmanager, nullcontext
+from copy import deepcopy
+from enum import Enum
 from packaging import version
 from transformers import PreTrainedModel
-from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
+from typing import Dict, Optional, Union
 
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
@@ -31,6 +29,11 @@ try:
     _liger_kernel_available = True
 except ImportError:
     _liger_kernel_available = False
+
+if version.parse(trl.__version__) >= version.parse('0.26.0'):
+    from trl.experimental.gkd import GKDTrainer as HFGKDTrainer
+else:
+    from trl import GKDTrainer as HFGKDTrainer
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__

@@ -2,10 +2,9 @@
 import os
 import re
 from dataclasses import dataclass
-from typing import Literal, Optional
-
 from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils.versions import require_version
+from typing import Literal, Optional
 
 from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
@@ -66,18 +65,19 @@ class SwanlabArguments:
 
     def _init_swanlab(self):
         if not is_swanlab_available():
-            raise ValueError('You are using swanlab as `report_to`, please install swanlab by ' '`pip install swanlab`')
+            raise ValueError('You are using swanlab as `report_to`, please install swanlab by '
+                             '`pip install swanlab`')
         if not self.swanlab_exp_name:
             self.swanlab_exp_name = self.output_dir
-        from transformers.integrations import INTEGRATION_TO_CALLBACK
         import swanlab
         from swanlab.integration.transformers import SwanLabCallback
+        from transformers.integrations import INTEGRATION_TO_CALLBACK
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
 
         if self.swanlab_notification_method is not None:
-            from swanlab.plugin.notification import (LarkCallback, DingTalkCallback, EmailCallback, DiscordCallback,
-                                                     WXWorkCallback, SlackCallback)
+            from swanlab.plugin.notification import (DingTalkCallback, DiscordCallback, EmailCallback, LarkCallback,
+                                                     SlackCallback, WXWorkCallback)
             notification_mapping = {
                 'lark': LarkCallback,
                 'dingtalk': DingTalkCallback,

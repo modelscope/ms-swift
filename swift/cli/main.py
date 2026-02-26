@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.util
+import json
 import os
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional
-
-import json
 
 from swift.utils import get_logger
 
@@ -52,7 +51,7 @@ def prepare_config_args(argv):
         if argv[i] == '--config':
             if i + 1 >= len(argv):
                 raise ValueError('The `--config` argument requires a yaml file path.')
-            from omegaconf import OmegaConf, DictConfig, ListConfig
+            from omegaconf import DictConfig, ListConfig, OmegaConf
             config = OmegaConf.load(argv[i + 1])
 
             def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:

@@ -18,18 +18,18 @@ class DefaultFlowCallback(MegatronCallback):
 
         state.consumed_train_samples += args.global_batch_size
 
-        if state.iteration == 1 or state.iteration % args.log_interval == 0:
+        if state.iteration == 1 or state.iteration % args.logging_steps == 0:
             state.should_log = True
-        if args.eval_interval and state.iteration % args.eval_interval == 0 and args.eval_iters > 0:
+        if args.eval_steps and state.iteration % args.eval_steps == 0 and args.eval_iters > 0:
             state.should_eval = True
-        if args.save_interval and state.iteration % args.save_interval == 0:
+        if args.save_steps and state.iteration % args.save_steps == 0:
             state.should_save = True
 
         if state.iteration >= args.train_iters:
             if args.eval_iters > 0:
                 state.should_eval = True
             state.should_save = True
-        if args.manual_gc and args.manual_gc_interval != 0 and state.iteration % args.manual_gc_interval == 0:
+        if args.manual_gc and args.manual_gc_steps != 0 and state.iteration % args.manual_gc_steps == 0:
             gc.collect()
 
     def on_eval_begin(self):

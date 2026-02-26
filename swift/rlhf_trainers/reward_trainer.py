@@ -1,16 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from collections import defaultdict
-from contextlib import nullcontext
-from typing import Any, Dict, Tuple, Union
-
 import pandas as pd
 import torch
 import torch.nn as nn
 import trl
 from accelerate.utils import gather_object
+from collections import defaultdict
+from contextlib import nullcontext
 from packaging import version
 from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
+from typing import Any, Dict, Tuple, Union
 
 from swift.trainers import SwiftMixin
 from swift.utils import get_logger

@@ -32,8 +32,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --output_dir megatron_output/gpt-oss-20b \
-    --eval_interval 100 \
-    --save_interval 100 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --max_length 2048 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 4 \

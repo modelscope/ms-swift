@@ -34,8 +34,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --output_dir megatron_output/Qwen3-VL-235B-A22B-Instruct \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 2048 \
     --packing true \
     --dataloader_num_workers 8 \

@@ -38,8 +38,8 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     --output_dir megatron_output/GLM-4.6V \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 2048 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

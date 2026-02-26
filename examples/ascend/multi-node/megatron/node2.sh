@@ -29,5 +29,5 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
-    --log_interval 5 \
+    --logging_steps 5 \
     --dataloader_num_workers 4

@@ -40,7 +40,7 @@ if __name__ == '__main__':
             offload_model=True,
             offload_bridge=False,
             offload_optimizer=True,
-            log_interval=1,
+            logging_steps=1,
             recompute_granularity='full',
             recompute_method='uniform',
             recompute_num_layers=1,
@@ -55,6 +55,6 @@ if __name__ == '__main__':
             padding_free=True,
             log_completions=True,
             train_iters=100,
-            eval_interval=1000,
-            save_interval=1000,
+            eval_steps=1000,
+            save_steps=1000,
         ))

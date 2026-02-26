@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import copy
 import re
+import torch
+import torch.nn as nn
 import types
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
-
-import torch
-import torch.nn as nn
 
 from swift.utils import find_sub_module, get_logger
 from .restuning_components import ResTuner, detach_tensors, probe_input_pre_hook, probe_output_hook
@@ -123,7 +122,7 @@ class ResTuning(SwiftAdapter):
                 _args_main = getattr(self, f'forward_origin_{adapter_name}')(*args, **kwargs)
                 _arg = _args_main[self.target_hidden_pos] if isinstance(_args_main, (tuple, list, dict)) else _args_main
                 args_main = _forward_restuning(self, _arg)
-                if type(_args_main) != type(args_main):
+                if type(_args_main) is not type(args_main):
                     _args_main[self.target_hidden_pos] = args_main
                     args_main = _args_main
             return args_main

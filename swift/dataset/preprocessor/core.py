@@ -1,17 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
+import numpy as np
 import os
 from collections import Counter
 from contextlib import contextmanager
-from itertools import chain
-from typing import Any, Callable, Dict, List, Optional, Union
-
-import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
+from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from swift.template import history_to_messages
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
@@ -374,6 +373,7 @@ class ResponsePreprocessor(RowPreprocessor):
         if response is not None:
             if isinstance(response, (list, tuple)):
                 from transformers.utils import strtobool
+
                 # sometimes response is a list, pick one randomly
                 if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')):
                     response = self.random_state.choice(response)

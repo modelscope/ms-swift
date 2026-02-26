@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass, field
-from typing import List, Optional, Union
-
 import transformers
+from dataclasses import dataclass, field
 from packaging import version
+from typing import List, Optional, Union
 
 transformers_ge_4_52 = version.parse(transformers.__version__) >= version.parse('4.52')
 

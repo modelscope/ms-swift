@@ -1,15 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import copy
 import re
+import torch
 import types
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import partial
 from itertools import repeat
-from typing import Union
-
-import torch
 from torch import nn
+from typing import Union
 
 from swift.utils import find_sub_module, get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput

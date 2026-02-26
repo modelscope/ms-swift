@@ -3,10 +3,9 @@ import math
 import os
 import platform
 from dataclasses import dataclass, field
-from typing import List, Literal, Optional, Union
-
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
+from typing import List, Literal, Optional, Union
 
 from swift.loss import loss_map
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
@@ -58,6 +57,8 @@ class TrainArgumentsMixin:
         acc_strategy (Literal['token', 'seq']): The strategy for calculating accuracy during training and validation.
             Can be 'token' for token-level accuracy or 'seq' for sequence-level accuracy. Defaults to 'token'.
         train_dataloader_shuffle (bool): Whether to shuffle the training data. Defaults to True.
+        group_by_length (bool): Whether to group samples with approximately the same length together in the
+            training dataset (with a random factor).
         max_epochs (Optional[int]): The total number of training epochs to perform. Overrides `num_train_epochs`.
             Defaults to None.
         aligner_lr (Optional[float]): A specific learning rate for the aligner part of the model. Defaults to None.
@@ -149,6 +150,7 @@ class TrainArgumentsMixin:
     check_model: bool = True
     acc_strategy: Literal['token', 'seq'] = 'token'
     train_dataloader_shuffle: bool = True
+    group_by_length: bool = False
     max_epochs: Optional[int] = None
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None

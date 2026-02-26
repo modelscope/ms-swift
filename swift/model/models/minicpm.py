@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from types import MethodType
-from typing import Any, Dict
-
 from transformers import PreTrainedModel
 from transformers.utils import strtobool
+from types import MethodType
+from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import get_env_args

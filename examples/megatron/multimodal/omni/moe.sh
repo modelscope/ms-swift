@@ -41,8 +41,8 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-Omni-30B-A3B-Instruct \
-    --eval_interval 100 \
-    --save_interval 100 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --max_length 4096 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

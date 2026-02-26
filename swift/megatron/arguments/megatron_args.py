@@ -1,15 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Union
-
 import json
 import megatron.core
+import os
 import torch
+from dataclasses import dataclass, field, fields
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
 from packaging import version
 from transformers.utils.versions import require_version
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from swift.arguments import ModelArguments
 from swift.megatron.model import get_megatron_model_meta
@@ -333,7 +332,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     masked_softmax_fusion: bool = True
     bias_dropout_fusion: bool = True
     bias_activation_fusion: bool = True
-    apply_rope_fusion: bool = True
+    apply_rope_fusion: bool = False
     gradient_accumulation_fusion: bool = True
     cross_entropy_loss_fusion: bool = True
     cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
@@ -348,7 +347,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     exp_avg_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     exp_avg_sq_dtype: Literal['fp32', 'fp16', 'bf16', 'fp8'] = 'fp32'
     manual_gc: bool = False
-    manual_gc_interval: int = 0
+    manual_gc_steps: int = 0
     manual_gc_eval: bool = True
 
     # data
@@ -391,7 +390,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # checkpoint
     output_dir: Optional[str] = None
-    save_interval: int = 500
+    save_steps: int = 500
     no_save_optim: bool = False
     no_save_rng: bool = False
     mcore_model: Optional[str] = None
@@ -401,7 +400,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     finetune: bool = True
     perform_initialization: bool = False
     use_cpu_initialization: bool = False
-    async_save: bool = False  # TODO
+    async_save: bool = False
+    save_total_limit: Optional[int] = None
+    metric_for_best_model: Optional[str] = None
+    greater_is_better: Optional[bool] = None
+
     use_persistent_ckpt_worker: bool = False
     dist_ckpt_save_pre_mcore_014: bool = False
     dist_ckpt_optim_fully_reshardable: bool = False
@@ -423,9 +426,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     sequence_parallel: bool = False
     context_parallel_size: int = 1
-    tp_comm_overlap: bool = False  # TODO
-    overlap_grad_reduce: bool = False  # TODO
-    overlap_param_gather: bool = False  # TODO
+    tp_comm_overlap: bool = False
+    overlap_grad_reduce: bool = False
+    overlap_param_gather: bool = False
+    overlap_param_gather_with_optimizer_step: bool = False
+    align_grad_reduce: bool = True
     virtual_pipeline_model_parallel_size: Optional[int] = None
     microbatch_group_size_per_vp_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
@@ -434,7 +439,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # 'wandb', 'swanlab', 'tensorboard'
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
-    log_interval: int = 5
+    logging_steps: int = 5
     tensorboard_dir: Optional[str] = None
     tensorboard_queue_size: int = 50
     wandb_project: str = 'megatron-swift'
@@ -444,7 +449,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # evaluate
     eval_iters: int = -1
-    eval_interval: Optional[int] = None
+    eval_steps: Optional[int] = None
 
     # fp8
     fp8_format: Literal['e4m3', 'hybrid'] = None
@@ -557,7 +562,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def __post_init__(self):
-        require_version('numpy<2.0', 'Please install numpy<2.0 by running: `pip install "numpy<2.0"`.')
         if self.tuner_type == 'lora':
             require_version('peft>=0.15')
         RLHFMegatronArgumentsMixin.__post_init__(self)
@@ -604,10 +608,19 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.gradient_accumulation_fusion = False
         self.callbacks += ['print', 'default_flow']
         self.callbacks += self.report_to
+        if self.save_total_limit is not None:
+            if self.async_save:
+                raise ValueError('async_save is not supported with save_total_limit.')
+            if self.save_total_limit < 2:
+                raise ValueError('save_total_limit must be greater than or equal to 2.')
+        if self.metric_for_best_model is None:
+            self.metric_for_best_model = 'reward' if self.rlhf_type == 'grpo' else 'loss'
+        if self.greater_is_better is None and self.metric_for_best_model is not None:
+            self.greater_is_better = 'loss' not in self.metric_for_best_model
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
-        if self.eval_interval is None:
-            self.eval_interval = self.save_interval
+        if self.eval_steps is None:
+            self.eval_steps = self.save_steps
         if self.merge_lora is None:
             self.merge_lora = self.save_safetensors
         if self.adapters or self.ref_adapters or self.mcore_adapter or self.mcore_ref_adapter:
@@ -634,6 +647,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.data_parallel_size = self.world_size // total_model_size
         # Gradient Accumulation
         self.num_microbatches = self.global_batch_size // self.data_parallel_size // self.micro_batch_size
+        if self.num_microbatches == 0:
+            raise ValueError('global_batch_size must be >= `data_parallel_size * micro_batch_size` '
+                             f'to have at least one micro-batch. global_batch_size: {self.global_batch_size}, '
+                             f'data_parallel_size: {self.data_parallel_size}, '
+                             f'micro_batch_size: {self.micro_batch_size}.')
 
     def _init_teacher_model(self):
         if self.teacher_model is None:
@@ -649,6 +667,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     def _init_vpp_size(self):
         if self.pipeline_model_parallel_layout is not None:
             from megatron.core.transformer.pipeline_parallel_layer_layout import PipelineParallelLayerLayout
+
             # Parse the input flattened layout to a list and get the vpp size.
             # We will validate the layout more carefully in the TransformerConfig constructor.
             num_stages = PipelineParallelLayerLayout.get_num_stages_from_str(self.pipeline_model_parallel_layout)
@@ -692,8 +711,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.save_strategy == 'epoch':
             if hasattr(train_dataset, '__len__'):
                 dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
-                self.save_interval = dataset_sample // self.global_batch_size
-                self.eval_interval = self.save_interval
+                self.save_steps = dataset_sample // self.global_batch_size
+                self.eval_steps = self.save_steps
             else:
                 raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
         if self.num_train_epochs is not None:

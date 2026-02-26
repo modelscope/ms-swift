@@ -5,13 +5,13 @@ from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
     # Recommend using `xxx_main`
-    from .infer import (infer_main, deploy_main, run_deploy, rollout_main)
-    from .export import (export_main, merge_lora, quantize_model, export_to_ollama)
-    from .eval import eval_main
     from .app import app_main
-    from .train import sft_main, pretrain_main, rlhf_main, SwiftSft
-    from .sampling import sampling_main
     from .base import SwiftPipeline
+    from .eval import eval_main
+    from .export import export_main, export_to_ollama, merge_lora, quantize_model
+    from .infer import deploy_main, infer_main, rollout_main, run_deploy
+    from .sampling import sampling_main
+    from .train import SwiftSft, pretrain_main, rlhf_main, sft_main
     from .utils import prepare_model_template
 else:
     _import_structure = {

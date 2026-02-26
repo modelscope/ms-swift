@@ -1,19 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import inspect
+import json
 import multiprocessing
 import time
+import uvicorn
+from aiohttp import ClientConnectorError
 from contextlib import contextmanager
 from dataclasses import asdict
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from http import HTTPStatus
 from threading import Thread
 from typing import List, Optional, Union
-
-import json
-import uvicorn
-from aiohttp import ClientConnectorError
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from swift.arguments import DeployArguments, InferArguments
 from swift.infer_engine import AdapterRequest, InferClient

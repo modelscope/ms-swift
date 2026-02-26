@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import datetime as dt
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
-
 import torch
 import torch.nn as nn
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_env_args
 from ..base import Template
@@ -53,7 +52,8 @@ def _get_llama3_2_prefix() -> Prompt:
     now = dt.datetime.now()
     date_string = now.strftime('%d %b %Y')
     date_prompt = f'Cutting Knowledge Date: December 2023\nToday Date: {date_string}'
-    return [f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n' '{{SYSTEM}}<|eot_id|>']
+    return [f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{date_prompt}\n\n'
+            '{{SYSTEM}}<|eot_id|>']
 
 
 @dataclass
@@ -73,8 +73,8 @@ class Llama3_2VisionTemplate(Template):
         return ['<|image|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        from transformers.models.mllama.processing_mllama import (get_cross_attention_token_mask,
-                                                                  convert_sparse_cross_attention_mask_to_dense)
+        from transformers.models.mllama.processing_mllama import (convert_sparse_cross_attention_mask_to_dense,
+                                                                  get_cross_attention_token_mask)
         encoded = super()._encode(inputs)
         images = inputs.images
         if images:

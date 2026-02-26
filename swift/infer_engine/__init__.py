@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .vllm_engine import VllmEngine
+    from .base import BaseInferEngine
     from .grpo_vllm_engine import GRPOVllmEngine
-    from .lmdeploy_engine import LmdeployEngine
-    from .sglang_engine import SglangEngine
-    from .transformers_engine import TransformersEngine
     from .infer_client import InferClient
     from .infer_engine import InferEngine
-    from .base import BaseInferEngine
-    from .utils import prepare_generation_config, AdapterRequest, patch_vllm_memory_leak
-    from .protocol import InferRequest, RequestConfig, Function, ChatCompletionResponse
+    from .lmdeploy_engine import LmdeployEngine
+    from .protocol import ChatCompletionResponse, Function, InferRequest, RequestConfig
+    from .sglang_engine import SglangEngine
+    from .transformers_engine import TransformersEngine
+    from .utils import AdapterRequest, patch_vllm_memory_leak, prepare_generation_config
+    from .vllm_engine import VllmEngine
 else:
     _import_structure = {
         'vllm_engine': ['VllmEngine'],

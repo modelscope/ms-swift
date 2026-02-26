@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from contextlib import contextmanager
-
 import torch
+from contextlib import contextmanager
 from megatron.core import mpu
 from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers

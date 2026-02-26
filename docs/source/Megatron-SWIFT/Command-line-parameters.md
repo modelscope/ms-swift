@@ -23,8 +23,7 @@
 - masked_softmax_fusion: 默认为True。用于开启query_key_value的scaling, masking, and softmax融合。
 - bias_dropout_fusion: 默认为True。用于开启bias和dropout的融合。
 - bias_activation_fusion: 如果为True，则在可能的情况下融合偏置加法和激活函数。默认为True。
-- apply_rope_fusion: 默认为True。用于开启rope融合。
-  - **当使用mrope等不支持rope_fusion的位置编码时，该参数会自动设置为False**。
+- apply_rope_fusion: 默认为False。用于开启rope融合。该参数为megatron-core参数透传。注意：并不是所有情况都支持rope融合，例如：MLA、mrope等不支持。
 - gradient_accumulation_fusion: 默认为True。用于开启梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为True。
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
@@ -43,7 +42,7 @@
 - exp_avg_dtype: 启用 use_precision_aware_optimizer 时，adam 优化器中 exp_avg（即一阶矩）的 dtype。该 dtype 用于在训练过程中将优化器状态存储在内存中，但不会影响内核计算时的精度。可选为'fp32', 'fp16', 'bf16', 'fp8'。默认为'fp32'。
 - exp_avg_sq_dtype: 启用 use_precision_aware_optimizer 时，adam 优化器中 exp_avg_sq（即二阶矩）的 dtype。该 dtype 用于在训练过程中将优化器状态存储在内存中，但不会影响内核计算的精度。可选为'fp32', 'fp16', 'bf16', 'fp8'。默认为'fp32'。
 - manual_gc: 禁用默认垃圾回收器，手动触发垃圾回收。默认为False。
-- manual_gc_interval: 手动触发垃圾回收的间隔。默认为0。
+- manual_gc_steps: 手动触发垃圾回收的间隔（steps）。默认为0。
 - manual_gc_eval: 当使用手动垃圾回收时（`--manual_gc true`），在每次评估运行的开始和结束时禁用垃圾回收。默认为True。
 
 **数据参数**:
@@ -92,7 +91,7 @@
 **checkpoint参数**:
 - 🔥output_dir: checkpoint的输出目录，默认None。在训练中，若未设置该参数，则默认为`f'megatron_output/{model_suffix}'`，例如`'megatron_output/Qwen2.5-7B-Instruct'`。
   - 注意：**若在多机训练时，请确保每个节点的保存路径指向相同位置**，否则你需要在训练后手动集中这些权重。
-- 🔥save_interval: checkpoint保存的间隔（steps），默认为500。
+- 🔥save_steps: checkpoint保存的间隔（steps），默认为500。
   - 注意：训练结束时一定会保存权重。
 - 🔥no_save_optim: 不保存optimizer，默认为False。在全参数训练时，可以显著降低存储时间。
 - 🔥no_save_rng: 不保存rng，默认为False。
@@ -108,6 +107,9 @@
 - perform_initialization: 对权重进行初始化，默认为False。
 - use_cpu_initialization: 在cpu上初始化权重，默认为False。在进行HF和MCore权重转换时会被使用。通常不需要修改该值。
 - 🔥async_save: 使用异步检查点保存。目前仅适用于`torch_dist`分布式检查点格式。默认为False。
+- 🔥save_total_limit: 最多保存的checkpoint数，会将过期的checkpoint进行删除。默认为None，保存所有的checkpoint。该参数需设置为`>=2`的数，若设置为2，则保存best checkpoint和last checkpoint。该参数暂不兼容`async_save`。
+- metric_for_best_model: 默认为None，GRPO默认为'reward'，其他情况默认为'loss'。
+- greater_is_better: 默认为None，即当`metric_for_best_model`含'loss'时，设置为False，否则设置为True。
 - use_persistent_ckpt_worker: 为异步保存启动持久化检查点工作进程。默认为False。
 - dist_ckpt_save_pre_mcore_014: 使用 Megatron-Core 0.14 之前的格式存储。默认为False。
 - dist_ckpt_optim_fully_reshardable: 使优化器分布式检查点完全可重分片（TP/PP/EP/DP），而不是仅支持普通的DP重分片。默认为False。
@@ -144,7 +146,7 @@
 
 **日志参数**:
 - report_to: 启用的日志后端。默认为`['tensorboard']`。可选项为'tensorboard', 'wandb'和'swanlab'。'wandb'和'swanlab'登陆可以使用`WANDB_API_KEY`、`SWANLAB_API_KEY`环境变量。
-- 🔥log_interval: log的时间间隔（单位：iters），默认为5。
+- 🔥logging_steps: 日志记录的间隔（steps），默认为5。
 - tensorboard_dir: tensorboard日志写入的目录。默认None，即存储在`f'{save}/runs'`目录下。
 - tensorboard_queue_size: 用于暂存事件和摘要的 TensorBoard 队列大小；当队列中待处理的事件和摘要数量达到该大小时，下一次调用 "add" 相关方法会触发将数据刷新写入磁盘。默认为50。
 - wandb_project: wandb项目名称，默认为'megatron-swift'。
@@ -154,7 +156,7 @@
 
 **评估参数**:
 - 🔥eval_iters: 评估的迭代次数，默认为`-1`，根据验证数据集的数量设置合适的值。**若验证集数量少于global_batch_size，则不进行评估**。若使用流式数据集，该值需要手动设置。
-- 🔥eval_interval: 评估的间隔（steps），即每训练多少steps进行评估，默认为None，即设置为save_interval。
+- 🔥eval_steps: 评估的间隔（steps），即每训练多少steps进行评估。默认为None，即设置为`save_steps`。
 
 **fp8参数**:
 - fp8_format: 用于前向和反向传播中FP8张量的FP8格式方案。可选为'e4m3'，'hybrid'。默认为None。
@@ -249,7 +251,7 @@ lora训练：
 - 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'、'embedding'和'generative_reranker'。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
-- 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，'save_interval'和'eval_interval'都会强制设置为1，代表每个epoch存储权重。
+- 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，会根据数据集大小自动计算`save_steps`和`eval_steps`以实现每个epoch保存一次，用户传入的`save_steps`和`eval_steps`参数值将被忽略。
 - callbacks: 自定义trainer callback，默认为`[]`。
 
 ## 训练参数
@@ -257,6 +259,7 @@ lora训练：
 Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用dataset、template等参数，也支持ms-swift中的特定模型参数**）。基本参数的内容可以参考[这里](../Instruction/Command-line-parameters.md#基本参数)。此外还包括以下参数：
 
 - add_version: 在`save`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
+- 🔥create_checkpoint_symlink: 额外创建checkpoint软链接，方便书写自动化训练脚本。best_model和last_model的软链接路径分别为f'{output_dir}/best'和f'{output_dir}/last'。
 - 🔥packing: 使用`padding_free`的方式将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见（除Qwen3-Next，因为含有linear-attention）。该参数默认为`False`。Megatron-SWIFT的所有训练任务都支持该参数。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
@@ -302,7 +305,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - micro_batch_size: 每个device的批次大小，默认为1。
 - global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
 - steps_per_generation: 每轮生成的优化步数，即采样批量大小相对global_batch_size的倍数，默认为1。
-- generation_batch_size: 采样批量大小，需要是global_batch_size的倍数，默认等于global_batch_size*steps_per_generation。
+- generation_batch_size: 采样批量大小，需要是global_batch_size的倍数，默认等于`global_batch_size*steps_per_generation`。
 - num_generations: 每个prompt采样的数量，论文中的G值，默认为8。
 - num_generations_eval: 评估阶段每个prompt采样的数量。允许在评估时使用较少的生成数量以节省计算资源。如果为 None，则使用 num_generations 的值。默认为 None。
 - reward_funcs: GRPO算法奖励函数，可选项为`accuracy`、`format`、`cosine`、`repetition`和`soft_overlong`，见swift/rewards/orm.py。你也可以在plugin中自定义自己的奖励函数。默认为`[]`。

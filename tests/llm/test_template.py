@@ -1,7 +1,6 @@
 import os
-import unittest
-
 import torch
+import unittest
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.model import get_processor

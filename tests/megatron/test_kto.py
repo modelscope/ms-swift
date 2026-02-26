@@ -4,7 +4,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_kto():
-    from swift.megatron import megatron_rlhf_main, MegatronRLHFArguments
+    from swift.megatron import MegatronRLHFArguments, megatron_rlhf_main
     megatron_rlhf_main(
         MegatronRLHFArguments(
             mcore_model='Qwen2.5-7B-Instruct-mcore',
@@ -20,9 +20,9 @@ def test_kto():
             recompute_granularity='full',
             recompute_method='uniform',
             recompute_num_layers=1,
-            eval_interval=10,
-            save_interval=10,
-            log_interval=1,
+            eval_steps=10,
+            save_steps=10,
+            logging_steps=1,
             finetune=True,
             num_train_epochs=1,
             max_length=2048,

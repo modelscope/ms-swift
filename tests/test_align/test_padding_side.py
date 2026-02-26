@@ -17,7 +17,7 @@ def calc_acc(infer_result):
     for res in infer_result:
         if res['response'] == res['labels']:
             n_correct += 1
-    return f'acc: {n_correct/len(infer_result)}, n_correct: {n_correct}, len(res): {len(infer_result)}'
+    return f'acc: {n_correct / len(infer_result)}, n_correct: {n_correct}, len(res): {len(infer_result)}'
 
 
 def calc_diff(infer_result, infer_result2):
@@ -25,11 +25,11 @@ def calc_diff(infer_result, infer_result2):
     for x1, x2 in zip(infer_result, infer_result2):
         if x1['response'] == x2['response']:
             n_correct += 1
-    return f'acc: {n_correct/len(infer_result)}, n_correct: {n_correct}, len(res): {len(infer_result)}'
+    return f'acc: {n_correct / len(infer_result)}, n_correct: {n_correct}, len(res): {len(infer_result)}'
 
 
 def test_llm():
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     res = []
     for padding_side in ['left', 'right']:
         model = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -46,7 +46,7 @@ def test_llm():
 
 
 def test_mllm():
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     from swift.template import Template
     res = []
     for padding_side in ['left', 'right']:

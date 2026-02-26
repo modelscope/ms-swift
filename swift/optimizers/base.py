@@ -1,6 +1,5 @@
-from typing import TYPE_CHECKING
-
 from torch.optim import Optimizer
+from typing import TYPE_CHECKING
 
 try:
     from torch.optim.lr_scheduler import _LRScheduler as LRScheduler
@@ -8,7 +7,7 @@ except ImportError:
     from torch.optim.lr_scheduler import LRScheduler
 
 if TYPE_CHECKING:
-    from swift.trainers import TrainingArguments, Trainer
+    from swift.trainers import Trainer, TrainingArguments
 
 
 class OptimizerCallback:

@@ -11,10 +11,9 @@ correctly handle the distributed computation by:
 3. All-reducing partial sums for final results
 """
 
-from typing import Optional, Tuple
-
 import torch
 from megatron.core import mpu
+from typing import Optional, Tuple
 
 
 def vocab_parallel_log_softmax(logits: torch.Tensor) -> torch.Tensor:

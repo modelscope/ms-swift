@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import sys
-
 from transformers import PreTrainedModel
 
 from swift.template import TemplateType
@@ -306,8 +305,8 @@ class Llama3OmniLoader(ModelLoader):
         if not local_repo_path:
             local_repo_path = git_clone_github('https://github.com/ictnlp/LLaMA-Omni')
         sys.path.append(self.local_repo_path)
-        from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
         import whisper
+        from omni_speech.model import OmniSpeech2SLlamaForCausalLM, OmniSpeechLlamaForCausalLM
         config.speech_encoder = os.path.join(model_dir, 'large-v3.pt')
         if not os.path.exists(config.speech_encoder):
             whisper.load_model('large-v3', download_root=model_dir)

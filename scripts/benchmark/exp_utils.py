@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 import subprocess
@@ -6,8 +7,6 @@ from collections import deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List
-
-import json
 
 from swift.arguments import ExportArguments
 from swift.utils import find_free_port, get_device_count, get_logger

@@ -1,7 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
-from typing import Optional
-
 import megatron.core
 from megatron.core import mpu
 from megatron.core.tensor_parallel.mappings import (gather_from_tensor_model_parallel_region,
@@ -10,6 +8,7 @@ from megatron.core.transformer.attention import SelfAttention, SelfAttentionSubm
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.spec_utils import build_module
 from packaging import version
+from typing import Optional
 
 from swift.model import ModelType
 from ..constant import MegatronModelType

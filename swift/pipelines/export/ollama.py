@@ -68,5 +68,6 @@ def export_to_ollama(args: ExportArguments):
     logger.info('Save Modelfile done, you can start ollama by:')
     logger.info('> ollama serve')
     logger.info('In another terminal:')
-    logger.info('> ollama create my-custom-model ' f'-f {os.path.join(args.output_dir, "Modelfile")}')
+    logger.info('> ollama create my-custom-model '
+                f'-f {os.path.join(args.output_dir, "Modelfile")}')
     logger.info('> ollama run my-custom-model')

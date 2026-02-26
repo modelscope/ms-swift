@@ -1,7 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # !/usr/bin/env python
-import os
 from setuptools import find_packages, setup
+
+import os
 from typing import List
 
 

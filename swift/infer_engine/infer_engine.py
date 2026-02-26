@@ -4,9 +4,8 @@ import concurrent.futures
 import os
 from queue import Queue
 from threading import Thread
-from typing import Any, Dict, Iterator, List, Optional, Union
-
 from tqdm import tqdm
+from typing import Any, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_ckpt_dir

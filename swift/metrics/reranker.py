@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Dict
-
 import numpy as np
 from transformers import EvalPrediction
+from typing import Dict
 
 from .base import EvalMetrics
 from .utils import Metric

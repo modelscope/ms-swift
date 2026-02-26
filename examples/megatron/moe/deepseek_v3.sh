@@ -5,7 +5,7 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
-    --model Qwen/Moonlight-16B-A3B-Instruct \
+    --model moonshotai/Moonlight-16B-A3B-Instruct \
     --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
@@ -30,8 +30,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --output_dir megatron_output/Moonlight-16B-A3B-Instruct \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 8192 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

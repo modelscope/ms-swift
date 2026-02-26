@@ -1,14 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from dataclasses import dataclass, field
 from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from typing import Any, Dict, List, Optional
 
 from swift.utils import get_env_args
 from ..base import Template

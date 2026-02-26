@@ -1,16 +1,11 @@
 """Functionality for CPU offloading of tensors saved for backward pass."""
-from __future__ import annotations
 import functools
-import logging
-import os
-from contextlib import nullcontext
-from typing import Any, Dict, Optional
-
 import torch
 from torch.distributed.fsdp import FSDPModule as FSDP2
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from transformers.trainer_callback import TrainerControl, TrainerState
 from transformers.training_args import TrainingArguments
+from typing import Any, Optional
 
 from swift.utils import get_logger
 from .base import TrainerCallback
@@ -90,7 +85,7 @@ class CpuOffloadHookWithOffloadHandler:
 
     def __init__(
         self,
-        offload_handler: OffloadHandler,
+        offload_handler: 'OffloadHandler',
         handler_extra_kwargs: Optional[dict[str, Any]] = None,
     ) -> None:
         if handler_extra_kwargs is None:
@@ -494,7 +489,6 @@ class ActivationHandler:
 
         def my_function(*inputs):
             # unpack back into args and kwargs
-            nonlocal forward_method, kwarg_keys
             unpacked_args, unpacked_kwargs = self._unpack_kwargs(inputs, kwarg_keys)
             # run original module
             return forward_method(*unpacked_args, **unpacked_kwargs)
@@ -526,7 +520,6 @@ class ActivationHandler:
 
         @functools.wraps(orig_method)
         def wrapped_method(model_self, *args, **kwargs):
-            nonlocal handler
             handler.pre_forward(model_self)
             out = handler.forward(model_self, orig_method, *args, **kwargs)
             handler.post_forward(model_self)

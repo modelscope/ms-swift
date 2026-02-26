@@ -25,8 +25,8 @@ megatron sft \
     --min_lr 1e-7 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen3-Reranker-8B \
-    --save_interval 200 \
-    --eval_interval 50 \
+    --save_steps 200 \
+    --eval_steps 50 \
     --max_length 4096 \
     --loss_type pointwise_reranker \
     --dataloader_num_workers 4 \

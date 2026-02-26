@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from typing import Any, Dict, List, Optional, Union
-
 import torch
 from PIL import Image
 from tqdm.asyncio import tqdm_asyncio
+from typing import Any, Dict, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.template import Template

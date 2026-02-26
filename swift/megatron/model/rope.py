@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Any, Dict, Optional, Tuple
-
 import torch
 import transformers
 from packaging import version
 from transformers import PretrainedConfig
+from typing import Any, Dict, Optional, Tuple
 
 from swift.utils import get_logger
 

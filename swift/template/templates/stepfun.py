@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import itertools
+import torch
 from functools import partial
 from typing import Any, Dict, List, Literal, Optional
-
-import torch
 
 from swift.utils import get_env_args, to_float_dtype
 from ..base import Template

@@ -4,9 +4,9 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .infer import infer_main, SwiftInfer
+    from .deploy import SwiftDeploy, deploy_main, run_deploy
+    from .infer import SwiftInfer, infer_main
     from .rollout import rollout_main
-    from .deploy import deploy_main, SwiftDeploy, run_deploy
 else:
     _import_structure = {
         'rollout': ['rollout_main'],

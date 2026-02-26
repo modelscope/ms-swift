@@ -7,16 +7,15 @@ to be reused by GKD and other trainers that need online generation.
 """
 import base64
 import inspect
+import json
 import os
+import torch
 import uuid
 from contextlib import contextmanager, nullcontext
 from copy import copy
-from typing import Any, Dict, List, Tuple, Union
-
-import json
-import torch
 from dacite import from_dict
 from megatron.core import mpu
+from typing import Any, Dict, List, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
@@ -230,6 +229,7 @@ class MegatronRolloutMixin:
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode."""
         from vllm.distributed import parallel_state as vllm_ps
+
         from swift.infer_engine import GRPOVllmEngine
 
         args = self.args

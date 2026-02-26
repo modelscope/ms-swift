@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from contextlib import contextmanager
-from typing import Optional, Tuple
-
 import megatron.core
+import re
 import torch
 import torch.distributed as dist
+from contextlib import contextmanager
 from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
@@ -17,6 +16,7 @@ from packaging import version
 from peft.tuners.lora import Linear as LoraLinear
 from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
+from typing import Optional, Tuple
 
 from swift.tuners import LoraConfig, Swift
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
@@ -92,7 +92,7 @@ def get_multimodal_target_regex(
         target_modules = [tm for tm in target_modules if tm]
         target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
         rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
-        res.append(rf'{rejected_pattern}{module}(?=\.){target_pattern}')
+        res.append(rf'{rejected_pattern}{re.escape(module)}(?=\.){target_pattern}')
 
     return rf'^({"|".join(res)})$'
 

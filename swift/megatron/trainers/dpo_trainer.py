@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from collections import namedtuple
 from functools import partial
-
-import torch
 from megatron.core import mpu
 from torch.distributed.nn import all_reduce
 
@@ -32,7 +31,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
     def __init__(self, args, template):
         super().__init__(args, template)
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
-        self.ref_models = []
 
     def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params):
         ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
@@ -74,7 +72,6 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
             metric['nll_loss'] = nll_loss.detach()
         metric = self._all_reduce_metric(metric)
         # fix megatron-lm bug
-        # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
         loss = loss / mpu.get_context_parallel_world_size()
         return loss, metric
 

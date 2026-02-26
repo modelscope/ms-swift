@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import datetime as dt
 import os
+import torch.distributed as dist
 from dataclasses import dataclass
 from typing import Literal, Optional
-
-import torch.distributed as dist
 
 from swift.rlhf_trainers import VllmArguments
 from swift.utils import get_logger, init_process_group, is_dist, to_abspath

@@ -79,9 +79,9 @@ class EvalArguments(DeployArguments):
 
     @staticmethod
     def list_eval_dataset(eval_backend=None):
-        from evalscope.constants import EvalBackend
         from evalscope.api.registry import BENCHMARK_REGISTRY
         from evalscope.backend.opencompass import OpenCompassBackendManager
+        from evalscope.constants import EvalBackend
         res = {
             EvalBackend.NATIVE: list(sorted(BENCHMARK_REGISTRY.keys())),
             EvalBackend.OPEN_COMPASS: sorted(OpenCompassBackendManager.list_datasets()),

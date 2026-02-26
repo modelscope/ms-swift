@@ -1,9 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import warnings
-from typing import Dict, List, Optional, Tuple, Union
-
 import torch
 import torch.nn as nn
+import warnings
 from accelerate.utils import gather_object
 from peft import PeftModel
 from transformers import PreTrainedModel
@@ -11,6 +9,7 @@ from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from trl.trainer.utils import RunningMoments
+from typing import Dict, List, Optional, Tuple, Union
 
 from swift.trainers import DataLoaderMixin, SwiftMixin
 from swift.utils import get_logger, to_device

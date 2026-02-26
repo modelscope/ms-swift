@@ -25,8 +25,7 @@
 - masked_softmax_fusion: Defaults to True. Used to enable the fusion of scaling, masking, and softmax for query_key_value.
 - bias_dropout_fusion: Defaults to True. Used to enable the fusion of bias and dropout.
 - bias_activation_fusion: If True, fuses bias addition and activation function when possible. Defaults to True.
-- apply_rope_fusion: Defaults to True. Used to enable rope fusion.
-  - **When using position encodings that don't support rope_fusion such as mrope, this parameter will be automatically set to False**.
+- apply_rope_fusion: Defaults to False. Used to enable RoPE fusion. This parameter is passed through from megatron-core. Note: RoPE fusion is not supported in all cases, for example: MLA, mrope, etc. are not supported.
 - gradient_accumulation_fusion: Defaults to True. Used to enable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss computation fusion. Defaults to True.
 - cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
@@ -45,7 +44,7 @@
 - exp_avg_dtype: The dtype of exp_avg (i.e., the first moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
 - exp_avg_sq_dtype: The dtype of exp_avg_sq (i.e., the second moment in the Adam optimizer) when use_precision_aware_optimizer is enabled. This dtype is used for storing the optimizer state in memory during training, but does not affect the precision in kernel computation. Options are 'fp32', 'fp16', 'bf16', and 'fp8'. Default is 'fp32'.
 - manual_gc: Disables the default garbage collector and manually triggers garbage collection. Default is False.
-- manual_gc_interval: The interval for manually triggering garbage collection. Defaults to 0.
+- manual_gc_steps: Interval (in steps) to manually trigger garbage collection. Defaults to 0.
 - manual_gc_eval: When using manual garbage collection (`--manual_gc true`), disables garbage collection at the beginning and end of each evaluation run. Defaults to True.
 
 **Data Parameters**:
@@ -98,7 +97,7 @@
 
 - 🔥output_dir: Output directory for checkpoints, default is None. During training, if this parameter is not set, it defaults to `f'megatron_output/{model_suffix}'`, e.g., `'megatron_output/Qwen2.5-7B-Instruct'`.
   - Note: **When training on multiple machines, ensure that the save paths on each node point to the same location**. Otherwise, you will need to manually consolidate these weights after training.
-- 🔥save_interval: Checkpoint saving interval (steps), default is 500.
+- 🔥save_steps: Interval (in steps) for saving checkpoints. Defaults to 500.
   - Note: Weights will always be saved at the end of training.
 - 🔥no_save_optim: Do not save optimizer, default is False. When performing full-parameter training, this can significantly reduce storage time.
 - 🔥no_save_rng: Do not save RNG, default is False.
@@ -114,6 +113,9 @@
 - perform_initialization: Initialize the weights. Defaults to False.
 - use_cpu_initialization: Initialize weights on the CPU. Defaults to `False`. This option is used during weight conversion between Hugging Face (HF) and MCore formats. The value typically does not need to be modified.
 - 🔥async_save: Use asynchronous checkpoint saving. Currently only applicable to the `torch_dist` distributed checkpoint format. Defaults to False.
+- 🔥save_total_limit: Maximum number of checkpoints to save. Expired checkpoints will be deleted. Default is None, which saves all checkpoints. This parameter must be set to a number `>=2`. If set to 2, it will save the best checkpoint and the last checkpoint. This parameter is currently not compatible with `async_save`.
+- metric_for_best_model: Default is None. For GRPO, defaults to 'reward'; for other cases, defaults to 'loss'.
+- greater_is_better: Default is None. When `metric_for_best_model` contains 'loss', it is set to False; otherwise, it is set to True.
 - use_persistent_ckpt_worker: Enable a persistent checkpoint worker process for async save. Defaults to False.
 - dist_ckpt_save_pre_mcore_014: Save in the format prior to Megatron-Core 0.14. Defaults to False.
 - dist_ckpt_optim_fully_reshardable: Make optimizer distributed checkpoint fully reshardable (TP/PP/EP/DP) as opposed to plain DP reshardability. Defaults to False.
@@ -150,7 +152,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 **Logging Parameters**:
 - report_to: Enabled logging backends. Defaults to `['tensorboard']`. Options are 'tensorboard', 'wandb', and 'swanlab'. Login for 'wandb' and 'swanlab' can use `WANDB_API_KEY` and `SWANLAB_API_KEY` environment variables.
-- 🔥log_interval: Time interval for logging (unit: iters). Defaults to 5.
+- 🔥logging_steps: Interval (in steps) for logging. Defaults to 5.
 - tensorboard_dir: Directory where tensorboard logs are written. Defaults to None, which means logs are stored in the `f'{save}/runs'` directory.
 - tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
 - wandb_project: Wandb project name. Defaults to 'megatron-swift'.
@@ -162,7 +164,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 **Evaluation Parameters**:
 
 - 🔥eval_iters: Number of iterations for evaluation. Defaults to `-1`, in which case an appropriate value is automatically determined based on the size of the validation dataset. **If the validation dataset size is smaller than the global batch size, evaluation will not be performed.** When using streaming datasets, this value must be set manually.
-- 🔥eval_interval: The evaluation interval (steps), i.e., how many steps between each evaluation. The default is None, which means it will be set to save_interval.
+- 🔥eval_steps: Interval (in steps) for evaluation, i.e., how many steps to train before performing evaluation. Defaults to None, which is set to `save_steps`.
 
 
 **FP8 Parameters**:
@@ -267,7 +269,7 @@ LoRA Training:
 - 🔥task_type: Defaults to 'causal_lm'. Options are 'causal_lm', 'seq_cls', 'embedding', and 'generative_reranker'.
 - num_labels: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Represents the number of labels. Defaults to None.
 - problem_type: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Options are 'regression', 'single_label_classification', 'multi_label_classification'. Defaults to None. If the model is reward_model or num_labels is 1, this parameter is 'regression'; otherwise, it is 'single_label_classification'.
-- 🔥save_strategy: Save strategy. Options are 'steps' and 'epoch'. Defaults to 'steps'. When set to 'epoch', both 'save_interval' and 'eval_interval' are forced to be set to 1, meaning weights are saved every epoch.
+- 🔥save_strategy: Saving strategy, options are 'steps' and 'epoch'. Defaults to 'steps'. When set to 'epoch', `save_steps` and `eval_steps` are automatically calculated to save at each epoch, so any user-provided values for these arguments are ignored.
 - callbacks: Custom trainer callbacks. Defaults to `[]`.
 
 
@@ -276,6 +278,7 @@ LoRA Training:
 Megatron training parameters are inherited from Megatron parameters and basic parameters (**sharing dataset, template, etc. with ms-swift, and also supporting model-specific parameters from ms-swift**). For details on basic parameters, please refer to [here](../Instruction/Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
 
 - add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
+- 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Use the `padding_free` method to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures that complete sequences are not split), achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attention_backend flash`, it ensures that different sequences within packed samples remain independent and invisible to each other (except for Qwen3-Next, which contains linear-attention). This parameter defaults to `False`. All training tasks in Megatron-SWIFT support this parameter. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.

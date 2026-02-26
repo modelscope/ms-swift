@@ -67,7 +67,7 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-7B-Instruct \
-    --save_interval 100 \
+    --save_steps 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
     --dataloader_num_workers 4 \
@@ -175,7 +175,7 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-7B-Instruct \
-    --save_interval 100 \
+    --save_steps 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
     --dataloader_num_workers 4 \

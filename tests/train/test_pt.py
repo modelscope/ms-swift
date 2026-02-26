@@ -11,7 +11,7 @@ kwargs = {
 
 
 def test_llm():
-    from swift import pretrain_main, PretrainArguments, infer_main, InferArguments
+    from swift import InferArguments, PretrainArguments, infer_main, pretrain_main
     result = pretrain_main(
         PretrainArguments(
             model='Qwen/Qwen2-7B-Instruct', dataset=['swift/sharegpt:all#100'], split_dataset_ratio=0.01, **kwargs))
@@ -20,7 +20,7 @@ def test_llm():
 
 
 def test_mllm():
-    from swift import pretrain_main, PretrainArguments, infer_main, InferArguments
+    from swift import InferArguments, PretrainArguments, infer_main, pretrain_main
     result = pretrain_main(
         PretrainArguments(
             model='Qwen/Qwen2-VL-7B-Instruct',

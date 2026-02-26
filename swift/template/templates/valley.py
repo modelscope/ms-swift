@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import io
-from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional
-
 import torch
+from dataclasses import dataclass
 from PIL import Image
+from typing import Any, Dict, List, Literal, Optional
 
 from ..base import Template
 from ..constant import MLLMTemplateType

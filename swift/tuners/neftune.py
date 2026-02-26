@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass, field
-
 import torch
+from dataclasses import dataclass, field
 from torch import nn
 
 from swift.utils import get_logger

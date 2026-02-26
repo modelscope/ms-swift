@@ -39,7 +39,7 @@ megatron rlhf \
     --offload_optimizer true \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer \
-    --log_interval 1 \
+    --logging_steps 1 \
     --recompute_granularity selective \
     --finetune \
     --dataloader_num_workers 8 \

@@ -4,7 +4,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_sft():
-    from swift.megatron import megatron_sft_main, MegatronSftArguments
+    from swift.megatron import MegatronSftArguments, megatron_sft_main
     megatron_sft_main(
         MegatronSftArguments(
             mcore_model='Qwen2.5-3B-Instruct-mcore',
@@ -21,7 +21,7 @@ def test_sft():
             train_iters=100,
             modules_to_save=['word_embeddings', 'output_layer'],
             eval_iters=5,
-            save_interval=5,
+            save_steps=5,
             no_save_optim=True,
             no_save_rng=True,
             sequence_parallel=True,
@@ -29,7 +29,7 @@ def test_sft():
 
 
 def test_moe():
-    from swift.megatron import megatron_sft_main, MegatronSftArguments
+    from swift.megatron import MegatronSftArguments, megatron_sft_main
     megatron_sft_main(
         MegatronSftArguments(
             mcore_model='Qwen1.5-MoE-A2.7B-mcore',
@@ -48,7 +48,7 @@ def test_moe():
             # freeze_parameters_ratio=0.5,
             train_iters=100,
             eval_iters=5,
-            save_interval=5,
+            save_steps=5,
             no_save_optim=True,
             no_save_rng=True,
             sequence_parallel=True,
@@ -56,7 +56,7 @@ def test_moe():
 
 
 def test_convert():
-    from swift import export_main, ExportArguments
+    from swift import ExportArguments, export_main
     export_main(
         ExportArguments(
             mcore_adapter='megatron_output/vx-xxx/checkpoint-xxx',

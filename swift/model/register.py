@@ -1,19 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 import os
-from contextlib import contextmanager, nullcontext
-from functools import partial
-from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
 import torch
 import transformers
+from contextlib import contextmanager, nullcontext
+from functools import partial
 from packaging import version
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
+from types import MethodType
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.utils import (HfConfigFactory, Processor, get_generative_reranker_logits, get_logger, is_unsloth_available,
                          patch_getattr)
@@ -55,7 +54,7 @@ def load_by_unsloth(args):
 
     @contextmanager
     def _patch_distributed_function():
-        from unsloth_zoo import utils, compiler
+        from unsloth_zoo import compiler, utils
 
         def distributed_function(n=1, function=None, *args, **kwargs):
             return function(*args, **kwargs)
@@ -102,8 +101,8 @@ def _patch_awq_compat(model_info):
 
     try:
         # compat transformers>=4.50 (autoawq)
-        from transformers.quantizers.quantizer_awq import AwqQuantizer
         from transformers.integrations import get_keys_to_not_convert
+        from transformers.quantizers.quantizer_awq import AwqQuantizer
         _process_model_before_weight_loading = AwqQuantizer._process_model_before_weight_loading
 
         def _new_process_model_before_weight_loading(self, model, *args, **kwargs):
@@ -184,6 +183,8 @@ class ModelLoader(BaseModelLoader):
         self.attn_impl = attn_impl
         self.attn_impl_keys = None
         experts_impl = experts_impl or kwargs.get('experts_implementation')
+        if experts_impl is not None and not transformers_5:
+            raise ValueError('experts_impl is only supported in "transformers>=5.0".')
         self.experts_impl = experts_impl
         self.rope_scaling = rope_scaling
         self.max_model_len = max_model_len
@@ -424,6 +425,12 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'olmoe':
                 from transformers.models.olmoe.modeling_olmoe import OlmoeSparseMoeBlock
                 z3_leaf_modules = [OlmoeSparseMoeBlock]
+            elif hf_model_type == 'qwen3_5_moe':
+                from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import Qwen3_5MoeSparseMoeBlock
+                z3_leaf_modules = [Qwen3_5MoeSparseMoeBlock]
+            elif hf_model_type == 'glm_moe_dsa':
+                from transformers.models.glm_moe_dsa.modeling_glm_moe_dsa import GlmMoeDsaMoE
+                z3_leaf_modules = [GlmMoeDsaMoE]
 
         if z3_leaf_modules:
             from deepspeed.utils import set_z3_leaf_modules

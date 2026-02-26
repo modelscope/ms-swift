@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from copy import deepcopy
-from typing import Optional
-
 import megatron.core
 import torch
+from copy import deepcopy
 from megatron.core.transformer.identity_op import IdentityOp
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 from packaging import version
+from typing import Optional
 
 from swift.model import ModelType
 from ..constant import MegatronModelType

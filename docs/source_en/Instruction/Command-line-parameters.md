@@ -39,7 +39,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - attn_impl: Attention implementation. Options include `'sdpa'`, `'eager'`, `'flash_attn'`, `'flash_attention_2'`, `'flash_attention_3'`, etc. Default is `None`, reading from config.json.
   - Note: Not all attention implementations may be supported, depending on the underlying Transformers library's support for the specific model.
   - If set to `'flash_attn'` (for backward compatibility), `'flash_attention_2'` will be used.
-- experts_impl: Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'. Defaults to None. This feature requires "transformers>=5.0.0".
+- 🔥experts_impl: Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'. Defaults to None. This feature requires "transformers>=5.0.0".
 - new_special_tokens: List of additional special tokens to be added. Default is `[]`. Example usage can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens).
   - Note: You can also pass a `.txt` file path where each line contains one special token.
 - num_labels: Required for classification models (`--task_type seq_cls`). Indicates the number of labels. Default is `None`.
@@ -120,7 +120,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - response_prefix: The prefix string for responses, this parameter only takes effect during inference. Default is None, determined by the enable_thinking parameter and template type.
 - enable_thinking: This parameter takes effect during inference, indicating whether to enable thinking mode. Default is None, the default value is determined by the template (model) type (True for thinking/hybrid thinking templates, False for non-thinking templates). If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking model adds the prefix `'<think>\n\n</think>\n\n'`, while Qwen3-8B-Thinking does not add a prefix. If enable_thinking is True, a thinking prefix is added, for example `'<think>\n'`. Note: The priority of this parameter is lower than the response_prefix parameter.
   - Note: For thinking models (thinking/hybrid thinking) or when enable_thinking is explicitly enabled, we will remove historical thinking content during both inference and training (the thinking content of the last round is retained, i.e., the content after the last user message). If the basic strategy of loss_scale during training is not last_round, for example 'default', then historical thinking content will not be removed.
-- add_non_thinking_prefix: This parameter only takes effect during training, indicating whether to add a non-thinking prefix to data samples whose assistant part does not start with the thinking marker `'<think>'` (typically hybrid thinking models contain a non-thinking prefix). This feature allows swift's built-in datasets to train hybrid thinking models. Default value is True. For example: the non-thinking prefix for the Qwen3-8B hybrid thinking model is `'<think>\n\n</think>\n\n'`, while the non-thinking prefix for Qwen3-8B-Thinking/Instruct is `''`. Note: During training, if the basic strategy of loss_scale is last_round, this modification is only applied to the last round; otherwise, for example 'default' or 'all', this modification is applied to every round of data. If set to False, no non-thinking prefix is added to data samples.
+- add_non_thinking_prefix: This parameter only takes effect during training, indicating whether to add a non-thinking prefix to data samples whose assistant part **does not start with the thinking marker `'<think>'`** (typically hybrid thinking models contain a non-thinking prefix). This feature allows swift's built-in datasets to train hybrid thinking models. Default value is True. For example: the non-thinking prefix for the Qwen3-8B hybrid thinking model is `'<think>\n\n</think>\n\n'`, while the non-thinking prefix for Qwen3-8B-Thinking/Instruct is `''`. Note: During training, if the basic strategy of loss_scale is last_round, this modification is only applied to the last round; otherwise, for example 'default' or 'all', this modification is applied to every round of data. If set to False, no non-thinking prefix is added to data samples.
 
 
 ### Generation Arguments
@@ -236,7 +236,7 @@ Other important parameters:
   - If neither `val_dataset` nor `eval_dataset` is used and `split_dataset_ratio=0`, defaults to `'no'`.
 - 🔥eval_steps: Default is `None`. If evaluation dataset exists, follows `save_steps`.
 - eval_on_start: Whether to perform an evaluation step before training to ensure the validation steps work correctly. Defaults to False.
-- 🔥save_total_limit: Maximum number of checkpoints to keep. Older checkpoints are deleted. Default is `None` (keep all).
+- 🔥save_total_limit: Maximum number of checkpoints to save. Expired checkpoints will be deleted. Default is None, which saves all checkpoints. If set to 2, it will save the best checkpoint and the last checkpoint.
 - max_steps: Maximum number of training steps. Must be set when using streaming datasets. Default is -1.
 - 🔥warmup_ratio: Default is 0.
 - save_on_each_node: Save weights on every node. Default is `False`. Relevant in multi-node training.

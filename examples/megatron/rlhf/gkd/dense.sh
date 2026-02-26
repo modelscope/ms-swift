@@ -19,7 +19,7 @@ megatron rlhf \
     --global_batch_size 16 \
     --num_train_epochs 1 \
     --lr 5e-6 \
-    --log_interval 1 \
+    --logging_steps 1 \
     --max_length 8192 \
     --max_completion_length 8192 \
     --attention_backend flash \

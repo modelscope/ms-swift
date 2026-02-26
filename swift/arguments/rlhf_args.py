@@ -447,10 +447,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
-        from packaging import version
         import importlib.metadata
-
         import trl
+        from packaging import version
         trl_version = version.parse(trl.__version__)
         assert trl_version >= version.parse('0.20'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')

@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
-
 import json
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 from .hermes import HermesAgentTemplate
 

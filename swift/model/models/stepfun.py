@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 from functools import wraps
-
 from transformers import AutoModel, AutoProcessor, PretrainedConfig, PreTrainedModel
 
 from swift.template import TemplateType

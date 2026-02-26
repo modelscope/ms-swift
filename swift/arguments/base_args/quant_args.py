@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from dataclasses import dataclass
 from typing import Literal, Optional
-
-import torch
 
 from swift.model import get_model_processor
 from swift.utils import HfConfigFactory, get_modules_to_not_convert

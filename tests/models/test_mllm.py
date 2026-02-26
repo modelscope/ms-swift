@@ -4,7 +4,8 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def test_cogvlm():
-    from swift import infer_main, InferArguments, sft_main, SftArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
+
     # infer_main(InferArguments(model='ZhipuAI/cogvlm2-video-llama3-chat'))
     sft_main(
         SftArguments(

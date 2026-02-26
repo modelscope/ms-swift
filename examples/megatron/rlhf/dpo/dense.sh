@@ -22,8 +22,8 @@ megatron rlhf \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --output_dir megatron_output/Qwen2.5-7B-Instruct \
-    --eval_interval 100 \
-    --save_interval 100 \
+    --eval_steps 100 \
+    --save_steps 100 \
     --max_length 8192 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

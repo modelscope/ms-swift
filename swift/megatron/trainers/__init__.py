@@ -4,16 +4,16 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
+    from .base import BaseMegatronTrainer
     from .dpo_trainer import MegatronDPOTrainer
+    from .embedding_trainer import MegatronEmbeddingTrainer
     from .gkd_trainer import MegatronGKDTrainer
     from .grpo_trainer import MegatronGRPOTrainer
     from .kto_trainer import MegatronKTOTrainer
+    from .reranker_trainer import MegatronRerankerTrainer
     from .reward_trainer import MegatronRewardTrainer
     from .rollout_mixin import MegatronRolloutMixin
-    from .embedding_trainer import MegatronEmbeddingTrainer
-    from .reranker_trainer import MegatronRerankerTrainer
     from .trainer import MegatronTrainer
-    from .base import BaseMegatronTrainer
 else:
     _import_structure = {
         'dpo_trainer': ['MegatronDPOTrainer'],

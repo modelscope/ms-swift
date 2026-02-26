@@ -19,8 +19,8 @@ megatron pt \
     --lr_warmup_iters 300 \
     --min_lr 1e-6 \
     --output_dir megatron_output/Qwen2.5-7B \
-    --eval_interval 500 \
-    --save_interval 500 \
+    --eval_steps 500 \
+    --save_steps 500 \
     --max_length 8192 \
     --dataloader_num_workers 4 \
     --dataset_num_proc 8 \

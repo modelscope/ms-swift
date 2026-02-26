@@ -31,8 +31,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
     --output_dir megatron_output/Qwen3-30B-A3B \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 2048 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \

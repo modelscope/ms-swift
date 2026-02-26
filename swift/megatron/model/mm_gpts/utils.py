@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-
-import torch
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from transformers import PreTrainedModel
 from transformers.utils import ContextManagers

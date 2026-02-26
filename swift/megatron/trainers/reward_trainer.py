@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from functools import partial
-
 import torch
+from functools import partial
 from torch import nn
 
 from swift.utils import get_logger

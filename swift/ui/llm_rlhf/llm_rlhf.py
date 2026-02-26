@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import gradio as gr
 from functools import partial
 from typing import Dict, Type
-
-import gradio as gr
 
 from swift.arguments import get_supported_tuners
 from swift.utils import get_device_count, get_logger

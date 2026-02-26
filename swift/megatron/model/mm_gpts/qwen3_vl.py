@@ -1,8 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from contextlib import nullcontext
-from typing import List, Optional, Union
-
 import torch
+from contextlib import nullcontext
 from megatron.core import parallel_state, tensor_parallel
 from megatron.core.enums import Fp8Recipe
 from megatron.core.fp8_utils import get_fp8_context
@@ -11,6 +9,7 @@ from megatron.core.models.gpt import gpt_model
 from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.utils import WrappedTensor, deprecate_inference_params, make_viewless_tensor
 from PIL import Image
+from typing import List, Optional, Union
 
 from swift.megatron.utils import split_cp_inputs
 from swift.model import ModelType
@@ -164,10 +163,18 @@ class Qwen3Omni_Vit(HuggingFaceModule):
         if input_features is None:
             input_features = input_ids.new_zeros([1, 128, 128], dtype=self.thinker.audio_tower.dtype)
             feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-            audio_embeds = self.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_res = self.thinker.get_audio_features(input_features, feature_attention_mask)
+            if hasattr(audio_res, 'last_hidden_state'):
+                audio_embeds = audio_res.last_hidden_state
+            else:
+                audio_embeds = audio_res
             inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
-            audio_embeds = self.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_res = self.thinker.get_audio_features(input_features, feature_attention_mask)
+            if hasattr(audio_res, 'last_hidden_state'):
+                audio_embeds = audio_res.last_hidden_state
+            else:
+                audio_embeds = audio_res
             audio_mask = (input_ids == hf_config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)

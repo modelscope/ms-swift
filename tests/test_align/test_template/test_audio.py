@@ -92,7 +92,7 @@ def test_step_audio2_mini():
 
 
 if __name__ == '__main__':
-    from swift.infer_engine import TransformersEngine, RequestConfig
+    from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen_audio()

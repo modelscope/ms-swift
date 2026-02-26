@@ -1,16 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Copyright 2023-present the HuggingFace Inc. team.
-import os.path
-from dataclasses import asdict, dataclass, field
-from functools import partial, reduce
-from types import MethodType
-from typing import Dict, Optional
-
 import json
+import os.path
 import peft
 import torch
 import torch.nn
 import transformers
+from dataclasses import asdict, dataclass, field
+from functools import partial, reduce
 from modelscope import snapshot_download
 from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
                   PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
@@ -22,6 +19,8 @@ from peft.tuners import lora
 from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
 from transformers import Trainer as HfTrainer
+from types import MethodType
+from typing import Dict, Optional
 
 from swift.utils import get_logger
 

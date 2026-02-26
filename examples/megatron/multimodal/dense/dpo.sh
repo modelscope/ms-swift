@@ -29,7 +29,7 @@ megatron rlhf \
     --min_lr 1e-6 \
     --num_train_epochs 1 \
     --output_dir megatron_output/Qwen2.5-VL-7B-Instruct \
-    --save_interval 200 \
+    --save_steps 200 \
     --max_length 8192 \
     --dataloader_num_workers 4 \
     --no_save_optim true \

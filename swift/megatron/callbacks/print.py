@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import time
-
 import torch
 from tqdm import tqdm
 

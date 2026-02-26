@@ -53,7 +53,7 @@ megatron rlhf \
     --offload_model true \
     --offload_bridge false \
     --offload_optimizer true \
-    --log_interval 1 \
+    --logging_steps 1 \
     --recompute_granularity selective \
     --finetune \
     --dataloader_num_workers 8 \
@@ -67,5 +67,5 @@ megatron rlhf \
     --log_completions true \
     --report_to wandb \
     --train_iters 100 \
-    --eval_interval 1000 \
-    --save_interval 1000
+    --eval_steps 1000 \
+    --save_steps 1000

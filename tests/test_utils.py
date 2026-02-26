@@ -2,8 +2,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import copy
+import numpy as np
 import os
 import pickle
+import requests
 import shutil
 import socket
 import subprocess
@@ -13,11 +15,8 @@ import tempfile
 import unittest
 from collections import OrderedDict
 from collections.abc import Mapping
-from os.path import expanduser
-
-import numpy as np
-import requests
 from modelscope.hub.constants import DEFAULT_CREDENTIALS_PATH
+from os.path import expanduser
 
 TEST_LEVEL = 2
 TEST_LEVEL_STR = 'TEST_LEVEL'

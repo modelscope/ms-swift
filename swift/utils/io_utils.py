@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
+import torch.distributed as dist
+from accelerate.utils import gather_object
 from queue import Queue
 from threading import Thread
 from typing import Any, Dict, List, Literal, Union
-
-import json
-import torch.distributed as dist
-from accelerate.utils import gather_object
 
 from .env import is_last_rank, is_master
 from .logger import get_logger
@@ -96,8 +95,13 @@ class JsonlWriter:
             logger.error(f'Cannot write content to jsonl file. text: {text}')
 
 
-def append_to_jsonl(fpath: str, obj: Union[Dict, List[Dict]], *, encoding: str = 'utf-8', strict: bool = True) -> None:
-    jsonl_writer = JsonlWriter(fpath, encoding=encoding, strict=strict)
+def append_to_jsonl(fpath: str,
+                    obj: Union[Dict, List[Dict]],
+                    *,
+                    encoding: str = 'utf-8',
+                    strict: bool = True,
+                    write_on_rank: Literal['master', 'last'] = 'master') -> None:
+    jsonl_writer = JsonlWriter(fpath, encoding=encoding, strict=strict, write_on_rank=write_on_rank)
     jsonl_writer.append(obj)
 
 

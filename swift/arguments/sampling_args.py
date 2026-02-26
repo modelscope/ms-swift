@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import dataclasses
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List, Literal, Optional
-
-import json
 
 from swift.utils import get_logger
 from .base_args import BaseArguments
