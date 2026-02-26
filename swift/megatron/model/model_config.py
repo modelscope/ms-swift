@@ -212,7 +212,6 @@ class MegatronModelConfig(TransformerConfig):
             MegatronModelConfig._mindspeed_defaults_cache = defaults
 
         for name, value in MegatronModelConfig._mindspeed_defaults_cache.items():
-            print(f">>>>name={name}, value={value}")
             if not hasattr(self, name):
                 setattr(self, name, value)
             elif hasattr(self, name) and getattr(self, name) is None and value is not None:
