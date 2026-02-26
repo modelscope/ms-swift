@@ -40,11 +40,12 @@ class MegatronSft(SwiftSft):
         super(SwiftSft, self).__init__(args)
         args = self.args
         if repatch is not None:
+            megatron_args = asdict(self.args)
             if args.attention_backend != 'local':
                 # MindSpeed requires passing `use_flash_attn` to Megatron
                 # to enable flash attention on Ascend NPU.
                 args.use_flash_attn = True
-            megatron_args = asdict(self.args)
+                megatron_args['use_flash_attn'] = True
             repatch(megatron_args)
         template_cls = args.template_meta.template_cls
         if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
