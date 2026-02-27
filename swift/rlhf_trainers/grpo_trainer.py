@@ -1843,11 +1843,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
         # compute loss and metrics using liger grpo loss
 
-        kwargs = {}
         vllm_is_ratio = self._compute_rollout_is_ratio_for_liger(inputs, completion_mask)
-        if vllm_is_ratio is not None:
-            kwargs['vllm_is_ratio'] = vllm_is_ratio
-
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
@@ -1857,7 +1853,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             bias=unwrapped_model.lm_head.bias,
             old_per_token_logps=inputs.get('old_per_token_logps'),
             ref_per_token_logps=inputs.get('ref_per_token_logps'),
-            **kwargs,
+            vllm_is_ratio=vllm_is_ratio,
         )
 
         mean_kl = metrics[0] if self.beta != 0.0 else None
