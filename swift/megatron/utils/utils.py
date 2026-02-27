@@ -1,4 +1,5 @@
 # Copyright (c) Alibaba, Inc. and its affiliates.
+import re
 from contextlib import contextmanager
 from copy import deepcopy
 from typing import Optional, Tuple
@@ -93,7 +94,7 @@ def get_multimodal_target_regex(
         target_modules = [tm for tm in target_modules if tm]
         target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
         rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
-        res.append(rf'{rejected_pattern}{module}(?=\.){target_pattern}')
+        res.append(rf'{rejected_pattern}{re.escape(module)}(?=\.){target_pattern}')
 
     return rf'^({"|".join(res)})$'
 
