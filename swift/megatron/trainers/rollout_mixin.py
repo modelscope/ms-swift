@@ -245,6 +245,9 @@ class MegatronRolloutMixin:
         vllm_engine_kwargs = args.vllm_engine_kwargs or {}
         load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
 
+        if self.args.router_replay_mode == 'R3':
+            vllm_engine_kwargs['enable_return_routed_experts'] = True
+
         engine = GRPOVllmEngine(
             args.model_info.model_dir,
             torch_dtype=args.torch_dtype,

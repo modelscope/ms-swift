@@ -32,7 +32,8 @@ from swift.megatron.utils import (copy_original_module_weight, disable_forward_p
                                   initialize_tp_communicators, load_mcore_checkpoint,
                                   logical_and_across_model_parallel_group, maybe_finalize_async_save,
                                   prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
-                                  save_mcore_checkpoint, should_disable_forward_pre_hook, wrap_model)
+                                  save_mcore_checkpoint, should_disable_forward_pre_hook, wrap_model,
+                                  apply_router_replay_patch, RouterReplay, RouterReplayAction)
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
@@ -59,6 +60,12 @@ class BaseMegatronTrainer(ABC):
         self.config = self.unwrapped_models[0].config
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
+
+        self.enable_routing_replay = args.router_replay_mode != "disabled"
+        self.args.extra_args['enable_routing_replay'] = self.enable_routing_replay
+        # patch routing_replay
+        if self.enable_routing_replay:
+            apply_router_replay_patch()
 
         self.state = TrainerState(max_steps=args.train_iters)
         initialize_embedding = args.new_special_tokens or args.task_type == 'seq_cls'
@@ -765,6 +772,10 @@ class BaseMegatronTrainer(ABC):
         self.optimizer.zero_grad()
         # TODO: refactor _replace_data_iterator
         data_iterator = self._replace_data_iterator(train_data_iterator)
+
+        if self.enable_routing_replay:
+            RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
+
         metrics = forward_backward_func(
             forward_step_func=self.forward_step,
             data_iterator=data_iterator,
@@ -780,6 +791,10 @@ class BaseMegatronTrainer(ABC):
         grad_norm = reduce_max_stat_across_model_parallel_group(grad_norm)
         if update_successful:
             self.opt_param_scheduler.step(increment=args.global_batch_size)
+
+        if self.enable_routing_replay:
+            RouterReplay.clear_global_router_replay_action()
+            RouterReplay.clear_global_indices()
 
         return metrics, grad_norm, update_successful
 
