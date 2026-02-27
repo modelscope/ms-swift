@@ -1157,23 +1157,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                                                  rollout_per_token_logps,
                                                                                  completion_mask)
 
-            # Apply importance sampling correction if mode is enabled
-            if self.rollout_importance_sampling_mode is not None:
-                # Compute the log ratio between policy model and rollout model
-                # log π_θ(y|x) - log π_rollout(y|x)
-                rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
-
-                # Apply importance sampling correction based on mode
-                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
-
-                # Compute additional IS-specific metrics (ESS, clipped_frac, is_weight_mean)
+            rollout_log_ratio, rollout_is_weights = self._get_rollout_is_correction(old_per_token_logps,
+                                                                                    rollout_per_token_logps,
+                                                                                    completion_mask)
+            if rollout_log_ratio is not None:
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
                 rollout_correction_metrics.update(is_metrics)
 
-                # Store IS weights for loss computation
-                inputs['rollout_is_weights'] = rollout_is_weights
-            else:
-                inputs['rollout_is_weights'] = None
+            inputs['rollout_is_weights'] = rollout_is_weights
         else:
             inputs['rollout_is_weights'] = None
 
@@ -1814,24 +1805,21 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
         return last_hidden_state
 
-    def _compute_rollout_is_ratio_for_liger(self, inputs, completion_mask):
-        """Compute rollout importance sampling ratio for liger loss path.
+    def _get_rollout_is_correction(self, old_per_token_logps, rollout_per_token_logps, completion_mask):
+        """Compute rollout importance sampling log-ratio and IS weights.
 
-        Returns the IS ratio tensor or None if not applicable.
+        Returns:
+            (rollout_log_ratio, rollout_is_weights) if rollout IS correction is applicable,
+            (None, None) otherwise.
         """
         if self.rollout_importance_sampling_mode is None or self.disable_rollout_importance_sampling:
-            return None
-        rollout_per_token_logps = inputs.get('rollout_per_token_logps')
-        old_per_token_logps = inputs.get('old_per_token_logps')
-        if rollout_per_token_logps is None or old_per_token_logps is None:
-            return None
+            return None, None
 
         rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
         rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
-        return rollout_is_weights
+        return rollout_log_ratio, rollout_is_weights
 
     def compute_liger_loss(self, unwrapped_model, inputs):
-        # Compute the per-token log probabilities for the model
         assert not self.template.padding_free
         assert self.advantage_estimator == 'grpo'
         input_ids = inputs['input_ids']
@@ -1839,11 +1827,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = inputs['completion_mask']
 
-        # get the last hidden state of the model
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
-        # compute loss and metrics using liger grpo loss
 
-        vllm_is_ratio = self._compute_rollout_is_ratio_for_liger(inputs, completion_mask)
+        old_per_token_logps = inputs.get('old_per_token_logps')
+        local_has = inputs.get('rollout_per_token_logps') is not None
+        vllm_is_ratio = None
+        if all(gather_object([local_has])):
+            rollout_per_token_logps = inputs['rollout_per_token_logps']
+            _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, rollout_per_token_logps,
+                                                               completion_mask)
+
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
@@ -1851,7 +1844,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             attention_mask=completion_mask,
             advantages=inputs['advantages'],
             bias=unwrapped_model.lm_head.bias,
-            old_per_token_logps=inputs.get('old_per_token_logps'),
+            old_per_token_logps=old_per_token_logps,
             ref_per_token_logps=inputs.get('ref_per_token_logps'),
             vllm_is_ratio=vllm_is_ratio,
         )
