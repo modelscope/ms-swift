@@ -472,11 +472,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support log entropy yet.')
             if self.off_policy_sequence_mask_delta is not None:
                 raise ValueError('Liger loss does not support off-policy sequence masking yet.')
-            if self.importance_sampling_level != 'token':
-                if self.importance_sampling_level == 'sequence_token':
-                    self.importance_sampling_level = 'sequence'
-                    logger.info('Remapping `importance_sampling_level` from `sequence_token` to `sequence` for '
-                                'liger-kernel compatibility. The two methods are computationally equivalent.')
+            assert self.importance_sampling_level in [
+                'token', 'sequence'
+            ], ('Liger loss currently only support token-level and sequence-level importance sampling. '
+                'Please set `importance_sampling_level` to `token` or `sequence`.')
             if self.advantage_estimator != 'grpo':
                 raise ValueError('Liger loss currently only support grpo advantage estimator')
 

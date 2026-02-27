@@ -2110,6 +2110,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
             self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
                 beta=self.beta,
+                compiled=False,
                 epsilon_low=self.epsilon_low,
                 epsilon_high=self.epsilon_high,
                 temperature=self.temperature,
