@@ -37,7 +37,7 @@ from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
 from trl.trainer.callbacks import SyncRefModelCallback
-from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin, nanstd
+from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin
 from trl.trainer.utils import selective_log_softmax
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -53,7 +53,7 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
-                    load_pil_img, make_chord_sft_dataset, pad_logps_back_to_batch, patch_save_last_checkpoint,
+                    load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
                     profiling_context, profiling_decorator, replace_assistant_response_with_ids)
 
 try:
@@ -545,20 +545,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     else:  # edge case: num_generations_eval=1
                         rewards_std = torch.zeros_like(rewards)
                 elif self.scale_rewards == 'gdpo':
-                    num_reward_funcs = rewards_per_func.shape[1]
-                    normalized_advantages_list = []
-                    for i in range(num_reward_funcs):
-                        reward_i = rewards_per_func[:, i]
-                        grouped_reward_i = reward_i.view(-1, K)
-                        group_mean = grouped_reward_i.mean(dim=1, keepdim=True)
-                        group_std = grouped_reward_i.std(dim=1, keepdim=True) + 1e-8
-                        normalized_i = (grouped_reward_i - group_mean) / group_std
-                        normalized_i = normalized_i.view(-1)
-                        normalized_advantages_list.append(self.reward_weights[i] * normalized_i)
-                    summed_advantages = sum(normalized_advantages_list)
-                    batch_mean = summed_advantages.mean()
-                    batch_std = summed_advantages.std() + 1e-8
-                    advantages = (summed_advantages - batch_mean) / batch_std
+                    grouped = rewards_per_func.view(-1, K, rewards_per_func.shape[1])
+                    group_mean = torch.nanmean(grouped, dim=1, keepdim=True)
+                    group_std = nanstd(grouped, dim=1, keepdim=True) if K > 1 else torch.zeros_like(group_mean)
+                    normalized = (grouped - group_mean) / (group_std + 1e-8)
+                    normalized = torch.nan_to_num(normalized, nan=0.0)
+                    normalized = normalized.view(-1, rewards_per_func.shape[1])
+                    advantages = (normalized * self.reward_weights.unsqueeze(0)).sum(dim=1)
+                    batch_std = advantages.std() + 1e-8
+                    advantages = (advantages - advantages.mean()) / batch_std
                     rewards_std = None
                 else:  # 'none'
                     rewards_std = None

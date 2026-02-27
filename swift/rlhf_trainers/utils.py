@@ -206,23 +206,34 @@ def patch_stateless_process_group_for_ipv6():
 patch_stateless_process_group_for_ipv6()
 
 
-def nanstd(tensor: torch.Tensor) -> torch.Tensor:
+def nanstd(tensor: torch.Tensor, dim: Optional[int] = None, keepdim: bool = False) -> torch.Tensor:
     """
-    refer: trl/trainer/utils
-    Compute the standard deviation of a tensor, ignoring NaNs. This function only supports 1D tensors.
+    Compute the standard deviation of a tensor, ignoring NaNs.
+
+    Refer: trl/trainer/utils.py
 
     Args:
         tensor (`torch.Tensor`):
-            Input tensor of shape `(N,)`.
+            Input tensor.
+        dim (`int`, *optional*):
+            Dimension to reduce. Defaults to all dimensions.
+        keepdim (`bool`, *optional*, defaults to `False`):
+            Whether to keep reduced dimensions.
 
     Returns:
         `torch.Tensor`:
             Standard deviation of the tensor, ignoring NaNs.
     """
-    variance = torch.nanmean((tensor - torch.nanmean(tensor, keepdim=True))**2)  # Compute variance ignoring NaNs
-    count = torch.sum(~torch.isnan(tensor))  # Count of non-NaN values
-    variance *= count / (count - 1)  # Bessel's correction
-    return torch.sqrt(variance)
+    mean = torch.nanmean(tensor, dim=dim, keepdim=True)
+    variance = torch.nanmean((tensor - mean)**2, dim=dim, keepdim=True)
+    count = torch.sum(~torch.isnan(tensor), dim=dim, keepdim=True)
+    correction = torch.where(count > 1, count / (count - 1), torch.full_like(count, float('nan')))
+    std = torch.sqrt(variance * correction)
+    if keepdim:
+        return std
+    if dim is None:
+        return std.squeeze()
+    return std.squeeze(dim)
 
 
 # code borrowed from verl/verl/utils/memory_utils.py
