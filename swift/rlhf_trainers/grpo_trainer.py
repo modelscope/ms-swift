@@ -1814,6 +1814,22 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
         return last_hidden_state
 
+    def _compute_rollout_is_ratio_for_liger(self, inputs, completion_mask):
+        """Compute rollout importance sampling ratio for liger loss path.
+
+        Returns the IS ratio tensor or None if not applicable.
+        """
+        if self.rollout_importance_sampling_mode is None or self.disable_rollout_importance_sampling:
+            return None
+        rollout_per_token_logps = inputs.get('rollout_per_token_logps')
+        old_per_token_logps = inputs.get('old_per_token_logps')
+        if rollout_per_token_logps is None or old_per_token_logps is None:
+            return None
+
+        rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
+        rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
+        return rollout_is_weights
+
     def compute_liger_loss(self, unwrapped_model, inputs):
         # Compute the per-token log probabilities for the model
         assert not self.template.padding_free
@@ -1826,6 +1842,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # get the last hidden state of the model
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
         # compute loss and metrics using liger grpo loss
+
+        kwargs = {}
+        vllm_is_ratio = self._compute_rollout_is_ratio_for_liger(inputs, completion_mask)
+        if vllm_is_ratio is not None:
+            kwargs['vllm_is_ratio'] = vllm_is_ratio
+
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
@@ -1835,9 +1857,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             bias=unwrapped_model.lm_head.bias,
             old_per_token_logps=inputs.get('old_per_token_logps'),
             ref_per_token_logps=inputs.get('ref_per_token_logps'),
+            **kwargs,
         )
-        # Extract metrics from the liger_grpo_loss output
-        # KL divergence is the first metric when beta is non-zero
+
         mean_kl = metrics[0] if self.beta != 0.0 else None
         clip_ratio = metrics[-1]
 
@@ -2097,9 +2119,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.use_liger_loss = self.args.use_liger_kernel
         if self.use_liger_loss:
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
-            kwargs = {}
-            if 'importance_sampling_level' in inspect.signature(LigerFusedLinearGRPOLoss.__init__).parameters:
-                kwargs['importance_sampling_level'] = self.importance_sampling_level
             self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
                 beta=self.beta,
                 epsilon_low=self.epsilon_low,
@@ -2108,7 +2127,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 use_ref_model=self.beta != 0.0,
                 loss_type=self.loss_type,
                 max_completion_length=self.max_completion_length,
-                **kwargs,
+                importance_sampling_level=self.importance_sampling_level,
+                sapo_temperature_pos=self.tau_pos,
+                sapo_temperature_neg=self.tau_neg,
             )
             self._forward_redirection = _ForwardRedirection()
 
