@@ -189,10 +189,10 @@ class MegatronModelConfig(TransformerConfig):
         if MegatronModelConfig._mindspeed_defaults_cache is None:
             defaults = {}
             try:
-                from mindspeed.arguments import process_args
-                from argparse import ArgumentParser
                 import mindspeed.features_manager as mfm
                 import sys
+                from argparse import ArgumentParser
+                from mindspeed.arguments import process_args
 
                 original_features = list(mfm.FEATURES_LIST)
                 full_features = mfm.create_features_list()
@@ -202,12 +202,13 @@ class MegatronModelConfig(TransformerConfig):
                     parser = ArgumentParser()
                     process_args(parser)
                     # Parse args from sys.argv
-                    args, _ = parser.parse_known_args()
+                    args, _ = parser.parse_known_args([])
                     defaults = vars(args)
                 finally:
                     mfm.FEATURES_LIST.clear()
                     mfm.FEATURES_LIST.extend(original_features)
-            except Exception:
+            except Exception as e:
+                logger.warning(f'Failed to get MindSpeed defaults, which may cause issues on NPU: {e}')
                 defaults = {}
             MegatronModelConfig._mindspeed_defaults_cache = defaults
 
@@ -215,7 +216,7 @@ class MegatronModelConfig(TransformerConfig):
             if not hasattr(self, name):
                 setattr(self, name, value)
             elif hasattr(self, name) and getattr(self, name) is None and value is not None:
-                 setattr(self, name, value)
+                setattr(self, name, value)
 
     def __post_init__(self):
         self._augment_mindspeed_defaults()

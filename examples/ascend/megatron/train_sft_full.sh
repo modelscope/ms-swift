@@ -21,7 +21,7 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --output_dir megatron_output/Qwen3-32B \
+    --output_dir megatron_output/Qwen3-4B \
     --eval_steps 500 \
     --save_steps 500 \
     --max_length 8192 \
