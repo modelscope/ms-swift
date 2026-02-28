@@ -139,6 +139,7 @@ class GPTModel(McoreGPTModel):
             for layer in self.mtp.layers:
                 # compat core 0.16.0
                 if not hasattr(layer, 'transformer_layer'):
+
                     def _value(self):
                         return getattr(self, 'mtp_model_layer')
 
