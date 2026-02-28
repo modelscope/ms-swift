@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Union
 from swift.infer_engine import InferRequest
 
 if TYPE_CHECKING:
+    from swift.megatron.arguments import MegatronArguments
     from swift.rlhf_trainers import GRPOConfig
 
 
@@ -23,7 +24,7 @@ class ORM:
                 return [1.0 if len(c) > 100 else 0.0 for c in completions]
     """
 
-    def __init__(self, args: Optional['GRPOConfig'] = None, **kwargs):
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
         self.args = args
 
     def __call__(self, **kwargs) -> List[float]:
@@ -58,7 +59,7 @@ class AsyncORM:
                     return list(rewards)
     """
 
-    def __init__(self, args: Optional['GRPOConfig'] = None, **kwargs):
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
         self.args = args
 
     async def __call__(self, **kwargs) -> List[float]:
@@ -139,7 +140,7 @@ class ReActFormat(ORM):
 
 class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
-    def __init__(self, args: Optional['GRPOConfig'] = None, accuracy_orm=None):
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, accuracy_orm=None):
         super().__init__(args)
         self.min_len_value_wrong = args.cosine_min_len_value_wrong
         self.max_len_value_wrong = args.cosine_max_len_value_wrong
@@ -174,7 +175,7 @@ class CosineReward(ORM):
 
 class RepetitionPenalty(ORM):
     # https://arxiv.org/abs/2502.03373
-    def __init__(self, args: Optional['GRPOConfig'] = None, **kwargs):
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
         super().__init__(args)
         self.ngram_size = args.repetition_n_grams
         self.max_penalty = args.repetition_max_penalty
@@ -214,7 +215,7 @@ class RepetitionPenalty(ORM):
 
 class SoftOverlong(ORM):
 
-    def __init__(self, args: Optional['GRPOConfig'] = None, **kwargs):
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
         super().__init__(args)
         assert args.soft_cache_length < args.soft_max_length
         self.soft_max_length = args.soft_max_length

@@ -43,7 +43,7 @@ logger = get_logger()
 
 class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
-    def __init__(self, args: MegatronRLHFArguments, template: Template, **kwargs):
+    def __init__(self, args: MegatronArguments, template: Template, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client')
         super().__init__(args, template)
         self.args = args
@@ -145,14 +145,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
                     reward_func_class = orms[reward_func]
-                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
-                    reward_func_kwargs = {
-                        key: getattr(args, key)
-                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
-                    }
-                    if 'tokenizer' in reward_func_args:
-                        reward_func_kwargs['tokenizer'] = self.processing_class
-                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
+                    reward_funcs[i] = reward_func_class(args=self.args)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
 
