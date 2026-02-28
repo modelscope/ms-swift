@@ -184,7 +184,7 @@ def train_step(self, forward_step_func, data_iterator, model, optimizer, opt_par
 
 #### 示例
 ```shell
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
