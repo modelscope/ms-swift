@@ -1,13 +1,23 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import trl
 from dataclasses import dataclass
+from packaging import version
 from transformers.utils.versions import require_version
-from trl import CPOConfig as HfCPOConfig
+
+if version.parse(trl.__version__) <= version.parse('0.28'):
+    from trl import CPOConfig as HfCPOConfig
+    from trl import GKDConfig as HfGKDConfig
+    from trl import ORPOConfig as HfORPOConfig
+    from trl import PPOConfig as HfPPOConfig
+else:
+    from trl.experimental.cpo import CPOConfig as HfCPOConfig
+    from trl.experimental.gkd import GKDConfig as HfGKDConfig
+    from trl.experimental.orpo import ORPOConfig as HfORPOConfig
+    from trl.experimental.ppo import PPOConfig as HfPPOConfig
+
 from trl import DPOConfig as HfDPOConfig
-from trl import GKDConfig as HfGKDConfig
 from trl import GRPOConfig as HfGRPOConfig
 from trl import KTOConfig as HfKTOConfig
-from trl import ORPOConfig as HfORPOConfig
-from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
 from typing import Optional
 

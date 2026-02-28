@@ -943,7 +943,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # rollout_logprobs is List[List[float]] - nested list where each inner list corresponds to
                 # one assistant response turn. We need to align these with completion_mask positions.
                 batch_encoded_inputs['rollout_per_token_logps'] = None
-                if self.use_fast_infer:
+                should_compute_rollout_logprobs = (
+                    self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
+
+                if self.use_fast_infer and should_compute_rollout_logprobs:
                     rollout_logprobs_list = []
                     for data in batch:
                         if 'rollout_logprobs' in data and data['rollout_logprobs']:
@@ -2206,14 +2209,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
                     reward_func_class = orms[reward_func]
-                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
-                    reward_func_kwargs = {
-                        key: getattr(args, key)
-                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
-                    }
-                    if 'tokenizer' in reward_func_args:
-                        reward_func_kwargs['tokenizer'] = self.processing_class
-                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
+                    reward_funcs[i] = reward_func_class(args=args)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
 
@@ -2246,6 +2242,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])
+
+        if self.use_gym_env and not self.reward_func_names:
+            self.reward_func_names = ['gym_reward']
 
         # Reward weights
         if args.reward_weights is not None:
