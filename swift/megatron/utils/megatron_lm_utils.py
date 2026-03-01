@@ -676,7 +676,7 @@ def warmup_jit_function(config, args):
     for bias_grad, input_grad in zip([True, True], [False, True]):
         bias.requires_grad, input.requires_grad = bias_grad, input_grad
         for _ in range(5):
-            if args.swiglu:
+            if config.swiglu:
                 output = bias_swiglu(input, bias)
             else:
                 output = bias_gelu(bias, input)
@@ -684,9 +684,9 @@ def warmup_jit_function(config, args):
 
     # Warmup fused bias+dropout+add
     if config.sequence_parallel:
-        seq_length = config.seq_length // mpu.get_tensor_model_parallel_world_size()
+        seq_length = args.seq_length // mpu.get_tensor_model_parallel_world_size()
     else:
-        seq_length = config.seq_length
+        seq_length = args.seq_length
     input = torch.rand(
         (seq_length // config.context_parallel_size, args.micro_batch_size, config.hidden_size),
         dtype=dtype,

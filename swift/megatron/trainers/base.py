@@ -92,7 +92,7 @@ class BaseMegatronTrainer(ABC):
         if args.tp_comm_overlap:
             initialize_tp_communicators(args, self.config)
 
-        warmup_jit_function()
+        warmup_jit_function(self.config, args)
 
         if args.async_save and args.use_persistent_ckpt_worker:
             init_persistent_async_worker()
