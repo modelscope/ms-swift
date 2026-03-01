@@ -1273,6 +1273,9 @@ class GPTBridge:
         else:
             hf_state_dict = {}
         config = self.config
+        num_key_heads = config.linear_num_key_heads
+        key_dim = config.linear_key_head_dim * num_key_heads
+        value_dim = config.linear_value_head_dim * config.linear_num_value_heads
         if to_mcore:
             if isinstance(mg_attn.in_proj.weight, LoraParallelLinear):
                 if self.model_type == 'qwen3_next':
@@ -1307,13 +1310,14 @@ class GPTBridge:
                     ],
                                                dim=0)
                 else:
+                    qkv = hf_state_dict['in_proj_qkv.weight'].load()
+                    q, k, v = torch.split(qkv, [key_dim, key_dim, value_dim], dim=0)
                     in_proj_weight = torch.cat([
-                        hf_state_dict['in_proj_qkv.weight'].load(),
-                        hf_state_dict['in_proj_z.weight'].load(),
-                        hf_state_dict['in_proj_b.weight'].load(),
-                        hf_state_dict['in_proj_a.weight'].load(),
+                        *(x.reshape(num_key_heads, -1, config.hidden_size) for x in [q, k, v]),
+                        *(hf_state_dict[key].load().reshape(num_key_heads, -1, config.hidden_size)
+                          for key in ['in_proj_z.weight', 'in_proj_b.weight', 'in_proj_a.weight']),
                     ],
-                                               dim=0)
+                                               dim=1).reshape((-1, config.hidden_size))
                 in_scale_inv = None
                 if 'in_proj_qkvz.weight_scale_inv' in hf_state_dict or 'in_proj_qkv.weight_scale_inv' in hf_state_dict:
                     if self.model_type == 'qwen3_next':
@@ -1368,29 +1372,57 @@ class GPTBridge:
                         hf_state_dict['in_proj_b.lora_B.weight'] = lora_B[qkv_dim + z_dim:-a_dim].clone()
                         hf_state_dict['in_proj_a.lora_B.weight'] = lora_B[-a_dim:].clone()
             elif not self._is_peft_format:
-                mg_attn_weight, scale_inv = self._get_weight(None if mg_attn is None else mg_attn.in_proj.weight.data,
+                in_proj_weight, scale_inv = self._get_weight(None if mg_attn is None else mg_attn.in_proj.weight.data,
                                                              'in_proj.weight')
                 if self.model_type == 'qwen3_next':
-                    if mg_attn_weight is not None:
-                        hf_state_dict['in_proj_qkvz.weight'] = mg_attn_weight[:qkv_dim + z_dim].clone()
-                        hf_state_dict['in_proj_ba.weight'] = mg_attn_weight[qkv_dim + z_dim:].clone()
+                    if in_proj_weight is not None:
+                        hf_state_dict['in_proj_qkvz.weight'] = in_proj_weight[:qkv_dim + z_dim].clone()
+                        hf_state_dict['in_proj_ba.weight'] = in_proj_weight[qkv_dim + z_dim:].clone()
                     if scale_inv is not None:
                         hf_state_dict['in_proj_qkvz.weight_scale_inv'] = scale_inv[:qkv_block + z_block].clone()
                         hf_state_dict['in_proj_ba.weight_scale_inv'] = scale_inv[qkv_block + z_block:].clone()
-                    del mg_attn_weight
+                    del in_proj_weight
                 else:
-                    if mg_attn_weight is not None:
-                        hf_state_dict['in_proj_qkv.weight'] = mg_attn_weight[:qkv_dim].clone()
-                        hf_state_dict['in_proj_z.weight'] = mg_attn_weight[qkv_dim:qkv_dim + z_dim].clone()
-                        hf_state_dict['in_proj_b.weight'] = mg_attn_weight[qkv_dim + z_dim:-a_dim].clone()
-                        hf_state_dict['in_proj_a.weight'] = mg_attn_weight[-a_dim:].clone()
+                    if in_proj_weight is not None:
+                        in_proj_weight = in_proj_weight.reshape(num_key_heads, -1, config.hidden_size)
+                        q = in_proj_weight[:, :key_dim // num_key_heads].reshape(-1, config.hidden_size)
+                        k = in_proj_weight[:, key_dim // num_key_heads:2 * key_dim // num_key_heads].reshape(
+                            -1, config.hidden_size)
+                        v = in_proj_weight[:, 2 * key_dim // num_key_heads:qkv_dim // num_key_heads].reshape(
+                            -1, config.hidden_size)
+                        hf_state_dict['in_proj_qkv.weight'] = torch.concat([q, k, v], dim=0)
+                        hf_state_dict['in_proj_z.weight'] = in_proj_weight[:, qkv_dim // num_key_heads:(qkv_dim + z_dim)
+                                                                           // num_key_heads].reshape(
+                                                                               -1, config.hidden_size).clone()
+                        hf_state_dict['in_proj_b.weight'] = in_proj_weight[:, (qkv_dim + z_dim) // num_key_heads:-a_dim
+                                                                           // num_key_heads].reshape(
+                                                                               -1, config.hidden_size).clone()
+                        hf_state_dict['in_proj_a.weight'] = in_proj_weight[:, -a_dim // num_key_heads:].reshape(
+                            -1, config.hidden_size).clone()
                     if scale_inv is not None:
                         hf_state_dict['in_proj_qkv.weight_scale_inv'] = scale_inv[:qkv_block].clone()
                         hf_state_dict['in_proj_z.weight_scale_inv'] = scale_inv[qkv_block:qkv_block + z_block].clone()
                         hf_state_dict['in_proj_b.weight_scale_inv'] = scale_inv[qkv_block + z_block:-a_block].clone()
                         hf_state_dict['in_proj_a.weight_scale_inv'] = scale_inv[-a_block:].clone()
-                    del mg_attn_weight
-        self._set_state_dict(mg_attn, 'conv1d.weight', hf_state_dict, 'conv1d.weight', to_mcore)
+                    del in_proj_weight
+        if to_mcore:
+            conv1d = hf_state_dict['conv1d.weight'].load()
+            q_c, k_c, v_c = torch.split(conv1d, [key_dim, key_dim, value_dim], dim=0)
+            conv1d = torch.cat([
+                *(x.reshape(num_key_heads, -1, *conv1d.shape[-2:]) for x in [q_c, k_c, v_c]),
+            ], dim=1).reshape((-1, *conv1d.shape[-2:]))
+            self._set_weight(mg_attn.conv1d.weight, conv1d, 'conv1d.weight')
+        else:
+            conv1d, _ = self._get_weight(None if mg_attn is None else mg_attn.conv1d.weight, 'conv1d.weight')
+            if conv1d is not None:
+                conv1d = conv1d.reshape(num_key_heads, -1, *conv1d.shape[-2:])
+                q_c, k_c, v_c = torch.split(
+                    conv1d, [key_dim // num_key_heads, key_dim // num_key_heads, value_dim // num_key_heads], dim=1)
+                q_c = q_c.reshape(-1, *q_c.shape[-2:])
+                k_c = k_c.reshape(-1, *k_c.shape[-2:])
+                v_c = v_c.reshape(-1, *v_c.shape[-2:])
+                conv1d = torch.concat([q_c, k_c, v_c], dim=0)
+                hf_state_dict['conv1d.weight'] = conv1d
         self._set_state_dict(mg_attn, 'dt_bias', hf_state_dict, 'dt_bias', to_mcore)
         self._set_state_dict(mg_attn, 'A_log', hf_state_dict, 'A_log', to_mcore)
         self._set_state_dict(mg_attn, 'out_norm.weight', hf_state_dict, 'norm.weight', to_mcore)

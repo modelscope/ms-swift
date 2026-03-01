@@ -102,19 +102,23 @@ class GatedDeltaNet(_GatedDeltaNet):
                 dim=-1,
             )
         else:
+            num_key_heads_per_device = self.num_key_heads // self.tp_size
+            qkvzba = qkvzba.view(qkvzba.shape[:-1]
+                                 + (num_key_heads_per_device, qkvzba.shape[-1] // num_key_heads_per_device))
             qkv, gate, beta, alpha = torch.split(
                 qkvzba,
                 [
-                    (self.qk_dim * 2 + self.v_dim) // self.tp_size,
-                    self.v_dim // self.tp_size,
-                    self.num_value_heads // self.tp_size,
-                    self.num_value_heads // self.tp_size,
+                    (self.qk_dim * 2 + self.v_dim) // self.num_key_heads,
+                    self.v_dim // self.num_key_heads,
+                    self.num_value_heads // self.num_key_heads,
+                    self.num_value_heads // self.num_key_heads,
                 ],
                 dim=-1,
             )
         gate = gate.reshape(batch, seq_len, -1, self.value_head_dim)
         beta = beta.reshape(batch, seq_len, -1)
         alpha = alpha.reshape(batch, seq_len, -1)
+        qkv = qkv.reshape(batch, seq_len, -1)
 
         # Convolution on qkv
         qkv = qkv.transpose(1, 2).contiguous()  # b, s, d -> b, d, s
@@ -132,9 +136,10 @@ class GatedDeltaNet(_GatedDeltaNet):
         nvtx_range_pop(suffix='conv1d')
         # Split qkv into query, key, and value
         qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
+        qkv = qkv.view(qkv.shape[:-1] + (num_key_heads_per_device, qkv.shape[-1] // num_key_heads_per_device))
         query, key, value = torch.split(
             qkv,
-            [self.qk_dim // self.tp_size, self.qk_dim // self.tp_size, self.v_dim // self.tp_size],
+            [self.qk_dim // self.num_key_heads, self.qk_dim // self.num_key_heads, self.v_dim // self.num_key_heads],
             dim=-1,
         )
         query = query.reshape(batch, seq_len, -1, self.key_head_dim)
