@@ -666,7 +666,7 @@ def warmup_jit_function(config, args):
         (
             args.seq_length // config.context_parallel_size,
             args.micro_batch_size,
-            config.ffn_hidden_size // args.tensor_model_parallel_size,
+            config.ffn_hidden_size // config.tensor_model_parallel_size,
         ),
         dtype=dtype,
         device='cuda',
