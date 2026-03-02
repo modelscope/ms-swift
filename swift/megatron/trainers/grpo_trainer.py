@@ -26,9 +26,9 @@ from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
 from swift.megatron.utils import forward_step_helper, get_padding_to, set_random_seed
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch, profiling_context,
-                                       profiling_decorator, replace_assistant_response_with_ids,
-                                       set_expandable_segments)
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, load_pil_img, nanstd, normalize_log_image,
+                                       pad_logps_back_to_batch, profiling_context, profiling_decorator,
+                                       replace_assistant_response_with_ids, set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template, TemplateInputs
 from swift.utils import (JsonlWriter, get_logger, get_packed_seq_params, remove_response, shutdown_event_loop_in_daemon,
@@ -501,6 +501,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         completions = gather_object([data.response.choices[0].message.content for data in rollout_outputs])
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
         self._logs['completion'].extend(completions)
+        if all('images' in data for data in batch):
+            images = gather_object([normalize_log_image(data['images']) for data in batch])
+            if 'image' not in self._logs:
+                self._logs['image'] = deque(maxlen=self.args.generation_batch_size)
+            self._logs['image'].extend(images)
 
         return rollout_outputs
 
@@ -1390,11 +1395,18 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                    for k, v in self._logs['rewards'].items()},
                 'advantages': list(self._logs['advantages']),
             }
+            if self._logs.get('image'):
+                table['image'] = list(self._logs['image'])
             self.jsonl_writer.append(table)
             args = self.args
             if 'wandb' in args.report_to:
                 import wandb
-                df = pd.DataFrame(table)
+                wandb_table = table.copy()
+                if self._logs.get('image'):
+                    wandb_table['image'] = [
+                        wandb.Image(load_pil_img(img)) if img is not None else None for img in self._logs['image']
+                    ]
+                df = pd.DataFrame(wandb_table)
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)})

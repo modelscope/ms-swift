@@ -283,7 +283,7 @@ If you want to log extra columns in the Table, populate the `metrics_to_gather` 
 
 The trainer automatically detects and logs the following keys:
 
-- image: image inputs for vision models(wandb only).
+- image: image inputs for vision models (wandb only). If multiple images are provided, only the first image is logged and a warning is emitted; full multi-image logging will be supported later.
 - solution: the solution column from the dataset.
 
 ## FAQ

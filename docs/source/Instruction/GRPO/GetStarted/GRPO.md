@@ -284,7 +284,7 @@ IS 校正指标（需设置`rollout_importance_sampling_mode`）：
 如果需要在Table中额外记录其他列，请在 `GRPOTrainer._generate_and_score_completions` 方法中，设置 metrics_to_gather 字典。
 
 默认自动检测
-- `image`：视觉数据集图像输入。(暂时只支持wandb)
+- `image`：视觉数据集图像输入（仅wandb）。若输入包含多张图片，只会记录第一张，并会输出warning；完整多图日志后续支持。
 - `solution`：数据集中的 solution 列。
 
 ## FAQ

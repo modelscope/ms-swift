@@ -695,6 +695,22 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
+def normalize_log_image(img: Any) -> Any:
+    if img is None:
+        return None
+    if isinstance(img, (list, tuple)):
+        if not img:
+            return None
+        if len(img) > 1:
+            logger = get_logger()
+            logger.warning(
+                'Multiple images detected; only the first image will be logged. '
+                'Full multi-image logging is not yet supported.'
+            )
+        return img[0]
+    return img
+
+
 def replace_assistant_response_with_ids(messages: 'Messages',
                                         completion_ids: List[Union[int, List[int]]],
                                         loss_mask: Optional[List[List[int]]] = None) -> 'Messages':  # noqa

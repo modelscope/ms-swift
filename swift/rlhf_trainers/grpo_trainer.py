@@ -53,8 +53,8 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
-                    load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
-                    profiling_context, profiling_decorator, replace_assistant_response_with_ids)
+                    load_pil_img, make_chord_sft_dataset, nanstd, normalize_log_image, pad_logps_back_to_batch,
+                    patch_save_last_checkpoint, profiling_context, profiling_decorator, replace_assistant_response_with_ids)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -284,6 +284,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
                 metrics_for_logs_to_gather['num_turns'] = [inp['rollout_infos']['num_turns'] for inp in inputs]
+
+            if all('images' in inp for inp in inputs):
+                metrics_for_logs_to_gather['image'] = [normalize_log_image(inp['images']) for inp in inputs]
 
             if metrics_for_logs_to_gather:
                 for key, value in metrics_for_logs_to_gather.items():
