@@ -71,7 +71,12 @@ class MegatronRLHF(MegatronSft):
         return vllm_client
 
     def _prepare_teacher_api_client(self):
-        """Prepare teacher API client for external teacher model service."""
+        """Prepare teacher API client for external teacher model service.
+
+        In Megatron with pure Data Parallel (TP=PP=CP=1), each rank processes different data
+        and needs its own API client. With model parallelism (TP/PP/CP > 1), one rank per
+        model parallel group calls the API and broadcasts results.
+        """
         from swift.rlhf_trainers.utils import create_teacher_api_client
         from swift.utils import is_last_rank
         if is_last_rank():

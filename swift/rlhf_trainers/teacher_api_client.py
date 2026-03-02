@@ -136,7 +136,8 @@ class TeacherAPIClient:
                 continue
             sorted_items = sorted(
                 pos_logprobs.items(),
-                key=lambda x: -(x[1] if isinstance(x[1], (int, float)) else x[1].get('logprob', float('-inf'))),
+                key=lambda x: -(x[1] if isinstance(x[1], (int, float)) else
+                                (x[1].get('logprob', float('-inf')) if isinstance(x[1], dict) else float('-inf'))),
             )[:topk]
             for k_idx, (token_id_str, logprob_val) in enumerate(sorted_items):
                 try:

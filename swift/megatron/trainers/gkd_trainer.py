@@ -48,7 +48,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # GKD top-k logits configuration
         self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
-        self.use_teacher_api = self.teacher_api_client is not None
+        # Check use_teacher_api based on args, not client existence
+        # (API client is only created on last rank, but all ranks need to know the mode)
+        self.use_teacher_api = getattr(args, 'teacher_model_server', None) is not None
 
         # Validate teacher configuration
         if not self.use_teacher_api:

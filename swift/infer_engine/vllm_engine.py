@@ -406,6 +406,48 @@ class VllmEngine(InferEngine):
                 logprobs[token_id] = logprob.logprob
         return super()._get_logprobs(logprobs_list, token_ids, top_logprobs)
 
+    def _get_prompt_logprobs(
+        self,
+        prompt_logprobs: Optional[List[Optional[Dict]]],
+        prompt_token_ids: List[int],
+    ) -> Optional[List[Dict[str, Any]]]:
+        if prompt_logprobs is None or not prompt_token_ids:
+            return None
+
+        result = []
+        for pos_idx, (token_id, pos_logprobs) in enumerate(zip(prompt_token_ids, prompt_logprobs)):
+            token = self.tokenizer.decode(token_id)
+            entry = {
+                'token_id': token_id,
+                'token': token,
+                'logprob': None,  # Will be filled if available
+                'top_logprobs': [],
+            }
+
+            if pos_logprobs is not None:
+                # Get logprob for the actual token at this position
+                if token_id in pos_logprobs:
+                    logprob_obj = pos_logprobs[token_id]
+                    entry['logprob'] = logprob_obj.logprob if hasattr(logprob_obj, 'logprob') else logprob_obj
+
+                # Get top logprobs sorted by probability (descending)
+                sorted_items = sorted(
+                    pos_logprobs.items(), key=lambda x: -(x[1].logprob if hasattr(x[1], 'logprob') else x[1]))
+                for tid, logprob_obj in sorted_items:
+                    logprob_val = logprob_obj.logprob if hasattr(logprob_obj, 'logprob') else logprob_obj
+                    if logprob_val == float('-inf'):
+                        continue
+                    t = self.tokenizer.decode(tid)
+                    entry['top_logprobs'].append({
+                        'token_id': tid,
+                        'token': t,
+                        'logprob': logprob_val,
+                    })
+
+            result.append(entry)
+
+        return result
+
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
         for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
@@ -430,6 +472,10 @@ class VllmEngine(InferEngine):
             else:
                 # Return only the sampled token's logprob
                 kwargs['logprobs'] = 0
+
+        # Handle prompt_logprobs: return logprobs for prompt/input tokens
+        if request_config.prompt_logprobs is not None:
+            kwargs['prompt_logprobs'] = request_config.prompt_logprobs
 
         # TODO: beam search
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
@@ -589,13 +635,21 @@ class VllmEngine(InferEngine):
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(content)  # Use content instead of response for tool calls
             token_ids = output.token_ids if request_config.return_details else None
+
+            # Get prompt logprobs if requested
+            prompt_logprobs_result = None
+            if request_config.prompt_logprobs is not None:
+                prompt_logprobs_result = self._get_prompt_logprobs(result.prompt_logprobs,
+                                                                   list(result.prompt_token_ids))
+
             choice = ChatCompletionResponseChoice(
                 index=output.index,
                 message=ChatMessage(
                     role='assistant', content=content, reasoning_content=reasoning_content, tool_calls=toolcall),
                 finish_reason=output.finish_reason,
                 logprobs=logprobs,
-                token_ids=token_ids)
+                token_ids=token_ids,
+                prompt_logprobs=prompt_logprobs_result)
             choices.append(choice)
         prompt_token_ids = None
         images_size = None

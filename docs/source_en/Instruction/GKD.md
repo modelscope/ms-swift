@@ -178,8 +178,8 @@ $$
 ```bash
 swift rlhf \
     --rlhf_type gkd \
-    --model Qwen/Qwen2-7B-Instruct \
-    --teacher_model Qwen/Qwen2-72B-Instruct \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --teacher_model Qwen/Qwen2.5-14B-Instruct \
     --gkd_logits_topk 64 \
     --dataset your_dataset \
     ...
@@ -204,14 +204,11 @@ When `gkd_logits_topk` is set, you can use an external teacher model API service
 
 ```bash
 # Deploy teacher model with swift deploy (recommended)
-CUDA_VISIBLE_DEVICES=0,1 swift deploy \
-    --model Qwen/Qwen2-72B-Instruct \
+swift deploy \
+    --model Qwen/Qwen2.5-14B-Instruct \
     --infer_backend vllm \
     --port 8000 \
     --vllm_engine_kwargs '{"max_logprobs": 64}'
-
-# Or use standalone vLLM server
-vllm serve Qwen/Qwen2-72B-Instruct --max-logprobs 64 --port 8000
 ```
 
 **Step 2: Start GKD Training**
@@ -219,7 +216,7 @@ vllm serve Qwen/Qwen2-72B-Instruct --max-logprobs 64 --port 8000
 ```bash
 swift rlhf \
     --rlhf_type gkd \
-    --model Qwen/Qwen2-7B-Instruct \
+    --model Qwen/Qwen2.5-7B-Instruct \
     --teacher_model_server http://localhost:8000 \
     --gkd_logits_topk 20 \
     --dataset your_dataset \
@@ -250,6 +247,8 @@ Use vLLM as the inference backend to accelerate student model sampling. Supports
 > **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses Transformers. Pre-sampling scheme is recommended.
 
 Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh), for related parameters, please refer to [GRPO vLLM Parameters](./Command-line-parameters.md#vllm_mode).
+
+Training script using Teacher Server reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh).
 
 
 ### Solution 2: Teacher Model Pre-sampling
