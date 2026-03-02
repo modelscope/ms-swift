@@ -287,7 +287,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if topk is not None and teacher_logits is not None:
                 scaled = teacher_logits / self.temperature
                 topk_logits, topk_indices = torch.topk(scaled, k=topk, dim=-1)
-                encoded_batch['teacher_api_logprobs'] = F.log_softmax(topk_logits, dim=-1)
+                encoded_batch['teacher_api_logprobs'] = topk_logits
                 encoded_batch['teacher_api_indices'] = topk_indices
                 encoded_batch['teacher_logits'] = None
             else:
@@ -398,6 +398,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         local_num_valid = mask.sum()
         num_valid = local_num_valid.float()
 
+        # All-reduce num_valid across CP group for correct averaging
         if args.context_parallel_size > 1:
             torch.distributed.all_reduce(
                 num_valid, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
@@ -405,13 +406,64 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if num_valid == 0:
             return (student_logits.sum() * 0).reshape(())
 
-        use_topk = teacher_topk_logprobs is not None and teacher_topk_indices is not None
-
-        if use_topk:
+        # Top-k mode: direct computation without vocab parallel
+        if teacher_topk_logprobs is not None and teacher_topk_indices is not None:
             total_loss = self._jsd_topk(student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta)
-        else:
-            total_loss = self._jsd_full_vocab(student_logits, teacher_logits, mask, beta, chunk_size, local_num_valid)
+            if args.context_parallel_size > 1:
+                torch.distributed.all_reduce(
+                    total_loss, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
+            return total_loss / num_valid
 
+        # Full vocabulary mode (original code)
+        # Align vocab size between student and teacher
+        student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
+
+        # Apply temperature scaling and mask
+        student_logits_masked = (student_logits / self.temperature)[mask]
+        teacher_logits_masked = (teacher_logits / self.temperature)[mask]
+        del student_logits, teacher_logits
+
+        # Use local count for iteration, global count for averaging
+        local_num_valid_int = local_num_valid.item()
+        total_loss = student_logits_masked.new_zeros(())
+
+        if beta != 0 and beta != 1:
+            beta_t = torch.tensor(beta, dtype=student_logits_masked.dtype, device=student_logits_masked.device)
+            log_beta = torch.log(beta_t)
+            log_1_minus_beta = torch.log1p(-beta_t)
+        else:
+            beta_t = log_beta = log_1_minus_beta = None
+
+        for start_idx in range(0, local_num_valid_int, chunk_size):
+            end_idx = min(start_idx + chunk_size, local_num_valid_int)
+            s_chunk = student_logits_masked[start_idx:end_idx]
+            t_chunk = teacher_logits_masked[start_idx:end_idx]
+
+            s_log_probs = vocab_parallel_log_softmax(s_chunk)
+            t_log_probs = vocab_parallel_log_softmax(t_chunk)
+            del s_chunk, t_chunk
+
+            if beta == 0:
+                jsd_chunk = vocab_parallel_kl_div(s_log_probs, t_log_probs)
+            elif beta == 1:
+                jsd_chunk = vocab_parallel_kl_div(t_log_probs, s_log_probs)
+            else:
+                mixture_log_probs = torch.logsumexp(
+                    torch.stack([s_log_probs + log_1_minus_beta, t_log_probs + log_beta]),
+                    dim=0,
+                )
+                kl_teacher = vocab_parallel_kl_div(mixture_log_probs, t_log_probs)
+                kl_student = vocab_parallel_kl_div(mixture_log_probs, s_log_probs)
+                del mixture_log_probs
+                jsd_chunk = beta_t * kl_teacher + (1 - beta_t) * kl_student
+                del kl_teacher, kl_student
+
+            total_loss = total_loss + jsd_chunk.sum()
+            del jsd_chunk, s_log_probs, t_log_probs
+
+        del student_logits_masked, teacher_logits_masked
+
+        # All-reduce total_loss across CP group for correct sum
         if args.context_parallel_size > 1:
             torch.distributed.all_reduce(
                 total_loss, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
@@ -419,60 +471,30 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return total_loss / num_valid
 
     def _jsd_topk(self, student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta):
-        """Compute JSD on teacher's top-k distribution (for API or local top-k mode)."""
-        student_logits_scaled = student_logits / self.temperature
-        t_log_p = teacher_topk_logprobs
-        t_p = torch.exp(t_log_p)
+        """Compute JSD on teacher's top-k distribution.
 
-        s_topk_logits = torch.gather(student_logits_scaled, dim=-1, index=teacher_topk_indices)
-        s_log_p = F.log_softmax(s_topk_logits, dim=-1)
+        Handles both local top-k (raw logits) and API top-k (raw logprobs) by
+        normalizing both teacher and student over the top-k subset via log_softmax.
+        """
+        s_scaled = student_logits / self.temperature
+        s_topk = torch.gather(s_scaled, dim=-1, index=teacher_topk_indices)
+
+        # Normalize both over top-k subset (handles both raw logits and API logprobs)
+        t_log_p = F.log_softmax(teacher_topk_logprobs, dim=-1)
+        s_log_p = F.log_softmax(s_topk, dim=-1)
+        t_p = torch.exp(t_log_p)
 
         if beta == 0:
             jsd = (t_p * (t_log_p - s_log_p)).sum(dim=-1)
         elif beta == 1:
-            s_p = F.softmax(s_topk_logits, dim=-1)
+            s_p = torch.exp(s_log_p)
             jsd = (s_p * (s_log_p - t_log_p)).sum(dim=-1)
         else:
-            s_p = F.softmax(s_topk_logits, dim=-1)
+            s_p = torch.exp(s_log_p)
             m_log_p = torch.log(beta * t_p + (1 - beta) * s_p + 1e-10)
             jsd = beta * (t_p * (t_log_p - m_log_p)).sum(-1) + (1 - beta) * (s_p * (s_log_p - m_log_p)).sum(-1)
 
         return (jsd * mask.float()).sum()
-
-    def _jsd_full_vocab(self, student_logits, teacher_logits, mask, beta, chunk_size, local_num_valid):
-        """Compute JSD over full vocabulary with vocab-parallel support."""
-        student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
-
-        s_masked = (student_logits / self.temperature)[mask]
-        t_masked = (teacher_logits / self.temperature)[mask]
-        del student_logits, teacher_logits
-
-        local_n = local_num_valid.item()
-        total_loss = s_masked.new_zeros(())
-
-        if beta != 0 and beta != 1:
-            beta_t = torch.tensor(beta, dtype=s_masked.dtype, device=s_masked.device)
-            log_beta = torch.log(beta_t)
-            log_1_minus_beta = torch.log1p(-beta_t)
-        else:
-            beta_t = log_beta = log_1_minus_beta = None
-
-        for i in range(0, local_n, chunk_size):
-            s_log = vocab_parallel_log_softmax(s_masked[i:i + chunk_size])
-            t_log = vocab_parallel_log_softmax(t_masked[i:i + chunk_size])
-
-            if beta == 0:
-                chunk_loss = vocab_parallel_kl_div(s_log, t_log)
-            elif beta == 1:
-                chunk_loss = vocab_parallel_kl_div(t_log, s_log)
-            else:
-                m_log = torch.logsumexp(torch.stack([s_log + log_1_minus_beta, t_log + log_beta]), dim=0)
-                chunk_loss = beta_t * vocab_parallel_kl_div(m_log, t_log) \
-                    + (1 - beta_t) * vocab_parallel_kl_div(m_log, s_log)
-
-            total_loss = total_loss + chunk_loss.sum()
-
-        return total_loss
 
     def loss_func(self,
                   output_tensor: torch.Tensor,

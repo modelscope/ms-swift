@@ -15,9 +15,9 @@ if TYPE_CHECKING:
     from .ppo_trainer import PPOTrainer
     from .reward_trainer import RewardTrainer
     from .rlhf_mixin import RLHFTrainerMixin
+    from .teacher_api_client import TeacherAPIClient
     from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, round_robin
     from .vllm_client import VLLMClient
-    from .teacher_api_client import TeacherAPIClient
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],

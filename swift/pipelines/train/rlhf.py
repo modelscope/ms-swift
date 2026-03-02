@@ -240,6 +240,7 @@ class SwiftRLHF(SwiftSft):
                 # Pass teacher_model_server so trainer knows to use API mode on all ranks
                 trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
                 from swift.rlhf_trainers.utils import create_teacher_api_client
+
                 # In DP mode (DeepSpeed/FSDP), each rank has different data and needs its own client
                 # Use all_ranks=True so every rank can independently fetch teacher logprobs
                 trainer_kwargs['teacher_api_client'] = create_teacher_api_client(

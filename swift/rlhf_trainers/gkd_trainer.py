@@ -2,7 +2,6 @@
 import inspect
 import os
 import random
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,7 +20,6 @@ from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response, to_device,
                          unwrap_model_for_generation)
-from .jsd_loss import compute_jsd_loss
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (get_gather_if_zero3_context, identity_data_collator, prepare_deepspeed, profiling_context,
                     profiling_decorator)
@@ -250,50 +248,27 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             outputs_student = None
         elif self.use_teacher_api:
             assert teacher_api_logprobs is not None
-            # API mode: use teacher logprobs from external service
             if self.args.sft_alpha > 0:
                 model_inputs['labels'] = inputs['labels']
             outputs_student = model(**model_inputs)
 
-            # Handle logits_to_keep: truncate teacher logprobs to match student output length
+            # Align teacher API logprobs with student output when logits_to_keep is used
+            labels = inputs['labels']
             logits_to_keep = inputs.get('logits_to_keep')
             if logits_to_keep is not None:
-                if isinstance(logits_to_keep, torch.Tensor):
-                    if logits_to_keep.dtype == torch.bool:
-                        # Boolean mask case: apply the same mask to teacher logprobs
-                        # logits_to_keep is shape [seq_len], True for positions to keep
-                        teacher_api_logprobs = teacher_api_logprobs[:, logits_to_keep]
-                        teacher_api_indices = teacher_api_indices[:, logits_to_keep]
-                        shifted_labels = inputs['labels']
-                        shifted_labels = torch.roll(shifted_labels, shifts=-1, dims=1)
-                    elif logits_to_keep.numel() == 1:
-                        # Single element tensor
-                        num_keep = logits_to_keep.item()
-                        teacher_api_logprobs = teacher_api_logprobs[:, -num_keep:]
-                        teacher_api_indices = teacher_api_indices[:, -num_keep:]
-                        shifted_labels = inputs['labels'][:, -num_keep:]
-                        shifted_labels = torch.roll(shifted_labels, shifts=-1, dims=1)
-                    else:
-                        # Tensor with multiple elements - not supported with teacher API
-                        # Fall back to using full sequence
-                        logger.warning_once(
-                            'logits_to_keep tensor with multiple elements not supported with teacher API. '
-                            'Using full sequence.')
-                        shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+                if isinstance(logits_to_keep, torch.Tensor) and logits_to_keep.dtype == torch.bool:
+                    teacher_api_logprobs = teacher_api_logprobs[:, logits_to_keep]
+                    teacher_api_indices = teacher_api_indices[:, logits_to_keep]
+                    labels = labels[:, logits_to_keep]
                 else:
-                    # Integer case
-                    num_keep = int(logits_to_keep)
-                    teacher_api_logprobs = teacher_api_logprobs[:, -num_keep:]
-                    teacher_api_indices = teacher_api_indices[:, -num_keep:]
-                    shifted_labels = inputs['labels'][:, -num_keep:]
-                    shifted_labels = torch.roll(shifted_labels, shifts=-1, dims=1)
-            else:
-                shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+                    n = logits_to_keep.item() if isinstance(logits_to_keep, torch.Tensor) else int(logits_to_keep)
+                    teacher_api_logprobs = teacher_api_logprobs[:, -n:]
+                    teacher_api_indices = teacher_api_indices[:, -n:]
+                    labels = labels[:, -n:]
+            shifted_labels = torch.roll(labels, shifts=-1, dims=1)
 
-            # Compute top-k JSD loss with API logprobs
             loss = self.generalized_jsd_loss(
                 student_logits=outputs_student.logits,
-                teacher_logits=None,  # Not used in API mode
                 labels=shifted_labels,
                 beta=self.beta,
                 temperature=self.temperature,
@@ -301,7 +276,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 teacher_topk_indices=teacher_api_indices,
             )
 
-            # Add SFT loss if enabled (skip for student-generated responses)
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
         else:
@@ -589,31 +563,84 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     @staticmethod
     def generalized_jsd_loss(
         student_logits,
-        teacher_logits,
+        teacher_logits=None,
         labels=None,
         beta=0.5,
         temperature=1.0,
-        chunk_size=256,
+        chunk_size=512,
         topk=None,
         teacher_topk_logprobs=None,
         teacher_topk_indices=None,
     ):
-        """Compute generalized JSD loss with optional top-k support.
+        # Top-k mode: reduce logits to [*, k] before the standard JSD pipeline
+        if topk is not None and teacher_logits is not None:
+            t_scaled = teacher_logits / temperature
+            s_scaled = student_logits / temperature
+            teacher_logits, topk_idx = torch.topk(t_scaled, k=topk, dim=-1)
+            student_logits = torch.gather(s_scaled, dim=-1, index=topk_idx)
+            del t_scaled, s_scaled, topk_idx
+            temperature = 1.0
+        elif teacher_topk_logprobs is not None and teacher_topk_indices is not None:
+            s_scaled = student_logits / temperature
+            student_logits = torch.gather(s_scaled, dim=-1, index=teacher_topk_indices)
+            teacher_logits = teacher_topk_logprobs
+            del s_scaled
+            temperature = 1.0
 
-        Delegates to the unified jsd_loss module for memory-efficient computation.
-        See `swift.rlhf_trainers.jsd_loss.compute_jsd_loss` for details.
-        """
-        return compute_jsd_loss(
-            student_logits=student_logits,
-            teacher_logits=teacher_logits,
-            labels=labels,
-            beta=beta,
-            temperature=temperature,
-            chunk_size=chunk_size,
-            topk=topk,
-            teacher_topk_logprobs=teacher_topk_logprobs,
-            teacher_topk_indices=teacher_topk_indices,
-        )
+        student_logits = student_logits / temperature
+        teacher_logits = teacher_logits / temperature
+
+        if labels is not None:
+            mask = labels != -100
+            student_logits = student_logits[mask]
+            teacher_logits = teacher_logits[mask]
+            num_valid = mask.sum()
+        else:
+            student_logits = student_logits.view(-1, student_logits.size(-1))
+            teacher_logits = teacher_logits.view(-1, teacher_logits.size(-1))
+            num_valid = student_logits.size(0)
+
+        if num_valid == 0:
+            return student_logits.new_zeros(())
+
+        num_valid_int = num_valid if isinstance(num_valid, int) else num_valid.item()
+        total_loss = student_logits.new_zeros(())
+
+        if beta != 0 and beta != 1:
+            beta_t = torch.tensor(beta, dtype=student_logits.dtype, device=student_logits.device)
+            log_beta = torch.log(beta_t)
+            log_1_minus_beta = torch.log1p(-beta_t)
+        else:
+            beta_t = log_beta = log_1_minus_beta = None
+
+        for start_idx in range(0, num_valid_int, chunk_size):
+            end_idx = min(start_idx + chunk_size, num_valid_int)
+            s_chunk = student_logits[start_idx:end_idx]
+            t_chunk = teacher_logits[start_idx:end_idx]
+
+            s_log_probs = F.log_softmax(s_chunk, dim=-1)
+            t_log_probs = F.log_softmax(t_chunk, dim=-1)
+            del s_chunk, t_chunk
+
+            if beta == 0:
+                jsd_chunk = F.kl_div(s_log_probs, t_log_probs, reduction='none', log_target=True)
+            elif beta == 1:
+                jsd_chunk = F.kl_div(t_log_probs, s_log_probs, reduction='none', log_target=True)
+            else:
+                mixture_log_probs = torch.logsumexp(
+                    torch.stack([s_log_probs + log_1_minus_beta, t_log_probs + log_beta]),
+                    dim=0,
+                )
+                kl_teacher = F.kl_div(mixture_log_probs, t_log_probs, reduction='none', log_target=True)
+                kl_student = F.kl_div(mixture_log_probs, s_log_probs, reduction='none', log_target=True)
+                del mixture_log_probs
+                jsd_chunk = beta_t * kl_teacher + (1 - beta_t) * kl_student
+                del kl_teacher, kl_student
+
+            total_loss = total_loss + jsd_chunk.sum()
+            del jsd_chunk, s_log_probs, t_log_probs
+
+        return total_loss / num_valid
 
     def _prepare_logging(self):
         """Initialize logging components for on-policy rollout tracking."""

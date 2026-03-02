@@ -1473,13 +1473,7 @@ def check_vllm_version_ge(min_version: str) -> bool:
 
 
 def create_teacher_api_client(args, check_health: bool = True, timeout: int = 60):
-    """
-    Create and initialize TeacherAPIClient for external teacher model service.
-
-    Args:
-        args: Arguments object containing teacher_model_server and gkd_logits_topk
-        check_health: Whether to check server health after creation (default: True)
-        timeout: Timeout for health check in seconds (default: 60)
+    """Create TeacherAPIClient for external teacher model service.
 
     Returns:
         TeacherAPIClient instance or None if teacher_model_server is not set
@@ -1499,7 +1493,7 @@ def create_teacher_api_client(args, check_health: bool = True, timeout: int = 60
         top_logprobs=gkd_logits_topk,
     )
     if check_health:
-        teacher_api_client.check_server_health(timeout=timeout)
+        teacher_api_client.check_health(timeout=timeout)
     logger.info(f'Teacher API client initialized with top_logprobs={gkd_logits_topk}')
     return teacher_api_client
 
