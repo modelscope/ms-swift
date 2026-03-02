@@ -55,11 +55,6 @@ class TeacherModelArguments:
             When set, the teacher logprobs will be fetched from the external API service (e.g., swift deploy, vLLM)
             instead of loading a local teacher model. This enables using larger teacher models or services hosted
             remotely. When this is set, `teacher_model` is not required. Defaults to None.
-        gkd_logits_topk (Optional[int]): The number of top-k logits to use for KL divergence computation in GKD.
-            If None, uses full vocabulary for KL computation (more accurate but memory-intensive).
-            If set to a positive integer, only top-k teacher logits are used (more efficient).
-            When using `teacher_model_server`, this is limited by the server's `max_logprobs` setting
-            (vLLM default is 20, can be increased with `--max-logprobs`). Defaults to None.
     """
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
@@ -79,14 +74,6 @@ class TeacherModelArguments:
             'help':
             'URL of the teacher model server (e.g., http://localhost:8000). '
             'When set, teacher logprobs are fetched via API instead of loading a local model.'
-        })
-    gkd_logits_topk: Optional[int] = field(
-        default=None,
-        metadata={
-            'help':
-            'Number of top-k logits for KL computation in GKD. '
-            'None = full vocabulary, positive integer = top-k only. '
-            'When using teacher_model_server, limited by server max_logprobs (vLLM default: 20).'
         })
 
 
@@ -221,6 +208,11 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             gkd_loss + sft_alpha * sft_loss`. Defaults to 0.
         lmbda (float): The lambda parameter for GKD, balancing policy and value losses. Defaults to 0.5.
         seq_kd (bool): Whether to use sequence-level knowledge distillation for GKD. Defaults to False.
+        gkd_logits_topk (Optional[int]): The number of top-k logits to use for KL divergence computation in GKD.
+            If None, uses full vocabulary for KL computation (more accurate but memory-intensive).
+            If set to a positive integer, only top-k teacher logits are used (more efficient).
+            When using `teacher_model_server`, this is limited by the server's `max_logprobs` setting
+            (vLLM default is 20, can be increased with `--max-logprobs`). Defaults to None.
         offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
             training. Defaults to False.
         max_new_tokens (Optional[int]): A backward-compatibility argument. Please use `max_completion_length` instead.
@@ -258,6 +250,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     sft_alpha: float = 0
     lmbda: float = 0.5
     seq_kd: bool = False
+    gkd_logits_topk: Optional[int] = None
     offload_teacher_model: bool = False
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead

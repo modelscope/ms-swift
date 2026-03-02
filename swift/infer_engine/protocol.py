@@ -192,6 +192,7 @@ class RequestConfig:
 @dataclass
 class CompletionRequestMixin:
     model: str
+    prompt: str
 
 
 @dataclass
