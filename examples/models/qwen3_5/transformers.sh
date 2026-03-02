@@ -31,6 +31,7 @@ swift sft \
     --logging_steps 5 \
     --max_length 2048 \
     --warmup_ratio 0.05 \
+    --dataset_num_proc 4 \
     --dataloader_num_workers 4 \
     --deepspeed zero3
 

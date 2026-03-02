@@ -19,9 +19,12 @@ from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyPar
                                                                         FullyParallelSaveStrategyWrapper)
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
+from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
+from megatron.core.fusions.fused_bias_gelu import bias_gelu
+from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module
-from megatron.core.utils import get_te_version, get_torch_version, is_te_min_version, is_torch_min_version
+from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_min_version
 from packaging import version
 from typing import Optional
 
@@ -648,3 +651,61 @@ def initialize_tp_communicators(args, config):
             tp_size=args.tensor_model_parallel_size,
             use_fp8=(args.fp8 is not None),
         )
+
+
+def warmup_jit_function(config, args):
+    if args.bf16:
+        dtype = torch.bfloat16
+    elif args.fp16:
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+
+    bias = torch.rand(config.ffn_hidden_size // config.tensor_model_parallel_size, dtype=dtype, device='cuda')
+    input_tensor = torch.rand(
+        (
+            args.seq_length // config.context_parallel_size,
+            args.micro_batch_size,
+            config.ffn_hidden_size // config.tensor_model_parallel_size,
+        ),
+        dtype=dtype,
+        device='cuda',
+    )
+    # Warmup JIT fusions with the input_tensor grad_enable state of both forward
+    # prop and recomputation
+    for bias_grad, input_grad in zip([True, True], [False, True]):
+        bias.requires_grad, input_tensor.requires_grad = bias_grad, input_grad
+        for _ in range(5):
+            if config.swiglu:
+                output = bias_swiglu(input_tensor, bias)
+            else:
+                output = bias_gelu(bias, input_tensor)
+    del bias, input_tensor, output
+
+    # Warmup fused bias+dropout+add
+    if config.sequence_parallel:
+        seq_length = args.seq_length // mpu.get_tensor_model_parallel_world_size()
+    else:
+        seq_length = args.seq_length
+    input_tensor = torch.rand(
+        (seq_length // config.context_parallel_size, args.micro_batch_size, config.hidden_size),
+        dtype=dtype,
+        device='cuda',
+    )
+    residual = torch.rand(
+        (seq_length // config.context_parallel_size, args.micro_batch_size, config.hidden_size),
+        dtype=dtype,
+        device='cuda',
+    )
+    bias = torch.rand((config.hidden_size), dtype=dtype, device='cuda').expand_as(residual)
+    dropout_rate = 0.1
+    # Warmup JIT fusions with the input_tensor grad_enable state of both forward
+    # prop and recomputation
+    for input_grad, bias_grad, residual_grad in zip([False, True], [True, True], [True, True]):
+        input_tensor.requires_grad = input_grad
+        bias.requires_grad = bias_grad
+        residual.requires_grad = residual_grad
+        for _ in range(5):
+            output = bias_dropout_add_fused_train([input_tensor, bias], residual, dropout_rate)
+    del bias, input_tensor, residual, output
+    torch.cuda.empty_cache()

@@ -1,4 +1,4 @@
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 megatron sft \
     --model Qwen/Qwen3-4B \

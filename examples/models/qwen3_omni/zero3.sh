@@ -19,6 +19,7 @@ swift sft \
     --per_device_train_batch_size 8 \
     --per_device_eval_batch_size 8 \
     --attn_impl flash_attn \
+    --experts_impl grouped_mm \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
