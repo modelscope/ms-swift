@@ -53,6 +53,11 @@ logger = get_logger()
 class BaseMegatronTrainer(ABC):
 
     def __init__(self, args, template: Template):
+        # patch routing_replay
+        self.enable_routing_replay = args.router_replay_mode != "disabled"
+        if self.enable_routing_replay:
+            apply_router_replay_patch()
+
         self.args = args
         self.template = template
         self.bridge = args.megatron_model_meta.bridge_cls(args)
@@ -60,12 +65,6 @@ class BaseMegatronTrainer(ABC):
         self.config = self.unwrapped_models[0].config
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
-
-        self.enable_routing_replay = args.router_replay_mode != "disabled"
-        self.args.extra_args['enable_routing_replay'] = self.enable_routing_replay
-        # patch routing_replay
-        if self.enable_routing_replay:
-            apply_router_replay_patch()
 
         self.state = TrainerState(max_steps=args.train_iters)
         initialize_embedding = args.new_special_tokens or args.task_type == 'seq_cls'

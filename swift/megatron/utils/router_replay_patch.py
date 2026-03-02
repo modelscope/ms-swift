@@ -15,7 +15,6 @@ except ImportError:
     pass
 from megatron.core.transformer.moe.router import TopKRouter
 from megatron.core.transformer.transformer_config import TransformerConfig
-from megatron.training import get_args
 
 
 class RouterReplayAction(Enum):
@@ -322,12 +321,11 @@ def apply_router_replay_patch():
 
         # Define new __init__ method that safely handles enable_routing_replay parameter
         def patched_tf_config_init(self, *args, **kwargs):
+            enable_routing_replay = kwargs.pop("enable_routing_replay", TransformerConfig.enable_routing_replay)
             # Call original constructor with remaining kwargs
             original_tf_config_init(self, *args, **kwargs)
-
-            mg_args = get_args()
             # Set the instance attribute
-            self.enable_routing_replay = mg_args.enable_routing_replay or TransformerConfig.enable_routing_replay
+            self.enable_routing_replay = enable_routing_replay
 
         # Apply the patch
         TransformerConfig.__init__ = patched_tf_config_init

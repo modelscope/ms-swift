@@ -157,6 +157,8 @@ class MegatronModelConfig(TransformerConfig):
                                             'none'] = 'aux_loss'
     use_shared_expert_gate: bool = False
 
+    enable_routing_replay: bool = False
+
     # mla
     multi_latent_attention: bool = False
     q_lora_rank: Optional[int] = None
@@ -469,6 +471,10 @@ def get_mcore_model_config(args, hf_config):
     if num_moe_experts is None:
         kwargs['expert_model_parallel_size'] = 1
         kwargs['expert_tensor_parallel_size'] = 1
+    
+    if args.router_replay_mode != "disabled":
+        kwargs['enable_routing_replay'] = True
+
     config = MegatronModelConfig(**kwargs)
     config.hf_config = hf_config
     config.args = args
