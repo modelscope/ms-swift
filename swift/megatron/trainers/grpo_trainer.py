@@ -515,6 +515,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
         self._logs['completion'].extend(completions)
 
+        rollout_infos_list = gather_object([
+            data.rollout_infos if data.rollout_infos else {} for data in rollout_outputs
+        ])
+        self._logs['rollout_infos'].extend(rollout_infos_list)
+
         return rollout_outputs
 
     def postprocess_rollout_data(self, batch, outputs):
@@ -1398,6 +1403,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # log_completions
         if (self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0
                 and self._step != self._last_logged_step):
+            infos_list = list(self._logs['rollout_infos'])
             table = {
                 'gen_step': [self._step - 1] * len(self._logs['prompt']),
                 'prompt': list(self._logs['prompt']),
@@ -1405,6 +1411,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 **{k: list(v)
                    for k, v in self._logs['rewards'].items()},
                 'advantages': list(self._logs['advantages']),
+                'rollout_id': [info.get('rollout_id', '') for info in infos_list],
+                'num_turns': [info.get('num_turns', 0) for info in infos_list],
+                'total_reward': [info.get('total_reward', 0.0) for info in infos_list],
+                'project_id': [info.get('project_id', '') for info in infos_list],
+                'trace_json': [json.dumps(info.get('trace', []), default=str) for info in infos_list],
             }
             self.jsonl_writer.append(table)
             args = self.args
@@ -1687,6 +1698,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'completion': deque(maxlen=args.generation_batch_size),
             'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
             'advantages': deque(maxlen=args.generation_batch_size),
+            'rollout_infos': deque(maxlen=args.generation_batch_size),
         }
 
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}

@@ -51,6 +51,7 @@ class ChatGLM4AgentTemplate(BaseAgentTemplate):
         assistant_content: str,
         tool_messages,
     ) -> Tuple[str, 'Prompt']:
+        assistant_content = assistant_content or ''
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
@@ -136,6 +137,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         assistant_content: str,
         tool_messages,
     ) -> Tuple[str, 'Prompt']:
+        assistant_content = assistant_content or ''
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
