@@ -1134,7 +1134,7 @@ register_model(
         Qwen3_5MoeLoader,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen3_5MoeForConditionalGeneration'],
-        requires=['transformers>=5.2.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 

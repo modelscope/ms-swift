@@ -6,7 +6,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --model Qwen/Qwen3-Next-80B-A3B-Instruct \
     --save_safetensors true \
-    --merge_lora false \
+    --merge_lora true \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
     --load_from_cache_file true \
@@ -39,7 +39,7 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend unfused \
+    --attention_backend flash \
     --padding_free false \
     --model_author swift \
     --model_name swift-robot
