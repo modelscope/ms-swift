@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Outcome Reward Model (ORM) implementations for GRPO training.
 
+import json
 import os
 import re
 from typing import Dict, List, Union
-
-import json
 
 from swift.infer_engine import InferRequest
 

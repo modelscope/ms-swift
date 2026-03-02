@@ -1,9 +1,8 @@
 import os
 import shutil
 import tempfile
-import unittest
-
 import torch
+import unittest
 from modelscope import AutoModel, Preprocessor
 from peft.utils import SAFETENSORS_WEIGHTS_NAME
 from transformers import PreTrainedModel

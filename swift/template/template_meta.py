@@ -2,9 +2,8 @@
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import List, Optional, Type, Union
-
 from transformers import PreTrainedTokenizerBase
+from typing import List, Optional, Type, Union
 
 from .base import Template
 from .utils import Prompt, Word
@@ -123,6 +122,7 @@ class TemplateMeta:
         suffix_stop = self.suffix[-1] if self.suffix else None
         if isinstance(suffix_stop, str):
             suffix_stop = suffix_stop.strip()
+        self.suffix_stop = suffix_stop
         if suffix_stop and suffix_stop not in self.stop_words:
             self.stop_words.append(suffix_stop)
         if tokenizer.eos_token not in self.stop_words:

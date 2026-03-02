@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from collections import defaultdict
-from contextlib import contextmanager
-from typing import Dict, List, Optional
-
 import torch
 import torch.nn as nn
 import transformers
+from collections import defaultdict
+from contextlib import contextmanager
 from packaging import version
 from tqdm import tqdm
+from typing import Dict, List, Optional
 
 from swift.arguments import ExportArguments
 from swift.dataset import load_dataset
@@ -216,6 +215,7 @@ class QuantEngine(ProcessorMixin):
         if not model.model_info.is_moe_model:
             return
         from optimum.gptq.utils import get_layers
+
         # Do not quantize the gate part.
         block = deep_getattr(model, block_name)[-1]
         prefix, experts = QuantEngine._get_experts(block)

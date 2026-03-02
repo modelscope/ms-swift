@@ -8,15 +8,14 @@ batch processing system to improve throughput when evaluating models.
 
 from concurrent.futures import Future
 from dataclasses import dataclass
-from queue import Empty, Queue
-from threading import Thread
-from typing import Any, List, Optional, Tuple
-
 from evalscope.api.messages import ChatMessage as EvalChatMessage
 from evalscope.api.model import GenerateConfig, ModelAPI, ModelOutput, ModelUsage
 from evalscope.api.registry import register_model_api
 from evalscope.api.tool import ToolChoice, ToolInfo
 from evalscope.models.utils.openai import chat_choices_from_openai
+from queue import Empty, Queue
+from threading import Thread
+from typing import Any, List, Optional, Tuple
 
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
 
@@ -89,7 +88,6 @@ class EvalModel(ModelAPI):
         # Extract model-specific arguments from kwargs
         # This pattern allows us to collect known arguments while preserving unknown ones
         def collect_model_arg(name: str) -> Optional[Any]:
-            nonlocal model_args
             value = model_args.get(name, None)
             if value is not None:
                 model_args.pop(name)

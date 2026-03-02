@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
 from typing import List, Literal, Optional, Tuple
-
-import json
 
 from swift.template import ContextType, Messages, get_last_user_round
 from .utils import calculate_loss_scale

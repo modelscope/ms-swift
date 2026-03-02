@@ -62,8 +62,9 @@ def infer_lora(infer_request: 'InferRequest'):
 
 if __name__ == '__main__':
     from peft import PeftModel
-    from swift import (TransformersEngine, RequestConfig, AdapterRequest, InferRequest, BaseArguments,
-                       get_model_processor, safe_snapshot_download, get_template)
+
+    from swift import (AdapterRequest, BaseArguments, InferRequest, RequestConfig, TransformersEngine,
+                       get_model_processor, get_template, safe_snapshot_download)
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     # infer_lora(infer_request)
     infer_multilora(infer_request, 'transformers')

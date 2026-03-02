@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import sys
-from typing import Any, Dict
-
 from transformers import AutoModel, AutoModelForSequenceClassification, PretrainedConfig, PreTrainedModel
+from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_device, git_clone_github, safe_snapshot_download
@@ -24,7 +23,7 @@ class Emu3GenLoader(ModelLoader):
         sys.path.append(model_dir)
         from processing_emu3 import Emu3Processor
         vq_hub = safe_snapshot_download('BAAI/Emu3-VisionTokenizer', check_local=True)
-        from transformers import AutoModel, AutoImageProcessor
+        from transformers import AutoImageProcessor, AutoModel
         image_processor = AutoImageProcessor.from_pretrained(vq_hub, trust_remote_code=True)
         image_tokenizer = AutoModel.from_pretrained(vq_hub, trust_remote_code=True).eval().to(get_device())
         processor = Emu3Processor(image_processor, image_tokenizer, tokenizer)

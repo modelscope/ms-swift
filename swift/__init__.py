@@ -4,27 +4,27 @@ from typing import TYPE_CHECKING
 from .utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .version import __version__, __release_datetime__
-    from .tuners import Swift
-    from .tuner_plugin import Tuner, PeftTuner, tuners_map
-    from .infer_engine import (TransformersEngine, VllmEngine, SglangEngine, LmdeployEngine, InferRequest,
-                               RequestConfig, AdapterRequest, InferEngine, InferClient, GRPOVllmEngine)
-    from .trainers import TrainingArguments, Seq2SeqTrainingArguments, Trainer, Seq2SeqTrainer
-    from .arguments import (PretrainArguments, SftArguments, RLHFArguments, ExportArguments, InferArguments,
-                            AppArguments, EvalArguments, SamplingArguments, RolloutArguments, DeployArguments,
-                            BaseArguments)
-    from .pipelines import (sft_main, pretrain_main, infer_main, rlhf_main, export_main, app_main, eval_main,
-                            sampling_main, rollout_main, deploy_main, merge_lora, run_deploy)
+    from .agent_template import BaseAgentTemplate, agent_template_map
+    from .arguments import (AppArguments, BaseArguments, DeployArguments, EvalArguments, ExportArguments,
+                            InferArguments, PretrainArguments, RLHFArguments, RolloutArguments, SamplingArguments,
+                            SftArguments)
+    from .callbacks import TrainerCallback, callbacks_map
+    from .dataset import EncodePreprocessor, load_dataset
+    from .infer_engine import (AdapterRequest, GRPOVllmEngine, InferClient, InferEngine, InferRequest, LmdeployEngine,
+                               RequestConfig, SglangEngine, TransformersEngine, VllmEngine)
+    from .loss import BaseLoss, loss_map
+    from .loss_scale import ALL_BASE_STRATEGY, ConfigLossScale, LossScale, get_loss_scale, loss_scale_map
+    from .metrics import InferStats, MeanMetric, eval_metrics_map
     from .model import get_model_processor, get_processor
+    from .optimizers import OptimizerCallback, optimizers_map
+    from .pipelines import (app_main, deploy_main, eval_main, export_main, infer_main, merge_lora, pretrain_main,
+                            rlhf_main, rollout_main, run_deploy, sampling_main, sft_main)
     from .template import get_template
-    from .dataset import load_dataset, EncodePreprocessor
+    from .trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments, Trainer, TrainingArguments
+    from .tuner_plugin import PeftTuner, Tuner, tuners_map
+    from .tuners import Swift
     from .utils import get_logger, safe_snapshot_download
-    from .agent_template import agent_template_map, BaseAgentTemplate
-    from .loss import loss_map, BaseLoss
-    from .metrics import eval_metrics_map, InferStats, MeanMetric
-    from .optimizers import optimizers_map, OptimizerCallback
-    from .callbacks import callbacks_map, TrainerCallback
-    from .loss_scale import loss_scale_map, LossScale, get_loss_scale, ALL_BASE_STRATEGY, ConfigLossScale
+    from .version import __release_datetime__, __version__
 else:
     _import_structure = {
         'version': ['__release_datetime__', '__version__'],

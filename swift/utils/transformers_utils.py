@@ -1,14 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import re
-from bisect import bisect_right
-from contextlib import contextmanager, nullcontext
-from typing import Callable, List, Optional, Tuple
-
 import numpy as np
+import re
 import torch
 import torch.nn as nn
+from bisect import bisect_right
+from contextlib import contextmanager, nullcontext
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import set_seed
+from typing import Callable, List, Optional, Tuple
 
 from .logger import get_logger
 from .utils import deep_getattr
@@ -247,7 +246,7 @@ def get_multimodal_target_regex(
         target_modules = [tm for tm in target_modules if tm]
         target_pattern = rf'.*\.({"|".join(target_modules)})' if target_modules else ''
         rejected_pattern = rf'(?!({"|".join(rejected_modules)}))' if rejected_modules else ''
-        res.append(rf'{rejected_pattern}{module}{target_pattern}')
+        res.append(rf'{rejected_pattern}{re.escape(module)}(?=\.){target_pattern}')
 
     return rf'^({"|".join(res)})$'
 
@@ -294,7 +293,7 @@ def unwrap_model_for_generation(
                 if not gather_parameters or name in gather_parameters
             ]
             with deepspeed.zero.GatheredParameters(parameters):
-                from trl.models.utils import remove_hooks, add_hooks
+                from trl.models.utils import add_hooks, remove_hooks
                 remove_hooks(model)
                 yield accelerator.unwrap_model(model)
                 add_hooks(model)

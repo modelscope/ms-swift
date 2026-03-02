@@ -1,11 +1,10 @@
 import copy
 import os
+import peft
 import shutil
 import tempfile
-import unittest
-
-import peft
 import torch
+import unittest
 from modelscope import Preprocessor
 from modelscope.models.nlp.structbert import SbertConfig, SbertForSequenceClassification
 from peft import PeftModel, inject_adapter_in_model

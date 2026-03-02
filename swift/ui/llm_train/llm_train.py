@@ -1,18 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
+import gradio as gr
+import json
 import os
 import re
 import sys
 import time
 from copy import deepcopy
 from functools import partial
-from subprocess import PIPE, STDOUT, Popen
-from typing import Dict, Type
-
-import gradio as gr
-import json
 from json import JSONDecodeError
+from subprocess import PIPE, STDOUT, Popen
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
+from typing import Dict, Type
 
 from swift.arguments import ExportArguments, RLHFArguments, get_supported_tuners
 from swift.utils import get_device_count, get_logger

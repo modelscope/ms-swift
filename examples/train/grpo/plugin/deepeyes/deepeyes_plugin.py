@@ -2,15 +2,14 @@
 
 import base64
 import io
+import json
 import os
 import random
 import re
 from math import ceil, floor
-from typing import Any, Dict, List
-
-import json
 from openai import OpenAI
 from PIL import Image
+from typing import Any, Dict, List
 
 from swift.rewards.orm import ORM, orms
 from swift.rollout.multi_turn import MultiTurnScheduler, multi_turns

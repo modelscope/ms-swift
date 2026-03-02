@@ -1,7 +1,6 @@
 import math
-import unittest
-
 import torch
+import unittest
 from modelscope import Model, Preprocessor
 from torch import nn
 

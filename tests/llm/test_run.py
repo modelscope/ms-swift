@@ -6,15 +6,14 @@ if __name__ == '__main__':
 import os
 import shutil
 import tempfile
-import unittest
-from functools import partial
-from typing import Any, Dict, List
-
 import torch
+import unittest
 from datasets import Dataset as HfDataset
+from functools import partial
 from modelscope import Model, MsDataset, snapshot_download
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer
+from typing import Any, Dict, List
 
 from swift import (InferArguments, RLHFArguments, SftArguments, Trainer, TrainingArguments, get_logger, infer_main,
                    rlhf_main, sft_main)
@@ -321,7 +320,7 @@ class TestRun(unittest.TestCase):
         if not __name__ == '__main__':
             # ignore citest error in github
             return
-        from swift import sft_main, infer_main
+        from swift import infer_main, sft_main
         os.environ['PAI_TRAINING_JOB_ID'] = '123456'
         folder = os.path.join(os.path.dirname(__file__), 'config')
         tensorboard_dir = os.path.join('output/pai_test', 'pai_tensorboard')

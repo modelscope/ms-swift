@@ -3,14 +3,13 @@
 import os
 import platform
 import re
+import torch
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type
-
-import torch
 from transformers import AutoConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.utils.versions import require_version
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 from swift.utils import HfConfigFactory, get_logger, safe_snapshot_download
 from .utils import get_default_torch_dtype
@@ -80,19 +79,15 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        from .constant import RMModelType, MLLMModelType
+        from .constant import MLLMModelType, RMModelType
         from .register import ModelLoader
         assert not isinstance(self.loader, str)  # check ms-swift4.0
         if self.loader is None:
             self.loader = ModelLoader
         if not isinstance(self.model_groups, (list, tuple)):
             self.model_groups = [self.model_groups]
-        self.candidate_templates = set([self.template])
-        for model_group in self.model_groups:
-            self.candidate_templates.add(model_group.template)
-        self.candidate_templates.discard(None)
-        self.candidate_templates = list(self.candidate_templates)
-
+        self.candidate_templates = list(
+            dict.fromkeys(t for t in [self.template] + [mg.template for mg in self.model_groups] if t is not None))
         if self.model_type in MLLMModelType.__dict__:
             self.is_multimodal = True
         if self.model_type in RMModelType.__dict__:

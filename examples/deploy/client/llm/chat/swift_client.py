@@ -50,8 +50,9 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 
 
 if __name__ == '__main__':
-    from swift import (InferEngine, InferRequest, InferClient, RequestConfig, load_dataset, run_deploy, DeployArguments,
-                       InferStats)
+    from swift import (DeployArguments, InferClient, InferEngine, InferRequest, InferStats, RequestConfig, load_dataset,
+                       run_deploy)
+
     # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
     with run_deploy(
             DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1,

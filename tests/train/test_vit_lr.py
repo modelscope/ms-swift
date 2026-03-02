@@ -5,7 +5,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 def test_vit_lr():
     # https://github.com/QwenLM/Qwen2.5-VL/tree/main/qwen-vl-finetune
-    from swift import sft_main, SftArguments
+    from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-VL-7B-Instruct',

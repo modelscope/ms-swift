@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
-import os
-from typing import Any, Dict, List, Optional
-
 import numpy as np
+import os
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
+from typing import Any, Dict, List, Optional
 
 from swift.utils import get_hf_endpoint, use_hf_hub
 from ..media import MediaResource

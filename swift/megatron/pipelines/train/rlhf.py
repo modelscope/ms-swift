@@ -4,7 +4,6 @@ from typing import List, Optional, Union
 
 from swift.megatron.arguments import MegatronRLHFArguments
 from swift.pipelines.train import prepare_kto_dataset
-from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, is_last_rank
 from .sft import MegatronSft
 
@@ -41,11 +40,6 @@ class MegatronRLHF(MegatronSft):
         model_mapping = {'grpo': 'train', 'gkd': 'train', 'kto': 'kto'}
         self.template.set_mode(model_mapping.get(self.args.rlhf_type, 'rlhf'))
 
-    def _get_data_collator(self):
-        if self.args.rlhf_type in ('grpo', 'gkd'):
-            return identity_data_collator
-        return super()._get_data_collator()
-
     def _get_dataset(self):
         args = self.args
         train_dataset, val_dataset = super()._get_dataset()
@@ -79,7 +73,10 @@ class MegatronRLHF(MegatronSft):
     def _prepare_teacher_api_client(self):
         """Prepare teacher API client for external teacher model service."""
         from swift.rlhf_trainers.utils import create_teacher_api_client
-        return create_teacher_api_client(self.args, check_health=True, timeout=60, use_last_rank=True)
+        from swift.utils import is_last_rank
+        if is_last_rank():
+            return create_teacher_api_client(self.args, check_health=True, timeout=60)
+        return None
 
 
 def megatron_rlhf_main(args: Optional[Union[List[str], MegatronRLHFArguments]] = None):

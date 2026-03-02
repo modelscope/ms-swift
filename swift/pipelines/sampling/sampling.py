@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
 import shutil
 import time
 from typing import List, Optional, Union
-
-import json
 
 from swift.arguments import SamplingArguments
 from swift.dataset import load_dataset

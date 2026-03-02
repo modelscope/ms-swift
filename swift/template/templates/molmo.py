@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Any, Dict, List, Literal, Optional
-
 import torch
+from typing import Any, Dict, List, Literal, Optional
 
 from ..base import Template
 from ..constant import MLLMTemplateType

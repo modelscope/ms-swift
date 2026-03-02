@@ -226,7 +226,7 @@ class RewardFunction():
 在训练侧设置参数`--vllm_server_pass_dataset`，可将数据集中的其他列传入多轮规划器。在`infer_request.data_dict`中获取。
 
 ### 训推一致性兼容
-swift >= 3.11 支持从 vLLM 侧返回 rollouot 的 logps 用于纠正训推不一致问题，具体请参考该[文档](../AdvancedResearch/training_inference_mismatch.md)
+swift >= 3.11 支持从 vLLM 侧返回 rollout 的 logps 用于纠正训推不一致问题，具体请参考该[文档](../AdvancedResearch/training_inference_mismatch.md)
 
 在多轮训练中，如果启用了 `rollout_importance_sampling_mode`，框架会自动收集每轮 rollout 的 log probabilities，用于校正训推不一致带来的 off-policy 问题。
 

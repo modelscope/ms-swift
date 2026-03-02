@@ -49,12 +49,12 @@ def test_eval_mllm():
 
 
 def test_eval_url():
-    from swift import EvalArguments, eval_main, DeployArguments
+    from swift import DeployArguments, EvalArguments, eval_main
     from swift.pipelines import run_deploy
     deploy_args = DeployArguments(model='Qwen/Qwen2-VL-7B-Instruct', infer_backend=infer_backend, verbose=False)
 
     with run_deploy(deploy_args, return_url=True) as url:
-        eval_main(EvalArguments(model='Qwen2-VL-7B-Instruct', eval_url=url, eval_dataset=['arc_c']))
+        eval_main(EvalArguments(model='Qwen2-VL-7B-Instruct', eval_url=url, eval_dataset=['arc']))
 
 
 if __name__ == '__main__':

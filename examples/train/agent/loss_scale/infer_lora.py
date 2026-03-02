@@ -77,8 +77,8 @@ def get_infer_request():
 
 
 if __name__ == '__main__':
-    from swift.infer_engine import InferEngine, InferRequest, TransformersEngine, RequestConfig
     from swift.agent_template import agent_template_map
+    from swift.infer_engine import InferEngine, InferRequest, RequestConfig, TransformersEngine
     model = 'Qwen/Qwen2.5-3B'
     adapters = ['output/vx-xxx/checkpoint-xxx']
     engine = TransformersEngine(model, adapters=adapters, max_batch_size=8)

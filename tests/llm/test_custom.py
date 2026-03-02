@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 import unittest
 from typing import Any, Dict, Optional
-
-import torch
 
 from swift.dataset import DatasetMeta, ResponsePreprocessor, load_dataset, register_dataset
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine

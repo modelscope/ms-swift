@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
-from typing import Any, Dict
-
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
+from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, git_clone_github
@@ -105,7 +104,9 @@ register_model(
             ModelGroup([
                 Model('moonshotai/Moonlight-16B-A3B', 'moonshotai/Moonlight-16B-A3B'),
                 Model('moonshotai/Moonlight-16B-A3B-Instruct', 'moonshotai/Moonlight-16B-A3B-Instruct'),
-            ], TemplateType.moonlight),
+            ],
+                       TemplateType.moonlight,
+                       requires=['transformers<4.49']),
             ModelGroup([
                 Model('moonshotai/Kimi-K2-Base', 'moonshotai/Kimi-K2-Base'),
                 Model('moonshotai/Kimi-K2-Instruct', 'moonshotai/Kimi-K2-Instruct'),
@@ -297,18 +298,20 @@ register_model(
 
 
 class DeepseekOCRLoader(ModelLoader):
+    visual_name = 'vision_model'
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         self.auto_model_cls = self.auto_model_cls or AutoModel
         model = super().get_model(model_dir, *args, **kwargs)
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.sam_model)
-        patch_output_to_input_device(model.model.vision_model)
+        patch_output_to_input_device(getattr(model.model, self.visual_name))
         patch_output_to_input_device(model.model.projector)
         return model
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         from transformers import AutoProcessor, AutoTokenizer
+
         # When not loading model (e.g., vllm backend), avoid triggering AutoConfig which would execute
         # trust_remote_code and cause transformers version compatibility issues
         # For vllm backend, we only need the processor/tokenizer
@@ -318,6 +321,10 @@ class DeepseekOCRLoader(ModelLoader):
             # Fallback to AutoTokenizer if AutoProcessor is not available
             processor = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
         return processor
+
+
+class DeepseekOCR2Loader(DeepseekOCRLoader):
+    visual_name = 'qwen2_model'
 
 
 register_model(
@@ -332,6 +339,22 @@ register_model(
         template=TemplateType.deepseek_ocr,
         model_arch=ModelArch.deepseek_ocr,
         architectures=['DeepseekOCRForCausalLM'],
+        requires=['transformers==4.46.3', 'easydict'],
+        tags=['vision'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.deepseek_ocr2,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-OCR-2', 'deepseek-ai/DeepSeek-OCR-2'),
+            ]),
+        ],
+        DeepseekOCR2Loader,
+        template=TemplateType.deepseek_ocr2,
+        model_arch=ModelArch.deepseek_ocr2,
+        architectures=['DeepseekOCR2ForCausalLM'],
         requires=['transformers==4.46.3', 'easydict'],
         tags=['vision'],
     ))

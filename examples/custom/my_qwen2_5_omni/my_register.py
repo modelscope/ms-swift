@@ -1,9 +1,8 @@
-from functools import partial
-from typing import Any, Dict, List, Literal, Optional
-
 import torch
+from functools import partial
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.model import (Model, ModelGroup, ModelLoader, ModelMeta, MultiModelKeys, get_model_processor, register_model,
                          register_model_arch)
@@ -44,8 +43,8 @@ class Qwen2_5OmniLoader(ModelLoader):
         return config
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
-        from transformers import Qwen2_5OmniProcessor
         from qwen_omni_utils import vision_process
+        from transformers import Qwen2_5OmniProcessor
         processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
         # Control constants in qwen_omni_utils library via environment variables,
         # e.g., `MAX_PIXELS`, etc.
@@ -336,10 +335,20 @@ class Qwen2_5OmniTemplate(Template):
                 # Use zero2 in this scenario.
                 input_features = input_ids.new_zeros([1, 128, 128], dtype=model.thinker.audio_tower.dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-                audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+                audio_res = model.thinker.get_audio_features(input_features, feature_attention_mask)
+                # Compatible with transformers 5.0
+                if hasattr(audio_res, 'last_hidden_state'):
+                    audio_embeds = audio_res.last_hidden_state
+                else:
+                    audio_embeds = audio_res
                 inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
-            audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_res = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            # Compatible with transformers 5.0
+            if hasattr(audio_res, 'last_hidden_state'):
+                audio_embeds = audio_res.last_hidden_state
+            else:
+                audio_embeds = audio_res
             audio_mask = (input_ids == thinker_config.audio_token_index).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)

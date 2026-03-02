@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 from copy import deepcopy
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Optional, Union
-
-import json
 from PIL import Image
+from typing import Any, Dict, List, Optional, Union
 
 from swift.utils import get_logger
 from .utils import Messages, Tool, get_last_user_round, messages_to_history

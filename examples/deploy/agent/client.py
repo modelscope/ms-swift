@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-
 from openai import OpenAI
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'

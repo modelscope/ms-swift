@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
 import re
+import torch
 import types
 from dataclasses import dataclass, field
-from typing import List, Union
-
-import torch
 from torch import nn
 from transformers.activations import ACT2CLS
+from typing import List, Union
 
 from swift.utils import find_sub_module, get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput

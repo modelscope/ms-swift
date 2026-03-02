@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import TYPE_CHECKING
-
 import numpy as np
 import torch
+from typing import TYPE_CHECKING
 
 from .base import TrainerCallback
 
 if TYPE_CHECKING:
-    from swift.trainers import TrainingArguments, Trainer
+    from swift.trainers import Trainer, TrainingArguments
 
 
 class LISACallback(TrainerCallback):

@@ -92,7 +92,7 @@ V100机器要用fp32训练qwen2。
 参考这个[例子](https://github.com/modelscope/ms-swift/blob/main/examples/sampler/distill/distill.sh)。
 
 ### Q30: 当前训练完默认保存多少个checkpoint？
-默认保存所有的checkpoint，详见[命令行参数 save_total_limit](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。该参数在megatron swift中不支持，请设置save_interval保存checkpoint，详见[megatron swift命令行参数](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
+默认保存所有的checkpoint，详见[命令行参数 save_total_limit](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html)。
 
 ### Q31: Grounding任务中通用数据格式支持一个类别有多个实例吗？
 目前均支持了一个物体对应多个bbox，参考文档[自定义数据集](https://swift.readthedocs.io/zh-cn/latest/Customization/Custom-dataset.html#grounding)。
@@ -242,7 +242,7 @@ examples下有[例子](https://github.com/modelscope/ms-swift/blob/main/examples
 ### Q76: 话说直接从peft和trl库，手搓微调和grpo代码和swift官方在同参数下进行训练，效果差异大吗？
 区别不大，额外支持了多模态。
 
-### Q77: swift 目前不支持 minicpmo2_6 使用音频模态输入的训练吗？会报错： assert media_type in {'image', 'video'}
+### Q77: swift 目前不支持 minicpmo 使用音频模态输入的训练吗？会报错： assert media_type in {'image', 'video'}
 目前不支持音频。
 
 ### Q78: swift可以微调deepseek R1 671B吗？
@@ -431,7 +431,7 @@ vl模型的目前仅支持flash-attn，纯文本两种都支持。
 查看这个[issue](https://github.com/modelscope/ms-swift/issues/4030)。
 
 ### Q125: 请问megatron-swift如何配置断点续训？
-配置`--load`加载checkpoint，另外根据需要配置这几个参数，`--finetune`，`--no_load_optim`，`--no_load_rng`。如果是lora断点续训，配置`--adapter_load`，其他同全参数训练，详见[megatron-swift命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
+配置`--mcore_model`加载checkpoint，另外根据需要配置这几个参数，`--finetune`，`--no_load_optim`，`--no_load_rng`。如果是lora断点续训，配置`--mcore_adapter`，其他同全参数训练，详见[megatron-swift命令行参数文档](https://swift.readthedocs.io/zh-cn/latest/Megatron-SWIFT/Command-line-parameters.html)。
 
 ### Q126: 有没有人在复现Kimi-VL-A3B-Instruct的时候出现了如下的报错？
 ```text
@@ -552,7 +552,7 @@ all-router也加到target_modules。
 ### Q161: 下面的脚本，可以按epoch保存checkpoint吗？
 ```shell
 megatron sft \
-    --load "$MODEL_PATH" \
+    --mcore_model "$MODEL_PATH" \
     --dataset "$DATA_PATH"  \
     --tuner_type lora \
     --lora_rank 8 \
@@ -571,13 +571,13 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 2 \
-    --save "$OUTPUT_PATH" \
+    --num_train_epochs 2 \
+    --output_dir "$OUTPUT_PATH" \
     --split_dataset_ratio 0.02 \
-    --save_interval 25 \
+    --save_steps 25 \
     --max_length 8192 \
     --finetune false \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_load_rng true \
     --no_load_optim true \
     --no_save_optim true \
@@ -592,7 +592,7 @@ megatron sft \
 ```text
 RuntimeError: ColumnParallelLinear was called with gradient_accumulation_fusion set to True but the custom CUDA extension fused_weight_gradient_mlp_cuda module is not found. To use gradient_accumulation_fusion you must install APEX with --cpp_ext and --cuda_ext. For example: pip install --global-option="--cpp_ext" --global-option="--cuda_ext ." Note that the extension requires CUDA>=11. Otherwise, you must turn off gradient accumulation fusion.
 ```
-设置一下`--no_gradient_accumulation_fusion true`。
+设置一下`--gradient_accumulation_fusion false`。
 
 ### Q163: moe的lora训练，target_modules参数设置了all-linear，是包括了路由器模块吗？
 看gate是否是nn.Linear实现，如果是nn.Parameter就不训练，详见命令行参数[target_parameters](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#tuner)。

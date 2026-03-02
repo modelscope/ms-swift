@@ -1,16 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import base64
 import io
+import json
 import os
 import time
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
-import json
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.template import Messages, Tool
 from swift.utils import remove_response
@@ -381,7 +380,7 @@ class ChatCompletionMessageToolCall:
 @dataclass
 class ChatMessage:
     role: Literal['system', 'user', 'assistant']
-    content: Union[str, List[Dict[str, Any]], int, float]
+    content: Union[str, List[Dict[str, Any]], int, float, List[float]]
     tool_calls: Optional[List[ChatCompletionMessageToolCall]] = None
     reasoning_content: Optional[str] = None
 
@@ -572,7 +571,6 @@ class InitCommunicatorRequest(BaseModel):
     host: str
     port: int
     world_size: int
-    client_device_uuid: Optional[str] = None
 
 
 class UpdateWeightsRequest(BaseModel):

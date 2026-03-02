@@ -2,11 +2,10 @@
 import argparse
 import functools
 import inspect
-import os
-from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
-
 import json
 import numpy as np
+import os
+from typing import Any, Callable, Dict, List, Literal, Optional, TypeVar, Union
 
 from swift.utils import find_free_port, find_node_ip
 from .arguments import RayArguments

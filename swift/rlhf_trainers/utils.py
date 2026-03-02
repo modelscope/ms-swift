@@ -1,21 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import datasets
 import functools
 import ipaddress
 import math
 import os
 import socket
 import time
+import torch
+import torch.nn.functional as F
 from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from datetime import timedelta
 from functools import partial
 from io import BytesIO
-from types import MethodType
-from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
-
-import datasets
-import torch
-import torch.nn.functional as F
 from msgspec import field
 from packaging import version
 from peft.tuners import lora
@@ -24,6 +21,8 @@ from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
+from types import MethodType
+from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
@@ -37,7 +36,6 @@ if is_swanlab_available():
 
 T = TypeVar('T')
 
-TensorLoRARequest = None
 _ipv6_patch_applied = False
 
 if is_vllm_available():
@@ -55,6 +53,28 @@ if is_vllm_available():
         @property
         def embeddings(self):
             return self.lora_embeddings
+else:
+    TensorLoRARequest = None
+
+
+def chunk_list(lst: list, n: int) -> list[list]:
+    """
+    Split list `lst` into `n` evenly distributed sublists.
+
+    Example:
+    ```python
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 2)
+    [[1, 2, 3], [4, 5, 6]]
+
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 4)
+    [[1, 2], [3, 4], [5], [6]]
+
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 8)
+    [[1], [2], [3], [4], [5], [6], [], []]
+    ```
+    """
+    k, r = divmod(len(lst), n)
+    return [lst[i * k + min(i, r):(i + 1) * k + min(i + 1, r)] for i in range(n)]
 
 
 def is_valid_ipv6_address(address: str) -> bool:
@@ -269,9 +289,9 @@ def prepare_deepspeed(model, accelerator, deepspeed_config=None, deepspeed_plugi
     try:
         import deepspeed
         import os
+        from accelerate.utils import DeepSpeedPlugin
         from copy import deepcopy
         from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
-        from accelerate.utils import DeepSpeedPlugin
     except ImportError:
         pass
 
@@ -538,7 +558,7 @@ def patch_lora_unmerge(model):
 
 
 @contextmanager
-def patch_profiling_context(trainer, name: str):
+def profiling_context(trainer, name: str):
     start_time = time.perf_counter()
     yield
     end_time = time.perf_counter()
@@ -553,11 +573,11 @@ def patch_profiling_context(trainer, name: str):
         swanlab.log(profiling_metrics)
 
 
-def patch_profiling_decorator(func):
+def profiling_decorator(func):
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        with patch_profiling_context(self, func.__name__):
+        with profiling_context(self, func.__name__):
             return func(self, *args, **kwargs)
 
     return wrapper
@@ -1335,7 +1355,6 @@ def set_expandable_segments(enable: bool) -> None:
         >>> set_expandable_segments(True)  # Enable to help with OOM issues
         >>> set_expandable_segments(False) # Disable for more predictable memory usage
     """
-    global _EXPANDABLE_SEGMENTS_SET
     if not _EXPANDABLE_SEGMENTS_SET:
         return
     if torch.cuda.is_available():
@@ -1453,7 +1472,7 @@ def check_vllm_version_ge(min_version: str) -> bool:
     return version.parse(vllm_version) >= version.parse(min_version)
 
 
-def create_teacher_api_client(args, check_health: bool = True, timeout: int = 60, use_last_rank: bool = True):
+def create_teacher_api_client(args, check_health: bool = True, timeout: int = 60):
     """
     Create and initialize TeacherAPIClient for external teacher model service.
 
@@ -1461,36 +1480,27 @@ def create_teacher_api_client(args, check_health: bool = True, timeout: int = 60
         args: Arguments object containing teacher_model_server and gkd_logits_topk
         check_health: Whether to check server health after creation (default: True)
         timeout: Timeout for health check in seconds (default: 60)
-        use_last_rank: Whether to use last rank (Megatron style) or first rank (Swift style) for initialization (default: True)
 
     Returns:
         TeacherAPIClient instance or None if teacher_model_server is not set
     """
-    # Only prepare if teacher_model_server is set
     teacher_model_server = getattr(args, 'teacher_model_server', None)
     if not teacher_model_server:
         return None
 
     from swift.rlhf_trainers import TeacherAPIClient
-    from swift.utils import get_logger, is_last_rank, is_master
 
     logger = get_logger()
     gkd_logits_topk = getattr(args, 'gkd_logits_topk', None) or 20
 
-    # Choose rank check function based on context
-    rank_check_func = is_last_rank if use_last_rank else is_master
-
-    teacher_api_client = None
-    if rank_check_func():
-        logger.info(f'Initializing teacher API client for {teacher_model_server}')
-        teacher_api_client = TeacherAPIClient(
-            base_url=teacher_model_server,
-            top_logprobs=gkd_logits_topk,
-        )
-        if check_health:
-            # Check server health with timeout
-            teacher_api_client.check_server_health(timeout=timeout)
-        logger.info(f'Teacher API client initialized with top_logprobs={gkd_logits_topk}')
+    logger.info(f'Initializing teacher API client for {teacher_model_server}')
+    teacher_api_client = TeacherAPIClient(
+        base_url=teacher_model_server,
+        top_logprobs=gkd_logits_topk,
+    )
+    if check_health:
+        teacher_api_client.check_server_health(timeout=timeout)
+    logger.info(f'Teacher API client initialized with top_logprobs={gkd_logits_topk}')
     return teacher_api_client
 
 

@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
-
-import torch
 
 from ..base import Template
 from ..constant import MLLMTemplateType

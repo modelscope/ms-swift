@@ -3,16 +3,15 @@
 import inspect
 import math
 import os
-from contextlib import contextmanager
-from types import FunctionType, MethodType
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
-
 import torch
 import torch.nn.functional as F
+from contextlib import contextmanager
 from peft import PeftModel
 from torch import nn
 from torch.nn import CrossEntropyLoss, Module
 from transformers import PreTrainedModel
+from types import FunctionType, MethodType
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from swift.model import ModelMeta
 from swift.sequence_parallel import ChunkedCrossEntropyLoss, GatherLoss, sequence_parallel
@@ -293,9 +292,9 @@ def get_resume_dir(output_dir):
 
 
 def replace_index_file(output_dir: str):
-    from transformers.utils import WEIGHTS_INDEX_NAME, SAFE_WEIGHTS_INDEX_NAME
-    import os
     import json
+    import os
+    from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, WEIGHTS_INDEX_NAME
     index_file = os.path.join(output_dir, WEIGHTS_INDEX_NAME)
 
     if not os.path.exists(index_file):
@@ -314,3 +313,22 @@ def replace_index_file(output_dir: str):
     from contextlib import suppress
     with suppress(FileNotFoundError):
         os.remove(os.path.join(output_dir, WEIGHTS_INDEX_NAME))
+
+
+@contextmanager
+def patch_modelscope_hub_timeout():
+    from modelscope.hub.api import HubApi
+    __init__ = HubApi.__init__
+
+    def __new_init__(self, *args, **kwargs):
+        timeout = kwargs.get('timeout')
+        if timeout is not None and timeout > 5:
+            kwargs['timeout'] = 5
+        __init__(self, *args, **kwargs)
+
+    HubApi.__init__ = __new_init__
+
+    try:
+        yield
+    finally:
+        HubApi.__init__ = __init__

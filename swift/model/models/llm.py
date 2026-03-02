@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Any, Dict
-
 from transformers import AutoTokenizer, PretrainedConfig
+from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, safe_snapshot_download

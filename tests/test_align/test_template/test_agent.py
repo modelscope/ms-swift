@@ -583,7 +583,8 @@ def test_seed_oss():
 
 
 if __name__ == '__main__':
-    from swift import load_dataset, TransformersEngine, InferRequest, RequestConfig, agent_template_map
+    from swift import InferRequest, RequestConfig, TransformersEngine, agent_template_map, load_dataset
+
     # test_react_en()
     # test_react_zh()
     # test_qwen_en()

@@ -1,5 +1,4 @@
 import unittest
-
 from modelscope import Model
 
 from swift.utils import find_sub_module

@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from copy import deepcopy
-from dataclasses import asdict
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
-
 import aiohttp
 import json
+from copy import deepcopy
 from dacite import from_dict
+from dataclasses import asdict
 from requests.exceptions import HTTPError
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from .infer_engine import InferEngine

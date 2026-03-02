@@ -2,10 +2,9 @@
 import os
 import sys
 from collections import OrderedDict
-from typing import Any, Dict
-
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, git_clone_github

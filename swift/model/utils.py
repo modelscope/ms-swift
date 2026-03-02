@@ -1,19 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import shutil
-from functools import wraps
-from types import MethodType
-from typing import List, Optional, TypeVar, Union
-
 import torch
 import torch.nn.functional as F
 from accelerate.utils import find_device
+from functools import wraps
 from packaging import version
+from peft import PeftModel
 from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
                                 is_torch_npu_available, strtobool)
+from types import MethodType
+from typing import List, Optional, TypeVar, Union
 
 from swift.utils import HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_logger, is_mp, to_device
 
@@ -62,9 +62,9 @@ def get_llm_model(model: torch.nn.Module, model_meta=None, inner_backbone=True):
     Returns:
 
     """
-    from swift.tuners import SwiftModel
-    from peft import PeftModel
     from accelerate.utils import extract_model_from_parallel
+
+    from swift.tuners import SwiftModel
     model = extract_model_from_parallel(model)
 
     if isinstance(model, (SwiftModel, PeftModel)):
@@ -92,6 +92,7 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
+        # Please ensure the patch to submodel.forward is applied before this function.
         _old_func = getattr(submodel, func_name).__func__
 
         @wraps(_old_func)

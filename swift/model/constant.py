@@ -31,6 +31,7 @@ class LLMModelType:
     glm4 = 'glm4'
     glm4_moe = 'glm4_moe'
     glm4_moe_lite = 'glm4_moe_lite'
+    glm_moe_dsa = 'glm_moe_dsa'
 
     glm_edge = 'glm_edge'
     codefuse_codegeex2 = 'codefuse_codegeex2'
@@ -144,6 +145,9 @@ class MLLMModelType:
     qwen3_vl_moe = 'qwen3_vl_moe'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
+    qwen3_5 = 'qwen3_5'
+    qwen3_5_moe = 'qwen3_5_moe'
+
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
     ovis2 = 'ovis2'
@@ -154,6 +158,7 @@ class MLLMModelType:
     glm4v = 'glm4v'
     glm4v_moe = 'glm4v_moe'
     glm_edge_v = 'glm_edge_v'
+    glm_ocr = 'glm_ocr'
     cogvlm = 'cogvlm'
     cogagent_vqa = 'cogagent_vqa'
     cogagent_chat = 'cogagent_chat'
@@ -206,13 +211,14 @@ class MLLMModelType:
     deepseek_janus = 'deepseek_janus'
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
+    deepseek_ocr2 = 'deepseek_ocr2'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
     minicpmv2_6 = 'minicpmv2_6'
-    minicpmo2_6 = 'minicpmo2_6'
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
+    minicpmo = 'minicpmo'
 
     minimax_vl = 'minimax_vl'
 
@@ -249,7 +255,9 @@ class MLLMModelType:
     mistral3 = 'mistral3'
     mistral3_2506 = 'mistral3_2506'
     paddle_ocr = 'paddle_ocr'
+    paddle_ocr_1_5 = 'paddle_ocr_1_5'
     hunyuan_ocr = 'hunyuan_ocr'
+    step3_vl = 'step3_vl'
 
     jina_reranker_m0 = 'jina_reranker_m0'
 

@@ -19,6 +19,7 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --router_aux_loss_coef 1e-3 \
+    --experts_impl grouped_mm \
     --gradient_accumulation_steps 16 \
     --eval_steps 50 \
     --save_steps 50 \

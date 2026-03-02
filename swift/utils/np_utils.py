@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Any, Dict, List, Optional, Tuple, Union
-
 import numpy as np
 import pandas as pd
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 def transform_jsonl_to_df(dict_list: List[Dict[str, Any]]) -> pd.DataFrame:

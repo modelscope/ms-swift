@@ -33,7 +33,7 @@ class SwiftExport(SwiftPipeline):
             export_to_ollama(args)
         elif args.to_cached_dataset:
             export_cached_dataset(args)
-        elif args.to_hf or args.mcore_adapters and args.to_mcore:
+        elif args.to_hf or args.mcore_adapter and args.to_mcore:
             from swift.megatron import convert_mcore2hf
             convert_mcore2hf(args)
         elif args.to_mcore:

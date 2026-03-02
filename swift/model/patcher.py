@@ -1,24 +1,23 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import accelerate
 import copy
 import os
-from contextlib import contextmanager
-from functools import wraps
-from types import MethodType
-from typing import Any, Dict, List, Optional, Union
-
-import accelerate
 import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 import transformers
 from accelerate.utils import find_device
+from contextlib import contextmanager
+from functools import wraps
 from packaging import version
 from peft import PeftModel
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import PreTrainedModel, dynamic_module_utils, trainer
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
+from types import MethodType
+from typing import Any, Dict, List, Optional, Union
 
 from swift.utils import (HfConfigFactory, deep_getattr, get_device_count, get_dist_setting, get_last_valid_indices,
                          get_logger, get_position_ids_from_cu_seqlens, is_mp, is_mp_ddp, safe_ddp_context, to_device,
@@ -287,7 +286,6 @@ def patch_automodel_for_sequence_classification(model_info=None,
     from_pretrained = PreTrainedModel.from_pretrained.__func__
 
     # Patch 1: from_pretrained method
-    _new_from_pretrained = None
     if patch_from_pretrained:
 
         @classmethod
@@ -304,6 +302,8 @@ def patch_automodel_for_sequence_classification(model_info=None,
             res = from_pretrained(cls, *args, **kwargs)
             cls.__init__ = __init__
             return res
+    else:
+        _new_from_pretrained = None
 
     # Patch 2: missing __init__ methods
     # https://github.com/modelscope/ms-swift/pull/5820
@@ -398,6 +398,7 @@ def patch_automodel(model_info, model_meta, auto_model_cls, return_dummy_model, 
 def _get_max_memory(device_ids: List[int]) -> Dict[Union[int, str], int]:
     """add feat in accelerate to support MP + DDP"""
     import psutil
+
     # Make sure CUDA is initialized on each GPU to have the right memory info.
     for i in device_ids:
         _ = torch.tensor([0], device=i)
@@ -564,7 +565,7 @@ def gather_sequence_parallel_outputs(
         Gather split tensors produced by sequence parallel training so that downstream
         components (loss, metrics, etc.) can operate on full-length sequences.
         """
-    from swift.sequence_parallel import sequence_parallel, GatherTensor
+    from swift.sequence_parallel import GatherTensor, sequence_parallel
 
     tensor_keys = tensor_keys or ['logits', 'last_hidden_state', 'hidden_states']
 

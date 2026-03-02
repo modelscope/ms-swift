@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
-from typing import List, Union
-
 import torch
 import transformers
 from packaging import version
 from transformers import TrainingArguments
+from typing import List, Union
 
 from swift.arguments import SftArguments
 from swift.trainers import calculate_max_steps
@@ -19,11 +18,12 @@ logger = get_logger()
 
 def apply_liger(model_type: str):
     try:
-        from liger_kernel.transformers import (apply_liger_kernel_to_llama, apply_liger_kernel_to_mistral,
-                                               apply_liger_kernel_to_mixtral, apply_liger_kernel_to_gemma,
-                                               apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen3,
-                                               apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen2_5_vl,
-                                               apply_liger_kernel_to_phi3, apply_liger_kernel_to_mllama)
+        from liger_kernel.transformers import (apply_liger_kernel_to_gemma, apply_liger_kernel_to_llama,
+                                               apply_liger_kernel_to_mistral, apply_liger_kernel_to_mixtral,
+                                               apply_liger_kernel_to_mllama, apply_liger_kernel_to_phi3,
+                                               apply_liger_kernel_to_qwen2, apply_liger_kernel_to_qwen2_5_vl,
+                                               apply_liger_kernel_to_qwen2_vl, apply_liger_kernel_to_qwen3)
+
         from swift.model import ModelType
         if model_type in (ModelType.llama, ModelType.llama3, ModelType.llama3_1, ModelType.llama3_2):
             apply_liger_kernel_to_llama()

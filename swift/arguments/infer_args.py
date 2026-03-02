@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import datetime as dt
 import os
+import torch.distributed as dist
 from dataclasses import dataclass
 from typing import Literal, Optional
-
-import torch.distributed as dist
 
 from swift.rlhf_trainers import VllmArguments
 from swift.utils import get_logger, init_process_group, is_dist, to_abspath
@@ -176,8 +175,11 @@ class InferArguments(MergeArguments, LmdeployArguments, SglangArguments, VllmArg
         if self.result_path is not None:
             self.result_path = to_abspath(self.result_path)
             return
-        self.result_path = self._get_result_path(folder_name)
-        logger.info(f'args.result_path: {self.result_path}')
+        # By default, a result_path file is automatically created
+        # when a validation or evaluation dataset is present.
+        if self._val_dataset_exists or getattr(self, 'eval_dataset', None):
+            self.result_path = self._get_result_path(folder_name)
+            logger.info(f'args.result_path: {self.result_path}')
 
     def _init_stream(self):
         self.eval_human = not self._val_dataset_exists

@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
-
-import torch
 
 from swift.utils import get_packed_seq_params
 from ..base import Template
@@ -19,21 +18,23 @@ class GLMTemplateMeta(TemplateMeta):
 
 
 class GLM4Template(Template):
+    strip_newline = True
 
     def _swift_encode(self, inputs: StdTemplateInputs):
         res_context_list, loss_scale_list, answer_len = super()._swift_encode(inputs)
-        for i, res_context in enumerate(res_context_list):
-            # The last round or is tool_call.
-            if isinstance(res_context,
-                          str) and (res_context.endswith('<|assistant|>\n')
-                                    or res_context.endswith('<think></think>\n')) and (
-                                        i + 1 >= len(res_context_list) or '<|observation|>' in res_context_list[i + 1]):
-                res_context_list[i] = res_context_list[i][:-len('\n')]
+        if self.strip_newline:
+            for i, res_context in enumerate(res_context_list):
+                # The last round or is tool_call.
+                if isinstance(res_context, str) and (res_context.endswith('<|assistant|>\n')
+                                                     or res_context.endswith('<think></think>\n')) and (
+                                                         i + 1 >= len(res_context_list)
+                                                         or '<|observation|>' in res_context_list[i + 1]):
+                    res_context_list[i] = res_context_list[i][:-len('\n')]
         return res_context_list, loss_scale_list, answer_len
 
     def decode(self, *args, **kwargs):
         response = super().decode(*args, **kwargs)
-        return response.lstrip('\n')
+        return response.lstrip('\n') if self.strip_newline else response
 
 
 register_template(
@@ -69,10 +70,6 @@ class GLM4_5TemplateMeta(GLM4TemplateMeta):
     is_thinking: bool = True
     non_thinking_prefix: str = '<think></think>\n'
     history_thinking_prefix: str = '<think></think>\n'
-
-
-class GLM4VTemplateMeta(GLM4TemplateMeta):
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
 
 
 class ChatGLM4VTemplate(Template):
@@ -233,9 +230,9 @@ class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
             assert not image_idx_list, "GLM4.1V model doesn't support inputs containing both video and images"
 
             video_fnames = inputs.videos
-            from transformers.video_utils import load_video
-            from transformers.image_utils import load_image
             import numpy as np
+            from transformers.image_utils import load_image
+            from transformers.video_utils import load_video
             video_metadata = []
             videos = []
             for fname in video_fnames:
@@ -303,7 +300,7 @@ class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
 
 
 register_template(GLM4TemplateMeta(LLMTemplateType.glm4, template_cls=GLM4Template, thinking_prefix='<think>'))
-register_template(GLM4VTemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate, agent_template='glm4_5'))
+register_template(GLM4TemplateMeta(MLLMTemplateType.glm4v, template_cls=GLM4VTemplate))
 
 
 class GLM4_5Template(GLM4Template):
@@ -333,6 +330,7 @@ register_template(
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
     placeholder_tokens = ['<|image|>', '<|video|>']
+    strip_newline = False
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -567,3 +565,64 @@ register_template(
         suffix=['<|endoftext|>'],
         template_cls=GLMEdgeVTemplate,
     ))
+
+
+class GLMOCRTemplate(Template):
+    begin_of_image_token = 59256
+    end_of_image_token = 59257
+    placeholder_tokens = ['<|image|>']
+
+    def init_processor(self, processor) -> None:
+        if processor is None:
+            return
+        super().init_processor(processor)
+        self.image_token = self._tokenize('<|image|>')[0]
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type in ['image']
+        if self.mode == 'vllm':
+            return ['<|begin_of_image|><|image|><|end_of_image|>']
+        return [[-100]]
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        processor = self.processor
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        image_idx_list = findall(input_ids, -100)
+        if image_idx_list:
+            images = inputs.images
+            image_inputs = processor.image_processor(images=images, return_tensors='pt')
+            encoded['pixel_values'] = image_inputs['pixel_values']
+            encoded['image_grid_thw'] = image_grid_thw = image_inputs['image_grid_thw']
+            merge_length = processor.image_processor.merge_size**2
+            added_tokens_len = 0
+            for i, idx in enumerate(image_idx_list):
+                num_image_tokens = image_grid_thw[i].prod() // merge_length
+                image_tokens = [self.begin_of_image_token
+                                ] + [self.image_token] * num_image_tokens + [self.end_of_image_token]
+
+                input_ids = input_ids[:added_tokens_len + idx] + image_tokens + input_ids[added_tokens_len + idx + 1:]
+                if labels is not None:
+                    labels = labels[:added_tokens_len + idx] + [-100] * len(image_tokens) + labels[added_tokens_len
+                                                                                                   + idx + 1:]
+                added_tokens_len += len(image_tokens) - 1
+
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        return encoded
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+        input_ids = inputs['input_ids']
+        inputs_embeds = model.get_input_embeddings()(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
+
+
+register_template(GLM4TemplateMeta(
+    MLLMTemplateType.glm_ocr,
+    template_cls=GLMOCRTemplate,
+))

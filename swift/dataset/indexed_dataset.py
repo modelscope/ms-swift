@@ -4,11 +4,10 @@ import mmap
 import os
 import pickle
 import threading
-from queue import Queue
-from typing import Any, List
-
 from modelscope.hub.utils.utils import get_cache_dir
+from queue import Queue
 from torch.utils.data import Dataset
+from typing import Any, List
 
 
 class IndexedDatasetBuilder:

@@ -1,10 +1,9 @@
 import hashlib
 import inspect
-from copy import copy
-from typing import Any, Dict, List, Optional
-
 import json
 import numpy as np
+from copy import copy
+from typing import Any, Dict, List, Optional
 
 from swift.infer_engine import ChatCompletionResponse, InferEngine, InferRequest, RequestConfig
 from swift.utils import get_logger

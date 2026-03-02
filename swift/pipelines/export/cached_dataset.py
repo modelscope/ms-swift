@@ -1,11 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+import torch
 from typing import List, Optional, Union
 
-import torch
-
 from swift.arguments import ExportArguments
-from swift.template import TEMPLATE_MAPPING
 from swift.utils import get_logger
 from ..train import SwiftSft
 
@@ -20,7 +18,7 @@ class ExportCachedDataset(SwiftSft):
         super(SwiftSft, self).__init__(args)
         args = self.args
         self.train_msg = {}  # dummy
-        template_cls = TEMPLATE_MAPPING[args.template].template_cls
+        template_cls = args.template_meta.template_cls
         if template_cls and template_cls.use_model:
             kwargs = {'return_dummy_model': True}
         else:

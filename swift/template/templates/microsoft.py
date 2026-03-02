@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
-
 import json
 import torch
+from dataclasses import dataclass, field
 from torch import nn
+from typing import Any, Dict, List, Literal, Optional
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType

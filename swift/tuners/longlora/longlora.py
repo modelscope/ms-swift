@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Part of the implementation is borrowed from dvlab-research/LongLoRA.
 import re
+import torch.nn as nn
 from dataclasses import dataclass, field
 from typing import List, Tuple, Union
-
-import torch.nn as nn
 
 from ..lora import LoRA, LoRAConfig, lora_state_dict, mark_lora_as_trainable
 from ..lora_layers import LoraModel

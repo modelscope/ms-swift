@@ -2,35 +2,38 @@
 import inspect
 import os
 import random
-from collections import defaultdict, deque
-from contextlib import contextmanager, nullcontext
-from copy import deepcopy
-from enum import Enum
-from typing import Dict, Optional, Union
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import trl
 from accelerate.utils import gather_object, is_peft_model
+from collections import defaultdict, deque
+from contextlib import contextmanager, nullcontext
+from copy import deepcopy
+from enum import Enum
 from packaging import version
 from transformers import PreTrainedModel
-from trl import GKDTrainer as HFGKDTrainer
 from trl import SFTTrainer as HFSFTTrainer
+from typing import Dict, Optional, Union
 
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response, to_device,
                          unwrap_model_for_generation)
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import (get_gather_if_zero3_context, identity_data_collator, patch_profiling_context,
-                    patch_profiling_decorator, prepare_deepspeed)
+from .utils import (get_gather_if_zero3_context, identity_data_collator, prepare_deepspeed, profiling_context,
+                    profiling_decorator)
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
     _liger_kernel_available = True
 except ImportError:
     _liger_kernel_available = False
+
+if version.parse(trl.__version__) >= version.parse('0.26.0'):
+    from trl.experimental.gkd import GKDTrainer as HFGKDTrainer
+else:
+    from trl import GKDTrainer as HFGKDTrainer
 
 del HFGKDTrainer.__init__
 del HFSFTTrainer.__init__
@@ -165,7 +168,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         inputs['position_ids'] = new_position_ids
         return generated_tokens, new_attention_mask, new_labels
 
-    @patch_profiling_decorator
+    @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Get data source: DataSource.STUDENT, DataSource.TEACHER, or DataSource.DATASET
         data_source = inputs.pop('_data_source', DataSource.DATASET)
@@ -359,7 +362,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return batch_encoded
 
     # Code borrowed from huggingface/trl
-    @patch_profiling_decorator
+    @profiling_decorator
     def training_step(self,
                       model: nn.Module,
                       inputs: DataType,
@@ -374,7 +377,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
-        with patch_profiling_context(self, 'get_completions'):
+        with profiling_context(self, 'get_completions'):
             if self._get_random_num() <= self.lmbda:
                 # On-policy: student model generates responses
                 data_source = DataSource.STUDENT
@@ -454,55 +457,16 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def _fetch_teacher_logprobs_from_api(self, encoded_inputs: Dict[str, torch.Tensor]):
         """Fetch teacher logprobs from external API service.
 
-        Args:
-            encoded_inputs: Dictionary containing input_ids, attention_mask, labels, etc.
-
         Returns:
             Tuple of (teacher_logprobs, teacher_indices) tensors
         """
-        import asyncio
-
         input_ids = encoded_inputs['input_ids']
-        attention_mask = encoded_inputs['attention_mask']
-        batch_size, seq_len = input_ids.shape
         topk = self.gkd_logits_topk
-
-        # Prepare requests for API
-        # We need logprobs for each position, so we send the full sequence
-        # and request prompt_logprobs
-        async def fetch_batch():
-            results = await self.teacher_api_client.get_logprobs_batch(
-                input_ids=input_ids.tolist(),
-                attention_mask=attention_mask.tolist(),
-                top_logprobs=topk,
-            )
-            return results
-
-        # Run async function
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If already in async context, create a new thread
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, fetch_batch())
-                api_results = future.result()
-        else:
-            api_results = loop.run_until_complete(fetch_batch())
-
-        # Parse API results into tensors
-        # api_results should be list of dicts with 'logprobs' and 'indices' for each sample
-        teacher_logprobs = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.float32)
-        teacher_indices = torch.zeros(batch_size, seq_len, topk, device=input_ids.device, dtype=torch.long)
-
-        for batch_idx, result in enumerate(api_results):
-            for pos_idx, pos_logprobs in enumerate(result.get('logprobs', [])):
-                if pos_idx >= seq_len:
-                    break
-                for k_idx, (token_id, logprob) in enumerate(pos_logprobs[:topk]):
-                    teacher_logprobs[batch_idx, pos_idx, k_idx] = logprob
-                    teacher_indices[batch_idx, pos_idx, k_idx] = token_id
-
-        return teacher_logprobs, teacher_indices
+        teacher_logprobs, teacher_indices = self.teacher_api_client.get_logprobs_sync(
+            input_ids=input_ids.tolist(),
+            top_logprobs=topk,
+        )
+        return teacher_logprobs.to(input_ids.device), teacher_indices.to(input_ids.device)
 
     def prediction_step(self, model, inputs, *args, **kwargs):
         # Prediction uses full messages

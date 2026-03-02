@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
-
 import numpy as np
 import torch
 import torch.nn as nn
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional
 
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
@@ -180,7 +179,7 @@ class ERNIE_VLTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        return [f'Picture {index+1}:<|IMAGE_PLACEHOLDER|>']
+        return [f'Picture {index + 1}:<|IMAGE_PLACEHOLDER|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -259,3 +258,31 @@ register_template(
         is_thinking=True,
         thinking_prefix='\n<think>\n',
         default_system=ERNIE_VL_SYSTEM))
+
+
+class PaddleOCR1_5Template(PaddleOCRTemplate):
+    use_model = True
+    skip_prompt = True
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+        base_model = self.get_base_model(model)
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.pop('pixel_values')
+        image_grid_thw = inputs.get('image_grid_thw')
+        inputs_embeds = base_model.model.language_model.embed_tokens(input_ids)
+        if pixel_values is not None:
+            image_embeds = base_model.model.get_image_features(
+                pixel_values, image_grid_thw, return_dict=True).pooler_output
+            image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+            image_mask = base_model.model.get_placeholder_mask(
+                input_ids, inputs_embeds=inputs_embeds, image_features=image_embeds)
+            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+
+        return {'inputs_embeds': inputs_embeds}
+
+
+register_template(
+    ERNIETemplateMeta(
+        MLLMTemplateType.paddle_ocr_1_5, prompt=['User: {{QUERY}}\nAssistant:\n'], template_cls=PaddleOCR1_5Template))

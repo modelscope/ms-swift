@@ -19,6 +19,7 @@ swift sft \
     --lora_alpha 32 \
     --target_modules all-linear \
     --router_aux_loss_coef 1e-3 \
+    --experts_impl grouped_mm \
     --freeze_vit true \
     --freeze_aligner true \
     --gradient_accumulation_steps 4 \

@@ -2,10 +2,9 @@
 # Process Reward Model (PRM) implementations for sampling.
 # GRPO training is not currently supported.
 
+import json
 import os
 from typing import Any, Dict, List, Union
-
-import json
 
 from swift.infer_engine import InferClient, InferRequest
 

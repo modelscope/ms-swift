@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
-
 import torch
 from transformers import PreTrainedTokenizerBase, StoppingCriteria
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 from swift.utils import get_logger
 

@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import subprocess
-import sys
-from typing import Type
-
 import gradio as gr
 import psutil
+import subprocess
+import sys
 from packaging import version
+from typing import Type
 
 from swift.utils import get_logger
 from ..base import BaseUI

@@ -10,7 +10,7 @@ kwargs = {
 
 def test_train_eval_loop():
     os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-    from swift import sft_main, SftArguments
+    from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-0.5B-Instruct',

@@ -12,7 +12,7 @@ kwargs = {
 
 
 def test_reg_llm():
-    from swift import SftArguments, sft_main, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-1.5B-Instruct',
@@ -26,7 +26,8 @@ def test_reg_llm():
 
 
 def test_reg_mllm():
-    from swift import SftArguments, sft_main, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
+
     # OpenGVLab/InternVL2-1B
     result = sft_main(
         SftArguments(

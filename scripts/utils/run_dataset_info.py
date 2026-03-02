@@ -1,7 +1,6 @@
+import numpy as np
 import os
 import re
-
-import numpy as np
 
 from swift.dataset import DATASET_MAPPING, EncodePreprocessor, load_dataset
 from swift.model import get_processor

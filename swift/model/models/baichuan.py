@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from types import MethodType
-
 import torch.nn.functional as F
 from torch import Tensor
 from transformers import PreTrainedModel
+from types import MethodType
 
 from swift.template import TemplateType
 from swift.utils import get_logger

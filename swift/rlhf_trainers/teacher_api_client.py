@@ -1,36 +1,27 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Client for fetching teacher model logprobs from swift deploy or vLLM server.
+"""Client for fetching teacher model logprobs from OpenAI-compatible endpoints.
 
-This module provides a client for communicating with OpenAI-compatible endpoints
-(e.g., swift deploy with vLLM backend, standalone vLLM server) to obtain teacher
-model logprobs for knowledge distillation (GKD) training.
+Supports swift deploy (vLLM backend) and standalone vLLM servers.
+Used for knowledge distillation (GKD) training with top-k logprobs.
 """
-import asyncio
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
-import aiohttp
+import requests
 import torch
 
 logger = logging.getLogger(__name__)
 
 
 class TeacherAPIClient:
-    """Client for fetching teacher logprobs from swift deploy or vLLM server.
-
-    This client is designed to work with OpenAI-compatible API endpoints:
-    - swift deploy (with vLLM backend)
-    - Standalone vLLM server (vllm serve)
-
-    The client fetches top-k log probabilities for each token position,
-    which are then used for knowledge distillation (GKD) training.
+    """Fetch teacher top-k logprobs from an OpenAI-compatible completions API.
 
     Args:
-        base_url: The base URL of the teacher model server (e.g., 'http://localhost:8000').
-        top_logprobs: Number of top log probabilities to request per token.
+        base_url: Server URL (e.g., 'http://localhost:8000').
+        top_logprobs: Number of top log probabilities per token.
         timeout: Request timeout in seconds.
         api_key: Optional API key for authentication.
-        model_name: Optional model name for the API request. If None, auto-detects.
+        model_name: Model name for API requests. Auto-detected if None.
     """
 
     def __init__(
@@ -43,206 +34,58 @@ class TeacherAPIClient:
     ):
         self.base_url = base_url.rstrip('/')
         self.top_logprobs = top_logprobs
-        self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.timeout = timeout
         self.api_key = api_key
-        self.model_name = model_name
+        self._model_name = model_name
 
-        if top_logprobs <= 0:
-            raise ValueError(f'top_logprobs must be positive, got {top_logprobs}')
+    @property
+    def model_name(self) -> str:
+        if self._model_name is None:
+            self._model_name = self._detect_model_name()
+        return self._model_name
 
-    def _get_headers(self) -> Dict[str, str]:
-        """Get HTTP headers for API requests."""
+    def _headers(self) -> Dict[str, str]:
         headers = {'Content-Type': 'application/json'}
         if self.api_key:
             headers['Authorization'] = f'Bearer {self.api_key}'
         return headers
 
-    async def _get_model_name(self, session: aiohttp.ClientSession) -> str:
-        """Get model name from server if not provided."""
-        if self.model_name:
-            return self.model_name
-
+    def _detect_model_name(self) -> str:
         try:
-            async with session.get(
-                    f'{self.base_url}/v1/models', headers=self._get_headers(), timeout=aiohttp.ClientTimeout(total=10)
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get('data') and len(data['data']) > 0:
-                        self.model_name = data['data'][0]['id']
-                        return self.model_name
+            resp = requests.get(f'{self.base_url}/v1/models', headers=self._headers(), timeout=10)
+            if resp.status_code == 200:
+                data = resp.json()
+                if data.get('data'):
+                    return data['data'][0]['id']
         except Exception as e:
-            logger.warning(f'Failed to get model name: {e}')
-
-        self.model_name = 'default'
-        return self.model_name
-
-    async def get_logprobs_batch(
-        self,
-        input_ids: List[List[int]],
-        top_logprobs: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        """Fetch logprobs for a batch of sequences using OpenAI-compatible API.
-
-        Args:
-            input_ids: List of token ID sequences.
-            top_logprobs: Override the default top_logprobs if provided.
-
-        Returns:
-            List of dictionaries, each containing:
-            - 'indices': List of token indices per position [seq_len, topk]
-            - 'values': List of logprob values per position [seq_len, topk]
-        """
-        topk = top_logprobs or self.top_logprobs
-
-        async with aiohttp.ClientSession(timeout=self.timeout) as session:
-            model_name = await self._get_model_name(session)
-            url = f'{self.base_url}/v1/completions'
-
-            results = []
-            for i, ids in enumerate(input_ids):
-                # Use prompt tokens and request logprobs with echo
-                payload = {
-                    'model': model_name,
-                    'prompt': ids,
-                    'max_tokens': 0,
-                    'temperature': 0,
-                    'logprobs': topk,
-                    'echo': True,
-                }
-
-                try:
-                    async with session.post(url, json=payload, headers=self._get_headers()) as resp:
-                        if resp.status != 200:
-                            error_text = await resp.text()
-                            logger.error(f'API error: {resp.status} - {error_text}')
-                            results.append(self._empty_result(len(ids), topk))
-                            continue
-
-                        data = await resp.json()
-                        parsed = self._parse_response(data, len(ids), topk)
-                        results.append(parsed)
-                except Exception as e:
-                    logger.error(f'Failed to get logprobs for sequence {i}: {e}')
-                    results.append(self._empty_result(len(ids), topk))
-
-            return results
-
-    def _parse_response(self, response: Dict[str, Any], seq_len: int, topk: int) -> Dict[str, Any]:
-        """Parse OpenAI-compatible completions API response to extract logprobs."""
-        result = {'indices': [], 'values': []}
-
-        try:
-            if 'choices' not in response or len(response['choices']) == 0:
-                return self._empty_result(seq_len, topk)
-
-            choice = response['choices'][0]
-            logprobs_data = choice.get('logprobs', {})
-
-            if logprobs_data is None:
-                return self._empty_result(seq_len, topk)
-
-            # vLLM returns top_logprobs as list of dicts: [{token_id: Logprob, ...}, ...]
-            top_logprobs_list = logprobs_data.get('top_logprobs', [])
-            token_logprobs = logprobs_data.get('token_logprobs', [])
-            tokens = logprobs_data.get('tokens', [])
-
-            for pos_idx, pos_logprobs in enumerate(top_logprobs_list):
-                pos_indices = []
-                pos_values = []
-
-                if pos_logprobs is not None:
-                    # vLLM format: {token_id: Logprob object or float, ...}
-                    sorted_items = sorted(pos_logprobs.items(), key=lambda x: -self._get_logprob_value(x[1]))[:topk]
-
-                    for token_id_str, logprob in sorted_items:
-                        try:
-                            token_id = int(token_id_str)
-                            pos_indices.append(token_id)
-                            pos_values.append(self._get_logprob_value(logprob))
-                        except (ValueError, TypeError):
-                            continue
-
-                # Pad if needed
-                while len(pos_indices) < topk:
-                    pos_indices.append(0)
-                    pos_values.append(float('-inf'))
-
-                result['indices'].append(pos_indices)
-                result['values'].append(pos_values)
-
-            # Pad to seq_len if needed
-            while len(result['indices']) < seq_len:
-                result['indices'].append([0] * topk)
-                result['values'].append([float('-inf')] * topk)
-
-        except Exception as e:
-            logger.error(f'Failed to parse response: {e}')
-            return self._empty_result(seq_len, topk)
-
-        return result
-
-    @staticmethod
-    def _get_logprob_value(logprob) -> float:
-        """Extract logprob value from vLLM response (handles both float and Logprob object)."""
-        if isinstance(logprob, (int, float)):
-            return float(logprob)
-        elif hasattr(logprob, 'logprob'):
-            return float(logprob.logprob)
-        elif isinstance(logprob, dict) and 'logprob' in logprob:
-            return float(logprob['logprob'])
-        return float('-inf')
-
-    def _empty_result(self, seq_len: int, topk: int) -> Dict[str, Any]:
-        """Return empty result for failed requests."""
-        return {
-            'indices': [[0] * topk for _ in range(seq_len)],
-            'values': [[float('-inf')] * topk for _ in range(seq_len)],
-        }
+            logger.warning(f'Failed to detect model name: {e}')
+        return 'default'
 
     def check_server_health(self, timeout: float = 5.0) -> bool:
-        """Check if the teacher model server is healthy."""
-        import requests
-        try:
-            for endpoint in ['/health', '/v1/models']:
-                try:
-                    response = requests.get(f'{self.base_url}{endpoint}', timeout=timeout)
-                    if response.status_code == 200:
-                        return True
-                except requests.RequestException:
-                    continue
-            return False
-        except Exception as e:
-            logger.warning(f'Health check failed: {e}')
-            return False
+        """Check if the teacher model server is reachable."""
+        for endpoint in ['/health', '/v1/models']:
+            try:
+                resp = requests.get(f'{self.base_url}{endpoint}', timeout=timeout)
+                if resp.status_code == 200:
+                    return True
+            except requests.RequestException:
+                continue
+        return False
 
     def get_logprobs_sync(
         self,
         input_ids: List[List[int]],
         top_logprobs: Optional[int] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Synchronous wrapper for get_logprobs_batch.
+        """Fetch top-k logprobs for a batch of token sequences.
 
         Args:
-            input_ids: List of token ID sequences
-            top_logprobs: Number of top logprobs to fetch
+            input_ids: List of token ID sequences.
+            top_logprobs: Override default top_logprobs.
 
         Returns:
-            Tuple of (logprobs_tensor, indices_tensor) with shapes [batch, seq_len, topk]
+            (logprobs, indices) tensors of shape [batch, max_seq_len, topk].
         """
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, self.get_logprobs_batch(input_ids, top_logprobs))
-                    results = future.result()
-            else:
-                results = loop.run_until_complete(self.get_logprobs_batch(input_ids, top_logprobs))
-        except RuntimeError:
-            results = asyncio.run(self.get_logprobs_batch(input_ids, top_logprobs))
-
-        # Convert to tensors
         topk = top_logprobs or self.top_logprobs
         batch_size = len(input_ids)
         max_seq_len = max(len(ids) for ids in input_ids)
@@ -250,14 +93,59 @@ class TeacherAPIClient:
         logprobs_tensor = torch.full((batch_size, max_seq_len, topk), float('-inf'), dtype=torch.float32)
         indices_tensor = torch.zeros((batch_size, max_seq_len, topk), dtype=torch.long)
 
-        for batch_idx, result in enumerate(results):
-            indices = result.get('indices', [])
-            values = result.get('values', [])
-            for pos_idx, (pos_indices, pos_values) in enumerate(zip(indices, values)):
-                if pos_idx >= max_seq_len:
-                    break
-                for k_idx in range(min(len(pos_indices), topk)):
-                    indices_tensor[batch_idx, pos_idx, k_idx] = pos_indices[k_idx]
-                    logprobs_tensor[batch_idx, pos_idx, k_idx] = pos_values[k_idx]
+        url = f'{self.base_url}/v1/completions'
+        model = self.model_name
+
+        for batch_idx, ids in enumerate(input_ids):
+            payload = {
+                'model': model,
+                'prompt': ids,
+                'max_tokens': 0,
+                'temperature': 0,
+                'logprobs': topk,
+                'echo': True,
+            }
+            try:
+                resp = requests.post(url, json=payload, headers=self._headers(), timeout=self.timeout)
+                if resp.status_code != 200:
+                    logger.error(f'API error for sequence {batch_idx}: {resp.status_code} - {resp.text}')
+                    continue
+                self._parse_into_tensors(resp.json(), batch_idx, logprobs_tensor, indices_tensor, topk)
+            except Exception as e:
+                logger.error(f'Failed to get logprobs for sequence {batch_idx}: {e}')
 
         return logprobs_tensor, indices_tensor
+
+    @staticmethod
+    def _parse_into_tensors(
+        response: dict,
+        batch_idx: int,
+        logprobs_out: torch.Tensor,
+        indices_out: torch.Tensor,
+        topk: int,
+    ) -> None:
+        """Parse a single completions API response into pre-allocated tensors."""
+        choices = response.get('choices', [])
+        if not choices:
+            return
+        logprobs_data = choices[0].get('logprobs') or {}
+        top_logprobs_list = logprobs_data.get('top_logprobs', [])
+
+        for pos_idx, pos_logprobs in enumerate(top_logprobs_list):
+            if pos_logprobs is None:
+                continue
+            sorted_items = sorted(
+                pos_logprobs.items(),
+                key=lambda x: -(x[1] if isinstance(x[1], (int, float)) else x[1].get('logprob', float('-inf'))),
+            )[:topk]
+            for k_idx, (token_id_str, logprob_val) in enumerate(sorted_items):
+                try:
+                    indices_out[batch_idx, pos_idx, k_idx] = int(token_id_str)
+                    if isinstance(logprob_val, (int, float)):
+                        logprobs_out[batch_idx, pos_idx, k_idx] = logprob_val
+                    elif isinstance(logprob_val, dict):
+                        logprobs_out[batch_idx, pos_idx, k_idx] = logprob_val.get('logprob', float('-inf'))
+                    elif hasattr(logprob_val, 'logprob'):
+                        logprobs_out[batch_idx, pos_idx, k_idx] = logprob_val.logprob
+                except (ValueError, TypeError):
+                    continue

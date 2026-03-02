@@ -1,12 +1,11 @@
 # copy dependencies from transformers/optimization.py
 # code borrowed from https://github.com/jiaweizzhao/GaLore
 import math
-from typing import Callable, Iterable, Tuple
-
 import torch
 from torch import nn
 from torch.optim import Optimizer
 from transformers.utils.versions import require_version
+from typing import Callable, Iterable, Tuple
 
 from .galore_projector import GaLoreProjector
 

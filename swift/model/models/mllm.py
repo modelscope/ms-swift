@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from types import MethodType
-
 import torch
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from types import MethodType
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
@@ -306,7 +305,7 @@ register_model(
         model_arch=ModelArch.keye_vl,
         architectures=['KeyeVL1_5ForConditionalGeneration'],
         tags=['vision'],
-        requires=['keye_vl_utils>=1.5.2'],
+        requires=['keye_vl_utils>=1.5.2', 'transformers==4.52.4'],
     ))
 
 

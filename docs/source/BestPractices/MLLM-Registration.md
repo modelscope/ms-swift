@@ -360,10 +360,20 @@ class Qwen2_5OmniTemplate(Template):
                 # 因此zero3在不同进程audios数不同场景下会卡住（需修改transformers代码修复）。此场景请使用zero2。
                 input_features = input_ids.new_zeros([1, 128, 128], dtype=model.thinker.audio_tower.dtype)
                 feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-                audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+                audio_res = model.thinker.get_audio_features(input_features, feature_attention_mask)
+                # 兼容transformers 5.0
+                if hasattr(audio_res, 'last_hidden_state'):
+                    audio_embeds = audio_res.last_hidden_state
+                else:
+                    audio_embeds = audio_res
                 inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
-            audio_embeds = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            audio_res = model.thinker.get_audio_features(input_features, feature_attention_mask)
+            # 兼容transformers 5.0
+            if hasattr(audio_res, 'last_hidden_state'):
+                audio_embeds = audio_res.last_hidden_state
+            else:
+                audio_embeds = audio_res
             audio_mask = (input_ids == thinker_config.audio_token_index).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)

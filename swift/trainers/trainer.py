@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Part of the implementation is borrowed from huggingface/transformers.
+import torch
 from contextlib import contextmanager
 from functools import wraps
-
-import torch
 from peft import PeftModel
 from transformers import Trainer as HfTrainer
 

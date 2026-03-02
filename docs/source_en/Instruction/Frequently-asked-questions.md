@@ -92,7 +92,7 @@ Use fp32 for training with the V100 machine.
 Refer to this [example](https://github.com/modelscope/ms-swift/blob/main/examples/sampler/distill/distill.sh).
 
 ### Q30: How many checkpoints are saved by default after training?
-By default, all checkpoints are saved. For details, see the [command-line parameter save_total_limit](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html). This parameter is not supported in Megatron-SWIFT; please set save_interval to save checkpoints instead. For details, refer to the [Megatron-SWIFT command-line parameters](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Command-line-parameters.html).
+By default, all checkpoints are saved. For details, see the [command-line parameter save_total_limit](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
 ### Q31: In grounding tasks, does the universal data format support multiple instances for one category?
 Currently, it supports one object corresponding to multiple bounding boxes. Refer to the documentation on [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html#grounding).
@@ -242,7 +242,7 @@ Yes, here's an [example](https://github.com/modelscope/ms-swift/blob/main/exampl
 ### Q76: Is there a big difference in performance between manually coding fine-tuning and GRPO using peft and trl libraries compared to Swift official training with the same parameters?
 The difference is minimal, with Swift additionally supporting multimodality.
 
-### Q77: Does Swift currently not support audio modal input training for minicpmo2_6? It shows error: assert media_type in {'image', 'video'}
+### Q77: Does Swift currently not support audio modal input training for minicpmo? It shows error: assert media_type in {'image', 'video'}
 Audio is not currently supported.
 
 ### Q78: Can Swift fine-tune deepseek R1 671B?
@@ -431,7 +431,7 @@ The path must be set to a shared disk directory.
 Check this [issue](https://github.com/modelscope/ms-swift/issues/4030).
 
 ### Q125: How do I configure resuming training from a checkpoint in megatron-swift?
-Configure `--load` to load the checkpoint. Additionally, configure these parameters as needed: `--finetune`, `--no_load_optim`, and `--no_load_rng`. For resuming LoRA training, configure --adapter_load; other settings are the same as for full-parameter training. For details, refer to the [megatron-swift command-line-parameters documentation](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Command-line-parameters.html).
+Configure `--mcore_model` to load the checkpoint. Additionally, configure these parameters as needed: `--finetune`, `--no_load_optim`, and `--no_load_rng`. For resuming LoRA training, configure --mcore_adapter; other settings are the same as for full-parameter training. For details, refer to the [megatron-swift command-line-parameters documentation](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Command-line-parameters.html).
 
 ### Q126: Has anyone encountered the following error while reproducing Kimi-VL-A3B-Instruct?
 ```text
@@ -552,7 +552,7 @@ Add all-router to target_modules as well.
 ### Q161: With the script below, is it possible to save checkpoints per epoch?
 ```shell
 megatron sft \
-    --load "$MODEL_PATH" \
+    --mcore_model "$MODEL_PATH" \
     --dataset "$DATA_PATH"  \
     --tuner_type lora \
     --lora_rank 8 \
@@ -571,13 +571,13 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 2 \
-    --save "$OUTPUT_PATH" \
+    --num_train_epochs 2 \
+    --output_dir "$OUTPUT_PATH" \
     --split_dataset_ratio 0.02 \
-    --save_interval 25 \
+    --save_steps 25 \
     --max_length 8192 \
     --finetune false \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_load_rng true \
     --no_load_optim true \
     --no_save_optim true \
@@ -592,7 +592,7 @@ Saving checkpoints per epoch is not yet supported.
 ```text
 RuntimeError: ColumnParallelLinear was called with gradient_accumulation_fusion set to True but the custom CUDA extension fused_weight_gradient_mlp_cuda module is not found. To use gradient_accumulation_fusion you must install APEX with --cpp_ext and --cuda_ext. For example: pip install --global-option="--cpp_ext" --global-option="--cuda_ext ." Note that the extension requires CUDA>=11. Otherwise, you must turn off gradient accumulation fusion.
 ```
-Set `--no_gradient_accumulation_fusion true`.
+Set `--gradient_accumulation_fusion false`.
 
 ### Q163: For MoE LoRA training, if target_modules is set to all-linear, does this include the router modules?
 It depends on whether the gate is implemented as nn.Linear. If it's an nn.Parameter, it won't be trained. For details, see the command-line parameter [target_parameters](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html#tuner-arguments).

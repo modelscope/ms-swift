@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Type
-
 import gradio as gr
+from typing import Type
 
 from ..base import BaseUI
 

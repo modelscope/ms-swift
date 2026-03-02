@@ -1,9 +1,8 @@
+import json
 import os
 from functools import partial
-from typing import Literal
-
-import json
 from safetensors.torch import safe_open, save_file
+from typing import Literal
 
 from swift.utils import is_last_rank, is_master
 

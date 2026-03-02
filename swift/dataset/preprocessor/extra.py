@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Any, Dict, List, Optional
-
 import numpy as np
+from typing import Any, Dict, List, Optional
 
 from .core import ResponsePreprocessor
 

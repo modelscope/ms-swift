@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Type
-
 import gradio as gr
 from packaging import version
+from typing import Type
 
 from swift.utils import get_logger
 from ..base import BaseUI

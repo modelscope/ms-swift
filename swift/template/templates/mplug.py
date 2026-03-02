@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from dataclasses import dataclass, field
 from functools import partial
-from typing import Any, Dict, List, Literal, Optional
-
-import torch
 from torch import nn
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_env_args
 from ..base import Template

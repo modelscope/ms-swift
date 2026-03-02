@@ -1,9 +1,8 @@
 import os
 import shutil
 import tempfile
-import unittest
-
 import transformers
+import unittest
 from packaging import version
 
 from swift import ExportArguments, export_main

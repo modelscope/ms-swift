@@ -95,8 +95,8 @@ def infer_continue_generate(engine):
 
 
 if __name__ == '__main__':
-    from swift.infer_engine import InferEngine, InferRequest, TransformersEngine, RequestConfig
     from swift.agent_template import agent_template_map
+    from swift.infer_engine import InferEngine, InferRequest, RequestConfig, TransformersEngine
     model = 'Qwen/Qwen2.5-1.5B-Instruct'
     infer_backend = 'transformers'
 

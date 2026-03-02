@@ -197,8 +197,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             'last_round'.
         rpo_alpha (Optional[float]): The alpha parameter from the RPO paper, controlling the weight of the SFT loss
             (NLL term). The loss is calculated as `dpo_loss + rpo_alpha * sft_loss`. If None, the SFT loss is not
-            included. Note: The default was 1.0 in `ms-swift<3.8` and changed to None in `ms-swift>=3.8`. Defaults to
-            None.
+            included.
         ld_alpha (Optional[float]): The alpha parameter from the LD-DPO paper, which weights the log probabilities of
             the sequence part beyond the common prefix to mitigate length preference. Defaults to None.
         discopop_tau (float): The temperature parameter from the DiscoPOP paper, used to scale the log-ratio. Effective
@@ -344,9 +343,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'left'
-        assert self.truncation_strategy in ['left', 'delete'
-                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
-                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
+        if self.truncation_strategy not in {'left', 'delete'}:
+            raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                             f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
@@ -473,19 +472,17 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
-        from packaging import version
         import importlib.metadata
-
         import trl
+        from packaging import version
         trl_version = version.parse(trl.__version__)
-        assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
+        assert trl_version >= version.parse('0.20'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
         if is_mp() and self.use_vllm:
             raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
             liger_kernel_version = version.parse(importlib.metadata.version('liger-kernel'))
-            assert trl_version >= version.parse('0.18')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             if self.sequence_parallel_size > 1:
@@ -511,12 +508,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
-
-        if self.generation_batch_size or self.steps_per_generation:
-            from trl.trainer.grpo_config import GRPOConfig
-            assert 'generation_batch_size' in GRPOConfig.__dict__, (
-                'generation_batch_size or steps_per_generation needs trl >= 0.18, '
-                'please install trl `pip install trl>=0.18')
 
     def _external_vllm_warning(self):
         if self.rlhf_type not in rlhf_support_vllm_types or not self.vllm_server_host:

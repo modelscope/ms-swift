@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import re
 from typing import List, Optional, Union
-
-import json
 
 from swift.infer_engine import Function
 from .hermes import HermesAgentTemplate

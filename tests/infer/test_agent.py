@@ -12,12 +12,12 @@ kwargs = {
 
 def test_sft():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    from swift import sft_main, SftArguments
+    from swift import SftArguments, sft_main
     sft_main(SftArguments(model='Qwen/Qwen2-7B-Instruct', dataset=['iic/ms_agent#2000'], loss_scale='react', **kwargs))
 
 
 def test_infer():
-    from swift import infer_main, InferArguments
+    from swift import InferArguments, infer_main
     ckpt_dir = 'output/Qwen2-7B-Instruct/vx-xxx/checkpoint-xxx'
     infer_main(InferArguments(adapters=[ckpt_dir]))
 
