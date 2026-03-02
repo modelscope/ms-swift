@@ -1525,7 +1525,8 @@ class GPTBridge:
         with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
             hf_prefix = 'base_model.model.' if is_peft_format else ''
-            list(self._convert(mg_models, state_dict, hf_prefix, True, 'Loading: '))
+            for mg_model in mg_models:
+                list(self._convert([mg_model], state_dict, hf_prefix, True, 'Loading: '))
 
     def export_weights(self,
                        mg_models,

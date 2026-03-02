@@ -209,21 +209,21 @@ class BaseMegatronTrainer(ABC):
             return
 
         args = self.args
-        state = self.state
+        epoch = 0
         is_finished = False
         while True:
             if not is_finished:
-                logger.info(f'The training of Epoch {state.epoch} starts...')
+                logger.info(f'The training of Epoch {epoch} starts...')
             for x in iterable:
                 yield x
             # streaming
-            if training and args.num_train_epochs and state.epoch >= args.num_train_epochs - 1:
+            if training and args.num_train_epochs and epoch >= args.num_train_epochs - 1:
                 is_finished = True
-            state.epoch += 1
+            epoch += 1
             if is_finished:
                 # Note that this approach will train for one additional step.
-                logger.info(f'Training of {state.epoch} epochs has been completed, the training has finished.')
-                args.train_iters = state.iteration + 1
+                logger.info(f'Training of {epoch} epochs has been completed, the training has finished.')
+                args.train_iters = self.state.iteration + 1
 
     # Code borrowed from Megatron-LM
     def _get_param_groups(
