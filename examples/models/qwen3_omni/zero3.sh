@@ -24,7 +24,6 @@ swift sft \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
-    --experts_impl grouped_mm \
     --freeze_vit true \
     --freeze_aligner true \
     --padding_free true \
