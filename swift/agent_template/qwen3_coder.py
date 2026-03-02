@@ -171,7 +171,6 @@ class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 
 You have access to the following functions:\n\n<tools>
 """ + '\n'.join(tool_descs) + f'\n{TOOL_DESC_SUFFIX}'
-        system = system or ''
         if system:
             tools_prompt += f'\n\n{system}'
         return tools_prompt
