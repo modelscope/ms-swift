@@ -1,6 +1,6 @@
 # Quick Start
 
-ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports CPT/SFT/DPO/GRPO for models such as Qwen3, [Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh), Qwen2.5, Llama3, Deepseek-R1 and GLM4.5 series. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md). We recommend using Megatron-SWIFT for MoE training; it can typically achieve a 10x speedup in training.
+ms-swift incorporates Megatron's parallelization techniques to accelerate the training of large models, including data parallelism, tensor parallelism, pipeline parallelism, sequence parallelism, context parallelism, and expert parallelism. It supports CPT/SFT/GRPO/DPO/KTO/RM for models such as Qwen3, Qwen3.5, Deepseek-R1, GLM4.5, GPT-OSS, and more. For a complete list of supported models, please refer to the [Supported Models and Datasets documentation](../Instruction/Supported-models-and-datasets.md).
 
 
 | Method                 | Full-Parameter | LoRA | MoE  | Multimodal | FP8  |
@@ -75,7 +75,7 @@ Recommended Operating Environment:
 | apex |   |  0.1 | |
 | megatron_core    |    >=0.12,<0.16    | 0.15      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.6      |                    |
+| transformers | >=4.33       | 4.57.6/5.2.0    |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.29 |       |      RLHF        |
@@ -253,6 +253,8 @@ The training speed comparison for full-parameter dense models with 8K context le
 The training speed comparison for full-parameter MoE models with 8K context length, using `megatron sft` and `swift sft`, under a two-node, 16-GPU A800 environment is as follows:
 
 **MoE** Qwen3-30B-A3B:
+
+- Note: The DeepSpeed test results were conducted in a "transformers<5.0" environment. In "transformers>5.0", training can be accelerated by using `--experts_impl grouped_mm`.
 
 |                  | Megatron-LM | Deepspeed-ZeRO2 | Deepspeed-ZeRO3 |
 | ---------------- | ----------- | --------------- | --------------- |
