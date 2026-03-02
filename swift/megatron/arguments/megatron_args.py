@@ -52,14 +52,7 @@ class RLHFMegatronArgumentsMixin:
             'URL of the teacher model server (e.g., http://localhost:8000). '
             'When set, teacher logprobs are fetched via API instead of loading a local model.'
         })
-    gkd_logits_topk: Optional[int] = field(
-        default=None,
-        metadata={
-            'help':
-            'Number of top-k logits for KL computation in GKD. '
-            'None = full vocabulary, positive integer = top-k only. '
-            'When using teacher_model_server, limited by server max_logprobs (vLLM default: 20).'
-        })
+    gkd_logits_topk: Optional[int] = None
     lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
     seq_kd: bool = False  # Sequential KD: use teacher-generated responses when not on-policy
     offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory

@@ -57,7 +57,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_model = kwargs.pop('teacher_model', None)
         teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
-        self.teacher_api_client = kwargs.pop('teacher_api_client', None)
         self.gkd_logits_topk = kwargs.pop('gkd_logits_topk', None)
         teacher_model_server = kwargs.pop('teacher_model_server', None)
         super().__init__(model, None, *_args, **kwargs)
@@ -69,6 +68,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
 
+        self.teacher_model_server = teacher_model_server
         self.use_teacher_api = teacher_model_server is not None
 
         # Initialize logging components
@@ -469,12 +469,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         Returns:
             Tuple of (teacher_logprobs, teacher_indices) tensors with shapes [batch, seq_len, topk]
         """
+        from .teacher_api_client import fetch_teacher_logprobs
         input_ids = encoded_inputs['input_ids']
-        topk = self.gkd_logits_topk
-        teacher_logprobs, teacher_indices = self.teacher_api_client.get_logprobs_sync(
-            input_ids=input_ids.tolist(),
-            top_logprobs=topk,
-        )
+        teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
+            self.teacher_model_server, input_ids.tolist(), topk=self.gkd_logits_topk)
         return teacher_logprobs.to(input_ids.device), teacher_indices.to(input_ids.device)
 
     def prediction_step(self, model, inputs, *args, **kwargs):

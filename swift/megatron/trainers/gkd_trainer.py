@@ -34,7 +34,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def __init__(self, args: MegatronArguments, template, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client', None)
-        self.teacher_api_client = kwargs.pop('teacher_api_client', None)
 
         # GKD-specific parameters
         self.beta = args.beta  # JSD interpolation coefficient
@@ -50,7 +49,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
         # Check use_teacher_api based on args, not client existence
         # (API client is only created on last rank, but all ranks need to know the mode)
-        self.use_teacher_api = getattr(args, 'teacher_model_server', None) is not None
+        self.teacher_model_server = getattr(args, 'teacher_model_server', None)
+        self.use_teacher_api = self.teacher_model_server is not None
 
         # Validate teacher configuration
         if not self.use_teacher_api:
@@ -295,11 +295,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _compute_teacher_logits_from_api(self, encoded_batches: List[Dict]) -> None:
         """Fetch teacher logprobs from external API service."""
+        from swift.rlhf_trainers.teacher_api_client import fetch_teacher_logprobs
         topk = self.gkd_logits_topk
         for encoded_batch in encoded_batches:
             input_ids = encoded_batch['input_ids']
-            teacher_logprobs, teacher_indices = self.teacher_api_client.get_logprobs_sync(
-                input_ids=input_ids.tolist(), top_logprobs=topk)
+            teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
+                self.teacher_model_server, input_ids.tolist(), topk=topk)
             encoded_batch['teacher_api_logprobs'] = teacher_logprobs.to(input_ids.device)
             encoded_batch['teacher_api_indices'] = teacher_indices.to(input_ids.device)
             encoded_batch['teacher_logits'] = None

@@ -1472,32 +1472,6 @@ def check_vllm_version_ge(min_version: str) -> bool:
     return version.parse(vllm_version) >= version.parse(min_version)
 
 
-def create_teacher_api_client(args, check_health: bool = True, timeout: int = 60):
-    """Create TeacherAPIClient for external teacher model service.
-
-    Returns:
-        TeacherAPIClient instance or None if teacher_model_server is not set
-    """
-    teacher_model_server = getattr(args, 'teacher_model_server', None)
-    if not teacher_model_server:
-        return None
-
-    from swift.rlhf_trainers import TeacherAPIClient
-
-    logger = get_logger()
-    gkd_logits_topk = getattr(args, 'gkd_logits_topk', None) or 20
-
-    logger.info(f'Initializing teacher API client for {teacher_model_server}')
-    teacher_api_client = TeacherAPIClient(
-        base_url=teacher_model_server,
-        top_logprobs=gkd_logits_topk,
-    )
-    if check_health:
-        teacher_api_client.check_health(timeout=timeout)
-    logger.info(f'Teacher API client initialized with top_logprobs={gkd_logits_topk}')
-    return teacher_api_client
-
-
 # ============================================================================
 # Padding-free utilities
 # ============================================================================

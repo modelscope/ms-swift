@@ -31,8 +31,6 @@ class MegatronRLHF(MegatronSft):
         kwargs = {}
         if args.rlhf_type in ('grpo', 'gkd'):
             kwargs['vllm_client'] = self._prepare_vllm_client()
-        if args.rlhf_type == 'gkd':
-            kwargs['teacher_api_client'] = self._prepare_teacher_api_client()
         return trainer_cls(args, self.template, **kwargs)
 
     def _prepare_template(self) -> None:
@@ -69,19 +67,6 @@ class MegatronRLHF(MegatronSft):
             vllm_client.init_communicator(device=get_current_device())
             logger.info('Connected to vLLM server')
         return vllm_client
-
-    def _prepare_teacher_api_client(self):
-        """Prepare teacher API client for external teacher model service.
-
-        In Megatron with pure Data Parallel (TP=PP=CP=1), each rank processes different data
-        and needs its own API client. With model parallelism (TP/PP/CP > 1), one rank per
-        model parallel group calls the API and broadcasts results.
-        """
-        from swift.rlhf_trainers.utils import create_teacher_api_client
-        from swift.utils import is_last_rank
-        if is_last_rank():
-            return create_teacher_api_client(self.args, check_health=True, timeout=60)
-        return None
 
 
 def megatron_rlhf_main(args: Optional[Union[List[str], MegatronRLHFArguments]] = None):
