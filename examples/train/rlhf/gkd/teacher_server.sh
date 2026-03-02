@@ -1,21 +1,32 @@
-# GKD Training with External Teacher Model Server
+# GKD Training with External Teacher Model Server (vLLM)
 #
 # This script demonstrates using an external vLLM server as the teacher model
-# for knowledge distillation.
+# for knowledge distillation. The teacher server provides prompt_logprobs via
+# the /v1/completions endpoint, which requires native vLLM serving (vllm serve).
+#
+# NOTE: Only `vllm serve` is supported as the teacher server backend, because
+# the training code sends raw token IDs via the `prompt` field and uses the
+# `prompt_logprobs` parameter in the /v1/completions API. This is a vLLM-native
+# feature not available through swift deploy.
 
-# Teacher Server Setup (run in a separate gpu):
-# CUDA_VISIBLE_DEVICES=5 swift deploy \
-#     --model Qwen/Qwen2.5-14B-Instruct \
-#     --infer_backend vllm \
-#     --port 8000 \
-#     --vllm_engine_kwargs '{"max_logprobs": 64}'
+# ===================== Step 1: Start Teacher Server =====================
+# Run in a separate terminal / GPU:
+#
+#   CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-14B-Instruct \
+#       --port 8000 \
+#       --max-logprobs 64 \
+#       --gpu-memory-utilization 0.9
+#
+# Wait until the server is ready (shows "Uvicorn running on ...").
+# Verify with: curl http://localhost:8000/v1/models
+# ========================================================================
 
-TEACHER_SERVER_URL=${TEACHER_SERVER_URL:-"http://localhost:8001"}
+TEACHER_SERVER_URL=${TEACHER_SERVER_URL:-"http://localhost:8000"}
 GKD_LOGITS_TOPK=${GKD_LOGITS_TOPK:-64}
 
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
+CUDA_VISIBLE_DEVICES=1,2,3,4 \
 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen2.5-7B \

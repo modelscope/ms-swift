@@ -285,8 +285,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     teacher_logits = teacher_logits.detach()
 
             if topk is not None and teacher_logits is not None:
-                scaled = teacher_logits / self.temperature
-                topk_logits, topk_indices = torch.topk(scaled, k=topk, dim=-1)
+                topk_logits, topk_indices = torch.topk(teacher_logits, k=topk, dim=-1)
                 encoded_batch['teacher_api_logprobs'] = topk_logits
                 encoded_batch['teacher_api_indices'] = topk_indices
                 encoded_batch['teacher_logits'] = None
@@ -295,12 +294,16 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _compute_teacher_logits_from_api(self, encoded_batches: List[Dict]) -> None:
         """Fetch teacher logprobs from external API service."""
-        from swift.rlhf_trainers.teacher_api_client import fetch_teacher_logprobs
+        from swift.rlhf_trainers.gkd_trainer import fetch_teacher_logprobs
         topk = self.gkd_logits_topk
         for encoded_batch in encoded_batches:
             input_ids = encoded_batch['input_ids']
             teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
                 self.teacher_model_server, input_ids.tolist(), topk=topk)
+            # fetch_teacher_logprobs returns [batch, seq_len-1, topk] (shifted).
+            # Pad last position with -inf to match student [batch, seq_len, topk].
+            teacher_logprobs = F.pad(teacher_logprobs, (0, 0, 0, 1), value=float('-inf'))
+            teacher_indices = F.pad(teacher_indices, (0, 0, 0, 1), value=0)
             encoded_batch['teacher_api_logprobs'] = teacher_logprobs.to(input_ids.device)
             encoded_batch['teacher_api_indices'] = teacher_indices.to(input_ids.device)
             encoded_batch['teacher_logits'] = None
@@ -474,14 +477,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def _jsd_topk(self, student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta):
         """Compute JSD on teacher's top-k distribution.
 
-        Handles both local top-k (raw logits) and API top-k (raw logprobs) by
-        normalizing both teacher and student over the top-k subset via log_softmax.
+        Both local and API teacher are handled uniformly: gather student logits at
+        teacher's top-k indices, scale by 1/T, and log_softmax over top-k subset.
+        By shift-invariance of log_softmax, this gives identical results whether
+        teacher_topk_logprobs contains raw logits (local) or raw logprobs (API).
         """
         s_scaled = student_logits / self.temperature
         s_topk = torch.gather(s_scaled, dim=-1, index=teacher_topk_indices)
-
-        # Normalize both over top-k subset (handles both raw logits and API logprobs)
-        t_log_p = F.log_softmax(teacher_topk_logprobs, dim=-1)
+        t_log_p = F.log_softmax(teacher_topk_logprobs / self.temperature, dim=-1)
         s_log_p = F.log_softmax(s_topk, dim=-1)
         t_p = torch.exp(t_log_p)
 

@@ -1,3 +1,8 @@
+# GKD Training with External Teacher Model Server (Megatron)
+#
+# Start teacher server first (in a separate terminal / GPU):
+#   CUDA_VISIBLE_DEVICES=4 vllm serve Qwen/Qwen3-8B --port 8000 --max-logprobs 64
+
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

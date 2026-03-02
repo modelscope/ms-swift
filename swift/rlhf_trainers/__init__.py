@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from .ppo_trainer import PPOTrainer
     from .reward_trainer import RewardTrainer
     from .rlhf_mixin import RLHFTrainerMixin
-    from .teacher_api_client import fetch_teacher_logprobs
     from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, round_robin
     from .vllm_client import VLLMClient
 else:
@@ -32,7 +31,6 @@ else:
         'args_mixin': ['VllmArguments', 'GRPOArgumentsMixin'],
         'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
         'vllm_client': ['VLLMClient'],
-        'teacher_api_client': ['fetch_teacher_logprobs'],
         'arguments':
         ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig']
     }

@@ -197,18 +197,18 @@ When `gkd_logits_topk` is set, you can use an external teacher model API service
 | `--gkd_logits_topk` | int | **Required** | Must be set when using external API; corresponds to the top_logprobs returned by the API |
 
 **Supported Backends**:
-- `swift deploy` (vLLM backend)
-- Standalone vLLM server (`vllm serve`)
+- `vllm serve` (recommended)
+
+> **Note**: Only `vllm serve` is supported as the teacher server backend. The training code sends raw token IDs via the `prompt` field and uses the `prompt_logprobs` parameter in the `/v1/completions` API to obtain input token log-probabilities. This is a vLLM-native feature.
 
 **Step 1: Deploy Teacher Model Service**
 
 ```bash
-# Deploy teacher model with swift deploy (recommended)
-swift deploy \
-    --model Qwen/Qwen2.5-14B-Instruct \
-    --infer_backend vllm \
+# Deploy teacher model with vllm serve
+CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-14B-Instruct \
     --port 8000 \
-    --vllm_engine_kwargs '{"max_logprobs": 64}'
+    --max-logprobs 64 \
+    --gpu-memory-utilization 0.9
 ```
 
 **Step 2: Start GKD Training**
@@ -216,17 +216,17 @@ swift deploy \
 ```bash
 swift rlhf \
     --rlhf_type gkd \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --teacher_model_server http://localhost:8000 \
-    --gkd_logits_topk 20 \
+    --gkd_logits_topk 64 \
     --dataset your_dataset \
     --lmbda 1.0 \
-    --beta 0.5 \
+    --beta 1.0 \
     ...
 ```
 
 > **vLLM max_logprobs Limitation**:
-> - vLLM default `max_logprobs=20`, adjustable via `--vllm_engine_kwargs '{"max_logprobs": N}'` parameter
+> - vLLM default `max_logprobs=20`, adjustable via `--max-logprobs N` parameter
 > - `gkd_logits_topk` cannot exceed the server's `max_logprobs` setting
 
 ## Sampling Acceleration

@@ -196,21 +196,18 @@ swift rlhf \
 | `--gkd_logits_topk` | int | **必需** | 使用外部 API 时必须设置，对应 API 返回的 top_logprobs 数量 |
 
 **支持的后端**：
-- `swift deploy`（vLLM backend）
-- 独立 vLLM 服务（`vllm serve`）
+- `vllm serve`（推荐）
+
+> **注意**：仅支持 `vllm serve` 作为教师服务后端。训练代码通过 `/v1/completions` 接口直接传递 token IDs 并使用 `prompt_logprobs` 参数获取输入 token 的 log 概率，这是 vLLM 原生支持的功能。
 
 **步骤 1：部署教师模型服务**
 
 ```bash
-# 使用 swift deploy 部署教师模型
-CUDA_VISIBLE_DEVICES=0,1 swift deploy \
-    --model Qwen/Qwen2-72B-Instruct \
-    --infer_backend vllm \
+# 使用 vllm serve 部署教师模型
+CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-14B-Instruct \
     --port 8000 \
-    --vllm_engine_kwargs '{"max_logprobs": 64}'
-
-# 或使用独立 vLLM 服务
-vllm serve Qwen/Qwen2-72B-Instruct --max-logprobs 64 --port 8000
+    --max-logprobs 64 \
+    --gpu-memory-utilization 0.9
 ```
 
 **步骤 2：启动 GKD 训练**
@@ -218,17 +215,17 @@ vllm serve Qwen/Qwen2-72B-Instruct --max-logprobs 64 --port 8000
 ```bash
 swift rlhf \
     --rlhf_type gkd \
-    --model Qwen/Qwen2-7B-Instruct \
+    --model Qwen/Qwen2.5-7B \
     --teacher_model_server http://localhost:8000 \
-    --gkd_logits_topk 20 \
+    --gkd_logits_topk 64 \
     --dataset your_dataset \
     --lmbda 1.0 \
-    --beta 0.5 \
+    --beta 1.0 \
     ...
 ```
 
 > **vLLM max_logprobs 限制**：
-> - vLLM 默认 `max_logprobs=20`，可通过 `--vllm_engine_kwargs '{"max_logprobs": N}'` 参数调整
+> - vLLM 默认 `max_logprobs=20`，可通过 `--max-logprobs N` 参数调整
 > - `gkd_logits_topk` 不能超过服务端的 `max_logprobs` 设置
 
 ## 采样加速
