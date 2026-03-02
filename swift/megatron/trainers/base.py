@@ -547,7 +547,7 @@ class BaseMegatronTrainer(ABC):
             for _ in range(args.virtual_pipeline_model_parallel_size):
                 train_it, val_it = self._prepare_data_iterator(train_dataset, val_dataset)
                 train_data_iterator.append(train_it)
-                val_data_iterator.append(train_it)
+                val_data_iterator.append(val_it)
         else:
             train_data_iterator, val_data_iterator = self._prepare_data_iterator(train_dataset, val_dataset)
         while state.iteration < args.train_iters:
