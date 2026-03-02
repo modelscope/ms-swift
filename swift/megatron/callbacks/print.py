@@ -19,6 +19,7 @@ class PrintCallback(MegatronCallback):
         self.training_bar = None
         self.eval_bar = None
         self.jsonl_writer = None
+        self.throughput_writer = None
         self.is_write_rank = is_last_rank()
 
     def on_train_begin(self):
@@ -29,8 +30,12 @@ class PrintCallback(MegatronCallback):
         self.current_step = self.state.iteration
         self.start_time = time.time()
         logging_path = os.path.join(self.args.output_dir, 'logging.jsonl')
+        throughput_path = os.environ.get('SWIFT_THROUGHPUT_JSONL') or os.path.join(
+            self.args.output_dir, 'throughput_rank0.jsonl')
         logger.info(f'logging_path: {logging_path}')
+        logger.info(f'throughput_path: {throughput_path}')
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')
+        self.throughput_writer = JsonlWriter(throughput_path, enable_async=True, write_on_rank='master')
 
     def on_train_end(self):
         self.training_bar.close()
@@ -64,6 +69,31 @@ class PrintCallback(MegatronCallback):
         memory = reduce_max_stat_across_model_parallel_group(torch.cuda.max_memory_reserved() / 1024**3)
         logs['memory(GiB)'] = round(memory, 2)
         logs['train_speed(s/it)'] = round(train_speed, 6)
+
+        active_tokens_per_step = logs.get('tokens_active_per_step')
+        total_tokens_per_step = logs.get('tokens_total_per_step')
+        if isinstance(active_tokens_per_step, (int, float)) and isinstance(total_tokens_per_step, (int, float)):
+            active_tokens_per_step = float(active_tokens_per_step)
+            total_tokens_per_step = float(total_tokens_per_step)
+            if train_speed > 0:
+                logs['active_tps'] = active_tokens_per_step / train_speed
+                logs['total_tps'] = total_tokens_per_step / train_speed
+            if total_tokens_per_step > 0:
+                logs['mask_ratio'] = 1.0 - (active_tokens_per_step / total_tokens_per_step)
+            if self.throughput_writer is not None:
+                throughput_event = {
+                    'step': state.iteration,
+                    'elapsed_s': elapsed,
+                    'window_steps': n_steps,
+                    'train_speed_s_per_it': train_speed,
+                    'tokens_active_per_step': active_tokens_per_step,
+                    'tokens_total_per_step': total_tokens_per_step,
+                    'active_tps': logs.get('active_tps'),
+                    'total_tps': logs.get('total_tps'),
+                    'mask_ratio': logs.get('mask_ratio'),
+                }
+                self.throughput_writer.append(throughput_event)
+
         logs = {k: round(v, 8) if isinstance(v, float) else v for k, v in logs.items()}
         self.jsonl_writer.append(logs)
         if self.is_write_rank:

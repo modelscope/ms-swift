@@ -79,7 +79,23 @@ class MegatronTrainer(BaseMegatronTrainer):
         else:
             lm_loss = lm_loss.clone()
         local_num_tokens = loss[1].detach().clone().to(torch.int)
-        metrics = {'loss': reporting_loss}
+        token_stats = torch.stack([
+            loss_mask.sum().to(torch.float32),
+            torch.tensor(labels.numel(), dtype=torch.float32, device=labels.device),
+        ])
+        if torch.distributed.is_initialized():
+            try:
+                dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+            except TypeError:
+                dp_group = mpu.get_data_parallel_group()
+            torch.distributed.all_reduce(token_stats, op=torch.distributed.ReduceOp.SUM, group=dp_group)
+
+        metrics = {
+            'loss': reporting_loss,
+            # Keep pair format so metrics are aggregated like loss over log windows.
+            'tokens_active_per_step': torch.stack([token_stats[0], token_stats.new_tensor(1.0)]),
+            'tokens_total_per_step': torch.stack([token_stats[1], token_stats.new_tensor(1.0)]),
+        }
         if args.enable_channel_loss and channels is not None:
             metrics.update(self._compute_channel_loss(losses, loss_mask, channels, packed_seq_params))
         return (lm_loss, local_num_tokens, metrics)
