@@ -286,13 +286,6 @@ def save_mcore_checkpoint(
         validate_access_integrity=True,
         preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check,
         **kwargs)
-    tracker_path = os.path.join(output_dir, 'latest_checkpointed_iteration.txt')
-    try:
-        from megatron.core.msc_utils import open_file
-    except ImportError:
-        open_file = open
-    with open_file(tracker_path, 'w') as f:
-        f.write(str(iteration))
 
     if not args.async_save:
         assert async_save_request is None
@@ -301,6 +294,14 @@ def save_mcore_checkpoint(
             torch.distributed.barrier()
 
     if is_master():
+
+        tracker_path = os.path.join(output_dir, 'latest_checkpointed_iteration.txt')
+        try:
+            from megatron.core.msc_utils import open_file
+        except ImportError:
+            open_file = open
+        with open_file(tracker_path, 'w') as f:
+            f.write(str(iteration))
 
         def iter_finalize_fn():
             if models:
