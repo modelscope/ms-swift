@@ -167,11 +167,14 @@ class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
-        system = system or ''
-        return """# Tools
+        tools_prompt = """# Tools
 
 You have access to the following functions:\n\n<tools>
 """ + '\n'.join(tool_descs) + f'\n{TOOL_DESC_SUFFIX}'
+        system = system or ''
+        if system:
+            tools_prompt += f'\n\n{system}'
+        return tools_prompt
 
     def _get_tool_responses(self, tool_messages):
         res_tool = []
