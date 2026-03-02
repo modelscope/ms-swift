@@ -2,12 +2,11 @@ import copy
 import os
 import shutil
 import tempfile
-import unittest
-
 import torch
+import unittest
 from modelscope import snapshot_download
 
-from swift import SCETuningConfig, Swift
+from swift.tuners import SCETuningConfig, Swift
 from swift.tuners.part import PartConfig
 
 

@@ -8,7 +8,7 @@ swift sft \
     --dataset 'linxy/LaTeX_OCR:full#5000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -18,6 +18,7 @@ swift sft \
     --lora_alpha 32 \
     --router_aux_loss_coef 1e-3 \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps 4 \
     --gradient_checkpointing true \
     --eval_steps 50 \

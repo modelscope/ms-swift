@@ -167,7 +167,7 @@ A common scenario is for “thinking” models: during real inference the model 
 
 For such cases override the `run` method in your scheduler to return the result for each rollout turn individually.
 The built-in `ThinkingModelTipsScheduler` shows how to fully customise multi-turn inference by overriding `run()`.
-See the implementation in [multi_turn.py](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py).
+See the implementation in [multi_turn.py](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py).
 
 **NOTE**: In this scenario, the data for a single trajectory is split into multiple records. When computing rewards, you must assign the same reward to every record that belongs to the same trajectory.
 
@@ -194,7 +194,7 @@ Steps:
 - Read the `token_ids` attribute from `response_choice` to obtain the sequence.
 - Include `response_token_ids` in the dict returned by `step` / `run`; the trainer can then use them directly.
 
-For a concrete implementation, refer to the [ThinkingModelTipsScheduler class](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+For a concrete implementation, refer to the [ThinkingModelTipsScheduler class](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)
 
 ### Loss mask
 
@@ -264,4 +264,4 @@ If you modify the response in your `step` method (e.g., truncation, adding conte
 
 If you completely override the `run` method, you need to manually collect and pass `rollout_logprobs`
 
-For implementation, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+For implementation, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)

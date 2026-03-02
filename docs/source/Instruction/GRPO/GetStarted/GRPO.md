@@ -258,14 +258,14 @@ swift rlhf \
 如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
 - entropy/threshold: 分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
 
-训推一致性指标，前缀为rollout_correction (ms-swift>=3.11)
+训推一致性指标，前缀为rollout_correction (ms-swift>=3.11)，需设置`log_rollout_offpolicy_metrics=true`或`rollout_importance_sampling_mode`：
 - `kl` / `k3_kl`：训练策略与 rollout 策略之间的 KL 散度（直接估计器 / K3 估计器）
 - `training_ppl` / `rollout_ppl`：训练策略和 rollout 策略的困惑度
 - `log_ppl_diff`：log PPL 差异，反映分布偏移程度
 - `ppl_ratio`：PPL 比率
 - `chi2_token` / `chi2_seq`：Token/Sequence 级别的 χ² 散度
 
-IS 校正指标(需设置rollout_importance_sampling_mode)
+IS 校正指标（需设置`rollout_importance_sampling_mode`）：
 - `is_weight_mean`：平均重要性采样权重
 - `ess`：有效样本大小（Effective Sample Size）
 - `clipped_frac`：被截断或屏蔽的样本比例
@@ -305,8 +305,8 @@ effective_batch_size = num_processes * per_device_train_batch_size * gradient_ac
 采样阶段，总的批量大小 (completion-level) 数量等于:
 
 1. 设置 generation_batch_size 下，等于 generation_batch_size
-2. 设置 steps_per_generation 下， 等于 steps_per_generation * 训练总批量大小
-3. 默认等于训练总批量大小(即num_processes * per_device_train_batch_size * gradient_accumulation_steps)
+2. 设置 steps_per_generation 下，等于 per_device_train_batch_size * steps_per_generation * num_processes
+3. 默认情况下，steps_per_generation = gradient_accumulation_steps，generation_batch_size = per_device_train_batch_size * steps_per_generation * num_processes = per_device_train_batch_size * gradient_accumulation_steps * num_processes = effective_batch_size
 
 在评估阶段，completion 的数量等于：
 ```
@@ -336,7 +336,7 @@ num_processes * per_device_eval_batch_size
 
 参考[issue](https://github.com/modelscope/ms-swift/issues/3912)
 
-**5. clip_ratio为什么总是1?**
+**5. clip_ratio为什么总是0?**
 
 Clip机制的核心目的是限制策略更新的幅度，防止因单次更新过大而导致策略性能崩溃（即策略更新后表现急剧下降）。
 Clip操作的具体公式如下：
@@ -352,7 +352,7 @@ $
 因此重要性采样比恒为 1，此时，clip 操作不会生效。
 
 在设置以下参数情况下，算法为off-policy (near-on-policy)
-1. num_iterations > 1
+1. num_iterations > 1, 或者
 2. gradient_accumulation_steps % steps_per_generation != 0
 
 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
@@ -366,17 +366,12 @@ $
 **7. 如何设置训练的 `mini-batch size`**
 
 在 GRPO 训练中，我们可以通过以下两种方式配置 mini-batch 更新：
+- 设置 `generation_batch_size` 为训练 global batch size (effective_batch_size) 的整数倍
+- 或设置 `steps_per_generation` 为 `gradient_accumulation_steps` 的整数倍
 
-1. 配置选项：
-- 设置`generation_batch_size`为训练global-batch的整数倍
-- 或设置`steps_per_generation`为`gradient_accumulation_steps`的整数倍
-
-2. 典型配置示例：
-当配置：
-steps_per_generation = 16
-gradient_accumulation_steps = 8
-
-则一次 rollout 结果将拆分成两批 mini-batch 进行更新
+典型配置示例：
+- 当配置：
+steps_per_generation = 16, gradient_accumulation_steps = 8, mini_batch_size = steps_per_generation / gradient_accumulation_steps = 2. 则 1 次 rollout 结果将拆分成 2 批 mini-batch 进行更新。
 
 **8. swift deploy 与 swift rollout 的区别**
 

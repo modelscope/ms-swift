@@ -1,4 +1,4 @@
-from swift.llm import InferArguments, infer_main
+from swift import InferArguments, infer_main
 
 
 def test_max_memory():

@@ -11,7 +11,7 @@ swift rlhf \
     --vllm_gpu_memory_utilization 0.4 \
     --vllm_tensor_parallel_size 2 \
     --vllm_max_model_len 16384 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --max_length 12000 \

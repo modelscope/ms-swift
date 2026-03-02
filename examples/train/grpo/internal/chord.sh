@@ -31,7 +31,7 @@ swift rlhf \
     --chord_mu_peak 0.9 \
     --chord_mu_valley 0.05 \
     --num_generations 8 \
-    --train_type full \
+    --tuner_type full \
     --reward_funcs accuracy \
     --system "$CHORD_SYSTEM_PROMPT" \
     --use_vllm true \

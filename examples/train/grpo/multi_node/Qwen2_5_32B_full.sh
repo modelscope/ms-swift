@@ -20,10 +20,10 @@ swift rlhf \
     --model Qwen/Qwen2.5-32B-Instruct \
     --reward_funcs accuracy \
     --use_vllm true \
-    --vllm_mode colocate \
+    --vllm_mode server \
     --vllm_server_host xxx \
     --vllm_server_port 8000 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --dataset AI-MO/NuminaMath-TIR#1000 \
     --load_from_cache_file true \

@@ -35,13 +35,13 @@ SAPO 的核心是使用 sigmoid 函数对重要性采样比进行软门控：
 对于正向优势（$A > 0$），使用正向门控：
 
 $$
-g^{+}_t = \sigma\left( \tau_{\mathrm{pos}} \cdot (r_t - 1) \right)
+g^{+}_t = \sigma\left( \tau_{\mathrm{pos}} \cdot (r_t - 1) \right) \cdot \frac{4}{\tau_{\mathrm{pos}}}
 $$
 
 对于负向优势（$A < 0$），使用负向门控：
 
 $$
-g^{-}_t = \sigma\left( \tau_{\mathrm{neg}} \cdot (r_t - 1) \right)
+g^{-}_t = \sigma\left( \tau_{\mathrm{neg}} \cdot (r_t - 1) \right) \cdot \frac{4}{\tau_{\mathrm{neg}}}
 $$
 
 其中：

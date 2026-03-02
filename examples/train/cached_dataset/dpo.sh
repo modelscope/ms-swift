@@ -23,12 +23,11 @@ FPS_MAX_FRAMES=16 \
 megatron rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen3-VL-30B-A3B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --cached_dataset qwen3_vl_cached_dataset/train \
     --cached_val_dataset qwen3_vl_cached_dataset/val \
     --load_from_cache_file true \
-    --train_type full \
+    --tuner_type full \
     --tensor_model_parallel_size 4 \
     --expert_tensor_parallel_size 1 \
     --pipeline_model_parallel_size 2 \
@@ -48,12 +47,12 @@ megatron rlhf \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-VL-30B-A3B-Instruct \
-    --eval_interval 500 \
-    --save_interval 500 \
+    --output_dir megatron_output/Qwen3-VL-30B-A3B-Instruct \
+    --eval_steps 500 \
+    --save_steps 500 \
     --max_length 8192 \
-    --max_epochs 1 \
-    --num_workers 8 \
+    --num_train_epochs 1 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

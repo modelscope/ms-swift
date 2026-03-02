@@ -90,7 +90,7 @@ pip install flash-attn --no-build-isolation  # packing需要
 
 如果您想使用不含思维链的数据进行训练，同时保留模型的推理能力，可以通过以下两种方法尽量减少微调的影响：
 
-**选项 1**：【推荐】在训练期间，指定 `--loss_scale ignore_empty_think`，以忽略对 `<think>\n\n</think>\n\n` 的损失计算，从而避免推理能力的丧失。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh)。该方式同样适用于deepseek-r1等模型。自定义数据集格式如下：
+**选项 1**：【推荐】在训练期间，指定 `--loss_scale ignore_empty_think`，以忽略对 `'<think>\n\n</think>\n\n'` 的损失计算，从而避免推理能力的丧失。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh)。该方式同样适用于deepseek-r1等模型。自定义数据集格式如下：
 
 ```json
 {"messages": [
@@ -142,7 +142,7 @@ swift infer \
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen3-8B \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'swift/Qwen3-SFT-Mixin#2000' \
               'swift/self-cognition:qwen3#600' \
     --load_from_cache_file true \
@@ -221,7 +221,7 @@ NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen3-8B \
-    --train_type full \
+    --tuner_type full \
     --dataset '<your-dataset>' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -292,7 +292,7 @@ NPROC_PER_NODE=8 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-8B \
-    --train_type full \
+    --tuner_type full \
     --dataset 'AI-MO/NuminaMath-TIR#5000' \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
@@ -330,7 +330,7 @@ Qwen3-235B-A22B-Instruct-250718 单机8卡H20 LoRA训练的最佳实践参考：
 
 ms-swift 引入了 Megatron 并行技术以加速大模型的CPT/SFT/DPO/GRPO。支持的模型可以在[支持的模型文档](../Instruction/Supported-models-and-datasets.md)中找到。
 
-关于环境准备以及 HF 和 MCore 模型权重的转换，可以参考[Megatron-SWIFT训练文档](../Megatron-SWIFT/Quick-start.md)。
+关于环境准备，可以参考[Megatron-SWIFT训练文档](../Megatron-SWIFT/Quick-start.md)。
 
 我们将使用阿里云 DLC 启动训练。训练环境由2台配备8卡 80GiB A800 GPU 组成。关于多节点启动方法的更多信息，请参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/multi-node)。
 
@@ -340,7 +340,8 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NNODES=$WORLD_SIZE \
 NODE_RANK=$RANK \
 megatron sft \
-    --load Qwen3-30B-A3B-Base-mcore \
+    --model Qwen/Qwen3-30B-A3B-Base \
+    --save_safetensors true \
     --dataset 'liucong/Chinese-DeepSeek-R1-Distill-data-110k-SFT' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -363,11 +364,11 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-30B-A3B-Base \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Base \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 8192 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

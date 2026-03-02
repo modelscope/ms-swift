@@ -12,7 +12,7 @@ swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3-8B-Base \
     --teacher_model Qwen/Qwen3-32B \
-    --train_type full \
+    --tuner_type full \
     --dataset open-thoughts/OpenThoughts3-1.2M#10000 \
     --seq_kd false \
     --lmbda 1 \

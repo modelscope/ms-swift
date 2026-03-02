@@ -64,14 +64,6 @@ SWIFT在PR提交后会进行两类测试：
 
 在提交PR前，请保证您的开发代码已经受到了测试用例的保护。例如，对新功能的冒烟测试，或者各种边缘case的单元测试等。在代码review时Reviewers也会关注这一点。同时，也会有服务专门运行CI Tests，运行所有的测试用例，测试用例通过后代码才可以合并。
 
-另外，由于运行时间过长，我们跳过了部分重要测试，为保证您的逻辑是正确的，可以在本地执行该测试：
-
-```shell
-python tests/llm/test_run.py
-```
-
-请保证该测试可以正常通过。
-
 ## ✅ 资源支持
 
 SWIFT会为开发者提供资源支持，包括免费的GPU算力。如果需要请邮件联系我们（[contact@modelscope.cn](mailto:contact@modelscope.cn)）或加入我们的微信群：

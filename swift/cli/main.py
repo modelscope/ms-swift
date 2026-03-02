@@ -1,11 +1,10 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.util
+import json
 import os
 import subprocess
 import sys
 from typing import Any, Dict, List, Optional
-
-import json
 
 from swift.utils import get_logger
 
@@ -52,7 +51,7 @@ def prepare_config_args(argv):
         if argv[i] == '--config':
             if i + 1 >= len(argv):
                 raise ValueError('The `--config` argument requires a yaml file path.')
-            from omegaconf import OmegaConf, DictConfig, ListConfig
+            from omegaconf import DictConfig, ListConfig, OmegaConf
             config = OmegaConf.load(argv[i + 1])
 
             def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:
@@ -82,29 +81,18 @@ def prepare_config_args(argv):
             break
 
 
-def _compat_web_ui(argv):
-    # [compat]
-    method_name = argv[0]
-    if method_name in {'web-ui', 'web_ui'} and ('--model' in argv or '--adapters' in argv or '--ckpt_dir' in argv):
-        argv[0] = 'app'
-        logger.warning('Please use `swift app`.')
-
-
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
-    _compat_web_ui(argv)
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     torchrun_args = get_torchrun_args()
     prepare_config_args(argv)
     python_cmd = sys.executable
-    if not is_megatron and (torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
+    if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
     else:
-        if torchrun_args is None:
-            raise ValueError('Please set torchrun args: NPROC_PER_NODE, ...')
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)
     result = subprocess.run(args)

@@ -8,14 +8,13 @@ FPS_MAX_FRAMES=12 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-Omni-30B-A3B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
               'speech_asr/speech_asr_aishell1_trainsets:validation#5000' \
     --load_from_cache_file true \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -40,13 +39,12 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen3-Omni-30B-A3B-Instruct \
-    --eval_interval 100 \
-    --save_interval 100 \
-    --vit_gradient_checkpointing true \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen3-Omni-30B-A3B-Instruct \
+    --eval_steps 100 \
+    --save_steps 100 \
     --max_length 4096 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

@@ -1,7 +1,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B \
-    --train_type full \
+    --tuner_type full \
     --dataset AI-ModelScope/function-calling-chatml \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

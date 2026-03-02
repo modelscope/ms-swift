@@ -1,17 +1,14 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-import os
-import subprocess
-import sys
-import time
-from typing import Dict, List, Tuple, Type
-
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import gradio as gr
 import psutil
+import subprocess
+import sys
 from packaging import version
+from typing import Type
 
-from swift.ui.base import BaseUI
-from swift.ui.llm_infer.runtime import Runtime
 from swift.utils import get_logger
+from ..base import BaseUI
+from ..llm_infer import Runtime
 
 logger = get_logger()
 

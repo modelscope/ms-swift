@@ -1,15 +1,13 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 
 import re
+import torch
 import types
 from dataclasses import dataclass, field
+from torch import nn
 from typing import List, Union
 
-import torch
-from torch import nn
-
-from swift.utils import get_logger
-from swift.utils.torch_utils import find_sub_module
+from swift.utils import find_sub_module, get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput
 
 logger = get_logger()

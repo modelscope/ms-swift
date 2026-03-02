@@ -14,13 +14,12 @@ MASTER_PORT=29600 \
 megatron rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --context_parallel_size 1 \
     --tensor_model_parallel_size 1 \
     --pipeline_model_parallel_size 1 \
     --dataset AI-ModelScope/clevr_cogen_a_train#10000 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --global_batch_size 128 \
     --micro_batch_size 4 \
     --steps_per_generation 4 \
@@ -33,7 +32,7 @@ megatron rlhf \
     --vllm_max_model_len 10240 \
     --max_length 8192 \
     --max_completion_length 2048 \
-    --train_type full \
+    --tuner_type full \
     --lr 1e-6 \
     --bf16 true \
     --beta 0.001 \
@@ -47,10 +46,10 @@ megatron rlhf \
     --offload_model true \
     --offload_bridge false \
     --offload_optimizer true \
-    --log_interval 1 \
+    --logging_steps 1 \
     --recompute_granularity selective \
     --finetune \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim \
     --no_save_rng \
@@ -59,8 +58,7 @@ megatron rlhf \
     --system examples/train/grpo/prompt.txt \
     --padding_free true \
     --log_completions true \
-    --wandb_project megatron_swift \
-    --wandb_exp_name megatron_grpo \
+    --report_to wandb \
     --train_iters 100 \
-    --eval_interval 1000 \
-    --save_interval 1000
+    --eval_steps 1000 \
+    --save_steps 1000

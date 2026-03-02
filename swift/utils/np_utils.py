@@ -1,8 +1,7 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-from typing import Any, Dict, List, Optional, Tuple, Union
-
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import pandas as pd
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 def transform_jsonl_to_df(dict_list: List[Dict[str, Any]]) -> pd.DataFrame:

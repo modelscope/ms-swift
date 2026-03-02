@@ -4,11 +4,13 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --save_safetensors true \
+    --merge_lora false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -24,12 +26,12 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
-    --save_interval 100 \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
+    --save_steps 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \

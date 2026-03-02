@@ -1,10 +1,11 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
+from .arguments import RayArguments
 from .base import RayHelper
 
 
 def try_init_ray():
-    import json
     import argparse
+    import json
     from transformers.utils import strtobool
     parser = argparse.ArgumentParser()
     parser.add_argument('--use_ray', type=str, default='0')

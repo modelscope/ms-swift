@@ -2,7 +2,6 @@ import os
 import shutil
 import tempfile
 import unittest
-
 from modelscope import Model, check_local_model_is_latest
 
 

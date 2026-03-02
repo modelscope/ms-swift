@@ -8,8 +8,7 @@ swift sft \
     --dataset 'tany0699/garbage265#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type custom \
-    --external_plugins 'examples/train/multimodal/lora_llm_full_vit/custom_plugin.py' \
+    --tuner_type lora_llm \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \

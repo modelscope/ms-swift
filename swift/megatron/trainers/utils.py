@@ -1,49 +1,29 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-import functools
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import gc
-import time
-from contextlib import contextmanager
-from typing import Any, Dict, Optional
-
 import megatron.core
 import torch
 from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
+from dataclasses import dataclass
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
 from megatron.core.packed_seq_params import PackedSeqParams
-from megatron.core.utils import get_batch_on_this_cp_rank as mcore_get_batch_on_this_cp_rank
-from megatron.training import get_args, get_wandb_writer
 from packaging import version
+from transformers.utils import is_torch_npu_available
+from typing import Any, Dict, Optional
 
-from swift.llm import get_packed_seq_params as _get_packed_seq_params
-from swift.llm import to_device
-from swift.utils import get_logger
-from swift.utils.torch_utils import empty_cache, get_current_device
+from swift.dataloader import DataLoaderDispatcher
+from swift.megatron.utils import split_cp_inputs
+from swift.utils import empty_cache, get_current_device, get_logger
+from swift.utils import get_packed_seq_params as _get_packed_seq_params
+from swift.utils import to_device
 
 mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
+logger = get_logger()
 
 
-def get_swift_datasets_provider(train_dataset, val_dataset):
-
-    def swift_datasets_provider(train_val_test_num_samples):
-        nonlocal val_dataset
-        args = get_args()
-        data_parallel_size = mpu.get_data_parallel_world_size()
-        step_batch_size = args.micro_batch_size * data_parallel_size
-        # To avoid errors caused by the validation set being insufficient to complete a single step.
-        if val_dataset is not None and hasattr(val_dataset, '__len__') and len(val_dataset) < step_batch_size:
-            val_dataset = None
-        return train_dataset, val_dataset, None
-
-    return swift_datasets_provider
-
-
-# Code borrowed from NVIDIA/Megatron-LM
-def get_batch_on_this_tp_rank(data, vp_stage=None):
-    args = get_args()
-
+def get_batch_on_this_pp_rank(args, data, vp_stage=None):
     if args.task_type == 'causal_lm':
         data['labels'] = torch.roll(data['labels'], -1, dims=-1)
         if 'loss_scale' in data:
@@ -68,36 +48,21 @@ def get_batch_on_this_tp_rank(data, vp_stage=None):
 
 def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     params = _get_packed_seq_params(position_ids)
-    return PackedSeqParams(
+    packed = PackedSeqParams(
         cu_seqlens_q=params['cu_seq_lens_q'],
         cu_seqlens_kv=params['cu_seq_lens_k'],
         max_seqlen_q=params['max_length_q'],
         max_seqlen_kv=params['max_length_k'],
         qkv_format='thd')
 
+    if is_torch_npu_available():
+        packed.cu_seqlens_q_padded = params['cu_seq_lens_q']
+        packed.cu_seqlens_kv_padded = params['cu_seq_lens_k']
 
-def split_cp_inputs(inputs: torch.Tensor, cu_seqlens: torch.Tensor, dim: int):
-    # TODO: compat bshd
-    if dim < 0:
-        dim = (dim + inputs.ndim) % inputs.ndim
-    new_inputs = []
-    cp_size = mpu.get_context_parallel_world_size()
-    cp_rank = mpu.get_context_parallel_rank()
-    for i in range(cu_seqlens.shape[0] - 1):
-        slices = [slice(None)] * inputs.ndim
-        slices[dim] = slice(cu_seqlens[i], cu_seqlens[i + 1])
-        val = inputs[tuple(slices)]
-        view_shape = (*inputs.shape[:dim], 2 * cp_size, val.shape[dim] // (2 * cp_size), *inputs.shape[dim + 1:])
-        val = val.view(view_shape)
-        index = torch.tensor([cp_rank, (2 * cp_size - cp_rank - 1)], device='cpu',
-                             pin_memory=True).cuda(non_blocking=True)
-        val = val.index_select(dim, index)
-        view_shape = (*inputs.shape[:dim], -1, *inputs.shape[dim + 1:])
-        new_inputs.append(val.view(view_shape))
-    return torch.cat(new_inputs, dim=dim)
+    return packed
 
 
-def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
+def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
     """Slice batch input along sequence dimension into multiple chunks,
     which are parallelized across GPUs in a context parallel group.
     """
@@ -110,47 +75,21 @@ def get_batch_on_this_cp_rank(batch: Dict[str, Any]):
     # that we can get balanced workload among GPUs in a context parallel group.
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
-        args = get_args()
-        keys = ['labels', 'attention_mask', 'position_ids', 'loss_scale']
+        keys = ['labels', 'position_ids', 'loss_scale']
         if not args.is_multimodal:
             # Multimodal models will handle CP in input_embeds.
             keys.append('input_ids')
 
         packed_seq_params = batch.get('packed_seq_params')
-        if packed_seq_params is None:
-            return mcore_get_batch_on_this_cp_rank(batch)
         for key, val in batch.items():
             if key not in keys:
                 continue
             if args.task_type == 'seq_cls' and key == 'labels':
                 continue
             if val is not None:
-                batch[key] = split_cp_inputs(val, packed_seq_params.cu_seqlens_q, -1)
+                batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
 
     return batch
-
-
-@contextmanager
-def profiling_context(trainer, name: str):
-    start_time = time.perf_counter()
-    yield
-    end_time = time.perf_counter()
-    duration = end_time - start_time
-
-    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
-    wandb_writer = get_wandb_writer()
-    if wandb_writer and trainer.is_main_process:
-        wandb_writer.log(profiling_metrics)
-
-
-def profiling_decorator(func):
-
-    @functools.wraps(func)
-    def wrapper(self, *args, **kwargs):
-        with profiling_context(self, func.__name__):
-            return func(self, *args, **kwargs)
-
-    return wrapper
 
 
 def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):
@@ -363,10 +302,50 @@ def offload_megatron_optimizer(optimizers):
 
 
 def log_gpu_memory(prefix: str = '', info_once: bool = False):
-    logger = get_logger()
-    log_msg = (f'{prefix} GPU memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB allocated, '
-               f'{torch.cuda.memory_reserved()/1024**3:.2f}GB reserved')
+    log_msg = (f'{prefix} GPU memory: {torch.cuda.memory_allocated() / 1024**3:.2f}GB allocated, '
+               f'{torch.cuda.memory_reserved() / 1024**3:.2f}GB reserved')
     if info_once:
         logger.info_once(log_msg, hash_id=prefix)
     else:
         logger.info(log_msg)
+
+
+@dataclass
+class TrainerState:
+    should_save: bool = False
+    should_eval: bool = False
+    should_log: bool = False
+
+    iteration: int = 0
+    consumed_train_samples = 0
+    # compat transformers
+    max_steps: Optional[int] = None
+
+    best_metric: Optional[float] = None
+    best_global_step: Optional[int] = None
+    last_model_checkpoint: Optional[str] = None
+    best_model_checkpoint: Optional[str] = None
+
+    @property
+    def global_step(self) -> int:
+        return self.iteration
+
+
+class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
+
+    @property
+    def group(self):
+        return mpu.get_data_parallel_group()
+
+
+def build_streaming_dataloader(args, dataset, collate_fn):
+    base_dataloader = torch.utils.data.DataLoader(
+        dataset,
+        num_workers=args.dataloader_num_workers,
+        pin_memory=args.dataloader_pin_memory,
+        collate_fn=collate_fn,
+        batch_size=args.micro_batch_size,
+        prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
+        persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+    )
+    return MegatronDataLoaderDispatcher(base_dataloader)

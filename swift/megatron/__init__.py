@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 
 try:
     from transformers.utils import is_torch_npu_available
@@ -17,22 +17,28 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .train import megatron_sft_main, megatron_pt_main, megatron_rlhf_main
-    from .export import megatron_export_main
+    from .arguments import (MegatronArguments, MegatronExportArguments, MegatronPretrainArguments,
+                            MegatronRLHFArguments, MegatronSftArguments)
     from .convert import convert_hf2mcore, convert_mcore2hf
-    from .utils import prepare_mcore_model, adapter_state_dict_context, convert_hf_config
-    from .argument import MegatronTrainArguments, MegatronRLHFArguments, MegatronExportArguments, MegatronArguments
-    from .model import MegatronModelType, MegatronModelMeta, get_megatron_model_meta, register_megatron_model
-    from .trainers import MegatronTrainer, MegatronDPOTrainer
+    from .model import (MegatronModelMeta, MegatronModelType, convert_hf_config, get_mcore_model,
+                        get_mcore_model_config, get_megatron_model_meta, register_megatron_model)
+    from .pipelines import megatron_export_main, megatron_pretrain_main, megatron_rlhf_main, megatron_sft_main
+    from .trainers import MegatronDPOTrainer, MegatronTrainer
     from .tuners import LoraParallelLinear
+    from .utils import initialize_megatron, prepare_mcore_model
 else:
     _import_structure = {
-        'train': ['megatron_sft_main', 'megatron_pt_main', 'megatron_rlhf_main'],
-        'export': ['megatron_export_main'],
+        'pipelines': ['megatron_sft_main', 'megatron_pretrain_main', 'megatron_rlhf_main', 'megatron_export_main'],
         'convert': ['convert_hf2mcore', 'convert_mcore2hf'],
-        'utils': ['prepare_mcore_model', 'adapter_state_dict_context', 'convert_hf_config'],
-        'argument': ['MegatronTrainArguments', 'MegatronRLHFArguments', 'MegatronExportArguments', 'MegatronArguments'],
-        'model': ['MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model'],
+        'utils': ['prepare_mcore_model', 'initialize_megatron'],
+        'arguments': [
+            'MegatronSftArguments', 'MegatronPretrainArguments', 'MegatronRLHFArguments', 'MegatronExportArguments',
+            'MegatronArguments'
+        ],
+        'model': [
+            'MegatronModelType', 'MegatronModelMeta', 'get_megatron_model_meta', 'register_megatron_model',
+            'get_mcore_model_config', 'convert_hf_config', 'get_mcore_model'
+        ],
         'trainers': ['MegatronTrainer', 'MegatronDPOTrainer'],
         'tuners': ['LoraParallelLinear'],
     }

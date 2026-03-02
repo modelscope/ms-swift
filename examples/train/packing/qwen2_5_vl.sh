@@ -8,7 +8,7 @@ MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2.5-VL-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/LaTeX_OCR#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \

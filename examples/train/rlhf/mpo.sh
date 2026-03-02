@@ -12,7 +12,7 @@ swift rlhf \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --loss_type sigmoid bco_pair sft \
     --loss_weights 0.8 0.2 1.0 \
@@ -22,6 +22,7 @@ swift rlhf \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-5 \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps $(expr 16 / $nproc_per_node) \
     --eval_steps 100 \
     --save_steps 100 \

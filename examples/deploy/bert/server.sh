@@ -5,6 +5,6 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
     --port 8000 \
     --adapters swift/test_bert \
     --served_model_name bert-base-chinese \
-    --infer_backend pt \
+    --infer_backend transformers \
     --truncation_strategy right \
     --max_length 512

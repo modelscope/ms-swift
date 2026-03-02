@@ -5,9 +5,12 @@ Before starting inference and training, please ensure your environment is proper
 ```shell
 pip install "transformers>=4.57" "qwen_vl_utils>=0.0.14"
 
-pip install "ms-swift>=3.9.1"
+pip install "ms-swift>=4.0"
 # pip install "vllm>=0.11.0"  # If using the vLLM inference backend for inference
 ```
+- About slow training: When using PyTorch 2.9, you may encounter slow training issues with the conv3d operator. Please try using PyTorch 2.8 as a workaround. For more information, refer to [this issue](https://github.com/pytorch/pytorch/issues/166122). In ms-swift>=3.11.2, you can work around this issue by setting `SWIFT_PATCH_CONV3D=1`. For more details, see [this issue](https://github.com/modelscope/ms-swift/issues/7108).
+- About video data training hangs: Using the decord backend for video reading may cause the training process to hang, see [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend instead. For details, refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
+
 
 ## Inference
 Inference using transformers:
@@ -66,7 +69,7 @@ print(output_text[0])
 # 'A baby wearing glasses sits on a bed, engrossed in reading a book. The baby turns the pages with both hands, occasionally looking up and smiling. The room is cozy, with a crib in the background and clothes scattered around. The baby's focus and curiosity are evident as they explore the book, creating a heartwarming scene of early learning and discovery.'
 ```
 
-Inference using ms-swift's PtEngine:
+Inference using ms-swift's TransformersEngine:
 
 ```python
 import os
@@ -76,8 +79,8 @@ os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
 os.environ['FPS_MAX_FRAMES'] = '16'
 
 
-from swift.llm import PtEngine, InferRequest, RequestConfig
-engine = PtEngine('Qwen/Qwen3-VL-4B-Instruct', attn_impl='flash_attention_2')
+from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
+engine = TransformersEngine('Qwen/Qwen3-VL-4B-Instruct')  # attn_impl='flash_attention_2'
 infer_request = InferRequest(messages=[{
     "role": "user",
     "content": '<video>Describe this video.',
@@ -172,6 +175,7 @@ Qwen3-VL's bbox output uses normalized 1000 relative coordinates. You can use th
 
 ### Dense Models
 Below is a fine-tuning script for the `Qwen3-VL-4B-Instruct` model. We use mixed-modality data as a demo dataset; this example script has no practical value. Training memory usage is 2 * 21GiB, and training time is 12 minutes.
+- If you find the preprocessing time too long, you can remove `--packing`, or use [cached dataset](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset).
 
 ```shell
 # 2 * 21GiB
@@ -188,7 +192,7 @@ swift sft \
               'swift/VideoChatGPT:Generic#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -262,7 +266,6 @@ VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 megatron sft \
     --model Qwen/Qwen3-VL-30B-A3B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -280,18 +283,18 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-VL-30B-A3B-Instruct \
-    --eval_interval 500 \
-    --save_interval 500 \
+    --output_dir megatron_output/Qwen3-VL-30B-A3B-Instruct \
+    --eval_steps 500 \
+    --save_steps 500 \
     --max_length 4096 \
     --packing true \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

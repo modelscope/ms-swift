@@ -10,13 +10,14 @@ swift rlhf \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 4 \
     --per_device_eval_batch_size 4 \
     --learning_rate 1e-5 \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps 1 \
     --eval_steps 100 \
     --save_steps 100 \
@@ -30,4 +31,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --attn_impl flash_attn \
     --save_only_model true \
+    --rpo_alpha 0.1 \
     --padding_free true

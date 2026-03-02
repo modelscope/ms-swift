@@ -22,7 +22,7 @@ swift rlhf \
     --rlhf_type gkd \
     --model OpenGVLab/InternVL3-2B-Pretrained \
     --teacher_model $teacher_model \
-    --train_type full \
+    --tuner_type full \
     --dataset 'new_coco_dataset.jsonl' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -32,6 +32,7 @@ swift rlhf \
     --per_device_eval_batch_size 4 \
     --learning_rate 1e-5 \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps 1 \
     --eval_steps 100 \
     --save_steps 100 \

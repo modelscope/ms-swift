@@ -1,5 +1,5 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-from swift.ui.llm_train.llm_train import Model
+# Copyright (c) ModelScope Contributors. All rights reserved.
+from ..llm_train import Model
 
 
 class RLHFModel(Model):

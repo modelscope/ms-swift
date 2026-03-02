@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type full \
+    --tuner_type full \
     --dataset AI-ModelScope/orpo-dpo-mix-40k \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -27,4 +27,5 @@ swift rlhf \
     --dataset_num_proc 4 \
     --deepspeed zero3 \
     --attn_impl flash_attn \
+    --rpo_alpha 0.1 \
     --packing true

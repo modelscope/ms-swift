@@ -3,10 +3,16 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
-def _infer_audio(model, use_chat_template: bool = True, max_model_len=8192, system=None):
-    engine = VllmEngine(model, max_model_len=max_model_len, limit_mm_per_prompt={'audio': 2})
+def _infer_audio(model, use_chat_template: bool = True, max_model_len=8192, system=None, limit_mm_per_prompt=None):
+    limit_mm_per_prompt = limit_mm_per_prompt or {'audio': 2}
+    engine = VllmEngine(
+        model,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=0.6,
+        limit_mm_per_prompt=limit_mm_per_prompt,
+        enforce_eager=True)
     if not use_chat_template:
-        engine.default_template.use_chat_template = False
+        engine.template.use_chat_template = False
     audios = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
     messages = []
     if system is not None:
@@ -17,10 +23,16 @@ def _infer_audio(model, use_chat_template: bool = True, max_model_len=8192, syst
     return resp_list[0].choices[0].message.content
 
 
-def _infer_image(model, use_chat_template: bool = True, max_model_len=8192, system=None):
-    engine = VllmEngine(model, max_model_len=max_model_len, limit_mm_per_prompt={'image': 5, 'video': 2})
+def _infer_image(model, use_chat_template: bool = True, max_model_len=8192, system=None, limit_mm_per_prompt=None):
+    limit_mm_per_prompt = limit_mm_per_prompt or {'image': 5, 'video': 0}
+    engine = VllmEngine(
+        model,
+        max_model_len=max_model_len,
+        gpu_memory_utilization=0.6,
+        limit_mm_per_prompt=limit_mm_per_prompt,
+        enforce_eager=True)
     if not use_chat_template:
-        engine.default_template.use_chat_template = False
+        engine.template.use_chat_template = False
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
     messages = []
     if system is not None:
@@ -33,9 +45,14 @@ def _infer_image(model, use_chat_template: bool = True, max_model_len=8192, syst
 
 def _infer_video(model, use_chat_template: bool = True, max_model_len=8192, system=None, limit_mm_per_prompt=None):
     limit_mm_per_prompt = limit_mm_per_prompt or {'image': 16, 'video': 2}
-    engine = VllmEngine(model, max_model_len=max_model_len, limit_mm_per_prompt=limit_mm_per_prompt)
+    engine = VllmEngine(
+        model,
+        max_model_len=max_model_len,
+        limit_mm_per_prompt=limit_mm_per_prompt,
+        gpu_memory_utilization=0.6,
+        enforce_eager=True)
     if not use_chat_template:
-        engine.default_template.use_chat_template = False
+        engine.template.use_chat_template = False
     videos = ['https://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/baby.mp4']
     messages = []
     if system is not None:
@@ -153,8 +170,24 @@ def test_glm4_1v():
     print(f'response: {response}')
 
 
+def test_paddleocr_vl():
+    response = _infer_image('PaddlePaddle/PaddleOCR-VL', max_model_len=4096)
+    print(f'response: {response}')
+
+
+def test_glm4_5_vl():
+    response = _infer_image('ZhipuAI/GLM-4.5V', max_model_len=4096)
+    print(f'response: {response}')
+
+
+def test_deepseek_ocr():
+    response = _infer_image('deepseek-ai/DeepSeek-OCR', max_model_len=4096)
+    print(f'response: {response}')
+
+
 if __name__ == '__main__':
-    from swift.llm import VllmEngine, InferRequest, RequestConfig
+    from swift.infer_engine import InferRequest, RequestConfig, VllmEngine
+
     # test_qwen2_vl()
     # test_qwen2_5_vl()
     # test_deepseek_vl_v2()
@@ -169,4 +202,6 @@ if __name__ == '__main__':
     # test_keye_vl()
     # test_kimi_vl()
     # test_glm4v()
-    test_glm4_1v()
+    # test_glm4_1v()
+    # test_paddleocr_vl()
+    test_deepseek_ocr()

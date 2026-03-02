@@ -20,15 +20,23 @@ For detailed environment setup, please refer to the [Ascend PyTorch installation
 ## Environment Preparation
 
 Experiment Environment: 8 * Ascend 910B3 64G
-
+### Environment Installation
 ```shell
 # Create a new conda virtual environment (optional)
 conda create -n swift-npu python=3.10 -y
 conda activate swift-npu
 
+# Note: Before proceeding with subsequent operations, you need to source and activate CANN environment first
+source /usr/local/Ascend/ascend-toolkit/set_env.sh
+
 # Set pip global mirror (optional, to speed up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
 pip install ms-swift -U
+
+# Install from source
+git clone https://github.com/modelscope/ms-swift.git
+cd ms-swift
+pip install -e .
 
 # Install torch-npu
 pip install torch-npu decorator
@@ -38,23 +46,9 @@ pip install deepspeed
 # If you need the evaluation functionality, please install the following package
 pip install evalscope[opencompass]
 
-# If you need to use MindSpeed ​​(Megatron-LM), please install the following packages
-# 1. Obtain and switch Megatron-LM to core_v0.12.1
-git clone https://github.com/NVIDIA/Megatron-LM.git
-cd Megatron-LM
-git checkout core_v0.12.1
-cd ..
-
-# 2. Install MindSpeed
-git clone https://gitcode.com/Ascend/MindSpeed.git
-cd MindSpeed
-git checkout 0016137f0dcfeab3308e0d16994046740c0e4ad9
-pip install -e .
-cd ..
-
-# 3. Set environment variables
-export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
-export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
+# If you need to use vllm-ascend for inference, please install the following packages
+pip install vllm==0.11.0
+pip install vllm-ascend==0.11.0rc3
 ```
 
 Check if the test environment is installed correctly and whether the NPU can be loaded properly.
@@ -67,6 +61,30 @@ print(torch.npu.device_count())  # 8
 print(torch.randn(10, device='npu:0'))
 ```
 
+**If you need to use MindSpeed (Megatron-LM), please follow the guide below to install the necessary dependencies**
+```shell
+# 1. Obtain and switch Megatron-LM to core_v0.12.1
+git clone https://github.com/NVIDIA/Megatron-LM.git
+cd Megatron-LM
+git checkout core_v0.12.1
+cd ..
+
+# 2. Install MindSpeed
+git clone https://gitcode.com/Ascend/MindSpeed.git
+cd MindSpeed
+git checkout 2.3.0_core_r0.12.1
+pip install -e .
+cd ..
+
+# 3. Set environment variables
+export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
+export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
+```
+Run the following command to verify if MindSpeed (Megatron-LM) is configured successfully:
+```shell
+python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ NPU environment Megatron-SWIFT configuration verified successfully!')"
+```
+### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
 ```shell
 (valle) root@valle:~/src# npu-smi info -t topo
@@ -91,7 +109,7 @@ Legend:
   NA   = Unknown relationship.
 ```
 
-Check the status of the NPU. Detailed information about the `npu-smi` command can be found in the [official documentation](https://support.huawei.com/enterprise/zh/doc/EDOC1100079287/10dcd668).
+Check the status of the NPU. For detailed information about the `npu-smi` command, please refer to the [official documentation](https://support.huawei.com/enterprise/en/doc/EDOC1100079287/10dcd668).
 ```shell
 (valle) root@valle:~/src# npu-smi info
 +------------------------------------------------------------------------------------------------+
@@ -127,7 +145,7 @@ Check the status of the NPU. Detailed information about the `npu-smi` command ca
 ```
 
 ## Fine-tuning
-The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--train_type full`. For **more training scripts**, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
+The following introduces the fine-tuning of LoRA. To perform full-parameter fine-tuning, simply set the parameter `--tuner_type full`. For **more training scripts**, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/ascend/train).
 
 | Model Size | Number of NPUs | Deepspeed Type | Max Memory Usage   |
 |------|-------|-------------|-----------|
@@ -155,7 +173,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --learning_rate 1e-4 \
     --gradient_accumulation_steps 16 \
@@ -177,7 +195,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -196,7 +214,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero2 \
     ...
@@ -214,7 +232,7 @@ swift sft \
     --dataset AI-ModelScope/blossom-math-v2 \
     --split_dataset_ratio 0.01 \
     --num_train_epochs 5 \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     --deepspeed zero3 \
     ...
@@ -244,14 +262,15 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift infer \
 ```
 
 ## Deployment
-NPUs do not support using vllm for inference/acceleration during deployment, but can be deployed using native PyTorch.
 
-Original Model:
+### Deployment with native Transformers
+
+Original model:
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model Qwen/Qwen2-7B-Instruct --max_new_tokens 2048
 ```
 
-After LoRA Fine-tuning:
+After LoRA fine-tuning:
 ```shell
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --adapters xxx/checkpoint-xxx --max_new_tokens 2048
 
@@ -260,7 +279,68 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift export --adapters xx/checkpoint-xxx --merge_lo
 ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max_new_tokens 2048
 ```
 
+### Deployment with vLLM-ascend
+
+Install via PyPI:
+```shell
+# Install vllm-project/vllm. The newest supported version is v0.11.0.
+pip install vllm==0.11.0
+
+# Install vllm-project/vllm-ascend from PyPI.
+pip install vllm-ascend==0.11.0rc3
+```
+
+Original model:
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --infer_backend vllm \
+    --max_new_tokens 2048
+```
+
+After LoRA fine-tuning:
+```shell
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --adapters xxx/checkpoint-xxx \
+    --infer_backend vllm \
+    --max_new_tokens 2048
+
+# Merge LoRA and deploy
+ASCEND_RT_VISIBLE_DEVICES=0 swift export \
+    --adapters xx/checkpoint-xxx \
+    --merge_lora true
+
+ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
+    --model xxx/checkpoint-xxx-merged \
+    --infer_backend vllm \
+    --max_new_tokens 2048
+```
+
 ## Current Support Status
+
+| Primary Feature | Feature                | Status        |
+| --------------- | ---------------------- | ------------- |
+| Training Paradigm | CPT                   | Supported     |
+|                 | SFT                    | Supported     |
+|                 | DPO                    | Supported     |
+|                 | RM                     | Supported     |
+| Distributed     | DDP                    | Supported     |
+|                 | FSDP                   | Supported     |
+|                 | FSDP2                  | Supported     |
+|                 | DeepSpeed              | Supported     |
+|                 | MindSpeed (Megatron)   | Supported     |
+| PEFT            | FULL                   | Supported     |
+|                 | LoRA                   | Supported     |
+|                 | QLoRA                  | Not Supported |
+| RLHF            | GRPO                   | Supported     |
+|                 | PPO                    | Supported     |
+| Performance Optimization | Fused ops such as FA | Supported |
+|                 | Liger-Kernel           | Not Supported |
+| Deployment      | PT                     | Supported     |
+|                 | vLLM                   | Supported     |
+|                 | SGLang                 | Not Supported |
+
+---
 
 ### Table 1: SFT Algorithms
 
@@ -300,10 +380,10 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 | ------------------------ |
 | Liger-kernel             |
 | Quantization/QLoRA       |
-| Megatron-related modules |
-| Using sglang as inference engine |
+| Using SGLang as inference engine |
+| Enable ETP for LoRA training when using Megatron |
 
 
-## NPU Wechat Group
+## NPU WeChat Group
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/wechat/npu.png" width="250">

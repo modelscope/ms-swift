@@ -23,7 +23,7 @@ ENABLE_AUDIO_OUTPUT=0 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
     --model Qwen/Qwen2.5-Omni-7B \
-    --train_type full \
+    --tuner_type full \
     --cached_dataset './qwen2_5_omni_cached_dataset/train' \
     --cached_val_dataset './qwen2_5_omni_cached_dataset/val' \
     --num_train_epochs 1 \

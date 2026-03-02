@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 from modelscope.hub import constants
 
 constants.API_HTTP_CLIENT_TIMEOUT = 5

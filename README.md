@@ -12,9 +12,9 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-3.10-5be.svg">
+<img src="https://img.shields.io/badge/python-3.11-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A52.0-orange.svg">
-<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.19-5D91D4.svg"></a>
+<a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.23-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
 <a href="https://github.com/modelscope/ms-swift/blob/main/LICENSE"><img src="https://img.shields.io/github/license/modelscope/ms-swift"></a>
 <a href="https://pepy.tech/project/ms-swift"><img src="https://pepy.tech/badge/ms-swift"></a>
@@ -51,13 +51,13 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 📝 Introduction
-🍲 **ms-swift** is a large model and multimodal large model fine-tuning and deployment framework provided by the ModelScope community. It now supports training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment for 600+ text-only large models and 300+ multimodal large models. Large models include: Qwen3, Qwen3-Next, InternLM3, GLM4.5, Mistral, DeepSeek-R1, Llama4, etc. Multimodal large models include: Qwen3-VL, Qwen3-Omni, Llava, InternVL3.5, MiniCPM-V-4, Ovis2.5, GLM4.5-V, DeepSeek-VL2, etc.
+🍲 **ms-swift** is a large model and multimodal large model fine-tuning and deployment framework provided by the ModelScope community. It now supports training (pre-training, fine-tuning, human alignment), inference, evaluation, quantization, and deployment for 600+ text-only large models and 400+ multimodal large models. Large models include: Qwen3, Qwen3.5, InternLM3, GLM4.5, Mistral, DeepSeek-R1, Llama4, etc. Multimodal large models include: Qwen3-VL, Qwen3-Omni, Llava, InternVL3.5, MiniCPM-V-4, Ovis2.5, GLM4.5-V, DeepSeek-VL2, etc.
 
 🍔 In addition, ms-swift integrates the latest training technologies, including Megatron parallelism techniques such as TP, PP, CP, EP to accelerate training, as well as numerous GRPO algorithm family reinforcement learning algorithms including: GRPO, DAPO, GSPO, SAPO, CISPO, RLOO, Reinforce++, etc. to enhance model intelligence. ms-swift supports a wide range of training tasks, including preference learning algorithms such as DPO, KTO, RM, CPO, SimPO, ORPO, as well as Embedding, Reranker, and sequence classification tasks. ms-swift provides full-pipeline support for large model training, including acceleration for inference, evaluation, and deployment modules using vLLM, SGLang, and LMDeploy, as well as model quantization using GPTQ, AWQ, BNB, and FP8 technologies.
 
 **Why Choose ms-swift?**
 
-- 🍎 **Model Types**: Supports **600+ text-only large models**, **300+ multimodal large models**, and All-to-All full modality models from training to deployment full pipeline, with Day-0 support for popular models.
+- 🍎 **Model Types**: Supports **600+ text-only large models**, **400+ multimodal large models**, and All-to-All full modality models from training to deployment full pipeline, with Day-0 support for popular models.
 - **Dataset Types**: Built-in 150+ datasets for pre-training, fine-tuning, human alignment, multimodal and various other tasks, with support for custom datasets. Users only need to prepare datasets for one-click training.
 - **Hardware Support**: Supports A10/A100/H100, RTX series, T4/V100, CPU, MPS, and domestic hardware Ascend NPU, etc.
 - **Lightweight Training**: Supports lightweight fine-tuning methods such as LoRA, QLoRA, DoRA, LoRA+, LLaMAPro, LongLoRA, LoRA-GA, ReFT, RS-LoRA, Adapter, LISA, etc.
@@ -67,16 +67,17 @@ You can contact us and communicate with us by adding our group:
 - 🍓 **Multimodal Training**: Supports multimodal packing technology to improve training speed by 100%+, supports mixed modality data training with text, images, video and audio, and supports independent control of vit/aligner/llm.
 - **Agent Training**: Supports Agent templates, allowing one dataset to be used for training different models.
 - 🍊 **Training Tasks**: Supports pre-training and instruction fine-tuning, as well as training tasks such as DPO, GKD, KTO, RM, CPO, SimPO, ORPO, and supports **Embedding/Reranker** and sequence classification tasks.
-- 🥥 **Megatron Parallelism**: Provides TP/PP/SP/CP/ETP/EP/VPP parallel strategies, **MoE model acceleration up to 10x**. Supports full-parameter and LoRA training methods for 250+ text-only large models and 100+ multimodal large models. Supports CPT/SFT/GRPO/DPO/KTO/RM training tasks.
+- 🥥 **Megatron Parallelism**: Provides TP/PP/SP/CP/ETP/EP/VPP parallel strategies to significantly boost **MoE model training speed**. Supports full-parameter and LoRA training methods for 300+ pure text large models and 100+ multimodal large models. Supports CPT/SFT/GRPO/DPO/KTO/RM training tasks.
 - 🍉 **Reinforcement Learning**: Built-in **rich GRPO family algorithms**, including GRPO, DAPO, GSPO, SAPO, CISPO, CHORD, RLOO, Reinforce++, etc. Supports synchronous and asynchronous vLLM engine inference acceleration, with extensible reward functions, multi-turn inference Schedulers, and environments through plugins.
 - **Full-Pipeline Capabilities**: Covers the entire workflow of training, inference, evaluation, quantization, and deployment.
 - **UI Training**: Provides Web-UI interface for training, inference, evaluation, and quantization, completing the full pipeline for large models.
-- **Inference Acceleration**: Supports PyTorch, vLLM, SGLang, and LmDeploy inference acceleration engines, providing OpenAI interfaces for accelerating inference, deployment, and evaluation modules.
+- **Inference Acceleration**: Supports Transformers, vLLM, SGLang, and LmDeploy inference acceleration engines, providing OpenAI interfaces for accelerating inference, deployment, and evaluation modules.
 - **Model Evaluation**: Uses EvalScope as the evaluation backend, supporting 100+ evaluation datasets for evaluating text-only and multimodal models.
 - **Model Quantization**: Supports quantization export for AWQ, GPTQ, FP8, and BNB. Exported models support inference acceleration using vLLM/SGLang/LmDeploy.
 
 
 ## 🎉 News
+- 🎁 2026.01.15: **ms-swift v4.0** major version update is in progress. It is recommended to use the stable branch [release/3.12](https://github.com/modelscope/ms-swift/tree/release/3.12). You can provide your feedback in [this issue](https://github.com/modelscope/ms-swift/issues/7250). Thank you for your support.
 - 🎁 2025.11.14: Megatron GRPO is now available!  Check out the [docs](./docs/source_en/Megatron-SWIFT/GRPO.md) and [examples](examples/megatron/grpo).
 - 🎁 2025.11.04: Support for [Mcore-Bridge](docs/source_en/Megatron-SWIFT/Mcore-Bridge.md), making Megatron training as simple and easy to use as transformers.
 - 🎁 2025.10.28: Ray [here](docs/source_en/Instruction/Ray.md).
@@ -91,7 +92,7 @@ You can contact us and communicate with us by adding our group:
 <details><summary>More</summary>
 
 - 🎁 2025.06.11: Support for using Megatron parallelism techniques for RLHF training. The training script can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf).
-- 🎁 2025.05.29: Support sequence parallel in pt, sft, dpo and grpo, check script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
+- 🎁 2025.05.29: Support sequence parallel in pretrain, sft, dpo and grpo, check script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
 - 🎁 2025.05.11: GRPO now supports custom processing logic for reward models. See the GenRM example [here](./docs/source_en/Instruction/GRPO/DeveloperGuide/reward_model.md).
 - 🎁 2025.04.15: The ms-swift paper has been accepted by AAAI 2025. You can find the paper at [this link](https://ojs.aaai.org/index.php/AAAI/article/view/35383).
 - 🎁 2025.03.23: Multi-round GRPO is now supported for training multi-turn dialogue scenarios (e.g., agent tool calling). Please refer to the [doc](./docs/source_en/Instruction/GRPO/DeveloperGuide/multi_turn.md).
@@ -122,6 +123,8 @@ To install from source:
 
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
+# The main branch is for swift 4.x. To install swift 3.x, please run the following command:
+# git checkout release/3.12
 pip install -e .
 ```
 
@@ -131,16 +134,16 @@ Running Environment:
 |--------------|--------------|---------------------|-------------------------------------------|
 | python       | >=3.9        | 3.10/3.11                |                                           |
 | cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
-| torch        | >=2.0        | 2.8.0               |                                           |
-| transformers | >=4.33       | 4.57.1              |                                           |
+| torch        | >=2.0        | 2.8.0/2.9.1         |   torch2.9 [conv3d slow](https://swift.readthedocs.io/en/latest/BestPractices/Qwen3-VL-Best-Practice.html#environment-setup)       |
+| transformers | >=4.33       | 4.57.6/5.2.0              |                          |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.19 |                     |                                           |
-| flash_attn   |              | 2.8.1/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.25 | 0.23.1              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.17.6              | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0                | Inference/Deployment                      |
-| sglang       | >=0.4.6      | 0.5.4.post2         | Inference/Deployment                      |
-| lmdeploy     | >=0.5   | 0.10.2                 | Inference/Deployment                      |
+| flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
+| trl          | >=0.15,<0.29 | 0.28.0              | RLHF                                      |
+| deepspeed    | >=0.14       | 0.18.6              | Training                                  |
+| vllm         | >=0.5.1      | 0.11.0/0.15.1       | Inference/Deployment                      |
+| sglang       | >=0.4.6      |          | Inference/Deployment                      |
+| lmdeploy     | >=0.5   | 0.10.1                 | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |
 
@@ -154,11 +157,11 @@ For more optional dependencies, you can refer to [here](https://github.com/model
 ### Command Line Interface (Recommended)
 
 ```shell
-# 22GB
+# 13GB
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
@@ -177,7 +180,6 @@ swift sft \
     --logging_steps 5 \
     --max_length 2048 \
     --output_dir output \
-    --system 'You are a helpful assistant.' \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --model_author swift \
@@ -189,7 +191,7 @@ Tips:
 - If you want to train with a custom dataset, you can refer to [this guide](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html) to organize your dataset format and specify `--dataset <dataset_path>`.
 - The `--model_author` and `--model_name` parameters are only effective when the dataset includes `swift/self-cognition`.
 - To train with a different model, simply modify `--model <model_id/model_path>`.
-- By default, ModelScope is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
+- By default, **ModelScope** is used for downloading models and datasets. If you want to use HuggingFace, simply specify `--use_hf true`.
 
 After training is complete, use the following command to infer with the trained weights:
 
@@ -245,10 +247,14 @@ ms-swift also supports training and inference using Python. Below is pseudocode 
 Training:
 
 ```python
+from peft import LoraConfig, get_peft_model
+from swift import get_model_processor, get_template, load_dataset, EncodePreprocessor
+from swift.trainers import Seq2SeqTrainer, Seq2SeqTrainingArguments
 # Retrieve the model and template, and add a trainable LoRA module
-model, tokenizer = get_model_tokenizer(model_id_or_path, ...)
-template = get_template(model.model_meta.template, tokenizer, ...)
-model = Swift.prepare_model(model, lora_config)
+model, tokenizer = get_model_processor(model_id_or_path, ...)
+template = get_template(tokenizer, ...)
+lora_config = LoraConfig(...)
+model = get_peft_model(model, lora_config)
 
 # Download and load the dataset, and encode the text into tokens
 train_dataset, val_dataset = load_dataset(dataset_id_or_path, ...)
@@ -256,21 +262,22 @@ train_dataset = EncodePreprocessor(template=template)(train_dataset, num_proc=nu
 val_dataset = EncodePreprocessor(template=template)(val_dataset, num_proc=num_proc)
 
 # Train the model
+training_args = Seq2SeqTrainingArguments(...)
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
-    data_collator=template.data_collator,
+    template=template,
     train_dataset=train_dataset,
     eval_dataset=val_dataset,
-    template=template,
 )
 trainer.train()
 ```
 Inference:
 
 ```python
-# Perform inference using the native PyTorch engine
-engine = PtEngine(model_id_or_path, adapters=[lora_checkpoint])
+from swift import TransformersEngine, InferRequest, RequestConfig
+# Perform inference using the native Transformers engine
+engine = TransformersEngine(model_id_or_path, adapters=[lora_checkpoint])
 infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
 request_config = RequestConfig(max_tokens=max_new_tokens, temperature=temperature)
 
@@ -310,9 +317,9 @@ Supported Training Methods:
 | [CPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/cpo.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 | [SimPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/simpo.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 | [ORPO](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/orpo.sh) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
-| [Sequence Classification](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 | [Embedding](https://github.com/modelscope/ms-swift/blob/main/examples/train/embedding) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 | [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/train/reranker) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
+| [Sequence Classification](https://github.com/modelscope/ms-swift/blob/main/examples/train/seq_cls) | ✅                                                            | ✅    | ✅                                                            | ✅                                                            | ✅                                                            | ✅                                                            |
 
 
 Pre-training:
@@ -324,7 +331,7 @@ swift pt \
     --model Qwen/Qwen2.5-7B \
     --dataset swift/chinese-c4 \
     --streaming true \
-    --train_type full \
+    --tuner_type full \
     --deepspeed zero2 \
     --output_dir output \
     --max_steps 10000 \
@@ -336,7 +343,7 @@ Fine-tuning:
 CUDA_VISIBLE_DEVICES=0 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -347,7 +354,7 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-7B-Instruct \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
-    --train_type lora \
+    --tuner_type lora \
     --output_dir output \
     ...
 ```
@@ -365,17 +372,18 @@ ms-swift supports using Megatron parallelism techniques to accelerate training, 
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [Embedding](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/embedding) | ✅ | ✅| ✅ | ✅ | ✅ |
+| [Reranker](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/reranker) | ✅ | ✅| ✅ | ✅ | ✅ |
 | [Sequence Classification](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/seq_cls)    | ✅              | ✅    | ✅    | ✅          | ✅    |
 
 
 ```shell
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --train_type lora \
-    --save output \
+    --tuner_type lora \
+    --output_dir output \
     ...
 ```
 
@@ -399,7 +407,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
     --dataset AI-MO/NuminaMath-TIR#10000 \
@@ -413,7 +421,7 @@ swift rlhf \
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 
 # LoRA
@@ -421,7 +429,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -431,7 +439,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 CUDA_VISIBLE_DEVICES=0 swift app \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -446,7 +454,7 @@ CUDA_VISIBLE_DEVICES=0 swift deploy \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sample \
     --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
-    --sampler_engine pt \
+    --sampler_engine transformers \
     --num_return_sequences 5 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
 ```

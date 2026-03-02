@@ -1,10 +1,11 @@
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['SWIFT_TEST_CONVERT_PRECISION'] = '1'
 
 
 def _test_model(model_id, **kwargs):
-    from swift.llm import export_main, ExportArguments
+    from swift import ExportArguments, export_main
     if model_id.endswith('mcore') or 'megatron_output' in model_id and 'hf' not in model_id:
         export_main(
             ExportArguments(
@@ -73,6 +74,11 @@ def test_glm4_5v():
     _test_model('ZhipuAI/GLM-4.5V')
 
 
+def test_glm4_6v_flash():
+    _test_model('ZhipuAI/GLM-4.1V-9B-Thinking')
+    # _test_model('ZhipuAI/GLM-4.6V-Flash')
+
+
 def test_ovis2_5():
     _test_model('AIDC-AI/Ovis2.5-2B')
 
@@ -97,6 +103,11 @@ def test_llama4():
     _test_model('LLM-Research/Llama-4-Scout-17B-16E-Instruct')
 
 
+def test_qwen3_5():
+    _test_model('Qwen/Qwen3.5-35B-A3B')
+    # _test_model('Qwen/Qwen3.5-27B')
+
+
 if __name__ == '__main__':
     # test_qwen2_5_vl()
     # test_qwen2_vl()
@@ -108,9 +119,11 @@ if __name__ == '__main__':
     # test_internvl3_5_hf()
     # test_internvl3_5_moe_hf()
     # test_glm4_5v()
+    # test_glm4_6v_flash()
     # test_ovis2_5()
     # test_kimi_vl()
     # test_qwen3_vl()
     # test_qwen3_vl_moe()
     # test_qwen3_omni()
-    test_llama4()
+    # test_llama4()
+    test_qwen3_5()

@@ -13,7 +13,7 @@
 下面是针对不同任务的奖励函数的示例：
 
 ```python
-from swift.plugin import ORM, orms
+from swift.rewards import ORM, orms
 import random
 
 # Math-specific reward function

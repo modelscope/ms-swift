@@ -23,7 +23,7 @@ swift rlhf \
     --per_device_train_batch_size 2 \
     --gradient_accumulation_steps 8 \
     --num_generations 16 \
-    --train_type full \
+    --tuner_type full \
     --reward_funcs accuracy \
     --use_vllm true \
     --vllm_mode colocate \

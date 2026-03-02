@@ -4,7 +4,7 @@ VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 swift sft \
     --model Qwen/Qwen3-VL-4B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'clip-benchmark/wds_voc2007_multilabel' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
