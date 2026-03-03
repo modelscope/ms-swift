@@ -234,7 +234,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     )
                     # loss / grad norm is unexpectedly large, normalize by sequence length
                     # https://github.com/linkedin/Liger-Kernel/blob/v0.6.3/src/liger_kernel/chunked_loss/jsd_loss.py#L9-L39
-                    loss /= student_hidden.shape[1]
+                    # loss /= student_hidden.shape[1]
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
             outputs_student = None

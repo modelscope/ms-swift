@@ -41,16 +41,17 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.lmbda = args.lmbda  # On-policy probability
         self.seq_kd = args.seq_kd  # Sequential KD: use teacher-generated responses
         self.offload_teacher_model = args.offload_teacher_model  # Offload teacher to CPU
-        self.teacher_bridge = args.megatron_model_meta.bridge_cls(args, attr_prefix='teacher_')
-        self.teacher_config = self.teacher_bridge.processor.model_info.config
+        self.teacher_model_server = getattr(args, 'teacher_model_server', None)
+        self.use_teacher_api = self.teacher_model_server is not None
+        if args.teacher_model:
+            self.teacher_bridge = args.megatron_model_meta.bridge_cls(args, attr_prefix='teacher_')
+            self.teacher_config = self.teacher_bridge.processor.model_info.config
         self.sft_alpha = getattr(args, 'sft_alpha', 0.0)  # Weight for SFT loss
 
         # GKD top-k logits configuration
         self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
         # Check use_teacher_api based on args, not client existence
         # (API client is only created on last rank, but all ranks need to know the mode)
-        self.teacher_model_server = getattr(args, 'teacher_model_server', None)
-        self.use_teacher_api = self.teacher_model_server is not None
 
         # Validate teacher configuration
         if not self.use_teacher_api:
@@ -100,12 +101,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _offload_teacher_models(self):
         """Offload teacher models to CPU to save GPU memory."""
-        if self.teacher_models:
+        if self.teacher_models and not self.use_teacher_api:
             offload_megatron_model_to_cpu(self.teacher_models)
 
     def _load_teacher_models_to_gpu(self):
         """Load teacher models back to GPU."""
-        if self.teacher_models:
+        if self.teacher_models and not self.use_teacher_api:
             load_megatron_model_to_gpu(self.teacher_models, load_grad=False)
 
     @contextmanager
@@ -481,11 +482,23 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         teacher's top-k indices, scale by 1/T, and log_softmax over top-k subset.
         By shift-invariance of log_softmax, this gives identical results whether
         teacher_topk_logprobs contains raw logits (local) or raw logprobs (API).
+
+        Masked positions are filtered out BEFORE log_softmax to avoid NaN from
+        all-(-inf) rows in API teacher padding.
         """
         s_scaled = student_logits / self.temperature
         s_topk = torch.gather(s_scaled, dim=-1, index=teacher_topk_indices)
-        t_log_p = F.log_softmax(teacher_topk_logprobs / self.temperature, dim=-1)
-        s_log_p = F.log_softmax(s_topk, dim=-1)
+        t_topk = teacher_topk_logprobs / self.temperature
+
+        # Filter to valid positions first to avoid NaN from -inf padding rows
+        s_topk_masked = s_topk[mask]
+        t_topk_masked = t_topk[mask]
+
+        if s_topk_masked.numel() == 0:
+            return student_logits.new_zeros(())
+
+        t_log_p = F.log_softmax(t_topk_masked, dim=-1)
+        s_log_p = F.log_softmax(s_topk_masked, dim=-1)
         t_p = torch.exp(t_log_p)
 
         if beta == 0:
@@ -498,7 +511,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             m_log_p = torch.log(beta * t_p + (1 - beta) * s_p + 1e-10)
             jsd = beta * (t_p * (t_log_p - m_log_p)).sum(-1) + (1 - beta) * (s_p * (s_log_p - m_log_p)).sum(-1)
 
-        return (jsd * mask.float()).sum()
+        return jsd.sum()
 
     def loss_func(self,
                   output_tensor: torch.Tensor,
