@@ -1148,7 +1148,7 @@ class MarcoO1TemplateMeta(QwenTemplateMeta):
 
 register_template(MarcoO1TemplateMeta(LLMTemplateType.marco_o1))
 
-YuFeng_XGuard_Template = ('<|im_start|>user\n'
+YUFENG_XGUARD_TEMPLATE = ('<|im_start|>user\n'
                           'You are an expert in content safety evaluation, possessing strong '
                           'language comprehension and risk identification skills.\n'
                           'Your task is to classify the provided input text into the most appropriate '
@@ -1192,5 +1192,5 @@ YuFeng_XGuard_Template = ('<|im_start|>user\n'
                           '<|im_start|>assistant\n')
 register_template(Qwen3MixedTemplateMeta(
     LLMTemplateType.yufeng_xguard,
-    prompt=[YuFeng_XGuard_Template],
+    prompt=[YUFENG_XGUARD_TEMPLATE],
 ))
