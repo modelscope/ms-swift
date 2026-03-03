@@ -483,14 +483,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         By shift-invariance of log_softmax, this gives identical results whether
         teacher_topk_logprobs contains raw logits (local) or raw logprobs (API).
 
-        Masked positions are filtered out BEFORE log_softmax to avoid NaN from
-        all-(-inf) rows in API teacher padding.
         """
         s_scaled = student_logits / self.temperature
         s_topk = torch.gather(s_scaled, dim=-1, index=teacher_topk_indices)
         t_topk = teacher_topk_logprobs / self.temperature
 
-        # Filter to valid positions first to avoid NaN from -inf padding rows
         s_topk_masked = s_topk[mask]
         t_topk_masked = t_topk[mask]
 

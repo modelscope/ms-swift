@@ -143,7 +143,7 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 | 参数 | 类型 | 默认值 | 取值范围 | 说明 |
 |------|------|--------|---------|------|
-| `--teacher_model` | str | None | - | 教师模型路径或模型 ID<br>*使用 `teacher_model_server` 时可省略 |
+| `--teacher_model` | str | None | - | 教师模型路径或模型 ID |
 | `--beta` | float | 0.5 | [0.0, 1.0] | 散度插值系数<br>• 0.0: Forward KL <br>• 0.5: JSD (平衡)<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 离线学习<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
@@ -195,10 +195,6 @@ swift rlhf \
 | `--teacher_model_server` | str | None | 教师模型服务地址<br>如：`http://localhost:8000` |
 | `--gkd_logits_topk` | int | **必需** | 使用外部 API 时必须设置，对应 API 返回的 top_logprobs 数量 |
 
-**支持的后端**：
-- `vllm serve`（推荐）
-
-> **注意**：仅支持 `vllm serve` 作为教师服务后端。训练代码通过 `/v1/completions` 接口直接传递 token IDs 并使用 `prompt_logprobs` 参数获取输入 token 的 log 概率，这是 vLLM 原生支持的功能。
 
 **步骤 1：部署教师模型服务**
 
