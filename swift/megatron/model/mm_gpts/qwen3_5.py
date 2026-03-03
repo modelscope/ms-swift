@@ -60,7 +60,7 @@ class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
             res = res[attention_mask][:, None]
             res = torch.concat([res, res.new_zeros(seq_len - res.shape[0], 1, res.shape[2])])
         else:
-            res = res.transpose(0, 1)
+            res = res.transpose(0, 1).contiguous()
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             # Quick fix for dropout issue, awaiting ms-swift 4.0 refactor
             res = reduce_scatter_to_sequence_parallel_region(res) / args.tensor_model_parallel_size

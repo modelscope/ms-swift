@@ -586,10 +586,16 @@ def profiling_context(trainer, name: str):
 
     profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
 
-    if 'wandb' in trainer.args.report_to and wandb.run is not None and trainer.accelerator.is_main_process:
+    is_main_process = False
+    if hasattr(trainer, 'accelerator'):
+        is_main_process = trainer.accelerator.is_main_process
+    elif hasattr(trainer, 'is_main_process'):
+        is_main_process = trainer.is_main_process
+
+    if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
         wandb.log(profiling_metrics)
 
-    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and trainer.accelerator.is_main_process:
+    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and is_main_process:
         swanlab.log(profiling_metrics)
 
 
