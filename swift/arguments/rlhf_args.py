@@ -582,3 +582,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.gkd_logits_topk is not None and self.use_liger_kernel:
             raise ValueError('gkd_logits_topk is not supported when using liger kernel')
+
+        if self.teacher_model_server and self.seq_kd:
+            raise NotImplementedError('Sequential KD is not supported when using teacher_model_server')
