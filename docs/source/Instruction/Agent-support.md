@@ -2,6 +2,8 @@
 
 ## 数据集格式
 
+ms-swift 使用 agent-template 实现了Agent数据格式与模型的解耦：基于统一的数据集格式，可以灵活切换不同模型进行训练，无需修改数据。
+
 纯文本Agent和多模态Agent的示例数据样本如下：
 ```jsonl
 {"tools": "[{\"type\": \"function\", \"function\": {\"name\": \"realtime_aqi\", \"description\": \"天气预报。获取实时空气质量。当前空气质量，PM2.5，PM10信息\", \"parameters\": {\"type\": \"object\", \"properties\": {\"city\": {\"type\": \"string\", \"description\": \"城市名，例如：上海\"}}, \"required\": [\"city\"]}}}]", "messages": [{"role": "user", "content": "北京和上海今天的天气情况"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}"}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, {"role": "tool_response", "content": "{\"city\": \"北京\", \"aqi\": \"10\", \"unit\": \"celsius\"}"}, {"role": "tool_response", "content": "{\"city\": \"上海\", \"aqi\": \"72\", \"unit\": \"fahrenheit\"}"}, {"role": "assistant", "content": "根据天气预报工具，北京今天的空气质量指数为10，属于良好水平；上海今天的空气质量指数为72，属于轻度污染水平。"}]}
@@ -147,8 +149,10 @@ Observation:[-100 * 45]根据天气预报工具，北京今天的空气质量指
 ```python
 from swift import get_processor, get_template
 
-tokenizer = get_processor('ZhipuAI/GLM-4-9B-0414')
-template = get_template(tokenizer, agent_template='hermes')
+tokenizer = get_processor('Qwen/Qwen3.5-2B')
+template = get_template(tokenizer)  # 使用默认agent模板
+# template = get_template(tokenizer, agent_template='qwen3_5')
+print(f'agent_template: {template._agent_template}')
 data = {...}
 template.set_mode('train')
 encoded = template.encode(data)

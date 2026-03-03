@@ -152,7 +152,7 @@ For more optional dependencies, you can refer to [here](https://github.com/model
 
 ## 🚀 Quick Start
 
-10 minutes of self-cognition fine-tuning of Qwen2.5-7B-Instruct on a single 3090 GPU:
+10 minutes of self-cognition fine-tuning of Qwen3-4B-Instruct-2507 on a single 3090 GPU:
 
 ### Command Line Interface (Recommended)
 

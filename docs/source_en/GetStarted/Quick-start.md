@@ -31,7 +31,7 @@ For the installation of ms-swift, please refer to the [installation documentatio
 
 ## Usage Example
 
-10 minutes of self-cognition fine-tuning of Qwen2.5-7B-Instruct on a single 3090 GPU:
+10 minutes of self-cognition fine-tuning of Qwen3-4B-Instruct-2507 on a single 3090 GPU:
 
 ```shell
 # 13GB
