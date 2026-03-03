@@ -39,7 +39,8 @@ class TeacherModelArguments:
 
     Args:
         teacher_model (Optional[str]): The model ID or a local path to the teacher model. This is required when
-            `rlhf_type` is 'gkd'. Analogous to the main `model` argument. Defaults to None.
+            `rlhf_type` is 'gkd' and `teacher_model_server` is not set. Analogous to the main `model` argument.
+            Defaults to None.
         teacher_adapters (List[str]): A list of paths to LoRA weights. These weights, often produced by SFT, are loaded
             to form the teacher model. Defaults to an empty list (`[]`).
         teacher_model_type (Optional[str]): The model type of the teacher model. If not specified, it's often inferred.
@@ -50,6 +51,10 @@ class TeacherModelArguments:
             one of the following values: 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'. If not
             provided, it defaults to using the same DeepSpeed configuration as the main training model. Analogous to
             the main `deepspeed` argument.
+        teacher_model_server (Optional[str]): The URL of the teacher model server (e.g., 'http://localhost:8000').
+            When set, the teacher logprobs will be fetched from the external API service (e.g., swift deploy, vLLM)
+            instead of loading a local teacher model. This enables using larger teacher models or services hosted
+            remotely. When this is set, `teacher_model` is not required. Defaults to None.
     """
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
@@ -62,6 +67,13 @@ class TeacherModelArguments:
             'help':
             'DeepSpeed configuration for teacher model. '
             'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
+        })
+    teacher_model_server: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'URL of the teacher model server (e.g., http://localhost:8000). '
+            'When set, teacher logprobs are fetched via API instead of loading a local model.'
         })
 
 
@@ -196,6 +208,11 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             gkd_loss + sft_alpha * sft_loss`. Defaults to 0.
         lmbda (float): The lambda parameter for GKD, balancing policy and value losses. Defaults to 0.5.
         seq_kd (bool): Whether to use sequence-level knowledge distillation for GKD. Defaults to False.
+        gkd_logits_topk (Optional[int]): The number of top-k logits to use for KL divergence computation in GKD.
+            If None, uses full vocabulary for KL computation (more accurate but memory-intensive).
+            If set to a positive integer, only top-k teacher logits are used (more efficient).
+            When using `teacher_model_server`, this is limited by the server's `max_logprobs` setting
+            (vLLM default is 20, can be increased with `--max-logprobs`). Defaults to None.
         offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
             training. Defaults to False.
         max_new_tokens (Optional[int]): A backward-compatibility argument. Please use `max_completion_length` instead.
@@ -233,6 +250,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     sft_alpha: float = 0
     lmbda: float = 0.5
     seq_kd: bool = False
+    gkd_logits_topk: Optional[int] = None
     offload_teacher_model: bool = False
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
@@ -543,3 +561,25 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.async_generate:
             raise NotImplementedError('Currently, async_generate is not supported for GKD.')
+
+        # Validate teacher model configuration
+        if self.teacher_model is None and self.teacher_model_server is None:
+            raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set.')
+
+        if self.teacher_model is not None and self.teacher_model_server is not None:
+            raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
+
+        # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
+        if self.teacher_model_server is not None:
+            if self.gkd_logits_topk is None:
+                raise ValueError('gkd_logits_topk is required when using teacher_model_server')
+
+        # Validate gkd_logits_topk
+        if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
+            raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
+
+        if self.gkd_logits_topk is not None and self.use_liger_kernel:
+            raise ValueError('gkd_logits_topk is not supported when using liger kernel')
+
+        if self.teacher_model_server and self.seq_kd:
+            raise NotImplementedError('Sequential KD is not supported when using teacher_model_server')
