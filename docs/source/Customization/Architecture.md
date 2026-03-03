@@ -98,7 +98,7 @@ else:
 
 - 字符串精确匹配，例如参考`react.json`, `qwen.json`。json中需要书写`Dict[str, List[float]]`的映射。字符串代表关键词，列表中需要有两个值。我们会根据关键词，将字符串切分成多段字符串。列表的第一个值代表关键词的权重，列表的第二个值代表该关键值后，下一关键词前的内容的权重。
 
-- 正则表达式匹配，例如参考`ignore_empty_think.json`, `hermes.json`。json中需要书写`Dict[str, float]`的映射。字符串代表正则匹配pattern，浮点数代表匹配字符串的权重。
+- 正则表达式匹配，例如参考`ignore_empty_think.json`, `hermes.json`。json中需要书写`Dict[str, float]`的映射。字符串代表正则表达式pattern，浮点数代表匹配字符串的权重。
 
 
 如何debug：
@@ -124,8 +124,8 @@ print(inputs['loss_scale'])
 ### Metrics
 
 metrics的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/metrics/mapping.py)。该组件在ms-swift/Megatron-SWIFT中都有被使用。
-- 如果是ms-swift中被使用，你需要继承 base.py 中`EvalMetrics`基类，并实现`compute_metrics`函数，返回字典。你可以参考`NlgMetrics`进行定制。
-- 如果是在Megatron-SWIFT中被使用，你需要继承 utils.py 中`Metric`基类，并实现`update`和`compute`方法，compute方法需返回字典。
+- 如果是在ms-swift中被使用，你需要继承 base.py 中`EvalMetrics`基类，并实现`compute_metrics`函数，返回字典`Dict[str, float]`。你可以参考[NlgMetrics](https://github.com/modelscope/ms-swift/blob/0d7c9f5bc0e7e7d67d914ce6edeb9ce24f60746f/swift/metrics/nlg.py#L33)进行定制。
+- 如果是在Megatron-SWIFT中被使用，你需要继承 utils.py 中`Metric`基类，并实现`update`和`compute`方法，compute方法需返回字典`Dict[str, float]`。
 
 你可以自定义metrics（当前只支持sft/pretrain/reranker/embedding任务），在训练时设置`--eval_metric <metric-name>`使用你定制的metrics。
 
@@ -135,9 +135,20 @@ optimizer的mapping文件可以参考[这里](https://github.com/modelscope/ms-s
 - 你可以参考[MultimodalOptimizerCallback](https://github.com/modelscope/ms-swift/blob/0d7c9f5bc0e7e7d67d914ce6edeb9ce24f60746f/swift/optimizers/multimodal.py#L43)进行实现，该类实现了vit_lr, aligner_lr的功能，即对vit, aligner和LLM分别使用不同的学习率。
 
 
+
+### Tuner Plugin
+
+Tuner插件的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/tuner_plugin/mapping.py)。如果你需要自定义tuner，你需要继承`Tuner`基类，并覆盖`prepare_model`, `save_pretrained`, `from_pretrained`函数。
+- prepare_model: 该函数在训练前被调用，将原始模型进行处理与准备，使用tuner封装，并设置可训练参数。例如：你可以对某些层附加LoRA，对某些层进行冻结等。
+- save_pretrained: 该函数在训练中被调用，对模型进行保存。
+- from_pretrained: 该函数在推理/断点续训时被调用，准备模型并读取权重。
+
+你可以参考[LoRALLMTuner](https://github.com/modelscope/ms-swift/blob/0d7c9f5bc0e7e7d67d914ce6edeb9ce24f60746f/swift/tuner_plugin/lora_llm.py#L24)进行实现，该类实现了对LLM进行LoRA训练，对ViT进行全参数训练的功能。
+
+
 ### ORM
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/orm.py)。
+example参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/orm.py)。
 
 ORM是结果奖励模型。ORM一般使用正则表达式来进行，ORM决定了response是否是正确的。例如：
 
@@ -176,7 +187,7 @@ orms = {
 
 ### PRM
 
-example在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/prm.py)。
+example参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/prm.py)。
 
 PRM是过程奖励模型，PRM会在`swift sample`命令中使用。PRM需要支持的接口比较简单：
 ```python
@@ -203,26 +214,16 @@ So, the answer is ...
 开发者可以在这里对过程进行切分，并按batch传入PRM中进行推理并返回rewards。更通用来说，开发者可以在这里调用一个远端URL，例如一个闭源PRM大模型并返回rewards。
 
 
-### Tuner Plugin
-
-Tuner插件的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/tuner_plugin/mapping.py)。如果你需要自定义tuner，你需要继承`Tuner`基类，并覆盖`prepare_model`, `save_pretrained`, `from_pretrained`函数。
-- prepare_model: 该函数在训练前被调用，将原始模型进行处理与准备，使用tuner封装，并设置可训练参数。例如：你可以对某些层附加LoRA，对某些层进行冻结等。
-- save_pretrained: 该函数在训练中被调用，对模型进行保存。
-- from_pretrained: 该函数在推理/断点续训时被调用，准备模型并读取权重。
-
-你可以参考[LoRALLMTuner](https://github.com/modelscope/ms-swift/blob/0d7c9f5bc0e7e7d67d914ce6edeb9ce24f60746f/swift/tuner_plugin/lora_llm.py#L24)进行实现，该类实现了对LLM进行LoRA微调，对ViT进行全参数微调的功能。
-
-
 
 ### 其他目录结构介绍
 
-- arguments: swift命令行参数定义的位置，例如：`SftArguments, RLHFArguments`等。
-- cli: swift命令行机制以及启动文件的实现。例如`swift sft ...`等价于`python swift/cli/main.py sft ...`也等价于`python swift/cli/sft.py ...`。
+- arguments: 命令行参数定义，例如：`SftArguments`, `RLHFArguments`等。
+- cli: swift命令行机制以及启动文件。例如`swift sft ...`等价于`python swift/cli/main.py sft ...`也等价于`python swift/cli/sft.py ...`。
 - config: deepspeed/fsdp2配置文件。
 - dataloader: dataloader的实现，包括shard/dispatcher两种方式。
-- dataset: 数据集相关的模块实现，包括数据预处理、packing、流式数据等。内置数据集的注册在`dataset/dataset`和`dataset/data`文件夹内。具体参考[自定义数据集文档](Custom-dataset.md)。
+- dataset: 数据集相关模块实现，包括数据预处理、packing、流式数据等。内置数据集的注册在`dataset/dataset`和`dataset/data`文件夹内。具体参考[自定义数据集文档](Custom-dataset.md)。
 - infer_engine: 推理引擎实现。包括transformers/vllm/sglang/lmdeploy为后端的推理引擎实现。
-- megatron: Megatron-SWIFT的实现。
+- megatron: Megatron-SWIFT 实现。
 - model: 模型加载与注册。具体参考[自定义模型文档](Custom-model.md)，[多模态模型注册最佳实践](../BestPractices/MLLM-Registration.md)。
 - pipelines: `swift sft/rlhf/infer`等主函数pipeline实现，包括`sft_main/rlhf_main/infer_main`等。
 - rlhf_trainers: GRPO/GKD/DPO/KTO/RM等算法的Trainer实现。
