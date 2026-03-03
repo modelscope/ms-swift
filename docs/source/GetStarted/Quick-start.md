@@ -30,7 +30,7 @@ ms-swift的安装请参考[安装文档](./SWIFT-installation.md)。
 
 ## 使用样例
 
-10分钟在单卡3090上对Qwen2.5-7B-Instruct进行自我认知微调：
+10分钟在单卡3090上对Qwen3-4B-Instruct-2507进行自我认知微调：
 ```shell
 # 13GB
 CUDA_VISIBLE_DEVICES=0 \

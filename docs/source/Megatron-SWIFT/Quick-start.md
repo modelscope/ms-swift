@@ -35,17 +35,12 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.15.0
+pip install "megatron-core==0.15.*" -U
 
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度。
 # 注意：这步很关键，不然多机训练可能因随机性问题导致数据不一致而训练卡住。
 export MODELSCOPE_CACHE='/xxx/shared'
-
-# Megatron-LM
-# 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.15.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.15.0)）。
-git clone --branch core_r0.15.0 https://github.com/NVIDIA/Megatron-LM.git
-export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
 # 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
