@@ -35,3 +35,12 @@ class MegatronCallback:
 
     def on_eval_step(self):
         pass
+
+    def on_save(self, output_dir):
+        """Called after save_checkpoint() returns.
+
+        Note: When async_save is enabled, the checkpoint may not be fully
+        written to disk yet. Use only for non-I/O-dependent logic, or
+        ensure async_save is disabled if you need to read the checkpoint.
+        """
+        pass
