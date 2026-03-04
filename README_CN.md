@@ -110,6 +110,10 @@
 使用pip进行安装：
 ```shell
 pip install ms-swift -U
+
+# use uv
+pip install uv
+uv pip install ms-swift -U --torch-backend=auto
 ```
 
 从源代码安装：

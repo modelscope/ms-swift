@@ -6,11 +6,15 @@ You can install it using pip:
 
 ```shell
 # recommend
-pip install 'ms-swift'
+pip install 'ms-swift' -U
 # For evaluation usage
 pip install 'ms-swift[eval]' -U
 # Full capabilities
 pip install 'ms-swift[all]' -U
+
+# Using uv (recommended, automatically matches torch & cuda)
+pip install uv
+uv pip install -e . --torch-backend=auto
 ```
 
 ## Source Code Installation
