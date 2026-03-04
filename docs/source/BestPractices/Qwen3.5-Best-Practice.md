@@ -20,7 +20,7 @@ pip install uv
 uv pip install vllm --torch-backend=auto --extra-index-url https://wheels.vllm.ai/nightly
 # RL训练，需覆盖vllm默认安装版本
 # 训练报错参考这个issue: https://github.com/modelscope/ms-swift/issues/8188
-pip install -U "transformers>=5.2.0"  
+pip install -U "transformers>=5.2.0"
 ```
 
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
@@ -45,7 +45,7 @@ from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
 
 model, processor = get_model_processor('Qwen/Qwen3.5-4B')  # attn_impl='flash_attention_2'
 template = get_template(processor, enable_thinking=False)
-engine = TransformersEngine(model, template=template)  
+engine = TransformersEngine(model, template=template)
 infer_request = InferRequest(messages=[{
     "role": "user",
     "content": '<video>Describe this video.',
@@ -199,7 +199,7 @@ enable_thinking = False
 model, processor = get_model_processor('Qwen/Qwen3.5-4B')  # attn_impl='flash_attention_2'
 model = PeftModel.from_pretrained(model, adapter_dir)
 template = get_template(processor, enable_thinking=enable_thinking)
-engine = TransformersEngine(model, template=template)  
+engine = TransformersEngine(model, template=template)
 infer_request = InferRequest(messages=[{
     "role": "user",
     "content": 'who are you?',
@@ -224,7 +224,7 @@ print()
 使用transformers后端训练MoE的例子参考：https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/transformers.sh
 
 ### Moe模型
-Qwen3.5-30B-A3B Megatron训练，环境的准备请参考[Megatron-SWIFT快速开始文档](../Megatron-SWIFT/Quick-start.md)。你可以在15分钟内跑完以下案例：
+Qwen3.5-35B-A3B Megatron训练，环境的准备请参考[Megatron-SWIFT快速开始文档](../Megatron-SWIFT/Quick-start.md)。你可以在15分钟内跑完以下案例：
 
 ```shell
 # 4 * 40GiB
