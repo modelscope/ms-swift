@@ -1,4 +1,3 @@
-
 # Qwen3.5 Best Practices
 
 ms-swift 4.0 supports training [Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/MoE models using transformers/Megatron backends. Qwen3.5 is a multimodal model with hybrid thinking, combining linear attention and full attention. This article will introduce how to perform inference, instruction fine-tuning, and reinforcement learning on Qwen3.5 Dense/MoE models. (The reinforcement learning section will be supplemented later)
@@ -291,7 +290,7 @@ MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 swift infer \
-    --model megatron_output/vx-xxx/checkpoint-xxx-merged \
+    --model megatron_output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx-merged \
     --stream true \
     --enable_thinking false \
     --max_new_tokens 512 \

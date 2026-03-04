@@ -293,7 +293,7 @@ MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 swift infer \
-    --model megatron_output/vx-xxx/checkpoint-xxx-merged \
+    --model megatron_output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx-merged \
     --stream true \
     --enable_thinking false \
     --max_new_tokens 512 \
