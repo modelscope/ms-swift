@@ -358,7 +358,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     apply_rope_fusion: bool = False
     gradient_accumulation_fusion: bool = True
     cross_entropy_loss_fusion: bool = True
-    cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
+    cross_entropy_fusion_impl: Literal['native', 'te'] = 'te'
     calculate_per_token_loss: Optional[bool] = None
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
