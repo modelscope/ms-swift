@@ -601,6 +601,7 @@ class BaseMegatronTrainer(ABC):
                     disable_forward_pre_hook(self.wrapped_models)
                 state.should_save = False
                 self.save_checkpoint()
+                self.call_event('on_save', output_dir=self.state.last_model_checkpoint)
                 if should_disable_forward_pre_hook(args):
                     enable_forward_pre_hook(self.wrapped_models)
 
