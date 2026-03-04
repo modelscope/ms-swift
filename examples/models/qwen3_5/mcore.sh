@@ -67,7 +67,7 @@ megatron sft \
 # VIDEO_MAX_PIXELS=50176 \
 # FPS_MAX_FRAMES=12 \
 # swift infer \
-#     --model megatron_output/vx-xxx/checkpoint-xxx-merged \
+#     --model megatron_output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx-merged \
 #     --stream true \
 #     --experts_impl grouped_mm \
 #     --enable_thinking false \
