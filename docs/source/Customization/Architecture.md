@@ -1,8 +1,8 @@
-## 架构介绍
+# 架构介绍
 
 ms-swift 4.0 采用模块化设计，各功能模块分布在一级目录下，便于开发者进行自定义扩展。本文档将详细介绍各模块的功能及自定义方法。
 
-### Agent Template
+## Agent Template
 
 agent模板的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/agent_template/mapping.py)。agent template设计目标是，基于统一的Agent数据集格式，可以灵活切换不同模型进行训练，无需修改数据。训练时使用`--agent_template`指定对应的agent模板。
 
@@ -32,7 +32,7 @@ print(f'[LABELS] {template.safe_decode(encoded["labels"])}')
 
 如果你想要给我们提供PR，请参考[这里](https://github.com/modelscope/ms-swift/blob/main/tests/test_align/test_template/test_agent.py)书写你的测试案例。
 
-### Callbacks
+## Callbacks
 
 callbacks的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/mapping.py)。callbacks可以对trainer中的关键节点的行为进行自定义。自定义后，你需要在mapping中进行注册，训练时使用`--callbacks`指定对应的回调类。例如，你可以自定义：
 
@@ -51,7 +51,7 @@ class CustomCallback(TrainerCallback):
 所有的回调类需继承自base.py中的`TrainerCallback`，并覆盖其方法。接口与transformers的`TrainerCallback`一致，请参考transformers的[callback文档](https://huggingface.co/docs/transformers/main_classes/callback)。
 
 
-### Loss
+## Loss
 
 Loss的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)。
 swift支持自定义loss（当前只支持sft/pretrain/reranker/embedding任务），注册后在训练时设置`--loss_type <loss-name>`使用你定制的loss方法。
@@ -65,7 +65,7 @@ class CustomLoss(BaseLoss):
         pass
 ```
 
-### Loss Scale
+## Loss Scale
 
 loss scale的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py)。在pretrain和sft任务中，可训练token的loss是平均的，即每个token平等地对待。但在某些情况下，某些token需要被额外关注，并设置更高的权重或者对某些token不进行训练。loss_scale可以让开发者自由地定义自己的token权重。（预训练和SFT支持使用loss_scale控制token是否参与训练以及和其权重大小，RLHF中只支持控制token是否参与训练）
 
@@ -121,7 +121,7 @@ print(template.safe_decode(inputs['labels']))
 print(inputs['loss_scale'])
 ```
 
-### Metrics
+## Metrics
 
 metrics的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/metrics/mapping.py)。该组件在ms-swift/Megatron-SWIFT中都有被使用。
 - 如果是在ms-swift中被使用，你需要继承 base.py 中`EvalMetrics`基类，并实现`compute_metrics`函数，返回字典`Dict[str, float]`。你可以参考[NlgMetrics](https://github.com/modelscope/ms-swift/blob/0d7c9f5bc0e7e7d67d914ce6edeb9ce24f60746f/swift/metrics/nlg.py#L33)进行定制。
@@ -129,14 +129,14 @@ metrics的mapping文件可以参考[这里](https://github.com/modelscope/ms-swi
 
 你可以自定义metrics（当前只支持sft/pretrain/reranker/embedding任务），在训练时设置`--eval_metric <metric-name>`使用你定制的metrics。
 
-### Optimizers
+## Optimizers
 
 optimizer的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/optimizers/mapping.py)。如果你需要自定义优化器，你需要继承`OptimizerCallback`基类，并覆盖`create_optimizer`函数。训练时使用`--optimizer <optimizer-name>`指定自定义的优化器。
 - 你可以参考[MultimodalOptimizerCallback](https://github.com/modelscope/ms-swift/blob/0d7c9f5bc0e7e7d67d914ce6edeb9ce24f60746f/swift/optimizers/multimodal.py#L43)进行实现，该类实现了vit_lr, aligner_lr的功能，即对vit, aligner和LLM分别使用不同的学习率。
 
 
 
-### Tuner Plugin
+## Tuner Plugin
 
 Tuner插件的mapping文件可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/tuner_plugin/mapping.py)。如果你需要自定义tuner，你需要继承`Tuner`基类，并覆盖`prepare_model`, `save_pretrained`, `from_pretrained`函数。
 - prepare_model: 该函数在训练前被调用，将原始模型进行处理与准备，使用tuner封装，并设置可训练参数。例如：你可以对某些层附加LoRA，对某些层进行冻结等。
@@ -146,7 +146,7 @@ Tuner插件的mapping文件可以参考[这里](https://github.com/modelscope/ms
 你可以参考[LoRALLMTuner](https://github.com/modelscope/ms-swift/blob/0d7c9f5bc0e7e7d67d914ce6edeb9ce24f60746f/swift/tuner_plugin/lora_llm.py#L24)进行实现，该类实现了对LLM进行LoRA训练，对ViT进行全参数训练的功能。
 
 
-### ORM
+## ORM
 
 example参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/orm.py)。
 
@@ -185,7 +185,7 @@ orms = {
 该参数是对应的infer_requests的实际label（数据集中定义的标准response）。
 
 
-### PRM
+## PRM
 
 example参考[这里](https://github.com/modelscope/ms-swift/blob/main/swift/rewards/prm.py)。
 
@@ -214,8 +214,7 @@ So, the answer is ...
 开发者可以在这里对过程进行切分，并按batch传入PRM中进行推理并返回rewards。更通用来说，开发者可以在这里调用一个远端URL，例如一个闭源PRM大模型并返回rewards。
 
 
-
-### 其他目录结构介绍
+## 其他目录结构介绍
 
 - arguments: 命令行参数定义，例如：`SftArguments`, `RLHFArguments`等。
 - cli: swift命令行机制以及启动文件。例如`swift sft ...`等价于`python swift/cli/main.py sft ...`也等价于`python swift/cli/sft.py ...`。
