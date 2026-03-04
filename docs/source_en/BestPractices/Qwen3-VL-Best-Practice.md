@@ -153,7 +153,7 @@ Here's a breakdown of what unfolds:
 Overall, this is a sweet, lighthearted video that showcases the innocence and imagination of early childhood. The child's engagement with the book, combined with their glasses and playful demeanor, creates a delightful and memorable scene.
 ```
 
-- For model-specific parameters, such as environment variables like `VIDEO_MAX_TOKEN_NUM`, please refer to the [Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#qwen3_vl).
+- For model-specific parameters, such as environment variables like `VIDEO_MAX_TOKEN_NUM`, please refer to the [Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#qwen3_vl-qwen3_5).
 
 
 ## Training
