@@ -14,7 +14,7 @@ pip install 'ms-swift[all]' -U
 
 # Using uv (recommended, automatically matches torch & cuda)
 pip install uv
-uv pip install -e . --torch-backend=auto
+uv pip install 'ms-swift' --torch-backend=auto
 ```
 
 ## Source Code Installation
