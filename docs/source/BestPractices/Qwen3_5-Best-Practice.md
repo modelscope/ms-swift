@@ -12,6 +12,9 @@ pip install -U "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
 # 请安装fla main分支，若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
 pip install -U git+https://github.com/fla-org/flash-linear-attention
 
+# causal_conv1d
+pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
+
 # deepspeed训练
 pip install deepspeed
 
@@ -299,6 +302,9 @@ swift infer \
     --max_new_tokens 512 \
     --load_data_args true
 ```
+
+- 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh)。
+- 关于MTP训练：ms-swift暂不支持多模态MTP的训练。如果你只训练纯文本数据，请设置`SKIP_MULTIMODAL_MTP_VALIDATION=1`环境变量，忽略检查。
 
 ## 强化学习（RL）
 

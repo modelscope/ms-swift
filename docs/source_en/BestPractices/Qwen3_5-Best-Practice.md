@@ -12,6 +12,9 @@ pip install -U "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
 # Please install the fla main branch. If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
 pip install -U git+https://github.com/fla-org/flash-linear-attention
 
+# causal_conv1d
+pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
+
 # deepspeed training
 pip install deepspeed
 
@@ -296,6 +299,9 @@ swift infer \
     --max_new_tokens 512 \
     --load_data_args true
 ```
+
+- Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh).
+- Regarding MTP training: ms-swift currently does not support multimodal MTP training. If you are only training on pure text data, please set the `SKIP_MULTIMODAL_MTP_VALIDATION=1` environment variable to skip the validation check.
 
 ## Reinforcement Learning (RL)
 
