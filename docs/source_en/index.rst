@@ -66,7 +66,7 @@ Swift DOCUMENTATION
    BestPractices/GRPO-Code-Training.md
    BestPractices/Qwen3-Best-Practice.md
    BestPractices/Qwen3-VL-Best-Practice.md
-   BestPractices/Qwen3.5-Best-Practice.md
+   BestPractices/Qwen3_5-Best-Practice.md
    BestPractices/MLLM-Registration.md
    BestPractices/Embedding.md
    BestPractices/Reranker.md
