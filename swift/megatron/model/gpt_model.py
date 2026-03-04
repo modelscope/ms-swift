@@ -396,6 +396,7 @@ class GPTModel(McoreGPTModel):
                         else:
                             loss_mask_ = loss_mask.clone()
                     mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
+                    loss_mask_ = loss_mask_ & (mtp_labels != -100)
                     mtp_loss = loss_mask_ * mtp_loss
                     num_tokens = loss_mask_.sum()
                     if self.training:
