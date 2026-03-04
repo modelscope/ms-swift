@@ -155,14 +155,15 @@ MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 swift infer \
-    --adapters output/vx-xxx/checkpoint-xxx \
+    --adapters output/Qwen3.5-4B/vx-xxx/checkpoint-xxx \
     --stream true \
     --enable_thinking false \
+    --max_new_tokens 512 \
     --load_data_args true
 ```
 
 
-```
+```text
 [QUERY] 你好，你是谁？
 [RESPONSE] <think>
 
@@ -178,6 +179,47 @@ swift infer \
 
 e = \sum _ { k = 0 } ^ { \infty } \frac { 1 } { k ! }
 ```
+
+使用python进行推理：
+```python
+import os
+# os.environ['SWIFT_DEBUG'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['IMAGE_MAX_TOKEN_NUM'] = '1024'
+os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
+os.environ['FPS_MAX_FRAMES'] = '16'
+
+from peft import PeftModel
+from swift import get_model_processor, get_template
+from swift.infer_engine import TransformersEngine, InferRequest, RequestConfig
+
+adapter_dir = 'output/Qwen3.5-4B/vx-xxx/checkpoint-xxx'
+enable_thinking = False
+
+model, processor = get_model_processor('Qwen/Qwen3.5-4B')  # attn_impl='flash_attention_2'
+model = PeftModel.from_pretrained(model, adapter_dir)
+template = get_template(processor, enable_thinking=enable_thinking)
+engine = TransformersEngine(model, template=template)  
+infer_request = InferRequest(messages=[{
+    "role": "user",
+    "content": 'who are you?',
+}])
+request_config = RequestConfig(max_tokens=128, temperature=0)
+resp_list = engine.infer([infer_request], request_config=request_config)
+response = resp_list[0].choices[0].message.content
+print(response)
+
+# use stream
+request_config = RequestConfig(max_tokens=128, temperature=0, stream=True)
+gen_list = engine.infer([infer_request], request_config=request_config)
+for chunk in gen_list[0]:
+    if chunk is None:
+        continue
+    print(chunk.choices[0].delta.content, end='', flush=True)
+print()
+# I am an artificial intelligence assistant named swift-robot, trained by swift. I am designed to understand and generate natural language text in order to provide information, answer questions, and engage in conversation with humans. How can I assist you?
+```
+
 
 使用transformers后端训练MoE的例子参考：https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/transformers.sh
 
@@ -254,6 +296,7 @@ swift infer \
     --model megatron_output/vx-xxx/checkpoint-xxx-merged \
     --stream true \
     --enable_thinking false \
+    --max_new_tokens 512 \
     --load_data_args true
 ```
 
