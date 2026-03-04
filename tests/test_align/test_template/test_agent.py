@@ -397,6 +397,31 @@ def test_qwen3_coder():
     assert encoded['input_ids'] == encoded2['input_ids']
 
 
+def test_qwen3_5():
+    agent_template = agent_template_map['qwen3_5']()
+    engine = TransformersEngine('Qwen/Qwen3.5-35B-A3B')
+    template = engine.template
+    template.agent_template = agent_template
+    template.template_backend = 'jinja'
+    _infer(engine, num_tools=2)
+
+    dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
+    data = dataset[6]
+    data['messages'].insert(1, data['messages'][1])
+    data['messages'].insert(3, data['messages'][3])
+    data['messages'].insert(0, {'role': 'system', 'content': 'You are a helpful assistant.'})
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded2["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded2["labels"])}')
+    assert encoded['input_ids'] == encoded2['input_ids']
+
+
 def test_deepseek_v3_1():
     agent_template = agent_template_map['deepseek_v3_1']()
 
@@ -601,6 +626,7 @@ if __name__ == '__main__':
     # test_glm4_5()
     # test_glm4_7()
     # test_qwen3_coder()
+    test_qwen3_5()
     # test_deepseek_v3_1()
     # test_seed_oss()
-    test_youtu()
+    # test_youtu()

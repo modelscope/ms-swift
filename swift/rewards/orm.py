@@ -4,9 +4,13 @@
 import json
 import os
 import re
-from typing import Dict, List, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from swift.infer_engine import InferRequest
+
+if TYPE_CHECKING:
+    from swift.megatron.arguments import MegatronArguments
+    from swift.rlhf_trainers import GRPOConfig
 
 
 class ORM:
@@ -19,6 +23,9 @@ class ORM:
             def __call__(self, completions, **kwargs) -> List[float]:
                 return [1.0 if len(c) > 100 else 0.0 for c in completions]
     """
+
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
+        self.args = args
 
     def __call__(self, **kwargs) -> List[float]:
         raise NotImplementedError
@@ -52,13 +59,17 @@ class AsyncORM:
                     return list(rewards)
     """
 
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
+        self.args = args
+
     async def __call__(self, **kwargs) -> List[float]:
         raise NotImplementedError
 
 
 class MathAccuracy(ORM):
 
-    def __init__(self):
+    def __init__(self, args=None, **kwargs):
+        super().__init__(args, **kwargs)
         import importlib.util
         assert importlib.util.find_spec('math_verify') is not None, (
             'The math_verify package is required but not installed. '
@@ -129,18 +140,13 @@ class ReActFormat(ORM):
 
 class CosineReward(ORM):
     # https://arxiv.org/abs/2502.03373
-    def __init__(self,
-                 cosine_min_len_value_wrong: float = -0.5,
-                 cosine_max_len_value_wrong: float = 0.0,
-                 cosine_min_len_value_correct: float = 1.0,
-                 cosine_max_len_value_correct: float = 0.5,
-                 cosine_max_len: int = 1000,
-                 accuracy_orm=None):
-        self.min_len_value_wrong = cosine_min_len_value_wrong
-        self.max_len_value_wrong = cosine_max_len_value_wrong
-        self.min_len_value_correct = cosine_min_len_value_correct
-        self.max_len_value_correct = cosine_max_len_value_correct
-        self.max_len = cosine_max_len
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, accuracy_orm=None):
+        super().__init__(args)
+        self.min_len_value_wrong = args.cosine_min_len_value_wrong
+        self.max_len_value_wrong = args.cosine_max_len_value_wrong
+        self.min_len_value_correct = args.cosine_min_len_value_correct
+        self.max_len_value_correct = args.cosine_max_len_value_correct
+        self.max_len = args.cosine_max_len
         self.accuracy_orm = accuracy_orm or MathAccuracy()
 
     @staticmethod
@@ -169,9 +175,10 @@ class CosineReward(ORM):
 
 class RepetitionPenalty(ORM):
     # https://arxiv.org/abs/2502.03373
-    def __init__(self, repetition_n_grams: int = 3, repetition_max_penalty: float = -1.0):
-        self.ngram_size = repetition_n_grams
-        self.max_penalty = repetition_max_penalty
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
+        super().__init__(args)
+        self.ngram_size = args.repetition_n_grams
+        self.max_penalty = args.repetition_max_penalty
 
     @staticmethod
     def zipngram(text: str, ngram_size: int):
@@ -208,10 +215,11 @@ class RepetitionPenalty(ORM):
 
 class SoftOverlong(ORM):
 
-    def __init__(self, soft_max_length, soft_cache_length):
-        assert soft_cache_length < soft_max_length
-        self.soft_max_length = soft_max_length
-        self.soft_cache_length = soft_cache_length
+    def __init__(self, args: Optional[Union['GRPOConfig', 'MegatronArguments']] = None, **kwargs):
+        super().__init__(args)
+        assert args.soft_cache_length < args.soft_max_length
+        self.soft_max_length = args.soft_max_length
+        self.soft_cache_length = args.soft_cache_length
 
     def __call__(self, completions, **kwargs) -> List[float]:
         rewards = []
@@ -369,7 +377,8 @@ class ReactORM(ORM):
 
 class MathORM(ORM):
 
-    def __init__(self):
+    def __init__(self, args=None, **kwargs):
+        super().__init__(args)
         from transformers.utils import strtobool
         self.use_opencompass = strtobool(os.environ.get('USE_OPENCOMPASS_EVALUATOR', 'False'))
         if self.use_opencompass:

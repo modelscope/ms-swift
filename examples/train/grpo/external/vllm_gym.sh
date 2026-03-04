@@ -3,7 +3,6 @@
 # CUDA_VISIBLE_DEVICES=7 \
 # swift rollout \
 #   --model Qwen/Qwen2.5-3B-Instruct \
-#   --model_type qwen2_5\
 #   --max_turns 3\
 #   --multi_turn_scheduler gym_scheduler \
 #   --use_gym_env true \

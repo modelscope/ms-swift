@@ -1,7 +1,7 @@
 
 # 快速开始
 
-ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh)、Qwen2.5、Llama3、Deepseek-R1、GLM4.5等模型的CPT/SFT/DPO/GRPO。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。推荐在MoE训练时使用Megatron-SWIFT，这通常可以获得10倍的训练速度提升。
+ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、Qwen3.5、Deepseek-R1、GLM4.5、GPT-OSS等模型的CPT/SFT/GRPO/DPO/KTO/RM。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。
 
 
 | 方法   | 全参数 | LoRA | MoE | 多模态 | FP8 |
@@ -35,17 +35,12 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.15.0
+pip install "megatron-core==0.15.*" -U
 
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度。
 # 注意：这步很关键，不然多机训练可能因随机性问题导致数据不一致而训练卡住。
 export MODELSCOPE_CACHE='/xxx/shared'
-
-# Megatron-LM
-# 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.15.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.15.0)）。
-git clone --branch core_r0.15.0 https://github.com/NVIDIA/Megatron-LM.git
-export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
 # 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
@@ -75,7 +70,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | apex |   |  0.1 | |
 | megatron_core    |   >=0.12,<0.16    | 0.15      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.6      |                    |
+| transformers | >=4.33       | 4.57.6/5.2.0   |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.29 |       |      RLHF        |
@@ -247,6 +242,8 @@ swift infer \
 使用`megatron sft`和`swift sft`在双机16卡A800环境下进行MoE模型全参数8K上下文训练的速度对比如下：
 
 **MoE** Qwen3-30B-A3B:
+
+- 注意：其中，DeepSpeed测试结果在"transformers<5.0"环境下进行。在"transformers>5.0"，可以通过`--experts_impl grouped_mm`加速训练。
 
 |          | Megatron-LM | DeepSpeed-ZeRO2 | DeepSpeed-ZeRO3 |
 | -------- | ----------- | --------------- | --------------- |

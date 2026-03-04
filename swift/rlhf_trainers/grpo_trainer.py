@@ -88,9 +88,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
         self.model_adapter_name = None
         self.is_multimodal = model.model_meta.is_multimodal
-
-        model.warnings_issued['estimate_tokens'] = True
-
         self.model_kwarg_keys = (
             inspect.signature(model.forward).parameters.keys() if not hasattr(model, 'get_base_model') else
             inspect.signature(model.get_base_model().forward).parameters.keys())
@@ -943,7 +940,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # rollout_logprobs is List[List[float]] - nested list where each inner list corresponds to
                 # one assistant response turn. We need to align these with completion_mask positions.
                 batch_encoded_inputs['rollout_per_token_logps'] = None
-                if self.use_fast_infer:
+                should_compute_rollout_logprobs = (
+                    self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
+
+                if self.use_fast_infer and should_compute_rollout_logprobs:
                     rollout_logprobs_list = []
                     for data in batch:
                         if 'rollout_logprobs' in data and data['rollout_logprobs']:
@@ -1152,23 +1152,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                                                  rollout_per_token_logps,
                                                                                  completion_mask)
 
-            # Apply importance sampling correction if mode is enabled
-            if self.rollout_importance_sampling_mode is not None:
-                # Compute the log ratio between policy model and rollout model
-                # log π_θ(y|x) - log π_rollout(y|x)
-                rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
-
-                # Apply importance sampling correction based on mode
-                rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
-
-                # Compute additional IS-specific metrics (ESS, clipped_frac, is_weight_mean)
+            rollout_log_ratio, rollout_is_weights = self._get_rollout_is_correction(old_per_token_logps,
+                                                                                    rollout_per_token_logps,
+                                                                                    completion_mask)
+            if rollout_log_ratio is not None:
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
                 rollout_correction_metrics.update(is_metrics)
 
-                # Store IS weights for loss computation
-                inputs['rollout_is_weights'] = rollout_is_weights
-            else:
-                inputs['rollout_is_weights'] = None
+            inputs['rollout_is_weights'] = rollout_is_weights
         else:
             inputs['rollout_is_weights'] = None
 
@@ -1809,8 +1800,21 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             last_hidden_state = last_hidden_state[:, -logits_to_keep:, :]  # (B, logits_to_keep, H)
         return last_hidden_state
 
+    def _get_rollout_is_correction(self, old_per_token_logps, rollout_per_token_logps, completion_mask):
+        """Compute rollout importance sampling log-ratio and IS weights.
+
+        Returns:
+            (rollout_log_ratio, rollout_is_weights) if rollout IS correction is applicable,
+            (None, None) otherwise.
+        """
+        if self.rollout_importance_sampling_mode is None or self.disable_rollout_importance_sampling:
+            return None, None
+
+        rollout_log_ratio = old_per_token_logps - rollout_per_token_logps
+        rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
+        return rollout_log_ratio, rollout_is_weights
+
     def compute_liger_loss(self, unwrapped_model, inputs):
-        # Compute the per-token log probabilities for the model
         assert not self.template.padding_free
         assert self.advantage_estimator == 'grpo'
         input_ids = inputs['input_ids']
@@ -1818,9 +1822,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = inputs['completion_mask']
 
-        # get the last hidden state of the model
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
-        # compute loss and metrics using liger grpo loss
+
+        old_per_token_logps = inputs.get('old_per_token_logps')
+        local_has = inputs.get('rollout_per_token_logps') is not None
+        vllm_is_ratio = None
+        if all(gather_object([local_has])):
+            rollout_per_token_logps = inputs['rollout_per_token_logps']
+            _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, rollout_per_token_logps,
+                                                               completion_mask)
+
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
@@ -1828,11 +1839,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             attention_mask=completion_mask,
             advantages=inputs['advantages'],
             bias=unwrapped_model.lm_head.bias,
-            old_per_token_logps=inputs.get('old_per_token_logps'),
+            old_per_token_logps=old_per_token_logps,
             ref_per_token_logps=inputs.get('ref_per_token_logps'),
+            vllm_is_ratio=vllm_is_ratio,
         )
-        # Extract metrics from the liger_grpo_loss output
-        # KL divergence is the first metric when beta is non-zero
+
         mean_kl = metrics[0] if self.beta != 0.0 else None
         clip_ratio = metrics[-1]
 
@@ -2092,18 +2103,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.use_liger_loss = self.args.use_liger_kernel
         if self.use_liger_loss:
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
-            kwargs = {}
-            if 'importance_sampling_level' in inspect.signature(LigerFusedLinearGRPOLoss.__init__).parameters:
-                kwargs['importance_sampling_level'] = self.importance_sampling_level
             self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
                 beta=self.beta,
+                compiled=False,
                 epsilon_low=self.epsilon_low,
                 epsilon_high=self.epsilon_high,
                 temperature=self.temperature,
                 use_ref_model=self.beta != 0.0,
                 loss_type=self.loss_type,
                 max_completion_length=self.max_completion_length,
-                **kwargs,
+                importance_sampling_level=self.importance_sampling_level,
+                sapo_temperature_pos=self.tau_pos,
+                sapo_temperature_neg=self.tau_neg,
             )
             self._forward_redirection = _ForwardRedirection()
 
@@ -2195,14 +2206,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for i, reward_func in enumerate(reward_funcs):
                 if reward_func in orms:
                     reward_func_class = orms[reward_func]
-                    reward_func_args = list(inspect.signature(reward_func_class.__init__).parameters)
-                    reward_func_kwargs = {
-                        key: getattr(args, key)
-                        for key in reward_func_args if key not in ['self', 'args', 'kwargs'] and hasattr(args, key)
-                    }
-                    if 'tokenizer' in reward_func_args:
-                        reward_func_kwargs['tokenizer'] = self.processing_class
-                    reward_funcs[i] = reward_func_class(**reward_func_kwargs)
+                    reward_funcs[i] = reward_func_class(args=args)
                 elif not callable(reward_func):
                     raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
 
@@ -2235,6 +2239,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.reward_model_plugins.append(rm_plugins[rm_plugin](model=rm, template=rm_template))
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])
+
+        if self.use_gym_env and not self.reward_func_names:
+            self.reward_func_names = ['gym_reward']
 
         # Reward weights
         if args.reward_weights is not None:

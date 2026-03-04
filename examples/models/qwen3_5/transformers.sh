@@ -31,6 +31,7 @@ swift sft \
     --logging_steps 5 \
     --max_length 2048 \
     --warmup_ratio 0.05 \
+    --dataset_num_proc 4 \
     --dataloader_num_workers 4 \
     --deepspeed zero3
 
@@ -41,7 +42,7 @@ swift sft \
 # VIDEO_MAX_PIXELS=50176 \
 # FPS_MAX_FRAMES=12 \
 # swift infer \
-#     --adapters output/vx-xxx/checkpoint-xxx \
+#     --adapters output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx \
 #     --stream true \
 #     --experts_impl grouped_mm \
 #     --enable_thinking false \
