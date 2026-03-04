@@ -116,7 +116,7 @@ To install using pip:
 ```shell
 pip install ms-swift -U
 
-# use uv
+# Using uv
 pip install uv
 uv pip install ms-swift -U --torch-backend=auto
 ```
