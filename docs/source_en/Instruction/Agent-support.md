@@ -239,7 +239,7 @@ print(template.safe_decode(inputs['labels']))
 ```
 
 
-For more `loss_scale` plugin designs, please refer to the [Pluginization](../Customization/Pluginization.md) documentation.
+For more `loss_scale` plugin designs, please refer to the [Architecture](../Customization/Architecture.md) documentation.
 
 ## Training
 

@@ -223,7 +223,7 @@ print(template.safe_decode(inputs['labels']))
 # '[-100 * 14]abc<think>\n\n</think>\n\n123<|im_end|>\n'
 ```
 
-更多的loss_scale插件设计，请参考[插件化](../Customization/Pluginization.md)文档.
+更多的loss_scale插件设计，请参考[架构](../Customization/Architecture.md#loss-scale)文档.
 
 ## 训练
 - 训练Base模型的Agent能力，通过修改`--model`切换不同模型，参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/agent/qwen2_5.sh)。
