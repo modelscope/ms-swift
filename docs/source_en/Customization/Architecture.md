@@ -218,8 +218,7 @@ So, the answer is ...
 
 - arguments: Command-line parameter definitions, such as: `SftArguments`, `RLHFArguments`, etc.
 - cli: Swift command-line mechanism and startup files. For example, `swift sft ...` is equivalent to `python swift/cli/main.py sft ...` and also equivalent to `python swift/cli/sft.py ...`.
-- config: deepspeed/
-- fsdp2 configuration files.
+- config: deepspeed/fsdp2 configuration files.
 - dataloader: Implementation of dataloader, including shard/dispatcher methods.
 - dataset: Dataset-related module implementation, including data preprocessing, packing, streaming data, etc. Registration of built-in datasets is in the `dataset/dataset` and `dataset/data` folders. For details, refer to [Custom Dataset Documentation](Custom-dataset.md).
 - infer_engine: Inference engine implementation. Includes inference engine implementations with transformers/vllm/sglang/lmdeploy as backends.
