@@ -25,7 +25,7 @@ pip install pybind11
 
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
-pip install --no-build-isolation transformer_engine[pytorch]
+pip install --no-build-isolation transformer_engine[pytorch] --no-cache-dir
 
 # apex
 # Note: Megatron-SWIFT can run in environments without apex by setting `--gradient_accumulation_fusion false`.

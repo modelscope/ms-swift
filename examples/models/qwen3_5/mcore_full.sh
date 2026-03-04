@@ -1,3 +1,4 @@
+# 8 * 80GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -13,7 +14,7 @@ megatron sft \
     --add_non_thinking_prefix true \
     --split_dataset_ratio 0.01 \
     --tuner_type full \
-    --tensor_model_parallel_size 2 \
+    --tensor_model_parallel_size 1 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --moe_permute_fusion true \
@@ -31,6 +32,7 @@ megatron sft \
     --freeze_llm false \
     --freeze_vit true \
     --freeze_aligner true \
+    --decoder_first_pipeline_num_layers 24 \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
@@ -38,7 +40,7 @@ megatron sft \
     --output_dir megatron_output/Qwen3.5-35B-A3B \
     --eval_steps 200 \
     --save_steps 200 \
-    --max_length 8192 \
+    --max_length 16384 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
@@ -48,6 +50,6 @@ megatron sft \
     --mtp_num_layers 1 \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.4 \
+    --optimizer_offload_fraction 0.6 \
     --attention_backend flash \
     --padding_free false
