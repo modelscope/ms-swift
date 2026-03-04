@@ -371,11 +371,11 @@ class GPTModel(McoreGPTModel):
             if labels is not None:
                 mtp_labels = labels.clone()
                 if loss_mask is None:
-                    # if loss_mask is not provided, use all ones as loss_mask
-                    if packed_seq_params is None:
-                        loss_mask = torch.ones_like(mtp_labels)
-                    else:
-                        loss_mask = mtp_labels.new_ones((1, packed_seq_params.cu_seqlens_q[-1]))
+                    # Derive loss_mask from labels: mask out padding positions (labels == -100)
+                    # so that system prompt, user query, and vision tokens don't contribute to MTP loss.
+                    loss_mask = (mtp_labels != -100).to(mtp_labels.dtype)
+                    if packed_seq_params is not None:
+                        loss_mask = loss_mask.view(1, -1)
                 cu_seqlens = packed_seq_params.cu_seqlens_q if packed_seq_params is not None else None
                 for mtp_layer_number in range(self.config.mtp_num_layers):
                     # output
