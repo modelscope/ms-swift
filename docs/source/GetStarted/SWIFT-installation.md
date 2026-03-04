@@ -30,6 +30,9 @@ git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 
+# 使用 uv
+uv pip install -e . --torch-backend=auto
+
 # 全能力
 # pip install -e '.[all]'
 ```

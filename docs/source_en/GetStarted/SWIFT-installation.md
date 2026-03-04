@@ -44,6 +44,9 @@ git clone -b release/3.12 https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 
+# Using uv
+uv pip install -e . --torch-backend=auto
+
 # Full capabilities
 # pip install -e '.[all]'
 ```

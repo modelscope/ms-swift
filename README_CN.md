@@ -125,6 +125,9 @@ cd ms-swift
 # main分支为swift4.x。若安装swift3.x，请运行以下命令
 # git checkout release/3.12
 pip install -e .
+
+# 使用uv
+uv pip install -e . --torch-backend=auto
 ```
 
 运行环境：

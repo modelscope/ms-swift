@@ -131,7 +131,7 @@ cd ms-swift
 # git checkout release/3.12
 pip install -e .
 
-# use uv
+# Using uv
 uv pip install -e . --torch-backend=auto
 ```
 
