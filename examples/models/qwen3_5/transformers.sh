@@ -42,7 +42,7 @@ swift sft \
 # VIDEO_MAX_PIXELS=50176 \
 # FPS_MAX_FRAMES=12 \
 # swift infer \
-#     --adapters output/vx-xxx/checkpoint-xxx \
+#     --adapters output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx \
 #     --stream true \
 #     --experts_impl grouped_mm \
 #     --enable_thinking false \
