@@ -6,7 +6,7 @@ ms-swift 4.0支持使用transformers/Megatron后端对[Qwen3.5](https://github.c
 ## 环境设置
 ```shell
 pip install -U ms-swift
-pip install -U "qwen_vl_utils>=0.0.14" "transformers>=5.2.0" peft liger-kernel
+pip install -U "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # 请安装fla main分支，若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
