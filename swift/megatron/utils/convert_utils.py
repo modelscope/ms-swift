@@ -142,6 +142,29 @@ def get_examples(is_multimodal: bool) -> Dict[str, Any]:
     return data
 
 
+def broadcast_mg_logits(mg_logits=None, src_rank=None):
+    if not dist.is_initialized():
+        return
+    rank = dist.get_rank()
+    if src_rank is None:
+        src_rank = dist.get_world_size() - 1
+    if rank == src_rank:
+        meta = [tuple(mg_logits.shape), str(mg_logits.dtype).split('.', 1)[1]]
+    else:
+        meta = [None, None]
+
+    dist.broadcast_object_list(meta, src=src_rank)
+    shape, dtype = meta
+    dtype = getattr(torch, dtype)
+
+    if rank != src_rank:
+        mg_logits = torch.empty(shape, dtype=dtype, device='cuda')
+
+    dist.broadcast(mg_logits, src=src_rank)
+
+    return mg_logits
+
+
 def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=None):
     if test_convert_dtype is None:
         test_convert_dtype = getattr(args, 'test_convert_dtype', torch.float32)
@@ -201,6 +224,8 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:
                 mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
+
+    mg_logits = broadcast_mg_logits(mg_logits)
     if hf_model is None:
         return
     if args.task_type == 'seq_cls':

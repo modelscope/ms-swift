@@ -187,8 +187,8 @@ def rule_math_verify(ground_truth, model_answer):
 
 class DeepEyesReward(ORM):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args, **kwargs):
+        super().__init__(args)
         try:
             self.client = OpenAI(
                 api_key='EMPTY',

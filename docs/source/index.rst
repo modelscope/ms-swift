@@ -51,9 +51,9 @@ Swift DOCUMENTATION
    :maxdepth: 2
    :caption: Customization
 
+   Customization/Architecture.md
    Customization/Custom-model.md
    Customization/Custom-dataset.md
-   Customization/Pluginization.md
 
 
 .. toctree::

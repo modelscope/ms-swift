@@ -180,7 +180,46 @@ class MegatronModelConfig(TransformerConfig):
     deallocate_pipeline_outputs: bool = True
     cp_comm_type: str = 'p2p'
 
+    _mindspeed_defaults_cache = None
+
+    def _augment_mindspeed_defaults(self):
+        if not is_torch_npu_available():
+            return
+
+        if MegatronModelConfig._mindspeed_defaults_cache is None:
+            defaults = {}
+            try:
+                import mindspeed.features_manager as mfm
+                import sys
+                from argparse import ArgumentParser
+                from mindspeed.arguments import process_args
+
+                original_features = list(mfm.FEATURES_LIST)
+                full_features = mfm.create_features_list()
+                mfm.FEATURES_LIST.clear()
+                mfm.FEATURES_LIST.extend(full_features)
+                try:
+                    parser = ArgumentParser()
+                    process_args(parser)
+                    # Parse args from sys.argv
+                    args, _ = parser.parse_known_args([])
+                    defaults = vars(args)
+                finally:
+                    mfm.FEATURES_LIST.clear()
+                    mfm.FEATURES_LIST.extend(original_features)
+            except Exception as e:
+                logger.warning(f'Failed to get MindSpeed defaults, which may cause issues on NPU: {e}')
+                defaults = {}
+            MegatronModelConfig._mindspeed_defaults_cache = defaults
+
+        for name, value in MegatronModelConfig._mindspeed_defaults_cache.items():
+            if not hasattr(self, name):
+                setattr(self, name, value)
+            elif hasattr(self, name) and getattr(self, name) is None and value is not None:
+                setattr(self, name, value)
+
     def __post_init__(self):
+        self._augment_mindspeed_defaults()
         self._format_config()
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
@@ -226,7 +265,7 @@ class MegatronModelConfig(TransformerConfig):
         MAX_NPU_EXPERTS_PER_EP = 128
         num_experts = self.num_moe_experts
         expert_model_parallel_size = mpu.get_expert_model_parallel_world_size()
-        if is_torch_npu_available() and num_experts > MAX_NPU_EXPERTS_PER_EP:
+        if is_torch_npu_available() and num_experts and num_experts > MAX_NPU_EXPERTS_PER_EP:
             required_ep = (num_experts + MAX_NPU_EXPERTS_PER_EP - 1) // MAX_NPU_EXPERTS_PER_EP
             if expert_model_parallel_size < required_ep:
                 logger.warning(f'{">" * 20} WARNING {"<" * 20}\n'
@@ -472,4 +511,6 @@ def get_mcore_model_config(args, hf_config):
     config = MegatronModelConfig(**kwargs)
     config.hf_config = hf_config
     config.args = args
+    if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
+        setattr(config, 'use_flash_attn', True)
     return config

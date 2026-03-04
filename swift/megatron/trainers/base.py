@@ -32,11 +32,12 @@ from swift.megatron.utils import (copy_original_module_weight, disable_forward_p
                                   initialize_tp_communicators, load_mcore_checkpoint,
                                   logical_and_across_model_parallel_group, maybe_finalize_async_save,
                                   prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
-                                  save_mcore_checkpoint, should_disable_forward_pre_hook, wrap_model)
+                                  save_mcore_checkpoint, should_disable_forward_pre_hook, warmup_jit_function,
+                                  wrap_model)
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
-from swift.utils import deep_getattr, get_last_valid_indices, get_logger, is_last_rank, ms_logger_context
+from swift.utils import deep_getattr, get_last_valid_indices, get_logger, is_last_rank, is_master, ms_logger_context
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_pp_rank,
                     get_packed_seq_params)
@@ -90,6 +91,8 @@ class BaseMegatronTrainer(ABC):
 
         if args.tp_comm_overlap:
             initialize_tp_communicators(args, self.config)
+
+        warmup_jit_function(self.config, args)
 
         if args.async_save and args.use_persistent_ckpt_worker:
             init_persistent_async_worker()
@@ -206,21 +209,21 @@ class BaseMegatronTrainer(ABC):
             return
 
         args = self.args
-        state = self.state
+        epoch = 0
         is_finished = False
         while True:
             if not is_finished:
-                logger.info(f'The training of Epoch {state.epoch} starts...')
+                logger.info(f'The training of Epoch {epoch} starts...')
             for x in iterable:
                 yield x
             # streaming
-            if training and args.num_train_epochs and state.epoch >= args.num_train_epochs - 1:
+            if training and args.num_train_epochs and epoch >= args.num_train_epochs - 1:
                 is_finished = True
-            state.epoch += 1
+            epoch += 1
             if is_finished:
                 # Note that this approach will train for one additional step.
-                logger.info(f'Training of {state.epoch} epochs has been completed, the training has finished.')
-                args.train_iters = state.iteration + 1
+                logger.info(f'Training of {epoch} epochs has been completed, the training has finished.')
+                args.train_iters = self.state.iteration + 1
 
     # Code borrowed from Megatron-LM
     def _get_param_groups(
@@ -476,7 +479,7 @@ class BaseMegatronTrainer(ABC):
 
     @staticmethod
     def copy_path(src_path: str, tgt_path: str):
-        if not is_last_rank():
+        if not is_master():
             return
         if not os.path.exists(src_path):
             raise FileNotFoundError(f'Source path does not exist: {src_path}')
@@ -544,7 +547,7 @@ class BaseMegatronTrainer(ABC):
             for _ in range(args.virtual_pipeline_model_parallel_size):
                 train_it, val_it = self._prepare_data_iterator(train_dataset, val_dataset)
                 train_data_iterator.append(train_it)
-                val_data_iterator.append(train_it)
+                val_data_iterator.append(val_it)
         else:
             train_data_iterator, val_data_iterator = self._prepare_data_iterator(train_dataset, val_dataset)
         while state.iteration < args.train_iters:
@@ -677,7 +680,7 @@ class BaseMegatronTrainer(ABC):
             if args.tuner_type == 'lora' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
-        if is_last_rank():
+        if is_master():
             self._rotate_checkpoints(args.output_dir)
 
     def _rotate_checkpoints(self, output_dir: str):

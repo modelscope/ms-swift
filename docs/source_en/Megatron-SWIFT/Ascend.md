@@ -188,7 +188,7 @@ Additionally, since msprobe does not support fusion computation, you need to add
 
 #### Example
 ```shell
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \

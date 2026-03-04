@@ -1116,19 +1116,25 @@ class Qwen3_5MoeLoader(Qwen3VLLoader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_5_moe, [
-            ModelGroup([
-                Model('Qwen/Qwen3.5-35B-A3B', 'Qwen/Qwen3.5-35B-A3B'),
-                Model('Qwen/Qwen3.5-35B-A3B-Base', 'Qwen/Qwen3.5-35B-A3B-Base'),
-                Model('Qwen/Qwen3.5-122B-A10B', 'Qwen/Qwen3.5-122B-A10B'),
-                Model('Qwen/Qwen3.5-397B-A17B', 'Qwen/Qwen3.5-397B-A17B'),
-                Model('Qwen/Qwen3.5-397B-A17B-FP8', 'Qwen/Qwen3.5-397B-A17B-FP8'),
-            ], TemplateType.qwen3_5),
+        MLLMModelType.qwen3_5_moe,
+        [
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3.5-35B-A3B-Base', 'Qwen/Qwen3.5-35B-A3B-Base'),
+                    Model('Qwen/Qwen3.5-35B-A3B', 'Qwen/Qwen3.5-35B-A3B'),
+                    Model('Qwen/Qwen3.5-122B-A10B', 'Qwen/Qwen3.5-122B-A10B'),
+                    Model('Qwen/Qwen3.5-397B-A17B', 'Qwen/Qwen3.5-397B-A17B'),
+                    # FP8
+                    Model('Qwen/Qwen3.5-35B-A3B-FP8', 'Qwen/Qwen3.5-35B-A3B-FP8'),
+                    Model('Qwen/Qwen3.5-122B-A10B-FP8', 'Qwen/Qwen3.5-122B-A10B-FP8'),
+                    Model('Qwen/Qwen3.5-397B-A17B-FP8', 'Qwen/Qwen3.5-397B-A17B-FP8'),
+                ],
+                TemplateType.qwen3_5),
         ],
         Qwen3_5MoeLoader,
         model_arch=ModelArch.qwen2_vl,
         architectures=['Qwen3_5MoeForConditionalGeneration'],
-        requires=['transformers>=5.2.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
 
@@ -1142,10 +1148,24 @@ class Qwen3_5Loader(Qwen3VLLoader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.qwen3_5, [
-            ModelGroup([
-                Model('Qwen/Qwen3.5-27B', 'Qwen/Qwen3.5-27B'),
-            ], TemplateType.qwen3_5),
+        MLLMModelType.qwen3_5,
+        [
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3.5-0.8B', 'Qwen/Qwen3.5-0.8B'),
+                    Model('Qwen/Qwen3.5-2B', 'Qwen/Qwen3.5-2B'),
+                    Model('Qwen/Qwen3.5-4B', 'Qwen/Qwen3.5-4B'),
+                    Model('Qwen/Qwen3.5-9B', 'Qwen/Qwen3.5-9B'),
+                    Model('Qwen/Qwen3.5-27B', 'Qwen/Qwen3.5-27B'),
+                    # FP8
+                    Model('Qwen/Qwen3.5-27B-FP8', 'Qwen/Qwen3.5-27B-FP8'),
+                    # base
+                    Model('Qwen/Qwen3.5-0.8B-Base', 'Qwen/Qwen3.5-0.8B-Base'),
+                    Model('Qwen/Qwen3.5-2B-Base', 'Qwen/Qwen3.5-2B-Base'),
+                    Model('Qwen/Qwen3.5-4B-Base', 'Qwen/Qwen3.5-4B-Base'),
+                    Model('Qwen/Qwen3.5-9B-Base', 'Qwen/Qwen3.5-9B-Base'),
+                ],
+                TemplateType.qwen3_5),
         ],
         Qwen3_5Loader,
         model_arch=ModelArch.qwen2_vl,
