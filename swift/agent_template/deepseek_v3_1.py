@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import re
 from typing import List, Optional, Tuple, Union
-
-import json
 
 from swift.infer_engine import Function
 from swift.template import Prompt

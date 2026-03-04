@@ -1,16 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import math
-import os
-import shutil
-from contextlib import contextmanager
-from typing import Any, Dict
-
 import torch
 import torch.distributed as dist
 import torch.nn as nn
+from contextlib import contextmanager
 from megatron.core import mpu
-from megatron.training import get_args
+from typing import Any, Dict
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
 from .utils import forward_step_helper, get_padding_to
@@ -25,7 +21,7 @@ def _test_params_sum(model):
     for n, p in model.named_parameters():
         n_parameter += 1
         sum_ = p.to(device='cuda', dtype=torch.float32).abs().sum().cpu().item()
-        if sum_ == 0:
+        if sum_ == 0 and '.lora_B.' not in n:
             zero_count += 1
             logger.warning(f'n: {n}, sum: {sum_}')
         elif math.isnan(sum_) or math.isinf(sum_) or sum_ > 1e10:
@@ -146,7 +142,32 @@ def get_examples(is_multimodal: bool) -> Dict[str, Any]:
     return data
 
 
-def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float32):
+def broadcast_mg_logits(mg_logits=None, src_rank=None):
+    if not dist.is_initialized():
+        return
+    rank = dist.get_rank()
+    if src_rank is None:
+        src_rank = dist.get_world_size() - 1
+    if rank == src_rank:
+        meta = [tuple(mg_logits.shape), str(mg_logits.dtype).split('.', 1)[1]]
+    else:
+        meta = [None, None]
+
+    dist.broadcast_object_list(meta, src=src_rank)
+    shape, dtype = meta
+    dtype = getattr(torch, dtype)
+
+    if rank != src_rank:
+        mg_logits = torch.empty(shape, dtype=dtype, device='cuda')
+
+    dist.broadcast(mg_logits, src=src_rank)
+
+    return mg_logits
+
+
+def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=None):
+    if test_convert_dtype is None:
+        test_convert_dtype = getattr(args, 'test_convert_dtype', torch.float32)
     template.set_mode('train')
     _test_params_sum(mg_model)
 
@@ -168,13 +189,12 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
         ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
         hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)
         with torch.inference_mode(), _model_cpu_forward_context(
-                hf_modules, torch_dtype, share_embedding=share_embedding):
+                hf_modules, test_convert_dtype, share_embedding=share_embedding):
             hf_inputs.pop('text_position_ids', None)
             hf_logits = hf_model(**hf_inputs).logits
             hf_logits = hf_logits.to('cuda')
         hf_model.to('cpu')
 
-    args = get_args()
     template.use_megatron = True
     inputs = template.encode(get_examples(is_multimodal))
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
@@ -192,18 +212,20 @@ def test_convert_precision(hf_model, mg_model, template, torch_dtype=torch.float
     _param = next(mg_language_model.parameters())
     mg_dtype = _param.dtype
     mg_device = _param.device
-    if args.hf_model_type == 'minimax_m2':
+    if args.model_type == 'minimax_m2':
         # router to bfloat16
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
                 m.to(mg_dtype)
     with torch.inference_mode(), _model_cpu_forward_context(
-            mg_modules, torch_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
-        mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=torch_dtype)
-        if args.tensor_model_parallel_size > 1:
+            mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
+        mg_logits = forward_step_helper(args, mg_model, mg_inputs, dtype=test_convert_dtype)
+        if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:
                 mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
+
+    mg_logits = broadcast_mg_logits(mg_logits)
     if hf_model is None:
         return
     if args.task_type == 'seq_cls':

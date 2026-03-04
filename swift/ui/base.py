@@ -1,5 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import dataclasses
+import gradio as gr
+import json
 import os
 import sys
 import time
@@ -8,12 +10,9 @@ from collections import OrderedDict
 from dataclasses import fields
 from datetime import datetime
 from functools import wraps
-from typing import Any, Dict, List, Literal, Optional, Type, Union, get_args, get_origin
-
-import gradio as gr
-import json
 from gradio import Accordion, Audio, Button, Checkbox, Dropdown, File, Image, Slider, Tab, TabItem, Textbox, Video
 from modelscope.hub.utils.utils import get_cache_dir
+from typing import Any, Dict, List, Literal, Optional, Type, Union, get_args, get_origin
 
 from swift.arguments import BaseArguments
 from swift.model import get_matched_model_meta

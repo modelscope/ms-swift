@@ -1,21 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import datasets
 import functools
 import ipaddress
 import math
 import os
 import socket
 import time
+import torch
+import torch.nn.functional as F
 from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from datetime import timedelta
 from functools import partial
 from io import BytesIO
-from types import MethodType
-from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
-
-import datasets
-import torch
-import torch.nn.functional as F
 from msgspec import field
 from packaging import version
 from peft.tuners import lora
@@ -24,6 +21,8 @@ from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
+from types import MethodType
+from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
@@ -37,7 +36,6 @@ if is_swanlab_available():
 
 T = TypeVar('T')
 
-TensorLoRARequest = None
 _ipv6_patch_applied = False
 
 if is_vllm_available():
@@ -55,6 +53,28 @@ if is_vllm_available():
         @property
         def embeddings(self):
             return self.lora_embeddings
+else:
+    TensorLoRARequest = None
+
+
+def chunk_list(lst: list, n: int) -> list[list]:
+    """
+    Split list `lst` into `n` evenly distributed sublists.
+
+    Example:
+    ```python
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 2)
+    [[1, 2, 3], [4, 5, 6]]
+
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 4)
+    [[1, 2], [3, 4], [5], [6]]
+
+    >>> chunk_list([1, 2, 3, 4, 5, 6], 8)
+    [[1], [2], [3], [4], [5], [6], [], []]
+    ```
+    """
+    k, r = divmod(len(lst), n)
+    return [lst[i * k + min(i, r):(i + 1) * k + min(i + 1, r)] for i in range(n)]
 
 
 def is_valid_ipv6_address(address: str) -> bool:
@@ -186,23 +206,43 @@ def patch_stateless_process_group_for_ipv6():
 patch_stateless_process_group_for_ipv6()
 
 
-def nanstd(tensor: torch.Tensor) -> torch.Tensor:
+def nanstd(tensor: torch.Tensor,
+           dim: Optional[Union[int, tuple[int, ...]]] = None,
+           keepdim: bool = False) -> torch.Tensor:
     """
-    refer: trl/trainer/utils
-    Compute the standard deviation of a tensor, ignoring NaNs. This function only supports 1D tensors.
+    Compute the standard deviation of a tensor, ignoring NaNs.
+
+    Refer: trl/trainer/utils.py
 
     Args:
         tensor (`torch.Tensor`):
-            Input tensor of shape `(N,)`.
+            Input tensor.
+        dim (`int` or `tuple[int, ...]`, *optional*):
+            Dimension to reduce. Defaults to all dimensions.
+        keepdim (`bool`, *optional*, defaults to `False`):
+            Whether to keep reduced dimensions.
 
     Returns:
         `torch.Tensor`:
             Standard deviation of the tensor, ignoring NaNs.
     """
-    variance = torch.nanmean((tensor - torch.nanmean(tensor, keepdim=True))**2)  # Compute variance ignoring NaNs
-    count = torch.sum(~torch.isnan(tensor))  # Count of non-NaN values
-    variance *= count / (count - 1)  # Bessel's correction
-    return torch.sqrt(variance)
+    mean = torch.nanmean(tensor, dim=dim, keepdim=True)
+    variance = torch.nanmean((tensor - mean)**2, dim=dim, keepdim=True)
+    count = torch.sum(~torch.isnan(tensor), dim=dim, keepdim=True)
+    correction = count / (count - 1)
+    correction = torch.where(count > 1, correction, torch.full_like(correction, float('nan')))
+    variance *= correction  # Bessel's correction
+    std = torch.sqrt(variance)
+    if keepdim:
+        return std
+    if dim is None:
+        return std.squeeze()
+    if isinstance(dim, int):
+        return std.squeeze(dim)
+    dims = [(d if d >= 0 else d + std.ndim) for d in dim]
+    for d in sorted(dims, reverse=True):
+        std = std.squeeze(d)
+    return std
 
 
 # code borrowed from verl/verl/utils/memory_utils.py
@@ -269,9 +309,9 @@ def prepare_deepspeed(model, accelerator, deepspeed_config=None, deepspeed_plugi
     try:
         import deepspeed
         import os
+        from accelerate.utils import DeepSpeedPlugin
         from copy import deepcopy
         from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
-        from accelerate.utils import DeepSpeedPlugin
     except ImportError:
         pass
 
@@ -538,7 +578,7 @@ def patch_lora_unmerge(model):
 
 
 @contextmanager
-def patch_profiling_context(trainer, name: str):
+def profiling_context(trainer, name: str):
     start_time = time.perf_counter()
     yield
     end_time = time.perf_counter()
@@ -546,18 +586,24 @@ def patch_profiling_context(trainer, name: str):
 
     profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
 
-    if 'wandb' in trainer.args.report_to and wandb.run is not None and trainer.accelerator.is_main_process:
+    is_main_process = False
+    if hasattr(trainer, 'accelerator'):
+        is_main_process = trainer.accelerator.is_main_process
+    elif hasattr(trainer, 'is_main_process'):
+        is_main_process = trainer.is_main_process
+
+    if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
         wandb.log(profiling_metrics)
 
-    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and trainer.accelerator.is_main_process:
+    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and is_main_process:
         swanlab.log(profiling_metrics)
 
 
-def patch_profiling_decorator(func):
+def profiling_decorator(func):
 
     @functools.wraps(func)
     def wrapper(self, *args, **kwargs):
-        with patch_profiling_context(self, func.__name__):
+        with profiling_context(self, func.__name__):
             return func(self, *args, **kwargs)
 
     return wrapper
@@ -1335,7 +1381,6 @@ def set_expandable_segments(enable: bool) -> None:
         >>> set_expandable_segments(True)  # Enable to help with OOM issues
         >>> set_expandable_segments(False) # Disable for more predictable memory usage
     """
-    global _EXPANDABLE_SEGMENTS_SET
     if not _EXPANDABLE_SEGMENTS_SET:
         return
     if torch.cuda.is_available():

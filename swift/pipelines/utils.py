@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-
 import numpy as np
+import os
 from datasets import load_from_disk
 
 from swift.dataset import DatasetSyntax, sample_dataset

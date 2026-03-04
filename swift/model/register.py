@@ -1,19 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 import os
-from contextlib import contextmanager, nullcontext
-from functools import partial
-from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
 import torch
 import transformers
+from contextlib import contextmanager, nullcontext
+from functools import partial
 from packaging import version
 from peft import PeftModel
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
+from types import MethodType
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.utils import (HfConfigFactory, Processor, get_generative_reranker_logits, get_logger, is_unsloth_available,
                          patch_getattr)
@@ -55,7 +54,7 @@ def load_by_unsloth(args):
 
     @contextmanager
     def _patch_distributed_function():
-        from unsloth_zoo import utils, compiler
+        from unsloth_zoo import compiler, utils
 
         def distributed_function(n=1, function=None, *args, **kwargs):
             return function(*args, **kwargs)
@@ -102,8 +101,8 @@ def _patch_awq_compat(model_info):
 
     try:
         # compat transformers>=4.50 (autoawq)
-        from transformers.quantizers.quantizer_awq import AwqQuantizer
         from transformers.integrations import get_keys_to_not_convert
+        from transformers.quantizers.quantizer_awq import AwqQuantizer
         _process_model_before_weight_loading = AwqQuantizer._process_model_before_weight_loading
 
         def _new_process_model_before_weight_loading(self, model, *args, **kwargs):
@@ -122,11 +121,11 @@ def _set_property(model, key):
     if not hasattr(model, 'model'):
         return
     text_model = model.model
-    if not hasattr(text_model, key):
+    if not hasattr(text_model, key) or hasattr(model.__class__, key):
         return
 
     def _value(self):
-        return getattr(text_model, key)
+        return getattr(self.model, key)
 
     setattr(model.__class__, key, property(_value))
 
@@ -184,6 +183,8 @@ class ModelLoader(BaseModelLoader):
         self.attn_impl = attn_impl
         self.attn_impl_keys = None
         experts_impl = experts_impl or kwargs.get('experts_implementation')
+        if experts_impl is not None and not transformers_5:
+            raise ValueError('experts_impl is only supported in "transformers>=5.0".')
         self.experts_impl = experts_impl
         self.rope_scaling = rope_scaling
         self.max_model_len = max_model_len
@@ -343,22 +344,21 @@ class ModelLoader(BaseModelLoader):
         self._init_generation_config(model, model_dir)
         HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
 
-    def _add_new_special_tokens(self, model, processor):
+    def _add_new_special_tokens(self, model, processor, config):
         if not self.new_special_tokens:
             return
         tokenizer = self._get_tokenizer(processor)
         num_new_tokens = tokenizer.add_special_tokens({'additional_special_tokens': self.new_special_tokens})
         if num_new_tokens > 0:
             logger.info(f'Added {num_new_tokens} new special tokens.')
-
-            if model is not None and not self.return_dummy_model:
-                llm_model = get_lm_head_model(model, self.model_meta)
-                origin_vocab_size = HfConfigFactory.get_config_attr(llm_model.config, 'vocab_size')
-                if origin_vocab_size < len(tokenizer):
-                    vocab_size = math.ceil(len(tokenizer) / 128) * 128
+            origin_vocab_size = HfConfigFactory.get_config_attr(config, 'vocab_size')
+            if origin_vocab_size < len(tokenizer):
+                vocab_size = math.ceil(len(tokenizer) / 128) * 128
+                # fix transformers==4.52.4 qwen2.5-vl
+                HfConfigFactory.set_config_attr(config, 'vocab_size', vocab_size)
+                if model is not None and not self.return_dummy_model:
+                    llm_model = get_lm_head_model(model, self.model_meta)
                     llm_model.resize_token_embeddings(vocab_size)
-                    # fix transformers==4.52.4 qwen2.5-vl
-                    HfConfigFactory.set_config_attr(llm_model.config, 'vocab_size', vocab_size)
 
     def _postprocess_processor(self, processor: Processor):
         tokenizer = self._get_tokenizer(processor)
@@ -425,6 +425,12 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'olmoe':
                 from transformers.models.olmoe.modeling_olmoe import OlmoeSparseMoeBlock
                 z3_leaf_modules = [OlmoeSparseMoeBlock]
+            elif hf_model_type == 'qwen3_5_moe':
+                from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import Qwen3_5MoeSparseMoeBlock
+                z3_leaf_modules = [Qwen3_5MoeSparseMoeBlock]
+            elif hf_model_type == 'glm_moe_dsa':
+                from transformers.models.glm_moe_dsa.modeling_glm_moe_dsa import GlmMoeDsaMoE
+                z3_leaf_modules = [GlmMoeDsaMoE]
 
         if z3_leaf_modules:
             from deepspeed.utils import set_z3_leaf_modules
@@ -457,7 +463,7 @@ class ModelLoader(BaseModelLoader):
             self._postprocess_processor(processor)
             if model:
                 self._postprocess_model(model_dir, model)
-        self._add_new_special_tokens(model, processor)
+        self._add_new_special_tokens(model, processor, config)
         return model, processor
 
 

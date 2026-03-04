@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
-
 import numpy as np
 import torch
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import upper_bound
 from ..base import Template

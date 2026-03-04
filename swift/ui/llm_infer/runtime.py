@@ -1,16 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import collections
+import gradio as gr
 import os.path
+import psutil
 import re
 import subprocess
 import sys
 import time
 from datetime import datetime
-from typing import Dict, List, Tuple, Type
-
-import gradio as gr
-import psutil
 from packaging import version
+from typing import Dict, List, Tuple, Type
 
 from swift.utils import format_time, get_logger
 from ..base import BaseUI

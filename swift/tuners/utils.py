@@ -2,23 +2,22 @@
 # Copyright 2023-present the HuggingFace Inc. team.
 
 import hashlib
+import json
+import numpy as np
 import os
 import shutil
 import tempfile
 import threading
-from dataclasses import asdict, dataclass, field
-from types import FunctionType
-from typing import Dict, Optional, Union
-
-import json
-import numpy as np
 import torch
+from dataclasses import asdict, dataclass, field
 from modelscope import snapshot_download
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
 from peft.utils import CONFIG_NAME
 from peft.utils import ModulesToSaveWrapper as _ModulesToSaveWrapper
 from peft.utils import _get_submodules
+from types import FunctionType
+from typing import Dict, Optional, Union
 
 from swift.model import MODEL_ARCH_MAPPING, ModelKeys
 from swift.utils import gc_collect, get_logger

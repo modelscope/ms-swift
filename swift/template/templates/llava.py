@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
-
 import torch
 import transformers
+from dataclasses import dataclass, field
 from packaging import version
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_env_args
 from ..base import Template

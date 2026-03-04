@@ -1,17 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import torch
+import torch.nn as nn
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Dict, List, Optional, Tuple, Union
-
-import torch
-import torch.nn as nn
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from trl.models.utils import prepare_deepspeed
 from trl.trainer import disable_dropout_in_model
 from trl.trainer.utils import selective_log_softmax
+from typing import Dict, List, Optional, Tuple, Union
 
 from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.utils import HfConfigFactory

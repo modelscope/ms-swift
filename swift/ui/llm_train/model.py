@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import gradio as gr
 from functools import partial
 from typing import Type
-
-import gradio as gr
 
 from swift.arguments import RLHFArguments
 from swift.model import ModelType, get_model_list

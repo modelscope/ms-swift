@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from contextlib import nullcontext
-from typing import List, Optional, Union
-
 import peft
+from contextlib import nullcontext
 from packaging import version
+from typing import List, Optional, Union
 
 from swift.arguments import BaseArguments, RLHFArguments
 from swift.dataset import DatasetLoader, load_dataset
@@ -88,7 +87,7 @@ class SwiftRLHF(SwiftSft):
             model, processor = args.get_model_processor(
                 model=model_id_or_path,
                 model_type=model_type,
-                model_revision=model_revision,
+                revision=model_revision,
                 task_type=task_type,
                 num_labels=num_labels)
 
@@ -231,8 +230,12 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
             if self.args.chord_sft_dataset:
                 trainer_kwargs['chord_sft_dataset'], _ = self._prepare_chord_sft_dataset()
-        if self.args.rlhf_type == 'gkd' and self.args.teacher_deepspeed:
-            trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
+        if self.args.rlhf_type == 'gkd':
+            if self.args.teacher_deepspeed:
+                trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
+            trainer_kwargs['gkd_logits_topk'] = self.args.gkd_logits_topk
+            if self.args.teacher_model_server:
+                trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
         return trainer_kwargs
 
 

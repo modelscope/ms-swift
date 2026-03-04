@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 from functools import wraps
-
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 

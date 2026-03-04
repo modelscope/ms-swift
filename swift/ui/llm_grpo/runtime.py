@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-
 import gradio as gr
+import os
 
 from swift.utils import get_logger
 from ..llm_train import Runtime

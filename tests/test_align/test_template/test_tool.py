@@ -65,7 +65,7 @@ def test_deepseek_r1_distill():
 
 
 if __name__ == '__main__':
-    from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
+    from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
     from swift.utils import get_logger
     logger = get_logger()
     # test_qwen2_5()

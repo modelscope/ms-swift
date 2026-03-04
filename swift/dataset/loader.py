@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import numpy as np
 import os
 from contextlib import nullcontext
-from functools import partial
-from typing import Dict, List, Literal, Optional, Tuple, Union
-
-import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import load_dataset as hf_load_dataset
+from functools import partial
 from modelscope.hub.utils.utils import get_cache_dir
+from typing import Dict, List, Literal, Optional, Tuple, Union
 
 from swift.hub import get_hub
 from swift.utils import get_logger, get_seed, safe_ddp_context, use_hf_hub

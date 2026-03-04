@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-from typing import Dict
-
 import numpy as np
+import os
 import torch
 from transformers import EvalPrediction
 from transformers.utils import strtobool
+from typing import Dict
 
 from swift.loss.embedding import _parse_multi_negative_sentences, _parse_pair_sentence
 from .base import EvalMetrics
@@ -41,9 +40,9 @@ class PairedMetrics(EvalMetrics, EmbedddingMetricMixin):
         return self._calculate_metrics(predictions, labels)
 
     def _calculate_metrics(self, predictions, labels):
+        from scipy.stats import pearsonr, spearmanr
         from sklearn.metrics.pairwise import (paired_cosine_distances, paired_euclidean_distances,
                                               paired_manhattan_distances)
-        from scipy.stats import pearsonr, spearmanr
         embeddings1, embeddings2 = _parse_pair_sentence(predictions)
         cosine_scores = 1 - (paired_cosine_distances(embeddings1, embeddings2))
         manhattan_distances = -paired_manhattan_distances(embeddings1, embeddings2)

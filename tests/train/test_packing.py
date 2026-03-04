@@ -11,7 +11,7 @@ kwargs = {
 
 
 def test_llm():
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2-7B-Instruct',
@@ -27,7 +27,7 @@ def test_llm():
 
 
 def test_streaming():
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2-7B-Instruct',
@@ -44,7 +44,7 @@ def test_streaming():
 
 
 def test_mllm_streaming():
-    from swift import sft_main, SftArguments, infer_main, InferArguments
+    from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
         SftArguments(
             model='Qwen/Qwen2.5-VL-7B-Instruct',

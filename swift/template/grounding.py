@@ -1,13 +1,12 @@
 import colorsys
 import itertools
 import os
-from copy import deepcopy
-from typing import Any, List, Literal
-
 import requests
+from copy import deepcopy
 from modelscope.hub.file_download import model_file_download
 from modelscope.hub.utils.utils import get_cache_dir
 from PIL import Image, ImageDraw, ImageFont
+from typing import Any, List, Literal
 
 
 def _shuffle_colors(nums: List[Any]) -> List[Any]:

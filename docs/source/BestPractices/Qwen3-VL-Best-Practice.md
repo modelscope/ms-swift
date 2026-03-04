@@ -153,7 +153,7 @@ Here’s a breakdown of what unfolds:
 Overall, this is a sweet, lighthearted video that showcases the innocence and imagination of early childhood. The child’s engagement with the book, combined with their glasses and playful demeanor, creates a delightful and memorable scene.
 ```
 
-- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义参考[命令行参数文档](../Instruction/Command-line-parameters.md#qwen3_vl)。
+- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义参考[命令行参数文档](../Instruction/Command-line-parameters.md#qwen3_vl-qwen3_5)。
 
 
 ## 训练
@@ -268,7 +268,6 @@ VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=16 \
 megatron sft \
     --model Qwen/Qwen3-VL-30B-A3B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#10000' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
@@ -286,18 +285,18 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen3-VL-30B-A3B-Instruct \
-    --eval_interval 500 \
-    --save_interval 500 \
+    --output_dir megatron_output/Qwen3-VL-30B-A3B-Instruct \
+    --eval_steps 500 \
+    --save_steps 500 \
     --max_length 4096 \
     --packing true \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

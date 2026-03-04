@@ -17,8 +17,9 @@ def _infer_image(model, system=None, images=None):
 
 
 def _infer_image_pipeline(model, images=None, prefix='<IMAGE_TOKEN>\n'):
-    from lmdeploy import pipeline, GenerationConfig
+    from lmdeploy import GenerationConfig, pipeline
     from lmdeploy.vl import load_image
+
     from swift.utils import safe_snapshot_download
     gen_config = GenerationConfig(temperature=0., repetition_penalty=1., max_new_tokens=64)
     pipe = pipeline(safe_snapshot_download(model))
@@ -71,7 +72,8 @@ def test_qwen2_5_vl():
 
 
 if __name__ == '__main__':
-    from swift.infer_engine import LmdeployEngine, InferRequest, RequestConfig
+    from swift.infer_engine import InferRequest, LmdeployEngine, RequestConfig
+
     # test_internvl2()
     # test_internvl2_5()
     # test_deepseek_vl()

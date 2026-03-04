@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from typing import TYPE_CHECKING, Optional
-
 import safetensors.torch
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
+from typing import TYPE_CHECKING, Optional
 
 from swift.utils import deep_getattr, get_logger, get_multimodal_target_regex
 from .base import Tuner

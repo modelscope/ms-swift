@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Any, Dict, List, Optional, Union
-
 import numpy as np
 from datasets import Dataset as HfDataset
 from tqdm import tqdm
+from typing import Any, Dict, List, Optional, Union
 
 from swift.arguments import InferArguments
 from swift.dataset import DatasetLoader, load_dataset, sample_dataset

@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .multi_turn import multi_turns, RolloutScheduler, MultiTurnScheduler
-    from .gym_env import envs, Env, context_managers, ContextManager
+    from .gym_env import ContextManager, Env, context_managers, envs
+    from .multi_turn import MultiTurnScheduler, RolloutScheduler, multi_turns
 
 else:
     _import_structure = {

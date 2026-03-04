@@ -3,14 +3,13 @@
 import os
 import platform
 import re
+import torch
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Tuple, Type
-
-import torch
 from transformers import AutoConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.utils.versions import require_version
+from typing import Any, Dict, List, Literal, Optional, Tuple, Type
 
 from swift.utils import HfConfigFactory, get_logger, safe_snapshot_download
 from .utils import get_default_torch_dtype
@@ -80,7 +79,7 @@ class ModelMeta:
     tags: List[str] = field(default_factory=list)
 
     def __post_init__(self):
-        from .constant import RMModelType, MLLMModelType
+        from .constant import MLLMModelType, RMModelType
         from .register import ModelLoader
         assert not isinstance(self.loader, str)  # check ms-swift4.0
         if self.loader is None:

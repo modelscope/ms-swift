@@ -1,11 +1,10 @@
 import math
 import threading
-from contextlib import suppress
-from typing import TYPE_CHECKING, Optional
-
 import torch
 import torch.nn.functional as F
+from contextlib import suppress
 from torch.optim import Optimizer
+from typing import TYPE_CHECKING, Optional
 
 from .base import OptimizerCallback
 

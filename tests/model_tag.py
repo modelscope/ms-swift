@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+import json
 import logging
 import os
-
-import json
 import requests
 
 from swift.version import __version__

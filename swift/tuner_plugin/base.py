@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import TYPE_CHECKING, Optional
-
 import torch
 from peft import PeftModel
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from swift.arguments import SftArguments

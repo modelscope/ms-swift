@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .prm import prms, PRM
-    from .orm import orms, ORM, AsyncORM
+    from .orm import ORM, AsyncORM, orms
+    from .prm import PRM, prms
     from .rm_plugin import rm_plugins
 
 else:

@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
+import json
+import numpy as np
 import re
 from functools import partial
 from typing import Any, Dict, List, Optional, Tuple, Union
-
-import json
-import numpy as np
 
 from swift.template import split_str_parts_by
 from ..preprocessor import (AlpacaPreprocessor, ClsGenerationPreprocessor, ClsPreprocessor, MessagesPreprocessor,

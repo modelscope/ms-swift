@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import numpy as np
 import os
+import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal
-
-import numpy as np
-import torch
 
 from swift.utils import is_deepspeed_enabled, to_device
 from ..base import Template

@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
 from copy import deepcopy
 from typing import Any, Dict, List, Optional, Union
-
-import json
 
 from swift.utils import get_logger, use_hf_hub
 from .dataset_meta import DATASET_MAPPING, DatasetMeta, SubsetDataset

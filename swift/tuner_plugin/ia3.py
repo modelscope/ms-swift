@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import TYPE_CHECKING
-
 import torch
 from peft import IA3Config, get_peft_model
+from typing import TYPE_CHECKING
 
 from swift.model import ModelKeys
 from swift.utils import find_all_linears

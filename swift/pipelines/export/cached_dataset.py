@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from typing import List, Optional, Union
-
 import torch
+from typing import List, Optional, Union
 
 from swift.arguments import ExportArguments
 from swift.utils import get_logger

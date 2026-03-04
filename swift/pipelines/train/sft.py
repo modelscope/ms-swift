@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from typing import List, Optional, Union
-
 from datasets import Dataset as HfDataset
+from typing import List, Optional, Union
 
 from swift.arguments import SftArguments
 from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
@@ -200,25 +199,29 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _get_trainer_kwargs(self):
         return {}
 
-    def _save_trainer_state(self, trainer):
-        training_args = trainer.args
+    def _handle_trainer_state(self, trainer, is_write_rank: bool):
         state = trainer.state
         if hasattr(state, 'last_model_checkpoint'):
             if self.args.create_checkpoint_symlink:
                 last_checkpoint = os.path.join(self.args.output_dir, 'last')
                 best_checkpoint = os.path.join(self.args.output_dir, 'best')
-                if is_master():
+                if is_write_rank:
                     os.symlink(state.last_model_checkpoint, last_checkpoint)
                     os.symlink(state.best_model_checkpoint, best_checkpoint)
                 state.last_model_checkpoint = last_checkpoint
                 state.best_model_checkpoint = best_checkpoint
         else:
             state.last_model_checkpoint = None
-        logger.info(f'last_model_checkpoint: {state.last_model_checkpoint}')
-        logger.info(f'best_model_checkpoint: {state.best_model_checkpoint}')
+        logger.info_if(f'last_model_checkpoint: {state.last_model_checkpoint}', cond=is_write_rank)
+        logger.info_if(f'best_model_checkpoint: {state.best_model_checkpoint}', cond=is_write_rank)
 
-        # Visualization
+    def _save_trainer_state(self, trainer):
+        training_args = trainer.args
+        state = trainer.state
+        self._handle_trainer_state(trainer, is_master())
+
         if is_master():
+            # Visualization
             if 'tensorboard' in training_args.report_to:
                 images_dir = os.path.join(training_args.output_dir, 'images')
                 logger.info(f'images_dir: {images_dir}')
@@ -239,28 +242,31 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             append_to_jsonl(jsonl_path, self.train_msg, strict=False)
         return self.train_msg
 
+    def _get_resume_checkpoint(self, trainer):
+        if self.args.resume_from_checkpoint:
+            return self.args.resume_from_checkpoint
+        resume_checkpoint = None
+        # If flash checkpoint is enabled, try to resume from the last complete checkpoint.
+        # If the previous training finished, resume_checkpoint stays None.
+        if self.args.use_flash_ckpt:
+            # resume_checkpoint = <resume_dir>/checkpoint-<step>
+            resume_checkpoint = trainer.get_resume_checkpoint()
+
+        # Elastic runs require a universal checkpoint; fall back when missing or incomplete.
+        callbacks = set(getattr(self.args, 'callbacks', []))
+        elastic_enabled = 'deepspeed_elastic' in callbacks
+        if elastic_enabled and (resume_checkpoint is None
+                                or not os.path.exists(os.path.join(resume_checkpoint, 'latest_universal'))):
+            # get_resume_checkpoint_until_find_ucp returns <resume_dir>/checkpoint-<step> with latest_universal,
+            # or None; when None, no universal checkpoint exists and training starts from scratch.
+            resume_checkpoint = trainer.get_resume_checkpoint_until_find_ucp()
+        return resume_checkpoint
+
     def train(self, trainer):
         logging_path = os.path.join(trainer.args.output_dir, 'logging.jsonl')
         logger.info(f'The logging file will be saved in: {logging_path}')
+        resume_checkpoint = self._get_resume_checkpoint(trainer)
         try:
-
-            resume_checkpoint = None
-            callbacks = set(getattr(self.args, 'callbacks', []))
-            elastic_enabled = 'deepspeed_elastic' in callbacks
-            # If flash checkpoint is enabled, try to resume from the last complete checkpoint.
-            # If the previous training finished, resume_checkpoint stays None.
-            if self.args.use_flash_ckpt:
-                # resume_checkpoint = <resume_dir>/checkpoint-<step>
-                resume_checkpoint = trainer.get_resume_checkpoint()
-            # Elastic runs require a universal checkpoint; fall back when missing or incomplete.
-            if elastic_enabled and (resume_checkpoint is None
-                                    or not os.path.exists(os.path.join(resume_checkpoint, 'latest_universal'))):
-                # get_resume_checkpoint_until_find_ucp returns <resume_dir>/checkpoint-<step> with latest_universal,
-                # or None; when None, no universal checkpoint exists and training starts from scratch.
-                resume_checkpoint = trainer.get_resume_checkpoint_until_find_ucp()
-            # Explicit user override always wins.
-            if self.args.resume_from_checkpoint:
-                resume_checkpoint = self.args.resume_from_checkpoint
             trainer.train(resume_checkpoint)
         finally:
             res = self._save_trainer_state(trainer)
@@ -336,6 +342,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     load_from_cache_file=args.load_from_cache_file,
                     strict=args.strict,
                     batch_size=batch_size)
+                if len(dataset) == 0:
+                    dataset = None
             datasets[i] = dataset
         template.model = origin_template_model
 

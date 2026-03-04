@@ -2,19 +2,18 @@
 
 import os
 import re
+import torch
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from functools import partial
 from itertools import repeat
-from queue import Queue
-from typing import List, Optional, Union
-
-import torch
 from packaging import version
+from queue import Queue
 from transformers import GenerationConfig, LogitsProcessor
 from transformers.generation.streamers import BaseStreamer
+from typing import List, Optional, Union
 
 from swift.model.register import fix_do_sample_warning
 from swift.utils import get_device
@@ -389,9 +388,9 @@ def patch_vllm_memory_leak():
         return
 
     def patch_vllm_abort_seq_group():
+        from typing import Dict, Iterable
         from vllm.core.scheduler import Scheduler
-        from typing import Iterable, Dict
-        from vllm.sequence import SequenceGroupBase, SequenceGroup, SequenceStatus
+        from vllm.sequence import SequenceGroup, SequenceGroupBase, SequenceStatus
 
         def new_abort_seq_group(
             self,

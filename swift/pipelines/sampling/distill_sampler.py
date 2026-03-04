@@ -1,8 +1,7 @@
 import os
 from copy import deepcopy
-from typing import List, Optional
-
 from openai import OpenAI
+from typing import List, Optional
 
 from swift.infer_engine import InferRequest, RequestConfig
 from swift.ray import RayHelper

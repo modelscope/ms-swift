@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-from enum import Enum
-
 import numpy as np
+import os
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
 from accelerate.utils import gather_object
+from enum import Enum
 from torch import nn
 from torch.nn import MSELoss
 from transformers.utils import strtobool

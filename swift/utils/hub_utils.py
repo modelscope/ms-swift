@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from typing import List, Optional
-
 import requests
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.hub.utils.utils import get_cache_dir
 from tqdm import tqdm
+from typing import List, Optional
 
 from .logger import get_logger
 from .torch_utils import is_local_master, safe_ddp_context

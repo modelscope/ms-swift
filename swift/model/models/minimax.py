@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
-
 import json
+import os
 from transformers import AutoProcessor, PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 

@@ -1,14 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import TYPE_CHECKING
-
 import numpy as np
 from transformers import TrainerControl, TrainerState
+from typing import TYPE_CHECKING
 
 from swift.utils import get_logger
 from .base import TrainerCallback
 
 if TYPE_CHECKING:
-    from swift.trainers import TrainingArguments, Trainer
+    from swift.trainers import Trainer, TrainingArguments
 
 logger = get_logger()
 

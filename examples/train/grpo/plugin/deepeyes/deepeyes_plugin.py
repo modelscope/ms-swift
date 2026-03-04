@@ -2,15 +2,14 @@
 
 import base64
 import io
+import json
 import os
 import random
 import re
 from math import ceil, floor
-from typing import Any, Dict, List
-
-import json
 from openai import OpenAI
 from PIL import Image
+from typing import Any, Dict, List
 
 from swift.rewards.orm import ORM, orms
 from swift.rollout.multi_turn import MultiTurnScheduler, multi_turns
@@ -188,8 +187,8 @@ def rule_math_verify(ground_truth, model_answer):
 
 class DeepEyesReward(ORM):
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, args, **kwargs):
+        super().__init__(args)
         try:
             self.client = OpenAI(
                 api_key='EMPTY',

@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass
-from types import MethodType
-from typing import List, Literal, Optional
-
 import json
 import torch
+from dataclasses import dataclass
 from torch import nn
+from types import MethodType
+from typing import List, Literal, Optional
 
 from swift.utils import get_logger, patch_getattr
 from .utils import SwiftAdapter, SwiftConfig, SwiftOutput
@@ -55,19 +54,13 @@ class Reft(SwiftAdapter):
     def prepare_model(model: nn.Module, config: ReftConfig, adapter_name: str):
         from swift.utils.import_utils import is_pyreft_available
         if not is_pyreft_available():
-            raise ImportError('Please install pyreft before using ReFT: ' '`pip install pyreft`')
+            raise ImportError('Please install pyreft before using ReFT: '
+                              '`pip install pyreft`')
 
         import pyreft
-        from pyreft import ReftModel
+        from pyreft import (ConsreftIntervention, DireftIntervention, LobireftIntervention, LoreftIntervention,
+                            NodireftIntervention, NoreftIntervention, ReftModel)
         from pyreft.interventions import LowRankRotateLayer
-        from pyreft import (
-            NoreftIntervention,
-            LoreftIntervention,
-            ConsreftIntervention,
-            LobireftIntervention,
-            DireftIntervention,
-            NodireftIntervention,
-        )
 
         intervention_mapping = {
             'NoreftIntervention': NoreftIntervention,

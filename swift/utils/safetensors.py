@@ -1,9 +1,8 @@
+import json
 import os
 from functools import partial
-from typing import Literal
-
-import json
 from safetensors.torch import safe_open, save_file
+from typing import Literal
 
 from swift.utils import is_last_rank, is_master
 
@@ -84,7 +83,7 @@ class StreamingSafetensorSaver:
         self,
         save_dir,
         max_shard_size: str = '5GB',
-        save_rank: Literal['master', 'last'] = 'last',
+        save_rank: Literal['master', 'last'] = 'master',
         is_peft_format: bool = False,
     ) -> None:
         self.save_dir = save_dir
@@ -99,7 +98,7 @@ class StreamingSafetensorSaver:
         self.total_size = 0
         self.shard_index = 1
         self.weight_map = {}
-        self.is_save_rank = is_last_rank() if save_rank == 'last' else is_master()
+        self.is_save_rank = is_master() if save_rank == 'master' else is_last_rank()
         self.is_peft_format = is_peft_format
         if self.is_save_rank:
             os.makedirs(save_dir, exist_ok=True)

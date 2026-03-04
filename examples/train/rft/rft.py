@@ -71,7 +71,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
             f'--sampler_engine no '
             f'--orm_model math '  # math defines in swift/rewards/orm.py
             f'--prm_model Qwen/Qwen2.5-Math-PRM-7B '
-            f'--prm_threshold {min(0.7 + 0.1*iter, 0.9)} '
+            f'--prm_threshold {min(0.7 + 0.1 * iter, 0.9)} '
             f'--max_new_tokens 768 '
             f'--override_exist_file true '  # no not override the existing sample files
             f'--num_sampling_batch_size 1 '
@@ -205,7 +205,7 @@ def main():
         ts = time.time()
         datasets = do_sample(model, model_type, ['tastelikefeet/competition_math'], i)
         # add custom data filter here, for example: length or diversity control
-        print(f'do sample cost: {(time.time()-ts) / 60:.1f} minutes.', flush=True)
+        print(f'do sample cost: {(time.time() - ts) / 60:.1f} minutes.', flush=True)
         ts = time.time()
         # if want to train the original dataset with datasets, add the original dataset here
         # if want to train the original model everytime, change to first_model

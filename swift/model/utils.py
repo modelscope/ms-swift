@@ -1,21 +1,22 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import shutil
-from functools import wraps
-from types import MethodType
-from typing import List, Optional, TypeVar, Union
-
 import torch
 import torch.nn.functional as F
 from accelerate.utils import find_device
+from functools import wraps
 from packaging import version
+from peft import PeftModel
 from torch import nn
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
                                 is_torch_npu_available, strtobool)
+from types import MethodType
+from typing import List, Optional, TypeVar, Union
 
-from swift.utils import HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_logger, is_mp, to_device
+from swift.utils import (HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_env_args, get_logger, is_mp,
+                         to_device)
 
 logger = get_logger()
 
@@ -62,9 +63,9 @@ def get_llm_model(model: torch.nn.Module, model_meta=None, inner_backbone=True):
     Returns:
 
     """
-    from swift.tuners import SwiftModel
-    from peft import PeftModel
     from accelerate.utils import extract_model_from_parallel
+
+    from swift.tuners import SwiftModel
     model = extract_model_from_parallel(model)
 
     if isinstance(model, (SwiftModel, PeftModel)):
@@ -92,6 +93,7 @@ def use_submodel_func(model, submodel_name: str, func_list: Optional[List[str]] 
     submodel = getattr(model, submodel_name)
 
     def _get_new_func(func_name: str):
+        # Please ensure the patch to submodel.forward is applied before this function.
         _old_func = getattr(submodel, func_name).__func__
 
         @wraps(_old_func)
@@ -257,13 +259,11 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
 
 
 def _patch_conv3d():
-
-    if not hasattr(nn.Conv3d, '_original_forward'):
-        nn.Conv3d._original_forward = nn.Conv3d.forward
+    if hasattr(nn.Conv3d, '_original_forward'):
+        return
+    nn.Conv3d._original_forward = nn.Conv3d.forward
 
     def forward(self, x):
-        if version.parse(torch.__version__) < version.parse('2.9.0'):
-            return self._original_forward(x)
         if any(s != k for s, k in zip(self.stride, self.kernel_size)) or any(p != 0 for p in self.padding) or any(
                 d != 1 for d in self.dilation) or self.groups != 1:
             raise NotImplementedError(
@@ -281,7 +281,19 @@ def _patch_conv3d():
     logger.info('Conv3d patched successfully')
 
 
-if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
+SWIFT_PATCH_CONV3D = get_env_args('SWIFT_PATCH_CONV3D', bool, None)
+torch_version = version.parse(torch.__version__)
+
+if SWIFT_PATCH_CONV3D is None:
+    # Default behavior: patch only for torch 2.9.x
+    SWIFT_PATCH_CONV3D = version.parse('2.9.0') < torch_version < version.parse('2.10.0')
+    logger.info(f'setting SWIFT_PATCH_CONV3D: {SWIFT_PATCH_CONV3D}.')
+elif SWIFT_PATCH_CONV3D and torch_version < version.parse('2.9.0'):
+    # User override for an unsupported version, correct it.
+    SWIFT_PATCH_CONV3D = False
+    logger.info('torch versions <2.9 do not require patching conv3d. setting SWIFT_PATCH_CONV3D: False.')
+
+if SWIFT_PATCH_CONV3D:
     _patch_conv3d()
 
 

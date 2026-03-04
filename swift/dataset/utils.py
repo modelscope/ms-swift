@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import numpy as np
 import os
 import tempfile
-from typing import Any, Callable, Dict, Optional, Union
-
-import numpy as np
 from datasets import Dataset as HfDataset
 from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset
+from typing import Any, Callable, Dict, Optional, Union
 
 from swift.template import Template
 from swift.utils import get_logger
@@ -140,7 +139,6 @@ def get_temporary_cache_files_directory(prefix=None):
     if prefix is None:
         import datasets.config
         prefix = datasets.config.TEMP_CACHE_DIR_PREFIX
-    global TEMP_DIR_POOL
     if prefix in TEMP_DIR_POOL:
         TEMP_DIR = TEMP_DIR_POOL[prefix]
     else:

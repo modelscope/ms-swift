@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from dataclasses import dataclass, field
-from typing import List, Literal, Optional
-
 import torch
 import torch.distributed as dist
+from dataclasses import dataclass
+from typing import Literal, Optional
 
 from swift.utils import HfConfigFactory, get_logger, init_process_group, set_default_ddp_config, to_abspath
 from .base_args import BaseArguments
@@ -32,7 +31,7 @@ class ExportArguments(MergeArguments, BaseArguments):
         to_mcore (bool): Whether to convert Hugging Face format weights to Megatron-Core format. Defaults to False.
         to_hf (bool): Whether to convert Megatron-Core format weights to Hugging Face format. Defaults to False.
         mcore_model (Optional[str]): The path to the Megatron-Core format model. Defaults to None.
-        mcore_adapters (List[str]): A list of adapter paths for the Megatron-Core format model. Defaults to [].
+        mcore_adapter (Optional[str]): A list of adapter paths for the Megatron-Core format model. Defaults to [].
         thread_count (Optional[int]): The number of model shards when `to_mcore` is True. Defaults to None, which
             automatically sets the number based on the model size to keep the largest shard under 10GB.
         test_convert_precision (bool): Whether to test the precision error of weight conversion between Hugging Face
@@ -68,7 +67,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     to_mcore: bool = False
     to_hf: bool = False
     mcore_model: Optional[str] = None
-    mcore_adapters: List[str] = field(default_factory=list)
+    mcore_adapter: Optional[str] = None
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
     test_convert_dtype: str = 'float32'
@@ -121,8 +120,6 @@ class ExportArguments(MergeArguments, BaseArguments):
     def __post_init__(self):
         if self.quant_batch_size == -1:
             self.quant_batch_size = None
-        if isinstance(self.mcore_adapters, str):
-            self.mcore_adapters = [self.mcore_adapters]
         if self.quant_bits and self.quant_method is None:
             raise ValueError('Please specify the quantization method using `--quant_method awq/gptq/bnb`.')
         if self.quant_method and self.quant_bits is None and self.quant_method != 'fp8':

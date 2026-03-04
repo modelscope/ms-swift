@@ -16,7 +16,7 @@ class TestAsyncRewardFunctions(unittest.TestCase):
 
     def test_start_and_shutdown_event_loop_in_daemon(self):
         """Test that we can start and shutdown an event loop in a daemon thread."""
-        from swift.utils import start_event_loop_in_daemon, shutdown_event_loop_in_daemon
+        from swift.utils import shutdown_event_loop_in_daemon, start_event_loop_in_daemon
 
         # Start the event loop
         thread, loop, ready_event = start_event_loop_in_daemon(name='TestLoop')
@@ -37,7 +37,7 @@ class TestAsyncRewardFunctions(unittest.TestCase):
 
     def test_run_async_function_in_daemon_loop(self):
         """Test running an async function in the daemon event loop."""
-        from swift.utils import start_event_loop_in_daemon, shutdown_event_loop_in_daemon
+        from swift.utils import shutdown_event_loop_in_daemon, start_event_loop_in_daemon
 
         thread, loop, ready_event = start_event_loop_in_daemon(name='TestLoop')
         ready_event.wait(timeout=5)
@@ -105,7 +105,7 @@ class TestAsyncRewardPerformance(unittest.TestCase):
 
     def test_parallel_async_execution(self):
         """Test that multiple async reward functions execute in parallel."""
-        from swift.utils import start_event_loop_in_daemon, shutdown_event_loop_in_daemon
+        from swift.utils import shutdown_event_loop_in_daemon, start_event_loop_in_daemon
 
         thread, loop, ready_event = start_event_loop_in_daemon(name='PerfTestLoop')
         ready_event.wait(timeout=5)
@@ -153,7 +153,7 @@ class TestAsyncRewardPerformance(unittest.TestCase):
     def test_async_reward_function_batch_performance(self):
         """Test performance of async reward function with batch processing."""
         from swift.rewards import AsyncORM
-        from swift.utils import start_event_loop_in_daemon, shutdown_event_loop_in_daemon
+        from swift.utils import shutdown_event_loop_in_daemon, start_event_loop_in_daemon
 
         sleep_per_item = 0.05  # 50ms per item
         batch_size = 8

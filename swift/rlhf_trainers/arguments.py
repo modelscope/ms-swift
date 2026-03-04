@@ -1,15 +1,25 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import trl
 from dataclasses import dataclass
-from typing import Optional
+from packaging import version
+from transformers.utils.versions import require_version
 
-from trl import CPOConfig as HfCPOConfig
+if version.parse(trl.__version__) <= version.parse('0.28'):
+    from trl import CPOConfig as HfCPOConfig
+    from trl import GKDConfig as HfGKDConfig
+    from trl import ORPOConfig as HfORPOConfig
+    from trl import PPOConfig as HfPPOConfig
+else:
+    from trl.experimental.cpo import CPOConfig as HfCPOConfig
+    from trl.experimental.gkd import GKDConfig as HfGKDConfig
+    from trl.experimental.orpo import ORPOConfig as HfORPOConfig
+    from trl.experimental.ppo import PPOConfig as HfPPOConfig
+
 from trl import DPOConfig as HfDPOConfig
-from trl import GKDConfig as HfGKDConfig
 from trl import GRPOConfig as HfGRPOConfig
 from trl import KTOConfig as HfKTOConfig
-from trl import ORPOConfig as HfORPOConfig
-from trl import PPOConfig as HfPPOConfig
 from trl import RewardConfig as HfRewardConfig
+from typing import Optional
 
 from swift.trainers import TrainArgumentsMixin
 from .args_mixin import GRPOArgumentsMixin, RolloutTrainerArgumentsMixin
@@ -82,6 +92,7 @@ class GKDConfig(RolloutTrainerArgumentsMixin, TrainArgumentsMixin, HfGKDConfig):
 class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
 
     def __post_init__(self):
+        require_version('trl>=0.20')
         GRPOArgumentsMixin.__post_init__(self)
         TrainArgumentsMixin.__post_init__(self)
         HfGRPOConfig.__post_init__(self)
@@ -100,24 +111,11 @@ class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
         # https://github.com/modelscope/ms-swift/issues/3863
         self.dataloader_drop_last = True
 
-        num_processes = self.world_size
-        if self.steps_per_generation is None:
-            self.steps_per_generation = self.gradient_accumulation_steps
-        if self.generation_batch_size is None:
-            self.generation_batch_size = self.per_device_train_batch_size * num_processes * self.steps_per_generation
-
         self.check_num_generations()
 
     def check_num_generations(self):
         # check num_generations for trl < 0.18
         num_processes = self.world_size
-
-        if self.generation_batch_size % (self.per_device_train_batch_size * num_processes) != 0:
-            raise ValueError(
-                f'generation_batch_size ({self.generation_batch_size}) must be divisible by the global batch size '
-                f'({self.per_device_train_batch_size * num_processes}).')
-
-        self.steps_per_generation = self.generation_batch_size // (self.per_device_train_batch_size * num_processes)
 
         # Check if the effective batch size can be divided by the number of generations
         if self.num_generations < 2:

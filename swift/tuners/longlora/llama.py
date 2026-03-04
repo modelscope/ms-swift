@@ -2,14 +2,13 @@
 # Part of the implementation is borrowed from dvlab-research/LongLoRA.
 
 import math
-from types import MethodType
-from typing import Optional, Tuple
-
 import torch
 import torch.nn.functional as F
 from torch import nn
 from transformers import Cache, StaticCache
 from transformers.models.llama.modeling_llama import apply_rotary_pos_emb, repeat_kv
+from types import MethodType
+from typing import Optional, Tuple
 
 from swift.utils import get_logger
 

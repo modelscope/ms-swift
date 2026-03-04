@@ -1,16 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Copyright 2023-present the HuggingFace Inc. team.
-import os.path
-from dataclasses import asdict, dataclass, field
-from functools import partial, reduce
-from types import MethodType
-from typing import Dict, Optional
-
 import json
+import os.path
 import peft
 import torch
 import torch.nn
 import transformers
+from dataclasses import asdict, dataclass, field
+from functools import partial, reduce
 from modelscope import snapshot_download
 from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig, LoKrConfig, LoraModel, OFTConfig,
                   PeftConfig, PeftModel, PeftModelForCausalLM, PeftModelForSeq2SeqLM,
@@ -22,6 +19,8 @@ from peft.tuners import lora
 from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
 from transformers import Trainer as HfTrainer
+from types import MethodType
+from typing import Dict, Optional
 
 from swift.utils import get_logger
 
@@ -86,17 +85,7 @@ class LoraConfig(peft.LoraConfig):
 
 
 def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **kwargs):
-    all_supported_names = ('linear', )
-    all_supported_types = (torch.nn.Embedding, torch.nn.Conv2d, transformers.pytorch_utils.Conv1D, lora.Linear)
-    target_modules = getattr(peft_config, 'target_modules', None)
-    target_parameters = getattr(peft_config, 'target_parameters', None)
     if target is None:
-        return
-
-    if isinstance(target_modules, str) and not any(
-        [name in target.__class__.__name__.lower()
-         for name in all_supported_names]) and not any([isinstance(target, type_)
-                                                        for type_ in all_supported_types]) and not target_parameters:
         return
 
     if target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':

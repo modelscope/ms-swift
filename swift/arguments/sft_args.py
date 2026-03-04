@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from dataclasses import dataclass
+from transformers.utils.versions import require_version
 from typing import Literal, Optional
 
-from transformers.utils.versions import require_version
-
 from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
-from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
-                         is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
+from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_mp,
+                         is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
 from .base_args import BaseArguments
 from .tuner_args import TunerArguments
 
@@ -38,6 +37,13 @@ class SwanlabArguments:
             SwanLab's `swanlab_notification_method`.
         swanlab_secret (Optional[str]): Defaults to None. The secret corresponding to
             SwanLab's `swanlab_notification_method`.
+        swanlab_sender_email (Optional[str]): The email address of the sender. Required when
+            `swanlab_notification_method` is 'email'.
+        swanlab_receiver_email (Optional[str]): The email address of the receiver. Required when
+            `swanlab_notification_method` is 'email'.
+        swanlab_smtp_server (Optional[str]): The SMTP server address for email notification (e.g., 'smtp.qq.com').
+        swanlab_smtp_port (Optional[int]): The SMTP server port for email notification (e.g., 465).
+        swanlab_email_language (Optional[str]): email messages language. Supports 'zh', 'en'. The default is "zh".
         swanlab_mode (Literal['cloud', 'local']): The operation mode, either 'cloud' for cloud-based logging or 'local'
             for local-only logging.
     """
@@ -48,22 +54,28 @@ class SwanlabArguments:
     swanlab_notification_method: Optional[str] = None
     swanlab_webhook_url: Optional[str] = None
     swanlab_secret: Optional[str] = None
+    swanlab_sender_email: Optional[str] = None
+    swanlab_receiver_email: Optional[str] = None
+    swanlab_smtp_server: Optional[str] = None
+    swanlab_smtp_port: Optional[int] = None
+    swanlab_email_language: Optional[str] = 'zh'
     swanlab_mode: Literal['cloud', 'local'] = 'cloud'
 
     def _init_swanlab(self):
         if not is_swanlab_available():
-            raise ValueError('You are using swanlab as `report_to`, please install swanlab by ' '`pip install swanlab`')
+            raise ValueError('You are using swanlab as `report_to`, please install swanlab by '
+                             '`pip install swanlab`')
         if not self.swanlab_exp_name:
             self.swanlab_exp_name = self.output_dir
-        from transformers.integrations import INTEGRATION_TO_CALLBACK
         import swanlab
         from swanlab.integration.transformers import SwanLabCallback
+        from transformers.integrations import INTEGRATION_TO_CALLBACK
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
 
         if self.swanlab_notification_method is not None:
-            from swanlab.plugin.notification import (LarkCallback, DingTalkCallback, EmailCallback, DiscordCallback,
-                                                     WXWorkCallback, SlackCallback)
+            from swanlab.plugin.notification import (DingTalkCallback, DiscordCallback, EmailCallback, LarkCallback,
+                                                     SlackCallback, WXWorkCallback)
             notification_mapping = {
                 'lark': LarkCallback,
                 'dingtalk': DingTalkCallback,
@@ -77,10 +89,25 @@ class SwanlabArguments:
                 raise ValueError(
                     f'Unsupported swanlab_notification_method: "{self.swanlab_notification_method}". Supported methods'
                     f' are: {list(notification_mapping.keys())}')
-            callback = callback_cls(
-                webhook_url=self.swanlab_webhook_url,
-                secret=self.swanlab_secret,
-            )
+
+            if self.swanlab_notification_method == 'email':
+                if not (self.swanlab_sender_email and self.swanlab_receiver_email and self.swanlab_smtp_server
+                        and self.swanlab_smtp_port):
+                    raise ValueError("When 'swanlab_notification_method' is 'email', both 'swanlab_sender_email' "
+                                     "and 'swanlab_receiver_email' and 'swanlab_smtp_server' and 'swanlab_smtp_port' "
+                                     'must be provided.')
+                callback = EmailCallback(
+                    sender_email=self.swanlab_sender_email,
+                    receiver_email=self.swanlab_receiver_email,
+                    password=self.swanlab_secret,
+                    smtp_server=self.swanlab_smtp_server,
+                    port=self.swanlab_smtp_port,
+                    language=self.swanlab_email_language)
+            else:
+                callback = callback_cls(
+                    webhook_url=self.swanlab_webhook_url,
+                    secret=self.swanlab_secret,
+                )
             swanlab.register_callbacks([callback])
 
         INTEGRATION_TO_CALLBACK['swanlab'] = SwanLabCallback(
@@ -346,8 +373,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             self.logging_dir = f'{self.output_dir}/runs'
 
         self.logging_dir = to_abspath(self.logging_dir)
-        if is_master():
-            os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
 
         if self.run_name is None:
             self.run_name = self.output_dir

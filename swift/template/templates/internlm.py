@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
-
 import torch
+from dataclasses import dataclass, field
 from PIL import Image
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_env_args
 from ..base import Template

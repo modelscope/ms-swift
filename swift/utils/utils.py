@@ -4,6 +4,9 @@ import datetime as dt
 import fnmatch
 import glob
 import importlib
+import json
+import json_repair
+import numpy as np
 import os
 import random
 import re
@@ -13,17 +16,13 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import contextmanager
-from functools import wraps
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
-
-import json
-import json_repair
-import numpy as np
 import torch
 import torch.distributed as dist
+from contextlib import contextmanager
+from functools import wraps
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 from .env import is_dist, is_master
 from .logger import get_logger
@@ -87,7 +86,7 @@ def format_time(seconds):
     days = int(seconds // (24 * 3600))
     hours = int((seconds % (24 * 3600)) // 3600)
     minutes = int((seconds % 3600) // 60)
-    seconds = int(seconds % 60)
+    seconds = round(seconds % 60)
 
     if days > 0:
         time_str = f'{days}d {hours}h {minutes}m {seconds}s'
@@ -113,7 +112,7 @@ def deep_getattr(obj, attr: str, default=None):
     return obj
 
 
-def seed_everything(seed: Optional[int] = None, full_determinism: bool = False, *, verbose: bool = True) -> int:
+def seed_everything(seed: Optional[int] = None, full_determinism: bool = False) -> int:
 
     if seed is None:
         seed_max = np.iinfo(np.int32).max
@@ -123,8 +122,6 @@ def seed_everything(seed: Optional[int] = None, full_determinism: bool = False, 
         enable_full_determinism(seed)
     else:
         set_seed(seed)
-    if verbose:
-        logger.info(f'Global seed set to {seed}')
     return seed
 
 

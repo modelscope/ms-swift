@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from contextlib import nullcontext
-from typing import List, Optional, Union
-
 import gradio
+from contextlib import nullcontext
 from packaging import version
+from typing import List, Optional, Union
 
 from swift.arguments import AppArguments
 from swift.utils import get_logger

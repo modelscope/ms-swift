@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import warnings
-from typing import Any, Dict, Optional
-
 from datasets import Dataset as HfDataset
+from typing import Any, Dict, Optional
 
 from swift.dataset import RowPreprocessor
 from swift.utils import get_dist_setting, get_logger

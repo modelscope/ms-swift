@@ -1,6 +1,5 @@
-import os
-
 import json
+import os
 import torch
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
@@ -185,6 +184,7 @@ def test_glm_edge():
 
 def test_llama():
     from swift.infer_engine import VllmEngine
+
     # engine = TransformersEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct-BNB-NF4')
     # engine = TransformersEngine('LLM-Research/Meta-Llama-3.1-8B-Instruct')
     # engine = TransformersEngine('LLM-Research/Meta-Llama-3-8B-Instruct')
@@ -717,7 +717,7 @@ def test_olmoe():
 
 
 if __name__ == '__main__':
-    from swift.infer_engine import TransformersEngine, RequestConfig
+    from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_5()

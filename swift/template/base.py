@@ -5,16 +5,14 @@ import math
 import os
 import random
 import re
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import asdict
 from functools import partial, wraps
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from modelscope.hub.utils.utils import get_cache_dir
 from peft import PeftModel
 from PIL import Image
@@ -22,6 +20,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import StoppingCriteriaList
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
@@ -30,8 +29,8 @@ from .vision_utils import load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
-    from .template_meta import TemplateMeta
     from swift.infer_engine import InferRequest
+    from .template_meta import TemplateMeta
 
 
 class MaxLengthError(ValueError):
@@ -105,8 +104,8 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
-        from swift.loss_scale import LossScale, get_loss_scale
         from swift.agent_template import agent_template_map
+        from swift.loss_scale import LossScale, get_loss_scale
         self._processor_inited = False
         self._version = 'v6'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
@@ -481,16 +480,6 @@ class Template(ProcessorMixin):
             _encoded['labels'] = labels
         else:
             anchor = inputs.chosen
-            # Ensure that load_data_args true runs through inference successfully
-            # if len(anchor.messages) == 1:
-            #     docs = inputs.positive + inputs.negative
-            #     if docs:
-            #         assistant_messages = docs[0].messages
-            #         assert anchor.messages[0]['role'] == 'user' and assistant_messages[0]['role'] == 'assistant'
-            #         anchor.messages = anchor.messages + assistant_messages
-            #         anchor.images = anchor.images + docs[0].images
-            #         anchor.audios = anchor.audios + docs[0].audios
-            #         anchor.videos = anchor.videos + docs[0].videos
             _encoded = self._encode_truncated(anchor)
             _encoded.pop('labels', None)
         return _encoded
@@ -822,7 +811,7 @@ class Template(ProcessorMixin):
         elif media_type == 'video':
             if self.mode == 'vllm':
                 # https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/vision_language.py
-                from vllm.assets.video import video_to_ndarrays, video_get_metadata
+                from vllm.assets.video import video_get_metadata, video_to_ndarrays
                 num_frames = get_env_args('vllm_num_frames', int, 16)
                 video_data = video_to_ndarrays(inputs.videos[index], num_frames)
                 video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
@@ -2079,8 +2068,8 @@ class Template(ProcessorMixin):
 
         def _flash_attention_forward(*args, **kwargs):
             if use_new_func:
-                from transformers.modeling_flash_attention_utils import (_flash_attention_forward as
-                                                                         flash_attention_forward)
+                from transformers.modeling_flash_attention_utils import \
+                    _flash_attention_forward as flash_attention_forward
                 if args and isinstance(args[0], nn.Module):
                     args = args[1:]
                 if 'is_causal' not in kwargs:

@@ -1,17 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
+import numpy as np
 import os
 from collections import Counter
 from contextlib import contextmanager
-from itertools import chain
-from typing import Any, Callable, Dict, List, Optional, Union
-
-import numpy as np
 from datasets import Dataset as HfDataset
 from datasets import Image
 from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
+from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from swift.template import history_to_messages
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
@@ -166,7 +165,7 @@ class RowPreprocessor:
 
     def batched_preprocess(self, batched_row: Dict[str, Any], *, strict: bool,
                            ignore_max_length_error: bool) -> Dict[str, Any]:
-        from ...template import MaxLengthError
+        from swift.template import MaxLengthError
         batched_row = dict(batched_row)
         assert len(batched_row) > 0
         self._remove_prefix_keys(batched_row, '__@')  # compat streaming
@@ -330,7 +329,7 @@ class RowPreprocessor:
             if columns:
                 dataset = dataset.rename_columns(columns)
 
-        ignore_max_length_error = True if isinstance(dataset, HfDataset) and num_proc > 1 else False
+        ignore_max_length_error = True
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             try:
                 if isinstance(dataset, HfDataset) and not dataset.cache_files:
@@ -340,7 +339,7 @@ class RowPreprocessor:
                     self.batched_preprocess,
                     fn_kwargs={
                         'strict': strict,
-                        'ignore_max_length_error': ignore_max_length_error
+                        'ignore_max_length_error': ignore_max_length_error,
                     },
                     remove_columns=list(dataset.features.keys()),
                     **map_kwargs)
@@ -374,6 +373,7 @@ class ResponsePreprocessor(RowPreprocessor):
         if response is not None:
             if isinstance(response, (list, tuple)):
                 from transformers.utils import strtobool
+
                 # sometimes response is a list, pick one randomly
                 if strtobool(os.environ.get('RANDOM_DATASET_RESPONSE', 'False')):
                     response = self.random_state.choice(response)

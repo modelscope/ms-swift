@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
 from dataclasses import dataclass, field, fields
-from typing import Any, Dict, List, Literal, Optional, Union
-
-import json
 from packaging import version
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import swift
 from swift.hub import get_hub
@@ -216,9 +215,8 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     def _init_ckpt_dir(self, adapters=None):
         # compat megatron
-        model = self.model or getattr(self, 'mcore_model', None) or getattr(self, 'load', None)
-        adapters = adapters or self.adapters or getattr(self, 'mcore_adapters', None) or getattr(
-            self, 'adapter_load', None)
+        model = self.model or getattr(self, 'mcore_model', None)
+        adapters = adapters or self.adapters or getattr(self, 'mcore_adapter', None)
         if isinstance(adapters, str):
             adapters = [adapters]
         self.ckpt_dir = get_ckpt_dir(model, adapters)
@@ -248,6 +246,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             'model_revision',
             'torch_dtype',
             'attn_impl',
+            'experts_impl',
             'new_special_tokens',
             'num_labels',
             'problem_type',
@@ -310,7 +309,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
                             *,
                             model=None,
                             model_type=None,
-                            model_revision=None,
+                            revision=None,
                             task_type=None,
                             num_labels=None,
                             **kwargs):
@@ -321,7 +320,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         # compat rlhf
         res['model_id_or_path'] = model or self.model
         res['model_type'] = model_type or self.model_type
-        res['model_revision'] = model_revision or self.model_revision
+        res['revision'] = revision or self.model_revision
         res['task_type'] = task_type or self.task_type
         res['num_labels'] = num_labels or self.num_labels
 

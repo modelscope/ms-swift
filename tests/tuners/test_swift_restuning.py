@@ -2,9 +2,8 @@ import copy
 import os
 import shutil
 import tempfile
-import unittest
-
 import torch
+import unittest
 from modelscope import snapshot_download
 
 from swift.tuners import ResTuningConfig, Swift, SwiftModel
@@ -24,8 +23,8 @@ class TestSwiftResTuning(unittest.TestCase):
 
     def set_random_seed(self, seed=123):
         """Set random seed manually to get deterministic results"""
-        import random
         import numpy as np
+        import random
         import torch
         random.seed(seed)
         np.random.seed(seed)

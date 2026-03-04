@@ -3,10 +3,9 @@ import importlib.util
 import logging
 import os
 from contextlib import contextmanager
+from modelscope.utils.logger import get_logger as get_ms_logger
 from types import MethodType
 from typing import Optional
-
-from modelscope.utils.logger import get_logger as get_ms_logger
 
 
 # Avoid circular reference

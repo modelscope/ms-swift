@@ -1,7 +1,7 @@
 
 # 快速开始
 
-ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、[Qwen3-MoE](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/mcore_bridge/full/moe.sh)、Qwen2.5、Llama3、Deepseek-R1、GLM4.5等模型的CPT/SFT/DPO/GRPO。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。推荐在MoE训练时使用Megatron-SWIFT，这通常可以获得10倍的训练速度提升。
+ms-swift引入了Megatron的并行技术来加速大模型的训练，包括数据并行、张量并行、流水线并行、序列并行，上下文并行，专家并行。支持Qwen3、Qwen3.5、Deepseek-R1、GLM4.5、GPT-OSS等模型的CPT/SFT/GRPO/DPO/KTO/RM。完整支持的模型可以参考[支持的模型与数据集文档](../Instruction/Supported-models-and-datasets.md)。
 
 
 | 方法   | 全参数 | LoRA | MoE | 多模态 | FP8 |
@@ -26,26 +26,21 @@ pip install pybind11
 
 # transformer_engine
 # 若出现安装错误，可以参考该issue解决: https://github.com/modelscope/ms-swift/issues/3793
-pip install --no-build-isolation transformer_engine[pytorch]
+pip install --no-build-isolation transformer_engine[pytorch] --no-cache-dir
 
 # apex
-# 提示：Megatron-SWIFT可以在不含apex的环境下运行，额外设置`--no_gradient_accumulation_fusion true`即可。
+# 提示：Megatron-SWIFT可以在不含apex的环境下运行，额外设置`--gradient_accumulation_fusion false`即可。
 git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # megatron-core
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@core_r0.15.0
+pip install "megatron-core==0.15.*" -U
 
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度。
 # 注意：这步很关键，不然多机训练可能因随机性问题导致数据不一致而训练卡住。
 export MODELSCOPE_CACHE='/xxx/shared'
-
-# Megatron-LM
-# 依赖库Megatron-LM中的训练模块将由swift进行git clone并安装。你也可以通过环境变量`MEGATRON_LM_PATH`指向已经下载好的repo路径（断网环境，[core_r0.15.0分支](https://github.com/NVIDIA/Megatron-LM/tree/core_r0.15.0)）。
-git clone --branch core_r0.15.0 https://github.com/NVIDIA/Megatron-LM.git
-export MEGATRON_LM_PATH='/xxx/Megatron-LM'
 
 # flash_attn
 # 选择合适的版本进行安装：https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
@@ -55,9 +50,9 @@ MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 
 或者你也可以使用镜像：（历史镜像查看[这里](../GetStarted/SWIFT-installation.md#镜像)）
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
 
 # cu129 (fp8 training)
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
@@ -75,10 +70,10 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | apex |   |  0.1 | |
 | megatron_core    |   >=0.12,<0.16    | 0.15      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.6      |                    |
+| transformers | >=4.33       | 4.57.6/5.2.0   |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
-| trl          | >=0.15,<0.25 |       |      RLHF        |
+| trl          | >=0.15,<0.29 |       |      RLHF        |
 
 
 ## 快速入门案例
@@ -108,7 +103,7 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen2.5-7B-Instruct-mcore \
+    --mcore_model Qwen2.5-7B-Instruct-mcore \
     --save_safetensors false \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -125,12 +120,12 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
-    --save_interval 100 \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
+    --save_steps 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
@@ -170,7 +165,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 
 ### Mcore-Bridge【推荐】
 
-在"ms-swift>=3.10"，支持了Mcore-Bridge，去除模型转换的繁琐过程。具体参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
+Mcore-Bridge去除模型转换的繁琐过程。具体参考[Mcore-Bridge文档](./Mcore-Bridge.md)。
 
 训练脚本：
 ```bash
@@ -179,7 +174,6 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -196,12 +190,12 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-7B-Instruct \
-    --save_interval 100 \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct \
+    --save_steps 100 \
     --max_length 2048 \
     --system 'You are a helpful assistant.' \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4 \
@@ -248,6 +242,8 @@ swift infer \
 使用`megatron sft`和`swift sft`在双机16卡A800环境下进行MoE模型全参数8K上下文训练的速度对比如下：
 
 **MoE** Qwen3-30B-A3B:
+
+- 注意：其中，DeepSpeed测试结果在"transformers<5.0"环境下进行。在"transformers>5.0"，可以通过`--experts_impl grouped_mm`加速训练。
 
 |          | Megatron-LM | DeepSpeed-ZeRO2 | DeepSpeed-ZeRO3 |
 | -------- | ----------- | --------------- | --------------- |

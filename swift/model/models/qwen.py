@@ -1,9 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.metadata
 import os
-from types import MethodType
-from typing import Any, Dict, Optional, Tuple, Type, Union
-
 import torch
 import transformers
 from packaging import version
@@ -12,6 +9,8 @@ from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, Pr
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
+from types import MethodType
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from swift.template import TemplateType
 from swift.utils import (Processor, get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled,
@@ -620,7 +619,12 @@ register_model(
             ModelGroup([
                 Model('Qwen/Qwen3-Next-80B-A3B-Thinking'),
                 Model('Qwen/Qwen3-Next-80B-A3B-Thinking-FP8'),
-            ], TemplateType.qwen3_thinking)
+            ], TemplateType.qwen3_thinking),
+            ModelGroup([
+                Model('Qwen/Qwen3-Coder-Next-Base', 'Qwen/Qwen3-Coder-Next-Base'),
+                Model('Qwen/Qwen3-Coder-Next', 'Qwen/Qwen3-Coder-Next'),
+                Model('Qwen/Qwen3-Coder-Next-FP8', 'Qwen/Qwen3-Coder-Next-FP8'),
+            ], TemplateType.qwen3_coder),
         ],
         requires=['transformers>=4.57'],
         architectures=['Qwen3NextForCausalLM'],
@@ -945,15 +949,11 @@ def _patch_deepstack_process(model):
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     if hasattr(model, 'origin_forward'):
         return
-    from transformers.models.qwen3_vl.modeling_qwen3_vl import (Qwen3VLModelOutputWithPast, TransformersKwargs, Unpack,
-                                                                check_model_inputs, Cache)
+    from transformers.models.qwen3_vl.modeling_qwen3_vl import (Cache, Qwen3VLModelOutputWithPast, TransformersKwargs,
+                                                                Unpack)
     from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeModelOutputWithPast
     output_cls = Qwen3VLMoeModelOutputWithPast if is_moe else Qwen3VLModelOutputWithPast
 
-    if version.parse(transformers.__version__) >= version.parse('4.57.2'):
-        check_model_inputs = check_model_inputs()
-
-    @check_model_inputs
     def forward(
         self,
         input_ids: torch.LongTensor = None,
@@ -968,7 +968,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, output_cls]:
-        if not self.training and not is_deepspeed_enabled():
+        if not self.training or not is_deepspeed_enabled():
             return self.origin_forward(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -1106,6 +1106,74 @@ register_model(
         tags=['vision', 'video']))
 
 
+class Qwen3_5MoeLoader(Qwen3VLLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3_5MoeForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen3_5MoeForConditionalGeneration
+        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_5_moe,
+        [
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3.5-35B-A3B-Base', 'Qwen/Qwen3.5-35B-A3B-Base'),
+                    Model('Qwen/Qwen3.5-35B-A3B', 'Qwen/Qwen3.5-35B-A3B'),
+                    Model('Qwen/Qwen3.5-122B-A10B', 'Qwen/Qwen3.5-122B-A10B'),
+                    Model('Qwen/Qwen3.5-397B-A17B', 'Qwen/Qwen3.5-397B-A17B'),
+                    # FP8
+                    Model('Qwen/Qwen3.5-35B-A3B-FP8', 'Qwen/Qwen3.5-35B-A3B-FP8'),
+                    Model('Qwen/Qwen3.5-122B-A10B-FP8', 'Qwen/Qwen3.5-122B-A10B-FP8'),
+                    Model('Qwen/Qwen3.5-397B-A17B-FP8', 'Qwen/Qwen3.5-397B-A17B-FP8'),
+                ],
+                TemplateType.qwen3_5),
+        ],
+        Qwen3_5MoeLoader,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen3_5MoeForConditionalGeneration'],
+        requires=['transformers>=5.2.0', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
+class Qwen3_5Loader(Qwen3VLLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3_5ForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Qwen3_5ForConditionalGeneration
+        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_5,
+        [
+            ModelGroup(
+                [
+                    Model('Qwen/Qwen3.5-0.8B', 'Qwen/Qwen3.5-0.8B'),
+                    Model('Qwen/Qwen3.5-2B', 'Qwen/Qwen3.5-2B'),
+                    Model('Qwen/Qwen3.5-4B', 'Qwen/Qwen3.5-4B'),
+                    Model('Qwen/Qwen3.5-9B', 'Qwen/Qwen3.5-9B'),
+                    Model('Qwen/Qwen3.5-27B', 'Qwen/Qwen3.5-27B'),
+                    # FP8
+                    Model('Qwen/Qwen3.5-27B-FP8', 'Qwen/Qwen3.5-27B-FP8'),
+                    # base
+                    Model('Qwen/Qwen3.5-0.8B-Base', 'Qwen/Qwen3.5-0.8B-Base'),
+                    Model('Qwen/Qwen3.5-2B-Base', 'Qwen/Qwen3.5-2B-Base'),
+                    Model('Qwen/Qwen3.5-4B-Base', 'Qwen/Qwen3.5-4B-Base'),
+                    Model('Qwen/Qwen3.5-9B-Base', 'Qwen/Qwen3.5-9B-Base'),
+                ],
+                TemplateType.qwen3_5),
+        ],
+        Qwen3_5Loader,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen3_5ForConditionalGeneration'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
+
+
 class Qwen2_5OmniLoader(ModelLoader):
 
     def get_config(self, model_dir):
@@ -1129,8 +1197,8 @@ class Qwen2_5OmniLoader(ModelLoader):
         return model
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
-        from transformers import Qwen2_5OmniProcessor
         from qwen_omni_utils import vision_process
+        from transformers import Qwen2_5OmniProcessor
         processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
         global_vars = patch_qwen_vl_utils(vision_process)
         processor.global_vars = global_vars
@@ -1157,7 +1225,7 @@ register_model(
 
 
 def _compat_qwen3_omni_mixed_data(model, processor):
-    if not is_deepspeed_enabled() or hasattr(model, 'origin_forward'):
+    if hasattr(model, 'origin_forward'):
         return
     from transformers.models.qwen3_omni_moe.modeling_qwen3_omni_moe import (Qwen3OmniMoeThinkerCausalLMOutputWithPast,
                                                                             can_return_tuple, load_balancing_loss_func)
@@ -1186,7 +1254,7 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         video_second_per_grid=None,
         **kwargs,
     ) -> Union[tuple, Qwen3OmniMoeThinkerCausalLMOutputWithPast]:
-        if not self.training and not is_deepspeed_enabled():
+        if not self.training or not is_deepspeed_enabled():
             return self.origin_forward(
                 input_ids=input_ids,
                 input_features=input_features,
@@ -1219,10 +1287,18 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         if input_features is None:
             input_features = input_ids.new_zeros([1, 128, 128], dtype=self.audio_tower.dtype)
             feature_attention_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-            audio_embeds = self.get_audio_features(input_features, feature_attention_mask)
+            audio_res = self.get_audio_features(input_features, feature_attention_mask)
+            if hasattr(audio_res, 'last_hidden_state'):
+                audio_embeds = audio_res.last_hidden_state
+            else:
+                audio_embeds = audio_res
             inputs_embeds = inputs_embeds + audio_embeds.mean() * 0.
         else:
-            audio_embeds = self.get_audio_features(input_features, feature_attention_mask)
+            audio_res = self.get_audio_features(input_features, feature_attention_mask)
+            if hasattr(audio_res, 'last_hidden_state'):
+                audio_embeds = audio_res.last_hidden_state
+            else:
+                audio_embeds = audio_res
             audio_mask = (input_ids == self.config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             audio_embeds = audio_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
             inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_embeds)
@@ -1317,18 +1393,18 @@ class Qwen3OmniLoader(ModelLoader):
         from transformers import Qwen3OmniMoeForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen3OmniMoeForConditionalGeneration
         model = super().get_model(model_dir, config, processor, model_kwargs)
+        _compat_qwen3_omni_mixed_data(model.thinker, processor)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
         use_submodel_func(base_model, 'thinker')
         base_model.config.keys_to_ignore_at_inference += ['hidden_states', 'attention_mask']
         base_model.config.talker_config.pad_token_id = None
         patch_get_input_embeddings(base_model.thinker.visual, 'patch_embed')
         patch_get_input_embeddings(base_model.thinker.audio_tower, 'conv_out')
-        _compat_qwen3_omni_mixed_data(model.thinker, processor)
         return model
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
-        from transformers import Qwen3OmniMoeProcessor
         from qwen_omni_utils import vision_process
+        from transformers import Qwen3OmniMoeProcessor
         processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
         config.thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
         global_vars = patch_qwen_vl_utils(vision_process)

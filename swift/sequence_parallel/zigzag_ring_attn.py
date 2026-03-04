@@ -1,11 +1,10 @@
 # Some code borrowed from the awesome work: https://github.com/zhuzilin/ring-flash-attention
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
-from functools import cache
-
 import torch
 import torch.distributed as dist
 import torch.nn.functional as F
+from functools import cache
 
 from .utils import RingComm
 

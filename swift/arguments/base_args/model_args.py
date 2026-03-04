@@ -2,11 +2,10 @@
 import ast
 import math
 import os
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional, Union
-
 import torch
+from dataclasses import dataclass, field
 from transformers.utils import is_torch_mps_available
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from swift.model import MODEL_MAPPING, get_model_info_meta, get_model_name
 from swift.utils import HfConfigFactory, get_dist_setting, get_logger, json_parse_to_dict

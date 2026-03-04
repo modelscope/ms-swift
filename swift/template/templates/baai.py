@@ -1,10 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import random
-from typing import Any, Dict, List
-
 import torch
 from PIL import Image
+from typing import Any, Dict, List
 
 from swift.utils import get_device
 from ..base import Template
@@ -90,9 +89,8 @@ class Emu3GenTemplate(Template):
         return output
 
     def prepare_generate_kwargs(self, generate_kwargs: Dict[str, Any], *, model=None) -> Dict[str, Any]:
-        from transformers import UnbatchedClassifierFreeGuidanceLogitsProcessor
-        from transformers import PrefixConstrainedLogitsProcessor
-        from transformers import LogitsProcessorList
+        from transformers import (LogitsProcessorList, PrefixConstrainedLogitsProcessor,
+                                  UnbatchedClassifierFreeGuidanceLogitsProcessor)
 
         negative_prompt = self.NEGATIVE_PROMPT
         neg_inputs = self._process_prompt_test(negative_prompt)

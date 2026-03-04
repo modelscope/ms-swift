@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Dict, List, Literal
-
 import numpy as np
 import torch
 from transformers.trainer_utils import EvalPrediction
+from typing import Dict, List, Literal
 
 from .base import EvalMetrics
 
@@ -44,7 +43,7 @@ def compute_acc(preds,
 
 class AccMetrics(EvalMetrics):
 
-    def compute_acc_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
+    def compute_metrics(self, eval_prediction: EvalPrediction) -> Dict[str, float]:
         metric = compute_acc(
             eval_prediction.predictions,
             eval_prediction.label_ids,

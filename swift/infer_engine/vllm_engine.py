@@ -2,21 +2,20 @@
 import asyncio
 import inspect
 import os
+import torch
 from contextlib import nullcontext
 from copy import deepcopy
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
-
-import torch
 from packaging import version
 from PIL import Image
 from tqdm import tqdm
 from transformers import GenerationConfig
 from transformers.utils import is_torch_npu_available
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_processor
-from swift.template import Template, TemplateMeta
-from swift.utils import get_device, get_dist_setting, get_logger, is_dist
+from swift.template import Template
+from swift.utils import get_device, get_dist_setting, get_logger, is_dist, safe_snapshot_download
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -30,7 +29,7 @@ try:
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
     os.environ['VLLM_ENGINE_ITERATION_TIMEOUT_S'] = '86400'
     import vllm
-    from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams, EngineArgs, LLMEngine
+    from vllm import AsyncEngineArgs, AsyncLLMEngine, EngineArgs, LLMEngine, SamplingParams
     from vllm.pooling_params import PoolingParams
     try:
         # vLLM v0.12+ uses StructuredOutputsParams
@@ -141,6 +140,14 @@ class VllmEngine(InferEngine):
         if template is None:
             processor = self._get_processor()
             template = self._get_template(processor)
+        else:
+            safe_snapshot_download(
+                model_id_or_path,
+                revision=revision,
+                download_model=True,
+                use_hf=use_hf,
+                ignore_patterns=getattr(template.model_meta, 'ignore_patterns', None),
+                hub_token=hub_token)
         super().__init__(template)
         if max_model_len is not None:
             self.max_model_len = max_model_len

@@ -2,21 +2,20 @@
 import asyncio
 import hashlib
 import inspect
+import json
 import pickle
 import time
-from copy import deepcopy
-from queue import Queue
-from threading import Thread
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
-
-import json
 import torch
 import torch.nn.functional as F
+from copy import deepcopy
 from PIL import Image
+from queue import Queue
+from threading import Thread
 from torch import nn
 from tqdm import tqdm
 from transformers import GenerationConfig, LogitsProcessorList
 from transformers.utils import is_torch_npu_available
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_model_processor

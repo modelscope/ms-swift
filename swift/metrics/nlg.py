@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import Dict, List
-
 from transformers import EvalPrediction
+from typing import Dict, List
 
 from swift.utils import Serializer, get_logger
 from .base import EvalMetrics

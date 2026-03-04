@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import TYPE_CHECKING
-
 import torch
+from typing import TYPE_CHECKING
 
 from .base import PeftTuner
 

@@ -1,20 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import huggingface_hub
 import logging
+import modelscope
 import os
 import tempfile
 from contextlib import contextmanager
 from functools import partial
-from pathlib import Path
-from typing import List, Literal, Optional, Union
-
-import huggingface_hub
-import modelscope
 from huggingface_hub import RepoUrl
 from huggingface_hub.hf_api import api, future_compatible
 from packaging import version
+from pathlib import Path
 from requests.exceptions import HTTPError
 from transformers import trainer
 from transformers.utils import strtobool
+from typing import List, Literal, Optional, Union
 
 from swift.utils import get_logger, ms_logger_context, use_hf_hub
 

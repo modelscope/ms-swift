@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import List, Optional, Tuple
-
 import torch.nn as nn
 from peft import PeftModel
 from transformers import Trainer as HfTrainer
+from typing import List, Optional, Tuple
 
 from swift.utils import get_logger
 from .base import OptimizerCallback

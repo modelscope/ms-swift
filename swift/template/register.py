@@ -25,7 +25,7 @@ def _read_args_json_template_type(model_dir):
         return
     from swift.arguments import BaseArguments
     args = BaseArguments.from_pretrained(model_dir)
-    return args.template_type
+    return args.template
 
 
 def get_template_meta(model_info: 'ModelInfo',

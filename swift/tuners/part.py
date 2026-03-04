@@ -1,12 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import re
+import torch
 from copy import deepcopy
 from dataclasses import dataclass
+from torch import nn
 from types import MethodType
 from typing import Dict, Optional
-
-import torch
-from torch import nn
 
 from swift.utils import get_logger
 from .utils import ActivationMixin, SwiftAdapter, SwiftConfig, SwiftOutput

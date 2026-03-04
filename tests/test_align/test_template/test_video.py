@@ -1,5 +1,4 @@
 import os
-
 import torch
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
@@ -396,7 +395,7 @@ def test_qwen3_vl_moe():
 
 
 if __name__ == '__main__':
-    from swift.infer_engine import TransformersEngine, RequestConfig
+    from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
     logger = get_logger()
     # test_qwen2_vl()

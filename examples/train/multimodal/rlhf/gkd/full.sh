@@ -18,6 +18,7 @@ swift rlhf \
     --per_device_eval_batch_size 4 \
     --learning_rate 1e-5 \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps 1 \
     --eval_steps 50 \
     --save_steps 50 \

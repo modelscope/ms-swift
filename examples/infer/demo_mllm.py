@@ -99,7 +99,7 @@ def get_data(mm_type: Literal['text', 'image', 'video', 'audio']):
 if __name__ == '__main__':
     # The inference of the trained model can be referred to as:
     # https://github.com/modelscope/ms-swift/tree/main/examples/notebook
-    from swift import InferEngine, InferRequest, TransformersEngine, RequestConfig, load_dataset, InferStats
+    from swift import InferEngine, InferRequest, InferStats, RequestConfig, TransformersEngine, load_dataset
     infer_backend = 'transformers'
 
     if infer_backend == 'transformers':

@@ -39,7 +39,8 @@ class TeacherModelArguments:
 
     Args:
         teacher_model (Optional[str]): The model ID or a local path to the teacher model. This is required when
-            `rlhf_type` is 'gkd'. Analogous to the main `model` argument. Defaults to None.
+            `rlhf_type` is 'gkd' and `teacher_model_server` is not set. Analogous to the main `model` argument.
+            Defaults to None.
         teacher_adapters (List[str]): A list of paths to LoRA weights. These weights, often produced by SFT, are loaded
             to form the teacher model. Defaults to an empty list (`[]`).
         teacher_model_type (Optional[str]): The model type of the teacher model. If not specified, it's often inferred.
@@ -50,6 +51,10 @@ class TeacherModelArguments:
             one of the following values: 'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'. If not
             provided, it defaults to using the same DeepSpeed configuration as the main training model. Analogous to
             the main `deepspeed` argument.
+        teacher_model_server (Optional[str]): The URL of the teacher model server (e.g., 'http://localhost:8000').
+            When set, the teacher logprobs will be fetched from the external API service (e.g., swift deploy, vLLM)
+            instead of loading a local teacher model. This enables using larger teacher models or services hosted
+            remotely. When this is set, `teacher_model` is not required. Defaults to None.
     """
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
@@ -62,6 +67,13 @@ class TeacherModelArguments:
             'help':
             'DeepSpeed configuration for teacher model. '
             'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
+        })
+    teacher_model_server: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'URL of the teacher model server (e.g., http://localhost:8000). '
+            'When set, teacher logprobs are fetched via API instead of loading a local model.'
         })
 
 
@@ -172,8 +184,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             'last_round'.
         rpo_alpha (Optional[float]): The alpha parameter from the RPO paper, controlling the weight of the SFT loss
             (NLL term). The loss is calculated as `dpo_loss + rpo_alpha * sft_loss`. If None, the SFT loss is not
-            included. Note: The default was 1.0 in `ms-swift<3.8` and changed to None in `ms-swift>=3.8`. Defaults to
-            None.
+            included.
         ld_alpha (Optional[float]): The alpha parameter from the LD-DPO paper, which weights the log probabilities of
             the sequence part beyond the common prefix to mitigate length preference. Defaults to None.
         discopop_tau (float): The temperature parameter from the DiscoPOP paper, used to scale the log-ratio. Effective
@@ -197,6 +208,11 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             gkd_loss + sft_alpha * sft_loss`. Defaults to 0.
         lmbda (float): The lambda parameter for GKD, balancing policy and value losses. Defaults to 0.5.
         seq_kd (bool): Whether to use sequence-level knowledge distillation for GKD. Defaults to False.
+        gkd_logits_topk (Optional[int]): The number of top-k logits to use for KL divergence computation in GKD.
+            If None, uses full vocabulary for KL computation (more accurate but memory-intensive).
+            If set to a positive integer, only top-k teacher logits are used (more efficient).
+            When using `teacher_model_server`, this is limited by the server's `max_logprobs` setting
+            (vLLM default is 20, can be increased with `--max-logprobs`). Defaults to None.
         offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
             training. Defaults to False.
         max_new_tokens (Optional[int]): A backward-compatibility argument. Please use `max_completion_length` instead.
@@ -234,6 +250,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     sft_alpha: float = 0
     lmbda: float = 0.5
     seq_kd: bool = False
+    gkd_logits_topk: Optional[int] = None
     offload_teacher_model: bool = False
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
@@ -319,9 +336,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'left'
-        assert self.truncation_strategy in ['left', 'delete'
-                                            ], ("GRPO requires `truncation_strategy 'left' or 'delete'`, "
-                                                f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
+        if self.truncation_strategy not in {'left', 'delete'}:
+            raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
+                             f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
@@ -448,19 +465,19 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _check_grpo(self):
         if self.rlhf_type != 'grpo':
             return
-        from packaging import version
         import importlib.metadata
-
         import trl
+        from packaging import version
         trl_version = version.parse(trl.__version__)
-        assert trl_version >= version.parse('0.17'), ('Your current version of `trl` is outdated. '
+        assert trl_version >= version.parse('0.20'), ('Your current version of `trl` is outdated. '
                                                       'Please update it by running: pip install -U trl')
         if is_mp() and self.use_vllm:
             raise ValueError('GRPO with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
             liger_kernel_version = version.parse(importlib.metadata.version('liger-kernel'))
-            assert trl_version >= version.parse('0.18')
+            if liger_kernel_version < version.parse('0.7.0'):
+                raise ValueError('Please update liger-kernel to 0.7.0 or later: pip install -U liger-kernel')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             if self.sequence_parallel_size > 1:
@@ -471,27 +488,17 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError('Liger loss does not support entropy mask yet.')
             if self.log_entropy:
                 raise ValueError('Liger loss does not support log entropy yet.')
-            if self.importance_sampling_level != 'token':
-                if liger_kernel_version < version.parse('0.6.3'):
-                    raise ValueError('Please update liger-kernel to 0.6.3 or later')
-                if self.importance_sampling_level == 'sequence_token':
-                    self.importance_sampling_level = 'sequence'
-                    logger.info('Remapping `importance_sampling_level` from `sequence_token` to `sequence` for '
-                                'liger-kernel compatibility. The two methods are computationally equivalent.')
+            if self.off_policy_sequence_mask_delta is not None:
+                raise ValueError('Liger loss does not support off-policy sequence masking yet.')
+            assert self.importance_sampling_level in [
+                'token', 'sequence'
+            ], ('Liger loss currently only support token-level and sequence-level importance sampling. '
+                'Please set `importance_sampling_level` to `token` or `sequence`.')
             if self.advantage_estimator != 'grpo':
                 raise ValueError('Liger loss currently only support grpo advantage estimator')
-            from trl.import_utils import is_liger_kernel_available
-            assert is_liger_kernel_available(), (
-                'Please install/update liger-kernel by running: pip install -U liger-kernel')
 
         if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
-
-        if self.generation_batch_size or self.steps_per_generation:
-            from trl.trainer.grpo_config import GRPOConfig
-            assert 'generation_batch_size' in GRPOConfig.__dict__, (
-                'generation_batch_size or steps_per_generation needs trl >= 0.18, '
-                'please install trl `pip install trl>=0.18')
 
     def _external_vllm_warning(self):
         if self.rlhf_type not in rlhf_support_vllm_types or not self.vllm_server_host:
@@ -554,3 +561,25 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.async_generate:
             raise NotImplementedError('Currently, async_generate is not supported for GKD.')
+
+        # Validate teacher model configuration
+        if self.teacher_model is None and self.teacher_model_server is None:
+            raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set.')
+
+        if self.teacher_model is not None and self.teacher_model_server is not None:
+            raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
+
+        # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
+        if self.teacher_model_server is not None:
+            if self.gkd_logits_topk is None:
+                raise ValueError('gkd_logits_topk is required when using teacher_model_server')
+
+        # Validate gkd_logits_topk
+        if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
+            raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
+
+        if self.gkd_logits_topk is not None and self.use_liger_kernel:
+            raise ValueError('gkd_logits_topk is not supported when using liger kernel')
+
+        if self.teacher_model_server and self.seq_kd:
+            raise NotImplementedError('Sequential KD is not supported when using teacher_model_server')

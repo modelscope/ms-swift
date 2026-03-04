@@ -1,12 +1,11 @@
 # Some code borrowed from the awesome work: https://github.com/zhuzilin/ring-flash-attention
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
-from typing import Any, Iterator, Optional, Tuple
-
 import torch
 import torch.distributed as dist
 from torch.nn import CrossEntropyLoss
 from torch.utils.data import Sampler
+from typing import Any, Iterator, Optional, Tuple
 
 from swift.dataloader import DataLoaderDispatcher
 from .ulysses import sequence_parallel
