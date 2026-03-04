@@ -50,6 +50,6 @@ megatron sft \
     --mtp_num_layers 1 \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.6 \
+    --optimizer_offload_fraction 0.62 \
     --attention_backend flash \
     --padding_free false
