@@ -49,7 +49,7 @@ class MinimaxM2SelfAttention(SelfAttention):
         )
 
     def get_query_key_value_tensors(self, *_args, **kwargs):
-        enable_tp = mpu.get_expert_data_parallel_world_size() > 1
+        enable_tp = mpu.get_tensor_model_parallel_world_size() > 1
         query, key, value = super().get_query_key_value_tensors(*_args, **kwargs)
         query = query.reshape(*query.shape[:-2], -1)
         key = key.reshape(*key.shape[:-2], -1)
