@@ -135,6 +135,8 @@ class TrainArgumentsMixin:
     router_aux_loss_coef: float = 0.
     enable_dft_loss: bool = False  # https://arxiv.org/abs/2508.05629
     enable_channel_loss: bool = False
+    safe_serialization: bool = True
+    max_shard_size: str = '5GB'
 
     weight_decay: float = 0.1
     adam_beta2: float = 0.95
