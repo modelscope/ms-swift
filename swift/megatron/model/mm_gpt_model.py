@@ -10,6 +10,7 @@ from megatron.core.transformer.spec_utils import ModuleSpec
 from packaging import version
 
 from swift.megatron.utils import split_cp_inputs
+from swift.utils import get_env_args
 from .gpt_model import GPTModel
 from .model_config import MegatronModelConfig
 
@@ -36,7 +37,9 @@ class MultimodalGPTModel(MegatronModule):
         self.megatron_model_meta = get_megatron_model_meta(self.args.model_type)
         self.visual = None
         if self.args.mtp_num_layers:
-            raise ValueError('MTP currently does not support multimodal models.')
+            skip_validation = get_env_args('SKIP_MULTIMODAL_MTP_VALIDATION', bool, False)
+            if not skip_validation:
+                raise ValueError('MTP currently does not support multimodal models.')
         if pre_process and self.megatron_model_meta.visual_cls is not None:
             self.visual = self.megatron_model_meta.visual_cls(config)
 

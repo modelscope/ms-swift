@@ -15,7 +15,8 @@ from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_avail
 from types import MethodType
 from typing import List, Optional, TypeVar, Union
 
-from swift.utils import HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_logger, is_mp, to_device
+from swift.utils import (HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_env_args, get_logger, is_mp,
+                         to_device)
 
 logger = get_logger()
 
@@ -258,13 +259,11 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
 
 
 def _patch_conv3d():
-
-    if not hasattr(nn.Conv3d, '_original_forward'):
-        nn.Conv3d._original_forward = nn.Conv3d.forward
+    if hasattr(nn.Conv3d, '_original_forward'):
+        return
+    nn.Conv3d._original_forward = nn.Conv3d.forward
 
     def forward(self, x):
-        if version.parse(torch.__version__) < version.parse('2.9.0'):
-            return self._original_forward(x)
         if any(s != k for s, k in zip(self.stride, self.kernel_size)) or any(p != 0 for p in self.padding) or any(
                 d != 1 for d in self.dilation) or self.groups != 1:
             raise NotImplementedError(
@@ -282,7 +281,19 @@ def _patch_conv3d():
     logger.info('Conv3d patched successfully')
 
 
-if strtobool(os.getenv('SWIFT_PATCH_CONV3D', 'false')):
+SWIFT_PATCH_CONV3D = get_env_args('SWIFT_PATCH_CONV3D', bool, None)
+torch_version = version.parse(torch.__version__)
+
+if SWIFT_PATCH_CONV3D is None:
+    # Default behavior: patch only for torch 2.9.x
+    SWIFT_PATCH_CONV3D = version.parse('2.9.0') < torch_version < version.parse('2.10.0')
+    logger.info(f'setting SWIFT_PATCH_CONV3D: {SWIFT_PATCH_CONV3D}.')
+elif SWIFT_PATCH_CONV3D and torch_version < version.parse('2.9.0'):
+    # User override for an unsupported version, correct it.
+    SWIFT_PATCH_CONV3D = False
+    logger.info('torch versions <2.9 do not require patching conv3d. setting SWIFT_PATCH_CONV3D: False.')
+
+if SWIFT_PATCH_CONV3D:
     _patch_conv3d()
 
 

@@ -230,8 +230,12 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['reward_funcs'] = self.args.reward_funcs
             if self.args.chord_sft_dataset:
                 trainer_kwargs['chord_sft_dataset'], _ = self._prepare_chord_sft_dataset()
-        if self.args.rlhf_type == 'gkd' and self.args.teacher_deepspeed:
-            trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
+        if self.args.rlhf_type == 'gkd':
+            if self.args.teacher_deepspeed:
+                trainer_kwargs['teacher_deepspeed_config'] = self.args.teacher_deepspeed
+            trainer_kwargs['gkd_logits_topk'] = self.args.gkd_logits_topk
+            if self.args.teacher_model_server:
+                trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
         return trainer_kwargs
 
 

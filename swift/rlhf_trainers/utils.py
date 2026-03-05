@@ -206,23 +206,43 @@ def patch_stateless_process_group_for_ipv6():
 patch_stateless_process_group_for_ipv6()
 
 
-def nanstd(tensor: torch.Tensor) -> torch.Tensor:
+def nanstd(tensor: torch.Tensor,
+           dim: Optional[Union[int, tuple[int, ...]]] = None,
+           keepdim: bool = False) -> torch.Tensor:
     """
-    refer: trl/trainer/utils
-    Compute the standard deviation of a tensor, ignoring NaNs. This function only supports 1D tensors.
+    Compute the standard deviation of a tensor, ignoring NaNs.
+
+    Refer: trl/trainer/utils.py
 
     Args:
         tensor (`torch.Tensor`):
-            Input tensor of shape `(N,)`.
+            Input tensor.
+        dim (`int` or `tuple[int, ...]`, *optional*):
+            Dimension to reduce. Defaults to all dimensions.
+        keepdim (`bool`, *optional*, defaults to `False`):
+            Whether to keep reduced dimensions.
 
     Returns:
         `torch.Tensor`:
             Standard deviation of the tensor, ignoring NaNs.
     """
-    variance = torch.nanmean((tensor - torch.nanmean(tensor, keepdim=True))**2)  # Compute variance ignoring NaNs
-    count = torch.sum(~torch.isnan(tensor))  # Count of non-NaN values
-    variance *= count / (count - 1)  # Bessel's correction
-    return torch.sqrt(variance)
+    mean = torch.nanmean(tensor, dim=dim, keepdim=True)
+    variance = torch.nanmean((tensor - mean)**2, dim=dim, keepdim=True)
+    count = torch.sum(~torch.isnan(tensor), dim=dim, keepdim=True)
+    correction = count / (count - 1)
+    correction = torch.where(count > 1, correction, torch.full_like(correction, float('nan')))
+    variance *= correction  # Bessel's correction
+    std = torch.sqrt(variance)
+    if keepdim:
+        return std
+    if dim is None:
+        return std.squeeze()
+    if isinstance(dim, int):
+        return std.squeeze(dim)
+    dims = [(d if d >= 0 else d + std.ndim) for d in dim]
+    for d in sorted(dims, reverse=True):
+        std = std.squeeze(d)
+    return std
 
 
 # code borrowed from verl/verl/utils/memory_utils.py
@@ -566,10 +586,16 @@ def profiling_context(trainer, name: str):
 
     profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
 
-    if 'wandb' in trainer.args.report_to and wandb.run is not None and trainer.accelerator.is_main_process:
+    is_main_process = False
+    if hasattr(trainer, 'accelerator'):
+        is_main_process = trainer.accelerator.is_main_process
+    elif hasattr(trainer, 'is_main_process'):
+        is_main_process = trainer.is_main_process
+
+    if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
         wandb.log(profiling_metrics)
 
-    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and trainer.accelerator.is_main_process:
+    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and is_main_process:
         swanlab.log(profiling_metrics)
 
 

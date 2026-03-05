@@ -154,7 +154,8 @@ class MultiTurnThinkingTips(ORM):
     function **must return an identical reward for every fragment**
     """
 
-    def __init__(self):
+    def __init__(self, args=None, **kwargs):
+        super().__init__(args)
         from swift.rewards.orm import MathAccuracy
         self.acc_func = MathAccuracy()
 
@@ -183,7 +184,8 @@ orms['thinking_tips'] = MultiTurnThinkingTips
 # ref implementation: https://github.com/huggingface/open-r1/blob/main/src/open_r1/rewards.py
 class CodeReward(ORM):
 
-    def __init__(self):
+    def __init__(self, args=None, **kwargs):
+        super().__init__(args)
         import importlib.util
         assert importlib.util.find_spec('e2b') is not None, (
             "The e2b package is required but not installed. Please install it using 'pip install e2b-code-interpreter'."
@@ -368,7 +370,8 @@ class CodeRewardByJudge0(ORM):
     }
     PYTHON_ID = 71
 
-    def __init__(self):
+    def __init__(self, args, **kwargs):
+        super().__init__(args)
         self.endpoint = os.getenv('JUDGE0_ENDPOINT')
         assert self.endpoint is not None, (
             'Judge0 endpoint is not set. Please set the JUDGE0_ENDPOINT environment variable.')
@@ -488,7 +491,8 @@ class AsyncGenRMReward(AsyncORM):
            ```
     """
 
-    def __init__(self):
+    def __init__(self, args, **kwargs):
+        super().__init__(args)
         from openai import OpenAI
         self.api_base = os.getenv('GENRM_API_BASE', 'http://localhost:8000/v1')
         self.temperature = float(os.getenv('GENRM_TEMPERATURE', '0.3'))
@@ -637,7 +641,8 @@ orms['async_genrm'] = AsyncGenRMReward
 # COARSEREWARD -> Coarse, INTERMEDIATEREWARD -> Intermediate, REFINEDREWARD -> Finegrained
 class ToolUseFormatReward(ORM):
 
-    def __init__(self):
+    def __init__(self, args=None, **kwargs):
+        super().__init__(args)
         self.format_max_possible = 1.0
         self.format_min_possible = 0.0
 
@@ -700,7 +705,8 @@ orms['external_tooluse_format_reward'] = ToolUseFormatReward
 
 class ToolUseLengthReward(ORM):
 
-    def __init__(self):
+    def __init__(self, args=None, **kwargs):
+        super().__init__(args)
         self.length_max_possible = 1.0
         self.length_min_possible = 0.0
 
@@ -739,7 +745,8 @@ orms['external_tooluse_length_reward'] = ToolUseLengthReward
 
 class ToolUseCorrectnessReward(ORM):
 
-    def __init__(self):
+    def __init__(self, args=None, **kwargs):
+        super().__init__(args)
         if str(os.getenv('CORRECTMAX1', 0)) == '1':
             self.tool_max_possible = 1.0
             self.tool_min_possible = -1.0

@@ -1,5 +1,10 @@
 # Packing is not recommended due to the presence of linear_attention
+# Reason reference: https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_next/mcore.sh
 # 4 * 40GiB
+# Without fla and causal-conv1d installed, the training time in H20 environment is 14 minutes.
+# Please install the FLA main branch: pip install -U git+https://github.com/fla-org/flash-linear-attention
+# For details, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
+
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
@@ -50,7 +55,7 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --attention_backend unfused \
+    --attention_backend flash \
     --padding_free false \
     --model_author swift \
     --model_name swift-robot
@@ -62,7 +67,7 @@ megatron sft \
 # VIDEO_MAX_PIXELS=50176 \
 # FPS_MAX_FRAMES=12 \
 # swift infer \
-#     --model megatron_output/vx-xxx/checkpoint-xxx-merged \
+#     --model megatron_output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx-merged \
 #     --stream true \
 #     --experts_impl grouped_mm \
 #     --enable_thinking false \

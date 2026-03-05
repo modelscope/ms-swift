@@ -13,6 +13,9 @@ Mcore-Bridge is compatible with various model architectures including Dense/MoE/
 
 Currently, Mcore-Bridge supports parallelism techniques including TP/PP/EP/ETP/VPP and all model architectures supported by Megatron-SWIFT. Refer to [Supported Models Documentation](../Instruction/Supported-models-and-datasets.md). The following introduces Mcore-Bridge's seamless training capabilities, covering both Dense and MoE models.
 
+- When reading models with `--model/--adapters/--ref_model/--ref_adapters`, mcore-bridge is used to load safetensors format weights. With `--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`, the default mcore loading method is used.
+- `save_safetensors` determines whether weights are saved in safetensors or mcore format. When `--no_save_optim false` is set, mcore weights are always saved additionally for checkpoint resumption.
+
 ### Dense Models
 
 Below is an example of training the multimodal model Qwen3-VL:
@@ -136,8 +139,8 @@ In addition to supporting full parameter import/export, Mcore-Bridge also suppor
 Below is an example of self-cognition training using LoRA for the text-only model Qwen3-Moe:
 
 - If you want to export merged weights instead of LoRA delta weights, please set `--merge_lora true`. Setting `--merge_lora true` has better compatibility and supports all model series.
-- Note: Transformers 5.0 has refactored the model architecture for MoE models. This new structure does not support MoE LoRA inference and may cause inference errors. It is recommended to merge LoRA weights for MoE models (vLLM is not affected).
-- Note: The expert structure differs between Transformers and Megatron models. For example, the expert layers in Transformers' Qwen3-VL-MoE are implemented as Parameters rather than Linear layers. As a result, some models cannot convert LoRA delta weights (though Qwen3-VL-MoE supports conversion if LoRA is trained only on linear_proj and linear_qkv). However, most models support LoRA conversion, such as Qwen3-MoE, Qwen3-Omni-MoE, and GLM4.5-V.
+- Note: (For transformers>5.0) Transformers 5.0 refactored the MoE model architecture. This new structure does not support MoE LoRA inference and may cause inference anomalies. **It is recommended to merge LoRA for MoE models** (vLLM is not affected).
+- Note: (For transformers<5.0) Due to structural differences between transformers and Megatron model experts (e.g., the expert components in transformers' Qwen3-VL-MoE are implemented as Parameters rather than Linear layers), some models cannot convert LoRA delta weights (however, Qwen3-VL-MoE does support conversion when LoRA training targets only linear_proj and linear_qkv). Most models support LoRA conversion, such as: Qwen3-MoE, Qwen3-Omni-MoE, GLM4.5-V, etc.
 
 ```shell
 # 50GiB

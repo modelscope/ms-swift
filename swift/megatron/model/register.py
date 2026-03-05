@@ -136,7 +136,8 @@ class MegatronModelLoader:
             pre_process=pre_process,
             post_process=post_process,
             mtp_block_spec=mtp_block_spec,
-            vp_stage=vp_stage)
+            vp_stage=vp_stage,
+        )
         return model
 
 
