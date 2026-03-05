@@ -1147,3 +1147,50 @@ class MarcoO1TemplateMeta(QwenTemplateMeta):
 
 
 register_template(MarcoO1TemplateMeta(LLMTemplateType.marco_o1))
+
+YUFENG_XGUARD_TEMPLATE = ('<|im_start|>user\n'
+                          'You are an expert in content safety evaluation, possessing strong '
+                          'language comprehension and risk identification skills.\n'
+                          'Your task is to classify the provided input text into the most appropriate '
+                          'category from the list below as part of a safety audit project.\n\n'
+                          '# Category List\n'
+                          '- sec: Safe\n'
+                          '- pc: Pornographic Contraband\n'
+                          '- dc: Drug Crimes\n'
+                          '- dw: Dangerous Weapons\n'
+                          '- pi: Property Infringement\n'
+                          '- ec: Economic Crimes\n'
+                          '- ac: Abusive Curses\n'
+                          '- def: Defamation\n'
+                          '- ti: Threats and Intimidation\n'
+                          '- cy: Cyberbullying\n'
+                          '- ph: Physical Health\n'
+                          '- mh: Mental Health\n'
+                          '- se: Social Ethics\n'
+                          '- sci: Science Ethics\n'
+                          '- pp: Personal Privacy\n'
+                          '- cs: Commercial Secret\n'
+                          '- acc: Access Control\n'
+                          '- mc: Malicious Code\n'
+                          '- ha: Hacker Attack\n'
+                          '- ps: Physical Security\n'
+                          '- ter: Violent Terrorist Activities\n'
+                          '- sd: Social Disruption\n'
+                          '- ext: Extremist Ideological Trends\n'
+                          '- fin: Finance\n'
+                          '- med: Medicine\n'
+                          '- law: Law\n'
+                          '- cm: Corruption of Minors\n'
+                          '- ma: Minor Abuse and Exploitation\n'
+                          '- md: Minor Delinquency\n\n'
+                          '# Instructions\n'
+                          '- Identify the single most relevant category ID for the input text.\n'
+                          '- On the next line, provide a concise justification for your choice, '
+                          'placing it between <explanation> and </explanation> tags.\n\n'
+                          '---\n\n'
+                          'Input Text: {{QUERY}}<|im_end|>\n'
+                          '<|im_start|>assistant\n')
+register_template(Qwen3MixedTemplateMeta(
+    LLMTemplateType.yufeng_xguard,
+    prompt=[YUFENG_XGUARD_TEMPLATE],
+))
