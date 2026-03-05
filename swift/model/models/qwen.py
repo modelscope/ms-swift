@@ -538,6 +538,10 @@ register_model(
                 Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
             ], TemplateType.qwen3_guard),
             ModelGroup([
+                Model('Alibaba-AAIG/YuFeng-XGuard-Reason-0.6B', 'Alibaba-AAIG/YuFeng-XGuard-Reason-0.6B'),
+                Model('Alibaba-AAIG/YuFeng-XGuard-Reason-8B', 'Alibaba-AAIG/YuFeng-XGuard-Reason-8B'),
+            ], TemplateType.yufeng_xguard),
+            ModelGroup([
                 Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
                 Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
             ], TemplateType.qwen3_thinking),
