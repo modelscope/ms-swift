@@ -1,6 +1,6 @@
 # 16 * 64GiB Ascend A3
 # Modified from https://github.com/modelscope/ms-swift/blob/main/examples/megatron/multimodal/omni/moe.sh
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 ENABLE_AUDIO_OUTPUT=0 \
 NPROC_PER_NODE=16 \
 MAX_PIXELS=1003520 \

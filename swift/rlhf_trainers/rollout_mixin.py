@@ -167,8 +167,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
             self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
             self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=0)[0]
-            if self.use_gym_env:
-                self.reward_func_names = ['gym_reward']
 
         elif self.vllm_mode == 'colocate':
             if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:

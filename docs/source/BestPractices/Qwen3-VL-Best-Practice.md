@@ -153,7 +153,7 @@ Here’s a breakdown of what unfolds:
 Overall, this is a sweet, lighthearted video that showcases the innocence and imagination of early childhood. The child’s engagement with the book, combined with their glasses and playful demeanor, creates a delightful and memorable scene.
 ```
 
-- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义参考[命令行参数文档](../Instruction/Command-line-parameters.md#qwen3_vl)。
+- 其中特定模型参数，例如 `VIDEO_MAX_TOKEN_NUM` 等环境变量的含义参考[命令行参数文档](../Instruction/Command-line-parameters.md#qwen3_vl-qwen3_5)。
 
 
 ## 训练

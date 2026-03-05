@@ -19,9 +19,12 @@ from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyPar
                                                                         FullyParallelSaveStrategyWrapper)
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
+from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
+from megatron.core.fusions.fused_bias_gelu import bias_gelu
+from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module
-from megatron.core.utils import get_torch_version, is_torch_min_version
+from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_min_version
 from packaging import version
 from typing import Optional
 
@@ -113,8 +116,6 @@ def initialize_megatron(args):
     if args.model_info.is_moe_model:
         from megatron.core.transformer.moe.router import MoEAuxLossAutoScaler
         MoEAuxLossAutoScaler.set_loss_scale(torch.ones(1, device=torch.cuda.current_device()))
-
-    # TODO: tp_comm_overlap
 
 
 def _get_rng_state():
@@ -285,13 +286,6 @@ def save_mcore_checkpoint(
         validate_access_integrity=True,
         preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check,
         **kwargs)
-    tracker_path = os.path.join(output_dir, 'latest_checkpointed_iteration.txt')
-    try:
-        from megatron.core.msc_utils import open_file
-    except ImportError:
-        open_file = open
-    with open_file(tracker_path, 'w') as f:
-        f.write(str(iteration))
 
     if not args.async_save:
         assert async_save_request is None
@@ -300,6 +294,14 @@ def save_mcore_checkpoint(
             torch.distributed.barrier()
 
     if is_master():
+
+        tracker_path = os.path.join(output_dir, 'latest_checkpointed_iteration.txt')
+        try:
+            from megatron.core.msc_utils import open_file
+        except ImportError:
+            open_file = open
+        with open_file(tracker_path, 'w') as f:
+            f.write(str(iteration))
 
         def iter_finalize_fn():
             if models:
@@ -535,7 +537,7 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
                 module=model_chunk,
                 # Turn off bucketing for model_chunk 2 onwards, since communication for these
                 # model chunks is overlapped with compute anyway.
-                disable_bucketing=model_chunk_idx > 0,
+                disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
             ) for (model_chunk_idx, model_chunk) in enumerate(models)
         ]
 
@@ -603,3 +605,108 @@ def unwrap_model(models, module_instances=None):
     if not return_list:
         return unwrapped_model[0]
     return unwrapped_model
+
+
+def should_disable_forward_pre_hook(args):
+    """Block forward pre-hook for certain configurations."""
+    return args.use_distributed_optimizer and args.overlap_param_gather
+
+
+def enable_forward_pre_hook(model_chunks):
+    for model_chunk in model_chunks:
+        assert isinstance(model_chunk, DDP)
+        model_chunk.enable_forward_pre_hook()
+
+
+def disable_forward_pre_hook(model_chunks, param_sync=True):
+    for model_chunk in model_chunks:
+        assert isinstance(model_chunk, DDP)
+        model_chunk.disable_forward_pre_hook(param_sync=param_sync)
+
+
+def initialize_tp_communicators(args, config):
+    """initializing the communicators with user buffers for high-performance tensor-model-parallel
+    communication overlap"""
+    from transformer_engine.pytorch import module as te_module
+    input_shape = [
+        (args.seq_length * args.micro_batch_size) // args.context_parallel_size,
+        config.hidden_size,
+    ]
+
+    if is_te_min_version('2.7.0'):
+        UserBufferQuantizationMode = te_module.base.UserBufferQuantizationMode
+        quantization_modes = [UserBufferQuantizationMode.FP8 if args.fp8 else UserBufferQuantizationMode.NONE]
+        if args.fp8 is not None and args.first_last_layers_bf16 and (args.num_layers_at_start_in_bf16 > 0
+                                                                     or args.num_layers_at_end_in_bf16 > 0):
+            quantization_modes.append(UserBufferQuantizationMode.NONE)
+        # The process group with the target bootstrap backend is created in Transformer Engine.
+        te_module.base.initialize_ub(
+            shape=input_shape,
+            tp_size=args.tensor_model_parallel_size,
+            quantization_modes=quantization_modes,
+        )
+    elif is_te_min_version('1.9.0'):
+        # The process group with the target bootstrap backend is created in Transformer Engine.
+        te_module.base.initialize_ub(
+            shape=input_shape,
+            tp_size=args.tensor_model_parallel_size,
+            use_fp8=(args.fp8 is not None),
+        )
+
+
+def warmup_jit_function(config, args):
+    if args.bf16:
+        dtype = torch.bfloat16
+    elif args.fp16:
+        dtype = torch.float16
+    else:
+        dtype = torch.float32
+
+    bias = torch.rand(config.ffn_hidden_size // config.tensor_model_parallel_size, dtype=dtype, device='cuda')
+    input_tensor = torch.rand(
+        (
+            args.seq_length // config.context_parallel_size,
+            args.micro_batch_size,
+            config.ffn_hidden_size // config.tensor_model_parallel_size,
+        ),
+        dtype=dtype,
+        device='cuda',
+    )
+    # Warmup JIT fusions with the input_tensor grad_enable state of both forward
+    # prop and recomputation
+    for bias_grad, input_grad in zip([True, True], [False, True]):
+        bias.requires_grad, input_tensor.requires_grad = bias_grad, input_grad
+        for _ in range(5):
+            if config.swiglu:
+                output = bias_swiglu(input_tensor, bias)
+            else:
+                output = bias_gelu(bias, input_tensor)
+    del bias, input_tensor, output
+
+    # Warmup fused bias+dropout+add
+    if config.sequence_parallel:
+        seq_length = args.seq_length // mpu.get_tensor_model_parallel_world_size()
+    else:
+        seq_length = args.seq_length
+    input_tensor = torch.rand(
+        (seq_length // config.context_parallel_size, args.micro_batch_size, config.hidden_size),
+        dtype=dtype,
+        device='cuda',
+    )
+    residual = torch.rand(
+        (seq_length // config.context_parallel_size, args.micro_batch_size, config.hidden_size),
+        dtype=dtype,
+        device='cuda',
+    )
+    bias = torch.rand((config.hidden_size), dtype=dtype, device='cuda').expand_as(residual)
+    dropout_rate = 0.1
+    # Warmup JIT fusions with the input_tensor grad_enable state of both forward
+    # prop and recomputation
+    for input_grad, bias_grad, residual_grad in zip([False, True], [True, True], [True, True]):
+        input_tensor.requires_grad = input_grad
+        bias.requires_grad = bias_grad
+        residual.requires_grad = residual_grad
+        for _ in range(5):
+            output = bias_dropout_add_fused_train([input_tensor, bias], residual, dropout_rate)
+    del bias, input_tensor, residual, output
+    torch.cuda.empty_cache()

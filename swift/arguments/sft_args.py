@@ -5,8 +5,8 @@ from transformers.utils.versions import require_version
 from typing import Literal, Optional
 
 from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
-from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_master,
-                         is_mp, is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
+from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_mp,
+                         is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
 from .base_args import BaseArguments
 from .tuner_args import TunerArguments
 
@@ -373,8 +373,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             self.logging_dir = f'{self.output_dir}/runs'
 
         self.logging_dir = to_abspath(self.logging_dir)
-        if is_master():
-            os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
 
         if self.run_name is None:
             self.run_name = self.output_dir

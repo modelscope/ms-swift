@@ -23,8 +23,7 @@ class MegatronSftArguments(MegatronBaseArguments):
         if self.add_version:
             self.output_dir = add_version_to_work_dir(self.output_dir)
             logger.info(f'args.output_dir: {self.output_dir}')
-        if is_last_rank():
-            os.makedirs(self.output_dir, exist_ok=True)
+        os.makedirs(self.output_dir, exist_ok=True)
 
     def _init_ckpt_dir(self, adapters=None):
         super()._init_ckpt_dir(adapters)

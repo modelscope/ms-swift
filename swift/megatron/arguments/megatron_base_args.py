@@ -20,6 +20,7 @@ class MegatronBaseArguments(MegatronArguments, BaseArguments):
         if self.packing:
             self.padding_free = True
         BaseArguments.__post_init__(self)
+        self.seq_length = self.packing_length or self.max_length
         self._init_megatron_args()
         if self.streaming:
             if self.dataloader_num_workers > 1:

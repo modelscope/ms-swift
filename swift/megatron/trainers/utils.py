@@ -317,7 +317,6 @@ class TrainerState:
     should_log: bool = False
 
     iteration: int = 0
-    epoch: int = 0
     consumed_train_samples = 0
     # compat transformers
     max_steps: Optional[int] = None

@@ -10,7 +10,7 @@ from swift.megatron.convert import test_convert_precision
 from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import load_mcore_checkpoint, prepare_mcore_model, save_mcore_checkpoint
 from swift.pipelines import SwiftPipeline, prepare_model_template
-from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_last_rank
+from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_master
 
 logger = get_logger()
 
@@ -61,7 +61,7 @@ class MegatronExport(SwiftPipeline):
                             hf_config=hf_config)
         args_path = os.path.join(args.mcore_adapter or args.mcore_model or args.model, 'args.json')
         if os.path.exists(args_path):
-            if is_last_rank():
+            if is_master():
                 shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
         else:
             args.save_args(args.output_dir)
@@ -73,7 +73,7 @@ class MegatronExport(SwiftPipeline):
                     kwargs = {'model': args.output_dir, 'torch_dtype': None}
                 device_map = args.device_map or 'auto'
                 hf_model, template = prepare_model_template(
-                    args, device_map=device_map, **kwargs) if is_last_rank() else (None, template)
+                    args, device_map=device_map, **kwargs) if is_master() else (None, template)
             test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
             dist.barrier()
 
@@ -117,7 +117,7 @@ class MegatronExport(SwiftPipeline):
                 with disable_safe_ddp_context_use_barrier():
                     device_map = args.device_map or 'auto'
                     hf_model, template = prepare_model_template(
-                        args, device_map=device_map) if is_last_rank() else (None, template)
+                        args, device_map=device_map) if is_master() else (None, template)
                 test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=args.test_convert_dtype)
                 dist.barrier()
             else:

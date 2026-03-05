@@ -45,6 +45,14 @@ class RLHFMegatronArgumentsMixin:
     teacher_model: Optional[str] = field(default=None)
     teacher_model_type: Optional[str] = field(default=None)
     teacher_model_revision: Optional[str] = field(default=None)
+    teacher_model_server: Optional[str] = field(
+        default=None,
+        metadata={
+            'help':
+            'URL of the teacher model server (e.g., http://localhost:8000). '
+            'When set, teacher logprobs are fetched via API instead of loading a local model.'
+        })
+    gkd_logits_topk: Optional[int] = None
     lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
     seq_kd: bool = False  # Sequential KD: use teacher-generated responses when not on-policy
     offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
@@ -194,6 +202,21 @@ class RLHFMegatronArgumentsMixin:
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
+        if self.rlhf_type == 'gkd':
+            if self.teacher_model is None and self.teacher_model_server is None:
+                raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set.')
+
+            if self.teacher_model is not None and self.teacher_model_server is not None:
+                raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
+
+            # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
+            if self.teacher_model_server is not None:
+                if self.gkd_logits_topk is None:
+                    raise ValueError('gkd_logits_topk is required when using teacher_model_server')
+
+            # Validate gkd_logits_topk
+            if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
+                raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
 
     def _init_grpo(self):
 
@@ -335,7 +358,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     apply_rope_fusion: bool = False
     gradient_accumulation_fusion: bool = True
     cross_entropy_loss_fusion: bool = True
-    cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
+    cross_entropy_fusion_impl: Literal['native', 'te'] = 'te'
     calculate_per_token_loss: Optional[bool] = None
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
@@ -426,9 +449,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     sequence_parallel: bool = False
     context_parallel_size: int = 1
-    tp_comm_overlap: bool = False  # TODO
-    overlap_grad_reduce: bool = False  # TODO
-    overlap_param_gather: bool = False  # TODO
+    tp_comm_overlap: bool = False
+    overlap_grad_reduce: bool = False
+    overlap_param_gather: bool = False
+    overlap_param_gather_with_optimizer_step: bool = False
+    align_grad_reduce: bool = True
     virtual_pipeline_model_parallel_size: Optional[int] = None
     microbatch_group_size_per_vp_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
@@ -565,7 +590,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     def __post_init__(self):
         if self.tuner_type == 'lora':
-            require_version('peft>=0.15')
+            require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
@@ -574,6 +599,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.recompute_granularity == 'selective' and self.recompute_method is not None:
             raise ValueError('recompute method is not yet supported for selective recomputing granularity')
 
+        if self.group_by_length and self.padding_free:
+            raise ValueError('group_by_length is not compatible with padding_free.')
         self._set_default()
         self._init_vpp_size()
         if self.vit_gradient_checkpointing is None:

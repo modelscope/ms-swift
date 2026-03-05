@@ -17,7 +17,7 @@ from typing import List, Literal, Optional, Union
 from swift.megatron.utils import unwrap_model
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import (MxFp4Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver, deep_getattr, gc_collect,
-                         get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_last_rank,
+                         get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_master,
                          safe_snapshot_download)
 from ..tuners import LoraParallelLinear
 
@@ -46,7 +46,7 @@ class GPTBridge:
         self.args = args
         self._disable_tqdm = False
         self._target_device = None
-        self._only_last_rank = False
+        self._only_master_rank = False
         self._peft_target_modules = set()
         self._peft_modules_to_save = set()
         self._is_peft_format = False
@@ -418,7 +418,7 @@ class GPTBridge:
             tensor = tensor.to(device=self._target_device)
             if mg_scale_inv is not None:
                 mg_scale_inv = mg_scale_inv.to(device=self._target_device)
-        if self._only_last_rank and not is_last_rank():
+        if self._only_master_rank and not is_master():
             tensor = None
             mg_scale_inv = None
         if is_expert and tensor is not None:
@@ -674,7 +674,6 @@ class GPTBridge:
         hf_prefix: str,
         layer_idx: int,
         to_mcore: bool,
-        is_mtp_layer: bool = False,
     ):
         if to_mcore:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
@@ -727,14 +726,14 @@ class GPTBridge:
                     layer_idx,
                     to_mcore,
                     ep_rank=ep_rank,
-                    is_mtp_layer=is_mtp_layer))
+                ))
         if to_mcore:
             hf_state_dict = {}
         else:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
-    def _get_hf_grouped(self, is_mtp_layer: bool = False):
+    def _get_hf_grouped(self):
         if self.model_type in {
                 'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'dots1', 'ernie4_5_moe', 'glm4_moe',
                 'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
@@ -758,7 +757,6 @@ class GPTBridge:
         to_mcore: bool,
         ep_rank: Optional[int] = None,
         hf_mlp=None,
-        is_mtp_layer: bool = False,
     ):
         if to_mcore:
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
@@ -786,7 +784,7 @@ class GPTBridge:
             is_gate_up = hasattr(hf_mlp, 'gate_up_proj')
         # transformers 5.0 compatibility
         if self.is_transformers_5 and not to_mcore and is_expert:
-            _hf_grouped, _is_gate_up = self._get_hf_grouped(is_mtp_layer)
+            _hf_grouped, _is_gate_up = self._get_hf_grouped()
             if _hf_grouped is not None:
                 hf_grouped = _hf_grouped
             if _is_gate_up is not None:
@@ -1326,15 +1324,13 @@ class GPTBridge:
                                  'input_layernorm.weight', to_mcore)
         return hf_state_dict
 
-    def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool, is_mtp_layer: bool = False):
+    def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
         hf_mlp_prefix = self.get_hf_mlp_prefix(layer_idx)
         hf_mlp = self._get_hf_mlp(layer_idx)
         is_moe = self._is_moe(hf_mlp.state_dict())
         mg_mlp = None if mg_layer is None else mg_layer.mlp
         if is_moe:
-            hf_state_dict.update(
-                self._set_moe_state(
-                    mg_mlp, hf_state_dict, f'{hf_mlp_prefix}.', layer_idx, to_mcore, is_mtp_layer=is_mtp_layer))
+            hf_state_dict.update(self._set_moe_state(mg_mlp, hf_state_dict, f'{hf_mlp_prefix}.', layer_idx, to_mcore))
             self._set_state_dict(mg_layer, 'pre_mlp_layernorm.weight', hf_state_dict, 'post_attention_layernorm.weight',
                                  to_mcore)
         else:
@@ -1435,7 +1431,7 @@ class GPTBridge:
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
             hf_state_dict = {}
         layer_idx = 0
-        disable_tqdm = self._disable_tqdm or not is_last_rank()
+        disable_tqdm = self._disable_tqdm or not is_master()
         prog_bar = tqdm(range(self.config.num_layers), dynamic_ncols=True, desc=tqdm_desc, disable=disable_tqdm)
         while layer_idx < self.config.num_layers:
             lm_model = getattr(mg_model, 'language_model') if self.is_multimodal else mg_model
@@ -1506,10 +1502,8 @@ class GPTBridge:
             origin_hf_state_dict = hf_state_dict
             hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
             if len(hf_state_dict) == 0:
-                logger.info_if(
-                    f'MTP Layer {mtp_layer.layer_number} safetensors weights not found, '
-                    'this part will be randomly initialized.',
-                    cond=is_last_rank())
+                logger.info(f'MTP Layer {mtp_layer.layer_number} safetensors weights not found, '
+                            'this part will be randomly initialized.')
                 for param in mtp_layer.parameters():
                     if param.ndim == 2:
                         mtp_layer.config.init_method(param.data)
@@ -1519,14 +1513,14 @@ class GPTBridge:
             hf_state_dict = {}
         self._convert_mtp_extra(mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict)
         transformer_layer = None if mtp_layer is None else mtp_layer.transformer_layer
-        if not to_mcore and not self.model_type.startswith('qwen3_next'):
+        if not to_mcore and not self.model_type == 'qwen3_next':
             self._set_state_dict(lm_model, 'embedding.word_embeddings.weight', hf_state_dict, 'embed_tokens.weight',
                                  to_mcore)
             if self.config.untie_embeddings_and_output_weights:
                 self._set_state_dict(lm_model, 'output_layer.weight', hf_state_dict, 'shared_head.head.weight',
                                      to_mcore)
         hf_state_dict.update(self._set_layer_attn(transformer_layer, hf_state_dict, -1, to_mcore))
-        hf_state_dict.update(self._set_layer_mlp(transformer_layer, hf_state_dict, -1, to_mcore, is_mtp_layer=True))
+        hf_state_dict.update(self._set_layer_mlp(transformer_layer, hf_state_dict, -1, to_mcore))
         if to_mcore:
             hf_state_dict = {}
         else:
@@ -1554,12 +1548,13 @@ class GPTBridge:
         with torch.no_grad(), SafetensorLazyLoader(hf_model_dir, is_peft_format=is_peft_format) as loader:
             state_dict = loader.get_state_dict()
             hf_prefix = 'base_model.model.' if is_peft_format else ''
-            list(self._convert(mg_models, state_dict, hf_prefix, True, 'Loading: '))
+            for mg_model in mg_models:
+                list(self._convert([mg_model], state_dict, hf_prefix, True, 'Loading: '))
 
     def export_weights(self,
                        mg_models,
                        target_device=None,
-                       only_last_rank: bool = False,
+                       only_master_rank: bool = False,
                        is_peft_format: bool = False,
                        tqdm_desc: str = 'Exporting: ',
                        disable_tqdm: bool = True):
@@ -1572,7 +1567,7 @@ class GPTBridge:
             mg_models: List of Megatron model instances to export.
                 Note: If is_peft_format is True, you also need to pass in a GPTModel, not a PeftModel.
             target_device: Target device for exported tensors (e.g., 'cpu'). Defaults to None (current device, cuda).
-            only_last_rank: Whether to export only on the last rank in distributed settings. Defaults to False.
+            only_master_rank: Whether to export only on the last rank in distributed settings. Defaults to False.
             is_peft_format: Whether to export in PEFT (LoRA, etc.) format. Defaults to False.
                 - If True, exports only LoRA delta weights. If False, exports the complete model weights
                 (e.g., after merge-lora or full-parameter fine-tuning).
@@ -1583,7 +1578,7 @@ class GPTBridge:
             Tuple[str, torch.Tensor]: Key-value pairs of parameter names and tensors.
         """
         self._target_device = target_device
-        self._only_last_rank = only_last_rank
+        self._only_master_rank = only_master_rank
         self._is_peft_format = is_peft_format
         self._disable_tqdm = disable_tqdm
         self._adapter_name = 'default'
@@ -1630,7 +1625,7 @@ class GPTBridge:
         for k, v in self.export_weights(
                 mg_models,
                 target_device='cpu',
-                only_last_rank=True,
+                only_master_rank=True,
                 is_peft_format=is_peft_format,
                 tqdm_desc='Saving: ',
                 disable_tqdm=False):
@@ -1641,7 +1636,7 @@ class GPTBridge:
         if hf_config is None:
             hf_config = self.hf_model.config
         hf_config = copy(hf_config)
-        if is_last_rank():
+        if is_master():
             if is_peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
                 if args.task_type == 'seq_cls':
@@ -1684,7 +1679,7 @@ class GPTBridge:
                     output_dir,
                     model_dirs=[self.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
-            logger.info_if(f'Successfully saved `safetensors` model weights in `{output_dir}`.', cond=is_last_rank())
+            logger.info(f'Successfully saved `safetensors` model weights in `{output_dir}`.')
         dist.barrier()  # Ensure all weights are saved completely
 
 
