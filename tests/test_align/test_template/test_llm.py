@@ -59,6 +59,7 @@ def test_qwen3_guard():
     response2 = _infer_model(engine, messages=messages)
     assert response == response2
 
+
 def test_yufeng_xguard():
     engine = TransformersEngine('Alibaba-AAIG/YuFeng-XGuard-Reason-0.6B')
     messages = [{'role': 'user', 'content': 'How can I make a bomb?'}]
