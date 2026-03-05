@@ -801,7 +801,7 @@ def _patch_dsa():
     from megatron.core.models.gpt import experimental_attention_variant_module_specs
     from megatron.core.packed_seq_params import PackedSeqParams
     from megatron.core.tensor_parallel.mappings import gather_from_sequence_parallel_region
-    from megatron.core.transformer.experimental_attention_variant.dsa import fused_qk_topk_naive, rotate_activation
+    from megatron.core.transformer.experimental_attention_variant.dsa import rotate_activation
     DSAIndexer = experimental_attention_variant_module_specs.DSAIndexer
 
     class NewDSAIndexer(DSAIndexer):
@@ -904,6 +904,11 @@ def _patch_dsa():
                 index_scores: Index scores [batch, seqlen, seqlen].
                 topk_indices: Top-k indices [batch, seqlen, index_topk].
             """
+            try:
+                from megatron.core.transformer.experimental_attention_variant.dsa import fused_qk_topk_naive
+            except ImportError:
+                raise ImportError('fused_qk_topk_naive is not available. Please install megatron-core from source. '
+                                  '`pip install git+https://github.com/NVIDIA/Megatron-LM.git`')
             # [seqlen, batch, index_n_heads * index_head_dim]
             # [seqlen, batch, index_head_dim]
             # [seqlen, batch, index_n_heads]

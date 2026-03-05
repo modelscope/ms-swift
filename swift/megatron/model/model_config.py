@@ -455,6 +455,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
             res.pop('num_query_groups', None)
         if llm_model_type == 'glm_moe_dsa':
             res['experimental_attention_variant'] = 'dsa'
+            res['rotary_interleaved'] = False
     elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
         full_attention_interval = res.pop('full_attention_interval', 4)
         num_layers = res['num_layers']
@@ -494,6 +495,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['mrope_section'] = rope_scaling['mrope_section']
         mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get('interleaved', False)
         res['mrope_interleaved'] = mrope_interleaved
+    if res.get('multi_latent_attention') and res.get('position_embedding_type') == 'rope':
+        res['rotary_interleaved'] = True
 
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
