@@ -141,7 +141,7 @@ class MegatronModelConfig(TransformerConfig):
 
     # moe
     num_moe_experts: Optional[int] = None
-    moe_layer_freq: str = 1
+    moe_layer_freq: str = '1'
     moe_ffn_hidden_size: Optional[int] = None
     moe_shared_expert_intermediate_size: Optional[int] = None
 
@@ -155,7 +155,7 @@ class MegatronModelConfig(TransformerConfig):
     moe_router_topk_scaling_factor: Optional[float] = None
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn',
                                             'none'] = 'aux_loss'
-    use_shared_expert_gate: bool = False
+    moe_shared_expert_gate: bool = False
 
     # mla
     multi_latent_attention: bool = False
@@ -247,6 +247,10 @@ class MegatronModelConfig(TransformerConfig):
             assert not self.swiglu
             self.gated_linear_unit = True
             self.activation_func = quick_gelu
+        # TODO: Temporary addition, already supported in mcore0.16
+        if self.num_query_groups % self.tensor_model_parallel_size != 0:
+            raise ValueError(f'num_query_groups ({self.num_query_groups}) must be a multiple of '
+                             f'tensor_model_parallel_size ({self.tensor_model_parallel_size}).')
         super().__post_init__()
         self._check_npu()
         self.variable_seq_lengths = True
@@ -386,7 +390,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
                           } or hf_model_type in {'qwen3_omni_moe', 'qwen3_vl_moe', 'qwen3_5_moe'}:
         res.pop('ffn_hidden_size', None)
         if llm_model_type in {'qwen2_moe', 'qwen3_next'} or hf_model_type == 'qwen3_5_moe':
-            res['use_shared_expert_gate'] = True
+            res['moe_shared_expert_gate'] = True
     if llm_model_type in {
             'deepseek',
             'deepseek_v2',
