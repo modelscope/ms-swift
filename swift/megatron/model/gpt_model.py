@@ -185,7 +185,6 @@ class GPTModel(McoreGPTModel):
             t = (t * cos_) + (rope_utils._rotate_half(t, rotary_interleaved) * sin_)
             return torch.cat((t, t_pass), dim=-1)
 
-
         rope_utils._apply_rotary_pos_emb_bshd = _apply_rotary_pos_emb_bshd
         rope_utils._origin_apply_rotary_pos_emb_bshd = _origin_apply_rotary_pos_emb_bshd
 

@@ -27,6 +27,8 @@ register_megatron_model(
             ModelType.ernie4_5_moe,
             ModelType.glm4_moe,
             ModelType.glm4_moe_lite,
+            # https://github.com/huggingface/transformers/issues/44360
+            # https://github.com/huggingface/transformers/issues/44261
             ModelType.glm_moe_dsa,
             ModelType.gpt_oss,
         ],
