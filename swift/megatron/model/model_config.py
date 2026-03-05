@@ -248,7 +248,7 @@ class MegatronModelConfig(TransformerConfig):
             self.gated_linear_unit = True
             self.activation_func = quick_gelu
         # TODO: Temporary addition, already supported in mcore0.16
-        if self.num_query_groups % self.tensor_model_parallel_size != 0:
+        if self.num_query_groups is not None and self.num_query_groups % self.tensor_model_parallel_size != 0:
             raise ValueError(f'num_query_groups ({self.num_query_groups}) must be a multiple of '
                              f'tensor_model_parallel_size ({self.tensor_model_parallel_size}).')
         super().__post_init__()
