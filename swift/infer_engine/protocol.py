@@ -2,15 +2,15 @@
 import base64
 import io
 import json
+import numpy as np
 import os
 import time
 import uuid
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field, fields
 from PIL import Image
-from pydantic import BaseModel, Field, field_validator, PlainSerializer, AfterValidator
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Annotated
-import numpy as np
+from pydantic import AfterValidator, BaseModel, Field, PlainSerializer, field_validator
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.template import Messages, Tool
 from swift.utils import remove_response
@@ -20,13 +20,9 @@ def serialize_ndarray(value):
     if value is None:
         return None
     if isinstance(value, np.ndarray):
-        return {
-            'data': value.tolist(),
-            'shape': value.shape,
-            'dtype': str(value.dtype),
-            '__ndarray__': True
-        }
+        return {'data': value.tolist(), 'shape': value.shape, 'dtype': str(value.dtype), '__ndarray__': True}
     return value
+
 
 def deserialize_ndarray(value):
     if value is None:
@@ -35,11 +31,8 @@ def deserialize_ndarray(value):
         return np.array(value['data'], dtype=value['dtype']).reshape(value['shape'])
     return value
 
-NumpyArray = Annotated[
-    Any,
-    PlainSerializer(serialize_ndarray, return_type=Dict),
-    AfterValidator(deserialize_ndarray)
-]
+
+NumpyArray = Annotated[Any, PlainSerializer(serialize_ndarray, return_type=Dict), AfterValidator(deserialize_ndarray)]
 
 
 @dataclass

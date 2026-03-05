@@ -510,8 +510,8 @@ def get_mcore_model_config(args, hf_config):
     if num_moe_experts is None:
         kwargs['expert_model_parallel_size'] = 1
         kwargs['expert_tensor_parallel_size'] = 1
-    
-    if args.router_replay_mode != "disabled":
+
+    if args.router_replay_mode != 'disabled':
         kwargs['enable_routing_replay'] = True
 
     config = MegatronModelConfig(**kwargs)
