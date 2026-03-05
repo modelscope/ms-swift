@@ -219,8 +219,10 @@ gradient_checkpointing: true
 - router_aux_loss_coef: 用于moe模型训练时，设置 aux_loss 的权重，默认为`0.`。
 - enable_dft_loss: 是否在SFT训练中使用[DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss，默认为False。
 - enable_channel_loss: 启用channel loss，默认为`False`。你需要在数据集中准备"channel"字段，ms-swift会根据该字段分组统计loss（若未准备"channel"字段，则归为默认`None` channel）。数据集格式参考[channel loss](../Customization/Custom-dataset.md#channel-loss)。channel loss兼容packing/padding_free/loss_scale等技术。
+- safe_serialization: 是否存储为safetensors，默认为True。
+- max_shard_size: 单存储文件最大大小，默认'5GB'。
 - logging_dir: tensorboard日志保存路径。默认为None，即设置为`f'{self.output_dir}/runs'`。
-- 🔥predict_with_generate: 验证时使用生成式的方式，默认为False。
+- predict_with_generate: 验证时使用生成式的方式，默认为False。
 - metric_for_best_model: 默认为None，即当`predict_with_generate`设置为False时，设置为'loss'，否则设置为'rouge-l'（在PPO训练时，不进行默认值设置；GRPO训练设置为'reward'）。
 - greater_is_better: 默认为None，即当`metric_for_best_model`含'loss'时，设置为False，否则设置为True。
 - max_epochs: 训练到`max_epochs`时强制退出训练，并对权重进行验证和保存。该参数在使用流式数据集时很有用。默认为None。
