@@ -519,7 +519,6 @@ class Qwen3NextLoader(MegatronModelLoader):
             moe_grouped_gemm=config.moe_grouped_gemm,
             qk_layernorm=config.qk_layernorm,
             multi_latent_attention=config.multi_latent_attention,
-            moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             **kwargs,
         )
         layer_specs = []

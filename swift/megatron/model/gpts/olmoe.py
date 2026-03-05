@@ -84,7 +84,6 @@ def get_olmoe_decoder_block_spec(
         moe_grouped_gemm=config.moe_grouped_gemm,
         qk_layernorm=True,
         multi_latent_attention=False,
-        moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
         **kwargs,
     )
     layer_specs = []
