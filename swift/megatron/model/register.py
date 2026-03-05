@@ -112,7 +112,8 @@ class MegatronModelLoader:
             self.config, transformer_layer_spec_for_mtp, use_transformer_engine=True, **kwargs)
 
     def _set_shared_expert_gate(self, transformer_layer_spec):
-        if (self.config.use_shared_expert_gate and self.config.num_moe_experts
+        mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
+        if (not mcore_016 and self.config.moe_shared_expert_gate and self.config.num_moe_experts
                 and self.config.moe_shared_expert_intermediate_size):
             for layer_spec in transformer_layer_spec.layer_specs:
                 if hasattr(layer_spec.submodules.mlp.submodules, 'shared_experts'):
@@ -129,21 +130,7 @@ class MegatronModelLoader:
         mtp_block_spec = None
         if self.args.mtp_num_layers is not None:
             mtp_block_spec = self.get_mtp_block_spec(transformer_layer_spec, vp_stage=vp_stage)
-        model = self._init_model(
-            transformer_layer_spec,
-            mtp_block_spec,
-            pre_process=pre_process,
-            post_process=post_process,
-            vp_stage=vp_stage)
-        return model
-
-    def _init_model(self,
-                    transformer_layer_spec,
-                    mtp_block_spec,
-                    pre_process=True,
-                    post_process=True,
-                    vp_stage: Optional[int] = None):
-        return self.model_cls(
+        model = self.model_cls(
             config=self.config,
             transformer_layer_spec=transformer_layer_spec,
             pre_process=pre_process,
@@ -151,6 +138,7 @@ class MegatronModelLoader:
             mtp_block_spec=mtp_block_spec,
             vp_stage=vp_stage,
         )
+        return model
 
 
 def get_mcore_model(args, hf_config):
