@@ -142,12 +142,14 @@ def _patch_mla_attention():
                 # query representation.
                 extra_kwargs['x'] = hidden_states
                 extra_kwargs['qr'] = q_compressed
+                # for easy injection of rotary_pos_emb (patch)
+                packed_seq_params = (packed_seq_params, rotary_pos_emb)
             core_attn_out = self.core_attention(
                 query,
                 key,
                 value,
                 attention_mask,
-                packed_seq_params=(packed_seq_params, rotary_pos_emb),  # for easy injection of rotary_pos_emb
+                packed_seq_params=packed_seq_params,
                 attn_mask_type=attn_mask_type,
                 **extra_kwargs,
             )
