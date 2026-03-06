@@ -496,9 +496,11 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res['mrope_section'] = rope_scaling['mrope_section']
         mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get('interleaved', False)
         res['mrope_interleaved'] = mrope_interleaved
-    if res.get('multi_latent_attention') and res.get('position_embedding_type') in {'rope', None}:
-        res['rotary_interleaved'] = True
 
+    if res.get('multi_latent_attention') and res.get('position_embedding_type') in {
+            'rope', None
+    } and 'rotary_interleaved' not in res:
+        res['rotary_interleaved'] = True
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
     if res.get('moe_router_score_function', 'softmax') == 'sigmoid' and 'moe_router_enable_expert_bias' not in res:
