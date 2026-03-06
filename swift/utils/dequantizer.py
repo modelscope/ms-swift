@@ -21,18 +21,26 @@ class Fp8Dequantizer:
         rows, cols = quantized_fp32.shape[-2:]
         block_size = self.block_size
         block_m, block_n = block_size
-        if rows % block_m != 0 or cols % block_n != 0:
-            # Fall back to loop
-            dequantized = quantized_fp32.clone()
-            for i in range(math.ceil(rows / block_m)):
-                for j in range(math.ceil(cols / block_n)):
-                    dequantized[i * block_m:(i + 1) * block_m, j * block_n:(j + 1) * block_n] *= scales[i, j]
-        else:
-            reshaped = quantized_fp32.reshape(-1, rows // block_m, block_m, cols // block_n, block_n)
-            expanded_scales = scales.to(torch.float32).reshape(-1, rows // block_m, cols // block_n)
-            expanded_scales = expanded_scales.unsqueeze(-1).unsqueeze(2)
-            dequantized = reshaped * expanded_scales
-            dequantized = dequantized.reshape(quantized_fp32.shape)  # return torch.float32
+        needs_padding = rows % block_m != 0 or cols % block_n != 0
+
+        input_tensor = quantized_fp32
+        if needs_padding:
+            pad_rows = (block_m - rows % block_m) % block_m
+            pad_cols = (block_n - cols % block_n) % block_n
+            input_tensor = torch.nn.functional.pad(input_tensor, (0, pad_cols, 0, pad_rows))
+
+        p_rows, p_cols = input_tensor.shape[-2:]
+
+        reshaped = input_tensor.reshape(-1, p_rows // block_m, block_m, p_cols // block_n, block_n)
+        expanded_scales = scales.to(torch.float32).reshape(-1, p_rows // block_m, p_cols // block_n)
+        expanded_scales = expanded_scales.unsqueeze(-1).unsqueeze(2)
+
+        dequantized = reshaped * expanded_scales
+        dequantized = dequantized.reshape(input_tensor.shape)
+
+        if needs_padding:
+            dequantized = dequantized[..., :rows, :cols].contiguous()
+
         return dequantized
 
 
