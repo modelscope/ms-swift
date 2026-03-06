@@ -631,8 +631,12 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_omni_utils import fetch_image, fetch_video
+        # Qwen3-Omni uses patch_size=16 (image_factor=32); Qwen2.5-Omni uses 14 (28)
+        omni_kwargs = {}
+        if self.version == 'omni_v3':
+            omni_kwargs['image_patch_size'] = self.processor.image_processor.patch_size
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            inputs.images[index] = fetch_image({'image': inputs.images[index]}, **omni_kwargs)
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
             elif self.version == 'omni_v3':
@@ -646,7 +650,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            _video = fetch_video({'video': video})
+            _video = fetch_video({'video': video}, **omni_kwargs)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
