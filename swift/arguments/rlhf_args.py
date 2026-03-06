@@ -137,6 +137,8 @@ class GRPOArguments(GRPOArgumentsMixin):
             be used with an experiment tracker like WandB or SwanLab (`--report_to wandb`/`swanlab`). If enabled
             without a tracker, completions are saved to `completions.jsonl` in the checkpoint directory. Defaults to
             False.
+        log_completions_extra_columns (List[str]): Extra dataset columns to include in completion tables when
+            `log_completions=true`. Missing values are logged as None with one warning per column. Defaults to `[]`.
         num_iterations (int): The number of update steps to perform for each data sample. This corresponds to the K
             value in the GRPO paper. Defaults to 1.
         truncation_strategy (Literal['delete', 'left', 'right', 'split', None]): The strategy for handling input
@@ -151,6 +153,7 @@ class GRPOArguments(GRPOArgumentsMixin):
     reward_funcs: List[str] = field(default_factory=list)
     reward_weights: List[float] = None
     log_completions: bool = False
+    log_completions_extra_columns: List[str] = field(default_factory=list)
 
     # multi step
     num_iterations: int = 1

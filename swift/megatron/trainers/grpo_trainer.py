@@ -26,7 +26,8 @@ from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
 from swift.megatron.utils import forward_step_helper, get_padding_to, set_random_seed
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, load_pil_img, nanstd, normalize_log_image,
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, collect_log_columns, load_pil_img, nanstd,
+                                       normalize_log_image,
                                        pad_logps_back_to_batch, profiling_context, profiling_decorator,
                                        replace_assistant_response_with_ids, set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
@@ -506,6 +507,20 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if 'image' not in self._logs:
                 self._logs['image'] = deque(maxlen=self.args.generation_batch_size)
             self._logs['image'].extend(images)
+
+        if self.log_completions_extra_columns:
+            extra_columns = [
+                col for col in self.log_completions_extra_columns if col not in self._logs
+            ]
+            extra_metrics = collect_log_columns(
+                batch,
+                extra_columns,
+                warned_columns=self._missing_log_columns_warned,
+            )
+            for key, value in extra_metrics.items():
+                if key not in self._logs:
+                    self._logs[key] = deque(maxlen=self.args.generation_batch_size)
+                self._logs[key].extend(gather_object(value))
 
         return rollout_outputs
 
@@ -1397,6 +1412,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             }
             if self._logs.get('image'):
                 table['image'] = list(self._logs['image'])
+            for key, value in self._logs.items():
+                if key not in table and key != 'rewards':
+                    table[key] = list(value)
             self.jsonl_writer.append(table)
             args = self.args
             if 'wandb' in args.report_to:
@@ -1670,6 +1688,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
+        self.log_completions_extra_columns = list(args.log_completions_extra_columns)
+        self._missing_log_columns_warned = set()
         self.jsonl_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
         self._last_logged_step = -1
