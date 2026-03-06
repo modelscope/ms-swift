@@ -415,6 +415,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
             'deepseek',
             'deepseek_v2',
             'deepseek_v3',
+            'deepseek_v32',
             'dots1',
     } or hf_model_type == 'kimi_vl':
         if llm_model_type != 'deepseek':
@@ -423,6 +424,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res.pop('num_query_groups', None)  # https://github.com/NVIDIA/Megatron-LM/issues/1475
         if llm_model_type == 'dots1':
             res['moe_router_score_function'] = 'sigmoid'
+        elif llm_model_type == 'deepseek_v32':
+            res['experimental_attention_variant'] = 'dsa'
     elif llm_model_type == 'hunyuan':
         # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
         # which is incompatible with megatron-core, support is not provided here.
