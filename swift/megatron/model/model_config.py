@@ -5,6 +5,7 @@ from dataclasses import dataclass, fields
 from megatron.core import mpu
 from megatron.core.transformer import TransformerConfig
 from transformers.utils import is_torch_npu_available
+from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from swift.utils import get_logger, json_parse_to_dict
@@ -173,6 +174,14 @@ class MegatronModelConfig(TransformerConfig):
     linear_conv_kernel_dim: Optional[int] = None
     layer_types: Optional[List[str]] = None
 
+    # dsa
+    experimental_attention_variant: Optional[Literal['gated_delta_net', 'dsa']] = None
+    dsa_indexer_n_heads: Optional[int] = None
+    dsa_indexer_head_dim: Optional[int] = None
+    dsa_indexer_topk: Optional[int] = None
+    dsa_indexer_loss_coeff: Optional[float] = None
+    dsa_indexer_use_sparse_loss: bool = False
+
     layernorm_zero_centered_gamma: bool = False
 
     # Override
@@ -221,6 +230,9 @@ class MegatronModelConfig(TransformerConfig):
     def __post_init__(self):
         self._augment_mindspeed_defaults()
         self._format_config()
+        if self.experimental_attention_variant is not None:
+            require_version('megatron-core>=0.16.0.dev',
+                            'experimental attention variant requires megatron-core>=0.16.0')
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
         if self.moe_shared_expert_intermediate_size == 0:
@@ -247,11 +259,15 @@ class MegatronModelConfig(TransformerConfig):
             assert not self.swiglu
             self.gated_linear_unit = True
             self.activation_func = quick_gelu
+        _origin_rotary_interleaved = self.rotary_interleaved
+        if self.multi_latent_attention and self.rotary_interleaved:
+            self.rotary_interleaved = False
         # TODO: Temporary addition, already supported in mcore0.16
         if self.num_query_groups is not None and self.num_query_groups % self.tensor_model_parallel_size != 0:
             raise ValueError(f'num_query_groups ({self.num_query_groups}) must be a multiple of '
                              f'tensor_model_parallel_size ({self.tensor_model_parallel_size}).')
         super().__post_init__()
+        self.rotary_interleaved = _origin_rotary_interleaved
         self._check_npu()
         self.variable_seq_lengths = True
 
@@ -323,6 +339,10 @@ config_mapping = {
     'linear_value_head_dim': ['linear_value_head_dim'],
     'linear_conv_kernel_dim': ['linear_conv_kernel_dim'],
     'full_attention_interval': ['full_attention_interval'],
+    # dsa
+    'dsa_indexer_n_heads': ['index_n_heads'],
+    'dsa_indexer_head_dim': ['index_head_dim'],
+    'dsa_indexer_topk': ['index_topk'],
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
@@ -428,11 +448,15 @@ def convert_hf_config(config) -> Dict[str, Any]:
         else:
             window_attn_skip_freq = ','.join(['1' if lt == 'sliding_attention' else '0' for lt in layer_types])
             res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
-    elif llm_model_type in {'glm4_moe', 'glm4_moe_lite'} or hf_model_type == 'glm4v_moe':
+    elif llm_model_type in {'glm4_moe', 'glm4_moe_lite', 'glm_moe_dsa'} or hf_model_type == 'glm4v_moe':
         res['moe_router_score_function'] = 'sigmoid'
-        if llm_model_type == 'glm4_moe_lite':
+        if llm_model_type in {'glm4_moe_lite', 'glm_moe_dsa'}:
             res['qk_layernorm'] = True
             res.pop('num_query_groups', None)
+        if llm_model_type == 'glm_moe_dsa':
+            res['experimental_attention_variant'] = 'dsa'
+            # https://github.com/modelscope/ms-swift/pull/8085
+            # res['rotary_interleaved'] = False
     elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
         full_attention_interval = res.pop('full_attention_interval', 4)
         num_layers = res['num_layers']
@@ -473,6 +497,10 @@ def convert_hf_config(config) -> Dict[str, Any]:
         mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get('interleaved', False)
         res['mrope_interleaved'] = mrope_interleaved
 
+    if res.get('multi_latent_attention') and res.get('position_embedding_type') in {
+            'rope', None
+    } and 'rotary_interleaved' not in res:
+        res['rotary_interleaved'] = True
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
     if res.get('moe_router_score_function', 'softmax') == 'sigmoid' and 'moe_router_enable_expert_bias' not in res:
@@ -501,8 +529,8 @@ def get_mcore_model_config(args, hf_config):
     kwargs['batch_p2p_comm'] = not args.overlap_p2p_comm
     swiglu = kwargs.get('swiglu', True)
     add_bias_linear = kwargs.get('add_bias_linear', False)
-    position_embedding_type = kwargs.get('position_embedding_type', 'rope')
     num_moe_experts = kwargs.get('num_moe_experts', None)
+    position_embedding_type = kwargs.get('position_embedding_type', 'rope')
     if position_embedding_type != 'rope':
         kwargs['apply_rope_fusion'] = False
     if not swiglu and not add_bias_linear:

@@ -737,7 +737,7 @@ class GPTBridge:
         if self.model_type in {
                 'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'dots1', 'ernie4_5_moe', 'glm4_moe',
                 'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
-                'qwen3_5_moe'
+                'qwen3_5_moe', 'glm_moe_dsa'
         }:
             return False, False
         return None, None
@@ -1257,6 +1257,22 @@ class GPTBridge:
             hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
         return hf_state_dict
 
+    def _set_indexer(self, mg_indexer, hf_state_dict, hf_prefix: str, to_mcore: bool):
+        if to_mcore:
+            hf_state_dict = self._remove_prefix(hf_state_dict, hf_prefix)
+        else:
+            hf_state_dict = {}
+        self._set_state_dict(mg_indexer, 'linear_wq_b.weight', hf_state_dict, 'wq_b.weight', to_mcore)
+        self._set_state_dict(mg_indexer, 'linear_wk.weight', hf_state_dict, 'wk.weight', to_mcore)
+        self._set_state_dict(mg_indexer, 'k_norm.weight', hf_state_dict, 'k_norm.weight', to_mcore)
+        self._set_state_dict(mg_indexer, 'k_norm.bias', hf_state_dict, 'k_norm.bias', to_mcore)
+        self._set_state_dict(mg_indexer, 'linear_weights_proj.weight', hf_state_dict, 'weights_proj.weight', to_mcore)
+        if to_mcore:
+            hf_state_dict = {}
+        else:
+            hf_state_dict = self._add_prefix(hf_state_dict, hf_prefix)
+        return hf_state_dict
+
     def _set_mla_attn_state(
         self,
         mg_attn,
@@ -1279,11 +1295,18 @@ class GPTBridge:
                              to_mcore)
         self._set_state_dict(mg_attn, 'linear_kv_up_proj.weight', hf_state_dict, 'kv_b_proj.weight', to_mcore)
         if self.config.qk_layernorm:
-            if self.config.q_lora_rank is not None:
-                self._set_state_dict(mg_attn, 'linear_q_up_proj.layer_norm_weight', hf_state_dict,
-                                     'q_a_layernorm.weight', to_mcore)
-            self._set_state_dict(mg_attn, 'linear_kv_up_proj.layer_norm_weight', hf_state_dict, 'kv_a_layernorm.weight',
-                                 to_mcore)
+            if self.config.experimental_attention_variant == 'dsa':
+                if self.config.q_lora_rank is not None:
+                    self._set_state_dict(mg_attn, 'q_layernorm.weight', hf_state_dict, 'q_a_layernorm.weight', to_mcore)
+                self._set_state_dict(mg_attn, 'kv_layernorm.weight', hf_state_dict, 'kv_a_layernorm.weight', to_mcore)
+            else:
+                if self.config.q_lora_rank is not None:
+                    self._set_state_dict(mg_attn, 'linear_q_up_proj.layer_norm_weight', hf_state_dict,
+                                         'q_a_layernorm.weight', to_mcore)
+                self._set_state_dict(mg_attn, 'linear_kv_up_proj.layer_norm_weight', hf_state_dict,
+                                     'kv_a_layernorm.weight', to_mcore)
+        if self.config.experimental_attention_variant == 'dsa':
+            hf_state_dict.update(self._set_indexer(mg_attn.core_attention.indexer, hf_state_dict, 'indexer.', to_mcore))
         if to_mcore:
             hf_state_dict = {}
         else:

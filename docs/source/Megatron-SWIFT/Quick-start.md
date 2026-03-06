@@ -66,7 +66,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | python       | >=3.9        | 3.10/3.11        |                    |
 | cuda         |              | cuda12      |                    |
 | torch        | >=2.0        | 2.8.0       |                    |
-| transformer_engine    | >=2.3       |   2.10.0    |                  |
+| transformer_engine    | >=2.3       |   2.12.0    |                  |
 | apex |   |  0.1 | |
 | megatron_core    |   >=0.12,<0.16    | 0.15      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |

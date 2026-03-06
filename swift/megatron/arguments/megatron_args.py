@@ -528,6 +528,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     attn_impl: Optional[str] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
 
+    # dsa
+    dsa_indexer_loss_coeff: Optional[float] = None
+    dsa_indexer_use_sparse_loss: bool = False
+
     # other
     check_model: bool = True
     torch_dtype: Optional[Union[torch.dtype, str]] = None
