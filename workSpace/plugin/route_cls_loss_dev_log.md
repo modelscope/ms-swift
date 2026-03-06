@@ -10,6 +10,8 @@
 + level4 count=5k+
     + appeal_example: `"<APPEAL> [Scene] 主站 | [Cat_lv1] 活动 | [Cat_lv2] 暑期活动 | [appeal_description] 用户参与暑期活动时遇到的各类问题，包括设备绑定限制、奖励发放规则、商品配送及库存问题等，需要客服提供准确的活动规则解释和解决方案。 | [symptom] 用户在参与暑期活动过程中遇到设备绑定限制、励未按时发放、商品配送异常等问题 | [user_goal] 获取活动规则的准确解释，解决参与活动时的技术障碍，确保活动奖励顺利领取 | [system_action] 根据用户具体问题，按照活动规则提供标准化解答，包括设备绑定说明、奖励发放流程、商品配送解决方案等 | [FAQ] ['百天心愿之旅-为什么助力提示“您已经助力过了”', '百天心愿之旅- 如何添加小组件', '百天心愿之旅-如何参与活动'] <APPEAL>",`
 level4层级数据，包含树状分类信息 + 实际用于召回的文档
+## 目标
+构建综合损失函数，infonce用于主要用于embedding空间学习，分类用于主要用于分类能力学习
 
 ## 1) 训推一致性
 别做“前缀匹配”，要做“真正的分类头”
@@ -410,3 +412,70 @@ $$[
     
 
 如果你把你现在训练时的 `query 文本格式`（是否带 instruction）和 `doc 文本是否固定含 Scene/Cat` 贴一下，我可以把上面这套变成一个更具体的“输入模板 + 哪些字段要 mask/保留”的配置。
+
+---
+
+## 最终落地版本（2026-03-02）
+
+### 已实现能力
+
+- 新增混合损失：`route_hybrid_infonce`（主任务 InfoNCE + 辅助分类）
+- 支持 3 种模式：
+  - `ce3`: 3 层 CE（lv1/lv2/lv3）
+  - `ce3_conditional`: lv3 使用基于 lv2 子树的 conditional softmax CE
+  - `ce3_conditional_pathkl`: 在上一模式基础上增加 Path-KL
+- 分类特征优先读取 `pre_norm_last_hidden_state`，不存在则自动回退 `last_hidden_state`
+- embedding 输出新增：
+  - `pre_norm_last_hidden_state`
+  - `pre_projection_last_hidden_state`（与 pre-norm 同值别名）
+- `Seq2SeqTrainer.compute_loss` 已透传：
+  - `label_lv1`
+  - `label_lv2`
+  - `label_lv3`
+
+### 默认超参
+
+- `ce3`: `lambda=0.10`, `alpha=(0.2,1.0,0.3)`, `beta=0`
+- `ce3_conditional`: `lambda=0.15`, `alpha=(0.2,1.0,0.5)`, `beta=0`
+- `ce3_conditional_pathkl`: `lambda=0.15`, `alpha=(0.2,1.0,0.5)`, `beta=0.05`
+
+### 关键环境变量
+
+- `ROUTE_CLS_MODE`: `ce3|ce3_conditional|ce3_conditional_pathkl`
+- `ROUTE_CLS_LAMBDA`
+- `ROUTE_CLS_ALPHA`（例如 `0.2,1.0,0.5`）
+- `ROUTE_CLS_BETA_PATHKL`
+- `ROUTE_CLS_LABEL_SMOOTHING`
+- `ROUTE_CLS_FEATURE_KEY`（默认 `pre_norm_last_hidden_state`）
+- `ROUTE_HIERARCHY_JSON`（conditional/path-kl 模式必需）
+- 可选：
+  - `ROUTE_NUM_LV1`
+  - `ROUTE_NUM_LV2`
+  - `ROUTE_NUM_LV3`
+  - `ROUTE_CLS_MISSING_LABEL_STRATEGY`（`error|skip`）
+
+### 层级映射 JSON schema（建议）
+
+```json
+{
+  "num_lv1": 2,
+  "num_lv2": 4,
+  "num_lv3": 200,
+  "lv2_to_lv1": [0, 0, 1, 1],
+  "lv3_to_lv2": [0, 0, 1, 1, 2, 3]
+}
+```
+
+### 训练启动示例
+
+```bash
+export ROUTE_CLS_MODE=ce3_conditional_pathkl
+export ROUTE_HIERARCHY_JSON=/abs/path/route_hierarchy.json
+export ROUTE_CLS_FEATURE_KEY=pre_norm_last_hidden_state
+
+swift sft \
+  --external_plugins /Users/liujunchen/WorkSpace/Frames/ms-swift/workSpace/plugin/route_cls_loss_plugin.py \
+  --loss_type route_hybrid_infonce \
+  --remove_unused_columns false \
+  ...
+```
