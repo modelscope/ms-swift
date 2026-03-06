@@ -181,6 +181,7 @@ class MegatronModelConfig(TransformerConfig):
     dsa_indexer_topk: Optional[int] = None
     dsa_indexer_loss_coeff: Optional[float] = None
     dsa_indexer_use_sparse_loss: bool = False
+    dsa_indexer_rotary_interleaved: bool = False
 
     layernorm_zero_centered_gamma: bool = False
 
@@ -343,6 +344,7 @@ config_mapping = {
     'dsa_indexer_n_heads': ['index_n_heads'],
     'dsa_indexer_head_dim': ['index_head_dim'],
     'dsa_indexer_topk': ['index_topk'],
+    'dsa_indexer_rotary_interleaved': ['indexer_rope_interleave'],
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
