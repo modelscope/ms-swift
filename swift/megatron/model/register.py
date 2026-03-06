@@ -114,7 +114,6 @@ class MegatronModelLoader:
             config.multi_latent_attention,
             **kwargs,
         )
-        # TODO: dsa
         return transformer_layer_spec
 
     def get_mtp_block_spec(self, transformer_layer_spec, vp_stage: Optional[int] = None):

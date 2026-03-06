@@ -455,7 +455,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
             res.pop('num_query_groups', None)
         if llm_model_type == 'glm_moe_dsa':
             res['experimental_attention_variant'] = 'dsa'
-            res['rotary_interleaved'] = False
+            # https://github.com/modelscope/ms-swift/pull/8085
+            # res['rotary_interleaved'] = False
     elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
         full_attention_interval = res.pop('full_attention_interval', 4)
         num_layers = res['num_layers']
