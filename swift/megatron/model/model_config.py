@@ -181,6 +181,7 @@ class MegatronModelConfig(TransformerConfig):
     dsa_indexer_topk: Optional[int] = None
     dsa_indexer_loss_coeff: Optional[float] = None
     dsa_indexer_use_sparse_loss: bool = False
+    dsa_indexer_rotary_interleaved: bool = False
 
     layernorm_zero_centered_gamma: bool = False
 
@@ -343,6 +344,7 @@ config_mapping = {
     'dsa_indexer_n_heads': ['index_n_heads'],
     'dsa_indexer_head_dim': ['index_head_dim'],
     'dsa_indexer_topk': ['index_topk'],
+    'dsa_indexer_rotary_interleaved': ['indexer_rope_interleave'],
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
@@ -415,6 +417,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
             'deepseek',
             'deepseek_v2',
             'deepseek_v3',
+            'deepseek_v32',
             'dots1',
     } or hf_model_type == 'kimi_vl':
         if llm_model_type != 'deepseek':
@@ -423,6 +426,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res.pop('num_query_groups', None)  # https://github.com/NVIDIA/Megatron-LM/issues/1475
         if llm_model_type == 'dots1':
             res['moe_router_score_function'] = 'sigmoid'
+        elif llm_model_type == 'deepseek_v32':
+            res['experimental_attention_variant'] = 'dsa'
     elif llm_model_type == 'hunyuan':
         # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
         # which is incompatible with megatron-core, support is not provided here.

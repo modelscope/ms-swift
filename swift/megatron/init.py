@@ -873,13 +873,18 @@ def _patch_dsa():
             # x_pe   [seqlen, batch, *, qk_pos_emb_head_dim]
             x_pe, x_nope = torch.split(
                 x, [self.index_head_dim - self.qk_pos_emb_head_dim, self.qk_pos_emb_head_dim], dim=-1)
-            x_pe = apply_rotary_pos_emb(
-                x_pe,
-                rotary_pos_emb,
-                config=self.config,
-                cu_seqlens=None,
-                cp_group=self.pg_collection.cp,
-            )
+            origin_rotary_interleaved = self.config.rotary_interleaved
+            try:
+                self.config.rotary_interleaved = self.config.dsa_indexer_rotary_interleaved
+                x_pe = apply_rotary_pos_emb(
+                    x_pe,
+                    rotary_pos_emb,
+                    config=self.config,
+                    cu_seqlens=None,
+                    cp_group=self.pg_collection.cp,
+                )
+            finally:
+                self.config.rotary_interleaved = origin_rotary_interleaved
             # [seqlen, batch, *, index_head_dim]
             x = torch.cat([x_pe, x_nope], dim=-1)
             return x

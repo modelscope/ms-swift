@@ -737,7 +737,7 @@ class GPTBridge:
         if self.model_type in {
                 'qwen2_moe', 'qwen3_moe', 'deepseek_v2', 'deepseek_v3', 'kimi_k2', 'dots1', 'ernie4_5_moe', 'glm4_moe',
                 'glm4_moe_lite', 'glm4v_moe', 'minimax_m2', 'olmoe', 'qwen3_next', 'kimi_vl', 'qwen3_omni_moe',
-                'qwen3_5_moe', 'glm_moe_dsa'
+                'qwen3_5_moe', 'glm_moe_dsa', 'deepseek_v32'
         }:
             return False, False
         return None, None
