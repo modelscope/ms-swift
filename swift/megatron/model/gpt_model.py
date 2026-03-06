@@ -137,6 +137,13 @@ class GPTModel(McoreGPTModel):
             self._patch_apply_rotary_pos_emb()
         if getattr(self, 'mtp', None) is not None:
             for layer in self.mtp.layers:
+                # compat megatron-core main branch
+                if not hasattr(layer, 'transformer_layer'):
+
+                    def _value(self):
+                        return getattr(self, 'mtp_model_layer')
+
+                    setattr(layer.__class__, 'transformer_layer', property(_value))
                 attention = layer.transformer_layer.self_attention
                 attention.config = deepcopy(attention.config)
                 attention.config.apply_rope_fusion = False
@@ -396,6 +403,7 @@ class GPTModel(McoreGPTModel):
                         else:
                             loss_mask_ = loss_mask.clone()
                     mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
+                    loss_mask_ = loss_mask_ & (mtp_labels != -100)
                     mtp_loss = loss_mask_ * mtp_loss
                     num_tokens = loss_mask_.sum()
                     if self.training:

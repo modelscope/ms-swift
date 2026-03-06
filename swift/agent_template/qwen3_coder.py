@@ -17,6 +17,19 @@ def render_extra_keys(obj, handled_keys):
     return result
 
 
+TOOL_DESC_SUFFIX = (
+    '</tools>\n\nIf you choose to call a function ONLY reply in the following format with '
+    'NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\n'
+    'value_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\n'
+    'that can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\n'
+    'Reminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> '
+    'block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n'
+    '- You may provide optional reasoning for your function call in natural language BEFORE the function call, '
+    'but NOT after\n- If there is no function call available, '
+    'answer the question like normal with your current '
+    'knowledge and do not tell the user about function calls\n</IMPORTANT>')
+
+
 class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
     @staticmethod
@@ -114,17 +127,7 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
             tool_descs.append(tool_desc)
 
-        tool_descs.append(
-            '</tools>\n\nIf you choose to call a function ONLY reply in the following format with '
-            'NO suffix:\n\n<tool_call>\n<function=example_function_name>\n<parameter=example_parameter_1>\n'
-            'value_1\n</parameter>\n<parameter=example_parameter_2>\nThis is the value for the second parameter\n'
-            'that can span\nmultiple lines\n</parameter>\n</function>\n</tool_call>\n\n<IMPORTANT>\n'
-            'Reminder:\n- Function calls MUST follow the specified format: an inner <function=...></function> '
-            'block must be nested within <tool_call></tool_call> XML tags\n- Required parameters MUST be specified\n'
-            '- You may provide optional reasoning for your function call in natural language BEFORE the function call, '
-            'but NOT after\n- If there is no function call available, '
-            'answer the question like normal with your current '
-            'knowledge and do not tell the user about function calls\n</IMPORTANT>')
+        tool_descs.append(TOOL_DESC_SUFFIX)
         tool_descs = '\n'.join(tool_descs)
         return tool_descs
 
@@ -158,3 +161,23 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
             tool_content = tool_message['content']
             res_tool.append(f'<tool_response>\n{tool_content}\n</tool_response>\n')
         return ''.join(res_tool)
+
+
+class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
+
+    def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
+        tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
+        tools_prompt = """# Tools
+
+You have access to the following functions:\n\n<tools>
+""" + '\n'.join(tool_descs) + f'\n{TOOL_DESC_SUFFIX}'
+        if system:
+            tools_prompt += f'\n\n{system}'
+        return tools_prompt
+
+    def _get_tool_responses(self, tool_messages):
+        res_tool = []
+        for tool_message in tool_messages:
+            tool_content = tool_message['content']
+            res_tool.append(f'<tool_response>\n{tool_content}\n</tool_response>')
+        return '\n'.join(res_tool)

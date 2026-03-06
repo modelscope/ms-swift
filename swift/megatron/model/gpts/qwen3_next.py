@@ -466,7 +466,7 @@ class Qwen3NextGatedDeltaNet(_HuggingFaceModule, _Qwen3NextGatedDeltaNet):
             res = res[attention_mask][:, None]
             res = torch.concat([res, res.new_zeros(seq_len - res.shape[0], 1, res.shape[2])])
         else:
-            res = res.transpose(0, 1)
+            res = res.transpose(0, 1).contiguous()
         if args.sequence_parallel and args.tensor_model_parallel_size > 1:
             # Quick fix for dropout issue, awaiting ms-swift 4.0 refactor
             res = reduce_scatter_to_sequence_parallel_region(res) / args.tensor_model_parallel_size
@@ -519,7 +519,6 @@ class Qwen3NextLoader(MegatronModelLoader):
             moe_grouped_gemm=config.moe_grouped_gemm,
             qk_layernorm=config.qk_layernorm,
             multi_latent_attention=config.multi_latent_attention,
-            moe_use_legacy_grouped_gemm=config.moe_use_legacy_grouped_gemm,
             **kwargs,
         )
         layer_specs = []
@@ -552,10 +551,11 @@ class Qwen3NextLoader(MegatronModelLoader):
     def get_mtp_block_spec(self, *args, **kwargs):
         # TODO: layernorm_zero_centered_gamma
         mtp_block_spec = super().get_mtp_block_spec(*args, **kwargs)
-        for layer_spec in mtp_block_spec.layer_specs:
-            layer_spec.submodules.enorm = Qwen3NextRMSNorm
-            layer_spec.submodules.hnorm = Qwen3NextRMSNorm
-            layer_spec.submodules.layer_norm = Qwen3NextRMSNorm
+        if mtp_block_spec is not None:
+            for layer_spec in mtp_block_spec.layer_specs:
+                layer_spec.submodules.enorm = Qwen3NextRMSNorm
+                layer_spec.submodules.hnorm = Qwen3NextRMSNorm
+                layer_spec.submodules.layer_norm = Qwen3NextRMSNorm
         return mtp_block_spec
 
 

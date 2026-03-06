@@ -538,6 +538,10 @@ register_model(
                 Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
             ], TemplateType.qwen3_guard),
             ModelGroup([
+                Model('Alibaba-AAIG/YuFeng-XGuard-Reason-0.6B', 'Alibaba-AAIG/YuFeng-XGuard-Reason-0.6B'),
+                Model('Alibaba-AAIG/YuFeng-XGuard-Reason-8B', 'Alibaba-AAIG/YuFeng-XGuard-Reason-8B'),
+            ], TemplateType.yufeng_xguard),
+            ModelGroup([
                 Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
                 Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
             ], TemplateType.qwen3_thinking),
@@ -1152,9 +1156,18 @@ register_model(
         [
             ModelGroup(
                 [
+                    Model('Qwen/Qwen3.5-0.8B', 'Qwen/Qwen3.5-0.8B'),
+                    Model('Qwen/Qwen3.5-2B', 'Qwen/Qwen3.5-2B'),
+                    Model('Qwen/Qwen3.5-4B', 'Qwen/Qwen3.5-4B'),
+                    Model('Qwen/Qwen3.5-9B', 'Qwen/Qwen3.5-9B'),
                     Model('Qwen/Qwen3.5-27B', 'Qwen/Qwen3.5-27B'),
                     # FP8
                     Model('Qwen/Qwen3.5-27B-FP8', 'Qwen/Qwen3.5-27B-FP8'),
+                    # base
+                    Model('Qwen/Qwen3.5-0.8B-Base', 'Qwen/Qwen3.5-0.8B-Base'),
+                    Model('Qwen/Qwen3.5-2B-Base', 'Qwen/Qwen3.5-2B-Base'),
+                    Model('Qwen/Qwen3.5-4B-Base', 'Qwen/Qwen3.5-4B-Base'),
+                    Model('Qwen/Qwen3.5-9B-Base', 'Qwen/Qwen3.5-9B-Base'),
                 ],
                 TemplateType.qwen3_5),
         ],
