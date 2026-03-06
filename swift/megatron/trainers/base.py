@@ -153,6 +153,20 @@ class BaseMegatronTrainer(ABC):
             mtp_logs = {}
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
             logs.update({k.replace(' ', '_'): v for k, v in mtp_logs.items()})
+        # Track sparse attention indexer loss.
+        if args.dsa_indexer_loss_coeff is not None and args.dsa_indexer_loss_coeff > 0:
+            from megatron.core.transformer.experimental_attention_variant.dsa import DSAIndexerLossLoggingHelper
+            indexer_loss_scale = 1 / args.num_microbatches / n_steps
+            idx_logs = {}
+            DSAIndexerLossLoggingHelper.track_indexer_metrics(
+                loss_scale=indexer_loss_scale,
+                iteration=self.state.iteration,
+                writer=None,
+                wandb_writer=None,
+                total_loss_dict=idx_logs,
+            )
+            logs.update({k.replace(' ', '_'): v for k, v in idx_logs.items()})
+
         for k, v in logs.items():
             if isinstance(v, torch.Tensor):
                 if v.numel() == 2:

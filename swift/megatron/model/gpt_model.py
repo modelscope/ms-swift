@@ -133,7 +133,7 @@ class GPTModel(McoreGPTModel):
             config.apply_rope_fusion = False
             logger.warning(f'`apply_rope_fusion` does not support `attention_scaling`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
-        if self.attention_scaling != 1:
+        if not config.apply_rope_fusion:
             self._patch_apply_rotary_pos_emb()
         if getattr(self, 'mtp', None) is not None:
             for layer in self.mtp.layers:
@@ -153,9 +153,37 @@ class GPTModel(McoreGPTModel):
             return
         _origin_apply_rotary_pos_emb_bshd = rope_utils._apply_rotary_pos_emb_bshd
 
-        def _apply_rotary_pos_emb_bshd(*args, **kwargs):
-            kwargs['mscale'] = self.attention_scaling
-            return _origin_apply_rotary_pos_emb_bshd(*args, **kwargs)
+        def _apply_rotary_pos_emb_bshd(
+            t: torch.Tensor,
+            freqs: torch.Tensor,
+            rotary_interleaved: bool = False,
+            multi_latent_attention: bool = False,  # not use
+            mscale: float = 1.0,
+        ) -> torch.Tensor:
+            """Apply rotary positional embedding to input tensor T.
+
+            check https://kexue.fm/archives/8265 for detailed formulas
+
+            Args:
+                t (Tensor): Input tensor T is of shape [seq_length, ... , dim]
+                freqs (Tensor): Rotary Positional embedding tensor freq is of shape [seq_length, ..., dim]
+
+            Returns:
+                Tensor: The input tensor after applying RoPE
+            """
+            mscale = self.attention_scaling
+            rot_dim = freqs.shape[-1]
+
+            # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
+            t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
+
+            # first part is cosine component
+            # second part is sine component, need to change signs with _rotate_half method
+            cos_ = (torch.cos(freqs) * mscale).to(t.dtype)
+            sin_ = (torch.sin(freqs) * mscale).to(t.dtype)
+
+            t = (t * cos_) + (rope_utils._rotate_half(t, rotary_interleaved) * sin_)
+            return torch.cat((t, t_pass), dim=-1)
 
         rope_utils._apply_rotary_pos_emb_bshd = _apply_rotary_pos_emb_bshd
         rope_utils._origin_apply_rotary_pos_emb_bshd = _origin_apply_rotary_pos_emb_bshd
