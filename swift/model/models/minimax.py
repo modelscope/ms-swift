@@ -151,7 +151,8 @@ register_model(
         LLMModelType.minimax_m2, [
             ModelGroup([
                 Model('MiniMax/MiniMax-M2', 'MiniMaxAI/MiniMax-M2'),
-                Model('MiniMax/MiniMax-M2.1', 'MiniMaxAI/MiniMax-M2.1')
+                Model('MiniMax/MiniMax-M2.1', 'MiniMaxAI/MiniMax-M2.1'),
+                Model('MiniMax/MiniMax-M2.5', 'MiniMaxAI/MiniMax-M2.5'),
             ]),
         ],
         template=TemplateType.minimax_m2,
