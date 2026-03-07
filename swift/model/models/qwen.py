@@ -1180,8 +1180,18 @@ register_model(
 
 class Qwen2_5OmniLoader(ModelLoader):
 
+    def _check_qwen_omni_utils(self):
+        try:
+            qwen_omni_utils_version = importlib.metadata.version('qwen_omni_utils')
+        except importlib.metadata.PackageNotFoundError:
+            raise importlib.metadata.PackageNotFoundError(
+                "The 'qwen_omni_utils' distribution was not found and is required by this application.")
+        if version.parse(qwen_omni_utils_version) >= version.parse('0.0.9'):
+            compat_qwen_vl_utils(image_patch_size=14)
+
     def get_config(self, model_dir):
         from transformers import Qwen2_5OmniConfig
+        self._check_qwen_omni_utils()
         self.autoconfig_class = Qwen2_5OmniConfig
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         config = super().get_config(model_dir)
@@ -1384,6 +1394,10 @@ def _compat_qwen3_omni_mixed_data(model, processor):
 
 class Qwen3OmniLoader(ModelLoader):
 
+    def _check_qwen_omni_utils(self):
+        require_version('qwen_omni_utils>=0.0.9')
+        compat_qwen_vl_utils(image_patch_size=16)
+
     def get_config(self, model_dir: str):
         from transformers import Qwen3OmniMoeConfig
         self.autoconfig_class = Qwen3OmniMoeConfig
@@ -1429,7 +1443,7 @@ register_model(
         Qwen3OmniLoader,
         model_arch=ModelArch.qwen3_omni,
         architectures=['Qwen3OmniMoeForConditionalGeneration'],
-        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
+        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils>=0.0.9'],
         tags=['vision', 'video', 'audio'],
     ))
 
