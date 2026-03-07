@@ -10,7 +10,7 @@ from .base import BaseAgentTemplate
 
 class MinimaxM2AgentTemplate(BaseAgentTemplate):
     """
-    Agent template for MiniMax-M2.5 model.
+    Agent template for MiniMax-M2 series models.
 
     This template handles tool calling in MiniMax's XML-based format:
     <minimax:tool_call>
