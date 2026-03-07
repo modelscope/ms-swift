@@ -23,6 +23,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
     def __init__(self, template: Template):
         processor = template.processor
         self.template = template
+        self.template_type = template.template_meta.template_type
         self.processor = processor
         self.model_info = processor.model_info
         self.model_meta = processor.model_meta
@@ -33,7 +34,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
         self.config = self.model_info.config
         self.max_tokens_offset = 0
 
-    def _get_template(self, processor: Processor):
+    def _get_template(self, processor: Processor, template_type: Optional[str] = None):
         ckpt_dir = get_ckpt_dir(processor.model_info.model_dir, getattr(self, 'adapters', None))
         logger.info('Create the template for the infer_engine')
         if ckpt_dir:
@@ -41,7 +42,7 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             args = BaseArguments.from_pretrained(ckpt_dir)
             template = args.get_template(processor)
         else:
-            template = get_template(processor)
+            template = get_template(processor, template_type=template_type)
         return template
 
     def _get_stop_words(self, stop_words: List[Union[str, List[int], None]]) -> List[str]:
