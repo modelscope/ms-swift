@@ -453,6 +453,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
     overlap_param_gather_with_optimizer_step: bool = False
+    """DDP bucket size for grad reduce. Default: max(40M, 1M*dp_size). Only used when overlap_grad_reduce=True."""
+    bucket_size: Optional[int] = None
     align_grad_reduce: bool = True
     virtual_pipeline_model_parallel_size: Optional[int] = None
     microbatch_group_size_per_vp_stage: Optional[int] = None

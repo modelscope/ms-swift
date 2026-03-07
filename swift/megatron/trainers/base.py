@@ -38,6 +38,8 @@ from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import deep_getattr, get_last_valid_indices, get_logger, is_last_rank, is_master, ms_logger_context
+from swift.utils import setup_megatron_logging
+from swift.utils.logger import add_file_handler_if_needed
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_pp_rank,
                     get_packed_seq_params)
@@ -96,6 +98,10 @@ class BaseMegatronTrainer(ABC):
 
         if args.async_save and args.use_persistent_ckpt_worker:
             init_persistent_async_worker()
+
+        # Configure Megatron logging after main logger is ready so Megatron logs
+        # (e.g. DDP bucket info) appear in both console and log file.
+        setup_megatron_logging()
 
     def _load_checkpoint(self):
         args = self.args
