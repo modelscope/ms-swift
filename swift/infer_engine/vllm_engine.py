@@ -59,6 +59,7 @@ class VllmEngine(InferEngine):
         adapters: Optional[List[str]] = None,
         use_async_engine: bool = False,
         model_type: Optional[str] = None,
+        template_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
         revision: Optional[str] = None,
@@ -139,7 +140,7 @@ class VllmEngine(InferEngine):
         self._adapters_pool = {}
         if template is None:
             processor = self._get_processor()
-            template = self._get_template(processor)
+            template = self._get_template(processor, template_type=template_type)
         else:
             safe_snapshot_download(
                 model_id_or_path,
