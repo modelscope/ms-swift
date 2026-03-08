@@ -12,7 +12,7 @@ pip install 'ms-swift[eval]' -U
 # 全能力
 pip install 'ms-swift[all]' -U
 
-# 使用uv (推荐，自动匹配torch & cuda)
+# 使用uv
 pip install uv
 uv pip install 'ms-swift' --torch-backend=auto
 ```
