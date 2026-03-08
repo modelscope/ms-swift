@@ -23,6 +23,7 @@ class MLLMMegatronModelType:
     glm4v = 'glm4v'
     glm4v_moe = 'glm4v_moe'
     kimi_vl = 'kimi_vl'
+    kimi_k25 = 'kimi_k25'
     llama4 = 'llama4'
 
 

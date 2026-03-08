@@ -44,6 +44,7 @@ class MLLMModelArch:
 
     llava_hf = 'llava_hf'
     llava_hf_legacy = 'llava_hf_legacy'  # transformers<4.52
+    kimi_k25 = 'kimi_k25'
     llava_next_video_hf = 'llava_next_video_hf'
     llava_onevision1_5 = 'llava_onevision1_5'
 
