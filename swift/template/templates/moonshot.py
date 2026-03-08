@@ -97,3 +97,10 @@ class KimiVLTemplate(Template):
 
 
 register_template(MoonlightTemplateMeta(MLLMTemplateType.kimi_vl, template_cls=KimiVLTemplate))
+
+
+class KimiK25Template(KimiVLTemplate):
+    pass
+
+
+register_template(MoonlightTemplateMeta(MLLMTemplateType.kimi_k25, template_cls=KimiVLTemplate))

@@ -340,6 +340,14 @@ register_model_arch(
         vision_tower='vision_tower',
     ))
 
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.kimi_k25,
+        language_model='language_model',
+        aligner='mm_projector',
+        vision_tower='vision_tower',
+    ))
+
 if transformers_ge_4_52:
     register_model_arch(
         MultiModelKeys(

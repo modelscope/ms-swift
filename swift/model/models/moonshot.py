@@ -39,3 +39,24 @@ register_model(
         architectures=['KimiVLForConditionalGeneration'],
         requires=['transformers<4.49'],
     ))
+
+
+class KimiK25Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        model = super().get_model(model_dir, *args, **kwargs)
+        patch_get_input_embeddings(model.vision_tower, 'patch_embed')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.kimi_k25,
+        [ModelGroup([
+            Model('moonshotai/Kimi-K2.5', 'moonshotai/Kimi-K2.5'),
+        ])],
+        KimiK25Loader,
+        template=TemplateType.kimi_k25,
+        model_arch=ModelArch.kimi_k25,
+        architectures=['KimiK25ForConditionalGeneration'],
+    ))
