@@ -417,6 +417,7 @@ def convert_hf_config(config) -> Dict[str, Any]:
             'deepseek',
             'deepseek_v2',
             'deepseek_v3',
+            'kimi_k2',
             'deepseek_v32',
             'dots1',
     } or hf_model_type == 'kimi_vl':
