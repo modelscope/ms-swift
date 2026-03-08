@@ -110,6 +110,10 @@
 使用pip进行安装：
 ```shell
 pip install ms-swift -U
+
+# 使用uv
+pip install uv
+uv pip install ms-swift -U --torch-backend=auto
 ```
 
 从源代码安装：
@@ -121,6 +125,9 @@ cd ms-swift
 # main分支为swift4.x。若安装swift3.x，请运行以下命令
 # git checkout release/3.12
 pip install -e .
+
+# 使用uv
+uv pip install -e . --torch-backend=auto
 ```
 
 运行环境：

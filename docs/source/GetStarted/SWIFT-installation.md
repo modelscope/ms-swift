@@ -6,11 +6,15 @@
 
 ```shell
 # 推荐
-pip install 'ms-swift'
+pip install 'ms-swift' -U
 # 使用评测
 pip install 'ms-swift[eval]' -U
 # 全能力
 pip install 'ms-swift[all]' -U
+
+# 使用uv
+pip install uv
+uv pip install 'ms-swift' --torch-backend=auto
 ```
 
 ## 源代码安装
@@ -25,6 +29,9 @@ pip install 'ms-swift[all]' -U
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
+
+# 使用 uv
+uv pip install -e . --torch-backend=auto
 
 # 全能力
 # pip install -e '.[all]'
