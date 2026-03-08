@@ -6,11 +6,15 @@ You can install it using pip:
 
 ```shell
 # recommend
-pip install 'ms-swift'
+pip install 'ms-swift' -U
 # For evaluation usage
 pip install 'ms-swift[eval]' -U
 # Full capabilities
 pip install 'ms-swift[all]' -U
+
+# Using uv
+pip install uv
+uv pip install 'ms-swift' --torch-backend=auto
 ```
 
 ## Source Code Installation
@@ -39,6 +43,9 @@ Installing swift 3.x:
 git clone -b release/3.12 https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
+
+# Using uv
+uv pip install -e . --torch-backend=auto
 
 # Full capabilities
 # pip install -e '.[all]'

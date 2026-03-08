@@ -115,6 +115,10 @@ You can contact us and communicate with us by adding our group:
 To install using pip:
 ```shell
 pip install ms-swift -U
+
+# Using uv
+pip install uv
+uv pip install ms-swift -U --torch-backend=auto
 ```
 
 To install from source:
@@ -126,6 +130,9 @@ cd ms-swift
 # The main branch is for swift 4.x. To install swift 3.x, please run the following command:
 # git checkout release/3.12
 pip install -e .
+
+# Using uv
+uv pip install -e . --torch-backend=auto
 ```
 
 Running Environment:
