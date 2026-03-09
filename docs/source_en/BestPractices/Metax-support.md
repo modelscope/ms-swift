@@ -172,7 +172,7 @@ import torch
 torch.cuda.is_available()
 ```
 
-## 3.4. different between Metax and NVidia cuda
+## 3.4. Differences between Metax and NVIDIA CUDA
 We are largely aligned with NVIDIA, but there are some differences in certain software and environment variables.
 
 ### 3.4.1. MACA_MPS_MODE
