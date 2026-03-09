@@ -439,7 +439,7 @@ class Qwen3NextSelfAttention(SelfAttention):
             # Index appropriately into query to get (num_q_heads / tp_size) q_heads.
             # This is step 4 in the list of steps above.
             idx = get_tensor_model_parallel_rank() % (self.world_size // self.config.num_query_groups)
-            size = self.num_attention_heads_per_partition // (self.world_size // self.config.num_query_groups)
+            size = query.shape[2] // (self.world_size // self.config.num_query_groups)
             query = query[:, :, idx * size:(idx + 1) * size, :]
         query, gate = query[:, :, ::2], query[:, :, 1::2]
         if self.q_layernorm is not None:
