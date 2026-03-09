@@ -20,7 +20,12 @@ def serialize_ndarray(value):
     if value is None:
         return None
     if isinstance(value, np.ndarray):
-        return {'data': value.tolist(), 'shape': value.shape, 'dtype': str(value.dtype), '__ndarray__': True}
+        return {
+            'data': base64.b64encode(value.tobytes()).decode('ascii'),
+            'shape': value.shape,
+            'dtype': str(value.dtype),
+            '__ndarray__': True
+        }
     return value
 
 
@@ -28,7 +33,8 @@ def deserialize_ndarray(value):
     if value is None:
         return None
     if isinstance(value, dict) and value.get('__ndarray__'):
-        return np.array(value['data'], dtype=value['dtype']).reshape(value['shape'])
+        data = base64.b64decode(value['data'])
+        return np.frombuffer(data, dtype=value['dtype']).reshape(value['shape'])
     return value
 
 

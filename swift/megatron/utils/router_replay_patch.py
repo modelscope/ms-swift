@@ -282,27 +282,28 @@ def patched_routing(self, logits: torch.Tensor):
 def apply_router_replay_patch():
     """
     Applies the monkey patch for MoE Router Replay functionality.
-    This patch dynamically adds the 'enable_routing_replay' attribute to TransformerConfig
+    This patch dynamically adds the 'moe_enable_routing_replay' attribute to TransformerConfig
     and modifies the TopKRouter to support recording and replaying of routing decisions.
     """
     print('Applying Router Replay Patch...')
     # Clear router instances to avoid state leakage between model initializations.
     RouterReplay.global_router_replay_instances.clear()
     # Step 1: Patch TransformerConfig to include the feature flag
-    if not hasattr(TransformerConfig, 'enable_routing_replay'):
+    if not hasattr(TransformerConfig, 'moe_enable_routing_replay'):
         # Add class attribute with default value
-        TransformerConfig.enable_routing_replay = False
+        TransformerConfig.moe_enable_routing_replay = False
 
         # Store original __init__ method
         original_tf_config_init = TransformerConfig.__init__
 
-        # Define new __init__ method that safely handles enable_routing_replay parameter
+        # Define new __init__ method that safely handles moe_enable_routing_replay parameter
         def patched_tf_config_init(self, *args, **kwargs):
-            enable_routing_replay = kwargs.pop('enable_routing_replay', TransformerConfig.enable_routing_replay)
+            moe_enable_routing_replay = kwargs.pop('moe_enable_routing_replay',
+                                                   TransformerConfig.moe_enable_routing_replay)
             # Call original constructor with remaining kwargs
             original_tf_config_init(self, *args, **kwargs)
             # Set the instance attribute
-            self.enable_routing_replay = enable_routing_replay
+            self.moe_enable_routing_replay = moe_enable_routing_replay
 
         # Apply the patch
         TransformerConfig.__init__ = patched_tf_config_init
@@ -317,7 +318,7 @@ def apply_router_replay_patch():
     def patched_init(self, *args, **kwargs):
         original_init(self, *args, **kwargs)
         self.router_replay = None
-        if self.config.enable_routing_replay:
+        if self.config.moe_enable_routing_replay:
             self.router_replay = RouterReplay()
 
     # Step 4: Apply the patches
