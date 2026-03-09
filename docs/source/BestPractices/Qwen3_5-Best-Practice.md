@@ -19,7 +19,7 @@ pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolati
 pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
-pip install vllm>=0.17.0
+pip install -U "vllm>=0.17.0"
 
 # 训练报错参考这个issue: https://github.com/modelscope/ms-swift/issues/8188
 pip install -U "transformers>=5.2.0"
