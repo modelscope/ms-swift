@@ -451,8 +451,8 @@ class Qwen2VLTemplate(Template):
         input_ids = inputs['input_ids']
         if 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters:
             mm_token_type_ids = torch.zeros_like(input_ids)
-            mm_token_type_ids[input_ids == self.image_token_id] = 1
-            mm_token_type_ids[input_ids == self.video_token_id] = 2
+            mm_token_type_ids[input_ids == self.processor.image_token_id] = 1
+            mm_token_type_ids[input_ids == self.processor.video_token_id] = 2
             kwargs['mm_token_type_ids'] = mm_token_type_ids
         position_ids, _ = get_rope_index(
             input_ids,
