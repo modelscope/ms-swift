@@ -144,9 +144,7 @@ class WeightSyncWorkerExtension:
 
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
         self.communicator.broadcast(
-            weight,
-            src=self.client_rank,
-            stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+            weight, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
         self.communicator.group.barrier()
 
         # Patch MoE weight_loader if needed
@@ -166,9 +164,7 @@ class WeightSyncWorkerExtension:
         dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
         flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
         self.communicator.broadcast(
-            flatten_tensor,
-            src=self.client_rank,
-            stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+            flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
         self.communicator.group.barrier()
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
@@ -201,9 +197,7 @@ class WeightSyncWorkerExtension:
             shape = tuple(metadata['shape'])
             tensor = torch.empty(shape, dtype=dtype, device=self.communicator.device)
             self.communicator.broadcast(
-                tensor,
-                src=self.client_rank,
-                stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+                tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
             named_params[name] = tensor
 
         self.communicator.group.barrier()
@@ -232,9 +226,7 @@ class WeightSyncWorkerExtension:
         flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
 
         self.communicator.broadcast(
-            flatten_tensor,
-            src=self.client_rank,
-            stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+            flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
         self.communicator.group.barrier()
 
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
