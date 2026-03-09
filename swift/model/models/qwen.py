@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.metadata
+import inspect
 import os
 import torch
 import transformers
@@ -996,11 +997,18 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         if position_ids is None:
             past_key_values_length = 0 if past_key_values is None else past_key_values.get_seq_length()
             if self.rope_deltas is None or past_key_values_length == 0:
+                kwargs = {}
+                if 'mm_token_type_ids' in inspect.signature(self.get_rope_index).parameters:
+                    mm_token_type_ids = torch.zeros_like(input_ids)
+                    mm_token_type_ids[input_ids == processor.image_token_id] = 1
+                    mm_token_type_ids[input_ids == processor.video_token_id] = 2
+                    kwargs['mm_token_type_ids'] = mm_token_type_ids
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids,
-                    image_grid_thw,
-                    video_grid_thw,
+                    image_grid_thw=image_grid_thw,
+                    video_grid_thw=video_grid_thw,
                     attention_mask=attention_mask,
+                    **kwargs,
                 )
                 self.rope_deltas = rope_deltas
             # then use the prev pre-calculated rope-deltas to get the correct position ids
