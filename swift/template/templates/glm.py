@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
@@ -128,11 +129,20 @@ class GLM4vPackingTemplateMixin:
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
             attention_mask = inputs.get('attention_mask')
-        position_ids, _ = base_model.model.get_rope_index(
-            inputs['input_ids'],
-            inputs.get('image_grid_thw'),
-            inputs.get('video_grid_thw'),
-            attention_mask=attention_mask)
+        kwargs = {}
+        input_ids = inputs['input_ids']
+        get_rope_index = base_model.model.get_rope_index
+        if 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters:
+            mm_token_type_ids = torch.zeros_like(input_ids)
+            mm_token_type_ids[input_ids == self.processor.image_token_id] = 1
+            mm_token_type_ids[input_ids == self.processor.video_token_id] = 2
+            kwargs['mm_token_type_ids'] = mm_token_type_ids
+        position_ids, _ = get_rope_index(
+            input_ids,
+            image_grid_thw=inputs.get('image_grid_thw'),
+            video_grid_thw=inputs.get('video_grid_thw'),
+            attention_mask=attention_mask,
+            **kwargs)
         return self._concat_text_position_ids(position_ids)
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
