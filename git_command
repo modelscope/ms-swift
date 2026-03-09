@@ -1,0 +1,13 @@
+# 1. 查看两个分支的差异（确认要合并的内容）
+git diff main..new_althorithm/sympo
+# 2. 确认当前在哪个分支
+git branch
+# 3. 切换 分支
+git checkout new_althorithm/sympo
+git status  # 确认没有未提交的修改
+# 如果还有修改，先提交：
+git add .
+git commit -m "feat: 添加 SymPO 算法"
+
+# 2. 推送到远程（关键！）
+git push origin new_althorithm/sympo
