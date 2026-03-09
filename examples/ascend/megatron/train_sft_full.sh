@@ -30,4 +30,6 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
+    --cross_entropy_loss_fusion true \
+    --cross_entropy_fusion_impl native \
     --attention_backend flash
