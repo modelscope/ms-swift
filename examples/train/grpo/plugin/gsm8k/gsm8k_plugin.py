@@ -5,8 +5,6 @@ from swift.rewards import ORM, orms
 
 
 class GSM8KAccuracy(ORM):
-    """Accuracy reward: extracts #### <number> from completion and compares
-    with the ground-truth ``solution`` field."""
 
     @staticmethod
     def extract_answer(text: str) -> str:
@@ -23,12 +21,6 @@ class GSM8KAccuracy(ORM):
         return ''
 
     def __call__(self, completions, solution, **kwargs) -> List[float]:
-        """
-        Args:
-            completions: model-generated outputs
-            solution: ground-truth answer strings (kept by GSM8KPreprocessor),
-                      each ending with ``#### <number>``
-        """
         rewards = []
         for completion, gt_answer in zip(completions, solution):
             gt_num = self.extract_answer(gt_answer)
@@ -44,8 +36,6 @@ class GSM8KAccuracy(ORM):
 
 
 class GSM8KFormat(ORM):
-    """Format reward: checks if the completion contains <think>...</think>
-    and #### <number> patterns."""
 
     def __call__(self, completions, **kwargs) -> List[float]:
         rewards = []
