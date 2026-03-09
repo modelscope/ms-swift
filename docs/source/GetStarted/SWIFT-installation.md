@@ -56,6 +56,11 @@ pip install -e .
 
 docker可以查看[这里](https://github.com/modelscope/modelscope/blob/build_swift_image/docker/build_image.py#L347)。
 ```
+# swift4.0.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.0-modelscope1.34.0-swift4.0.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.0-modelscope1.34.0-swift4.0.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.0-modelscope1.34.0-swift4.0.1
+
 # swift3.12.5
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
@@ -65,7 +70,11 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
+```
 
+<details><summary>历史镜像</summary>
+
+```
 # swift3.10.3
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.10.3
@@ -75,11 +84,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.8.0-vllm0.11.0-modelscope1.31.0-swift3.9.3
-```
 
-<details><summary>历史镜像</summary>
-
-```
 # swift3.8.3
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.6.3-py311-torch2.7.1-vllm0.10.1.1-modelscope1.29.2-swift3.8.3
@@ -132,16 +137,16 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 
 |              | 范围           | 推荐                  | 备注                 |
 |--------------|--------------|---------------------|--------------------|
-| python       | >=3.9        | 3.10/3.11                |                    |
+| python       | >=3.9        | 3.11/3.12                |                    |
 | cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
-| torch        | >=2.0        | 2.8.0/2.9.1         |  torch2.9 [conv3d 缓慢](https://swift.readthedocs.io/zh-cn/latest/BestPractices/Qwen3-VL-Best-Practice.html#id1)   |
+| torch        | >=2.0        | 2.8.0/2.10.0         |  torch2.9 [conv3d 缓慢](https://swift.readthedocs.io/zh-cn/latest/BestPractices/Qwen3-VL-Best-Practice.html#id1)   |
 | transformers | >=4.33       | 4.57.6/5.2.0         |                    |
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
 | trl          | >=0.15,<0.29 | 0.28.0              | RLHF               |
-| deepspeed    | >=0.14       | 0.18.6              | 训练                 |
-| vllm         | >=0.5.1      | 0.11.0/0.15.1       | 推理/部署              |
+| deepspeed    | >=0.14       | 0.18.7              | 训练                 |
+| vllm         | >=0.5.1      | 0.11.0/0.17.0       | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | lmdeploy     | >=0.5   | 0.10.1                 | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |
