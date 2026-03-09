@@ -12,6 +12,11 @@ class GSM8KAccuracy(ORM):
     def extract_answer(text: str) -> str:
         """Extract the last #### number from text."""
         text = text[-500:] if len(text) > 500 else text
+        # Prefer \boxed{} format
+        boxed = re.findall(r'\\boxed\{([^}]+)\}', text)
+        if boxed:
+            return boxed[-1].replace(',', '').replace(' ', '').strip()
+        # Fallback to #### format
         matches = re.findall(r'####\s*([\-\d,\.\s]+)', text)
         if matches:
             return matches[-1].replace(',', '').replace(' ', '').strip()
@@ -45,9 +50,8 @@ class GSM8KFormat(ORM):
     def __call__(self, completions, **kwargs) -> List[float]:
         rewards = []
         for completion in completions:
-            has_think = bool(re.search(r'<think>.*?</think>', completion, re.DOTALL))
-            has_answer = bool(re.search(r'####\s*[\-\d,\.]+', completion))
-            rewards.append(1.0 if (has_think and has_answer) else 0.0)
+            has_answer = bool(re.search(r'\\boxed\{[^}]+\}', completion) or re.search(r'####\s*[\-\d,\.]+', completion))
+            rewards.append(1.0 if has_answer else 0.0)
         return rewards
 
 
