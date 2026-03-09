@@ -185,7 +185,7 @@ bash examples/train/full/train.sh
 ```
 ### 3.4.2. MCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME & MCCL_IB_HCA
 When using MACA in a multi-node setup, you need to set the environment variables MCCL_SOCKET_IFNAME, GLOO_SOCKET_IFNAME, and MCCL_IB_HCA to ensure proper inter-node communication.
-We can use mx-smi and ifconfig to determine which ib devices and net device are being used.
+We can use mx-smi and ifconfig to determine which InfiniBand devices and network device are being used.
 ```bash
 ifconfig
 # output
