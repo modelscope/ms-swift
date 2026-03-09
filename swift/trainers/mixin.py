@@ -141,7 +141,7 @@ class SwiftMixin:
 
     def _add_callbacks(self):
         for callback in self.args.callbacks:
-            self.add_callback(callbacks_map[callback](self))
+            self.add_callback(callbacks_map[callback](self.args, self))
 
     def _collect_config_info(self) -> Dict[str, str]:
         """
