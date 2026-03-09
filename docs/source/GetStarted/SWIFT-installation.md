@@ -145,7 +145,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
 | trl          | >=0.15,<0.29 | 0.28.0              | RLHF               |
-| deepspeed    | >=0.14       | 0.18.6              | 训练                 |
+| deepspeed    | >=0.14       | 0.18.7              | 训练                 |
 | vllm         | >=0.5.1      | 0.11.0/0.17.0       | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | lmdeploy     | >=0.5   | 0.10.1                 | 推理/部署              |
