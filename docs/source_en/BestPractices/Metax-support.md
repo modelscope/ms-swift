@@ -241,7 +241,7 @@ NIC Legend:
   NIC5: mlx5_5
 # The output shows:
 #  1. GPU0 to GPU3 communicate with NIC0 and NIC1, while GPU4 to GPU7 communicate with NIC2 and NIC3
-#  2. NIC0 use ib device:mlx5_0, NIC1 use ib device:mlx5_1, NIC2 use ib device:mlx5_2, NIC3 use ib device:mlx5_3,
+#  2. NIC0 uses ib device:mlx5_0, NIC1 uses ib device:mlx5_1, NIC2 uses ib device:mlx5_2, NIC3 uses ib device:mlx5_3
  
 ```
 Therefore:
