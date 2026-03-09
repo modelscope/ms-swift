@@ -160,7 +160,7 @@ cd ms-swift
 pip install . --no-deps
 
 ``` 
-After each environmental change, the torch and its availability should be checked
+After each environment change, the torch and its availability should be checked
 ```bash
 pip list |grep torch
 # output:
