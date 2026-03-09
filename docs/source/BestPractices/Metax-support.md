@@ -178,7 +178,7 @@ torch.cuda.is_available()
 Metax 在大部分接口上与 NVIDIA 对齐，但在某些软件行为和环境变量上存在差异。
 
 ### 3.4.1. MACA_MPS_MODE
-默认情况下，MAcA 不允许多个进程共享同一块 GPU。如果 GPU 已被占用，则无法启动新进程。
+默认情况下，MACA 不允许多个进程共享同一块 GPU。如果 GPU 已被占用，则无法启动新进程。
 
 如需启用类似 MPS（Multi-Process Service）的功能，需设置：`MACA_MPS_MODE=1`
 ```bash
