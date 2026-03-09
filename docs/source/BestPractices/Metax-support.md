@@ -182,7 +182,7 @@ Metax 在大部分接口上与 NVIDIA 对齐，但在某些软件行为和环境
 
 如需启用类似 MPS（Multi-Process Service）的功能，需设置：`MACA_MPS_MODE=1`
 ```bash
-# run others scripts ... 
+# 运行其他脚本...
 export MACA_MPS_MODE=1
 cd /workspace/ms-swift/
 bash examples/train/full/train.sh
