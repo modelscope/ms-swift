@@ -178,7 +178,7 @@ We are largely aligned with NVIDIA, but there are some differences in certain so
 ### 3.4.1. MACA_MPS_MODE
 By default, MACA does not allow multiple processes to run on a single GPU. Therefore, when the GPU is already occupied, you cannot launch another process. To enable this scenario, you need to set MACA_MPS_MODE=1
 ```bash
-# run others scripts ... 
+# run other scripts ...
 export MACA_MPS_MODE=1
 cd /workspace/ms-swift/
 bash examples/train/full/train.sh
