@@ -433,6 +433,19 @@ swift rlhf \
     --report_to tensorboard swanlab
 ```
 
+使用以下指令进行评测：
+
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval \
+    --model Qwen/Qwen3.5-2B \
+    --adapters output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
+    --merge_lora true \
+    --enable_thinking false \
+    --eval_dataset gsm8k \
+    --eval_backend Native --infer_backend vllm \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}'
+```
+
 以 100 步为间隔，前 300 步的 GSM8K 评测结果如下：
 
 | 模型 / Steps | GSM8K Accuracy | 提升 |

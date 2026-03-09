@@ -7,6 +7,7 @@ swift rlhf \
     --model Qwen/Qwen3.5-2B \
     --external_plugins examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py \
     --reward_funcs gsm8k_accuracy gsm8k_format \
+    --columns '{"answer": "solution"}' \
     --enable_thinking false \
     --use_vllm true \
     --vllm_mode colocate \

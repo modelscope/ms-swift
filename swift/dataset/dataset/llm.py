@@ -483,27 +483,7 @@ register_dataset(
         ],
         tags=['qa', 'math']))
 
-
-class GSM8KGRPOPreprocessor(ResponsePreprocessor):
-    """Preprocessor that keeps ground-truth answer as ``solution`` for reward functions."""
-
-    def preprocess(self, row):
-        # Save the original answer before ResponsePreprocessor pops it
-        solution = row.get('answer', '') or row.get('response', '')
-        row = super().preprocess(row)
-        if row is not None:
-            row['solution'] = solution
-        return row
-
-
-register_dataset(
-    DatasetMeta(
-        ms_dataset_id='modelscope/gsm8k',
-        subsets=['main'],
-        preprocess_func=GSM8KGRPOPreprocessor(),
-        split=['train'],
-        tags=['qa', 'math'],
-    ))
+register_dataset(DatasetMeta(ms_dataset_id='modelscope/gsm8k', subsets=['main'], split=['train'], tags=['qa', 'math']))
 
 register_dataset(
     DatasetMeta(ms_dataset_id='modelscope/MathR', subsets=['default', 'clean'], split=['train'], tags=['qa', 'math']))

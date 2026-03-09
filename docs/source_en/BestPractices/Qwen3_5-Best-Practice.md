@@ -429,6 +429,18 @@ swift rlhf \
     --attn_impl flash_attn \
     --report_to tensorboard swanlab
 ```
+Evaluate the checkpoints:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval \
+    --model Qwen/Qwen3.5-2B \
+    --adapters output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
+    --merge_lora true \
+    --enable_thinking false \
+    --eval_dataset gsm8k \
+    --eval_backend Native --infer_backend vllm \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}'
+```
 
 GSM8K evaluation results at 100-step intervals for the first 300 steps:
 
