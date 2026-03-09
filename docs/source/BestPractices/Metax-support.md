@@ -24,7 +24,7 @@ print(torch.cuda.is_available())
 ```
 ## 2.2. 检查 GPU 之间的 P2P 连接拓扑
 ```bash
-mx-smi topo -m 
+mx-smi topo -m
 # output
 =================== MetaX System Management Interface Log ===================
 Timestamp                                         : Wed Feb 11 16:37:10 2026
