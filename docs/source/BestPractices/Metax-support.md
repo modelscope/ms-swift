@@ -161,7 +161,7 @@ git clone -b ${SWIFT_VERSION} https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install . --no-deps
 
-``` 
+```
 每次环境变更后，请检查 PyTorch 版本及其可用性：
 ```bash
 pip list |grep torch
@@ -202,7 +202,7 @@ ens20f0np0: xxx
             xxx
 ...
 ```
-```bash 
+```bash
 mx-smi topo -n
 # output
 mx-smi  version: 2.2.9
@@ -251,7 +251,7 @@ NIC Legend:
 #  1. GPU0–GPU3 与 NIC0/NIC1（即 mlx5_0, mlx5_1）通信
 #  2. GPU4–GPU7 与 NIC2/NIC3（即 mlx5_2, mlx5_3）通信
 
- 
+
 ```
 因此，推荐设置如下:
 `MCCL_SOCKET_IFNAME=ens20f0np0`
@@ -259,7 +259,7 @@ NIC Legend:
 `MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3`
 
 ```bash
-# node 1 
+# node 1
 export MCCL_SOCKET_IFNAME=ens20f0np0
 export GLOO_SOCKET_IFNAME=ens20f0np0
 export MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3
