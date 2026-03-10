@@ -24,7 +24,7 @@ print(torch.cuda.is_available())
 ```
 ## 2.2. Check the P2P connections
 ```bash
-mx-smi topo -m 
+mx-smi topo -m
 # output
 =================== MetaX System Management Interface Log ===================
 Timestamp                                         : Wed Feb 11 16:37:10 2026
