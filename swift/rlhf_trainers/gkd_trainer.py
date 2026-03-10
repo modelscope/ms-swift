@@ -554,8 +554,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             )
             self.use_liger_gkd_loss = True
 
-    @staticmethod
     def generalized_jsd_loss(
+        self,
         student_logits,
         teacher_logits=None,
         labels=None,
@@ -566,7 +566,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_topk_logprobs=None,
         teacher_topk_indices=None,
     ):
-        # Top-k mode: reduce logits to [*, k] before the standard JSD pipeline
+        # Top-k mode: gather/topk first to get small [*, k] tensors, then scale in-place
         if teacher_topk_logprobs is not None and teacher_topk_indices is not None:
             student_logits = torch.gather(student_logits, dim=-1, index=teacher_topk_indices)
             student_logits.div_(temperature)
@@ -577,11 +577,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             teacher_logits.div_(temperature)
             student_logits = torch.gather(student_logits, dim=-1, index=topk_idx)
             student_logits.div_(temperature)
+            del topk_idx
             temperature = 1.0
 
-        student_logits.div_(temperature)
-        teacher_logits.div_(temperature)
-
+        # Apply mask first (boolean indexing copies), then scale in-place to avoid full-size temporaries
         if labels is not None:
             mask = labels != -100
             student_logits = student_logits[mask]
@@ -591,6 +590,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             student_logits = student_logits.view(-1, student_logits.size(-1))
             teacher_logits = teacher_logits.view(-1, teacher_logits.size(-1))
             num_valid = student_logits.size(0)
+        student_logits.div_(temperature)
+        teacher_logits.div_(temperature)
 
         if num_valid == 0:
             return student_logits.new_zeros(())
