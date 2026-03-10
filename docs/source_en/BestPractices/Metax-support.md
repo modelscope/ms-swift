@@ -5,7 +5,7 @@ you can either build an image or pull an existing one. Here, we demonstrate how 
 docker pull mx-devops-acr-cn-shanghai.cr.volces.com/opensource/public-ai-release/maca/ms-swift:3.10.3-maca.ai3.3.0.16-torch2.6-py310-ubuntu22.04-amd64
 # you may modify privileged option and mount only specific GPU cards.
 # please refer to our documents on https://developer.metax-tech.com
-# we need mount Metax GPUs by--device=/dev/dri --device=/dev/mxcd
+# Metax GPUs must be mounted via --device=/dev/dri --device=/dev/mxcd
 docker run  -it --net=host --uts=host --ipc=host --privileged=true --group-add video  \
     --shm-size 100gb --ulimit memlock=-1 \
     --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
