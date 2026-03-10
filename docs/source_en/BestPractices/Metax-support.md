@@ -14,7 +14,7 @@ docker run  -it --net=host --uts=host --ipc=host --privileged=true --group-add v
     --name swift_test \
     mx-devops-acr-cn-shanghai.cr.volces.com/opensource/public-ai-release/maca/ms-swift:3.10.3-maca.ai3.3.0.16-torch2.6-py310-ubuntu22.04-amd64
 ```
-# 2.  Environment check 
+# 2. Environment check
 ## 2.1. check Metax available
 Thanks to its compatibility with CUDA, we can use the same approach as NVIDIA to check the availability of Metax devices.
 ```python
