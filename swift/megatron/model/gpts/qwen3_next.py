@@ -390,7 +390,7 @@ class Qwen3NextSelfAttention(SelfAttention):
         mixed_qkv, _ = self.linear_qkv(hidden_states)
 
         assert self.config.num_query_groups is not None
-        if self.config.num_query_groups < self.world_size:
+        if getattr(self, 'world_size', None) is not None and self.config.num_query_groups < self.world_size:
             # Note that weights are interleaved in the following manner:
             # q1 q2 k1 v1 | q3 q4 k2 v2 | q5 q6 k3 v3 | ...
             # When tp_size > num_kv_heads, we split "q1 q2 k1 v1" over multiple
@@ -434,7 +434,7 @@ class Qwen3NextSelfAttention(SelfAttention):
 
         # [sq, b, ng, np/ng * hn] -> [sq, b, np, hn]
         query = query.reshape(query.size(0), query.size(1), -1, self.hidden_size_per_attention_head)
-        if self.config.num_query_groups < self.world_size:
+        if getattr(self, 'world_size', None) is not None and self.config.num_query_groups < self.world_size:
             # query above corresponds to (num_q_heads / num_kv_heads) q_heads.
             # Index appropriately into query to get (num_q_heads / tp_size) q_heads.
             # This is step 4 in the list of steps above.
