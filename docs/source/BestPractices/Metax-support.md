@@ -17,7 +17,7 @@ docker run  -it --net=host --uts=host --ipc=host --privileged=true --group-add v
     mx-devops-acr-cn-shanghai.cr.volces.com/opensource/public-ai-release/maca/ms-swift:3.10.3-maca.ai3.3.0.16-torch2.6-py310-ubuntu22.04-amd64
 ```
 ## 2. 环境检查
-### 2.1.检查 Metax GPU 是否可用
+### 2.1. 检查 Metax GPU 是否可用
 得益于与 CUDA 的兼容性，我们可以像使用 NVIDIA GPU 一样检查 Metax 设备是否可用：
 ```python
 import torch

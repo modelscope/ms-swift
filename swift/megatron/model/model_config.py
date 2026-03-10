@@ -512,6 +512,31 @@ def convert_hf_config(config) -> Dict[str, Any]:
     return res
 
 
+def _check_attention_backend(args, config):
+    """Validate attention backend compatibility with configuration."""
+    attention_backend = config.attention_backend.name
+    if attention_backend == 'flash' and config.softmax_type == 'learnable':
+        raise ValueError(f'Attention backend "{attention_backend}" does not support learnable softmax_type.')
+
+
+def _check_padding_free(args, config):
+    """Validate and adjust padding_free setting based on configuration constraints."""
+    if not args.padding_free:
+        return
+
+    attention_backend = config.attention_backend.name
+    message = None
+
+    if config.experimental_attention_variant == 'dsa':
+        message = 'DSA is not supported in padding-free mode'
+    elif attention_backend == 'unfused':
+        message = f'Attention backend "{attention_backend}" is not supported in padding-free mode'
+
+    if message:
+        logger.warning(f'{message}. Setting args.padding_free to False.')
+        args.padding_free = False
+
+
 def get_mcore_model_config(args, hf_config):
     kwargs = convert_hf_config(hf_config)
     for f in fields(MegatronModelConfig):
@@ -547,4 +572,6 @@ def get_mcore_model_config(args, hf_config):
     config.args = args
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
+    _check_attention_backend(args, config)
+    _check_padding_free(args, config)
     return config
