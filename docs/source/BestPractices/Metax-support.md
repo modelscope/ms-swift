@@ -203,7 +203,7 @@ ens20f0np0: xxx
 ...
 ```
 ```bash 
-mx-smi topo -n 
+mx-smi topo -n
 # output
 mx-smi  version: 2.2.9
 
