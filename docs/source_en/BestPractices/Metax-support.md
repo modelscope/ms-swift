@@ -104,7 +104,7 @@ Attached GPUs                                     : 8
 # 3. run example
 We support direct use of the community version. However, we also provide a more optimized version in the image under /workspace and strongly recommend using it.
 
-# 3.1. run swift example 
+# 3.1. run swift example
 In most scenarios, we can run Swift's examples directly.
 ```bash
 # We assume that the ms-swift code is under /workspace
@@ -146,7 +146,7 @@ Train: 100%|██████████████████████�
 if you want to use Megatron-LM as Swift's backend, you should set MEGATRON_LM_PATH to /workspace/Megatron-LM-0.15.0 or other versions.
 
 ```bash
-export MEGATRON_LM_PATH=/workspace/Megatron-LM-0.15.0 
+export MEGATRON_LM_PATH=/workspace/Megatron-LM-0.15.0
 cd /workspace/ms-swift
 bash examples/megatron/pretrain.sh
 ```
@@ -159,7 +159,7 @@ git clone -b ${SWIFT_VERSION} https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install . --no-deps
 
-``` 
+```
 After each environment change, the torch and its availability should be checked
 ```bash
 pip list |grep torch
@@ -194,8 +194,8 @@ ens20f0np0: xxx
             xxx
 ...
 ```
-```bash 
-mx-smi topo -n 
+```bash
+mx-smi topo -n
 # output
 mx-smi  version: 2.2.9
 
@@ -242,15 +242,15 @@ NIC Legend:
 # The output shows:
 #  1. GPU0 to GPU3 communicate with NIC0 and NIC1, while GPU4 to GPU7 communicate with NIC2 and NIC3
 #  2. NIC0 uses ib device:mlx5_0, NIC1 uses ib device:mlx5_1, NIC2 uses ib device:mlx5_2, NIC3 uses ib device:mlx5_3
- 
+
 ```
 Therefore:
-MCCL_SOCKET_IFNAME=ens20f0np0 
+MCCL_SOCKET_IFNAME=ens20f0np0
 GLOO_SOCKET_IFNAME=ens20f0np0
 MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3
 
 ```bash
-# node 1 
+# node 1
 export MCCL_SOCKET_IFNAME=ens20f0np0
 export GLOO_SOCKET_IFNAME=ens20f0np0
 export MCCL_IB_HCA=mlx5_0,mlx5_1,mlx5_2,mlx5_3
