@@ -19,9 +19,8 @@ pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolati
 pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
-pip install uv
-uv pip install vllm --torch-backend=auto --extra-index-url https://wheels.vllm.ai/nightly
-# RL训练，需覆盖vllm默认安装版本
+pip install -U "vllm>=0.17.0"
+
 # 训练报错参考这个issue: https://github.com/modelscope/ms-swift/issues/8188
 pip install -U "transformers>=5.2.0"
 ```
@@ -308,4 +307,151 @@ swift infer \
 
 ## 强化学习（RL）
 
-敬请期待
+以 Qwen3.5-2B 模型为例，下面展示基于 [GSM8K](https://www.modelscope.cn/datasets/modelscope/gsm8k) 数据集进行 GRPO 和 GKD 训练，并以 GSM8K 评测集为标准验证训练效果。为避免模型输出过长的思维链，以下统一设置 `enable_thinking false`。
+
+### GRPO
+
+使用 GRPO 进行全参数训练，以 `gsm8k_accuracy` 和 `gsm8k_format` 作为奖励函数。奖励函数的实现参考 [gsm8k_plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py)。
+
+```shell
+SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by step and put your final answer within \\boxed{}."""
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-2B \
+    --external_plugins examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py \
+    --reward_funcs gsm8k_accuracy gsm8k_format \
+    --columns '{"answer": "solution"}' \
+    --enable_thinking false \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.4 \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_max_model_len 10240 \
+    --sleep_level 1 \
+    --train_type full \
+    --torch_dtype bfloat16 \
+    --dataset 'modelscope/gsm8k' \
+    --load_from_cache_file true \
+    --max_length 2048 \
+    --max_completion_length 8192 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 4 \
+    --gradient_accumulation_steps 4 \
+    --learning_rate 1e-6 \
+    --lr_scheduler_type cosine \
+    --save_steps 10 \
+    --save_total_limit 100 \
+    --logging_steps 1 \
+    --warmup_ratio 0.0 \
+    --dataloader_num_workers 4 \
+    --num_generations 8 \
+    --temperature 1.0 \
+    --system "$SYSTEM_PROMPT" \
+    --deepspeed zero2 \
+    --log_completions true \
+    --report_to tensorboard swanlab \
+    --max_grad_norm 1.0 \
+    --epsilon 0.2 \
+    --epsilon_high 0.28 \
+    --scale_rewards none
+```
+
+使用以下指令进行评测：
+
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval \
+    --model output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
+    --enable_thinking false \
+    --eval_dataset gsm8k \
+    --eval_backend Native --infer_backend vllm \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}'
+```
+
+以 10 步为间隔，前 50 步的 GSM8K 评测结果如下：
+
+| 模型 / Steps | GSM8K Accuracy | 提升 |
+|---|---|---|
+| Qwen3.5-2B (baseline) | 0.7597 | - |
+| GRPO 10 steps | 0.7650 | +0.53 |
+| GRPO 20 steps | 0.7748 | +1.51 |
+| GRPO 30 steps | 0.7779 | +1.82 |
+| GRPO 40 steps | 0.7817 | +2.20 |
+| GRPO 50 steps | 0.7885 | +2.88 |
+
+### GKD
+
+使用 GKD 进行 LoRA 训练，以 Qwen3.5-9B 作为 teacher 模型。首先使用 vLLM 拉起 teacher server（也可以通过 `--teacher_model` 参数直接加载模型）：
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+vllm serve Qwen/Qwen3.5-9B \
+    --port 8000 \
+    --tensor-parallel-size 1 \
+    --max-model-len 10240 \
+    --gpu-memory-utilization 0.8 \
+    --max-logprobs 64
+```
+
+然后在其余 GPU 上启动 GKD 训练：
+
+```shell
+NPROC_PER_NODE=3 \
+CUDA_VISIBLE_DEVICES=1,2,3 \
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen3.5-2B \
+    --teacher_model_server http://localhost:8000 \
+    --gkd_logits_topk 64 \
+    --enable_thinking false \
+    --tuner_type lora \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_max_model_len 10240 \
+    --sleep_level 0 \
+    --dataset 'modelscope/gsm8k' \
+    --lmbda 1 \
+    --seq_kd false \
+    --beta 0.5 \
+    --torch_dtype bfloat16 \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 16 \
+    --learning_rate 5e-5 \
+    --logging_steps 1 \
+    --save_steps 100 \
+    --save_total_limit 10 \
+    --max_length 2048 \
+    --max_completion_length 8192 \
+    --warmup_ratio 0.1 \
+    --save_only_model true \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --attn_impl flash_attn \
+    --report_to tensorboard swanlab
+```
+
+使用以下指令进行评测：
+
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval \
+    --model Qwen/Qwen3.5-2B \
+    --adapters output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
+    --merge_lora true \
+    --enable_thinking false \
+    --eval_dataset gsm8k \
+    --eval_backend Native --infer_backend vllm \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}'
+```
+
+以 100 步为间隔，前 300 步的 GSM8K 评测结果如下：
+
+| 模型 / Steps | GSM8K Accuracy | 提升 |
+|---|---|---|
+| Qwen3.5-2B (baseline) | 0.7597 | - |
+| GKD 100 steps | 0.7968 | +3.71 |
+| GKD 200 steps | 0.8188 | +5.91 |
+| GKD 300 steps | 0.8332 | +7.35 |

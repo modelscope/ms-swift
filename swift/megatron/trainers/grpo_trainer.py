@@ -1124,21 +1124,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Get pre-padded data in batch format [batch_size, max_seq_len]
         advantages = data['advantages']  # [batch_size]
         completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
-        packed_seq_params = data.get('packed_seq_params')
         truncated_mask = data['truncated_mask']  # [batch_size]
-        seq_lengths = data['seq_lengths']  # [batch_size]
         micro_batch_size = self.micro_batch_size
 
         # Get pre-computed per_token_logps and per_token_entropy from forward_step
         # These are already in batch format [batch_size, max_seq_len]
         per_token_logps = data.get('per_token_logps')
         per_token_entropy = data.get('per_token_entropy')
-
-        if args.padding_free:
-            lengths = packed_seq_params.cu_seqlens_q[1:micro_batch_size
-                                                     + 1] - packed_seq_params.cu_seqlens_q[:micro_batch_size]
-        else:
-            lengths = seq_lengths
 
         # Get pre-padded ref/old/rollout logps from data
         ref_per_token_logps = data.get('ref_per_token_logps')  # [batch_size, max_seq_len] or None
@@ -1167,6 +1159,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 # Compute IS-specific metrics
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
                 rollout_correction_metrics.update(is_metrics)
+
+        # Compute completion lengths before any mask modifications for accurate logging
+        completion_lengths = completion_mask.sum(dim=-1)
 
         # Apply truncated_mask filter (now in batch format)
         if self.args.overlong_filter and truncated_mask.any():
@@ -1301,11 +1296,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'loss': loss.clone().detach(),
         }
         custom_metrics = {}
-        total_lengths = gather(lengths, group=mpu.get_data_parallel_group(with_context_parallel=True))
+        total_completion_lengths = gather(
+            completion_lengths, group=mpu.get_data_parallel_group(with_context_parallel=True))
         custom_metrics = {
-            'completions/mean_length': total_lengths.float().mean(),
-            'completions/max_length': total_lengths.float().max(),
-            'completions/min_length': total_lengths.float().min(),
+            'completions/mean_length': total_completion_lengths.float().mean(),
+            'completions/max_length': total_completion_lengths.float().max(),
+            'completions/min_length': total_completion_lengths.float().min(),
         }
 
         # Add entropy metrics to custom_metrics
@@ -1397,7 +1393,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 df = pd.DataFrame(table)
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
-                wandb.log({'completions': wandb.Table(dataframe=df)})
+                wandb.log({'completions': wandb.Table(dataframe=df)}, commit=False)
             if 'swanlab' in args.report_to:
                 import swanlab
                 headers = list(table.keys())

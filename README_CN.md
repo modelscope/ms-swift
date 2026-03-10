@@ -110,6 +110,10 @@
 使用pip进行安装：
 ```shell
 pip install ms-swift -U
+
+# 使用uv
+pip install uv
+uv pip install ms-swift -U --torch-backend=auto
 ```
 
 从源代码安装：
@@ -121,22 +125,25 @@ cd ms-swift
 # main分支为swift4.x。若安装swift3.x，请运行以下命令
 # git checkout release/3.12
 pip install -e .
+
+# 使用uv
+uv pip install -e . --torch-backend=auto
 ```
 
 运行环境：
 
 |              | 范围           | 推荐                  | 备注                 |
 |--------------|--------------|---------------------|--------------------|
-| python       | >=3.9        | 3.10/3.11            |                    |
+| python       | >=3.9        | 3.11/3.12            |                    |
 | cuda         |              | cuda12              | 使用cpu、npu、mps则无需安装 |
-| torch        | >=2.0        | 2.8.0/2.9.1           |  torch2.9 [conv3d 缓慢](https://swift.readthedocs.io/zh-cn/latest/BestPractices/Qwen3-VL-Best-Practice.html#id1)   |
+| torch        | >=2.0        | 2.8.0/2.10.0         |  torch2.9 [conv3d 缓慢](https://swift.readthedocs.io/zh-cn/latest/BestPractices/Qwen3-VL-Best-Practice.html#id1)   |
 | transformers | >=4.33       | 4.57.6/5.2.0        |                    |
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
 | trl          | >=0.15,<0.29 | 0.28.0              | RLHF               |
-| deepspeed    | >=0.14       | 0.18.6              | 训练                 |
-| vllm         | >=0.5.1      | 0.11.0/0.15.1        | 推理/部署              |
+| deepspeed    | >=0.14       | 0.18.7              | 训练                 |
+| vllm         | >=0.5.1      | 0.11.0/0.17.0        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | lmdeploy     | >=0.5   | 0.10.1                 | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |

@@ -407,6 +407,8 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.eval_metric = 'infonce' if self.loss_type == 'infonce' else 'paired'
             elif self.task_type in {'reranker', 'generative_reranker'}:
                 self.eval_metric = 'reranker'
+        if self.eval_metric == 'nlg':
+            require_version('jieba', 'Setting `--eval_metric nlg` requires installing the jieba dependency.')
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None and self.metric_for_best_model is not None:

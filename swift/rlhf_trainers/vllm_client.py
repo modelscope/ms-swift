@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from swift.infer_engine import AdapterRequest, RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.metrics import Metric
-from swift.utils import is_trl_available, is_vllm_ascend_available, is_vllm_available
+from swift.utils import get_torch_device, is_trl_available, is_vllm_ascend_available, is_vllm_available
 from .utils import format_host_for_url, is_valid_ipv6_address, peft_config_to_dict, resolve_hostname
 
 if is_vllm_available():
@@ -231,7 +231,10 @@ class VLLMClient:
 
                 torch.cuda.synchronize()
                 self.pynccl_comms[i].broadcast(
-                    weights, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                    weights,
+                    src=self.pynccl_comms[i].rank,
+                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+
                 torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -279,7 +282,9 @@ class VLLMClient:
 
                 torch.cuda.synchronize()
                 self.pynccl_comms[i].broadcast(
-                    flattened_tensor, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                    flattened_tensor,
+                    src=self.pynccl_comms[i].rank,
+                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
                 torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -341,7 +346,9 @@ class VLLMClient:
                 torch.cuda.synchronize()
                 for name, param in lora_params.items():
                     self.pynccl_comms[i].broadcast(
-                        param, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                        param,
+                        src=self.pynccl_comms[i].rank,
+                        stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
                 torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -382,7 +389,9 @@ class VLLMClient:
 
                 torch.cuda.synchronize()
                 self.pynccl_comms[i].broadcast(
-                    flattened_tensor, src=self.pynccl_comms[i].rank, stream=torch.cuda.current_stream())
+                    flattened_tensor,
+                    src=self.pynccl_comms[i].rank,
+                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
                 torch.cuda.synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:

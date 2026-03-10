@@ -2,7 +2,7 @@
 import datetime as dt
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Union
+from typing import List, Literal, Optional, Union
 
 from swift.model import get_matched_model_meta
 from swift.utils import get_logger, json_parse_to_dict, to_abspath
@@ -48,8 +48,8 @@ class EvalArguments(DeployArguments):
     """
     eval_dataset: List[str] = field(default_factory=list)
     eval_limit: Optional[int] = None
-    eval_dataset_args: Optional[Union[Dict, str]] = None
-    eval_generation_config: Optional[Union[Dict, str]] = field(default_factory=dict)
+    eval_dataset_args: Optional[Union[dict, str]] = None
+    eval_generation_config: Optional[Union[dict, str]] = None
     eval_output_dir: str = 'eval_output'
     eval_backend: Literal['Native', 'OpenCompass', 'VLMEvalKit'] = 'Native'
     local_dataset: bool = False
@@ -57,7 +57,7 @@ class EvalArguments(DeployArguments):
     temperature: Optional[float] = 0.
     verbose: bool = False
     eval_num_proc: int = 16
-    extra_eval_args: Optional[Union[Dict, str]] = field(default_factory=dict)
+    extra_eval_args: Optional[Union[dict, str]] = field(default_factory=dict)
     # If eval_url is set, ms-swift will not perform deployment operations and
     # will directly use the URL for evaluation.
     eval_url: Optional[str] = None

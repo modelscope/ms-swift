@@ -213,7 +213,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
     mg_dtype = _param.dtype
     mg_device = _param.device
     if args.model_type == 'minimax_m2':
-        # router to bfloat16
+        # router to bfloat16 (expert_bias). No need to do this when actually training.
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
                 m.to(mg_dtype)

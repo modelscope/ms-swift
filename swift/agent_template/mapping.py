@@ -4,6 +4,7 @@ from .extra import ReactGRPOAgentTemplate
 from .glm4 import ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
+from .minimax_m2 import MinimaxM2AgentTemplate
 from .mistral import MistralAgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .qwen3_coder import Qwen3_5AgentTemplate, Qwen3CoderAgentTemplate
@@ -34,6 +35,7 @@ agent_template_map = {
     'llama4': Llama4AgentTemplate,
     # ref: https://huggingface.co/deepseek-ai/DeepSeek-V3.1
     'deepseek_v3_1': DeepSeekV31AgentTemplate,
+    'minimax_m2': MinimaxM2AgentTemplate,
     'seed_oss': SeedAgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,

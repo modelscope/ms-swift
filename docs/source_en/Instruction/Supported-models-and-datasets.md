@@ -570,7 +570,8 @@ The table below introduces the models integrated with ms-swift:
 |[MiniMax/MiniMax-M1-40k](https://modelscope.cn/models/MiniMax/MiniMax-M1-40k)|minimax_m1|minimax_m1|-|&#x2718;|-|[MiniMaxAI/MiniMax-M1-40k](https://huggingface.co/MiniMaxAI/MiniMax-M1-40k)|
 |[MiniMax/MiniMax-M1-80k](https://modelscope.cn/models/MiniMax/MiniMax-M1-80k)|minimax_m1|minimax_m1|-|&#x2718;|-|[MiniMaxAI/MiniMax-M1-80k](https://huggingface.co/MiniMaxAI/MiniMax-M1-80k)|
 |[MiniMax/MiniMax-M2](https://modelscope.cn/models/MiniMax/MiniMax-M2)|minimax_m2|minimax_m2|transformers==4.57.1|&#x2714;|-|[MiniMaxAI/MiniMax-M2](https://huggingface.co/MiniMaxAI/MiniMax-M2)|
-|[MiniMax/MiniMax-M2.1](https://modelscope.cn/models/MiniMax/MiniMax-M2.1)|minimax_m2|minimax_m2|transformers==4.57.1|&#x2714;|-|[MiniMaxAI/MiniMax-M2.1](https://huggingface.co/MiniMaxAI/MiniMax-M2.1)|
+|[MiniMax/MiniMax-M2.1](https://modelscope.cn/models/MiniMax/MiniMax-M2.1)|minimax_m2|minimax_m2_1|transformers==4.57.1|&#x2714;|-|[MiniMaxAI/MiniMax-M2.1](https://huggingface.co/MiniMaxAI/MiniMax-M2.1)|
+|[MiniMax/MiniMax-M2.5](https://modelscope.cn/models/MiniMax/MiniMax-M2.5)|minimax_m2|minimax_m2_5|transformers==4.57.1|&#x2714;|-|[MiniMaxAI/MiniMax-M2.5](https://huggingface.co/MiniMaxAI/MiniMax-M2.5)|
 |[AI-ModelScope/gemma-2b-it](https://modelscope.cn/models/AI-ModelScope/gemma-2b-it)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-2b-it](https://huggingface.co/google/gemma-2b-it)|
 |[AI-ModelScope/gemma-2b](https://modelscope.cn/models/AI-ModelScope/gemma-2b)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-2b](https://huggingface.co/google/gemma-2b)|
 |[AI-ModelScope/gemma-7b](https://modelscope.cn/models/AI-ModelScope/gemma-7b)|gemma|gemma|transformers>=4.38|&#x2718;|-|[google/gemma-7b](https://huggingface.co/google/gemma-7b)|

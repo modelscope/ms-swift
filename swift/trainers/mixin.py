@@ -119,6 +119,9 @@ class SwiftMixin:
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 **kwargs)
+        # fix https://github.com/huggingface/transformers/pull/43919
+        if version.parse(transformers.__version__) >= version.parse('5.0.0'):
+            self.accelerator.gradient_state.plugin_kwargs['num_steps'] = 1
         self._add_callbacks()
         if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model)
@@ -141,7 +144,7 @@ class SwiftMixin:
 
     def _add_callbacks(self):
         for callback in self.args.callbacks:
-            self.add_callback(callbacks_map[callback](self))
+            self.add_callback(callbacks_map[callback](self.args, self))
 
     def _collect_config_info(self) -> Dict[str, str]:
         """
