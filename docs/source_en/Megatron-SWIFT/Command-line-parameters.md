@@ -248,7 +248,8 @@ LoRA Training:
 - adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.
 - ref_model: model_id or model_path of ref_model safetensors weights. Required when using DPO/GRPO/KTO algorithms with full-parameter training. Default is None, set to `--model`.
 - ref_adapters: List of adapter_id or adapter_path of ref_adapters safetensors weights (currently only supports length of 1). Default is `[]`.
-- use_hf: Controls whether to use ModelScope or HuggingFace for model download, dataset download, and model push. Default is False, using ModelScope.
+- use_hf: Determines whether to use [ModelScope](https://modelscope.cn/) or [HuggingFace](https://huggingface.co/) for downloading models, downloading datasets, and pushing models. Defaults to False (uses ModelScope).
+  - Note: To access ModelScope internationally, you can use [ModelScope International](https://modelscope.ai/home) by setting the environment variable `MODELSCOPE_DOMAIN='www.modelscope.ai'`.
 - hub_token: Hub token. ModelScope hub token can be found [here](https://modelscope.cn/my/myaccesstoken). Default is None.
 - merge_lora: Whether to store merged weights. Defaults to None. If `save_safetensors` is set to True, this parameter defaults to `True`; otherwise, it defaults to False. That is, by default, LoRA will be merged when storing in safetensors format; LoRA will not be merged when storing in torch_dist format.
 - max_shard_size: Maximum file size for safetensors format storage, defaults to '5GB'.

@@ -232,7 +232,8 @@ lora训练：
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。
 - ref_model: ref_model safetensors权重的model_id或者model_path。采用grpo、dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
 - ref_adapters: ref_adapters safetensors权重的adapter_id或者adapter_path的列表（目前只支持长度为1），默认为`[]`。
-- use_hf: 控制模型下载、数据集下载、模型推送使用ModelScope还是HuggingFace。默认为False，使用ModelScope。
+- use_hf: 控制模型下载、数据集下载、模型推送使用[ModelScope](https://modelscope.cn/)还是[HuggingFace](https://huggingface.co/)。默认为False，使用ModelScope。
+  - 提示：如果你想在国外访问ModelScope，可以尝试使用[ModelScope国际版](https://modelscope.ai/home)，设置环境变量`MODELSCOPE_DOMAIN='www.modelscope.ai'`即可。
 - hub_token: hub token. modelscope的hub token可以查看[这里](https://modelscope.cn/my/myaccesstoken)。默认为None。
 - merge_lora: 是否存储合并后的权重。默认为None，若`save_safetensors`设置为True，该参数默认值为`True`，否则为False。即默认情况下，存储为safetensors格式时会合并LoRA；存储为torch_dist格式时，不会合并LoRA。
 - max_shard_size: safetensors格式存储文件最大大小，默认'5GB'。
