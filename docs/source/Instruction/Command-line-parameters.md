@@ -21,7 +21,8 @@
   - 特定模型参数的含义可以在对应模型官方repo或者其推理代码中找到相应含义。ms-swift引入这些参数以确保训练的模型与官方推理代码效果对齐。
 - load_args: 当指定`--resume_from_checkpoint`、`--model`、`--adapters`会读取保存文件中的`args.json`，读取的keys查看[base_args.py](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/base_args/base_args.py)。推理和导出时默认为True，训练时默认为False。该参数通常不需要修改。
 - load_data_args: 如果将该参数设置为True，则会额外读取`args.json`中的数据参数。默认为False。**该参数通常用于推理时对训练中切分的验证集进行推理**，例如：`swift infer --adapters xxx --load_data_args true --stream true --max_new_tokens 512`。
-- use_hf: 控制模型下载、数据集下载、模型推送使用ModelScope还是HuggingFace。默认为False，使用ModelScope。
+- use_hf: 控制模型下载、数据集下载、模型推送使用[ModelScope](https://modelscope.cn/)还是[HuggingFace](https://huggingface.co/)。默认为False，使用ModelScope。
+  - 提示：如果你想在国外访问ModelScope，可以尝试使用[ModelScope国际版](https://modelscope.ai/home)，设置环境变量`MODELSCOPE_DOMAIN='www.modelscope.ai'`即可。
 - hub_token: hub token. modelscope的hub token可以查看[这里](https://modelscope.cn/my/myaccesstoken)。默认为None。
 - ddp_timeout: 默认为18000000，单位为秒。
 - ddp_backend: 可选为"nccl"、"gloo"、"mpi"、"ccl"、"hccl"、"cncl"、"mccl"。默认为None，进行自动选择。
