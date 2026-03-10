@@ -19,8 +19,7 @@ pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolati
 pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
-pip install uv
-uv pip install vllm --torch-backend=auto --extra-index-url https://wheels.vllm.ai/nightly
+pip install -U "vllm>=0.17.0"
 # For RL training, need to override vllm's default installation version
 # For training errors, refer to this issue: https://github.com/modelscope/ms-swift/issues/8188
 pip install -U "transformers>=5.2.0"
@@ -305,4 +304,150 @@ swift infer \
 
 ## Reinforcement Learning (RL)
 
-Coming soon
+Using Qwen3.5-2B as an example, we demonstrate GRPO and GKD training on the [GSM8K](https://www.modelscope.cn/datasets/modelscope/gsm8k) dataset and evaluate on the GSM8K test set. To avoid excessively long chain-of-thought outputs, all experiments set `enable_thinking false`.
+
+### GRPO
+
+Full-parameter training with GRPO, using `gsm8k_accuracy` and `gsm8k_format` as reward functions. See [gsm8k_plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py) for the reward implementation.
+
+```shell
+SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by step and put your final answer within \\boxed{}."""
+
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-2B \
+    --external_plugins examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py \
+    --reward_funcs gsm8k_accuracy gsm8k_format \
+    --columns '{"answer": "solution"}' \
+    --enable_thinking false \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.4 \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_max_model_len 10240 \
+    --sleep_level 1 \
+    --train_type full \
+    --torch_dtype bfloat16 \
+    --dataset 'modelscope/gsm8k' \
+    --load_from_cache_file true \
+    --max_length 2048 \
+    --max_completion_length 8192 \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 4 \
+    --gradient_accumulation_steps 4 \
+    --learning_rate 1e-6 \
+    --lr_scheduler_type cosine \
+    --save_steps 10 \
+    --save_total_limit 100 \
+    --logging_steps 1 \
+    --warmup_ratio 0.0 \
+    --dataloader_num_workers 4 \
+    --num_generations 8 \
+    --temperature 1.0 \
+    --system "$SYSTEM_PROMPT" \
+    --deepspeed zero2 \
+    --log_completions true \
+    --report_to tensorboard swanlab \
+    --max_grad_norm 1.0 \
+    --epsilon 0.2 \
+    --epsilon_high 0.28 \
+    --scale_rewards none
+```
+
+Evaluate the checkpoints:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval \
+    --model output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
+    --enable_thinking false \
+    --eval_dataset gsm8k \
+    --eval_backend Native --infer_backend vllm \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}'
+```
+
+GSM8K evaluation results at 10-step intervals for the first 50 steps:
+
+| Model / Steps | GSM8K Accuracy | Improvement |
+|---|---|---|
+| Qwen3.5-2B (baseline) | 0.7597 | - |
+| GRPO 10 steps | 0.7650 | +0.53 |
+| GRPO 20 steps | 0.7748 | +1.51 |
+| GRPO 30 steps | 0.7779 | +1.82 |
+| GRPO 40 steps | 0.7817 | +2.20 |
+| GRPO 50 steps | 0.7885 | +2.88 |
+
+### GKD
+
+LoRA training with GKD (Guided Knowledge Distillation), using Qwen3.5-9B as the teacher model. First, launch the teacher server with vLLM (alternatively, use the `--teacher_model` parameter to load the model directly):
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+vllm serve Qwen/Qwen3.5-9B \
+    --port 8000 \
+    --tensor-parallel-size 1 \
+    --max-model-len 10240 \
+    --gpu-memory-utilization 0.8 \
+    --max-logprobs 64
+```
+
+Then start GKD training on the remaining GPUs:
+
+```shell
+NPROC_PER_NODE=3 \
+CUDA_VISIBLE_DEVICES=1,2,3 \
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen3.5-2B \
+    --teacher_model_server http://localhost:8000 \
+    --gkd_logits_topk 64 \
+    --enable_thinking false \
+    --tuner_type lora \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_max_model_len 10240 \
+    --sleep_level 0 \
+    --dataset 'modelscope/gsm8k' \
+    --lmbda 1 \
+    --seq_kd false \
+    --beta 0.5 \
+    --torch_dtype bfloat16 \
+    --per_device_train_batch_size 2 \
+    --gradient_accumulation_steps 16 \
+    --learning_rate 5e-5 \
+    --logging_steps 1 \
+    --save_steps 100 \
+    --save_total_limit 10 \
+    --max_length 2048 \
+    --max_completion_length 8192 \
+    --warmup_ratio 0.1 \
+    --save_only_model true \
+    --dataloader_num_workers 4 \
+    --dataset_num_proc 4 \
+    --attn_impl flash_attn \
+    --report_to tensorboard swanlab
+```
+Evaluate the checkpoints:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 swift eval \
+    --model Qwen/Qwen3.5-2B \
+    --adapters output/Qwen3.5-2B/vxx-xxx-xxx/checkpoint-xx \
+    --merge_lora true \
+    --enable_thinking false \
+    --eval_dataset gsm8k \
+    --eval_backend Native --infer_backend vllm \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}'
+```
+
+GSM8K evaluation results at 100-step intervals for the first 300 steps:
+
+| Model / Steps | GSM8K Accuracy | Improvement |
+|---|---|---|
+| Qwen3.5-2B (baseline) | 0.7597 | - |
+| GKD 100 steps | 0.7968 | +3.71 |
+| GKD 200 steps | 0.8188 | +5.91 |
+| GKD 300 steps | 0.8332 | +7.35 |
