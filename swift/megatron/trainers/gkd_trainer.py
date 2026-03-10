@@ -431,10 +431,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Align vocab size between student and teacher
         student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
 
-        # Apply temperature scaling and mask
-        student_logits_masked = (student_logits / self.temperature)[mask]
-        teacher_logits_masked = (teacher_logits / self.temperature)[mask]
+        student_logits_masked = student_logits[mask]
+        teacher_logits_masked = teacher_logits[mask]
         del student_logits, teacher_logits
+        student_logits_masked.div_(self.temperature)
+        teacher_logits_masked.div_(self.temperature)
 
         # Use local count for iteration, global count for averaging
         local_num_valid_int = local_num_valid.item()
@@ -492,8 +493,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         teacher_topk_logprobs contains raw logits (local) or raw logprobs (API).
 
         """
-        s_scaled = student_logits / self.temperature
-        s_topk = torch.gather(s_scaled, dim=-1, index=teacher_topk_indices)
+        s_topk = torch.gather(student_logits, dim=-1, index=teacher_topk_indices)
+        s_topk.div_(self.temperature)
         t_topk = teacher_topk_logprobs / self.temperature
 
         s_topk_masked = s_topk[mask]
