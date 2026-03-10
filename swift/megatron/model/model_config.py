@@ -263,10 +263,6 @@ class MegatronModelConfig(TransformerConfig):
         _origin_rotary_interleaved = self.rotary_interleaved
         if self.multi_latent_attention and self.rotary_interleaved:
             self.rotary_interleaved = False
-        # TODO: Temporary addition, already supported in mcore0.16
-        if self.num_query_groups is not None and self.num_query_groups % self.tensor_model_parallel_size != 0:
-            raise ValueError(f'num_query_groups ({self.num_query_groups}) must be a multiple of '
-                             f'tensor_model_parallel_size ({self.tensor_model_parallel_size}).')
         super().__post_init__()
         self.rotary_interleaved = _origin_rotary_interleaved
         self._check_npu()

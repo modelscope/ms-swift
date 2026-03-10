@@ -610,7 +610,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             if is_torch_npu_available():
                 self.cross_entropy_fusion_impl = 'native'
             else:
-                self.cross_entropy_fusion_impl = 'te'
+                import transformer_engine
+                if version.parse(transformer_engine.__version__) >= version.parse('2.8.0'):
+                    self.cross_entropy_fusion_impl = 'te'
+                else:
+                    self.cross_entropy_fusion_impl = 'native'
         if isinstance(self.report_to, str):
             self.report_to = [self.report_to]
         self.model_info, self.model_meta = get_model_info_meta(
