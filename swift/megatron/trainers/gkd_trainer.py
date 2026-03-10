@@ -88,7 +88,15 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size')
         assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
-        self.teacher_models = get_mcore_model(args, self.teacher_config)
+        orig_model_dir = args.model_dir
+        orig_model_type = args.model_type
+        args.model_dir = args.teacher_model_dir
+        args.model_type = args.teacher_model_type
+        try:
+            self.teacher_models = get_mcore_model(args, self.teacher_config)
+        finally:
+            args.model_dir = orig_model_dir
+            args.model_type = orig_model_type
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()
