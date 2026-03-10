@@ -143,7 +143,7 @@ Train: 100%|██████████████████████�
 
 ```
 ## 3.2. run swift example with Megatron-LM
-if you want to use Megatron-LM as swift's backend, you should set MEGATRON_LM_PATH to /workspace/Megatron-LM-0.15.0 or others version.
+if you want to use Megatron-LM as Swift's backend, you should set MEGATRON_LM_PATH to /workspace/Megatron-LM-0.15.0 or other versions.
 
 ```bash
 export MEGATRON_LM_PATH=/workspace/Megatron-LM-0.15.0 
