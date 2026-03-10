@@ -944,6 +944,8 @@ def _patch_deepstack_process(model):
             return hidden_states + visual_embeds.mean() * 0
         visual_pos_masks = visual_pos_masks.to(hidden_states.device)
         visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
+        if hidden_states.ndim == 3 and visual_pos_masks.ndim == 3:
+            visual_pos_masks = visual_pos_masks[..., 0]
         local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
         hidden_states[visual_pos_masks, :] = local_this
         return hidden_states
