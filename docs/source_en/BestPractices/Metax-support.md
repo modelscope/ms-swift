@@ -102,7 +102,7 @@ Attached GPUs                                     : 8
 ```
 
 # 3. run example
-We support direct use of the community version, and have made more optimizations to it and released it within the image under /workspace. We strongly recommend using the software package here.
+We support direct use of the community version. However, we also provide a more optimized version in the image under /workspace and strongly recommend using it.
 
 # 3.1. run swift example 
 In most scenarios, we can run Swift's examples directly.
