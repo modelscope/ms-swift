@@ -1,6 +1,8 @@
-# 1. use swift with Metax
+# Metax Support
+
+## 1. use swift with Metax
 you can either build an image or pull an existing one. Here, we demonstrate how to use ms-swift on Metax by pulling a pre-built image as an example.
-## 1.1. start ms-swift Container
+### 1.1. start ms-swift Container
 ```bash
 docker pull mx-devops-acr-cn-shanghai.cr.volces.com/opensource/public-ai-release/maca/ms-swift:3.10.3-maca.ai3.3.0.16-torch2.6-py310-ubuntu22.04-amd64
 # you may modify privileged option and mount only specific GPU cards.
@@ -14,15 +16,15 @@ docker run  -it --net=host --uts=host --ipc=host --privileged=true --group-add v
     --name swift_test \
     mx-devops-acr-cn-shanghai.cr.volces.com/opensource/public-ai-release/maca/ms-swift:3.10.3-maca.ai3.3.0.16-torch2.6-py310-ubuntu22.04-amd64
 ```
-# 2. Environment check
-## 2.1. Check Metax available
+## 2. Environment check
+### 2.1. Check Metax available
 Thanks to its compatibility with CUDA, we can use the same approach as NVIDIA to check the availability of Metax devices.
 ```python
 import torch
 print(torch.cuda.is_available())
 # True
 ```
-## 2.2. Check the P2P connections
+### 2.2. Check the P2P connections
 ```bash
 mx-smi topo -m
 # output
@@ -52,7 +54,7 @@ Legend:
   ETH  = Connection traversing Eth
   NA   = Connection type is unknown
 ```
-## 2.3. check the status of the GPUs
+### 2.3. check the status of the GPUs
 ```bash
 mx-smi
 # output
@@ -101,10 +103,10 @@ Attached GPUs                                     : 8
 +---------------------------------------------------------------------------------+
 ```
 
-# 3. run example
+## 3. run example
 We support direct use of the community version. However, we also provide a more optimized version in the image under /workspace and strongly recommend using it.
 
-# 3.1. run swift example
+### 3.1. run swift example
 In most scenarios, we can run Swift's examples directly.
 ```bash
 # We assume that the ms-swift code is under /workspace
@@ -142,7 +144,7 @@ Train: 100%|██████████████████████�
 [INFO:swift] End time of running main: 2026-02-11 14:34:09.521336
 
 ```
-## 3.2. run swift example with Megatron-LM
+### 3.2. run swift example with Megatron-LM
 if you want to use Megatron-LM as Swift's backend, you should set MEGATRON_LM_PATH to /workspace/Megatron-LM-0.15.0 or other versions.
 
 ```bash
@@ -151,7 +153,7 @@ cd /workspace/ms-swift
 bash examples/megatron/pretrain.sh
 ```
 
-## 3.3. use other versions of ms-swift
+### 3.3. use other versions of ms-swift
 The Metax platform requires the use of MACA-compatible software packages. For instance, compiling depends on torch2.8. We need to use torch2.8+maca3.3.x.x. By default, the installation will overwrite the torch within the environment. Therefore, we recommend using the --no-deps parameter for installation
 ```bash
 
@@ -172,10 +174,10 @@ import torch
 torch.cuda.is_available()
 ```
 
-## 3.4. Differences between Metax and NVIDIA CUDA
+### 3.4. Differences between Metax and NVIDIA CUDA
 We are largely aligned with NVIDIA, but there are some differences in certain software and environment variables.
 
-### 3.4.1. MACA_MPS_MODE
+#### 3.4.1. MACA_MPS_MODE
 By default, MACA does not allow multiple processes to run on a single GPU. Therefore, when the GPU is already occupied, you cannot launch another process. To enable this scenario, you need to set MACA_MPS_MODE=1
 ```bash
 # run other scripts ...
@@ -183,7 +185,7 @@ export MACA_MPS_MODE=1
 cd /workspace/ms-swift/
 bash examples/train/full/train.sh
 ```
-### 3.4.2. MCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME & MCCL_IB_HCA
+#### 3.4.2. MCCL_SOCKET_IFNAME GLOO_SOCKET_IFNAME & MCCL_IB_HCA
 When using MACA in a multi-node setup, you need to set the environment variables MCCL_SOCKET_IFNAME, GLOO_SOCKET_IFNAME, and MCCL_IB_HCA to ensure proper inter-node communication.
 We can use mx-smi and ifconfig to determine which InfiniBand devices and network device are being used.
 ```bash
