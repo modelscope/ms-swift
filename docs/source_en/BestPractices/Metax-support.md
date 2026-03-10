@@ -152,7 +152,7 @@ bash examples/megatron/pretrain.sh
 ```
 
 ## 3.3. use other versions of ms-swift
-The Metax platform requires the use of MacA-compatible software packages. For instance, compiling depends on torch2.8. We need to use torch2.8+maca3.3.x.x. By default, the compilation will overwrite the torch within the environment. Therefore, we recommend using the --no-deps parameter for compilation
+The Metax platform requires the use of MACA-compatible software packages. For instance, compiling depends on torch2.8. We need to use torch2.8+maca3.3.x.x. By default, the installation will overwrite the torch within the environment. Therefore, we recommend using the --no-deps parameter for installation
 ```bash
 
 git clone -b ${SWIFT_VERSION} https://github.com/modelscope/ms-swift.git
