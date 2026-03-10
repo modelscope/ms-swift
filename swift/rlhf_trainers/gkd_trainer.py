@@ -577,10 +577,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             teacher_logits.div_(temperature)
             student_logits = torch.gather(student_logits, dim=-1, index=topk_idx)
             student_logits.div_(temperature)
-            del topk_idx
             temperature = 1.0
 
-        # Apply mask first (boolean indexing copies), then scale in-place to avoid full-size temporaries
         if labels is not None:
             mask = labels != -100
             student_logits = student_logits[mask]
