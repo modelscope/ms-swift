@@ -815,13 +815,6 @@ These parameters have the same meaning as in `qwen_vl_utils<0.0.12` or the `qwen
 ### qwen2_audio
 - SAMPLING_RATE: Default is 16000
 
-### qwen2_5_omni, qwen3_omni
-qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
-- USE_AUDIO_IN_VIDEO: Whether to use audio information from video. Default is `False`.
-- 🔥ENABLE_AUDIO_OUTPUT: Defaults to None, which means the value from `config.json` will be used. If training with zero3, please set it to False.
-  - Tip: ms-swift only fine-tunes the "thinker" component; it is recommended to set this to `False` to reduce GPU memory usage (only the thinker part of the model structure will be created).
-
-
 ### qwen3_vl, qwen3_5
 The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values: (It is also compatible with environment variables used by `qwen2_5_vl`, such as: `MAX_PIXELS`, `VIDEO_MAX_PIXELS`, and will perform automatic conversion.)
 
@@ -837,6 +830,13 @@ The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library �
 - FPS: default 2.0.
 - FPS_MIN_FRAMES: default 4, denotes the minimum number of sampled frames for a video segment.
 - 🔥FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
+
+
+### qwen2_5_omni, qwen3_omni
+qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter: (Note: qwen3_omni includes model-specific parameters of **qwen3_vl** and qwen2_audio)
+- USE_AUDIO_IN_VIDEO: Whether to use audio information from video. Default is `False`.
+- 🔥ENABLE_AUDIO_OUTPUT: Defaults to None, which means the value from `config.json` will be used. If training with zero3, please set it to False.
+  - Tip: ms-swift only fine-tunes the "thinker" component; it is recommended to set this to `False` to reduce GPU memory usage (only the thinker part of the model structure will be created).
 
 
 ### qwen3_vl_emb, qwen3_vl_reranker
