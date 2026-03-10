@@ -945,6 +945,8 @@ def _patch_deepstack_process(model):
         visual_pos_masks = visual_pos_masks.to(hidden_states.device)
         visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
         if hidden_states.ndim == 3 and visual_pos_masks.ndim == 3:
+            # https://github.com/huggingface/transformers/pull/41741
+            # fix qwen3-omni transformers<5.0
             visual_pos_masks = visual_pos_masks[..., 0]
         local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
         hidden_states[visual_pos_masks, :] = local_this
