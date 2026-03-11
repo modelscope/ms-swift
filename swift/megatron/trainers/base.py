@@ -383,14 +383,16 @@ class BaseMegatronTrainer(ABC):
         # Update min and max lr in param groups
         # These changes are compatible with mcore 0.16.
         for param_group in param_groups:
-            lr_mult = param_group.pop('lr_mult')
             if param_group['is_decoupled_lr']:
                 assert decoupled_lr is not None
-                param_group['max_lr'] = decoupled_lr * lr_mult
-                param_group['min_lr'] = decoupled_min_lr * lr_mult
+                param_group['max_lr'] = decoupled_lr
+                param_group['min_lr'] = decoupled_min_lr
             else:
-                param_group['max_lr'] = lr * lr_mult
-                param_group['min_lr'] = min_lr * lr_mult
+                param_group['max_lr'] = lr
+                param_group['min_lr'] = min_lr
+            lr_mult = param_group.pop('lr_mult')
+            param_group['max_lr'] *= lr_mult
+            param_group['min_lr'] *= lr_mult
         return param_groups
 
     @contextmanager
