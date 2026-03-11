@@ -184,7 +184,7 @@ class MegatronModelConfig(TransformerConfig):
     qk_pos_emb_head_dim: int = 64
     v_head_dim: int = 128
 
-    # qwen3_next
+    # qwen3_next/qwen3_5
     linear_attention_freq: Optional[str] = None
     linear_num_key_heads: Optional[int] = None
     linear_num_value_heads: Optional[int] = None
@@ -352,7 +352,7 @@ config_mapping = {
     'v_head_dim': ['v_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
-    # qwen3_next
+    # qwen3_next/qwen3_5
     'linear_attention_freq': ['full_attention_interval'],
     'linear_num_key_heads': ['linear_num_key_heads'],
     'linear_num_value_heads': ['linear_num_value_heads'],
