@@ -603,6 +603,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             State dict ready for vLLM
         """
         is_peft = is_peft_model(self.model)
+        should_merge_lora = self._is_fsdp2 and is_peft and not self.rollout_enable_lora
 
         raw_state_dict = {}
         if self._is_fsdp2:
@@ -625,11 +626,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 raw_state_dict[name] = param.data
 
         # Process: clean names, filter adapters (keep LoRA for FSDP2 to merge at tensor level)
-        state_dict = self._process_state_dict_for_vllm(
-            raw_state_dict, is_peft, keep_lora_weights=self._is_fsdp2 and is_peft)
+        state_dict = self._process_state_dict_for_vllm(raw_state_dict, is_peft, keep_lora_weights=should_merge_lora)
 
         # FSDP2 + LoRA: merge at tensor level (avoids issues with merge/unmerge on DTensor)
-        if self._is_fsdp2 and is_peft:
+        if should_merge_lora:
             state_dict = self._merge_lora_into_state_dict(state_dict)
 
         # Filter by parameter_group_no_lora
@@ -652,7 +652,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         - No clone needed: unmerge happens after load completes
         """
         is_peft = is_peft_model(self.model)
-        should_merge = is_peft and not self._is_fsdp2
+        should_merge = is_peft and not self._is_fsdp2 and not self.rollout_enable_lora
 
         gather_if_zero3 = get_gather_if_zero3_context(self)
 
@@ -682,6 +682,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if is_peft:
             self.base_sync_done = True
+            if self.rollout_enable_lora:
+                self._move_adapter_to_vllm()
 
     def _rollout(self,
                  inputs: Optional[DataType],

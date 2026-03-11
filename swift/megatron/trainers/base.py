@@ -239,6 +239,23 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'Training of {epoch} epochs has been completed, the training has finished.')
                 args.train_iters = self.state.iteration + 1
 
+    def _get_param_groups_mcore_016(
+        self,
+        model_chunks: List[MegatronModule],
+        config: OptimizerConfig,
+        config_overrides,
+    ) -> List[Dict]:
+        return self._get_param_groups(
+            model_chunks,
+            no_weight_decay_cond=None,
+            scale_lr_cond=None,
+            lr_mult=1.,
+            lr=config.lr,
+            min_lr=config.min_lr,
+            decoupled_lr=config.decoupled_lr,
+            decoupled_min_lr=config.decoupled_min_lr,
+        )
+
     # Code borrowed from Megatron-LM
     def _get_param_groups(
         self,
@@ -278,8 +295,9 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
-        from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
         args = self.args
+        if decoupled_min_lr is None:
+            decoupled_min_lr = min_lr
         is_multimodal = args.megatron_model_meta.is_multimodal
         if args.vit_lr is not None or args.aligner_lr is not None:
             assert is_multimodal, 'vit_lr and aligner_lr are only supported for multimodal models.'
@@ -379,22 +397,30 @@ class BaseMegatronTrainer(ABC):
                 assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
             param_groups.append(param_group)
 
-        param_groups = _update_min_and_max_lr_in_param_groups(
-            param_groups,
-            lr=lr,
-            min_lr=min_lr,
-            decoupled_lr=decoupled_lr,
-            decoupled_min_lr=decoupled_min_lr,
-        )
-
+        # Update min and max lr in param groups
+        # These changes are compatible with mcore 0.16.
+        for param_group in param_groups:
+            if param_group['is_decoupled_lr']:
+                assert decoupled_lr is not None
+                param_group['max_lr'] = decoupled_lr
+                param_group['min_lr'] = decoupled_min_lr
+            else:
+                param_group['max_lr'] = lr
+                param_group['min_lr'] = min_lr
+            lr_mult = param_group.pop('lr_mult')
+            param_group['max_lr'] *= lr_mult
+            param_group['min_lr'] *= lr_mult
         return param_groups
 
     @contextmanager
     def _patch_get_param_groups(self):
         from megatron.core import optimizer
-
+        mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
         _get_param_groups = optimizer._get_param_groups
-        optimizer._get_param_groups = self._get_param_groups
+        if mcore_016:
+            optimizer._get_param_groups = self._get_param_groups_mcore_016
+        else:
+            optimizer._get_param_groups = self._get_param_groups
         try:
             yield
         finally:
