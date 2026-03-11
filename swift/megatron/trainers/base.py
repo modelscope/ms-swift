@@ -239,6 +239,23 @@ class BaseMegatronTrainer(ABC):
                 logger.info(f'Training of {epoch} epochs has been completed, the training has finished.')
                 args.train_iters = self.state.iteration + 1
 
+    def _get_param_groups_mcore_016(
+        self,
+        model_chunks: List[MegatronModule],
+        config: OptimizerConfig,
+        config_overrides,
+    ) -> List[Dict]:
+        return self._get_param_groups(
+            model_chunks,
+            no_weight_decay_cond=None,
+            scale_lr_cond=None,
+            lr_mult=1.,
+            lr=config.lr,
+            min_lr=config.min_lr,
+            decoupled_lr=config.decoupled_lr,
+            decoupled_min_lr=config.decoupled_min_lr,
+        )
+
     # Code borrowed from Megatron-LM
     def _get_param_groups(
         self,
@@ -398,9 +415,12 @@ class BaseMegatronTrainer(ABC):
     @contextmanager
     def _patch_get_param_groups(self):
         from megatron.core import optimizer
-
+        mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
         _get_param_groups = optimizer._get_param_groups
-        optimizer._get_param_groups = self._get_param_groups
+        if mcore_016:
+            optimizer._get_param_groups = self._get_param_groups_mcore_016
+        else:
+            optimizer._get_param_groups = self._get_param_groups
         try:
             yield
         finally:
