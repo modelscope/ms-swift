@@ -8,7 +8,7 @@ from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from swift.utils import get_logger, json_parse_to_dict
+from swift.utils import get_env_args, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -246,6 +246,10 @@ class MegatronModelConfig(TransformerConfig):
                 setattr(self, name, value)
 
     def __post_init__(self):
+        use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
+        if use_mcore_gdn and self.hf_model_type == 'qwen3_next':
+            raise ValueError('qwen3_next is not supported for using the megatron-core implementation of GDN.')
+
         self._augment_mindspeed_defaults()
         self._format_config()
         if self.experimental_attention_variant is not None:
