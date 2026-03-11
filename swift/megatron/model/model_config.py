@@ -246,14 +246,9 @@ class MegatronModelConfig(TransformerConfig):
                 setattr(self, name, value)
 
     def __post_init__(self):
-        use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
-        if use_mcore_gdn and self.hf_model_type == 'qwen3_next':
-            raise ValueError('qwen3_next is not supported for using the megatron-core implementation of GDN.')
-
         self._augment_mindspeed_defaults()
         self._format_config()
-        if (self.experimental_attention_variant == 'dsa'
-                or self.experimental_attention_variant == 'gated_delta_net' and use_mcore_gdn):
+        if self.experimental_attention_variant is not None:
             require_version('megatron-core>=0.16.0.dev',
                             'experimental attention variant requires megatron-core>=0.16.0')
         if self.moe_router_dtype.lower() == 'none':
@@ -488,6 +483,10 @@ def convert_hf_config(config) -> Dict[str, Any]:
             # https://github.com/modelscope/ms-swift/pull/8085
             # res['rotary_interleaved'] = False
     elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
+        use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
+        if use_mcore_gdn and llm_model_type == 'qwen3_next':
+            raise ValueError('qwen3_next is not supported for using the megatron-core implementation of GDN.')
+
         res['experimental_attention_variant'] = 'gated_delta_net'
         res['layernorm_zero_centered_gamma'] = True
         res['attention_output_gate'] = True
