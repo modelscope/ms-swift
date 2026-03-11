@@ -252,7 +252,8 @@ class MegatronModelConfig(TransformerConfig):
 
         self._augment_mindspeed_defaults()
         self._format_config()
-        if self.experimental_attention_variant is not None:
+        if (self.experimental_attention_variant == 'dsa'
+                or self.experimental_attention_variant == 'gated_delta_net' and use_mcore_gdn):
             require_version('megatron-core>=0.16.0.dev',
                             'experimental attention variant requires megatron-core>=0.16.0')
         if self.moe_router_dtype.lower() == 'none':
