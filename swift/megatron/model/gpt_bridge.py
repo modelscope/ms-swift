@@ -1293,7 +1293,7 @@ class GPTBridge:
         key_dim = config.linear_key_head_dim * num_key_heads
         value_dim = config.linear_value_head_dim * config.linear_num_value_heads
         if to_mcore:
-            if isinstance(mg_attn.in_proj.weight, LoraParallelLinear):
+            if isinstance(mg_attn.in_proj, LoraParallelLinear):
                 lora_A = hf_state_dict['in_proj_qkv.lora_A.weight'].load()
                 assert (lora_A == hf_state_dict['in_proj_z.lora_A.weight'].load()).all() and \
                        (lora_A == hf_state_dict['in_proj_b.lora_A.weight'].load()).all() and \
@@ -1318,7 +1318,7 @@ class GPTBridge:
                 ],
                                            dim=1).reshape((-1, config.hidden_size))
                 in_scale_inv = None
-                if 'in_proj_qkvz.weight_scale_inv' in hf_state_dict or 'in_proj_qkv.weight_scale_inv' in hf_state_dict:
+                if 'in_proj_qkv.weight_scale_inv' in hf_state_dict:
                     in_scale_inv = torch.cat([
                         hf_state_dict['in_proj_qkv.weight_scale_inv'].load(),
                         hf_state_dict['in_proj_z.weight_scale_inv'].load(),
