@@ -16,7 +16,39 @@ from swift.utils.torch_utils import get_current_device
 device_name = get_current_device()
 
 
-def get_local_layer_range(tf_config, vp_rank=None):
+def is_moe_layer(tf_config, layer_idx):
+    moe_layer_freq = getattr(tf_config, 'moe_layer_freq', None)
+    if isinstance(moe_layer_freq, int):
+        return layer_idx % moe_layer_freq == 0
+    elif isinstance(moe_layer_freq, list):
+        return moe_layer_freq[layer_idx] == 1
+    else:
+        raise ValueError(f'Unsupported moe_layer_freq type: {type(moe_layer_freq)}')
+
+
+def get_moe_num_layers_to_build(tf_config, vp_stage=None, pp_rank=None):
+    """Count the number of MoE layers assigned to the current rank.
+    When ``moe_layer_freq`` is 1 or unset, every transformer layer is an MoE
+    layer, so the count equals the total layer count. Otherwise only layers
+    whose global index satisfies the frequency predicate are counted.
+    Args:
+        config: Megatron TransformerConfig providing layer layout information.
+        vp_stage: Virtual-pipeline stage index (None defaults to current).
+        pp_rank: Pipeline-parallel rank (None defaults to current).
+    Returns:
+        Number of MoE layers on the specified rank/stage.
+    """
+    total_layers = get_num_layers_to_build(tf_config, vp_stage=vp_stage, pp_rank=pp_rank)
+
+    layer_offset = get_transformer_layer_offset(tf_config, vp_stage=vp_stage)
+    local_global_indices = range(layer_offset, layer_offset + total_layers)
+
+    num_moe_layers = sum(1 for idx in local_global_indices if is_moe_layer(tf_config, idx))
+
+    return num_moe_layers
+
+
+def get_local_layer_range(tf_config, vp_rank=None, only_moe_layer=True):
     vp_size = tf_config.virtual_pipeline_model_parallel_size
     if vp_size is not None:
         vp_rank = 0 if vp_rank is None else vp_rank
@@ -24,11 +56,13 @@ def get_local_layer_range(tf_config, vp_rank=None):
         for pre_vp_stage in range(vp_size):
             if pre_vp_stage == vp_rank:
                 break
-            num_layers_to_build = get_num_layers_to_build(tf_config, pre_vp_stage)
+            num_layers_to_build = get_moe_num_layers_to_build(
+                tf_config, pre_vp_stage) if only_moe_layer else get_num_layers_to_build(tf_config, pre_vp_stage)
             offset += num_layers_to_build
     else:
         offset = 0
-    count = get_num_layers_to_build(tf_config, vp_rank)
+    count = get_moe_num_layers_to_build(tf_config, vp_rank) if only_moe_layer else get_num_layers_to_build(
+        tf_config, vp_rank)
     return offset, count
 
 
@@ -36,10 +70,19 @@ def get_local_topk_idx_for_current_rank(global_topk_idx, tf_config, packed_seq_p
     if global_topk_idx is None:
         return None
     # 1. pp slice
+    # For the hybrid model, global_topk_idx contains data from all layers
+    # because vLLM reports routed_experts across all transformer layers(including dense).
+    # However megatron only has routers for MoE layers.
+    # So local_topk_idx should filter only data from the MoE layer.
     layer_offset = get_transformer_layer_offset(tf_config, vp_stage=0)
-    offset, count = get_local_layer_range(tf_config, tf_config.virtual_pipeline_model_parallel_size)
+    offset, count = get_local_layer_range(
+        tf_config, tf_config.virtual_pipeline_model_parallel_size, only_moe_layer=False)
     num_layers = offset + count
-    local_topk_idx = torch.narrow(global_topk_idx, dim=2, start=layer_offset, length=num_layers)
+    moe_layer_idx = torch.tensor([
+        layer_idx for layer_idx in range(layer_offset, layer_offset + num_layers) if is_moe_layer(tf_config, layer_idx)
+    ],
+                                 dtype=torch.long)
+    local_topk_idx = torch.index_select(global_topk_idx, dim=2, index=moe_layer_idx)
     # 2. cp slice
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size > 1:
