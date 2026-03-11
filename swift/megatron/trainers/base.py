@@ -278,8 +278,9 @@ class BaseMegatronTrainer(ABC):
         Returns:
             List of parameter groups.
         """
-        from megatron.core.optimizer import _update_min_and_max_lr_in_param_groups
         args = self.args
+        if decoupled_min_lr is None:
+            decoupled_min_lr = min_lr
         is_multimodal = args.megatron_model_meta.is_multimodal
         if args.vit_lr is not None or args.aligner_lr is not None:
             assert is_multimodal, 'vit_lr and aligner_lr are only supported for multimodal models.'
@@ -379,14 +380,17 @@ class BaseMegatronTrainer(ABC):
                 assert set(param_group.keys()) - set(param_group_identifier_keys) == {'params'}
             param_groups.append(param_group)
 
-        param_groups = _update_min_and_max_lr_in_param_groups(
-            param_groups,
-            lr=lr,
-            min_lr=min_lr,
-            decoupled_lr=decoupled_lr,
-            decoupled_min_lr=decoupled_min_lr,
-        )
-
+        # Update min and max lr in param groups
+        # These changes are compatible with mcore 0.16.
+        for param_group in param_groups:
+            lr_mult = param_group.pop('lr_mult')
+            if param_group['is_decoupled_lr']:
+                assert decoupled_lr is not None
+                param_group['max_lr'] = decoupled_lr * lr_mult
+                param_group['min_lr'] = decoupled_min_lr * lr_mult
+            else:
+                param_group['max_lr'] = lr * lr_mult
+                param_group['min_lr'] = min_lr * lr_mult
         return param_groups
 
     @contextmanager
