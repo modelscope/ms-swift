@@ -86,12 +86,10 @@ class LazyLLMDataset(Dataset):
         if isinstance(idx, str):
             return self.dataset[idx]
         for i in range(self.n_try_fetch):
-            if i == 0:
-                i = idx
-            else:
-                i = self._idx_list[self._idx]
+            if i > 0:
+                idx = self._idx_list[self._idx]
                 self._idx = (self._idx + 1) % len(self.dataset)
-            data = self.dataset[i]
+            data = self.dataset[idx]
             try:
                 return self.encode_func(data, return_length=True)
             except Exception as e:
