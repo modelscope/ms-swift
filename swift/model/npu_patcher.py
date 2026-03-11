@@ -27,7 +27,7 @@ def _set_default_hccl_connect_timeout_for_npu() -> None:
         return
 
     os.environ['HCCL_CONNECT_TIMEOUT'] = _DEFAULT_NPU_HCCL_CONNECT_TIMEOUT
-    logger.info('Set HCCL_CONNECT_TIMEOUT=600 by default for NPU.')
+    logger.info(f'Set HCCL_CONNECT_TIMEOUT={_DEFAULT_NPU_HCCL_CONNECT_TIMEOUT} by default for NPU.')
 
 
 _set_default_hccl_connect_timeout_for_npu()
