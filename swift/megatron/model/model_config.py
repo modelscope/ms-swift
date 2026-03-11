@@ -8,7 +8,7 @@ from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from swift.utils import get_logger, json_parse_to_dict
+from swift.utils import get_env_args, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -48,6 +48,24 @@ def no_rope_freq_type(x):
     else:
         # it's a single int but in str
         return int(x)
+
+
+def linear_attn_freq_type(x):
+    """Frequency between LA (linear attention) layers and SDPA (scaled dot-product attention) layers.
+
+    Accepts either:
+    - An integer N: Represents a (N-1):N ratio, meaning (N-1) LA layers for every 1 SDPA layer
+    - A string "N": Same as above, but provided as a string
+    - A string containing a Python list expression that defines a custom pattern, e.g.:
+      "([1]*3+[0]*1)*3" evaluates to [1,1,1,0,1,1,1,0,1,1,1,0]
+      where 1 indicates an LA layer and 0 indicates a SDPA layer.
+      This allows defining arbitrary patterns of LA and SDPA layers.
+      The pattern length must match the total number of transformer layers.
+      Examples:
+          "([0]+[1]*23)": 1 SDPA layer followed by 23 LA layers
+          "([1]*3+[0]*2)*2": Three LA layers followed by two SDPA layers, repeated twice.
+    """
+    return no_rope_freq_type(x)
 
 
 # code borrowed from NVIDIA/Megatron-LM
@@ -166,13 +184,14 @@ class MegatronModelConfig(TransformerConfig):
     qk_pos_emb_head_dim: int = 64
     v_head_dim: int = 128
 
-    # qwen3_next
-    linear_num_value_heads: Optional[int] = None
+    # qwen3_next/qwen3_5
+    linear_attention_freq: Optional[str] = None
     linear_num_key_heads: Optional[int] = None
+    linear_num_value_heads: Optional[int] = None
     linear_key_head_dim: Optional[int] = None
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
-    layer_types: Optional[List[str]] = None
+    layernorm_zero_centered_gamma: bool = False
 
     # dsa
     experimental_attention_variant: Optional[Literal['gated_delta_net', 'dsa']] = None
@@ -182,8 +201,6 @@ class MegatronModelConfig(TransformerConfig):
     dsa_indexer_loss_coeff: Optional[float] = None
     dsa_indexer_use_sparse_loss: bool = False
     dsa_indexer_rotary_interleaved: bool = False
-
-    layernorm_zero_centered_gamma: bool = False
 
     # Override
     persist_layer_norm: bool = True
@@ -277,6 +294,12 @@ class MegatronModelConfig(TransformerConfig):
             self.no_rope_freq = no_rope_freq_type(self.no_rope_freq)
         if self.moe_layer_freq is not None:
             self.moe_layer_freq = moe_freq_type(self.moe_layer_freq)
+        if self.linear_attention_freq is not None:
+            self.linear_attention_freq = linear_attn_freq_type(self.linear_attention_freq)
+            if isinstance(self.linear_attention_freq, int):
+                self.linear_attention_freq = [
+                    0 if ((i + 1) % self.linear_attention_freq == 0) else 1 for i in range(self.num_layers)
+                ]
 
     def _check_npu(self):
         MAX_NPU_EXPERTS_PER_EP = 128
@@ -329,13 +352,13 @@ config_mapping = {
     'v_head_dim': ['v_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
-    # qwen3_next
-    'linear_num_value_heads': ['linear_num_value_heads'],
+    # qwen3_next/qwen3_5
+    'linear_attention_freq': ['full_attention_interval'],
     'linear_num_key_heads': ['linear_num_key_heads'],
+    'linear_num_value_heads': ['linear_num_value_heads'],
     'linear_key_head_dim': ['linear_key_head_dim'],
     'linear_value_head_dim': ['linear_value_head_dim'],
     'linear_conv_kernel_dim': ['linear_conv_kernel_dim'],
-    'full_attention_interval': ['full_attention_interval'],
     # dsa
     'dsa_indexer_n_heads': ['index_n_heads'],
     'dsa_indexer_head_dim': ['index_head_dim'],
@@ -460,12 +483,14 @@ def convert_hf_config(config) -> Dict[str, Any]:
             # https://github.com/modelscope/ms-swift/pull/8085
             # res['rotary_interleaved'] = False
     elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
-        full_attention_interval = res.pop('full_attention_interval', 4)
-        num_layers = res['num_layers']
-        res['layer_types'] = [
-            'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
-            for i in range(num_layers)
-        ]
+        use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
+        if use_mcore_gdn and llm_model_type == 'qwen3_next':
+            raise ValueError('qwen3_next is not supported for using the megatron-core implementation of GDN.')
+
+        res['experimental_attention_variant'] = 'gated_delta_net'
+        res['layernorm_zero_centered_gamma'] = True
+        res['attention_output_gate'] = True
+        res.setdefault('linear_attention_freq', 4)
     elif llm_model_type == 'minimax_m2':
         res['add_qkv_bias'] = False
     elif hf_model_type == 'llama4':

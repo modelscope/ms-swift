@@ -24,6 +24,7 @@ convert_kwargs = {
     'no_load_rng': True,
     'finetune': True,
     'attention_backend': 'unfused',
+    'padding_free': False,
 }
 
 
