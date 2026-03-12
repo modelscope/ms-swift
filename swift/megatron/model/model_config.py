@@ -192,6 +192,7 @@ class MegatronModelConfig(TransformerConfig):
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
     layernorm_zero_centered_gamma: bool = False
+    attention_output_gate: bool = False
 
     # dsa
     experimental_attention_variant: Optional[Literal['gated_delta_net', 'dsa']] = None
@@ -486,10 +487,10 @@ def convert_hf_config(config) -> Dict[str, Any]:
         use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
         if use_mcore_gdn and llm_model_type == 'qwen3_next':
             raise ValueError('qwen3_next is not supported for using the megatron-core implementation of GDN.')
-
-        res['experimental_attention_variant'] = 'gated_delta_net'
-        res['layernorm_zero_centered_gamma'] = True
-        res['attention_output_gate'] = True
+        if use_mcore_gdn:
+            res['experimental_attention_variant'] = 'gated_delta_net'
+            res['layernorm_zero_centered_gamma'] = True
+            res['attention_output_gate'] = True
         res.setdefault('linear_attention_freq', 4)
     elif llm_model_type == 'minimax_m2':
         res['add_qkv_bias'] = False
