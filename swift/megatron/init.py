@@ -441,9 +441,12 @@ def _patch_mtp():
         if packed_seq:
             assert not self.transformer_layer.self_attention.config.apply_rope_fusion
             if position_ids.shape[0] == 1:
+                # Standard RoPE: index the rope table by shifted position_ids
                 rotary_pos_emb = rotary_pos_emb[position_ids[0]]
             elif rotary_pos_emb is not None:
-                rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-1, dims=0)  # Align RoPE for MTP next-token prediction.
+                # MRoPE: rotary_pos_emb is already per-token [seq, bs, 1, dim],
+                # roll along sequence dim to get embeddings for shifted positions
+                rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-1, dims=0)
         _do_recompute = self.config.recompute_granularity == 'full' and self.training
         if _do_recompute:
             hidden_states = self._checkpointed_forward(
