@@ -281,7 +281,7 @@ def _patch_conv3d():
     logger.info('Conv3d patched successfully')
 
 
-requires_patch = version.parse('2.9.0') < version.parse(torch.__version__) < version.parse('2.10.0')
+requires_patch = version.parse('2.9.0') <= version.parse(torch.__version__) < version.parse('2.10.0')
 if requires_patch:
     _patch_conv3d()
 
