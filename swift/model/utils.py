@@ -281,21 +281,8 @@ def _patch_conv3d():
     logger.info('Conv3d patched successfully')
 
 
-SWIFT_PATCH_CONV3D = get_env_args('SWIFT_PATCH_CONV3D', bool, None)
-torch_version = version.parse(torch.__version__)
-
-require_patch = version.parse('2.9.0') < torch_version < version.parse('2.10.0')
-if SWIFT_PATCH_CONV3D is None:
-    # Default behavior: patch only for torch 2.9.x
-    SWIFT_PATCH_CONV3D = require_patch
-    logger.info(f'Setting SWIFT_PATCH_CONV3D: {SWIFT_PATCH_CONV3D}.')
-elif SWIFT_PATCH_CONV3D and not require_patch:
-    # User override for an unsupported version, correct it.
-    SWIFT_PATCH_CONV3D = False
-    logger.info('torch versions <2.9 or >=2.10 do not require patching conv3d. '
-                'Setting SWIFT_PATCH_CONV3D: False.')
-
-if SWIFT_PATCH_CONV3D:
+requires_patch = version.parse('2.9.0') < version.parse(torch.__version__) < version.parse('2.10.0')
+if requires_patch:
     _patch_conv3d()
 
 
