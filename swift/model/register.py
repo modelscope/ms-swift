@@ -271,6 +271,8 @@ class ModelLoader(BaseModelLoader):
         model_meta = self.model_meta
         auto_model_cls = self.auto_model_cls
         model = None
+        if model_info.task_type in {'seq_cls', 'reranker'}:
+            HfConfigFactory.set_config_attr(config, 'tie_word_embeddings', False)
         if model_info.task_type in {'seq_cls', 'reranker'} and auto_model_cls is None and not self.return_dummy_model:
             with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
                 try:
