@@ -430,7 +430,6 @@ def _patch_mtp():
             Union[Tensor, Tuple[Tensor, Tensor]]: The output hidden states tensor of shape
             [s, b, h], and optionally the updated context tensor if cross-attention is used.
         """
-        # TODO: Multimodal compatible
         assert context is None, 'multi token prediction + cross attention is not yet supported.'
         input_ids, position_ids, decoder_input, hidden_states = self._get_embeddings(
             input_ids=input_ids,
@@ -441,9 +440,12 @@ def _patch_mtp():
         packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
         if packed_seq:
             assert not self.transformer_layer.self_attention.config.apply_rope_fusion
-            assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
-            rotary_pos_emb = rotary_pos_emb[position_ids[0]]
-        if self.config.recompute_granularity == 'full' and self.training:
+            if position_ids.shape[0] == 1:
+                rotary_pos_emb = rotary_pos_emb[position_ids[0]]
+            elif rotary_pos_emb is not None:
+                rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-1, dims=0)
+        _do_recompute = self.config.recompute_granularity == 'full' and self.training
+        if _do_recompute:
             hidden_states = self._checkpointed_forward(
                 partial(
                     self._proj_and_transformer_layer,
