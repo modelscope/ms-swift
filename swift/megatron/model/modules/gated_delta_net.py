@@ -111,7 +111,7 @@ class GatedDeltaNet(_GatedDeltaNet):
                 bias=self.conv1d.bias,
                 activation=self.activation,
                 cu_seqlens=cu_seqlens,
-            )
+            )[0]
         nvtx_range_pop(suffix='conv1d')
         # Split qkv into query, key, and value
         qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
