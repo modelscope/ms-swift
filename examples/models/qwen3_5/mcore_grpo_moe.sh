@@ -23,7 +23,7 @@ megatron rlhf \
     --micro_batch_size 1 \
     --steps_per_generation 2 \
     --num_generations 8 \
-    --reward_funcs accuracy format \
+    --reward_funcs accuracy \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.5 \
