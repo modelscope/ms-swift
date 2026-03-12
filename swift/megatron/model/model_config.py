@@ -192,6 +192,7 @@ class MegatronModelConfig(TransformerConfig):
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
     layernorm_zero_centered_gamma: bool = False
+    attention_output_gate: bool = False
 
     # dsa
     experimental_attention_variant: Optional[Literal['gated_delta_net', 'dsa']] = None
