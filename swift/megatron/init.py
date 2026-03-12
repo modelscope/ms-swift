@@ -443,7 +443,7 @@ def _patch_mtp():
             if position_ids.shape[0] == 1:
                 rotary_pos_emb = rotary_pos_emb[position_ids[0]]
             elif rotary_pos_emb is not None:
-                rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-1, dims=0)
+                rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-1, dims=0)  # Align RoPE for MTP next-token prediction.
         _do_recompute = self.config.recompute_granularity == 'full' and self.training
         if _do_recompute:
             hidden_states = self._checkpointed_forward(
