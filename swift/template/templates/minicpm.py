@@ -246,7 +246,7 @@ class MiniCPMO4_5Template(MiniCPMV2_6Template):
 
     Audio placeholder: <|audio_start|><unk>*N<|audio_end|>
     Model inputs added:  audio_features, audio_feature_lens, audio_bounds
-    Audio is truncated to 30s max; sampling_rate defaults to 16000.
+    Audio is truncated to 60s max; sampling_rate defaults to 16000.
     """
 
     SAMPLING_RATE = 16000
@@ -351,11 +351,7 @@ class MiniCPMO4_5Template(MiniCPMV2_6Template):
         return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        # collate image/video fields from parent
-        res = {}
-        for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
-            res[k] = self.gather_list(batch, k)
-        res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        res = super()._data_collator(batch, padding_to=padding_to)
 
         # collate audio fields
         audio_features_list = [
