@@ -445,7 +445,7 @@ def _patch_mtp():
             rotary_pos_emb = rotary_pos_emb[position_ids[0]]
         else:
             # mrope or not packed_seq
-            rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-1, dims=0)
+            rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-self.layer_number, dims=0)
         if self.config.recompute_granularity == 'full' and self.training:
             hidden_states = self._checkpointed_forward(
                 partial(
