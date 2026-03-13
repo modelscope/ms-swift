@@ -16,8 +16,7 @@ megatron sft \
     --split_dataset_ratio 0.01 \
     --tuner_type full \
     --tensor_model_parallel_size 4 \
-    --pipeline_model_parallel_size 2 \
-    --expert_model_parallel_size 4 \
+    --expert_model_parallel_size 8 \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
@@ -32,7 +31,6 @@ megatron sft \
     --freeze_llm false \
     --freeze_vit true \
     --freeze_aligner true \
-    --decoder_first_pipeline_num_layers 24 \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
@@ -50,5 +48,5 @@ megatron sft \
     --mtp_num_layers 1 \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.62 \
+    --optimizer_offload_fraction 0.52 \
     --attention_backend flash

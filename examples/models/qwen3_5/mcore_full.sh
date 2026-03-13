@@ -17,6 +17,7 @@ megatron sft \
     --tensor_model_parallel_size 1 \
     --pipeline_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
+    --decoder_first_pipeline_num_layers 24 \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
@@ -32,7 +33,6 @@ megatron sft \
     --freeze_llm false \
     --freeze_vit true \
     --freeze_aligner true \
-    --decoder_first_pipeline_num_layers 24 \
     --cross_entropy_loss_fusion true \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \

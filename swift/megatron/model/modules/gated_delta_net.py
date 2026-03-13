@@ -101,6 +101,7 @@ class GatedDeltaNet(_GatedDeltaNet):
         # Convolution on qkv
         nvtx_range_push(suffix='conv1d')
         if (causal_conv1d is None) or self.config.deterministic_mode:
+            assert cu_seqlens is None, 'Packed sequences are not supported when fla is not available.'
             qkv = qkv.transpose(1, 2).contiguous()  # b, s, d -> b, d, s
             qkv = self.act_fn(self.conv1d(qkv)[..., :seq_len])
             qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
