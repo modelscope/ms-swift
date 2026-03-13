@@ -425,7 +425,8 @@ class GPTModel(McoreGPTModel):
                     # Calc loss for the current Multi-Token Prediction (MTP) layers.
                     mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
                     if cu_seqlens is None:
-                        loss_mask_, _ = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                        loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                        loss_mask_ = loss_mask
                     else:
                         loss_mask[:, cu_seqlens[:-1]] = 0
                         loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1)
