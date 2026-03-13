@@ -15,7 +15,7 @@ swift rlhf \
     --vllm_tensor_parallel_size 1 \
     --vllm_max_model_len 10240 \
     --sleep_level 1 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --dataset 'modelscope/gsm8k' \
     --load_from_cache_file true \

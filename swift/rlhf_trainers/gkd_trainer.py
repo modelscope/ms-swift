@@ -554,8 +554,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             )
             self.use_liger_gkd_loss = True
 
-    @staticmethod
     def generalized_jsd_loss(
+        self,
         student_logits,
         teacher_logits=None,
         labels=None,
@@ -566,29 +566,18 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_topk_logprobs=None,
         teacher_topk_indices=None,
     ):
-        # Top-k mode: reduce logits to [*, k] before the standard JSD pipeline
+        # Top-k mode: gather/topk first to get small [*, k] tensors, then scale in-place
         if teacher_topk_logprobs is not None and teacher_topk_indices is not None:
-            # API teacher: gather student logits at teacher's top-k indices, then both
-            # get scaled by 1/T and re-normalized over top-k via downstream log_softmax.
-            # vLLM logprobs = log_softmax(logits) at T=1; treating them as logit-like
-            # scores and dividing by T then re-normalizing is equivalent to
-            # log_softmax(logits/T) over top-k (by shift-invariance of softmax).
-            s_scaled = student_logits / temperature
-            student_logits = torch.gather(s_scaled, dim=-1, index=teacher_topk_indices)
+            student_logits = torch.gather(student_logits, dim=-1, index=teacher_topk_indices)
+            student_logits.div_(temperature)
             teacher_logits = teacher_topk_logprobs / temperature
-            del s_scaled
             temperature = 1.0
         elif topk is not None and teacher_logits is not None:
-            # Local teacher: select top-k from teacher, gather corresponding student logits
-            t_scaled = teacher_logits / temperature
-            s_scaled = student_logits / temperature
-            teacher_logits, topk_idx = torch.topk(t_scaled, k=topk, dim=-1)
-            student_logits = torch.gather(s_scaled, dim=-1, index=topk_idx)
-            del t_scaled, s_scaled, topk_idx
+            teacher_logits, topk_idx = torch.topk(teacher_logits, k=topk, dim=-1)
+            teacher_logits.div_(temperature)
+            student_logits = torch.gather(student_logits, dim=-1, index=topk_idx)
+            student_logits.div_(temperature)
             temperature = 1.0
-
-        student_logits = student_logits / temperature
-        teacher_logits = teacher_logits / temperature
 
         if labels is not None:
             mask = labels != -100
@@ -599,6 +588,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             student_logits = student_logits.view(-1, student_logits.size(-1))
             teacher_logits = teacher_logits.view(-1, teacher_logits.size(-1))
             num_valid = student_logits.size(0)
+        student_logits.div_(temperature)
+        teacher_logits.div_(temperature)
 
         if num_valid == 0:
             return student_logits.new_zeros(())

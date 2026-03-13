@@ -508,13 +508,24 @@ class Qwen3NextBridge(GPTBridge):
     # which implements Zero-Centered RMSNorm (1 + weight) matching HuggingFace exactly.
 
     def _set_layer_attn(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
-        layer_type = self.config.layer_types[layer_idx]
+        is_linear_attention = self.config.linear_attention_freq[layer_idx]
         mg_attn = None if mg_layer is None else mg_layer.self_attention
-        if layer_type == 'linear_attention':
+        if is_linear_attention:
             hf_state_dict.update(self._set_module(mg_attn, hf_state_dict, 'linear_attn.', to_mcore))
-        elif layer_type == 'full_attention':
+        else:
             hf_state_dict.update(self._set_attn_state(mg_attn, hf_state_dict, 'self_attn.', layer_idx, to_mcore))
         self._set_state_dict(mg_layer, 'input_layernorm.weight', hf_state_dict, 'input_layernorm.weight', to_mcore)
+        return hf_state_dict
+
+    def _set_layer_mlp(self, mg_layer, hf_state_dict, layer_idx: int, to_mcore: bool):
+        if self.model_type != 'qwen3_5':
+            return super()._set_layer_mlp(mg_layer, hf_state_dict, layer_idx, to_mcore)
+        # dense
+        hf_mlp_prefix = self.get_hf_mlp_prefix(layer_idx)
+        mg_mlp = None if mg_layer is None else mg_layer.mlp
+        hf_state_dict.update(self._set_mlp_state(mg_mlp, hf_state_dict, f'{hf_mlp_prefix}.', layer_idx, to_mcore))
+        self._set_state_dict(mg_layer, 'pre_mlp_layernorm.weight', hf_state_dict, 'post_attention_layernorm.weight',
+                             to_mcore)
         return hf_state_dict
 
     def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
@@ -550,11 +561,11 @@ class Qwen3NextLoader(MegatronModelLoader):
             **kwargs,
         )
         layer_specs = []
-        for layer_type in self.config.layer_types:
+        for is_linear_attention in self.config.linear_attention_freq:
             layer_spec = deepcopy(moe_layer_spec)
-            if layer_type == 'linear_attention':
+            if is_linear_attention:
                 layer_spec.submodules.self_attention.module = self.gated_delta_net
-            elif layer_type == 'full_attention':
+            else:
                 layer_spec.submodules.self_attention.submodules.linear_qkv = TEColumnParallelLinear
                 layer_spec.submodules.self_attention.module = Qwen3NextSelfAttention
             # Replace ALL layernorms with Qwen3NextRMSNorm (Zero-Centered)

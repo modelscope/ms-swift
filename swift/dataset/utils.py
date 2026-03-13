@@ -8,7 +8,7 @@ from modelscope.hub.utils.utils import get_cache_dir
 from torch.utils.data import Dataset
 from typing import Any, Callable, Dict, Optional, Union
 
-from swift.template import Template
+from swift.template import MaxLengthError, Template
 from swift.utils import get_logger
 from .preprocessor import RowPreprocessor
 
@@ -86,20 +86,18 @@ class LazyLLMDataset(Dataset):
         if isinstance(idx, str):
             return self.dataset[idx]
         for i in range(self.n_try_fetch):
-            n_try = i
-            if i == 0:
-                i = idx
-            else:
-                i = self._idx_list[self._idx]
+            if i > 0:
+                idx = self._idx_list[self._idx]
                 self._idx = (self._idx + 1) % len(self.dataset)
-            data = self.dataset[i]
+            data = self.dataset[idx]
             try:
                 return self.encode_func(data, return_length=True)
-            except Exception:
-                if n_try == self.n_try_fetch - 1 or self.strict:
-                    if self.strict:
-                        logger.warning('To avoid errors, you can pass `strict=False`.')
+            except Exception as e:
+                if self.strict:
+                    logger.warning('To avoid errors, you can pass `strict=False`.')
                     raise
+                if isinstance(e, MaxLengthError):
+                    continue
                 if self.traceback_limit is not None and self._traceback_counter < self.traceback_limit:
                     import traceback
                     logger.info(traceback.format_exc())

@@ -88,7 +88,15 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size')
         assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
-        self.teacher_models = get_mcore_model(args, self.teacher_config)
+        orig_model_dir = args.model_dir
+        orig_model_type = args.model_type
+        args.model_dir = args.teacher_model_dir
+        args.model_type = args.teacher_model_type
+        try:
+            self.teacher_models = get_mcore_model(args, self.teacher_config)
+        finally:
+            args.model_dir = orig_model_dir
+            args.model_type = orig_model_type
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()
@@ -423,10 +431,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Align vocab size between student and teacher
         student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
 
-        # Apply temperature scaling and mask
-        student_logits_masked = (student_logits / self.temperature)[mask]
-        teacher_logits_masked = (teacher_logits / self.temperature)[mask]
+        student_logits_masked = student_logits[mask]
+        teacher_logits_masked = teacher_logits[mask]
         del student_logits, teacher_logits
+        student_logits_masked.div_(self.temperature)
+        teacher_logits_masked.div_(self.temperature)
 
         # Use local count for iteration, global count for averaging
         local_num_valid_int = local_num_valid.item()
@@ -545,9 +554,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         via _vocab_parallel_topk and API teacher). _tp_gather_topk handles
         the TP-safe gathering of student logits at those global positions.
         """
-        s_scaled = student_logits / self.temperature
-        s_topk = self._tp_gather_topk(s_scaled, teacher_topk_indices)
-        t_topk = teacher_topk_logprobs / self.temperature
+        s_topk = self._tp_gather_topk(student_logits, teacher_topk_indices)
+        s_topk.div_(self.temperature)
+        t_topk = teacher_topk_logprobs.div(self.temperature)
 
         s_topk_masked = s_topk[mask]
         t_topk_masked = t_topk[mask]
