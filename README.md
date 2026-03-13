@@ -103,7 +103,6 @@ You can contact us and communicate with us by adding our group:
 - 🎁 2025.02.21: The `swift sample` command is now supported. The reinforcement fine-tuning script can be found [here](docs/source_en/Instruction/Reinforced-Fine-tuning.md), and the large model API distillation sampling script is available [here](examples/sampler/distill/distill.sh).
 - 🔥 2025.02.12: Support for the GRPO (Group Relative Policy Optimization) training algorithm has been added. Documentation is available [here](docs/source_en/Instruction/GRPO/GetStarted/GRPO.md).
 - 🎁 2024.12.04: Major update to **ms-swift 3.0**. Please refer to the [release notes and changes](docs/source_en/Instruction/ReleaseNote3.0.md).
-
 - 🎉 2024.08.12: The ms-swift paper has been published on arXiv and can be read [here](https://arxiv.org/abs/2408.05517).
 - 🔥 2024.08.05: Support for using [evalscope](https://github.com/modelscope/evalscope/) as a backend for evaluating large models and multimodal models.
 - 🔥 2024.07.29: Support for using [vllm](https://github.com/vllm-project/vllm) and [lmdeploy](https://github.com/InternLM/lmdeploy) to accelerate inference for large models and multimodal models. When performing infer/deploy/eval, you can specify `--infer_backend vllm/lmdeploy`.
