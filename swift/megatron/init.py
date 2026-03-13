@@ -439,10 +439,12 @@ def _patch_mtp():
             hidden_states=hidden_states,
         )
         packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
-        if packed_seq:
+        if self.config.position_embedding_type == 'rope' and packed_seq:
             assert not self.transformer_layer.self_attention.config.apply_rope_fusion
             assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
             rotary_pos_emb = rotary_pos_emb[position_ids[0]]
+        elif self.config.position_embedding_type == 'mrope':
+            rotary_pos_emb = torch.roll(rotary_pos_emb, shifts=-1, dims=0)
         if self.config.recompute_granularity == 'full' and self.training:
             hidden_states = self._checkpointed_forward(
                 partial(
