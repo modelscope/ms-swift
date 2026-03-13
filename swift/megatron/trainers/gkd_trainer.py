@@ -294,7 +294,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     teacher_logits = teacher_logits.detach()
 
             if topk is not None and teacher_logits is not None:
-                topk_logits, topk_indices = torch.topk(teacher_logits, k=topk, dim=-1)
+                topk_logits, topk_indices = self._vocab_parallel_topk(teacher_logits, k=topk)
                 encoded_batch['teacher_api_logprobs'] = topk_logits
                 encoded_batch['teacher_api_indices'] = topk_indices
                 encoded_batch['teacher_logits'] = None
@@ -484,16 +484,77 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return total_loss / num_valid
 
+    def _vocab_parallel_topk(self, logits: torch.Tensor, k: int) -> tuple:
+        """Select global top-k from vocab-parallel sharded logits.
+
+        When TP == 1, this is a plain torch.topk.
+        When TP > 1, each rank holds a partition. We select local top-k on each
+        rank, all-gather them, pick the global top-k, and return global indices
+        (in the full vocab space) with corresponding logits.
+
+        Returns:
+            (topk_values, topk_indices) with global vocab indices.
+        """
+        tp_size = mpu.get_tensor_model_parallel_world_size()
+        if tp_size == 1:
+            return torch.topk(logits, k=k, dim=-1)
+
+        tp_rank = mpu.get_tensor_model_parallel_rank()
+        tp_group = mpu.get_tensor_model_parallel_group()
+        partition_vocab_size = logits.shape[-1]
+
+        local_topk_vals, local_topk_ids = torch.topk(logits, k=k, dim=-1)
+        # Convert local indices to global vocab space
+        local_topk_ids = local_topk_ids + tp_rank * partition_vocab_size
+
+        # All-gather across TP ranks: each rank contributes k candidates
+        gathered_vals = [torch.empty_like(local_topk_vals) for _ in range(tp_size)]
+        gathered_ids = [torch.empty_like(local_topk_ids) for _ in range(tp_size)]
+        torch.distributed.all_gather(gathered_vals, local_topk_vals, group=tp_group)
+        torch.distributed.all_gather(gathered_ids, local_topk_ids, group=tp_group)
+
+        # Concatenate: [..., tp_size * k] then pick global top-k
+        all_vals = torch.cat(gathered_vals, dim=-1)
+        all_ids = torch.cat(gathered_ids, dim=-1)
+        global_topk_vals, sel = torch.topk(all_vals, k=k, dim=-1)
+        global_topk_ids = torch.gather(all_ids, dim=-1, index=sel)
+
+        return global_topk_vals, global_topk_ids
+
+    def _tp_gather_topk(self, logits: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
+        """Gather logits at top-k indices with TP-aware vocab partitioning.
+
+        When TP > 1, indices are global vocab IDs. Each rank gathers within its
+        local partition (filling out-of-range positions with -inf) and all-reduces
+        via MAX so every rank gets the correct value.
+
+        When TP == 1, this is a plain torch.gather.
+        """
+        tp_size = mpu.get_tensor_model_parallel_world_size()
+        if tp_size == 1:
+            return torch.gather(logits, dim=-1, index=indices)
+
+        tp_rank = mpu.get_tensor_model_parallel_rank()
+        partition_vocab_size = logits.shape[-1]
+        vocab_start = tp_rank * partition_vocab_size
+
+        local_indices = (indices - vocab_start).clamp(0, partition_vocab_size - 1)
+        gathered = torch.gather(logits, dim=-1, index=local_indices)
+        in_range = (indices >= vocab_start) & (indices < vocab_start + partition_vocab_size)
+        gathered = gathered.masked_fill(~in_range, float('-inf'))
+
+        torch.distributed.all_reduce(
+            gathered, op=torch.distributed.ReduceOp.MAX, group=mpu.get_tensor_model_parallel_group())
+        return gathered
+
     def _jsd_topk(self, student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta):
         """Compute JSD on teacher's top-k distribution.
 
-        Both local and API teacher are handled uniformly: gather student logits at
-        teacher's top-k indices, scale by 1/T, and log_softmax over top-k subset.
-        By shift-invariance of log_softmax, this gives identical results whether
-        teacher_topk_logprobs contains raw logits (local) or raw logprobs (API).
-
+        teacher_topk_indices are always global vocab IDs (from both local teacher
+        via _vocab_parallel_topk and API teacher). _tp_gather_topk handles
+        the TP-safe gathering of student logits at those global positions.
         """
-        s_topk = torch.gather(student_logits, dim=-1, index=teacher_topk_indices)
+        s_topk = self._tp_gather_topk(student_logits, teacher_topk_indices)
         s_topk.div_(self.temperature)
         t_topk = teacher_topk_logprobs / self.temperature
 
