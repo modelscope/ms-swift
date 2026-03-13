@@ -27,6 +27,7 @@ megatron sft \
     --recompute_method uniform \
     --recompute_num_layers 1 \
     --num_train_epochs 1 \
+    --packing true \
     --finetune true \
     --freeze_llm false \
     --freeze_vit true \
@@ -48,5 +49,5 @@ megatron sft \
     --mtp_num_layers 1 \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.52 \
+    --optimizer_offload_fraction 0.62 \
     --attention_backend flash
