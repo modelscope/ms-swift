@@ -215,7 +215,7 @@ class VllmEngine(InferEngine):
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
         for key in [
                 'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
-                'mm_processor_cache_gb', 'speculative_config', 'logprobs_mode'
+                'mm_processor_cache_gb', 'speculative_config', 'logprobs_mode', 'quantization'
         ]:
             if key in parameters:
                 value = getattr(self, key, None)
