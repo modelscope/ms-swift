@@ -99,10 +99,11 @@ class GatedDeltaNet(_GatedDeltaNet):
         qkv = qkv.reshape(batch, seq_len, -1)
 
         # Convolution on qkv
-        qkv = qkv.transpose(1, 2).contiguous()  # b, s, d -> b, d, s
         nvtx_range_push(suffix='conv1d')
         if (causal_conv1d is None) or self.config.deterministic_mode:
+            qkv = qkv.transpose(1, 2).contiguous()  # b, s, d -> b, d, s
             qkv = self.act_fn(self.conv1d(qkv)[..., :seq_len])
+            qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
         else:
             assert self.activation in ['silu', 'swish']
             qkv = causal_conv1d(
@@ -114,7 +115,6 @@ class GatedDeltaNet(_GatedDeltaNet):
             )[0]
         nvtx_range_pop(suffix='conv1d')
         # Split qkv into query, key, and value
-        qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
         qkv = qkv.view(qkv.shape[:-1] + (num_key_heads_per_device, qkv.shape[-1] // num_key_heads_per_device))
         query, key, value = torch.split(
             qkv,
