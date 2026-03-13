@@ -314,7 +314,7 @@ class GPTModel(McoreGPTModel):
             ))
         decoder_rotary_pos_emb = rotary_pos_emb
         packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
-        if self.position_embedding_type and packed_seq and not self.config.apply_rope_fusion:
+        if self.position_embedding_type == 'rope' and packed_seq and not self.config.apply_rope_fusion:
             assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
             decoder_rotary_pos_emb = rotary_pos_emb[position_ids[0]]
 
