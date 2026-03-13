@@ -556,7 +556,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """
         s_topk = self._tp_gather_topk(student_logits, teacher_topk_indices)
         s_topk.div_(self.temperature)
-        t_topk = teacher_topk_logprobs.div(self.temperature)
+        t_topk = teacher_topk_logprobs / self.temperature
 
         s_topk_masked = s_topk[mask]
         t_topk_masked = t_topk[mask]
