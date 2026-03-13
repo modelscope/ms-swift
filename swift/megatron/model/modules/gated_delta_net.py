@@ -6,9 +6,17 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from typing import Optional
 
 try:
+    from fla.modules.convolution import causal_conv1d
+    from fla.modules.l2norm import l2norm
+    from fla.ops.gated_delta_rule import chunk_gated_delta_rule
+except ImportError:
+    causal_conv1d = None
+    l2norm = None
+    chunk_gated_delta_rule = None
+
+try:
     from megatron.core.ssm.gated_delta_net import GatedDeltaNet as _GatedDeltaNet
-    from megatron.core.ssm.gated_delta_net import (causal_conv1d_fn, chunk_gated_delta_rule, l2norm,
-                                                   torch_chunk_gated_delta_rule)
+    from megatron.core.ssm.gated_delta_net import torch_chunk_gated_delta_rule
 except ImportError:
     _GatedDeltaNet = object
 
@@ -61,10 +69,7 @@ class GatedDeltaNet(_GatedDeltaNet):
             # TODO: support inference
             raise NotImplementedError('GDN does not support inference for now.')
 
-        if packed_seq_params is not None:
-            # TODO: support packed sequence
-            raise NotImplementedError('GDN does not support packed sequence for now.')
-
+        cu_seqlens = None if packed_seq_params is None else packed_seq_params.cu_seqlens_q
         # Input projection
         nvtx_range_push(suffix='in_proj')
         qkvzba, _ = self.in_proj(hidden_states)
@@ -94,21 +99,23 @@ class GatedDeltaNet(_GatedDeltaNet):
         qkv = qkv.reshape(batch, seq_len, -1)
 
         # Convolution on qkv
-        qkv = qkv.transpose(1, 2).contiguous()  # b, s, d -> b, d, s
         nvtx_range_push(suffix='conv1d')
-        if (causal_conv1d_fn is None) or self.config.deterministic_mode:
+        if (causal_conv1d is None) or self.config.deterministic_mode:
+            assert cu_seqlens is None, 'Packed sequences are not supported when fla is not available.'
+            qkv = qkv.transpose(1, 2).contiguous()  # b, s, d -> b, d, s
             qkv = self.act_fn(self.conv1d(qkv)[..., :seq_len])
+            qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
         else:
             assert self.activation in ['silu', 'swish']
-            qkv = causal_conv1d_fn(
+            qkv = causal_conv1d(
                 x=qkv,
                 weight=self.conv1d.weight.squeeze(1),  # d, 1, w -> d, w
                 bias=self.conv1d.bias,
                 activation=self.activation,
-            )
+                cu_seqlens=cu_seqlens,
+            )[0]
         nvtx_range_pop(suffix='conv1d')
         # Split qkv into query, key, and value
-        qkv = qkv.transpose(1, 2)  # b, d, s -> b, s, d
         qkv = qkv.view(qkv.shape[:-1] + (num_key_heads_per_device, qkv.shape[-1] // num_key_heads_per_device))
         query, key, value = torch.split(
             qkv,
@@ -142,6 +149,7 @@ class GatedDeltaNet(_GatedDeltaNet):
 
         nvtx_range_push(suffix='gated_delta_rule')
         if self.config.deterministic_mode:
+            assert cu_seqlens is None, ('cu_seqlens is not supported for torch_chunk_gated_delta_rule for now.')
             core_attn_out, last_recurrent_state = torch_chunk_gated_delta_rule(
                 query,
                 key,
@@ -162,6 +170,7 @@ class GatedDeltaNet(_GatedDeltaNet):
                 initial_state=None,
                 output_final_state=False,
                 use_qk_l2norm_in_kernel=False,
+                cu_seqlens=cu_seqlens,
             )
         nvtx_range_pop(suffix='gated_delta_rule')
 

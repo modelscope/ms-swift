@@ -6,7 +6,7 @@ ms-swift 4.0 supports training [Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dens
 
 ```shell
 pip install -U ms-swift
-pip install -U "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
+pip install -U "transformers>=5.3.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # Please install the fla main branch. If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
@@ -15,6 +15,9 @@ pip install -U git+https://github.com/fla-org/flash-linear-attention
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
 
+# flash-attention
+pip install "flash-attn==2.8.3" --no-build-isolation
+
 # deepspeed training
 pip install deepspeed
 
@@ -22,7 +25,7 @@ pip install deepspeed
 pip install -U "vllm>=0.17.0"
 # For RL training, need to override vllm's default installation version
 # For training errors, refer to this issue: https://github.com/modelscope/ms-swift/issues/8188
-pip install -U "transformers>=5.2.0"
+pip install -U "transformers>=5.3.0"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
@@ -303,6 +306,7 @@ swift infer \
 - Regarding MTP training: ms-swift currently does not support multimodal MTP training. If you are only training on pure text data, please set the `SKIP_MULTIMODAL_MTP_VALIDATION=1` environment variable to skip the validation check.
 - TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
 - By default, `GatedDeltaNet` uses the transformers implementation (to ensure stability, the default behavior remains unchanged for now). Using `megatron-core>=0.16` and setting the environment variable `SWIFT_USE_MCORE_GDN=1` switches to the mcore implementation, which supports TP for GDN and reduces memory usage.
+- Support for padding_free/packing: Packing can improve training speed. You need to set the `SWIFT_USE_MCORE_GDN=1` environment variable. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
 
 
 ## Reinforcement Learning (RL)
