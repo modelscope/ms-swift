@@ -106,6 +106,7 @@ Qwen3.5的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swif
 ### Dense模型
 
 以下提供对Qwen3.5-4B模型的微调脚本，该示例脚本仅作为演示用途。训练显存为 4 * 20GiB，训练时间为12分钟。由于transformers的GatedDeltaNet不支持packing/padding_free（megatron支持，见下文），因此我们使用group_by_length参数来加速训练，保证DP的负载均衡并减少micro batch中的零填充，但这会导致loss曲线跳动（因数据随机不充分），当然你也可以去掉此参数。
+
 对模型进行微调的脚本如下：
 
 ```shell
