@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 from transformers import TrainerControl, TrainerState
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from swift.utils import get_logger
 from .base import TrainerCallback
@@ -13,9 +13,16 @@ logger = get_logger()
 
 
 class EarlyStopCallback(TrainerCallback):
-    """An early stop implementation"""
+    """Early stopping: stop when best_metric does not improve for early_stop_interval evals."""
 
-    def __init__(self, args: 'TrainingArguments', trainer: 'Trainer'):
+    def __init__(self, args: 'TrainingArguments', trainer: Optional['Trainer'] = None):
+        # Support both (args, trainer) and (trainer,) for backward compatibility (gh#8330).
+        if trainer is None:
+            trainer = args
+            args = getattr(trainer, 'args', None)
+            if args is None:
+                raise TypeError(
+                    'EarlyStopCallback requires (args, trainer) or a single Trainer instance with .args set.')
         super().__init__(args, trainer)
         self.best_metric = None
         self.interval = 0
