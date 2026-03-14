@@ -54,7 +54,8 @@ from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (_ForwardRedirection, collect_log_columns, compute_chord_loss, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, nanstd, normalize_log_image, pad_logps_back_to_batch,
-                    patch_save_last_checkpoint, profiling_context, profiling_decorator, replace_assistant_response_with_ids)
+                    patch_save_last_checkpoint, profiling_context, profiling_decorator, replace_assistant_response_with_ids,
+                    select_log_completions_extra_columns)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -286,10 +287,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 metrics_for_logs_to_gather['image'] = [normalize_log_image(inp['images']) for inp in inputs]
 
             if self.log_completions_extra_columns:
-                extra_columns = [
-                    col for col in self.log_completions_extra_columns
-                    if col not in metrics_for_logs_to_gather and col not in self._logs
-                ]
+                extra_columns = select_log_completions_extra_columns(
+                    self.log_completions_extra_columns,
+                    occupied_columns=metrics_for_logs_to_gather.keys(),
+                )
                 metrics_for_logs_to_gather.update(
                     collect_log_columns(
                         inputs,

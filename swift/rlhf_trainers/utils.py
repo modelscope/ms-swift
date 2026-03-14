@@ -752,6 +752,20 @@ def collect_log_columns(rows: List[Dict[str, Any]],
     return collected
 
 
+def select_log_completions_extra_columns(column_names: List[str],
+                                         occupied_columns: Optional[Iterable[str]] = None) -> List[str]:
+    """Return deduplicated extra log columns not occupied in the current logging pass.
+
+    This helper intentionally does not filter by historical ``self._logs`` keys.
+    Extra columns (e.g. metadata_log/refs_log) must be collected every step to
+    stay aligned with prompt/completion rows.
+    """
+    if not column_names:
+        return []
+    occupied = set(occupied_columns or [])
+    return [col for col in dict.fromkeys(column_names) if col not in occupied]
+
+
 def replace_assistant_response_with_ids(messages: 'Messages',
                                         completion_ids: List[Union[int, List[int]]],
                                         loss_mask: Optional[List[List[int]]] = None) -> 'Messages':  # noqa

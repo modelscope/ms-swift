@@ -49,3 +49,22 @@ def test_collect_log_columns_keeps_complex_types():
     result = rlhf_utils.collect_log_columns(rows, ['meta', 'trace'])
     assert result['meta'][0] is d
     assert result['trace'][0] is values
+
+
+def test_select_log_completions_extra_columns_empty():
+    assert rlhf_utils.select_log_completions_extra_columns([], occupied_columns=['a']) == []
+
+
+def test_select_log_completions_extra_columns_dedup_and_exclude_occupied():
+    columns = ['metadata_log', 'refs_log', 'metadata_log', 'refs_log']
+    result = rlhf_utils.select_log_completions_extra_columns(columns, occupied_columns=['refs_log'])
+    assert result == ['metadata_log']
+
+
+def test_select_log_completions_extra_columns_keeps_historical_log_keys():
+    columns = ['metadata_log']
+    historical_log_keys = {'prompt', 'completion', 'metadata_log'}
+    # Current-pass occupied columns do not include metadata_log, so it must stay selectable.
+    result = rlhf_utils.select_log_completions_extra_columns(columns, occupied_columns=[])
+    assert result == ['metadata_log']
+    assert 'metadata_log' in historical_log_keys

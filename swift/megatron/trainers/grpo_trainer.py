@@ -27,9 +27,9 @@ from swift.megatron.utils import forward_step_helper, get_padding_to, set_random
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (aggressive_empty_cache, collect_log_columns, load_pil_img, nanstd,
-                                       normalize_log_image,
-                                       pad_logps_back_to_batch, profiling_context, profiling_decorator,
-                                       replace_assistant_response_with_ids, set_expandable_segments)
+                                       normalize_log_image, pad_logps_back_to_batch, profiling_context,
+                                       profiling_decorator, replace_assistant_response_with_ids,
+                                       select_log_completions_extra_columns, set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template, TemplateInputs
 from swift.utils import (JsonlWriter, get_logger, get_packed_seq_params, remove_response, shutdown_event_loop_in_daemon,
@@ -509,9 +509,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             self._logs['image'].extend(images)
 
         if self.log_completions_extra_columns:
-            extra_columns = [
-                col for col in self.log_completions_extra_columns if col not in self._logs
-            ]
+            extra_columns = select_log_completions_extra_columns(self.log_completions_extra_columns)
             extra_metrics = collect_log_columns(
                 batch,
                 extra_columns,
