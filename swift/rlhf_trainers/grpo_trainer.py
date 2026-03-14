@@ -61,9 +61,10 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
                          start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
-                    load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
-                    profiling_context, profiling_decorator, replace_assistant_response_with_ids)
+from .utils import (_ForwardRedirection, collect_log_columns, compute_chord_loss, get_even_process_data, identity_data_collator,
+                    load_pil_img, make_chord_sft_dataset, nanstd, normalize_log_image, pad_logps_back_to_batch,
+                    patch_save_last_checkpoint, profiling_context, profiling_decorator, replace_assistant_response_with_ids,
+                    select_log_completions_extra_columns)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -290,6 +291,21 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             if all('rollout_infos' in inp and 'num_turns' in inp['rollout_infos'] for inp in inputs):
                 metrics_for_logs_to_gather['num_turns'] = [inp['rollout_infos']['num_turns'] for inp in inputs]
+
+            if all('images' in inp for inp in inputs):
+                metrics_for_logs_to_gather['image'] = [normalize_log_image(inp['images']) for inp in inputs]
+
+            if self.log_completions_extra_columns:
+                extra_columns = select_log_completions_extra_columns(
+                    self.log_completions_extra_columns,
+                    occupied_columns=metrics_for_logs_to_gather.keys(),
+                )
+                metrics_for_logs_to_gather.update(
+                    collect_log_columns(
+                        inputs,
+                        extra_columns,
+                        warned_columns=self._missing_log_columns_warned,
+                    ))
 
             if metrics_for_logs_to_gather:
                 for key, value in metrics_for_logs_to_gather.items():
@@ -2132,6 +2148,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
+        self.log_completions_extra_columns = list(args.log_completions_extra_columns)
+        self._missing_log_columns_warned = set()
         self.num_completions_to_print = args.num_completions_to_print
         self.jsonl_writer = JsonlWriter(os.path.join(self.args.output_dir, 'completions.jsonl'))
         self._logs = {
