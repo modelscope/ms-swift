@@ -48,8 +48,8 @@ from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallel
 from swift.template import Template, update_generation_config_eos_token
 from swift.tuner_plugin import tuners_map
 from swift.tuners import SwiftModel
-from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_logger,
-                         get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
+from swift.utils import (HfConfigFactory, copy_files_by_pattern, deep_getattr, get_current_device, get_dist_setting,
+                         get_logger, get_packed_seq_params, is_dist, is_mp, is_mp_ddp, ms_logger_context, seed_worker)
 from .arguments import TrainingArguments
 from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels, get_function, get_resume_dir,
                     is_instance_of_ms_model, patch_modelscope_hub_timeout, replace_index_file)
@@ -658,6 +658,34 @@ class SwiftMixin:
         finally:
             Accelerator.clip_grad_norm_ = origin_clip_grad_norm_
 
+    def _get_reduced_grad_norm_for_logging(self, grad_norm) -> Optional[float]:
+        """Reduce grad_norm across processes for consistent logging (fix #6815).
+
+        Under DeepSpeed ZeRO-0/1/2 or plain DDP, each rank may report a different
+        gradient norm (e.g. local view before reduce). ZeRO-3 reports a global norm.
+        We all-reduce (average) grad_norm when not ZeRO-3 and world_size > 1 so
+        that logged grad_norm is consistent and comparable across ZeRO stages.
+        """
+        if grad_norm is None:
+            return None
+        if not isinstance(grad_norm, torch.Tensor):
+            return float(grad_norm)
+        if not is_dist():
+            return grad_norm.item()
+        _, _, world_size, _ = get_dist_setting()
+        if world_size <= 1:
+            return grad_norm.item()
+        if is_deepspeed_zero3_enabled():
+            return grad_norm.item()
+        try:
+            gn = grad_norm.clone().detach().float()
+            if not gn.is_cuda:
+                gn = gn.to(self.accelerator.device)
+            dist.all_reduce(gn, op=dist.ReduceOp.AVG)
+            return gn.item()
+        except Exception:
+            return grad_norm.item()
+
     def _patch_tasks(self):
         if isinstance(self.model, PeftModel):
             model = self.model.model
@@ -953,7 +981,7 @@ class SwiftMixin:
             if version.parse(transformers.__version__) >= version.parse('4.38'):
                 grad_norm = args[0]
                 if grad_norm is not None:
-                    logs['grad_norm'] = grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm
+                    logs['grad_norm'] = self._get_reduced_grad_norm_for_logging(grad_norm)
             logs['learning_rate'] = self._get_learning_rate()
             tr_loss -= tr_loss
             self._total_loss_scalar += tr_loss_scalar
