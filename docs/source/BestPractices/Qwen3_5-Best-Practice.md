@@ -312,6 +312,7 @@ Megatron-SWIFT训练Qwen3.5的提示：
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
 - 默认 `GatedDeltaNet` 使用 transformers 实现（为保证稳定性，暂时保持默认行为不变）。使用 "megatron-core>=0.16"并设置环境变量 `SWIFT_USE_MCORE_GDN=1`可切换至 mcore 实现，支持 GDN 的 TP 并降低显存。
 - padding_free/packing的支持：packing可以提升训练速度，你需要设置`SWIFT_USE_MCORE_GDN=1`环境变量。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
+- apply_wd_to_qk_layernorm：对 qk layernorm 应用权重衰减。默认为False。
 
 
 ## 强化学习（RL）
