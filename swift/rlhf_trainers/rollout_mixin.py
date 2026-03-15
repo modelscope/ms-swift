@@ -431,8 +431,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self._wait_queue()
 
         tuner_type = args.tuner_type
-
-        if tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
+        if getattr(self, 'is_qlora', False):
+            self._move_adapter_to_vllm()
+        elif tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()
