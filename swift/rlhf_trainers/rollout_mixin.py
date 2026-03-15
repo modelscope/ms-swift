@@ -188,11 +188,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
             self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=0)[0]
 
-            if self.is_qlora and not self.rollout_enable_lora:
-                raise ValueError('QLoRA GRPO with vLLM server mode requires the server to have LoRA enabled. '
-                                 'Please launch the rollout server with `--vllm_enable_lora true` and '
-                                 '`--vllm_quantization bitsandbytes`.')
-
         elif self.vllm_mode == 'colocate':
             if not self.accelerator.num_processes % self.vllm_tensor_parallel_size == 0:
                 raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
@@ -212,13 +207,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     self.engine.engine.sleep(args.sleep_level)
         self.dynamic_num_samples = False  # grpo multi-turn
         self.base_sync_done = False
-
-        # For QLoRA, the base model is already loaded from disk by vLLM (colocate: load_format='auto',
-        # server: loaded at server startup), so skip the initial full model sync.
-        if self.is_qlora:
-            self.base_sync_done = True
-            logger.info('QLoRA detected: base weights loaded by vLLM, skipping initial full model sync.')
-
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
 
     def _prepare_vllm_engine(self):
@@ -257,22 +245,9 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
             patch_vllm_load_adapter()
 
-        # QLoRA support: detect BNB 4-bit and configure vLLM accordingly
         vllm_quantization = None
         if getattr(self, 'is_qlora', False):
             vllm_quantization = 'bitsandbytes'
-            # Force vLLM LoRA for efficient adapter-only weight sync
-            if not vllm_enable_lora:
-                vllm_enable_lora = True
-                lora_kwargs = {
-                    'enable_lora': True,
-                    'max_loras': 1,
-                    'max_lora_rank': args.lora_rank,
-                }
-                self.rollout_enable_lora = True
-                patch_vllm_load_adapter()
-            logger.info(f'QLoRA detected: vLLM engine using quantization={vllm_quantization}, '
-                        'load_format=auto, enable_lora=True')
 
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
@@ -431,9 +406,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self._wait_queue()
 
         tuner_type = args.tuner_type
-        if getattr(self, 'is_qlora', False):
-            self._move_adapter_to_vllm()
-        elif tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
+        if tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()
