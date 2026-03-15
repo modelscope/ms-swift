@@ -12,6 +12,7 @@ from torch import nn
 from transformers.models.qwen2 import modeling_qwen2
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_moe import modeling_qwen3_moe
+from transformers.models.qwen3_omni_moe import modeling_qwen3_omni_moe
 from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
 from typing import Any
 
@@ -348,6 +349,15 @@ _PATCH_TABLE: tuple[tuple[Any, dict[str, Any]], ...] = (
             'Qwen3VLMoeTextSparseMoeBlock.forward': NpuMoeFused.npu_moe_sparse_block_forward,
             'Qwen3VLMoeTextRMSNorm': NpuRMSNorm,
             'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
+        },
+    ),
+    (
+        modeling_qwen3_omni_moe,
+        {
+            'Qwen3OmniMoeTextRMSNorm': NpuRMSNorm,
+            'Qwen3OmniMoeRMSNorm': NpuRMSNorm,
+            'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
+            'Qwen3OmniMoeThinkerTextSparseMoeBlock.forward': npu_moe_block_forward,
         },
     ),
 )
