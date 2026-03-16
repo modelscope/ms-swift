@@ -1699,7 +1699,7 @@ class GPTBridge:
             mg_models: List of Megatron model instances to export.
                 Note: If is_peft_format is True, you also need to pass in a GPTModel, not a PeftModel.
             target_device: Target device for exported tensors (e.g., 'cpu'). Defaults to None (current device, cuda).
-            only_master_rank: Whether to export only on the last rank in distributed settings. Defaults to False.
+            only_master_rank: Whether to export only on the master rank in distributed settings. Defaults to False.
             is_peft_format: Whether to export in PEFT (LoRA, etc.) format. Defaults to False.
                 - If True, exports only LoRA delta weights. If False, exports the complete model weights
                 (e.g., after merge-lora or full-parameter fine-tuning).
@@ -1745,7 +1745,7 @@ class GPTBridge:
             config: Optional model configuration to save. If None, uses self.hf_model.config.
 
         Note:
-            - Only the last rank performs the actual save operation in distributed settings.
+            - Only the master rank performs the actual save operation in distributed settings.
             - For PEFT format, saves adapter configuration and weights.
             - For full model format, saves complete model configuration and weights.
             - Automatically handles FP8 quantization configuration if enabled.
