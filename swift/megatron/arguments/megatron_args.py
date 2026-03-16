@@ -7,6 +7,7 @@ from dataclasses import dataclass, field, fields
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
 from packaging import version
+from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -360,7 +361,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     apply_rope_fusion: bool = False
     gradient_accumulation_fusion: bool = True
     cross_entropy_loss_fusion: bool = True
-    cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
+    cross_entropy_fusion_impl: Optional[Literal['native', 'te']] = None
     calculate_per_token_loss: Optional[bool] = None
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd'] = 'adam'
@@ -530,6 +531,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     attn_impl: Optional[str] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
 
+    # dsa
+    dsa_indexer_loss_coeff: Optional[float] = None
+    dsa_indexer_use_sparse_loss: bool = False
+
     # other
     check_model: bool = True
     torch_dtype: Optional[Union[torch.dtype, str]] = None
@@ -588,7 +593,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     def __post_init__(self):
         if self.tuner_type == 'lora':
-            require_version('peft>=0.15')
+            require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
@@ -597,10 +602,21 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.recompute_granularity == 'selective' and self.recompute_method is not None:
             raise ValueError('recompute method is not yet supported for selective recomputing granularity')
 
+        if self.group_by_length and self.padding_free:
+            raise ValueError('group_by_length is not compatible with padding_free.')
         self._set_default()
         self._init_vpp_size()
         if self.vit_gradient_checkpointing is None:
             self.vit_gradient_checkpointing = not self.freeze_vit
+        if self.cross_entropy_fusion_impl is None:
+            if is_torch_npu_available():
+                self.cross_entropy_fusion_impl = 'native'
+            else:
+                import transformer_engine
+                if version.parse(transformer_engine.__version__) >= version.parse('2.8.0'):
+                    self.cross_entropy_fusion_impl = 'te'
+                else:
+                    self.cross_entropy_fusion_impl = 'native'
         if isinstance(self.report_to, str):
             self.report_to = [self.report_to]
         self.model_info, self.model_meta = get_model_info_meta(
@@ -614,8 +630,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.megatron_model_meta is None:
             raise ValueError(f'Model: {self.model} is not supported.')
         self._init_teacher_model()
-        if self.apply_wd_to_qk_layernorm and self.model_type not in {'qwen3_next', 'qwen3_5'}:
-            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next and qwen3_5')
+        if self.apply_wd_to_qk_layernorm and self.model_type not in {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}:
+            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next, qwen3_5 and qwen3_5_moe')
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
@@ -671,7 +687,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         # world_size is initialized in initialize_megatron
         self.data_parallel_size = self.world_size // total_model_size
         # Gradient Accumulation
-        self.num_microbatches = self.global_batch_size // self.data_parallel_size // self.micro_batch_size
+        micro_batch_times_data_parallel_size = self.micro_batch_size * self.data_parallel_size
+        if self.global_batch_size % micro_batch_times_data_parallel_size != 0:
+            raise ValueError(f'global batch size ({self.global_batch_size}) is not divisible by micro batch size '
+                             f'({self.micro_batch_size}) times data parallel size ({self.data_parallel_size}).')
+        self.num_microbatches = self.global_batch_size // micro_batch_times_data_parallel_size
         if self.num_microbatches == 0:
             raise ValueError('global_batch_size must be >= `data_parallel_size * micro_batch_size` '
                              f'to have at least one micro-batch. global_batch_size: {self.global_batch_size}, '

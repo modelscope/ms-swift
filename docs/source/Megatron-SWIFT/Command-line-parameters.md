@@ -26,7 +26,7 @@
 - apply_rope_fusion: 默认为False。用于开启rope融合。该参数为megatron-core参数透传。注意：并不是所有情况都支持rope融合，例如：MLA、mrope等不支持。
 - gradient_accumulation_fusion: 默认为True。用于开启梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为True。
-- cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
+- cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为None，如果是cuda设置为'te'，npu设置为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为None，`task_type`为'causal_lm'且为预训练/微调时，默认为True，否则默认为False。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
   - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_3，请设置`--attn_impl flash_attention_3`。
@@ -187,6 +187,11 @@
 - moe_pad_expert_input_to_capacity: 对每个专家（expert）的输入进行填充，使其长度与专家容量（expert capacity length）对齐，默认为False。该操作仅在设置了 `--moe_expert_capacity_factor` 参数后才生效。
 - moe_token_drop_policy: 可选为'probs', 'position'。默认为'probs'。
 
+**DSA参数**
+- dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为None。
+- dsa_indexer_use_sparse_loss: 是否使用稀疏 DSA 索引器损失。如果为 True，索引器损失将使用 top-k 索引进行计算。默认为False。
+
+
 **MTP参数**
 - mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。（需要"megatron-core>=0.14"）
   - 注意：mtp_num_layers的值，将不自动从config.json获取，需手动设置。你可以参考config.json中的`num_nextn_predict_layers`字段填写该值。使用mcore-bridge时，将优先从safetensors文件中加载MTP权重，若无法找到，则进行随机初始化。（若要使用blockwise fp8 + mtp，请使用mcore>=0.15）
@@ -227,7 +232,8 @@ lora训练：
 - adapters: safetensors格式的LoRA增量权重的adapter_id或者adapter_path。默认为`[]`。
 - ref_model: ref_model safetensors权重的model_id或者model_path。采用grpo、dpo、kto算法且使用全参数训练时需要传入。默认为None，设置为`--model`。
 - ref_adapters: ref_adapters safetensors权重的adapter_id或者adapter_path的列表（目前只支持长度为1），默认为`[]`。
-- use_hf: 控制模型下载、数据集下载、模型推送使用ModelScope还是HuggingFace。默认为False，使用ModelScope。
+- use_hf: 控制模型下载、数据集下载、模型推送使用[ModelScope](https://modelscope.cn/)还是[HuggingFace](https://huggingface.co/)。默认为False，使用ModelScope。
+  - 提示：如果你想在国外访问ModelScope，可以尝试使用[ModelScope国际版](https://modelscope.ai/home)，设置环境变量`MODELSCOPE_DOMAIN='www.modelscope.ai'`即可。
 - hub_token: hub token. modelscope的hub token可以查看[这里](https://modelscope.cn/my/myaccesstoken)。默认为None。
 - merge_lora: 是否存储合并后的权重。默认为None，若`save_safetensors`设置为True，该参数默认值为`True`，否则为False。即默认情况下，存储为safetensors格式时会合并LoRA；存储为torch_dist格式时，不会合并LoRA。
 - max_shard_size: safetensors格式存储文件最大大小，默认'5GB'。

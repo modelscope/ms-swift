@@ -27,7 +27,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_torch_device,
-                         is_swanlab_available, is_vllm_available, is_wandb_available, to_device)
+                         is_swanlab_available, is_vllm_available, is_wandb_available, synchronize, to_device)
 
 if is_wandb_available():
     import wandb
@@ -414,8 +414,8 @@ def memory_time_profiling_context(
     logger = get_logger()
 
     # ===== Entry phase: Record initial state =====
-    if sync_cuda and torch.cuda.is_available():
-        torch.cuda.synchronize()
+    if sync_cuda:
+        synchronize()
 
     gc_collect()
 
@@ -435,8 +435,8 @@ def memory_time_profiling_context(
     yield
 
     # Synchronize and clean up memory before measuring (important for offload operations)
-    if sync_cuda and torch.cuda.is_available():
-        torch.cuda.synchronize()
+    if sync_cuda:
+        synchronize()
     gc_collect()
 
     # ===== Exit phase: Record final state =====

@@ -5,9 +5,10 @@ from dataclasses import dataclass, fields
 from megatron.core import mpu
 from megatron.core.transformer import TransformerConfig
 from transformers.utils import is_torch_npu_available
+from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from swift.utils import get_logger, json_parse_to_dict
+from swift.utils import get_env_args, get_logger, json_parse_to_dict
 
 logger = get_logger()
 
@@ -47,6 +48,24 @@ def no_rope_freq_type(x):
     else:
         # it's a single int but in str
         return int(x)
+
+
+def linear_attn_freq_type(x):
+    """Frequency between LA (linear attention) layers and SDPA (scaled dot-product attention) layers.
+
+    Accepts either:
+    - An integer N: Represents a (N-1):N ratio, meaning (N-1) LA layers for every 1 SDPA layer
+    - A string "N": Same as above, but provided as a string
+    - A string containing a Python list expression that defines a custom pattern, e.g.:
+      "([1]*3+[0]*1)*3" evaluates to [1,1,1,0,1,1,1,0,1,1,1,0]
+      where 1 indicates an LA layer and 0 indicates a SDPA layer.
+      This allows defining arbitrary patterns of LA and SDPA layers.
+      The pattern length must match the total number of transformer layers.
+      Examples:
+          "([0]+[1]*23)": 1 SDPA layer followed by 23 LA layers
+          "([1]*3+[0]*2)*2": Three LA layers followed by two SDPA layers, repeated twice.
+    """
+    return no_rope_freq_type(x)
 
 
 # code borrowed from NVIDIA/Megatron-LM
@@ -141,7 +160,7 @@ class MegatronModelConfig(TransformerConfig):
 
     # moe
     num_moe_experts: Optional[int] = None
-    moe_layer_freq: str = 1
+    moe_layer_freq: str = '1'
     moe_ffn_hidden_size: Optional[int] = None
     moe_shared_expert_intermediate_size: Optional[int] = None
 
@@ -155,7 +174,7 @@ class MegatronModelConfig(TransformerConfig):
     moe_router_topk_scaling_factor: Optional[float] = None
     moe_router_load_balancing_type: Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn',
                                             'none'] = 'aux_loss'
-    use_shared_expert_gate: bool = False
+    moe_shared_expert_gate: bool = False
 
     moe_enable_routing_replay: bool = False
 
@@ -167,15 +186,24 @@ class MegatronModelConfig(TransformerConfig):
     qk_pos_emb_head_dim: int = 64
     v_head_dim: int = 128
 
-    # qwen3_next
-    linear_num_value_heads: Optional[int] = None
+    # qwen3_next/qwen3_5
+    linear_attention_freq: Optional[str] = None
     linear_num_key_heads: Optional[int] = None
+    linear_num_value_heads: Optional[int] = None
     linear_key_head_dim: Optional[int] = None
     linear_value_head_dim: Optional[int] = None
     linear_conv_kernel_dim: Optional[int] = None
-    layer_types: Optional[List[str]] = None
-
     layernorm_zero_centered_gamma: bool = False
+    attention_output_gate: bool = False
+
+    # dsa
+    experimental_attention_variant: Optional[Literal['gated_delta_net', 'dsa']] = None
+    dsa_indexer_n_heads: Optional[int] = None
+    dsa_indexer_head_dim: Optional[int] = None
+    dsa_indexer_topk: Optional[int] = None
+    dsa_indexer_loss_coeff: Optional[float] = None
+    dsa_indexer_use_sparse_loss: bool = False
+    dsa_indexer_rotary_interleaved: bool = False
 
     # Override
     persist_layer_norm: bool = True
@@ -223,6 +251,9 @@ class MegatronModelConfig(TransformerConfig):
     def __post_init__(self):
         self._augment_mindspeed_defaults()
         self._format_config()
+        if self.experimental_attention_variant is not None:
+            require_version('megatron-core>=0.16.0.dev',
+                            'experimental attention variant requires megatron-core>=0.16.0')
         if self.moe_router_dtype.lower() == 'none':
             self.moe_router_dtype = None
         if self.moe_shared_expert_intermediate_size == 0:
@@ -249,7 +280,11 @@ class MegatronModelConfig(TransformerConfig):
             assert not self.swiglu
             self.gated_linear_unit = True
             self.activation_func = quick_gelu
+        _origin_rotary_interleaved = self.rotary_interleaved
+        if self.multi_latent_attention and self.rotary_interleaved:
+            self.rotary_interleaved = False
         super().__post_init__()
+        self.rotary_interleaved = _origin_rotary_interleaved
         self._check_npu()
         self.variable_seq_lengths = True
 
@@ -262,6 +297,12 @@ class MegatronModelConfig(TransformerConfig):
             self.no_rope_freq = no_rope_freq_type(self.no_rope_freq)
         if self.moe_layer_freq is not None:
             self.moe_layer_freq = moe_freq_type(self.moe_layer_freq)
+        if self.linear_attention_freq is not None:
+            self.linear_attention_freq = linear_attn_freq_type(self.linear_attention_freq)
+            if isinstance(self.linear_attention_freq, int):
+                self.linear_attention_freq = [
+                    0 if ((i + 1) % self.linear_attention_freq == 0) else 1 for i in range(self.num_layers)
+                ]
 
     def _check_npu(self):
         MAX_NPU_EXPERTS_PER_EP = 128
@@ -314,13 +355,18 @@ config_mapping = {
     'v_head_dim': ['v_head_dim'],
     'moe_router_topk_scaling_factor': ['routed_scaling_factor'],
     'qk_layernorm': ['use_qk_norm'],
-    # qwen3_next
-    'linear_num_value_heads': ['linear_num_value_heads'],
+    # qwen3_next/qwen3_5
+    'linear_attention_freq': ['full_attention_interval'],
     'linear_num_key_heads': ['linear_num_key_heads'],
+    'linear_num_value_heads': ['linear_num_value_heads'],
     'linear_key_head_dim': ['linear_key_head_dim'],
     'linear_value_head_dim': ['linear_value_head_dim'],
     'linear_conv_kernel_dim': ['linear_conv_kernel_dim'],
-    'full_attention_interval': ['full_attention_interval'],
+    # dsa
+    'dsa_indexer_n_heads': ['index_n_heads'],
+    'dsa_indexer_head_dim': ['index_head_dim'],
+    'dsa_indexer_topk': ['index_topk'],
+    'dsa_indexer_rotary_interleaved': ['indexer_rope_interleave'],
     # other
     'original_max_position_embeddings': ['original_max_position_embeddings'],
     'partial_rotary_factor': ['partial_rotary_factor'],
@@ -388,11 +434,13 @@ def convert_hf_config(config) -> Dict[str, Any]:
                           } or hf_model_type in {'qwen3_omni_moe', 'qwen3_vl_moe', 'qwen3_5_moe'}:
         res.pop('ffn_hidden_size', None)
         if llm_model_type in {'qwen2_moe', 'qwen3_next'} or hf_model_type == 'qwen3_5_moe':
-            res['use_shared_expert_gate'] = True
+            res['moe_shared_expert_gate'] = True
     if llm_model_type in {
             'deepseek',
             'deepseek_v2',
             'deepseek_v3',
+            'kimi_k2',
+            'deepseek_v32',
             'dots1',
     } or hf_model_type == 'kimi_vl':
         if llm_model_type != 'deepseek':
@@ -401,6 +449,8 @@ def convert_hf_config(config) -> Dict[str, Any]:
         res.pop('num_query_groups', None)  # https://github.com/NVIDIA/Megatron-LM/issues/1475
         if llm_model_type == 'dots1':
             res['moe_router_score_function'] = 'sigmoid'
+        elif llm_model_type == 'deepseek_v32':
+            res['experimental_attention_variant'] = 'dsa'
     elif llm_model_type == 'hunyuan':
         # Since HunYuan’s attention applies RoPE before using q/k_layernorm,
         # which is incompatible with megatron-core, support is not provided here.
@@ -426,18 +476,24 @@ def convert_hf_config(config) -> Dict[str, Any]:
         else:
             window_attn_skip_freq = ','.join(['1' if lt == 'sliding_attention' else '0' for lt in layer_types])
             res['window_attn_skip_freq'] = f'[{window_attn_skip_freq}]'
-    elif llm_model_type in {'glm4_moe', 'glm4_moe_lite'} or hf_model_type == 'glm4v_moe':
+    elif llm_model_type in {'glm4_moe', 'glm4_moe_lite', 'glm_moe_dsa'} or hf_model_type == 'glm4v_moe':
         res['moe_router_score_function'] = 'sigmoid'
-        if llm_model_type == 'glm4_moe_lite':
+        if llm_model_type in {'glm4_moe_lite', 'glm_moe_dsa'}:
             res['qk_layernorm'] = True
             res.pop('num_query_groups', None)
+        if llm_model_type == 'glm_moe_dsa':
+            res['experimental_attention_variant'] = 'dsa'
+            # https://github.com/modelscope/ms-swift/pull/8085
+            # res['rotary_interleaved'] = False
     elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
-        full_attention_interval = res.pop('full_attention_interval', 4)
-        num_layers = res['num_layers']
-        res['layer_types'] = [
-            'full_attention' if (i + 1) % full_attention_interval == 0 else 'linear_attention'
-            for i in range(num_layers)
-        ]
+        use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
+        if use_mcore_gdn and llm_model_type == 'qwen3_next':
+            raise ValueError('qwen3_next is not supported for using the megatron-core implementation of GDN.')
+        if use_mcore_gdn:
+            res['experimental_attention_variant'] = 'gated_delta_net'
+            res['layernorm_zero_centered_gamma'] = True
+            res['attention_output_gate'] = True
+        res.setdefault('linear_attention_freq', 4)
     elif llm_model_type == 'minimax_m2':
         res['add_qkv_bias'] = False
     elif hf_model_type == 'llama4':
@@ -471,6 +527,10 @@ def convert_hf_config(config) -> Dict[str, Any]:
         mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get('interleaved', False)
         res['mrope_interleaved'] = mrope_interleaved
 
+    if res.get('multi_latent_attention') and res.get('position_embedding_type') in {
+            'rope', None
+    } and 'rotary_interleaved' not in res:
+        res['rotary_interleaved'] = True
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
     if res.get('moe_router_score_function', 'softmax') == 'sigmoid' and 'moe_router_enable_expert_bias' not in res:
@@ -478,6 +538,31 @@ def convert_hf_config(config) -> Dict[str, Any]:
     if n_shared_experts is not None and 'moe_shared_expert_intermediate_size' not in res:
         res['moe_shared_expert_intermediate_size'] = n_shared_experts * res['moe_ffn_hidden_size']
     return res
+
+
+def _check_attention_backend(args, config):
+    """Validate attention backend compatibility with configuration."""
+    attention_backend = config.attention_backend.name
+    if attention_backend == 'flash' and config.softmax_type == 'learnable':
+        raise ValueError(f'Attention backend "{attention_backend}" does not support learnable softmax_type.')
+
+
+def _check_padding_free(args, config):
+    """Validate and adjust padding_free setting based on configuration constraints."""
+    if not args.padding_free:
+        return
+
+    attention_backend = config.attention_backend.name
+    message = None
+
+    if config.experimental_attention_variant == 'dsa':
+        message = 'DSA is not supported in padding-free mode'
+    elif attention_backend == 'unfused':
+        message = f'Attention backend "{attention_backend}" is not supported in padding-free mode'
+
+    if message:
+        logger.warning(f'{message}. Setting args.padding_free to False.')
+        args.padding_free = False
 
 
 def get_mcore_model_config(args, hf_config):
@@ -499,8 +584,8 @@ def get_mcore_model_config(args, hf_config):
     kwargs['batch_p2p_comm'] = not args.overlap_p2p_comm
     swiglu = kwargs.get('swiglu', True)
     add_bias_linear = kwargs.get('add_bias_linear', False)
-    position_embedding_type = kwargs.get('position_embedding_type', 'rope')
     num_moe_experts = kwargs.get('num_moe_experts', None)
+    position_embedding_type = kwargs.get('position_embedding_type', 'rope')
     if position_embedding_type != 'rope':
         kwargs['apply_rope_fusion'] = False
     if not swiglu and not add_bias_linear:
@@ -519,4 +604,6 @@ def get_mcore_model_config(args, hf_config):
     config.args = args
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
+    _check_attention_backend(args, config)
+    _check_padding_free(args, config)
     return config

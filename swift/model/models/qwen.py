@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.metadata
+import inspect
 import os
 import torch
 import transformers
@@ -538,6 +539,10 @@ register_model(
                 Model('Qwen/Qwen3Guard-Gen-8B', 'Qwen/Qwen3Guard-Gen-8B'),
             ], TemplateType.qwen3_guard),
             ModelGroup([
+                Model('Alibaba-AAIG/YuFeng-XGuard-Reason-0.6B', 'Alibaba-AAIG/YuFeng-XGuard-Reason-0.6B'),
+                Model('Alibaba-AAIG/YuFeng-XGuard-Reason-8B', 'Alibaba-AAIG/YuFeng-XGuard-Reason-8B'),
+            ], TemplateType.yufeng_xguard),
+            ModelGroup([
                 Model('Qwen/Qwen3-4B-Thinking-2507', 'Qwen/Qwen3-4B-Thinking-2507'),
                 Model('Qwen/Qwen3-4B-Thinking-2507-FP8', 'Qwen/Qwen3-4B-Thinking-2507-FP8'),
             ], TemplateType.qwen3_thinking),
@@ -939,6 +944,10 @@ def _patch_deepstack_process(model):
             return hidden_states + visual_embeds.mean() * 0
         visual_pos_masks = visual_pos_masks.to(hidden_states.device)
         visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
+        if hidden_states.ndim == 3 and visual_pos_masks.ndim == 3:
+            # https://github.com/huggingface/transformers/pull/41741
+            # fix qwen3-omni transformers<5.0
+            visual_pos_masks = visual_pos_masks[..., 0]
         local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
         hidden_states[visual_pos_masks, :] = local_this
         return hidden_states
@@ -992,11 +1001,18 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         if position_ids is None:
             past_key_values_length = 0 if past_key_values is None else past_key_values.get_seq_length()
             if self.rope_deltas is None or past_key_values_length == 0:
+                kwargs = {}
+                if 'mm_token_type_ids' in inspect.signature(self.get_rope_index).parameters:
+                    mm_token_type_ids = torch.zeros_like(input_ids)
+                    mm_token_type_ids[input_ids == processor.image_token_id] = 1
+                    mm_token_type_ids[input_ids == processor.video_token_id] = 2
+                    kwargs['mm_token_type_ids'] = mm_token_type_ids
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids,
-                    image_grid_thw,
-                    video_grid_thw,
+                    image_grid_thw=image_grid_thw,
+                    video_grid_thw=video_grid_thw,
                     attention_mask=attention_mask,
+                    **kwargs,
                 )
                 self.rope_deltas = rope_deltas
             # then use the prev pre-calculated rope-deltas to get the correct position ids
@@ -1176,8 +1192,18 @@ register_model(
 
 class Qwen2_5OmniLoader(ModelLoader):
 
+    def _check_qwen_omni_utils(self):
+        try:
+            qwen_omni_utils_version = importlib.metadata.version('qwen_omni_utils')
+        except importlib.metadata.PackageNotFoundError:
+            raise importlib.metadata.PackageNotFoundError(
+                "The 'qwen_omni_utils' distribution was not found and is required by this application.")
+        if version.parse(qwen_omni_utils_version) >= version.parse('0.0.9'):
+            compat_qwen_vl_utils(image_patch_size=14)
+
     def get_config(self, model_dir):
         from transformers import Qwen2_5OmniConfig
+        self._check_qwen_omni_utils()
         self.autoconfig_class = Qwen2_5OmniConfig
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         config = super().get_config(model_dir)
@@ -1380,6 +1406,10 @@ def _compat_qwen3_omni_mixed_data(model, processor):
 
 class Qwen3OmniLoader(ModelLoader):
 
+    def _check_qwen_omni_utils(self):
+        require_version('qwen_omni_utils>=0.0.9')
+        compat_qwen_vl_utils(image_patch_size=16)
+
     def get_config(self, model_dir: str):
         from transformers import Qwen3OmniMoeConfig
         self.autoconfig_class = Qwen3OmniMoeConfig
@@ -1425,7 +1455,7 @@ register_model(
         Qwen3OmniLoader,
         model_arch=ModelArch.qwen3_omni,
         architectures=['Qwen3OmniMoeForConditionalGeneration'],
-        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
+        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils>=0.0.9'],
         tags=['vision', 'video', 'audio'],
     ))
 

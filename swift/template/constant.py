@@ -21,6 +21,7 @@ class LLMTemplateType:
     qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
+    yufeng_xguard = 'yufeng_xguard'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
 
@@ -37,6 +38,8 @@ class LLMTemplateType:
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
     minimax_m2 = 'minimax_m2'
+    minimax_m2_1 = 'minimax_m2_1'
+    minimax_m2_5 = 'minimax_m2_5'
     minimax_vl = 'minimax_vl'
 
     numina = 'numina'

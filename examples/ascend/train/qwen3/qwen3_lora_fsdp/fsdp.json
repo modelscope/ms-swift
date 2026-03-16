@@ -19,7 +19,7 @@
     "fsdp_limit_all_gathers": true,
     "fsdp_state_dict_type": "FULL_STATE_DICT",
     "fsdp_sync_module_states": true,
-    "fsdp_cpu_ram_efficient_loading": true,
+    "fsdp_cpu_ram_efficient_loading": false,
     "fsdp_use_orig_params": true,
     "fsdp_offload_params": false
   }

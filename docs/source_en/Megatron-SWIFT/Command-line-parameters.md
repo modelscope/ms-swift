@@ -28,7 +28,7 @@
 - apply_rope_fusion: Defaults to False. Used to enable RoPE fusion. This parameter is passed through from megatron-core. Note: RoPE fusion is not supported in all cases, for example: MLA, mrope, etc. are not supported.
 - gradient_accumulation_fusion: Defaults to True. Used to enable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss computation fusion. Defaults to True.
-- cross_entropy_fusion_impl: Implementation of cross-entropy loss fusion. Options include 'native' and 'te'. Defaults to 'native'.
+- cross_entropy_fusion_impl: Implementation for cross-entropy loss fusion. Options are 'native' and 'te'. Defaults to None. Automatically set to 'te' for CUDA and 'native' for NPU.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padding tokens in the global batch. Defaults to None. When `task_type` is 'causal_lm' and during pretraining/fine-tuning, it defaults to True; otherwise, it defaults to False.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Default is flash.
   - Some models may not support flash attention; you need to manually set `--attention_backend unfused/fused --padding_free false`, for example: Llama4, GPT-OSS.
@@ -198,6 +198,11 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - moe_pad_expert_input_to_capacity: Pad the input of each expert so that its length aligns with the expert capacity length. Default is `False`. This option only takes effect if `--moe_expert_capacity_factor` is set.
 - moe_token_drop_policy: Options are 'probs' and 'position'. Default is 'probs'.
 
+**DSA Parameters**
+
+- dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is None.
+- dsa_indexer_use_sparse_loss: Whether to use sparse DSA indexer loss. If True, the indexer loss will be computed using the top-k indices. Default is False.
+
 
 **MTP Parameters**
 - mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None. (requires "megatron-core>=0.14")
@@ -243,7 +248,8 @@ LoRA Training:
 - adapters: adapter_id or adapter_path of LoRA incremental weights in safetensors format. Default is `[]`.
 - ref_model: model_id or model_path of ref_model safetensors weights. Required when using DPO/GRPO/KTO algorithms with full-parameter training. Default is None, set to `--model`.
 - ref_adapters: List of adapter_id or adapter_path of ref_adapters safetensors weights (currently only supports length of 1). Default is `[]`.
-- use_hf: Controls whether to use ModelScope or HuggingFace for model download, dataset download, and model push. Default is False, using ModelScope.
+- use_hf: Determines whether to use [ModelScope](https://modelscope.cn/) or [HuggingFace](https://huggingface.co/) for downloading models, downloading datasets, and pushing models. Defaults to False (uses ModelScope).
+  - Note: To access ModelScope internationally, you can use [ModelScope International](https://modelscope.ai/home) by setting the environment variable `MODELSCOPE_DOMAIN='www.modelscope.ai'`.
 - hub_token: Hub token. ModelScope hub token can be found [here](https://modelscope.cn/my/myaccesstoken). Default is None.
 - merge_lora: Whether to store merged weights. Defaults to None. If `save_safetensors` is set to True, this parameter defaults to `True`; otherwise, it defaults to False. That is, by default, LoRA will be merged when storing in safetensors format; LoRA will not be merged when storing in torch_dist format.
 - max_shard_size: Maximum file size for safetensors format storage, defaults to '5GB'.

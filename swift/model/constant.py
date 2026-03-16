@@ -44,7 +44,7 @@ class LLMModelType:
     deepseek = 'deepseek'
     deepseek_v2 = 'deepseek_v2'
     deepseek_v3 = 'deepseek_v3'
-    deepseek_v3_2 = 'deepseek_v3_2'
+    deepseek_v32 = 'deepseek_v32'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_mistral = 'openbuddy_mistral'

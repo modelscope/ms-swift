@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import torch
 import torch.nn.functional as F
 import transformers
@@ -447,10 +448,16 @@ class Qwen2VLTemplate(Template):
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
             attention_mask = inputs.get('attention_mask')
+        input_ids = inputs['input_ids']
+        if 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters:
+            mm_token_type_ids = torch.zeros_like(input_ids)
+            mm_token_type_ids[input_ids == self.processor.image_token_id] = 1
+            mm_token_type_ids[input_ids == self.processor.video_token_id] = 2
+            kwargs['mm_token_type_ids'] = mm_token_type_ids
         position_ids, _ = get_rope_index(
-            inputs['input_ids'],
-            inputs.get('image_grid_thw'),
-            inputs.get('video_grid_thw'),
+            input_ids,
+            image_grid_thw=inputs.get('image_grid_thw'),
+            video_grid_thw=inputs.get('video_grid_thw'),
             attention_mask=attention_mask,
             **kwargs)
         return self._concat_text_position_ids(position_ids)
@@ -631,8 +638,9 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_omni_utils import fetch_image, fetch_video
+        kwargs = {'image_patch_size': self.processor.image_processor.patch_size} if self.version == 'omni_v3' else {}
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            inputs.images[index] = fetch_image({'image': inputs.images[index]}, **kwargs)
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
             elif self.version == 'omni_v3':
@@ -646,7 +654,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            _video = fetch_video({'video': video})
+            _video = fetch_video({'video': video}, **kwargs)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
@@ -1147,3 +1155,50 @@ class MarcoO1TemplateMeta(QwenTemplateMeta):
 
 
 register_template(MarcoO1TemplateMeta(LLMTemplateType.marco_o1))
+
+YUFENG_XGUARD_TEMPLATE = ('<|im_start|>user\n'
+                          'You are an expert in content safety evaluation, possessing strong '
+                          'language comprehension and risk identification skills.\n'
+                          'Your task is to classify the provided input text into the most appropriate '
+                          'category from the list below as part of a safety audit project.\n\n'
+                          '# Category List\n'
+                          '- sec: Safe\n'
+                          '- pc: Pornographic Contraband\n'
+                          '- dc: Drug Crimes\n'
+                          '- dw: Dangerous Weapons\n'
+                          '- pi: Property Infringement\n'
+                          '- ec: Economic Crimes\n'
+                          '- ac: Abusive Curses\n'
+                          '- def: Defamation\n'
+                          '- ti: Threats and Intimidation\n'
+                          '- cy: Cyberbullying\n'
+                          '- ph: Physical Health\n'
+                          '- mh: Mental Health\n'
+                          '- se: Social Ethics\n'
+                          '- sci: Science Ethics\n'
+                          '- pp: Personal Privacy\n'
+                          '- cs: Commercial Secret\n'
+                          '- acc: Access Control\n'
+                          '- mc: Malicious Code\n'
+                          '- ha: Hacker Attack\n'
+                          '- ps: Physical Security\n'
+                          '- ter: Violent Terrorist Activities\n'
+                          '- sd: Social Disruption\n'
+                          '- ext: Extremist Ideological Trends\n'
+                          '- fin: Finance\n'
+                          '- med: Medicine\n'
+                          '- law: Law\n'
+                          '- cm: Corruption of Minors\n'
+                          '- ma: Minor Abuse and Exploitation\n'
+                          '- md: Minor Delinquency\n\n'
+                          '# Instructions\n'
+                          '- Identify the single most relevant category ID for the input text.\n'
+                          '- On the next line, provide a concise justification for your choice, '
+                          'placing it between <explanation> and </explanation> tags.\n\n'
+                          '---\n\n'
+                          'Input Text: {{QUERY}}<|im_end|>\n'
+                          '<|im_start|>assistant\n')
+register_template(Qwen3MixedTemplateMeta(
+    LLMTemplateType.yufeng_xguard,
+    prompt=[YUFENG_XGUARD_TEMPLATE],
+))

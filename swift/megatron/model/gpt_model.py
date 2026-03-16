@@ -133,10 +133,17 @@ class GPTModel(McoreGPTModel):
             config.apply_rope_fusion = False
             logger.warning(f'`apply_rope_fusion` does not support `attention_scaling`. '
                            f'Setting `config.apply_rope_fusion`: {config.apply_rope_fusion}')
-        if self.attention_scaling != 1:
+        if not config.apply_rope_fusion:
             self._patch_apply_rotary_pos_emb()
         if getattr(self, 'mtp', None) is not None:
             for layer in self.mtp.layers:
+                # compat megatron-core main branch
+                if not hasattr(layer, 'transformer_layer'):
+
+                    def _value(self):
+                        return getattr(self, 'mtp_model_layer')
+
+                    setattr(layer.__class__, 'transformer_layer', property(_value))
                 attention = layer.transformer_layer.self_attention
                 attention.config = deepcopy(attention.config)
                 attention.config.apply_rope_fusion = False
@@ -146,9 +153,37 @@ class GPTModel(McoreGPTModel):
             return
         _origin_apply_rotary_pos_emb_bshd = rope_utils._apply_rotary_pos_emb_bshd
 
-        def _apply_rotary_pos_emb_bshd(*args, **kwargs):
-            kwargs['mscale'] = self.attention_scaling
-            return _origin_apply_rotary_pos_emb_bshd(*args, **kwargs)
+        def _apply_rotary_pos_emb_bshd(
+            t: torch.Tensor,
+            freqs: torch.Tensor,
+            rotary_interleaved: bool = False,
+            multi_latent_attention: bool = False,  # not use
+            mscale: float = 1.0,
+        ) -> torch.Tensor:
+            """Apply rotary positional embedding to input tensor T.
+
+            check https://kexue.fm/archives/8265 for detailed formulas
+
+            Args:
+                t (Tensor): Input tensor T is of shape [seq_length, ... , dim]
+                freqs (Tensor): Rotary Positional embedding tensor freq is of shape [seq_length, ..., dim]
+
+            Returns:
+                Tensor: The input tensor after applying RoPE
+            """
+            mscale = self.attention_scaling
+            rot_dim = freqs.shape[-1]
+
+            # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
+            t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
+
+            # first part is cosine component
+            # second part is sine component, need to change signs with _rotate_half method
+            cos_ = (torch.cos(freqs) * mscale).to(t.dtype)
+            sin_ = (torch.sin(freqs) * mscale).to(t.dtype)
+
+            t = (t * cos_) + (rope_utils._rotate_half(t, rotary_interleaved) * sin_)
+            return torch.cat((t, t_pass), dim=-1)
 
         rope_utils._apply_rotary_pos_emb_bshd = _apply_rotary_pos_emb_bshd
         rope_utils._origin_apply_rotary_pos_emb_bshd = _origin_apply_rotary_pos_emb_bshd
@@ -206,7 +241,6 @@ class GPTModel(McoreGPTModel):
                         raise ValueError('Currently does not support changing attention_scaling during training. '
                                          f'self.attention_scaling: {self.attention_scaling}, '
                                          f'current_attention_scaling: {attention_scaling}.')
-                packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                 if self.position_embedding_type == 'mrope':
                     rotary_pos_emb = self.rotary_pos_emb(
                         position_ids,
@@ -214,13 +248,11 @@ class GPTModel(McoreGPTModel):
                         mrope_interleaved=self.config.mrope_interleaved,
                     )
                 else:
+                    packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                     rotary_pos_emb = self.rotary_pos_emb(
                         rotary_seq_len,
                         packed_seq=packed_seq,
                     )
-                    if packed_seq and not self.config.apply_rope_fusion:
-                        assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
-                        rotary_pos_emb = rotary_pos_emb[position_ids[0]]
 
         if (in_inference_mode and ((self.config.enable_cuda_graph and self.config.cuda_graph_scope != 'full_iteration')
                                    or self.config.flash_decode) and rotary_pos_cos is not None
@@ -280,12 +312,18 @@ class GPTModel(McoreGPTModel):
                 inference_context=inference_context,
                 packed_seq_params=packed_seq_params,
             ))
+        decoder_rotary_pos_emb = rotary_pos_emb
+        packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
+        if self.position_embedding_type == 'rope' and packed_seq and not self.config.apply_rope_fusion:
+            assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+            decoder_rotary_pos_emb = rotary_pos_emb[position_ids[0]]
+
         # Run decoder.
         hidden_states = self.decoder(
             hidden_states=decoder_input,
             attention_mask=attention_mask,
             inference_context=inference_context,
-            rotary_pos_emb=rotary_pos_emb,
+            rotary_pos_emb=decoder_rotary_pos_emb,
             rotary_pos_cos=rotary_pos_cos,
             rotary_pos_sin=rotary_pos_sin,
             packed_seq_params=packed_seq_params,
@@ -387,7 +425,8 @@ class GPTModel(McoreGPTModel):
                     # Calc loss for the current Multi-Token Prediction (MTP) layers.
                     mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
                     if cu_seqlens is None:
-                        loss_mask_, _ = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                        loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                        loss_mask_ = loss_mask
                     else:
                         loss_mask[:, cu_seqlens[:-1]] = 0
                         loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1)
@@ -396,6 +435,7 @@ class GPTModel(McoreGPTModel):
                         else:
                             loss_mask_ = loss_mask.clone()
                     mtp_loss = self.compute_language_model_loss(mtp_labels, mtp_logits)
+                    loss_mask_ = loss_mask_ & (mtp_labels != -100)
                     mtp_loss = loss_mask_ * mtp_loss
                     num_tokens = loss_mask_.sum()
                     if self.training:

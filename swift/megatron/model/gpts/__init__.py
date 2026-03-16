@@ -22,11 +22,13 @@ register_megatron_model(
             ModelType.deepseek,
             ModelType.deepseek_v2,
             ModelType.deepseek_v3,
+            ModelType.deepseek_v32,
             ModelType.dots1,
             ModelType.ernie4_5,
             ModelType.ernie4_5_moe,
             ModelType.glm4_moe,
             ModelType.glm4_moe_lite,
+            ModelType.glm_moe_dsa,
             ModelType.gpt_oss,
         ],
     ))
