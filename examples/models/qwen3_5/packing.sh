@@ -6,6 +6,7 @@ MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 SKIP_MULTIMODAL_MTP_VALIDATION=1 \
+SWIFT_USE_MCORE_GDN=1 \
 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
     --save_safetensors true \
@@ -14,21 +15,19 @@ megatron sft \
     --add_non_thinking_prefix true \
     --split_dataset_ratio 0.01 \
     --tuner_type full \
-    --tensor_model_parallel_size 1 \
-    --pipeline_model_parallel_size 2 \
-    --expert_model_parallel_size 4 \
-    --decoder_first_pipeline_num_layers 24 \
+    --tensor_model_parallel_size 4 \
+    --expert_model_parallel_size 8 \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-6 \
     --micro_batch_size 1 \
-    --global_batch_size 16 \
+    --global_batch_size 4 \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
     --num_train_epochs 1 \
-    --group_by_length true \
+    --packing true \
     --finetune true \
     --freeze_llm false \
     --freeze_vit true \
@@ -40,7 +39,7 @@ megatron sft \
     --output_dir megatron_output/Qwen3.5-35B-A3B \
     --eval_steps 200 \
     --save_steps 200 \
-    --max_length 16384 \
+    --max_length 32768 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
@@ -50,6 +49,5 @@ megatron sft \
     --mtp_num_layers 1 \
     --optimizer_cpu_offload true \
     --use_precision_aware_optimizer true \
-    --optimizer_offload_fraction 0.62 \
-    --attention_backend flash \
-    --padding_free false
+    --optimizer_offload_fraction 0.64 \
+    --attention_backend flash

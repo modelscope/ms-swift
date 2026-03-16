@@ -628,8 +628,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.megatron_model_meta is None:
             raise ValueError(f'Model: {self.model} is not supported.')
         self._init_teacher_model()
-        if self.apply_wd_to_qk_layernorm and self.model_type not in {'qwen3_next', 'qwen3_5'}:
-            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next and qwen3_5')
+        if self.apply_wd_to_qk_layernorm and self.model_type not in {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}:
+            raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next, qwen3_5 and qwen3_5_moe')
         if self.pipeline_model_parallel_size == 1 and (self.decoder_first_pipeline_num_layers is not None
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
@@ -685,7 +685,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         # world_size is initialized in initialize_megatron
         self.data_parallel_size = self.world_size // total_model_size
         # Gradient Accumulation
-        self.num_microbatches = self.global_batch_size // self.data_parallel_size // self.micro_batch_size
+        micro_batch_times_data_parallel_size = self.micro_batch_size * self.data_parallel_size
+        if self.global_batch_size % micro_batch_times_data_parallel_size != 0:
+            raise ValueError(f'global batch size ({self.global_batch_size}) is not divisible by micro batch size '
+                             f'({self.micro_batch_size}) times data parallel size ({self.data_parallel_size}).')
+        self.num_microbatches = self.global_batch_size // micro_batch_times_data_parallel_size
         if self.num_microbatches == 0:
             raise ValueError('global_batch_size must be >= `data_parallel_size * micro_batch_size` '
                              f'to have at least one micro-batch. global_batch_size: {self.global_batch_size}, '

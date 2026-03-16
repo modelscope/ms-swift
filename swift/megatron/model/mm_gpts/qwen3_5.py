@@ -9,6 +9,7 @@ from megatron.core.transformer.transformer_config import TransformerConfig
 
 from swift.model import ModelType
 from swift.template import Template
+from swift.utils import get_env_args
 from ..constant import MegatronModelType
 from ..gpts.qwen3_next import Qwen3NextBridge, Qwen3NextLoader
 from ..register import MegatronModelMeta, register_megatron_model
@@ -91,14 +92,17 @@ class Qwen3_5Loader(Qwen3NextLoader):
     gated_delta_net = Qwen3_5MoeGatedDeltaNet
 
 
-register_megatron_model(
-    MegatronModelMeta(
-        MegatronModelType.qwen3_5,
-        [
-            ModelType.qwen3_5,
-            ModelType.qwen3_5_moe,
-        ],
-        bridge_cls=Qwen3_5Bridge,
-        visual_cls=Qwen3_5Vit,
-        loader=Qwen3_5Loader,
-    ))
+use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
+
+if not use_mcore_gdn:
+    register_megatron_model(
+        MegatronModelMeta(
+            MegatronModelType.qwen3_5,
+            [
+                ModelType.qwen3_5,
+                ModelType.qwen3_5_moe,
+            ],
+            bridge_cls=Qwen3_5Bridge,
+            visual_cls=Qwen3_5Vit,
+            loader=Qwen3_5Loader,
+        ))

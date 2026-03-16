@@ -57,7 +57,7 @@ class LoRALLMTuner(Tuner):
         target_regex = get_multimodal_target_regex(model)
         logger.info(f'target_regex: {target_regex}')
         lora_config = LoraConfig(
-            task_type='CAUSAL_LM', r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
+            task_type=args.task_type.upper(), r=args.lora_rank, lora_alpha=args.lora_alpha, target_modules=target_regex)
         model = get_peft_model(model, lora_config)
         for module_prefix in model_arch.vision_tower + model_arch.aligner:
             deep_getattr(model, module_prefix).requires_grad_(True)

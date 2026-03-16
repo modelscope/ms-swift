@@ -1,12 +1,12 @@
 # Qwen3.5 Best Practices
 
-ms-swift 4.0 supports training [Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/MoE models using transformers/Megatron backends. Qwen3.5 is a multimodal model with hybrid thinking, combining linear attention and full attention. This article will introduce how to perform inference, instruction fine-tuning, and reinforcement learning on Qwen3.5 Dense/MoE models. (The reinforcement learning section will be supplemented later)
+ms-swift 4.0 supports training [Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/MoE models using transformers/Megatron backends. Qwen3.5 is a multimodal model with hybrid thinking, combining linear attention and full attention. This article will introduce how to perform inference, instruction fine-tuning, and reinforcement learning on Qwen3.5 Dense/MoE models.
 
 ## Environment Setup
 
 ```shell
 pip install -U ms-swift
-pip install -U "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
+pip install -U "transformers>=5.3.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # Please install the fla main branch. If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
@@ -15,6 +15,9 @@ pip install -U git+https://github.com/fla-org/flash-linear-attention
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
 
+# flash-attention
+pip install "flash-attn==2.8.3" --no-build-isolation
+
 # deepspeed training
 pip install deepspeed
 
@@ -22,7 +25,7 @@ pip install deepspeed
 pip install -U "vllm>=0.17.0"
 # For RL training, need to override vllm's default installation version
 # For training errors, refer to this issue: https://github.com/modelscope/ms-swift/issues/8188
-pip install -U "transformers>=5.2.0"
+pip install -U "transformers>=5.3.0"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
@@ -99,8 +102,9 @@ Qwen3.5's bbox output uses normalized relative coordinates with a scale of 1000.
 
 ### Dense Models
 
-The following provides a fine-tuning script for the Qwen3.5-4B model. This example script is for demonstration purposes only. Training memory is 4 * 20GiB, and training time is 12 minutes. Since GatedDeltaNet does not support packing/padding_free, we use the group_by_length parameter to accelerate training, ensuring DP load balancing and reducing zero padding in micro batches, but this will cause loss curve fluctuations (due to insufficient data randomization), although you can also remove this parameter.
-The script for fine-tuning the model is as follows:
+Below is a fine-tuning script for the Qwen3.5-4B model. This example script is for demonstration purposes only. Training memory usage is 4 × 20GiB, with a training time of 12 minutes. Since transformers' GatedDeltaNet does not support packing/padding_free (Megatron does support it, see below), we use the `group_by_length` parameter to accelerate training, ensuring load balancing across data parallelism (DP) and reducing zero-padding in micro batches. However, this may cause fluctuations in the loss curve due to insufficient data shuffling. You can also remove this parameter if preferred.
+
+The fine-tuning script is as follows:
 
 ```shell
 # 4 * 20GiB
@@ -299,8 +303,15 @@ swift infer \
     --load_data_args true
 ```
 
+Tips for training Qwen3.5 with Megatron-SWIFT:
+
 - Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh).
 - Regarding MTP training: ms-swift currently does not support multimodal MTP training. If you are only training on pure text data, please set the `SKIP_MULTIMODAL_MTP_VALIDATION=1` environment variable to skip the validation check.
+- TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
+- By default, `GatedDeltaNet` uses the transformers implementation (to ensure stability, the default behavior remains unchanged for now). Using `megatron-core>=0.16` and setting the environment variable `SWIFT_USE_MCORE_GDN=1` switches to the mcore implementation, which supports TP for GDN and reduces memory usage.
+- Support for padding_free/packing: Packing can improve training speed. You need to set the `SWIFT_USE_MCORE_GDN=1` environment variable. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
+- apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
+
 
 ## Reinforcement Learning (RL)
 
@@ -308,6 +319,7 @@ Using Qwen3.5-2B as an example, we demonstrate GRPO and GKD training on the [GSM
 
 ### GRPO
 
+#### Dense Model
 Full-parameter training with GRPO, using `gsm8k_accuracy` and `gsm8k_format` as reward functions. See [gsm8k_plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py) for the reward implementation.
 
 ```shell
@@ -328,7 +340,7 @@ swift rlhf \
     --vllm_tensor_parallel_size 1 \
     --vllm_max_model_len 10240 \
     --sleep_level 1 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --dataset 'modelscope/gsm8k' \
     --load_from_cache_file true \
@@ -377,6 +389,98 @@ GSM8K evaluation results at 10-step intervals for the first 50 steps:
 | GRPO 30 steps | 0.7779 | +1.82 |
 | GRPO 40 steps | 0.7817 | +2.20 |
 | GRPO 50 steps | 0.7885 | +2.88 |
+
+### MoE Model
+
+GRPO LoRA training for Qwen3.5-35B-A3B MoE model using the Megatron backend, trained on the [DAPO-Math-17k](https://www.modelscope.cn/datasets/open-r1/DAPO-Math-17k-Processed) dataset with `accuracy` as reward functions.
+
+```shell
+SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by step and put your final answer within \\boxed{}."""
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+megatron rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-35B-A3B \
+    --save_safetensors true \
+    --enable_thinking false \
+    --merge_lora true \
+    --context_parallel_size 1 \
+    --tensor_model_parallel_size 1 \
+    --expert_model_parallel_size 8 \
+    --pipeline_model_parallel_size 1 \
+    --moe_permute_fusion true \
+    --dataset open-r1/DAPO-Math-17k-Processed \
+    --system "$SYSTEM_PROMPT" \
+    --num_train_epochs 1 \
+    --global_batch_size 64 \
+    --micro_batch_size 1 \
+    --steps_per_generation 2 \
+    --num_generations 8 \
+    --reward_funcs accuracy \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_max_model_len 9192 \
+    --max_length 1000 \
+    --max_completion_length 8192 \
+    --tuner_type lora \
+    --target_modules all-linear \
+    --lr 5e-5 \
+    --bf16 true \
+    --beta 0.00 \
+    --epsilon 0.2 \
+    --epsilon_high 0.28 \
+    --dynamic_sample false \
+    --overlong_filter true \
+    --loss_type grpo \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_bridge false \
+    --offload_optimizer true \
+    --logging_steps 1 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune \
+    --dataloader_num_workers 8 \
+    --dataset_num_proc 8 \
+    --no_save_optim \
+    --no_save_rng \
+    --save_steps 20 \
+    --attention_backend flash \
+    --moe_expert_capacity_factor 2 \
+    --temperature 1.0 \
+    --padding_free false \
+    --sequence_parallel true \
+    --log_completions true \
+    --report_to tensorboard swanlab
+```
+
+Evaluate on AIME-2025 and MATH-500:
+
+```shell
+CUDA_VISIBLE_DEVICES=0,1 swift eval \
+    --model <checkpoint-merged-path> \
+    --enable_thinking false \
+    --eval_dataset aime25 math_500 \
+    --eval_backend Native --infer_backend vllm \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_max_model_len 10000 \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}' \
+    --eval_num_proc 8
+```
+
+Evaluation results on AIME-2025 and MATH-500:
+
+| Model / Steps | AIME-2025 | MATH-500 |
+|---|---|---|
+| Qwen3.5-35B-A3B (baseline) | 43.33 | 92.40 |
+| Megatron GRPO 20 steps | 53.33 (+10.00) | 95.80 (+3.40) |
+| Megatron GRPO 40 steps | 53.33 (+10.00) | 96.60 (+4.20) |
 
 ### GKD
 
