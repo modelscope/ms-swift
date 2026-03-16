@@ -125,22 +125,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         self.disable_rollout_importance_sampling = False
 
-    def _detect_bnb_quantization(self):
-        """Detect BitsAndBytes 4-bit quantization (QLoRA) on the training model."""
-        try:
-            import bitsandbytes as bnb
-        except ImportError:
-            return False
-
-        model = self.accelerator.unwrap_model(self.model)
-        for _, module in model.named_modules():
-            if isinstance(module, bnb.nn.Linear4bit):
-                return True
-            elif isinstance(module, bnb.nn.Linear8bitLt):
-                raise ValueError('vLLM does not support 8-bit BitsAndBytes quantization for GRPO rollout. '
-                                 'Please use 4-bit quantization (quant_method=bnb, quant_bits=4) instead.')
-        return False
-
     def _prepare_vllm(self):
         """Initialize vLLM engine (server or colocate mode)"""
         args = self.args
@@ -153,7 +137,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.vllm_use_async_engine = False
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
-        self.is_qlora = False
         if not args.use_vllm:
             return
 
@@ -164,9 +147,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
             raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
                              'please update vLLM to 0.10.2 or later.')
-
-        # Detect QLoRA (BNB 4-bit) before engine setup
-        self.is_qlora = self._detect_bnb_quantization()
 
         # split model parameters into batches for synchronized weight transfer
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
@@ -246,8 +226,16 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             patch_vllm_load_adapter()
 
         vllm_quantization = None
-        if getattr(self, 'is_qlora', False):
+        if model.model_info.quant_method == 'bnb' and model.model_info.quant_bits == 4:
             vllm_quantization = 'bitsandbytes'
+            if not lora_kwargs:
+                lora_kwargs = {
+                    'enable_lora': True,
+                    'max_loras': 1,
+                    'max_lora_rank': args.lora_rank,
+                }
+                self.rollout_enable_lora = True
+                patch_vllm_load_adapter()
 
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
@@ -255,12 +243,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             set_expandable_segments(False)
             # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'dummy'
             vllm_engine_kwargs = self.args.vllm_engine_kwargs or {}
-            load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
-
-            # QLoRA requires loading from disk so vLLM has the quantized base weights
-            if getattr(self, 'is_qlora', False):
-                load_format = 'auto'
-
+            load_format = vllm_engine_kwargs.pop('load_format', 'auto' if vllm_quantization else 'dummy')
             engine = GRPOVllmEngine(
                 model.model_dir,
                 torch_dtype=model.model_info.torch_dtype,
@@ -406,6 +389,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self._wait_queue()
 
         tuner_type = args.tuner_type
+
         if tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
             self._move_full_model_to_vllm()
         else:
@@ -633,6 +617,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             State dict ready for vLLM
         """
         is_peft = is_peft_model(self.model)
+        should_merge_lora = self._is_fsdp2 and is_peft and not self.rollout_enable_lora
 
         raw_state_dict = {}
         if self._is_fsdp2:
@@ -655,11 +640,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 raw_state_dict[name] = param.data
 
         # Process: clean names, filter adapters (keep LoRA for FSDP2 to merge at tensor level)
-        state_dict = self._process_state_dict_for_vllm(
-            raw_state_dict, is_peft, keep_lora_weights=self._is_fsdp2 and is_peft)
+        state_dict = self._process_state_dict_for_vllm(raw_state_dict, is_peft, keep_lora_weights=should_merge_lora)
 
         # FSDP2 + LoRA: merge at tensor level (avoids issues with merge/unmerge on DTensor)
-        if self._is_fsdp2 and is_peft:
+        if should_merge_lora:
             state_dict = self._merge_lora_into_state_dict(state_dict)
 
         # Filter by parameter_group_no_lora
@@ -682,7 +666,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         - No clone needed: unmerge happens after load completes
         """
         is_peft = is_peft_model(self.model)
-        should_merge = is_peft and not self._is_fsdp2
+        should_merge = is_peft and not self._is_fsdp2 and not self.rollout_enable_lora
 
         gather_if_zero3 = get_gather_if_zero3_context(self)
 
@@ -712,6 +696,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if is_peft:
             self.base_sync_done = True
+            if self.rollout_enable_lora:
+                self._move_adapter_to_vllm()
 
     def _rollout(self,
                  inputs: Optional[DataType],
