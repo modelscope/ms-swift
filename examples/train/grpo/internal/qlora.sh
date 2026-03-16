@@ -17,7 +17,6 @@ swift rlhf \
     --vllm_tensor_parallel_size 1 \
     --vllm_max_model_len 10240 \
     --vllm_enable_lora true \
-    --vllm_engine_kwargs '{"load_format": "auto"}' \
     --sleep_level 1 \
     --train_type lora \
     --quant_method bnb \
