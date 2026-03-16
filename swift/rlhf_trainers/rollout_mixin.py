@@ -228,14 +228,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         vllm_quantization = None
         if model.model_info.quant_method == 'bnb' and model.model_info.quant_bits == 4:
             vllm_quantization = 'bitsandbytes'
-            if not lora_kwargs:
-                lora_kwargs = {
-                    'enable_lora': True,
-                    'max_loras': 1,
-                    'max_lora_rank': args.lora_rank,
-                }
-                self.rollout_enable_lora = True
-                patch_vllm_load_adapter()
 
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
