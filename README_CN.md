@@ -142,8 +142,8 @@ uv pip install -e . --torch-backend=auto
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
 | trl          | >=0.15,<0.29 | 0.28.0              | RLHF               |
-| deepspeed    | >=0.14       | 0.18.7              | 训练                 |
-| vllm         | >=0.5.1      | 0.11.0/0.17.0        | 推理/部署              |
+| deepspeed    | >=0.14       | 0.18.8              | 训练                 |
+| vllm         | >=0.5.1      | 0.11.0/0.17.1        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | lmdeploy     | >=0.5   | 0.10.1                 | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |
@@ -483,7 +483,7 @@ swift export \
 
 ## 🏛 License
 
-本框架使用[Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE)进行许可。模型和数据集请查看原资源页面并遵守对应License。
+本框架使用[Apache License (Version 2.0)](https://github.com/modelscope/ms-swift/blob/master/LICENSE)进行许可。模型和数据集请查看原资源页面并遵守对应License。
 
 ## 📎 引用
 
@@ -501,4 +501,4 @@ swift export \
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/ms-swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)

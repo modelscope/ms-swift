@@ -146,8 +146,8 @@ Running Environment:
 | peft         | >=0.11,<0.19 |                     |                                           |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
 | trl          | >=0.15,<0.29 | 0.28.0              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.18.7              | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0/0.17.0       | Inference/Deployment                      |
+| deepspeed    | >=0.14       | 0.18.8              | Training                                  |
+| vllm         | >=0.5.1      | 0.11.0/0.17.1       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | lmdeploy     | >=0.5   | 0.10.1                 | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |
@@ -494,7 +494,7 @@ swift export \
 
 ## 🏛 License
 
-This framework is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE). For models and datasets, please refer to the original resource page and follow the corresponding License.
+This framework is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/ms-swift/blob/master/LICENSE). For models and datasets, please refer to the original resource page and follow the corresponding License.
 
 ## 📎 Citation
 
@@ -512,4 +512,4 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/ms-swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)

@@ -33,7 +33,7 @@
 
 2. Clone：将第一步产生的代码库clone到本地并**拉新分支**进行开发，开发中请及时点击**Sync Fork按钮**同步`main`分支，防止代码过期并冲突
 
-3. 提交PR：开发、测试完成后将代码推送到远程分支。在github上点击**Pull Requests页面**，新建一个PR，源分支选择您提交的代码分支，目标分支选择`modelscope/swift:main`分支
+3. 提交PR：开发、测试完成后将代码推送到远程分支。在github上点击**Pull Requests页面**，新建一个PR，源分支选择您提交的代码分支，目标分支选择`modelscope/ms-swift:main`分支
 
 4. 撰写描述：在PR中填写良好的feature描述是必要的，让Reviewers知道您的修改内容
 
