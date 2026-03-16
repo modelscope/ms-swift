@@ -1139,6 +1139,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # Rollout importance sampling correction
         rollout_correction_metrics = {}
+        rollout_is_weights = None
         should_compute_rollout_metrics = (
             self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
         local_has_rollout_per_token_logps = rollout_per_token_logps is not None
@@ -1223,13 +1224,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
-        if self.rollout_importance_sampling_mode is not None:
-            # Apply IS weights to loss
-            per_token_loss = per_token_loss * rollout_is_weights
-        # Add KL penalty if needed
-        if self.beta != 0.0 and per_token_kl is not None:
-            per_token_loss = per_token_loss + self.beta * per_token_kl
-
         # Compute and apply entropy mask if enabled
         # entropy_mask zeros out gradients for low-entropy (confident) tokens
         entropy_mask = None
@@ -1264,6 +1258,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 entropy_mask = entropies >= entropy_threshold
                 # Apply entropy mask to per_token_loss
                 per_token_loss = per_token_loss * entropy_mask
+
+        # Add KL penalty if needed
+        if self.beta != 0.0 and per_token_kl is not None:
+            per_token_loss = per_token_loss + self.beta * per_token_kl
+
+        # Apply rollout importance sampling weights if available
+        if rollout_is_weights is not None and self.rollout_importance_sampling_mode is not None:
+            per_token_loss = per_token_loss * rollout_is_weights
 
         # Apply off-policy sequence masking if enabled
         # Mask out sequences where delta > threshold AND advantage < 0

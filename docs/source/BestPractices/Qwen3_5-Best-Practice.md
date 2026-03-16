@@ -6,7 +6,7 @@ ms-swift 4.0支持使用transformers/Megatron后端对[Qwen3.5](https://github.c
 ## 环境设置
 ```shell
 pip install -U ms-swift
-pip install -U "transformers>=5.2.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
+pip install -U "transformers>=5.3.0" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # 请安装fla main分支，若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
@@ -15,14 +15,17 @@ pip install -U git+https://github.com/fla-org/flash-linear-attention
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
 
+# flash-attention
+pip install "flash-attn==2.8.3" --no-build-isolation
+
 # deepspeed训练
 pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
 pip install -U "vllm>=0.17.0"
-
+# 对于强化学习（RL）训练，需要覆盖 vLLM 的默认安装版本
 # 训练报错参考这个issue: https://github.com/modelscope/ms-swift/issues/8188
-pip install -U "transformers>=5.2.0"
+pip install -U "transformers>=5.3.0"
 ```
 
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
@@ -102,7 +105,8 @@ Qwen3.5的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swif
 
 ### Dense模型
 
-以下提供对Qwen3.5-4B模型的微调脚本，该示例脚本仅作为演示用途。训练显存为 4 * 20GiB，训练时间为12分钟。由于GatedDeltaNet不支持packing/padding_free，因此我们使用group_by_length参数来加速训练，保证DP的负载均衡并减少micro batch中的零填充，但这会导致loss曲线跳动（因数据随机不充分），当然你也可以去掉此参数。
+以下提供对Qwen3.5-4B模型的微调脚本，该示例脚本仅作为演示用途。训练显存为 4 * 20GiB，训练时间为12分钟。由于transformers的GatedDeltaNet不支持packing/padding_free（megatron支持，见下文），因此我们使用group_by_length参数来加速训练，保证DP的负载均衡并减少micro batch中的零填充，但这会导致loss曲线跳动（因数据随机不充分），当然你也可以去掉此参数。
+
 对模型进行微调的脚本如下：
 
 ```shell
@@ -302,8 +306,14 @@ swift infer \
     --load_data_args true
 ```
 
+Megatron-SWIFT训练Qwen3.5的提示：
 - 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh)。
 - 关于MTP训练：ms-swift暂不支持多模态MTP的训练。如果你只训练纯文本数据，请设置`SKIP_MULTIMODAL_MTP_VALIDATION=1`环境变量，忽略检查。
+- TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
+- 默认 `GatedDeltaNet` 使用 transformers 实现（为保证稳定性，暂时保持默认行为不变）。使用 "megatron-core>=0.16"并设置环境变量 `SWIFT_USE_MCORE_GDN=1`可切换至 mcore 实现，支持 GDN 的 TP 并降低显存。
+- padding_free/packing的支持：packing可以提升训练速度，你需要设置`SWIFT_USE_MCORE_GDN=1`环境变量。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
+- apply_wd_to_qk_layernorm：对 qk layernorm 应用权重衰减。默认为False。
+
 
 ## 强化学习（RL）
 
@@ -311,6 +321,7 @@ swift infer \
 
 ### GRPO
 
+#### Dense 模型
 使用 GRPO 进行全参数训练，以 `gsm8k_accuracy` 和 `gsm8k_format` 作为奖励函数。奖励函数的实现参考 [gsm8k_plugin.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/gsm8k/gsm8k_plugin.py)。
 
 ```shell
@@ -331,7 +342,7 @@ swift rlhf \
     --vllm_tensor_parallel_size 1 \
     --vllm_max_model_len 10240 \
     --sleep_level 1 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --dataset 'modelscope/gsm8k' \
     --load_from_cache_file true \
@@ -380,6 +391,98 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 | GRPO 30 steps | 0.7779 | +1.82 |
 | GRPO 40 steps | 0.7817 | +2.20 |
 | GRPO 50 steps | 0.7885 | +2.88 |
+
+#### MoE 模型
+
+使用 Megatron 后端对 Qwen3.5-35B-A3B MoE 模型进行 GRPO LoRA 训练，在 [DAPO-Math-17k](https://www.modelscope.cn/datasets/open-r1/DAPO-Math-17k-Processed) 数据集上训练，使用 `accuracy` 作为奖励函数。
+
+```shell
+SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by step and put your final answer within \\boxed{}."""
+
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+megatron rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-35B-A3B \
+    --save_safetensors true \
+    --enable_thinking false \
+    --merge_lora true \
+    --context_parallel_size 1 \
+    --tensor_model_parallel_size 1 \
+    --expert_model_parallel_size 8 \
+    --pipeline_model_parallel_size 1 \
+    --moe_permute_fusion true \
+    --dataset open-r1/DAPO-Math-17k-Processed \
+    --system "$SYSTEM_PROMPT" \
+    --num_train_epochs 1 \
+    --global_batch_size 64 \
+    --micro_batch_size 1 \
+    --steps_per_generation 2 \
+    --num_generations 8 \
+    --reward_funcs accuracy \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.5 \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_max_model_len 9192 \
+    --max_length 1000 \
+    --max_completion_length 8192 \
+    --tuner_type lora \
+    --target_modules all-linear \
+    --lr 5e-5 \
+    --bf16 true \
+    --beta 0.00 \
+    --epsilon 0.2 \
+    --epsilon_high 0.28 \
+    --dynamic_sample false \
+    --overlong_filter true \
+    --loss_type grpo \
+    --sleep_level 1 \
+    --offload_model true \
+    --offload_bridge false \
+    --offload_optimizer true \
+    --logging_steps 1 \
+    --recompute_granularity full \
+    --recompute_method uniform \
+    --recompute_num_layers 1 \
+    --finetune \
+    --dataloader_num_workers 8 \
+    --dataset_num_proc 8 \
+    --no_save_optim \
+    --no_save_rng \
+    --save_steps 20 \
+    --attention_backend flash \
+    --moe_expert_capacity_factor 2 \
+    --temperature 1.0 \
+    --padding_free false \
+    --sequence_parallel true \
+    --log_completions true \
+    --report_to tensorboard swanlab
+```
+
+使用以下指令在 AIME-2025 和 MATH-500 上评测：
+
+```shell
+CUDA_VISIBLE_DEVICES=0,1 swift eval \
+    --model <checkpoint-merged-path> \
+    --enable_thinking false \
+    --eval_dataset aime25 math_500 \
+    --eval_backend Native --infer_backend vllm \
+    --vllm_tensor_parallel_size 2 \
+    --vllm_gpu_memory_utilization 0.9 \
+    --vllm_max_model_len 10000 \
+    --eval_generation_config '{"max_tokens":8192,"temperature":0.0,"do_sample":false}' \
+    --eval_num_proc 8
+```
+
+在 AIME-2025 和 MATH-500 上的评测结果如下：
+
+| 模型 / Steps | AIME-2025 | MATH-500 |
+|---|---|---|
+| Qwen3.5-35B-A3B (baseline) | 43.33 | 92.40 |
+| Megatron GRPO 20 steps | 53.33 (+10.00) | 95.80 (+3.40) |
+| Megatron GRPO 40 steps | 53.33 (+10.00) | 96.60 (+4.20) |
 
 ### GKD
 

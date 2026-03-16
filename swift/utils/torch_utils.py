@@ -29,8 +29,17 @@ def _find_local_mac() -> str:
     return mac_address
 
 
+def synchronize(device: Union[torch.device, str, int, None] = None):
+    if is_torch_npu_available():
+        torch.npu.synchronize(device)
+    elif is_torch_cuda_available():
+        torch.cuda.synchronize(device)
+    else:
+        torch.cuda.synchronize(device)
+
+
 def time_synchronize() -> float:
-    torch.cuda.synchronize()
+    synchronize()
     return time.perf_counter()  # second
 
 

@@ -241,7 +241,6 @@ class GPTModel(McoreGPTModel):
                         raise ValueError('Currently does not support changing attention_scaling during training. '
                                          f'self.attention_scaling: {self.attention_scaling}, '
                                          f'current_attention_scaling: {attention_scaling}.')
-                packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                 if self.position_embedding_type == 'mrope':
                     rotary_pos_emb = self.rotary_pos_emb(
                         position_ids,
@@ -249,13 +248,11 @@ class GPTModel(McoreGPTModel):
                         mrope_interleaved=self.config.mrope_interleaved,
                     )
                 else:
+                    packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
                     rotary_pos_emb = self.rotary_pos_emb(
                         rotary_seq_len,
                         packed_seq=packed_seq,
                     )
-                    if packed_seq and not self.config.apply_rope_fusion:
-                        assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
-                        rotary_pos_emb = rotary_pos_emb[position_ids[0]]
 
         if (in_inference_mode and ((self.config.enable_cuda_graph and self.config.cuda_graph_scope != 'full_iteration')
                                    or self.config.flash_decode) and rotary_pos_cos is not None
@@ -315,12 +312,18 @@ class GPTModel(McoreGPTModel):
                 inference_context=inference_context,
                 packed_seq_params=packed_seq_params,
             ))
+        decoder_rotary_pos_emb = rotary_pos_emb
+        packed_seq = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
+        if self.position_embedding_type == 'rope' and packed_seq and not self.config.apply_rope_fusion:
+            assert position_ids.shape[0] == 1, f'position_ids.shape: {position_ids.shape}'
+            decoder_rotary_pos_emb = rotary_pos_emb[position_ids[0]]
+
         # Run decoder.
         hidden_states = self.decoder(
             hidden_states=decoder_input,
             attention_mask=attention_mask,
             inference_context=inference_context,
-            rotary_pos_emb=rotary_pos_emb,
+            rotary_pos_emb=decoder_rotary_pos_emb,
             rotary_pos_cos=rotary_pos_cos,
             rotary_pos_sin=rotary_pos_sin,
             packed_seq_params=packed_seq_params,
@@ -422,7 +425,8 @@ class GPTModel(McoreGPTModel):
                     # Calc loss for the current Multi-Token Prediction (MTP) layers.
                     mtp_labels, _ = roll_tensor(mtp_labels, shifts=-1, dims=-1, cp_group=self.cp_group)
                     if cu_seqlens is None:
-                        loss_mask_, _ = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                        loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1, cp_group=self.cp_group)
+                        loss_mask_ = loss_mask
                     else:
                         loss_mask[:, cu_seqlens[:-1]] = 0
                         loss_mask, _ = roll_tensor(loss_mask, shifts=-1, dims=-1)

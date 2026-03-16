@@ -14,6 +14,15 @@ try:
         vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
 except ImportError:
     pass
+
+# https://github.com/modelscope/ms-swift/pull/8280
+try:
+    import trl.import_utils as _trl_import_utils
+    _orig = _trl_import_utils.is_vllm_ascend_available
+    if not isinstance(_orig(), bool):
+        _trl_import_utils.is_vllm_ascend_available = lambda: bool(_orig()[0])
+except Exception:
+    pass
 # fmt: on
 
 import asyncio
