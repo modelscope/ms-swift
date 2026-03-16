@@ -58,7 +58,14 @@ def _initialize_mpu(args):
     """Initialize torch.distributed and core model parallel."""
     if not torch.distributed.is_initialized():
         set_device()
-        init_process_group(args.ddp_backend, args.ddp_timeout)
+        if args.fake_process_group:
+            assert is_torch_min_version("2.3.0"), "Fake process group is only supported with PyTorch 2.3.0 and above."
+            from torch.testing._internal.distributed.fake_pg import FakeStore
+            store = FakeStore()
+            init_process_group(backend='fake', timeout=args.ddp_timeout, store=store, rank=args.rank, world_size=args.global_world_size)
+        else:
+            init_process_group(args.ddp_backend, args.ddp_timeout)
+
     args.rank = torch.distributed.get_rank()
     args.world_size = torch.distributed.get_world_size()
 
@@ -75,6 +82,7 @@ def _initialize_mpu(args):
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 expert_tensor_parallel_size=args.expert_tensor_parallel_size,
                 distributed_timeout_minutes=distributed_timeout_minutes,
+                create_gloo_process_groups=args.enable_gloo_process_groups
             )
         if is_master():
             logger.info(f'TP: {args.tensor_model_parallel_size}, PP: {args.pipeline_model_parallel_size}, '

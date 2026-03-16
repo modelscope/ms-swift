@@ -387,6 +387,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     data_parallel_random_init: Optional[bool] = False
     padding_free: bool = True
     mlp_padding_free: bool = False
+    variable_seq_lengths: bool = True
 
     # learning rate
     lr_warmup_init: float = 0.
@@ -447,7 +448,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     account_for_loss_in_pipeline_split: bool = False
     overlap_p2p_comm: bool = True
     align_param_gather: bool = True
-
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
@@ -460,6 +460,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     pipeline_model_parallel_layout: Optional[str] = None
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1
+
+    # communication
+    fake_process_group: bool = False
+    enable_gloo_process_groups: bool = True
 
     # 'wandb', 'swanlab', 'tensorboard'
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
@@ -678,7 +682,16 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.tp_comm_overlap and not self.sequence_parallel:
             raise ValueError('Tensor parallel communication/GEMM overlap can happen only when '
                              'sequence parallelism is enabled')
-
+        if self.fake_process_group:
+            assert self.moe_token_dispatcher_type != "flex", "Fake process group is not supported with flex token dispatcher."
+            # Disable nan check for fake process group
+            self.check_for_nan_in_loss_and_grad = False
+            logger.warning('check_for_nan_in_loss_and_grad is set to False for fake process group.')
+            # Disable gloo process groups for fake process group
+            self.enable_gloo_process_groups = False
+            logger.warning('enable_gloo_process_groups is set to False for fake process group.')
+            self.variable_seq_lengths = False
+            logger.warning('variable_seq_lengths is set to False for fake process group.')
         initialize_megatron(self)
         total_model_size = (
             self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)

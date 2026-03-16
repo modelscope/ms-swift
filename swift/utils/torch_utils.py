@@ -216,7 +216,7 @@ def set_default_ddp_config():
         os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', '29500')
 
 
-def init_process_group(backend: Optional[str] = None, timeout: int = 18000000):
+def init_process_group(backend: Optional[str] = None, timeout: int = 18000000, **kwargs):
     if dist.is_initialized():
         return
     set_device()
@@ -228,7 +228,7 @@ def init_process_group(backend: Optional[str] = None, timeout: int = 18000000):
         else:
             backend = 'gloo'
     timeout = timedelta(seconds=timeout)
-    dist.init_process_group(backend=backend, timeout=timeout)
+    dist.init_process_group(backend=backend, timeout=timeout, **kwargs)
 
 
 def check_shared_disk(error, cache_dir: Optional[str] = None):

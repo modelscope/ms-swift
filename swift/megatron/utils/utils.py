@@ -312,6 +312,8 @@ def get_padding_to(args):
         padding_to = max((padding_to or 1) * 8, 16)
     if args.attention_backend == 'fused':
         padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
+    if not args.padding_free and not args.variable_seq_lengths:
+        padding_to = args.max_length
     return padding_to
 
 
