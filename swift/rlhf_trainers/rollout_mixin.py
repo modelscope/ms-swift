@@ -235,7 +235,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             set_expandable_segments(False)
             # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'dummy'
             vllm_engine_kwargs = self.args.vllm_engine_kwargs or {}
-            load_format = vllm_engine_kwargs.pop('load_format', 'auto' if vllm_quantization else 'dummy')
+            load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
             engine = GRPOVllmEngine(
                 model.model_dir,
                 torch_dtype=model.model_info.torch_dtype,
