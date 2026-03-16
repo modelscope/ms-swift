@@ -81,7 +81,7 @@ def get_local_topk_idx_for_current_rank(global_topk_idx, tf_config, packed_seq_p
     moe_layer_idx = torch.tensor([
         layer_idx for layer_idx in range(layer_offset, layer_offset + num_layers) if is_moe_layer(tf_config, layer_idx)
     ],
-                                 dtype=torch.long)
+                                 dtype=torch.long, device=global_topk_idx.device)
     local_topk_idx = torch.index_select(global_topk_idx, dim=2, index=moe_layer_idx)
     # 2. cp slice
     cp_size = mpu.get_context_parallel_world_size()
