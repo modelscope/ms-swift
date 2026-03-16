@@ -684,14 +684,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                              'sequence parallelism is enabled')
         if self.fake_process_group:
             assert self.moe_token_dispatcher_type != "flex", "Fake process group is not supported with flex token dispatcher."
-            # Disable nan check for fake process group
+            # Disable nan check, gloo process groups, and variable seq lengths for fake process group.
             self.check_for_nan_in_loss_and_grad = False
-            logger.warning('check_for_nan_in_loss_and_grad is set to False for fake process group.')
-            # Disable gloo process groups for fake process group
             self.enable_gloo_process_groups = False
-            logger.warning('enable_gloo_process_groups is set to False for fake process group.')
             self.variable_seq_lengths = False
-            logger.warning('variable_seq_lengths is set to False for fake process group.')
+            logger.warning(
+                'For fake process group, `check_for_nan_in_loss_and_grad`, `enable_gloo_process_groups`, '
+                'and `variable_seq_lengths` have been automatically set to False.'
+            )
         initialize_megatron(self)
         total_model_size = (
             self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)
