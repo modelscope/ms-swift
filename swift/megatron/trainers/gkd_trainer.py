@@ -428,15 +428,20 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self,
         student_logits: torch.Tensor,
         teacher_logits: torch.Tensor,
-        labels: torch.Tensor,
+        labels: Optional[torch.Tensor] = None,
         beta: float = 0.5,
         chunk_size: int = 512,
-        teacher_topk_logprobs: torch.Tensor = None,
-        teacher_topk_indices: torch.Tensor = None,
+        teacher_topk_logprobs: Optional[torch.Tensor] = None,
+        teacher_topk_indices: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         args = self.args
-        mask = labels != -100
-        local_num_valid = mask.sum()
+        if labels is not None:
+            mask = labels != -100
+            local_num_valid = mask.sum()
+        else:
+            mask = None
+            local_num_valid = torch.tensor(
+                student_logits.shape[0] * student_logits.shape[1], dtype=torch.long, device=student_logits.device)
         num_valid = local_num_valid.float()
 
         # All-reduce num_valid across CP group for correct averaging
@@ -449,6 +454,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # Top-k mode: direct computation without vocab parallel
         if teacher_topk_logprobs is not None and teacher_topk_indices is not None:
+            if mask is None:
+                mask = torch.ones(student_logits.shape[:2], dtype=torch.bool, device=student_logits.device)
             total_loss = self._jsd_topk(student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta)
             if args.context_parallel_size > 1:
                 torch.distributed.all_reduce(
@@ -459,8 +466,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Align vocab size between student and teacher
         student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
 
-        student_logits_masked = student_logits[mask]
-        teacher_logits_masked = teacher_logits[mask]
+        if mask is not None:
+            student_logits_masked = student_logits[mask]
+            teacher_logits_masked = teacher_logits[mask]
+        else:
+            student_logits_masked = student_logits.view(-1, student_logits.size(-1))
+            teacher_logits_masked = teacher_logits.view(-1, teacher_logits.size(-1))
         del student_logits, teacher_logits
         student_logits_masked.div_(self.temperature)
         teacher_logits_masked.div_(self.temperature)
@@ -623,12 +634,15 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if opsd_teacher_labels is not None and teacher_logits is not None:
             student_mask = labels != -100
             teacher_mask = opsd_teacher_labels != -100
+            assert student_mask.sum() == teacher_mask.sum(), (
+                f'OPSD label count mismatch: student={student_mask.sum().item()}, '
+                f'teacher={teacher_mask.sum().item()}. '
+                'Student and teacher must share the same response tokens.')
             s_logits = student_logits[student_mask][None]
             t_logits = teacher_logits[teacher_mask][None]
             jsd_loss = self.generalized_jsd_loss(
                 student_logits=s_logits,
                 teacher_logits=t_logits,
-                labels=torch.zeros(1, s_logits.shape[1], dtype=labels.dtype, device=labels.device),
                 beta=self.beta,
                 teacher_topk_logprobs=teacher_api_logprobs,
                 teacher_topk_indices=teacher_api_indices,

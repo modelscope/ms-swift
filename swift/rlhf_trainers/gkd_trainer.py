@@ -153,6 +153,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             teacher_shifted = torch.roll(opsd_teacher_inputs['labels'], shifts=-1, dims=1)
             student_mask = student_shifted != -100
             teacher_mask = teacher_shifted != -100
+            assert student_mask.sum() == teacher_mask.sum(), (
+                f'OPSD label count mismatch: student={student_mask.sum().item()}, '
+                f'teacher={teacher_mask.sum().item()}. '
+                'Student and teacher must share the same response tokens.')
             shifted_student_logits = outputs_student.logits[student_mask][None]
             shifted_teacher_logits = outputs_teacher.logits[teacher_mask][None]
             return self.generalized_jsd_loss(
