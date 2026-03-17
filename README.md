@@ -375,6 +375,7 @@ ms-swift supports using Megatron parallelism techniques to accelerate training, 
 | Pre-training           | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [Supervised Fine-Tuning](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [GKD](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
