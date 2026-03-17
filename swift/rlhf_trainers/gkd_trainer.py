@@ -139,6 +139,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         for data in inputs:
             teacher_item = {k: v for k, v in data.items() if k != 'teacher_prompt'}
             messages = [dict(m) for m in data.get('messages', [])]
+            if messages and messages[-1]['role'] == 'assistant':
+                messages.pop()
             for msg in reversed(messages):
                 if msg['role'] == 'user':
                     msg['content'] = data['teacher_prompt']
