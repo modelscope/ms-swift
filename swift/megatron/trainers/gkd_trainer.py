@@ -7,6 +7,7 @@ from enum import Enum
 from functools import partial
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
+from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
 from swift.megatron.arguments import MegatronArguments
@@ -43,6 +44,10 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.offload_teacher_model = args.offload_teacher_model  # Offload teacher to CPU
         self.teacher_model_server = getattr(args, 'teacher_model_server', None)
         self.use_teacher_api = self.teacher_model_server is not None
+        self._is_self_distillation = (args.teacher_model is None and self.teacher_model_server is None)
+        self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
+        if self._teacher_use_disable_adapter:
+            logger.info('Self-distillation mode: using disable_adapter() for fixed teacher (no extra model)')
         if args.teacher_model:
             self.teacher_bridge = args.megatron_model_meta.bridge_cls(args, attr_prefix='teacher_')
             self.teacher_config = self.teacher_bridge.processor.model_info.config
@@ -50,14 +55,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # GKD top-k logits configuration
         self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
-        # Check use_teacher_api based on args, not client existence
-        # (API client is only created on last rank, but all ranks need to know the mode)
 
-        # Validate teacher configuration
-        if not self.use_teacher_api:
-            assert args.teacher_model is not None, \
-                'Teacher model path is required for GKD training (or set teacher_model_server for API mode)'
-        else:
+        if self.use_teacher_api:
             logger.info(f'Using teacher model API for logprobs, top_logprobs={self.gkd_logits_topk}')
 
         self.use_vllm = getattr(args, 'use_vllm', False)
@@ -82,8 +81,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def prepare_model(self):
         super().prepare_model()
-        if self.use_teacher_api:
-            logger.info('Skipping local teacher model loading - using external API for teacher logprobs')
+        if self.use_teacher_api or self._is_self_distillation:
+            if self._is_self_distillation:
+                logger.info('Self-distillation mode: using student model as teacher (no separate teacher loaded)')
+            else:
+                logger.info('Skipping local teacher model loading - using external API for teacher logprobs')
             return
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size')
@@ -146,6 +148,22 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             yield
         finally:
             template.max_length = original_max_length
+
+    def _build_opsd_teacher_data(self, inputs: List[Dict]) -> Optional[List[Dict]]:
+        """Build teacher data for OPSD by replacing the last user message with teacher_prompt."""
+        if not all('teacher_prompt' in data and data['teacher_prompt'] for data in inputs):
+            return None
+        teacher_data = []
+        for data in inputs:
+            teacher_item = {k: v for k, v in data.items() if k != 'teacher_prompt'}
+            messages = [dict(m) for m in data.get('messages', [])]
+            for msg in reversed(messages):
+                if msg['role'] == 'user':
+                    msg['content'] = data['teacher_prompt']
+                    break
+            teacher_item['messages'] = messages
+            teacher_data.append(teacher_item)
+        return teacher_data
 
     def _encode_batch(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         """Encode a batch of raw data into model inputs."""
@@ -283,8 +301,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         topk = self.gkd_logits_topk
 
         for encoded_batch in encoded_batches:
-            teacher_batch = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in encoded_batch.items()}
-            teacher_batch.pop('data_source', None)
+            # Use OPSD teacher batch if available, otherwise use student batch
+            opsd_batch = encoded_batch.get('opsd_teacher_batch')
+            source = opsd_batch if opsd_batch is not None else encoded_batch
+            teacher_batch = {
+                k: v.clone() if isinstance(v, torch.Tensor) else v
+                for k, v in source.items() if k not in ('data_source', 'opsd_teacher_batch')
+            }
             teacher_data = self._prepare_batch(teacher_batch)
             teacher_data.pop('loss_scale', None)
             teacher_data.pop('labels', None)
@@ -343,6 +366,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
                                 'Falling back to dataset responses.')
 
+        # Build OPSD teacher data if teacher_prompt is present
+        teacher_global_batch = self._build_opsd_teacher_data(global_batch)
+
         # Split global batch back into micro-batches for encoding
         encoded_batches = []
         micro_batch_size = len(global_batch) // num_microbatches
@@ -351,11 +377,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             end_idx = start_idx + micro_batch_size
             raw_batch = global_batch[start_idx:end_idx]
             encoded_batch = self._encode_batch(raw_batch)
-            # Store data_source for conditional SFT loss in loss_func
             encoded_batch['data_source'] = data_source
+            if teacher_global_batch is not None:
+                encoded_batch['opsd_teacher_batch'] = self._encode_batch(teacher_global_batch[start_idx:end_idx])
             encoded_batches.append(encoded_batch)
 
-        self._compute_teacher_logits(encoded_batches)
+        if not self._is_self_distillation:
+            self._compute_teacher_logits(encoded_batches)
 
         # Increment step counter (used for deterministic random and weight sync)
         self._step += 1
@@ -587,27 +615,33 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                   teacher_logits: torch.Tensor = None,
                   teacher_api_logprobs: torch.Tensor = None,
                   teacher_api_indices: torch.Tensor = None,
-                  data_source: DataSource = DataSource.DATASET):
-        """Compute GKD loss (JSD + optional SFT loss).
-
-        Args:
-            output_tensor: Student model logits [batch, seq_len, vocab_size]
-            labels: Token labels for masking [batch, seq_len]
-            teacher_logits: Teacher model logits [batch, seq_len, vocab_size] (for local teacher)
-            teacher_api_logprobs: Teacher log probabilities [batch, seq_len, topk] (for API mode)
-            teacher_api_indices: Teacher token indices [batch, seq_len, topk] (for API mode)
-            data_source: Data source (STUDENT/TEACHER/DATASET) for conditional SFT loss
-        """
+                  data_source: DataSource = DataSource.DATASET,
+                  opsd_teacher_labels: torch.Tensor = None):
+        """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
 
-        jsd_loss = self.generalized_jsd_loss(
-            student_logits=student_logits,
-            teacher_logits=teacher_logits,
-            labels=labels,
-            beta=self.beta,
-            teacher_topk_logprobs=teacher_api_logprobs,
-            teacher_topk_indices=teacher_api_indices,
-        )
+        if opsd_teacher_labels is not None and teacher_logits is not None:
+            student_mask = labels != -100
+            teacher_mask = opsd_teacher_labels != -100
+            s_logits = student_logits[student_mask][None]
+            t_logits = teacher_logits[teacher_mask][None]
+            jsd_loss = self.generalized_jsd_loss(
+                student_logits=s_logits,
+                teacher_logits=t_logits,
+                labels=torch.zeros(1, s_logits.shape[1], dtype=labels.dtype, device=labels.device),
+                beta=self.beta,
+                teacher_topk_logprobs=teacher_api_logprobs,
+                teacher_topk_indices=teacher_api_indices,
+            )
+        else:
+            jsd_loss = self.generalized_jsd_loss(
+                student_logits=student_logits,
+                teacher_logits=teacher_logits,
+                labels=labels,
+                beta=self.beta,
+                teacher_topk_logprobs=teacher_api_logprobs,
+                teacher_topk_indices=teacher_api_indices,
+            )
 
         loss = jsd_loss
 
@@ -653,6 +687,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         teacher_logits = data.pop('teacher_logits', None)
         teacher_api_logprobs = data.pop('teacher_api_logprobs', None)
         teacher_api_indices = data.pop('teacher_api_indices', None)
+        opsd_teacher_batch = data.pop('opsd_teacher_batch', None)
         data = self._prepare_batch(data, vp_stage)
 
         data.pop('loss_scale', None)
@@ -662,6 +697,25 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             unwrapped_model.set_input_tensor(input_tensor)
         student_output = model(**data)
 
+        if self._is_self_distillation:
+            if opsd_teacher_batch is not None:
+                t_data = self._prepare_batch(opsd_teacher_batch, vp_stage)
+            else:
+                t_data = {k: v for k, v in data.items()}
+            t_data.pop('loss_scale', None)
+            opsd_teacher_labels = t_data.pop('labels', None)
+
+            adapter_contexts = []
+            if self._teacher_use_disable_adapter:
+                adapter_contexts = [m.disable_adapter() for m in self.peft_models]
+
+            with torch.no_grad(), ContextManagers(adapter_contexts):
+                teacher_logits = forward_step_helper(self.args, unwrapped_model, t_data)
+                if teacher_logits is not None:
+                    teacher_logits = teacher_logits.detach()
+        else:
+            opsd_teacher_labels = opsd_teacher_batch.pop('labels', None) if opsd_teacher_batch is not None else None
+
         return student_output, partial(
             self.loss_func,
             labels=labels,
@@ -669,4 +723,5 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             teacher_api_logprobs=teacher_api_logprobs,
             teacher_api_indices=teacher_api_indices,
             data_source=data_source,
+            opsd_teacher_labels=opsd_teacher_labels,
         )
