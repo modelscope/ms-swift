@@ -236,6 +236,7 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['gkd_logits_topk'] = self.args.gkd_logits_topk
             if self.args.teacher_model_server:
                 trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
+            trainer_kwargs['teacher_use_disable_adapter'] = getattr(self.args, '_teacher_use_disable_adapter', False)
         return trainer_kwargs
 
 
