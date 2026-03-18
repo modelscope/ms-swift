@@ -352,4 +352,4 @@ OPSD reuses all GKD parameters. The key difference is `--teacher_model` configur
 
 Full scripts available [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/opsd/)
 
-Megatron available [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd_fixed.sh)
+Megatron available [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd.sh)

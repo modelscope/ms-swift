@@ -493,6 +493,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                             teacher_data[i]['messages'].append(dict(gen_data['messages'][-1]))
                             if 'response_token_ids' in gen_data:
                                 teacher_data[i]['response_token_ids'] = gen_data['response_token_ids']
+                            teacher_data[i]['add_eos'] = False
                         with self._template_context(self.template):
                             encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
                                 teacher_data, encode_prompt_only=False)
@@ -565,6 +566,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                             teacher_data[i]['messages'].append(dict(messages[-1]))
                             if 'response_token_ids' in data:
                                 teacher_data[i]['response_token_ids'] = data['response_token_ids']
+                            teacher_data[i]['add_eos'] = False
                     with self._template_context(self.template, max_length=total_length):
                         encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
                             teacher_data, encode_prompt_only=False)

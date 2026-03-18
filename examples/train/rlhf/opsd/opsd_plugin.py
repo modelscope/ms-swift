@@ -36,13 +36,6 @@ class OpenThoughtsOPSDPreprocessor(RowPreprocessor):
                           f'Here is a reference solution to this problem:\n{solution}\n\n'
                           f'{TRANSITION_PROMPT}')
 
-        conversations = row.get('conversations') or row.get('messages') or []
-        response = None
-        for msg in reversed(conversations):
-            if msg.get('role') == 'assistant':
-                response = msg['content']
-                break
-
         messages: List[Dict[str, str]] = [
             {
                 'role': 'system',
@@ -53,8 +46,6 @@ class OpenThoughtsOPSDPreprocessor(RowPreprocessor):
                 'content': problem
             },
         ]
-        if response:
-            messages.append({'role': 'assistant', 'content': response})
 
         return {'messages': messages, 'teacher_prompt': teacher_prompt}
 

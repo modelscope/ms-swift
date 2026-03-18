@@ -17,8 +17,7 @@
 # | Checkpoint | Accuracy | Improvement |
 # |------------|----------|-------------|
 # | Base       | 0.1667   | -           |
-# | 100 steps  | 0.3000   | +80%        |
-# | 200 steps  | 0.3300   | +98%        |
+# | 100 steps  | 0.2667   | +60%        |
 #
 # ## Evaluation
 # ```bash
@@ -40,6 +39,11 @@ swift rlhf \
     --lora_rank 64 \
     --lora_alpha 128 \
     --target_modules all-linear \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.7 \
+    --vllm_max_model_len 10240 \
+    --sleep_level 1 \
     --external_plugins examples/train/rlhf/opsd/opsd_plugin.py \
     --dataset 'open-r1/OpenThoughts-114k-math' \
     --lmbda 1.0 \
@@ -48,8 +52,8 @@ swift rlhf \
     --sft_alpha 0 \
     --torch_dtype bfloat16 \
     --max_steps 1000 \
-    --per_device_train_batch_size 1 \
-    --gradient_accumulation_steps 4 \
+    --per_device_train_batch_size 4 \
+    --gradient_accumulation_steps 1 \
     --learning_rate 2e-5 \
     --save_steps 100 \
     --save_total_limit 10 \
@@ -58,9 +62,6 @@ swift rlhf \
     --max_completion_length 2048 \
     --save_only_model true \
     --gradient_checkpointing true \
-    --deepspeed zero1 \
-    --use_vllm true \
-    --vllm_mode colocate \
-    --vllm_gpu_memory_utilization 0.6 \
-    --sleep_level 1 \
-    --attn_impl flash_attn
+    --deepspeed zero0 \
+    --attn_impl flash_attn \
+    --report_to tensorboard swanlab

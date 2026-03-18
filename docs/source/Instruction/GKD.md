@@ -346,4 +346,4 @@ OPSD 复用 GKD 的所有参数，核心区别在于 `--teacher_model` 的配置
 
 参考脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/opsd/)
 
-Megatron脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd_fixed.sh)
+Megatron脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd.sh)
