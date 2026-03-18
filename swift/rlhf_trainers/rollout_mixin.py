@@ -224,6 +224,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                                'If errors occur, please disable LoRA by setting vllm_enable_lora to False.')
 
             patch_vllm_load_adapter()
+
+        vllm_quantization = None
+        if model.model_info.quant_method == 'bnb' and model.model_info.quant_bits == 4:
+            vllm_quantization = 'bitsandbytes'
+
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
         with Swift.grpo_context(model, self.template.processor):
@@ -252,6 +257,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 distributed_executor_backend='external_launcher',
                 engine_kwargs=vllm_engine_kwargs,
                 logprobs_mode=logprobs_mode,
+                quantization=vllm_quantization,
                 **lora_kwargs,
             )
             set_expandable_segments(True)
