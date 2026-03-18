@@ -564,8 +564,9 @@ def _check_padding_free(args, config):
 
 
 def get_mcore_model_config(args, hf_config):
-    kwargs = convert_hf_config(hf_config)
-    for f in fields(MegatronModelConfig):
+    from mcore_bridge import hf_to_mcore_config, ModelConfig
+    kwargs = hf_to_mcore_config(hf_config)
+    for f in fields(ModelConfig):
         key, value = f.name, getattr(args, f.name, None)
         if value is None or isinstance(value, (list, tuple)) and len(value) == 0:
             continue
@@ -593,9 +594,7 @@ def get_mcore_model_config(args, hf_config):
     if num_moe_experts is None:
         kwargs['expert_model_parallel_size'] = 1
         kwargs['expert_tensor_parallel_size'] = 1
-    config = MegatronModelConfig(**kwargs)
-    config.hf_config = hf_config
-    config.args = args
+    config = ModelConfig(**kwargs)
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
     _check_attention_backend(args, config)

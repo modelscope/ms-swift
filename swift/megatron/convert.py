@@ -11,7 +11,7 @@ from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
 from .model import get_mcore_model
-from .utils import (load_mcore_checkpoint, patch_torch_dist_shard, prepare_mcore_model, save_mcore_checkpoint,
+from .utils import (load_mcore_checkpoint, patch_torch_dist_shard, save_mcore_checkpoint,
                     test_convert_precision)
 
 logger = get_logger()
@@ -49,7 +49,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     mg_model = get_mcore_model(megatron_args, hf_config)[0]
     logger.info('Megatron model created successfully.')
-    bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
+    bridge = mg_model.config.bridge
     bridge.load_weights([mg_model], args.model_info.model_dir)
     logger.info('Successfully transferred HF model weights to MG model.')
     _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
