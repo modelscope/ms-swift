@@ -97,6 +97,10 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         finally:
             args.model_dir = orig_model_dir
             args.model_type = orig_model_type
+        if not args.use_cpu_initialization:
+            # same as wrap_model in megatron_lm_utils.py
+            for teacher_model in self.teacher_models:
+                teacher_model.cuda(torch.cuda.current_device())
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()
@@ -302,19 +306,34 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 encoded_batch['teacher_logits'] = teacher_logits
 
     def _compute_teacher_logits_from_api(self, encoded_batches: List[Dict]) -> None:
-        """Fetch teacher logprobs from external API service."""
         from swift.rlhf_trainers.gkd_trainer import fetch_teacher_logprobs
         topk = self.gkd_logits_topk
+        # One API call per DP group: rank 0 fetches, others receive via broadcast.
+        rollout_group = self._get_rollout_group()
+        rollout_rank = torch.distributed.get_rank(group=rollout_group)
+        rollout_src = torch.distributed.get_global_rank(rollout_group, 0)
+
         for encoded_batch in encoded_batches:
             input_ids = encoded_batch['input_ids']
-            teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
-                self.teacher_model_server, input_ids.tolist(), topk=topk)
-            # fetch_teacher_logprobs returns [batch, seq_len-1, topk] (shifted).
-            # Pad last position with -inf to match student [batch, seq_len, topk].
-            teacher_logprobs = F.pad(teacher_logprobs, (0, 0, 0, 1), value=float('-inf'))
-            teacher_indices = F.pad(teacher_indices, (0, 0, 0, 1), value=0)
-            encoded_batch['teacher_api_logprobs'] = teacher_logprobs.to(input_ids.device)
-            encoded_batch['teacher_api_indices'] = teacher_indices.to(input_ids.device)
+            device = input_ids.device
+
+            if rollout_rank == 0:
+                teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
+                    self.teacher_model_server, input_ids.tolist(), topk=topk)
+                teacher_logprobs = F.pad(teacher_logprobs, (0, 0, 0, 1), value=float('-inf'))
+                teacher_indices = F.pad(teacher_indices, (0, 0, 0, 1), value=0)
+                teacher_logprobs = teacher_logprobs.to(device)
+                teacher_indices = teacher_indices.to(device)
+            else:
+                bs, seq_len = input_ids.shape
+                teacher_logprobs = torch.empty(bs, seq_len, topk, dtype=torch.float32, device=device)
+                teacher_indices = torch.empty(bs, seq_len, topk, dtype=torch.long, device=device)
+
+            torch.distributed.broadcast(teacher_logprobs, src=rollout_src, group=rollout_group)
+            torch.distributed.broadcast(teacher_indices, src=rollout_src, group=rollout_group)
+
+            encoded_batch['teacher_api_logprobs'] = teacher_logprobs
+            encoded_batch['teacher_api_indices'] = teacher_indices
             encoded_batch['teacher_logits'] = None
 
     def _replace_data_iterator(self, data_iterator):
@@ -538,14 +557,15 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         partition_vocab_size = logits.shape[-1]
         vocab_start = tp_rank * partition_vocab_size
 
+        in_range = (indices >= vocab_start) & (indices < vocab_start + partition_vocab_size)
         local_indices = (indices - vocab_start).clamp(0, partition_vocab_size - 1)
         gathered = torch.gather(logits, dim=-1, index=local_indices)
-        in_range = (indices >= vocab_start) & (indices < vocab_start + partition_vocab_size)
         gathered = gathered.masked_fill(~in_range, float('-inf'))
 
+        gathered_for_reduce = gathered.detach()
         torch.distributed.all_reduce(
-            gathered, op=torch.distributed.ReduceOp.MAX, group=mpu.get_tensor_model_parallel_group())
-        return gathered
+            gathered_for_reduce, op=torch.distributed.ReduceOp.MAX, group=mpu.get_tensor_model_parallel_group())
+        return torch.where(in_range, gathered, gathered_for_reduce)
 
     def _jsd_topk(self, student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta):
         """Compute JSD on teacher's top-k distribution.
