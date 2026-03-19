@@ -826,6 +826,31 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
 
 
+def _build_teacher_session(max_retries=5):
+    """Build a requests.Session with transport-level retry for teacher API calls."""
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    retry_strategy = Retry(
+        total=max_retries,
+        connect=max_retries,
+        read=max_retries,
+        status=3,
+        status_forcelist=[500, 502, 503],
+        backoff_factor=2,
+        allowed_methods=['POST', 'GET'],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session = requests.Session()
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+
+_teacher_session = None
+
+
 def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     """Fetch top-k prompt logprobs from a vLLM-compatible /v1/completions endpoint.
 
@@ -844,10 +869,17 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
         The shift is because prompt_logprobs[0] is always None (first token has no
         conditional probability), so position i in the output corresponds to
         P(token_{i+1} | token_0..token_i), aligning with model logits[i].
+
+    Raises:
+        RuntimeError: If any sequence fails after all retry attempts.
     """
     import logging
-    import requests
     from concurrent.futures import ThreadPoolExecutor
+
+    global _teacher_session
+    if _teacher_session is None:
+        _teacher_session = _build_teacher_session()
+    session = _teacher_session
 
     _logger = logging.getLogger(__name__)
     base_url = base_url.rstrip('/')
@@ -857,7 +889,7 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     global teacher_model_server_model_name
     if teacher_model_server_model_name is None:
         try:
-            resp = requests.get(f'{base_url}/v1/models', timeout=10)
+            resp = session.get(f'{base_url}/v1/models', timeout=10)
             model = resp.json()['data'][0]['id'] if resp.ok else 'default'
         except Exception:
             model = 'default'
@@ -872,6 +904,7 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     out_len = max_seq_len - 1
     logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32)
     indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long)
+    errors = {}
 
     def _fetch_one(batch_idx):
         payload = {
@@ -882,7 +915,7 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
             'prompt_logprobs': topk,
         }
         try:
-            resp = requests.post(url, json=payload, timeout=timeout)
+            resp = session.post(url, json=payload, timeout=timeout)
             resp.raise_for_status()
             prompt_logprobs_list = resp.json()['choices'][0].get('prompt_logprobs', [])
             # Skip position 0 (always None), shift left so pos 1 -> output pos 0
@@ -898,9 +931,16 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
                     indices_out[batch_idx, out_pos, k] = int(tid_str)
                     logprobs_out[batch_idx, out_pos, k] = info['logprob']
         except Exception as e:
+            errors[batch_idx] = e
             _logger.error(f'Failed to get teacher logprobs for sequence {batch_idx}: {e}')
 
     with ThreadPoolExecutor(max_workers=min(batch_size, 8)) as pool:
         list(pool.map(_fetch_one, range(batch_size)))
+
+    if errors:
+        failed = sorted(errors.keys())
+        raise RuntimeError(f'Failed to fetch teacher logprobs for {len(errors)} sequence(s). '
+                           f'Failed indices: {failed}. Last errors: ' + '; '.join(f'seq {i}: {errors[i]}'
+                                                                                  for i in failed[:3]))
 
     return logprobs_out, indices_out
