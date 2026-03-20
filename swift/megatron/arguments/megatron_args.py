@@ -204,11 +204,24 @@ class RLHFMegatronArgumentsMixin:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
         if self.rlhf_type == 'gkd':
-            if self.teacher_model is None and self.teacher_model_server is None:
-                raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set.')
-
             if self.teacher_model is not None and self.teacher_model_server is not None:
                 raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
+
+            # Self-distillation: teacher_model == student model
+            self._teacher_use_disable_adapter = False
+            if self.teacher_model is not None and self.teacher_model == self.model:
+                if self.tuner_type == 'lora':
+                    logger.info(
+                        'LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
+                    self._teacher_use_disable_adapter = True
+                    self.teacher_model = None
+                else:
+                    # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
+                    pass
+
+            # Self-distillation: no teacher_model → dynamic teacher (current student weights)
+            if self.teacher_model is None and self.teacher_model_server is None:
+                logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
 
             # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
             if self.teacher_model_server is not None:

@@ -38,8 +38,12 @@ class TeacherModelArguments:
     """Arguments for configuring the teacher model.
 
     Args:
-        teacher_model (Optional[str]): The model ID or a local path to the teacher model. This is required when
-            `rlhf_type` is 'gkd' and `teacher_model_server` is not set. Analogous to the main `model` argument.
+        teacher_model (Optional[str]): The model ID or a local path to the teacher model. Analogous to the main
+            `model` argument. For GKD, there are three modes:
+            - Not set (None): Self-distillation with dynamic teacher (teacher = current student weights).
+            - Same as `model` with LoRA training: Self-distillation with fixed teacher. Automatically optimized
+              to use `disable_adapter()` to get base model logits without loading an extra model.
+            - Different from `model`: Standard GKD with an independent frozen teacher model.
             Defaults to None.
         teacher_adapters (List[str]): A list of paths to LoRA weights. These weights, often produced by SFT, are loaded
             to form the teacher model. Defaults to an empty list (`[]`).
@@ -562,12 +566,29 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.async_generate:
             raise NotImplementedError('Currently, async_generate is not supported for GKD.')
 
-        # Validate teacher model configuration
-        if self.teacher_model is None and self.teacher_model_server is None:
-            raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set.')
-
         if self.teacher_model is not None and self.teacher_model_server is not None:
             raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
+
+        # Self-distillation: teacher_model == student model
+        self._teacher_use_disable_adapter = False
+        if self.teacher_model is not None and self.teacher_model == self.model:
+            if self.tuner_type == 'lora':
+                logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
+                self._teacher_use_disable_adapter = True
+                self.teacher_model = None
+            else:
+                # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
+                pass
+
+        # Self-distillation: no teacher_model → dynamic teacher (current student weights)
+        if self.teacher_model is None and self.teacher_model_server is None:
+            logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
+
+            if self.seq_kd:
+                raise ValueError(
+                    'Self-distillation mode with seq_kd is not supported yet, please specify a teacher_model.')
+            if self.use_liger_kernel:
+                raise ValueError('Self-distillation mode with liger kernel GKD loss is not supported yet')
 
         # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
         if self.teacher_model_server is not None:
