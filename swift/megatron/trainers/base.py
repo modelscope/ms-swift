@@ -431,7 +431,7 @@ class BaseMegatronTrainer(ABC):
         ckpt_dir = None
         if args.tuner_type == 'full':
             ckpt_dir = args.model
-        elif args.tuner_type == 'lora':
+        else:
             ckpt_dir = args.adapters[0] if args.adapters else args.model
         if ckpt_dir is None:
             return 0
@@ -699,7 +699,7 @@ class BaseMegatronTrainer(ABC):
         # safetensors
         if args.save_safetensors:
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
-            if args.tuner_type == 'lora' and args.merge_lora:
+            if args.tuner_type != 'full' and args.merge_lora:
                 self.merge_lora_adapters()
                 origin_output_dir = output_dir
                 output_dir = f'{output_dir}-merged'
@@ -718,7 +718,7 @@ class BaseMegatronTrainer(ABC):
                 is_peft_format=save_peft_format,
                 processor=self.template.processor,
                 hf_config=self.template.config)
-            if args.tuner_type == 'lora' and args.merge_lora:
+            if args.tuner_type != 'full' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
         if is_master():

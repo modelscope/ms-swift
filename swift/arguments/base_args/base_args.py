@@ -70,7 +70,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     """
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
     tuner_type: str = field(default='lora', metadata={'help': f'tuner_type choices: {list(get_supported_tuners())}'})
-    train_type: Optional[str] = None  # compat swift3.x
     adapters: List[str] = field(default_factory=list)
     external_plugins: List[str] = field(default_factory=list)
     # This parameter is kept for swift3.x compatibility. Please use `external_plugins` as a replacement.
@@ -148,9 +147,6 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         ]
 
     def __post_init__(self):
-        if self.train_type is not None:
-            logger.warning('`train_type` is deprecated, please use `tuner_type` instead.')
-            self.tuner_type = self.train_type
         self.swift_version = swift.__version__
         if self.use_hf or use_hf_hub():
             self.use_hf = True
