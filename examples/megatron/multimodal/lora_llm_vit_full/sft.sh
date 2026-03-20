@@ -34,9 +34,6 @@ megatron sft \
     --recompute_num_layers 1 \
     --num_train_epochs 2 \
     --finetune true \
-    --freeze_llm false \
-    --freeze_vit true \
-    --freeze_aligner true \
     --cross_entropy_loss_fusion true \
     --lr 1e-4 \
     --vit_lr 1e-5 \
