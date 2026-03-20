@@ -56,7 +56,7 @@ def get_multimodal_target_regex(
     include_embedding: bool = False,
     include_router: bool = False,
 ) -> str:
-    from ..model import get_megatron_model_meta
+    from swift.megatron.model import get_megatron_model_meta
     megatron_model_meta = get_megatron_model_meta(args.model_type)
     modules = []
     visual_cls = megatron_model_meta.visual_cls
@@ -103,14 +103,22 @@ def get_target_modules(args, model):
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
         if args.is_multimodal:
+            if args.tuner_type == 'lora':
+                kwargs = {
+                    'freeze_llm': args.freeze_llm,
+                    'freeze_vit': args.freeze_vit,
+                    'freeze_aligner': args.freeze_aligner,
+                }
+            elif args.tuner_type == 'lora_llm':
+                kwargs = {
+                    'freeze_llm': False,
+                }
             return get_multimodal_target_regex(
                 args,
                 model,
-                freeze_llm=args.freeze_llm,
-                freeze_vit=args.freeze_vit,
-                freeze_aligner=args.freeze_aligner,
                 include_embedding='all-embedding' in target_modules,
                 include_router='all-router' in target_modules,
+                **kwargs,
             )
         else:
             target_modules.remove('all-linear')
@@ -206,14 +214,26 @@ def prepare_adapter(args, model):
     return model
 
 
+def _prepare_full_vit(args, model):
+    from swift.megatron.model import get_megatron_model_meta
+    megatron_model_meta = get_megatron_model_meta(args.model_type)
+    visual_cls = megatron_model_meta.visual_cls
+    vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
+    aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
+    for module_prefix in vision_tower + aligner:
+        deep_getattr(model, module_prefix).requires_grad_(True)
+
+
 def prepare_mcore_model(args, model):
     if args.tuner_type == 'full':
         freeze_parameters(model, args.freeze_parameters_ratio, args.freeze_parameters, args.freeze_parameters_regex)
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
-    elif args.tuner_type == 'lora':
+    elif args.tuner_type in {'lora', 'lora_llm'}:
         model.prepare_inputs_for_generation = None  # fix error
         model = prepare_adapter(args, model)
+        if args.tuner_type == 'lora_llm':
+            _prepare_full_vit(args, model)
     logger.info(f'model: {model}')
     logger.info_if(
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
