@@ -31,8 +31,9 @@
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
   - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_3，请设置`--attn_impl flash_attention_3`。
   - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4、GPT-OSS。
-- optimizer: 优化器类型，可选为'adam'、'sgd'。默认为adam。
+- optimizer: 优化器类型，可选为'adam'、'sgd'、'muon'和'dist_muon'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
+  - 其中'muon'和'dist_muon'需要"megatron-core>=0.16"
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
   - 该参数可以显著降低显存占用（但增加内存占用）。若global_batch_size较大，则对训练速度的影响不大。
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
@@ -87,6 +88,18 @@
 - adam_beta2: 默认0.95。
 - adam_eps: 默认1e-8。
 - sgd_momentum: 设置`--optimizer sgd`时生效，默认为0.9。
+
+
+**muon参数**:
+- muon_momentum: Muon 优化器的动量因子。默认为0.9。
+- muon_split_qkv: 是否为 Muon 优化器拆分 QKV 参数，默认为True。
+- muon_use_nesterov: 是否在内部 SGD 中使用 Nesterov 风格的动量，默认为False。
+- muon_scale_mode: Muon 优化器的缩放模式。可选为'spectral', 'unit_rms_norm', 'shape_scaling'。默认为'spectral'。
+- muon_fp32_matmul_prec: Newton-Schulz 迭代的 FP32 矩阵乘法精度，可选为'low', 'medium', 'high'。默认为'medium'。
+- muon_num_ns_steps: Muon 优化器的 Newton-Schulz 步数。默认为5。
+- muon_tp_mode: 张量模型并行权重的 NS 计算方式。可选为'blockwise', 'duplicated', 'distributed'。默认为'blockwise'。
+- muon_extra_scale_factor: Muon 更新的额外缩放因子，默认为1。
+
 
 **checkpoint参数**:
 - 🔥output_dir: checkpoint的输出目录，默认None。在训练中，若未设置该参数，则默认为`f'megatron_output/{model_suffix}'`，例如`'megatron_output/Qwen2.5-7B-Instruct'`。

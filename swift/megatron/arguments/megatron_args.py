@@ -371,7 +371,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     cross_entropy_fusion_impl: Optional[Literal['native', 'te']] = None
     calculate_per_token_loss: Optional[bool] = None
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
-    optimizer: Literal['adam', 'sgd'] = 'adam'
+    optimizer: Literal['adam', 'sgd', 'muon', 'dist_muon'] = 'adam'
     optimizer_cpu_offload: bool = False
     optimizer_offload_fraction: float = 1.
     use_precision_aware_optimizer: bool = False
@@ -420,6 +420,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     adam_beta2: float = 0.95
     adam_eps: float = 1e-8
     sgd_momentum: float = 0.9
+    muon_momentum: float = 0.9
+    muon_split_qkv: bool = True
+    muon_use_nesterov: bool = False
+    muon_scale_mode: Literal['spectral', 'unit_rms_norm', 'shape_scaling'] = 'spectral'
+    muon_fp32_matmul_prec: Literal['low', 'medium', 'high'] = 'medium'
+    muon_num_ns_steps: int = 5
+    muon_tp_mode: Literal['blockwise', 'duplicated', 'distributed'] = 'blockwise'
+    muon_extra_scale_factor: float = 1.
 
     # checkpoint
     output_dir: Optional[str] = None
@@ -711,6 +719,16 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                              f'to have at least one micro-batch. global_batch_size: {self.global_batch_size}, '
                              f'data_parallel_size: {self.data_parallel_size}, '
                              f'micro_batch_size: {self.micro_batch_size}.')
+        self._check_muon()
+
+    def _check_muon(self):
+        # Muon optimizer check
+        if 'muon' in self.optimizer:
+            # TODO: remove these checks once we support them
+            assert not self.overlap_grad_reduce, 'Muon optimizer does not support overlap grad reduce for now.'
+            assert not self.overlap_param_gather, 'Muon optimizer does not support overlap param gather for now.'
+
+            assert not self.use_distributed_optimizer, 'Muon optimizer does not support distributed optimizer for now.'
 
     def _init_teacher_model(self):
         if self.teacher_model is None:
