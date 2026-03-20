@@ -1,11 +1,13 @@
 # Qwen3.5 最佳实践
 
-ms-swift 4.0支持使用transformers/Megatron后端对[Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/Moe模型进行训练。Qwen3.5 属于混合思考的多模态模型，结合了linear attention和full attention。本文将介绍如何对Qwen3.5 Dense/Moe模型进行推理、指令微调以及强化学习。
+ms-swift 支持使用transformers/Megatron后端对[Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/Moe模型进行训练。Qwen3.5 属于混合思考的多模态模型，结合了linear attention和full attention。本文将介绍如何对Qwen3.5 Dense/Moe模型进行推理、指令微调以及强化学习。
 
 
 ## 环境设置
 ```shell
 pip install -U ms-swift
+# "transformers==5.2.*" 会遇到与vllm的兼容问题，参考这个issue: https://github.com/modelscope/ms-swift/issues/8254
+# "transformers==5.3.*" 会遇到视频训练问题，参考这个issue: https://github.com/modelscope/ms-swift/issues/8362
 pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
