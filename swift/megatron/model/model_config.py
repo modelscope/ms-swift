@@ -284,7 +284,6 @@ class MegatronModelConfig(TransformerConfig):
         super().__post_init__()
         self.rotary_interleaved = _origin_rotary_interleaved
         self._check_npu()
-        self.variable_seq_lengths = True
 
     def _format_config(self):
         if self.window_size is not None:

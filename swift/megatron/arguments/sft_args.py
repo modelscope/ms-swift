@@ -16,7 +16,8 @@ class MegatronSftArguments(MegatronBaseArguments):
     load_args: bool = False
 
     def _init_output_dir(self):
-        init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
+        if not self.fake_process_group:
+            init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
         if self.output_dir is None:
             self.output_dir = f'megatron_output/{self.model_suffix}'
         self.output_dir = to_abspath(self.output_dir)

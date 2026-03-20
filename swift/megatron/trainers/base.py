@@ -203,7 +203,11 @@ class BaseMegatronTrainer(ABC):
         else:
             param_groups_context = nullcontext()
         with param_groups_context:
-            optimizer = get_megatron_optimizer(config, self.wrapped_models)
+            optimizer = get_megatron_optimizer(
+                config,
+                self.wrapped_models,
+                use_gloo_process_groups=args.enable_gloo_process_groups,
+            )
         opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, opt_param_scheduler
 

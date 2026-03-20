@@ -400,6 +400,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     data_parallel_random_init: Optional[bool] = False
     padding_free: bool = True
     mlp_padding_free: bool = False
+    variable_seq_lengths: bool = True
 
     # learning rate
     lr_warmup_init: float = 0.
@@ -460,7 +461,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     account_for_loss_in_pipeline_split: bool = False
     overlap_p2p_comm: bool = True
     align_param_gather: bool = True
-
     sequence_parallel: bool = False
     context_parallel_size: int = 1
     tp_comm_overlap: bool = False
@@ -473,6 +473,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     pipeline_model_parallel_layout: Optional[str] = None
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1
+
+    # communication
+    fake_process_group: bool = False
+    enable_gloo_process_groups: bool = True
 
     # 'wandb', 'swanlab', 'tensorboard'
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
@@ -691,7 +695,16 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.tp_comm_overlap and not self.sequence_parallel:
             raise ValueError('Tensor parallel communication/GEMM overlap can happen only when '
                              'sequence parallelism is enabled')
-
+        if self.fake_process_group:
+            assert self.moe_token_dispatcher_type != "flex", "Fake process group is not supported with flex token dispatcher."
+            # Disable nan check, gloo process groups, and variable seq lengths for fake process group.
+            self.check_for_nan_in_loss_and_grad = False
+            self.enable_gloo_process_groups = False
+            self.variable_seq_lengths = False
+            logger.warning(
+                'For fake process group, `check_for_nan_in_loss_and_grad`, `enable_gloo_process_groups`, '
+                'and `variable_seq_lengths` have been automatically set to False.'
+            )
         initialize_megatron(self)
         total_model_size = (
             self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)
