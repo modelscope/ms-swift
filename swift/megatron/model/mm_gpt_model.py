@@ -36,10 +36,6 @@ class MultimodalGPTModel(MegatronModule):
         self.share_embeddings_and_output_weights = self.language_model.share_embeddings_and_output_weights
         self.megatron_model_meta = get_megatron_model_meta(self.args.model_type)
         self.visual = None
-        if self.args.mtp_num_layers:
-            skip_validation = get_env_args('SKIP_MULTIMODAL_MTP_VALIDATION', bool, False)
-            if not skip_validation:
-                raise ValueError('MTP currently does not support multimodal models.')
         if pre_process and self.megatron_model_meta.visual_cls is not None:
             self.visual = self.megatron_model_meta.visual_cls(config)
 
