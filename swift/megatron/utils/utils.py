@@ -103,15 +103,17 @@ def get_target_modules(args, model):
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
         if args.is_multimodal:
-            if args.tuner_type == 'lora':
+            if args.tuner_type == 'lora_llm':
+                kwargs = {
+                    'freeze_llm': False,
+                    'freeze_vit': True,
+                    'freeze_aligner': True,
+                }
+            else:  # lora
                 kwargs = {
                     'freeze_llm': args.freeze_llm,
                     'freeze_vit': args.freeze_vit,
                     'freeze_aligner': args.freeze_aligner,
-                }
-            elif args.tuner_type == 'lora_llm':
-                kwargs = {
-                    'freeze_llm': False,
                 }
             return get_multimodal_target_regex(
                 args,
