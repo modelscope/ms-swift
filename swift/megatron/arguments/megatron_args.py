@@ -722,13 +722,16 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._check_muon()
 
     def _check_muon(self):
-        # Muon optimizer check
+        # Code borrowed from NVIDIA/Megatron-LM
         if 'muon' in self.optimizer:
-            # TODO: remove these checks once we support them
-            assert not self.overlap_grad_reduce, 'Muon optimizer does not support overlap grad reduce for now.'
-            assert not self.overlap_param_gather, 'Muon optimizer does not support overlap param gather for now.'
 
-            assert not self.use_distributed_optimizer, 'Muon optimizer does not support distributed optimizer for now.'
+            if self.optimizer == 'muon':
+                assert not self.overlap_grad_reduce, (
+                    'Muon optimizer does not support overlap grad reduce. Use dist_muon instead.')
+                assert not self.overlap_param_gather, (
+                    'Muon optimizer does not support overlap param gather. Use dist_muon instead.')
+            # Muon optimizer does not support distributed optimizer for now.
+            self.use_distributed_optimizer = False
 
     def _init_teacher_model(self):
         if self.teacher_model is None:

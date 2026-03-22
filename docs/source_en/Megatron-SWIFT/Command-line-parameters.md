@@ -33,7 +33,7 @@
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Default is flash.
   - Some models may not support flash attention; you need to manually set `--attention_backend unfused/fused --padding_free false`, for example: Llama4, GPT-OSS.
   - If `flash_attention_3` is installed, specifying `--attention_backend flash` will prioritize using FA3. Refer to the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
-- optimizer: Optimizer type. Options include 'adam', 'sgd', 'muon', and 'dist_muon'.
+- optimizer: Optimizer type. Options include 'adam', 'sgd', 'muon', and 'dist_muon'. Default is 'adam'.
   - Note: This 'adam' is actually 'adamw'. See [here](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70) for reference.
   - 'muon' and 'dist_muon' require "megatron-core>=0.16".
 - 🔥optimizer_cpu_offload: Offloads optimizer states to the CPU. For example, set: `--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`. Defaults to `False`.
