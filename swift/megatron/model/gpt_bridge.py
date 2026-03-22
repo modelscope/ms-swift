@@ -1442,7 +1442,8 @@ class GPTBridge:
                 self._set_state_dict(mg_attn, 'linear_kv_up_proj.layer_norm_weight', hf_state_dict,
                                      'kv_a_layernorm.weight', to_mcore)
         if self.config.experimental_attention_variant == 'dsa':
-            hf_state_dict.update(self._set_indexer(mg_attn.core_attention.indexer, hf_state_dict, 'indexer.', to_mcore))
+            indexer = None if mg_attn is None else mg_attn.core_attention.indexer
+            hf_state_dict.update(self._set_indexer(indexer, hf_state_dict, 'indexer.', to_mcore))
         if to_mcore:
             hf_state_dict = {}
         else:
