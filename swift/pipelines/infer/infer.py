@@ -49,6 +49,7 @@ class SwiftInfer(SwiftPipeline):
 
     @staticmethod
     def get_infer_engine(args: InferArguments, template=None, **extra_kwargs):
+        infer_backend = extra_kwargs.pop('infer_backend', None) or args.infer_backend
         kwargs = {
             'model_id_or_path': args.model,
             'model_type': args.model_type,
@@ -56,7 +57,6 @@ class SwiftInfer(SwiftPipeline):
             'torch_dtype': args.torch_dtype,
             'template': template,
         }
-        infer_backend = kwargs.pop('infer_backend', None) or args.infer_backend
         if infer_backend in {'transformers', 'vllm'}:
             kwargs['reranker_use_activation'] = args.reranker_use_activation
         if infer_backend == 'transformers':
