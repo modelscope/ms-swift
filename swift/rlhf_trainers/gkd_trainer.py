@@ -62,6 +62,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.gkd_logits_topk = kwargs.pop('gkd_logits_topk', None)
         teacher_model_server = kwargs.pop('teacher_model_server', None)
+
+        # Self-distillation: reuse base model as teacher via disable_adapter().
+        teacher_use_disable_adapter = kwargs.pop('teacher_use_disable_adapter', False)
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
         self.lmbda = args.lmbda
@@ -82,6 +85,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
         self.is_teacher_ds3 = None
+        self._teacher_use_disable_adapter = teacher_use_disable_adapter
+        self._is_self_distillation = (teacher_model is None and teacher_model_server is None)
+
         # Initialize teacher model
         if teacher_model is not None:
             if self.is_deepspeed_enabled:
@@ -101,6 +107,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.teacher_model.eval()
             if self.args.offload_teacher_model:
                 self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+        else:
+            self.teacher_model = None
 
         # Initialize rollout infrastructure for vLLM support
         self.prepare_rollout()
@@ -119,6 +127,78 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def _get_data_collator(self, args, template):
         return identity_data_collator
+
+    def _build_opsd_teacher_data(self, inputs):
+        """Build teacher data for OPSD by replacing the last user message with teacher_prompt.
+
+        Returns None if teacher_prompt is not available in all examples.
+        """
+        if not all('teacher_prompt' in data and data['teacher_prompt'] for data in inputs):
+            return None
+        teacher_data = []
+        for data in inputs:
+            teacher_item = {k: v for k, v in data.items() if k != 'teacher_prompt'}
+            messages = [dict(m) for m in data.get('messages', [])]
+            if messages and messages[-1]['role'] == 'assistant':
+                messages.pop()
+            for msg in reversed(messages):
+                if msg['role'] == 'user':
+                    msg['content'] = data['teacher_prompt']
+                    break
+            teacher_item['messages'] = messages
+            teacher_data.append(teacher_item)
+        return teacher_data
+
+    def _compute_jsd_loss(self, outputs_student, outputs_teacher, inputs, opsd_teacher_inputs):
+        if opsd_teacher_inputs is not None:
+            student_shifted = torch.roll(inputs['labels'], shifts=-1, dims=1)
+            teacher_shifted = torch.roll(opsd_teacher_inputs['labels'], shifts=-1, dims=1)
+            student_mask = student_shifted != -100
+            teacher_mask = teacher_shifted != -100
+            assert student_mask.sum() == teacher_mask.sum(), (
+                f'OPSD label count mismatch: student={student_mask.sum().item()}, '
+                f'teacher={teacher_mask.sum().item()}. '
+                'Student and teacher must share the same response tokens.')
+            shifted_student_logits = outputs_student.logits[student_mask][None]
+            shifted_teacher_logits = outputs_teacher.logits[teacher_mask][None]
+            return self.generalized_jsd_loss(
+                student_logits=shifted_student_logits,
+                teacher_logits=shifted_teacher_logits,
+                beta=self.beta,
+                temperature=self.temperature,
+                topk=self.gkd_logits_topk,
+            )
+
+        shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+        if self.gkd_logits_topk is not None:
+            return self.generalized_jsd_loss(
+                student_logits=outputs_student.logits,
+                teacher_logits=outputs_teacher.logits,
+                labels=shifted_labels,
+                beta=self.beta,
+                temperature=self.temperature,
+                topk=self.gkd_logits_topk,
+            )
+
+        mask = shifted_labels != -100
+        shifted_student_logits = outputs_student.logits[mask][None]
+        shifted_teacher_logits = outputs_teacher.logits[mask][None]
+
+        stu_dim = shifted_student_logits.shape[-1]
+        tea_dim = shifted_teacher_logits.shape[-1]
+        if stu_dim < tea_dim:
+            shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
+            shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
+        elif stu_dim > tea_dim:
+            shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
+            shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
+
+        return self.generalized_jsd_loss(
+            student_logits=shifted_student_logits,
+            teacher_logits=shifted_teacher_logits,
+            beta=self.beta,
+            temperature=self.temperature,
+        )
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
@@ -167,8 +247,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Get teacher logprobs from API if available (set in training_step)
         teacher_api_logprobs = inputs.pop('_teacher_api_logprobs', None)
         teacher_api_indices = inputs.pop('_teacher_api_indices', None)
+        opsd_teacher_inputs = inputs.pop('_opsd_teacher_inputs', None)
 
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
+
+        if opsd_teacher_inputs is not None:
+            teacher_fwd_inputs = {k: v for k, v in model_inputs.items()}
+            teacher_fwd_inputs.update({k: v for k, v in opsd_teacher_inputs.items() if k != 'labels'})
+        else:
+            teacher_fwd_inputs = None
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(True)
         if use_logits_to_keep and not self.use_liger_gkd_loss:
@@ -275,56 +362,48 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
+        elif self._is_self_distillation:
+            # OPSD / Self-distillation: single model as both teacher and student.
+            # Dynamic mode: teacher = current student weights (no adapter context)
+            # Fixed mode: teacher = base model (via disable_adapter() for LoRA)
+            if self.args.sft_alpha > 0:
+                model_inputs['labels'] = inputs['labels']
+            outputs_student = model(**model_inputs)
+
+            t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
+                k: v
+                for k, v in model_inputs.items() if k != 'labels'
+            }
+
+            adapter_ctx = (
+                self.accelerator.unwrap_model(model).disable_adapter()
+                if self._teacher_use_disable_adapter else nullcontext())
+            with torch.no_grad(), adapter_ctx, \
+                    disable_gradient_checkpointing(model, self.args.gradient_checkpointing_kwargs):
+                outputs_teacher = model(**t_fwd)
+
+            loss = self._compute_jsd_loss(outputs_student, outputs_teacher, inputs, opsd_teacher_inputs)
+
+            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
+                loss = loss + self.args.sft_alpha * outputs_student.loss
         else:
             # Standard loss computation (local teacher model)
             if self.args.sft_alpha > 0:
                 model_inputs['labels'] = inputs['labels']
-            # compute student output
             outputs_student = model(**model_inputs)
 
-            model_inputs.pop('labels', None)
+            t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
+                k: v
+                for k, v in model_inputs.items() if k != 'labels'
+            }
+
             load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
             with torch.no_grad(), load_context, disable_gradient_checkpointing(self.teacher_model,
                                                                                self.args.gradient_checkpointing_kwargs):
-                outputs_teacher = self.teacher_model(**model_inputs)
+                outputs_teacher = self.teacher_model(**t_fwd)
 
-            shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+            loss = self._compute_jsd_loss(outputs_student, outputs_teacher, inputs, opsd_teacher_inputs)
 
-            if self.gkd_logits_topk is not None:
-                # Top-k mode with local teacher
-                loss = self.generalized_jsd_loss(
-                    student_logits=outputs_student.logits,
-                    teacher_logits=outputs_teacher.logits,
-                    labels=shifted_labels,
-                    beta=self.beta,
-                    temperature=self.temperature,
-                    topk=self.gkd_logits_topk,
-                )
-            else:
-                # Full vocabulary mode
-                mask = shifted_labels != -100
-                shifted_student_logits = outputs_student.logits[mask][None]
-                shifted_teacher_logits = outputs_teacher.logits[mask][None]
-
-                # Fix the vocab_size mismatch between Qwen2.5-VL-3B-Instruct and Qwen2.5-VL-7B-Instruct.
-                stu_dim = shifted_student_logits.shape[-1]
-                tea_dim = shifted_teacher_logits.shape[-1]
-                if stu_dim < tea_dim:
-                    shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
-                    shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
-                elif stu_dim > tea_dim:
-                    shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
-                    shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
-
-                # compute loss
-                loss = self.generalized_jsd_loss(
-                    student_logits=shifted_student_logits,
-                    teacher_logits=shifted_teacher_logits,
-                    beta=self.beta,
-                    temperature=self.temperature,
-                )
-
-            # Add SFT loss if enabled (skip for student-generated responses)
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
 
@@ -383,6 +462,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         When use_vllm is enabled, vLLM engine is used for faster generation.
         """
         args = self.args
+
+        # build data if dataset has teacher_prompt column
+        teacher_data = self._build_opsd_teacher_data(inputs)
+
         with profiling_context(self, 'get_completions'):
             if self._get_random_num() <= self.lmbda:
                 # On-policy: student model generates responses
@@ -403,9 +486,21 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     with self._template_context(self.template):
                         # vLLM already generated response, encode full messages
                         encoded_inputs = self._prepare_batch_inputs(generated_inputs, encode_prompt_only=False)
+
+                    # OPSD: encode teacher inputs with vLLM-generated response
+                    if teacher_data is not None:
+                        for i, gen_data in enumerate(generated_inputs):
+                            teacher_data[i]['messages'].append(dict(gen_data['messages'][-1]))
+                            if 'response_token_ids' in gen_data:
+                                teacher_data[i]['response_token_ids'] = gen_data['response_token_ids']
+                            teacher_data[i]['add_eos'] = False
+                        with self._template_context(self.template):
+                            encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
+                                teacher_data, encode_prompt_only=False)
                 else:
                     # Need prompt-only encoding for on-policy generation
                     encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=True)
+                    student_prompt_len = encoded_inputs['input_ids'].shape[1]
                     with unwrap_model_for_generation(
                             model, self.accelerator,
                             gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
@@ -417,6 +512,22 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     encoded_inputs['input_ids'] = new_input_ids
                     encoded_inputs['attention_mask'] = new_attention_mask
                     encoded_inputs['labels'] = new_labels
+
+                    # OPSD: encode teacher prompt and concatenate with generated response
+                    if teacher_data is not None:
+                        teacher_encoded = self._prepare_batch_inputs(teacher_data, encode_prompt_only=True)
+                        t_prompt_len = teacher_encoded['input_ids'].shape[1]
+                        response_ids = new_input_ids[:, student_prompt_len:]
+                        response_mask = new_attention_mask[:, student_prompt_len:]
+                        teacher_full_ids = torch.cat([teacher_encoded['input_ids'], response_ids], dim=1)
+                        teacher_full_mask = torch.cat([teacher_encoded['attention_mask'], response_mask], dim=1)
+                        teacher_labels = torch.full_like(teacher_full_ids, -100)
+                        teacher_labels[:, t_prompt_len:] = new_labels[:, student_prompt_len:]
+                        encoded_inputs['_opsd_teacher_inputs'] = {
+                            'input_ids': teacher_full_ids,
+                            'attention_mask': teacher_full_mask,
+                            'labels': teacher_labels,
+                        }
 
             elif self.seq_kd:
                 # Sequential KD: teacher model generates responses
@@ -446,6 +557,19 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 total_length = self.template.max_length + self.max_completion_length
                 with self._template_context(self.template, max_length=total_length):
                     encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
+
+                # OPSD: encode teacher inputs with dataset response
+                if teacher_data is not None:
+                    for i, data in enumerate(inputs):
+                        messages = data.get('messages', [])
+                        if messages and messages[-1].get('role') == 'assistant':
+                            teacher_data[i]['messages'].append(dict(messages[-1]))
+                            if 'response_token_ids' in data:
+                                teacher_data[i]['response_token_ids'] = data['response_token_ids']
+                            teacher_data[i]['add_eos'] = False
+                    with self._template_context(self.template, max_length=total_length):
+                        encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
+                            teacher_data, encode_prompt_only=False)
 
             # Mark data source for downstream processing (e.g., conditional SFT loss)
             encoded_inputs['_data_source'] = data_source
@@ -702,6 +826,31 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
 
 
+def _build_teacher_session(max_retries=5):
+    """Build a requests.Session with transport-level retry for teacher API calls."""
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    retry_strategy = Retry(
+        total=max_retries,
+        connect=max_retries,
+        read=max_retries,
+        status=3,
+        status_forcelist=[500, 502, 503],
+        backoff_factor=2,
+        allowed_methods=['POST', 'GET'],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session = requests.Session()
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+
+_teacher_session = None
+
+
 def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     """Fetch top-k prompt logprobs from a vLLM-compatible /v1/completions endpoint.
 
@@ -720,10 +869,17 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
         The shift is because prompt_logprobs[0] is always None (first token has no
         conditional probability), so position i in the output corresponds to
         P(token_{i+1} | token_0..token_i), aligning with model logits[i].
+
+    Raises:
+        RuntimeError: If any sequence fails after all retry attempts.
     """
     import logging
-    import requests
     from concurrent.futures import ThreadPoolExecutor
+
+    global _teacher_session
+    if _teacher_session is None:
+        _teacher_session = _build_teacher_session()
+    session = _teacher_session
 
     _logger = logging.getLogger(__name__)
     base_url = base_url.rstrip('/')
@@ -733,7 +889,7 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     global teacher_model_server_model_name
     if teacher_model_server_model_name is None:
         try:
-            resp = requests.get(f'{base_url}/v1/models', timeout=10)
+            resp = session.get(f'{base_url}/v1/models', timeout=10)
             model = resp.json()['data'][0]['id'] if resp.ok else 'default'
         except Exception:
             model = 'default'
@@ -748,6 +904,7 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     out_len = max_seq_len - 1
     logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32)
     indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long)
+    errors = {}
 
     def _fetch_one(batch_idx):
         payload = {
@@ -758,7 +915,7 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
             'prompt_logprobs': topk,
         }
         try:
-            resp = requests.post(url, json=payload, timeout=timeout)
+            resp = session.post(url, json=payload, timeout=timeout)
             resp.raise_for_status()
             prompt_logprobs_list = resp.json()['choices'][0].get('prompt_logprobs', [])
             # Skip position 0 (always None), shift left so pos 1 -> output pos 0
@@ -774,9 +931,16 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
                     indices_out[batch_idx, out_pos, k] = int(tid_str)
                     logprobs_out[batch_idx, out_pos, k] = info['logprob']
         except Exception as e:
+            errors[batch_idx] = e
             _logger.error(f'Failed to get teacher logprobs for sequence {batch_idx}: {e}')
 
     with ThreadPoolExecutor(max_workers=min(batch_size, 8)) as pool:
         list(pool.map(_fetch_one, range(batch_size)))
+
+    if errors:
+        failed = sorted(errors.keys())
+        raise RuntimeError(f'Failed to fetch teacher logprobs for {len(errors)} sequence(s). '
+                           f'Failed indices: {failed}. Last errors: ' + '; '.join(f'seq {i}: {errors[i]}'
+                                                                                  for i in failed[:3]))
 
     return logprobs_out, indices_out

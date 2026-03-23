@@ -26,6 +26,9 @@ class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         assert config.context_parallel_size == 1, 'Qwen3_5 currently does not support context parallel.'
         assert _Qwen3_5MoeGatedDeltaNet is not object, 'please update the `transformers` version.'
+        if config.args.packing:
+            raise ValueError('Please set the environment variable `SWIFT_USE_MCORE_GDN=1` to enable the megatron-core '
+                             'implementation of GatedDeltaNet, which supports packing.')
         _Qwen3_5MoeGatedDeltaNet.__init__(self, config, layer_number)
         self.config = config
         extra_kwargs = _get_extra_te_kwargs(config)

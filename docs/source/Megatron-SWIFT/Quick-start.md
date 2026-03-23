@@ -70,7 +70,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | apex |   |  0.1 | |
 | megatron_core    |   >=0.12,<0.16    | 0.15      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |
-| transformers | >=4.33       | 4.57.6/5.3.0   |                    |
+| transformers | >=4.33       | 4.57.6/5.2.0   |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
 | trl          | >=0.15,<0.29 |       |      RLHF        |
@@ -97,7 +97,7 @@ swift export \
 ```
 
 然后，使用以下脚本进行训练，训练所需显存资源为2*80GiB：
-- 若使用多机训练，建议共享磁盘，并将`--save`指定为相同的路径。
+- 若使用多机训练，建议共享磁盘，并将`--output_dir`指定为相同的路径。
 ```shell
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \

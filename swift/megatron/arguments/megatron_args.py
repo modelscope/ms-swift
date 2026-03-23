@@ -206,11 +206,24 @@ class RLHFMegatronArgumentsMixin:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
         if self.rlhf_type == 'gkd':
-            if self.teacher_model is None and self.teacher_model_server is None:
-                raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set.')
-
             if self.teacher_model is not None and self.teacher_model_server is not None:
                 raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
+
+            # Self-distillation: teacher_model == student model
+            self._teacher_use_disable_adapter = False
+            if self.teacher_model is not None and self.teacher_model == self.model:
+                if self.tuner_type == 'lora':
+                    logger.info(
+                        'LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
+                    self._teacher_use_disable_adapter = True
+                    self.teacher_model = None
+                else:
+                    # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
+                    pass
+
+            # Self-distillation: no teacher_model → dynamic teacher (current student weights)
+            if self.teacher_model is None and self.teacher_model_server is None:
+                logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
 
             # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
             if self.teacher_model_server is not None:
@@ -309,8 +322,7 @@ class RLHFMegatronArgumentsMixin:
 
 @dataclass
 class MegatronTunerMixin:
-    tuner_type: Literal['lora', 'full'] = 'full'
-    train_type: Optional[Literal['lora', 'full']] = None  # compat swift3.x
+    tuner_type: Literal['lora', 'full', 'lora_llm'] = 'full'
     freeze_llm: bool = False
     freeze_vit: bool = True
     freeze_aligner: bool = True
@@ -334,9 +346,6 @@ class MegatronTunerMixin:
     use_rslora: bool = False
 
     def __post_init__(self):
-        if self.train_type is not None:
-            logger.warning('`train_type` is deprecated, please use `tuner_type` instead.')
-            self.tuner_type = self.train_type
         if 0 < self.freeze_parameters_ratio < 1 and self.pipeline_model_parallel_size > 1:
             raise ValueError('`freeze_parameters_ratio` is not supported when `pipeline_model_parallel_size` > 1')
         if self.target_regex:
@@ -565,7 +574,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 if old_value is not None:
                     res[key] = old_value
             res.pop('mcore_adapter', None)
-            if res['tuner_type'] != 'lora':
+            if res['tuner_type'] == 'full':
                 res.pop('mcore_model', None)
         return res
 
@@ -592,7 +601,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def __post_init__(self):
-        if self.tuner_type == 'lora':
+        if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
@@ -664,6 +673,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.eval_steps = self.save_steps
         if self.merge_lora is None:
             self.merge_lora = self.save_safetensors
+        if self.tuner_type == 'lora_llm':
+            if not self.is_multimodal:
+                raise ValueError('`tuner_type="lora_llm"` is only supported for multimodal models.')
+            if not self.merge_lora:
+                raise ValueError('`merge_lora` must be True when using `--tuner_type lora_llm`')
+            if not self.no_save_optim:
+                raise ValueError('`no_save_optim` must be True when using `--tuner_type lora_llm`')
         if self.adapters or self.ref_adapters or self.mcore_adapter or self.mcore_ref_adapter:
             if self.tuner_type == 'full':
                 self.tuner_type = 'lora'
