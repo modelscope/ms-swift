@@ -18,14 +18,14 @@ from dacite import from_dict
 from functools import partial
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
+from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
-from swift.megatron.utils import (RouterReplay, RouterReplayAction, RouterReplayHelper, forward_step_helper,
-                                  get_local_topk_idx_for_current_rank, get_padding_to, get_router_replay_data,
-                                  set_random_seed, set_router_replay_data)
+from swift.megatron.utils import (RouterReplayHelper, forward_step_helper, get_local_topk_idx_for_current_rank,
+                                  get_padding_to, get_router_replay_data, set_random_seed, set_router_replay_data)
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch, profiling_context,

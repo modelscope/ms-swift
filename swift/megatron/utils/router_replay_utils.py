@@ -6,11 +6,12 @@ Utilities for handling router replay functionality in Megatron models.
 import torch
 from megatron.core import mpu
 from megatron.core.tensor_parallel import scatter_to_sequence_parallel_region
+from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
 from megatron.core.transformer.transformer_block import get_num_layers_to_build
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 
 from swift.megatron.trainers.utils import split_cp_inputs
-from swift.megatron.utils import RouterReplay, RouterReplayAction
 from swift.utils.torch_utils import get_current_device
 
 device_name = get_current_device()
@@ -81,7 +82,8 @@ def get_local_topk_idx_for_current_rank(global_topk_idx, tf_config, packed_seq_p
     moe_layer_idx = torch.tensor([
         layer_idx for layer_idx in range(layer_offset, layer_offset + num_layers) if is_moe_layer(tf_config, layer_idx)
     ],
-                                 dtype=torch.long, device=global_topk_idx.device)
+                                 dtype=torch.long,
+                                 device=global_topk_idx.device)
     local_topk_idx = torch.index_select(global_topk_idx, dim=2, index=moe_layer_idx)
     # 2. cp slice
     cp_size = mpu.get_context_parallel_world_size()
@@ -105,8 +107,8 @@ def get_router_replay_data(tf_config, vp_rank=None):
 def set_router_replay_data(layers_topk_idx, tf_config, vp_rank=None):
     # bs, seq_len, layer_num, topk -> layer_num, total_seq_len, topk
     layers_topk_idx_reshape = layers_topk_idx.flatten(0, 1).transpose(0, 1).to(device_name)
-    router_instances_list = RouterReplayHelper.get_micro_batch_router_list(tf_config, vp_rank)
-    offset, _ = get_local_layer_range(tf_config, vp_rank)
+    offset, count = get_local_layer_range(tf_config, vp_rank)
+    router_instances_list = RouterReplay.global_router_replay_instances[offset:offset + count]
     for i, router in enumerate(router_instances_list):
         router.set_target_indices(layers_topk_idx_reshape[i + offset].to(torch.int64))
 
@@ -166,3 +168,33 @@ class RouterReplayHelper:
         router_instances_list = RouterReplayHelper.get_micro_batch_router_list(tf_config, vp_rank)
         return (router_instances_list
                 and router_instances_list[0].router_replay_action == RouterReplayAction.REPLAY_BACKWARD)
+
+
+def apply_router_replay_patch():
+    """
+    Applies the monkey patch for MoE Router Replay functionality.
+    """
+    print('Applying Router Replay Patch...')
+
+    # Patch MoEAlltoAllTokenDispatcher.preprocess to handle router replay
+    # When router replay is enabled, duplicate indices in top_indices can cause
+    # routing_map.sum() < num_tokens * topk, leading to split size mismatch in alltoall.
+    if MoEAlltoAllTokenDispatcher is not None and not hasattr(MoEAlltoAllTokenDispatcher, '_preprocess_patched'):
+        original_preprocess = MoEAlltoAllTokenDispatcher.preprocess
+
+        def patched_preprocess(self, routing_map):
+            """Patched preprocess that handles router replay correctly for alltoall dispatcher."""
+            # Call original preprocess
+            result = original_preprocess(self, routing_map)
+            # Fix num_out_tokens when router replay is enabled
+            if (getattr(self.config, 'moe_enable_routing_replay', False) and not self.drop_and_pad
+                    and self.config.moe_expert_capacity_factor is None
+                    and not (getattr(self.config, 'moe_router_padding_for_quantization', None)
+                             or getattr(self.config, 'moe_router_padding_for_fp8', None))):
+                # With router replay, duplicate indices can reduce the actual routed
+                # token count, so derive it from the routing map instead.
+                self.num_out_tokens = int(routing_map.sum().item())
+            return result
+
+        MoEAlltoAllTokenDispatcher.preprocess = patched_preprocess
+        MoEAlltoAllTokenDispatcher._preprocess_patched = True

@@ -17,6 +17,7 @@ from megatron.core.optimizer import OptimizerConfig, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
+from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from modelscope import check_local_model_is_latest
 from packaging import version
@@ -27,12 +28,13 @@ from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.tuners import LoraParallelLinear
-from swift.megatron.utils import (
-    RouterReplay, RouterReplayAction, apply_router_replay_patch, copy_original_module_weight, disable_forward_pre_hook,
-    enable_forward_pre_hook, get_optimizer_param_scheduler, get_padding_to, init_persistent_async_worker,
-    initialize_tp_communicators, load_mcore_checkpoint, logical_and_across_model_parallel_group,
-    maybe_finalize_async_save, prepare_mcore_model, reduce_max_stat_across_model_parallel_group, save_mcore_checkpoint,
-    should_disable_forward_pre_hook, warmup_jit_function, wrap_model)
+from swift.megatron.utils import (apply_router_replay_patch, copy_original_module_weight, disable_forward_pre_hook,
+                                  enable_forward_pre_hook, get_optimizer_param_scheduler, get_padding_to,
+                                  init_persistent_async_worker, initialize_tp_communicators, load_mcore_checkpoint,
+                                  logical_and_across_model_parallel_group, maybe_finalize_async_save,
+                                  prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
+                                  save_mcore_checkpoint, should_disable_forward_pre_hook, warmup_jit_function,
+                                  wrap_model)
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
@@ -52,9 +54,11 @@ logger = get_logger()
 class BaseMegatronTrainer(ABC):
 
     def __init__(self, args, template: Template):
-        # patch routing_replay
+        # validate mcore version and patch routing_replay
         self.enable_routing_replay = args.router_replay_mode != 'disabled'
         if self.enable_routing_replay:
+            assert version.parse(megatron.core.__version__) >= version.parse('0.16.0'), \
+                'The routing replay is not supported. Please upgrade megatron-core to 0.16.0 or higher'
             apply_router_replay_patch()
 
         self.args = args

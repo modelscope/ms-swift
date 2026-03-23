@@ -9,7 +9,6 @@ from .megatron_lm_utils import (disable_forward_pre_hook, enable_forward_pre_hoo
 from .parallel_utils import (logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group,
                              split_cp_inputs)
 from .patcher import patch_merge_fn, patch_torch_dist_shard
-from .router_replay_patch import RouterReplay, RouterReplayAction, apply_router_replay_patch
 from .router_replay_utils import *
 from .utils import (copy_original_module_weight, forward_step_helper, get_local_layer_specs, get_padding_to,
                     prepare_mcore_model, tuners_sharded_state_dict)
