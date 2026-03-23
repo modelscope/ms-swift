@@ -176,8 +176,6 @@ class MegatronModelConfig(TransformerConfig):
                                             'none'] = 'aux_loss'
     moe_shared_expert_gate: bool = False
 
-    moe_enable_routing_replay: bool = False
-
     # mla
     multi_latent_attention: bool = False
     q_lora_rank: Optional[int] = None
