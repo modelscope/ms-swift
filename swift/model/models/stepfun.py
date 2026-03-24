@@ -133,6 +133,8 @@ register_model(
 class Step3VLLoader(ModelLoader):
 
     def get_config(self, model_dir: str) -> PretrainedConfig:
+        if self.attn_impl is None and self.model_kwargs.get('device_map') == 'mps':
+            self.attn_impl = 'eager'
         config = super().get_config(model_dir)
         config.vocab_size = config.text_config.vocab_size
         return config

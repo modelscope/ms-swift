@@ -1055,6 +1055,13 @@ class Qwen3VLLoader(Qwen2VLLoader):
         require_version('qwen_vl_utils>=0.0.14')
         compat_qwen_vl_utils(image_patch_size=16)
 
+    def get_config(self, model_dir: str):
+        # torch SDPA on MPS currently mis-handles Qwen3-VL GQA during generation.
+        if self.attn_impl is None and self.model_kwargs.get('device_map') == 'mps':
+            self.attn_impl = 'eager'
+            logger.info('Setting attn_impl=eager for Qwen3-VL on MPS.')
+        return super().get_config(model_dir)
+
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen3VLForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen3VLForConditionalGeneration
