@@ -1,12 +1,12 @@
 nnodes=2
 nproc_per_node=4
 
-export CUDA_VISIBLE_DEVICES=0,1,2,3 \
-export NNODES=$nnodes \
-export NODE_RANK=1 \
-export MASTER_ADDR=xxx.xxx.xxx.xxx \
-export MASTER_PORT=29500 \
-export NPROC_PER_NODE=$nproc_per_node \
+export CUDA_VISIBLE_DEVICES=0,1,2,3 
+export NNODES=$nnodes 
+export NODE_RANK=1 
+export MASTER_ADDR=xxx.xxx.xxx.xxx 
+export MASTER_PORT=29500 
+export NPROC_PER_NODE=$nproc_per_node
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
     --tuner_type full \
