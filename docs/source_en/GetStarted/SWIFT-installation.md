@@ -143,7 +143,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.19 |                     |                                           |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.29 | 0.28.0              | RLHF                                      |
+| trl          | >=0.15,<0.30 | 0.28.0              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.18.8              | Training                                  |
 | vllm         | >=0.5.1      | 0.11.0/0.17.1       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
