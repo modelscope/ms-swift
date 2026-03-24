@@ -355,13 +355,7 @@ $
 
 参考[issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851)
 
-**6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
-
-当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据（`split_dataset_ratio`的默认值为0.）
-
-通过设置`--split_dataset_ratio 0` 来取消验证过程
-
-**7. 如何设置训练的 `mini-batch size`**
+**6. 如何设置训练的 `mini-batch size`**
 
 在 GRPO 训练中，我们可以通过以下两种方式配置 mini-batch 更新：
 - 设置 `generation_batch_size` 为训练 global batch size (effective_batch_size) 的整数倍
@@ -371,14 +365,14 @@ $
 - 当配置：
 steps_per_generation = 16, gradient_accumulation_steps = 8, mini_batch_size = steps_per_generation / gradient_accumulation_steps = 2. 则 1 次 rollout 结果将拆分成 2 批 mini-batch 进行更新。
 
-**8. swift deploy 与 swift rollout 的区别**
+**7. swift deploy 与 swift rollout 的区别**
 
 - swift deploy 主要用于模型的部署和推理，支持 PT、vLLM、SGLang 等多种引擎，兼容流式推理与 OpenAI API 的调用格式。
 
 - swift rollout 则专注于 GRPO 推理加速，目前仅支持 vLLM 引擎，并内置了权重自动同步的功能。
 
 
-**9. 如何取消 KL 项损失**
+**8. 如何取消 KL 项损失**
 
 将参数设置为 `--beta 0`，即可关闭 KL 损失的计算，并且不会加载参考模型（ref model）。
 

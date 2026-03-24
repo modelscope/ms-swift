@@ -357,13 +357,7 @@ The algorithm becomes off-policy (near-on-policy) under the following parameter 
 
 Refer to [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-2646297851).
 
-**6. Why is there a validation process even when `val_dataset` is not set, and how can I disable it?**
-
-When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset (the default value of `split_dataset_ratio` is 0).
-
-To disable the validation process, set `--split_dataset_ratio 0`.
-
-**7. How to set the training `mini-batch size`**
+**6. How to set the training `mini-batch size`**
 
 In GRPO training, we can configure mini-batch updates in the following two ways:
 
@@ -374,13 +368,13 @@ Typical configuration example:
 - When configured with:
 steps_per_generation = 16, gradient_accumulation_steps = 8, mini_batch_size = steps_per_generation / gradient_accumulation_steps = 2. The results from 1 rollout will be split into 2 mini-batch updates.
 
-**8. Difference between swift deploy and swift rollout**
+**7. Difference between swift deploy and swift rollout**
 
 - swift deploy is primarily used for model deployment and inference. It supports various engines such as PT, vLLM, and SGLang, and is compatible with streaming inference as well as the OpenAI API format.
 
 - swift rollout, on the other hand, is dedicated to GRPO rollout acceleration. Currently, it only supports the vLLM engine and comes with built-in automatic weight synchronization.
 
-**9. How to disable the KL loss term**
+**8. How to disable the KL loss term**
 
 Set the parameter `--beta 0` to disable KL loss calculation. The reference model (ref model) will not be loaded in this case.
 
