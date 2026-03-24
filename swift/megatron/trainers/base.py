@@ -197,19 +197,17 @@ class BaseMegatronTrainer(ABC):
         if args.optimizer == 'adam' or 'muon' in args.optimizer:
             # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
             # So for now we keep using adam config that's back compat with old way
-            kwargs = {}
-            for f in dataclasses.fields(AdamOptimizerConfig):
-                if hasattr(args, f.name) and f.name != 'loss_scale':
-                    kwargs[f.name] = getattr(args, f.name)
-            config = AdamOptimizerConfig(**kwargs)
+            config_cls = AdamOptimizerConfig
         elif args.optimizer == 'sgd':
-            kwargs = {}
-            for f in dataclasses.fields(SGDOptimizerConfig):
-                if hasattr(args, f.name) and f.name != 'loss_scale':
-                    kwargs[f.name] = getattr(args, f.name)
-            config = SGDOptimizerConfig(**kwargs)
+            config_cls = SGDOptimizerConfig
         else:
-            raise ValueError('Invalid optimizer type!')
+            raise ValueError(f'Invalid optimizer type: {args.optimizer}')
+
+        kwargs = {
+            f.name: getattr(args, f.name)
+            for f in dataclasses.fields(config_cls) if hasattr(args, f.name) and f.name != 'loss_scale'
+        }
+        config = config_cls(**kwargs)
 
         if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
             param_groups_context = self._patch_get_param_groups()
