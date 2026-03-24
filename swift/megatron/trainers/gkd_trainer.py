@@ -348,7 +348,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         rollout_src = torch.distributed.get_global_rank(rollout_group, 0)
 
         for encoded_batch in encoded_batches:
-            input_ids = encoded_batch['input_ids']
+            opsd_batch = encoded_batch.get('opsd_teacher_batch')
+            source = opsd_batch if opsd_batch is not None else encoded_batch
+            input_ids = source['input_ids']
             device = input_ids.device
 
             if rollout_rank == 0:
@@ -370,7 +372,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             encoded_batch['teacher_api_indices'] = teacher_indices
             encoded_batch['teacher_logits'] = None
 
-            opsd_batch = encoded_batch.get('opsd_teacher_batch')
             if opsd_batch is not None:
                 encoded_batch['opsd_teacher_labels'] = opsd_batch.get('labels')
 
