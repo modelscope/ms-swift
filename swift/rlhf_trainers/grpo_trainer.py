@@ -1264,7 +1264,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_pos_mask = pos_mask[valid_mask]
                 batch_neg_mask = neg_mask[valid_mask]
 
-                scaled_scores = batch_scores / 0.5
+                scaled_scores = batch_scores / self.real_tau
                 zeros = torch.zeros(batch_scores.size(0), 1, device=batch_scores.device, dtype=batch_scores.dtype)
 
                 # Negative Loss: log(1 + sum(e^{S_neg}))
@@ -1276,6 +1276,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 pos_loss = torch.logsumexp(torch.cat([pos_input, zeros], dim=1), dim=1)
 
                 loss = (neg_loss + pos_loss).sum() / group_rewards.size(0)
+
+            if self.beta != 0.0:
+                kl_loss = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+                loss = loss + kl_loss * self.beta
         elif self.loss_type in ['cispo', 'dapo']:
             # CISPO and DAPO: Normalize by total completion tokens across all processes
             normalizer = inputs['num_items_in_batch'] / self.accelerator.num_processes
@@ -2218,6 +2222,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # SAPO, https://arxiv.org/abs/2511.20347
         self.tau_pos = args.tau_pos
         self.tau_neg = args.tau_neg
+
+        # REAL, https://arxiv.org/abs/2602.05630
+        self.real_tau = args.real_tau
 
         # RLOO,
         self.advantage_estimator = args.advantage_estimator
