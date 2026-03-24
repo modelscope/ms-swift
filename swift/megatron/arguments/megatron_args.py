@@ -726,7 +726,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         # Code borrowed from NVIDIA/Megatron-LM
         if 'muon' in self.optimizer:
             if not mcore_016:
-                raise ValueError('Muon optimizer requires megatron-core >= 0.16.')
+                raise ValueError('Muon optimizer requires "megatron-core>=0.16".')
 
             if self.optimizer == 'muon':
                 assert not self.overlap_grad_reduce, (
