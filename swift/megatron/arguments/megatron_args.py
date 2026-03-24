@@ -18,6 +18,7 @@ from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
 mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
+mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 logger = get_logger()
 
 
@@ -724,6 +725,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     def _check_muon(self):
         # Code borrowed from NVIDIA/Megatron-LM
         if 'muon' in self.optimizer:
+            if not mcore_016:
+                raise ValueError('Muon optimizer requires megatron-core >= 0.16.')
 
             if self.optimizer == 'muon':
                 assert not self.overlap_grad_reduce, (
