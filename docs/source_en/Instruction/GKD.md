@@ -240,8 +240,6 @@ Since the sampling process significantly slows down training speed, you can refe
 
 ### Solution 1: Student Model Sampling Acceleration
 
-**Requirement**: swift >= 3.10.dev
-
 Use vLLM as the inference backend to accelerate student model sampling. Supports two deployment modes, consistent with GRPO. Refer to [GRPO documentation](./GRPO/GetStarted/GRPO.md#cluster-support)
 
 > **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses Transformers. Pre-sampling scheme is recommended.

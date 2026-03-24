@@ -1,7 +1,5 @@
 # GRPO
 
-GRPOTrainer在ms-swift3.5进行了代码重构，如果你使用的swift版本<3.5, 请参考[stable文档](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md)
-
 [GRPO(Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) 算法利用组内相对优势计算来替代 PPO 算法中独立的价值模型，并直接在损失函数中加入 KL 散度惩罚来提高训练稳定性。
 
 ## 算法原理
@@ -204,7 +202,7 @@ swift rollout \
 --vllm_server_timeout <超时时间> \
 ```
 #### 权重同步加速
-swift 3.10 优化了权重同步，设置以下参数可以进一步优化 LoRA 训练的权重同步速度。
+设置以下参数可以进一步优化 LoRA 训练的权重同步速度。
 
 ```bash
 # rollout(server mode)
@@ -258,7 +256,7 @@ swift rlhf \
 如果设置了`top_entropy_quantile`参数<1.0, 则会记录entropy threshold的值
 - entropy/threshold: 分位点处的 entropy 值，小于该值的 token 将不会被计算 loss
 
-训推一致性指标，前缀为rollout_correction (ms-swift>=3.11)，需设置`log_rollout_offpolicy_metrics=true`或`rollout_importance_sampling_mode`：
+训推一致性指标，前缀为rollout_correction，需设置`log_rollout_offpolicy_metrics=true`或`rollout_importance_sampling_mode`：
 - `kl` / `k3_kl`：训练策略与 rollout 策略之间的 KL 散度（直接估计器 / K3 估计器）
 - `training_ppl` / `rollout_ppl`：训练策略和 rollout 策略的困惑度
 - `log_ppl_diff`：log PPL 差异，反映分布偏移程度
@@ -359,7 +357,7 @@ $
 
 **6. 为什么没有设置val_dataset，仍然有验证过程，如何取消**
 
-当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据（在"ms-swift>=3.6"中，`split_dataset_ratio`的默认值将从0.01修改为0.）
+当没有显式传入`val_dataset`时，参数`split_dataset_ratio`负责切分部分`dataset`为验证数据集，默认切分1%数据（`split_dataset_ratio`的默认值为0.）
 
 通过设置`--split_dataset_ratio 0` 来取消验证过程
 

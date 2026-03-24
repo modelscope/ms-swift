@@ -1,7 +1,5 @@
 # GYM环境训练
 
-**注意** GYM环境训练逻辑已在 ms-swift 3.8 中进行重构，如果您的 ms-swift 版本低于该版本，请参考对应版本的文档。
-
 ## Gym接口
 
 GYM源自于[OpenAI Gym](https://github.com/openai/gym)，是一个抽象的强化学习环境接口，基于现在Model as Agent的趋势，我们在swift中定义了类似的一个接口,为Agent提供端到端的强化学习训练。

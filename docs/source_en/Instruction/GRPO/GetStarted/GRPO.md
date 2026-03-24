@@ -1,7 +1,5 @@
 # GRPO
 
-GRPOTrainer underwent a code refactoring in ms-swift3.5. If you are using a swift version < 3.5, please refer to the [stable documentation](https://github.com/modelscope/ms-swift/blob/v3.4.1/docs/source/Instruction/GRPO.md).
-
 [GRPO (Group Relative Policy Optimization)](https://arxiv.org/abs/2402.03300) leverages intra-group relative advantage calculations to replace the independent value model in the PPO algorithm and directly incorporates KL divergence penalties into the loss function to improve training stability.
 
 ## Algorithm Overview
@@ -204,7 +202,7 @@ To configure the external vLLM server during training, use the following paramet
 ```
 
 #### Weight-Sync Acceleration
-Swift 3.10 optimizes weight synchronization, and setting the following parameters can further improve the weight synchronization speed for LoRA training:
+Setting the following parameters can further improve the weight synchronization speed for LoRA training:
 
 ```bash
 # rollout(server mode)
@@ -256,7 +254,7 @@ If the `log_entropy` parameter is set, additional entropy-related metrics will b
 If `top_entropy_quantile` is set to a value smaller than 1.0, the entropy threshold value will also be recorded:
 - entropy/threshold: Tokens with entropy below this value will be excluded from the loss calculation.
 
-Training-inference consistency metrics, prefixed with rollout_correction (ms-swift>=3.11), requires setting `log_rollout_offpolicy_metrics=true` or `rollout_importance_sampling_mode`:
+Training-inference consistency metrics, prefixed with rollout_correction, requires setting `log_rollout_offpolicy_metrics=true` or `rollout_importance_sampling_mode`:
 - `kl` / `k3_kl`: KL divergence between training policy and rollout policy (direct estimator / K3 estimator)
 - `training_ppl` / `rollout_ppl`: Perplexity of training policy and rollout policy
 - `log_ppl_diff`: Log PPL difference, reflects the degree of distribution shift
@@ -361,7 +359,7 @@ Refer to [issue](https://github.com/huggingface/open-r1/issues/239#issuecomment-
 
 **6. Why is there a validation process even when `val_dataset` is not set, and how can I disable it?**
 
-When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset, which defaults to splitting 1% of the data. (In "ms-swift>=3.6", the default value of split_dataset_ratio will be changed from 0.01 to 0.)
+When `val_dataset` is not explicitly passed, the `split_dataset_ratio` parameter is responsible for splitting part of the `dataset` into a validation dataset (the default value of `split_dataset_ratio` is 0).
 
 To disable the validation process, set `--split_dataset_ratio 0`.
 
