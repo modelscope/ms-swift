@@ -215,6 +215,41 @@ class TransformersEngine(InferEngine):
         for logprobs, new_logprobs in zip(batched_logprobs, new_batched_logprobs):
             logprobs += new_logprobs
 
+    @staticmethod
+    def _extract_reasoning_content(response: str) -> tuple[Optional[str], str]:
+        if '<think>' not in response:
+            return None, response
+        _, suffix = response.split('<think>', 1)
+        if '</think>' not in suffix:
+            return suffix.lstrip('\n'), ''
+        reasoning_content, content = suffix.split('</think>', 1)
+        return reasoning_content.lstrip('\n'), content.lstrip('\n')
+
+    @classmethod
+    def _extract_reasoning_delta(cls, previous_text: str, current_text: str) -> tuple[Optional[str], Optional[str]]:
+        previous_reasoning, previous_content = cls._extract_reasoning_content(previous_text)
+        current_reasoning, current_content = cls._extract_reasoning_content(current_text)
+
+        delta_reasoning_content = None
+        if current_reasoning is not None:
+            previous_reasoning = previous_reasoning or ''
+            if current_reasoning.startswith(previous_reasoning):
+                delta_reasoning_content = current_reasoning[len(previous_reasoning):]
+            else:
+                delta_reasoning_content = current_reasoning
+            if not delta_reasoning_content:
+                delta_reasoning_content = None
+
+        delta_content = None
+        if current_content:
+            if current_content.startswith(previous_content):
+                delta_content = current_content[len(previous_content):]
+            else:
+                delta_content = current_content
+            if not delta_content:
+                delta_content = None
+        return delta_reasoning_content, delta_content
+
     def _infer_stream(self, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
                       adapter_request: Optional[AdapterRequest], request_config: RequestConfig,
                       **kwargs) -> Iterator[List[Optional[ChatCompletionStreamResponse]]]:
@@ -251,6 +286,7 @@ class TransformersEngine(InferEngine):
         infer_streamers = [InferStreamer(self.template) for _ in range(batch_size)]
         request_id_list = [f'chatcmpl-{random_uuid()}' for _ in range(batch_size)]
         token_idxs = [0] * batch_size
+        response_texts = [''] * batch_size
 
         raw_batched_generate_ids = None  # or torch.Tensor: [batch_size, seq_len]
         batched_logprobs = [[] for _ in range(batch_size)]
@@ -295,17 +331,30 @@ class TransformersEngine(InferEngine):
                 logprobs = self._get_logprobs(logprobs_list, generate_ids[token_idxs[i]:], request_config.top_logprobs)
                 token_idxs[i] = len(generate_ids)
 
+                previous_text = response_texts[i]
+                response_texts[i] = previous_text + (delta_text or '')
+                delta_reasoning_content, delta_content = self._extract_reasoning_delta(previous_text, response_texts[i])
+                if not delta_content and not delta_reasoning_content and not is_finished[i]:
+                    res.append(None)
+                    continue
+
                 usage_info = self._get_usage_info(num_prompt_tokens, len(generate_ids))
                 toolcall = None
                 if is_finished[i]:
-                    toolcall = self._get_toolcall(self.template.decode(generate_ids))
+                    response = self.template.decode(generate_ids)
+                    _, content = self._extract_reasoning_content(response)
+                    toolcall = self._get_toolcall(content or response)
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
                                                         is_finished[i])
 
                 choices = [
                     ChatCompletionResponseStreamChoice(
                         index=0,
-                        delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
+                        delta=DeltaMessage(
+                            role='assistant',
+                            content=delta_content,
+                            reasoning_content=delta_reasoning_content,
+                            tool_calls=toolcall),
                         finish_reason=finish_reason,
                         logprobs=logprobs)
                 ]
@@ -423,13 +472,18 @@ class TransformersEngine(InferEngine):
                 logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
                 response = self.template.decode(generate_ids, template_inputs=template_inputs[i])
+                reasoning_content, content = self._extract_reasoning_content(response)
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
-                toolcall = self._get_toolcall(response)
+                toolcall = self._get_toolcall(content or response)
                 token_ids = generate_ids if request_config.return_details else None
                 choices.append(
                     ChatCompletionResponseChoice(
                         index=j,
-                        message=ChatMessage(role='assistant', content=response, tool_calls=toolcall),
+                        message=ChatMessage(
+                            role='assistant',
+                            content=content,
+                            reasoning_content=reasoning_content,
+                            tool_calls=toolcall),
                         finish_reason=finish_reason,
                         logprobs=logprobs,
                         token_ids=token_ids))
