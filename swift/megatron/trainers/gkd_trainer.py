@@ -684,8 +684,10 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
             args = self.args
             logits_sbv = student_logits.transpose(0, 1).contiguous()
-            per_token_loss = self.unwrapped_models[0].compute_language_model_loss(labels, logits_sbv)
-
+            model = self.unwrapped_models[0]
+            if hasattr(model, 'language_model'):
+                model = model.language_model
+            per_token_loss = model.compute_language_model_loss(labels, logits_sbv)
             loss_mask = labels != -100
             sft_loss_sum = (per_token_loss * loss_mask).sum()
             sft_loss_count = loss_mask.sum().float()
