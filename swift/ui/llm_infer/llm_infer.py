@@ -44,6 +44,16 @@ class LLMInfer(BaseUI):
                 'en': 'Port'
             },
         },
+        'api_key': {
+            'label': {
+                'zh': '接口token',
+                'en': 'API key'
+            },
+            'info': {
+                'zh': '部署服务使用的API key，聊天时会自动复用',
+                'en': 'API key used by the deployed service and reused for chat requests'
+            }
+        },
         'llm_infer': {
             'label': {
                 'zh': 'LLM推理',
@@ -140,6 +150,7 @@ class LLMInfer(BaseUI):
                         scale=8)
                     infer_model_type = gr.Textbox(elem_id='infer_model_type', scale=4)
                     gr.Textbox(elem_id='port', lines=1, value='8000', scale=4)
+                    gr.Textbox(elem_id='api_key', lines=1, scale=6)
                 chatbot = gr.Chatbot(elem_id='chatbot', elem_classes='control-height')
                 with gr.Row(equal_height=True):
                     prompt = gr.Textbox(elem_id='prompt', lines=1, interactive=True)
@@ -388,12 +399,16 @@ class LLMInfer(BaseUI):
             infer_request.messages[-1]['content'] = infer_request.messages[-1]['content'] + prompt
 
         _, args = Runtime.parse_info_from_cmdline(running_task)
+        if 'port' not in args:
+            raise gr.Error('Please select a valid running deployment first.')
         request_config = RequestConfig(
             temperature=temperature, top_k=top_k, top_p=top_p, repetition_penalty=repetition_penalty)
         request_config.stream = True
         request_config.stop = ['Observation:']
         request_config.max_tokens = max_new_tokens
         stream_resp_with_history = ''
+        stream_reasoning_content = ''
+        stream_response_content = ''
         response = ''
         i = len(infer_request.messages) - 1
         for i in range(len(infer_request.messages) - 1, -1, -1):
@@ -412,14 +427,29 @@ class LLMInfer(BaseUI):
         if infer_model_type:
             model_kwargs = {'model': infer_model_type}
         gen_list = InferClient(
-            port=args['port'], ).infer(
+            port=args['port'],
+            api_key=args.get('api_key', 'EMPTY'),
+        ).infer(
                 infer_requests=[_infer_request], request_config=request_config, **model_kwargs)
         if infer_request.messages[-1]['role'] != 'assistant':
             infer_request.messages.append({'role': 'assistant', 'content': ''})
         for chunk in gen_list[0]:
             if chunk is None:
                 continue
-            stream_resp_with_history += chunk.choices[0].delta.content if chat else chunk.choices[0].text
+            if chat:
+                delta = chunk.choices[0].delta
+                if delta.reasoning_content:
+                    stream_reasoning_content += delta.reasoning_content
+                if delta.content:
+                    stream_response_content += delta.content
+                if stream_reasoning_content and stream_response_content:
+                    stream_resp_with_history = f'<think>\n{stream_reasoning_content}</think>\n{stream_response_content}'
+                elif stream_reasoning_content:
+                    stream_resp_with_history = f'<think>\n{stream_reasoning_content}'
+                else:
+                    stream_resp_with_history = stream_response_content
+            else:
+                stream_resp_with_history += chunk.choices[0].text
             infer_request.messages[-1]['content'] = stream_resp_with_history
             chatbot_content = cls._replace_tag_with_media(infer_request)
             chatbot_content = cls.parse_text(chatbot_content)

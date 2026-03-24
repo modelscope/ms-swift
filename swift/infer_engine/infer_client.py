@@ -114,8 +114,9 @@ class InferClient(InferEngine):
         data = data.strip()
         if len(data) == 0:
             return
-        assert data.startswith('data:'), f'data: {data}'
-        return data[5:].strip()
+        if data.startswith('data:'):
+            return data[5:].strip()
+        return data
 
     async def infer_async(
         self,
@@ -138,6 +139,15 @@ class InferClient(InferEngine):
             async def _gen_stream() -> AsyncIterator[ChatCompletionStreamResponse]:
                 async with aiohttp.ClientSession() as session:
                     async with session.post(url, json=request_data, **self._get_request_kwargs()) as resp:
+                        if resp.status >= 400 or resp.content_type != 'text/event-stream':
+                            data = await resp.text()
+                            try:
+                                resp_obj = json.loads(data)
+                            except json.JSONDecodeError:
+                                raise HTTPError(data)
+                            if resp_obj.get('object') == 'error':
+                                raise HTTPError(resp_obj['message'])
+                            raise HTTPError(data)
                         async for data in resp.content:
                             data = self._parse_stream_data(data)
                             if data == '[DONE]':

@@ -84,10 +84,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 async for item in await async_iter:
                     queue.put(item)
             except Exception as e:
-                if getattr(self, 'strict', True):
-                    raise
                 queue.put(e)
-            else:
+            finally:
                 queue.put(None)
 
         try:
@@ -103,6 +101,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if output is None or isinstance(output, Exception):
                 prog_bar.update()
                 self._update_metrics(pre_output, metrics)
+                if isinstance(output, Exception) and getattr(self, 'strict', True):
+                    raise output
                 return
             pre_output = output
             yield output
