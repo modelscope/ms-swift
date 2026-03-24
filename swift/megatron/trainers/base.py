@@ -13,8 +13,7 @@ from functools import partial
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
-from megatron.core.optimizer import AdamOptimizerConfig, OptimizerConfig, SGDOptimizerConfig, get_megatron_optimizer
-from megatron.core.optimizer.muon import get_megatron_muon_optimizer
+from megatron.core.optimizer import OptimizerConfig, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
@@ -47,6 +46,8 @@ try:
     from megatron.core.optimizer import param_group_identifier_keys
 except ImportError:
     param_group_identifier_keys = None
+
+mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 
 logger = get_logger()
 
@@ -194,14 +195,18 @@ class BaseMegatronTrainer(ABC):
 
     def get_optimizer_and_scheduler(self):
         args = self.args
-        if args.optimizer == 'adam' or 'muon' in args.optimizer:
-            # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
-            # So for now we keep using adam config that's back compat with old way
-            config_cls = AdamOptimizerConfig
-        elif args.optimizer == 'sgd':
-            config_cls = SGDOptimizerConfig
+        if mcore_016:
+            from megatron.core.optimizer import AdamOptimizerConfig, SGDOptimizerConfig
+            if args.optimizer == 'adam' or 'muon' in args.optimizer:
+                # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
+                # So for now we keep using adam config that's back compat with old way
+                config_cls = AdamOptimizerConfig
+            elif args.optimizer == 'sgd':
+                config_cls = SGDOptimizerConfig
+            else:
+                raise ValueError(f'Invalid optimizer type: {args.optimizer}')
         else:
-            raise ValueError(f'Invalid optimizer type: {args.optimizer}')
+            config_cls = OptimizerConfig
 
         kwargs = {
             f.name: getattr(args, f.name)
@@ -224,6 +229,7 @@ class BaseMegatronTrainer(ABC):
                     self.wrapped_models,
                 )
             else:
+                from megatron.core.optimizer.muon import get_megatron_muon_optimizer
                 optimizer = get_megatron_muon_optimizer(
                     config,
                     self.wrapped_models,
@@ -440,7 +446,6 @@ class BaseMegatronTrainer(ABC):
     @contextmanager
     def _patch_get_param_groups(self):
         from megatron.core import optimizer
-        mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
         _get_param_groups = optimizer._get_param_groups
         if mcore_016:
             optimizer._get_param_groups = self._get_param_groups_mcore_016
