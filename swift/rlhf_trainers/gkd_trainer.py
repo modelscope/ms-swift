@@ -113,14 +113,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Initialize rollout infrastructure for vLLM support
         self.prepare_rollout()
 
-        # Initialize activation offloading context
-        args.activation_offloading = False  # TODO: remove
-        if args.activation_offloading:
-            from trl.models import get_act_offloading_ctx_manager
-            self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
-        else:
-            self.maybe_activation_offload_context = nullcontext()
-
         # Initialize resample data iterator for truncation_strategy 'raise'('delete')
         if self.template.truncation_strategy == 'raise':
             self._prepare_resample_data_iterator()
