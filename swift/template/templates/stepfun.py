@@ -316,6 +316,7 @@ class Step3VLTemplate(Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
+        image_inputs = {}
 
         images = inputs.images
         if images:
