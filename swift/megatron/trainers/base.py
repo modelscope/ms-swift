@@ -13,7 +13,8 @@ from functools import partial
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
-from megatron.core.optimizer import OptimizerConfig, get_megatron_optimizer
+from megatron.core.optimizer import AdamOptimizerConfig, OptimizerConfig, SGDOptimizerConfig, get_megatron_optimizer
+from megatron.core.optimizer.muon import get_megatron_muon_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
@@ -193,17 +194,41 @@ class BaseMegatronTrainer(ABC):
 
     def get_optimizer_and_scheduler(self):
         args = self.args
-        kwargs = {}
-        for f in dataclasses.fields(OptimizerConfig):
-            if hasattr(args, f.name) and f.name != 'loss_scale':
-                kwargs[f.name] = getattr(args, f.name)
-        config = OptimizerConfig(**kwargs)
+        if args.optimizer == 'adam' or 'muon' in args.optimizer:
+            # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
+            # So for now we keep using adam config that's back compat with old way
+            config_cls = AdamOptimizerConfig
+        elif args.optimizer == 'sgd':
+            config_cls = SGDOptimizerConfig
+        else:
+            raise ValueError(f'Invalid optimizer type: {args.optimizer}')
+
+        kwargs = {
+            f.name: getattr(args, f.name)
+            for f in dataclasses.fields(config_cls) if hasattr(args, f.name) and f.name != 'loss_scale'
+        }
+        config = config_cls(**kwargs)
+
         if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
             param_groups_context = self._patch_get_param_groups()
         else:
             param_groups_context = nullcontext()
         with param_groups_context:
-            optimizer = get_megatron_optimizer(config, self.wrapped_models)
+
+            if 'muon' not in config.optimizer:
+                # If the user is asking for a non-zero embedding init std, skip weight decay for embeddings
+                # to avoid embeddings from shrinking to zero as recommended in https://arxiv.org/abs/2312.16903
+                # default_skip_embedding_weight_decay=args.embedding_init_method_std is not None,
+                optimizer = get_megatron_optimizer(
+                    config,
+                    self.wrapped_models,
+                )
+            else:
+                optimizer = get_megatron_muon_optimizer(
+                    config,
+                    self.wrapped_models,
+                    layer_wise_distributed_optimizer='dist' in config.optimizer,
+                )
         opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, opt_param_scheduler
 
