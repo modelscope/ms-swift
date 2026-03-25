@@ -61,11 +61,9 @@ class Internvl3Vit(HuggingFaceModule):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.internvl3,
+        MegatronModelType.internvl_chat,
         [
-            ModelType.internvl3,
-            ModelType.internvl3_5,
-            ModelType.internvl3_5_gpt,
+            ModelType.internvl_chat,
         ],
         bridge_cls=Internvl3Bridge,
         visual_cls=Internvl3Vit,
@@ -131,10 +129,9 @@ class InternvlHfVit(HuggingFaceModule):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.internvl_hf,
+        MegatronModelType.internvl,
         [
-            ModelType.internvl_hf,
-            ModelType.internvl_gpt_hf,
+            ModelType.internvl,
         ],
         bridge_cls=InternvlHfBridge,
         visual_cls=InternvlHfVit,
