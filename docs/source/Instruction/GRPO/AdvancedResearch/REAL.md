@@ -67,10 +67,10 @@ $$
 |-------------------|---------|-------|-------------------|
 | `--loss_type`     | `str`   | -     | 设置为 `real`        |
 | `--scale_rewards` | `str`   | -     | 设置为 `none`，不进行标准化 |
-| `--real_tau`      | `float` | `0.5` | 负向优势的温度参数，控制门控斜率  |
+| `--real_tau`      | `float` | `0.5` | 温度参数，控制决策边界锐度     |
 
 训练脚本参考
 
 [swift](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/internal/rloo.sh)
 
-设置参数时，确保 world_size * per_device_train_batch_size 能够被 num_generations 整除，以此保证单个训练batch中能拿到完整的 group 进行分类。
+设置参数时，确保 per_device_train_batch_size 能够被 num_generations 整除，以此保证单个训练batch中能拿到完整的 group 进行分类。

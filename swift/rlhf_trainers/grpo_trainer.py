@@ -1243,15 +1243,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             batch_size = completion_mask.shape[0]
             loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
         elif self.loss_type == 'real':
-            global_log_ratio = gather(log_ratio)
-            global_completion_mask = gather(completion_mask)
-            global_rewards = gather(advantages)
-
-            global_scores = (global_log_ratio
-                             * global_completion_mask).sum(-1) / global_completion_mask.sum(-1).clamp(min=1.0)
+            global_scores = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
 
             group_scores = global_scores.view(-1, self.num_generations)
-            group_rewards = global_rewards.view(-1, self.num_generations)
+            group_rewards = advantages.view(-1, self.num_generations)
 
             pos_mask = (group_rewards > 0)
             neg_mask = (group_rewards <= 0)
