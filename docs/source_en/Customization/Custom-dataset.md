@@ -67,6 +67,17 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi, how can I help you?", "loss": false}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
 ```
 
+- You can also specify different loss computation strategies for each data row using the row-level `"loss_scale"` field. This field has higher priority than the command-line argument `--loss_scale`. Supported values include: `'default'`, `'last_round'`, `'all'`, and combined strategies like `'last_round+ignore_empty_think'`. This allows different data rows to use different loss strategies flexibly. Example data format:
+
+```jsonl
+# Using last_round strategy: only compute loss for the last round of conversation
+{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi there!"}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2"}], "loss_scale": "last_round"}
+# Using all strategy: compute loss for all tokens (including system and user parts)
+{"messages": [{"role": "system", "content": "You are a math expert"}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2"}], "loss_scale": "all"}
+# Using combined strategy: only compute loss for the last round and ignore empty think tags
+{"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "<think>\n\n</think>\n\nHi there!"}], "loss_scale": "last_round+ignore_empty_think"}
+```
+
 #### Channel Loss
 If you want to use channel loss, you need to set `--enable_channel_loss true` and add a "channel" field to your dataset. Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
 

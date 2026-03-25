@@ -33,9 +33,8 @@
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Default is flash.
   - Some models may not support flash attention; you need to manually set `--attention_backend unfused/fused --padding_free false`, for example: Llama4, GPT-OSS.
   - If `flash_attention_3` is installed, specifying `--attention_backend flash` will prioritize using FA3. Refer to the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3).
-- optimizer: Optimizer type. Options include 'adam', 'sgd', 'muon', and 'dist_muon'. Default is 'adam'.
+- optimizer: Optimizer type, options are 'adam', 'sgd'. Default is adam.
   - Note: This 'adam' is actually 'adamw'. See [here](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70) for reference.
-  - 'muon' and 'dist_muon' require "megatron-core>=0.16".
 - 🔥optimizer_cpu_offload: Offloads optimizer states to the CPU. For example, set: `--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`. Defaults to `False`.
   - This parameter can significantly reduce GPU memory usage (at the cost of increased CPU memory consumption). When the `global_batch_size` is large, its impact on training speed is minimal.
 - 🔥optimizer_offload_fraction: The fraction of the optimizer state to offload to CPU. Default is `1.0`.
@@ -93,18 +92,6 @@
 - adam_beta2: Default is 0.95.
 - adam_eps: Default is 1e-8.
 - sgd_momentum: Takes effect when `--optimizer sgd` is set. Defaults to 0.9.
-
-
-**Muon Parameters**:
-
-- muon_momentum: Momentum factor for the Muon optimizer. Default is 0.9.
-- muon_split_qkv: Whether to split QKV parameters for the Muon optimizer. Default is True.
-- muon_use_nesterov: Whether to use Nesterov-style momentum in the internal SGD. Default is False.
-- muon_scale_mode: Scale mode for the Muon optimizer. Options include 'spectral', 'unit_rms_norm', and 'shape_scaling'. Default is 'spectral'.
-- muon_fp32_matmul_prec: FP32 matrix multiplication precision for Newton-Schulz iteration. Options include 'low', 'medium', and 'high'. Default is 'medium'.
-- muon_num_ns_steps: Number of Newton-Schulz steps for the Muon optimizer. Default is 5.
-- muon_tp_mode: NS calculation method for tensor model parallel weights. Options include 'blockwise', 'duplicated', and 'distributed'. Default is 'blockwise'.
-- muon_extra_scale_factor: Additional scale factor for Muon updates. Default is 1.
 
 **Checkpoint Parameters**:
 
@@ -166,7 +153,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 **Logging Parameters**:
 - report_to: Enabled logging backends. Defaults to `['tensorboard']`. Options are 'tensorboard', 'wandb', and 'swanlab'. Login for 'wandb' and 'swanlab' can use `WANDB_API_KEY` and `SWANLAB_API_KEY` environment variables.
 - 🔥logging_steps: Interval (in steps) for logging. Defaults to 5.
-- tensorboard_dir: Directory where tensorboard logs are written. Defaults to None, which means logs are stored in the `f'{output_dir}/runs'` directory.
+- tensorboard_dir: Directory where tensorboard logs are written. Defaults to None, which means logs are stored in the `f'{save}/runs'` directory.
 - tensorboard_queue_size: Size of the TensorBoard queue for buffering pending events and summaries. When the number of pending items reaches this value, the next call to an "add" method will trigger a flush to disk. The default is 50.
 - wandb_project: Wandb project name. Defaults to 'megatron-swift'.
 - wandb_exp_name: Wandb experiment name. Defaults to the value of `--output_dir`.
@@ -224,8 +211,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 **Tuner Parameters**:
 
-- tuner_type: Options include 'lora', 'full', and 'lora_llm'. Defaults to 'full'.
-  - 'lora_llm' means applying LoRA to the LLM part while using 'full' fine-tuning for the ViT/aligner parts. You can set their respective learning rates using `vit_lr/aligner_lr`.
+- tuner_type: Options are `'lora'` and `'full'`. Default is `'full'`. (**In ms-swift 3.x, the parameter name is `train_type`**)
 - 🔥freeze_llm: This argument only takes effect for multimodal models and can be used in both full-parameter and LoRA training, but with different behaviors. In full-parameter training, setting `freeze_llm=True` freezes the LLM component's weights. In LoRA training with `target_modules=['all-linear']`, setting `freeze_llm=True` prevents LoRA modules from being added to the LLM part. Default is `False`.
 - 🔥freeze_vit: This argument only applies to multimodal models and behaves differently depending on the training mode. In full-parameter training, setting `freeze_vit=True` freezes the ViT (vision transformer) component's weights. In LoRA training with `target_modules=['all-linear']`, setting `freeze_vit=True` prevents LoRA modules from being added to the ViT part. Default is `True`.
   - Note: **Here, "vit" refers not only to `vision_tower`, but also to `audio_tower`**. For Omni models, if you want to apply LoRA only to `vision_tower` and not `audio_tower`, you can modify [this code](https://github.com/modelscope/ms-swift/blob/a5d4c0a2ce0658cef8332d6c0fa619a52afa26ff/swift/llm/model/model_arch.py#L544-L554).
@@ -297,7 +283,7 @@ LoRA Training:
 
 Megatron training parameters are inherited from Megatron parameters and basic parameters (**sharing dataset, template, etc. with ms-swift, and also supporting model-specific parameters from ms-swift**). For details on basic parameters, please refer to [here](../Instruction/Command-line-parameters.md#base-arguments). Additionally, the following parameters are included:
 
-- add_version: Adds a directory `<version>-<timestamp>` to `output_dir` to prevent overwriting weights, default is True.
+- add_version: Adds a directory `<version>-<timestamp>` to `save` to prevent overwriting weights, default is True.
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Use the `padding_free` method to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures that complete sequences are not split), achieving load balancing across nodes and processes during training (preventing long texts from slowing down short text training), thereby improving GPU utilization and maintaining stable memory usage. When using `--attention_backend flash`, it ensures that different sequences within packed samples remain independent and invisible to each other (except for Qwen3-Next, which contains linear-attention). This parameter defaults to `False`. All training tasks in Megatron-SWIFT support this parameter. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation steps and learning rate accordingly**.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
@@ -315,7 +301,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 In addition to inheriting the training parameters, the following parameters are also supported:
 
 - 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', 'rm', and 'gkd' are available.
-- loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
+- loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'. You can also specify different loss computation strategies for each data row using the row-level `"loss_scale"` field, which has higher priority than the command-line argument. Refer to [Custom Dataset documentation](../Customization/Custom-dataset.md#supervised-fine-tuning) for details.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
 
 
@@ -419,10 +405,10 @@ Built-in reward function parameters refer to the [documentation](../Instruction/
 This section introduces the parameters for `megatron export`. To use the `swift export` command for exporting, please refer to the [ms-swift Command Line Parameters Documentation](../Instruction/Command-line-parameters.md#export-arguments). Compared to `swift export`, `megatron export` supports distributed and multi-node exporting. Megatron export parameters inherit from Megatron parameters and basic parameters.
 - 🔥to_mcore: Convert HF format weights to Megatron format. Defaults to False.
 - 🔥to_hf: Convert Megatron format weights to HF format. Defaults to False.
-- 🔥merge_lora: Defaults to None. If `to_hf` is set to True, this parameter defaults to `True`, otherwise False. In other words, by default, LoRA will be merged when saving in safetensors format; when saving in torch_dist format, LoRA will not be merged. The merged weights are stored in the `--output_dir` directory.
+- 🔥merge_lora: Defaults to None. If `to_hf` is set to True, this parameter defaults to `True`, otherwise False. In other words, by default, LoRA will be merged when saving in safetensors format; when saving in torch_dist format, LoRA will not be merged. The merged weights are stored in the `--save` directory.
   - Note: Transformers 5.0 has refactored the model architecture for MoE models. This new structure does not support MoE LoRA inference and may cause inference errors. **It is recommended to merge LoRA weights for MoE models** (vLLM is not affected).
   - Note: The expert structure differs between Transformers and Megatron models. For example, the expert layers in Transformers' Qwen3-VL-MoE are implemented as Parameters rather than Linear layers. As a result, some models cannot convert LoRA delta weights (though Qwen3-VL-MoE supports conversion if LoRA is trained only on linear_proj and linear_qkv). However, most models support LoRA conversion, such as Qwen3-MoE, Qwen3-Omni-MoE, and GLM4.5-V.
 - 🔥test_convert_precision: Test the precision error of HF and Megatron format weight conversion. Defaults to False.
 - test_convert_dtype: The dtype used for conversion precision testing, defaults to 'float32'.
-- exist_ok: If `args.output_dir` exists, do not throw an exception and perform overwriting. Defaults to False.
+- exist_ok: If `args.save` exists, do not throw an exception and perform overwriting. Defaults to False.
 - device_map: Takes effect when `--test_convert_precision true` is set and controls where the HF model is loaded. The default is `'auto'`. You can set it to `'cpu'` to save GPU memory.

@@ -221,6 +221,11 @@ The specific effect of this setting is:
 - Any string matching the regular expression `<think>\\s*</think>\\s*` is assigned a `loss_scale` of 0, meaning no loss is computed for these segments.
 
 
+3. Row-level Setting
+
+You can also specify different loss computation strategies for each data row using the row-level `"loss_scale"` field, which has higher priority than the command-line argument. Supported values include: `'default'`, `'last_round'`, `'all'`, and combined strategies like `'last_round+ignore_empty_think'`, `'default+react'`, etc. Refer to [Custom Dataset documentation](../Customization/Custom-dataset.md#supervised-fine-tuning) for details.
+
+
 Testing loss_scale using code:
 ```python
 from swift import get_processor, get_template

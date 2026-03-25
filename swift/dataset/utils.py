@@ -119,7 +119,11 @@ class EncodePreprocessor(RowPreprocessor):
         self.template = template
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        return self.template.encode(row, return_length=True)
+        encoded = self.template.encode(row, return_length=True)
+        # Preserve loss_scale from data row if present (for per-row loss_scale strategy)
+        if 'loss_scale' in row:
+            encoded['loss_scale'] = row['loss_scale']
+        return encoded
 
 
 class AddLengthPreprocessor(EncodePreprocessor):

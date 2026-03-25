@@ -84,7 +84,7 @@ class CustomLossScale(LossScale):
 例子中，我们更看重数学和重要两个词，因为其loss_scale为2.0。
 
 
-当然我们也需要关注`__call__`方法的核心逻辑，即loss_scale基本策略（base_strategy）all/default/last_round 对loss_scale的影响，具体参考[命令行参数文档](../Instruction/Command-line-parameters.md)的介绍。以及数据集中的'loss'字段对loss_scale的影响，参考[自定义数据集文档](../Customization/Custom-dataset.md)。
+当然我们也需要关注`__call__`方法的核心逻辑，即loss_scale基本策略（base_strategy）all/default/last_round 对loss_scale的影响，具体参考[命令行参数文档](../Instruction/Command-line-parameters.md)的介绍。以及数据集中的'loss'字段和'loss_scale'字段对loss_scale的影响，参考[自定义数据集文档](../Customization/Custom-dataset.md)。其中'loss_scale'字段支持为每行数据指定不同的loss计算策略（如'last_round'、'all'等），优先级高于命令行参数。
 ```python
 if loss or loss is None and (self.base_strategy == 'all' or
                             (self.base_strategy == 'default' and is_assistant) or
