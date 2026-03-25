@@ -290,6 +290,8 @@ register_model(
             ),
         ],
         InternVLLoader,
+        architectures=['InternVLChatModel'],
+        model_arch=ModelArch.internvl,
     ))
 
 
