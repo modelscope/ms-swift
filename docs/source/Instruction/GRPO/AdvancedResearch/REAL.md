@@ -71,6 +71,8 @@ $$
 
 训练脚本参考
 
-[swift](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/internal/rloo.sh)
+[swift](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/internal/real.sh)
+
+## 注意事项
 
 设置参数时，确保 per_device_train_batch_size 能够被 num_generations 整除，以此保证单个训练batch中能拿到完整的 group 进行分类。
