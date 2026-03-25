@@ -84,7 +84,7 @@ $$
 
 Training Script Reference
 
-[swift](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/internal/rloo.sh)
+[swift](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/internal/real.sh)
 
 ## Important Notes
 
