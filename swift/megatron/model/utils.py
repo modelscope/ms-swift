@@ -76,3 +76,11 @@ def get_mcore_model_config(args, processor, hf_config):
     _check_attention_backend(args, config)
     _check_padding_free(args, config)
     return config
+
+
+def get_mcore_model(args, processor, hf_config):
+    from mcore_bridge import get_mcore_model as _get_mcore_model
+    config = get_mcore_model_config(args, processor, hf_config)
+    models = _get_mcore_model(config)
+
+    return models
