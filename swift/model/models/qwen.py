@@ -1200,7 +1200,7 @@ class Qwen2_5OmniLoader(ModelLoader):
     def get_config(self, model_dir):
         from transformers import Qwen2_5OmniConfig
         self._check_qwen_omni_utils()
-        self.autoconfig_class = Qwen2_5OmniConfig
+        self.auto_config_cls = Qwen2_5OmniConfig
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         config = super().get_config(model_dir)
         if enable_audio_output is not None:
@@ -1409,7 +1409,7 @@ class Qwen3OmniLoader(ModelLoader):
     def get_config(self, model_dir: str):
         from transformers import Qwen3OmniMoeConfig
         self._check_qwen_omni_utils()
-        self.autoconfig_class = Qwen3OmniMoeConfig
+        self.auto_config_cls = Qwen3OmniMoeConfig
         config = super().get_config(model_dir)
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         if enable_audio_output is not None:

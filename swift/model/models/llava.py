@@ -16,7 +16,7 @@ class LlavaLlamaHfLoader(ModelLoader):
 
     def get_config(self, model_dir: str):
         from transformers import LlavaConfig
-        self.autoconfig_class = LlavaConfig
+        self.auto_config_cls = LlavaConfig
         return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
