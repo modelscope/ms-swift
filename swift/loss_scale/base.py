@@ -6,6 +6,7 @@ from typing import List, Literal, Optional, Tuple
 from swift.template import ContextType, Messages, get_last_user_round
 from swift.utils import get_logger
 from .utils import calculate_loss_scale
+from .mapping import get_loss_scale
 
 logger = get_logger()
 
@@ -96,7 +97,6 @@ class LossScale:
         row_loss_scale = kwargs.get('loss_scale')
         if row_loss_scale is not None:
             # Use per-row loss_scale with higher priority than global setting
-            from .mapping import get_loss_scale
             try:
                 loss_scale_handler = get_loss_scale(row_loss_scale)
                 # Call the handler without 'loss_scale' in kwargs to avoid infinite recursion
