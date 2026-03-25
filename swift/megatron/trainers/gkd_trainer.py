@@ -666,7 +666,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
 
-        if opsd_teacher_labels is not None and teacher_logits is not None:
+        if opsd_teacher_labels is not None:
             student_mask = labels != -100
             teacher_mask = opsd_teacher_labels != -100
             assert student_mask.sum() == teacher_mask.sum(), (
@@ -674,7 +674,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 f'teacher={teacher_mask.sum().item()}. '
                 'Student and teacher must share the same response tokens.')
             s_logits = student_logits[student_mask][None]
-            t_logits = teacher_logits[teacher_mask][None]
+            if teacher_logits is not None:
+                t_logits = teacher_logits[teacher_mask][None]
+            else:
+                t_logits = None
+            if teacher_api_logprobs is not None:
+                teacher_api_logprobs = teacher_api_logprobs[teacher_mask][None]
+                assert teacher_api_indices is not None
+                teacher_api_indices = teacher_api_indices[teacher_mask][None]
             jsd_loss = self.generalized_jsd_loss(
                 student_logits=s_logits,
                 teacher_logits=t_logits,
