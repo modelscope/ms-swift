@@ -267,7 +267,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             sharpness of the soft gating function. Typically, `tau_neg` is set > `tau_pos` to impose stronger
             constraints on negative dominance. The default value is 1.05.
         real_tau (float): The temperature parameter. REAL induces monotonic and bounded gradient weighting with
-            magnitude upper-bounded by tau. The default value is 0.5.
+            magnitude upper-bounded by 1/tau. The default value is 0.5.
         advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
