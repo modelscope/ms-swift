@@ -278,6 +278,12 @@ def save_mcore_checkpoint(
         mpu.get_data_parallel_group(with_context_parallel=True),
     )
     kwargs = {'content_metadata': sharded_sd_metadata} if mcore_013 else {}
+    if not models:  # save GPU memory
+        common_path = os.path.join(checkpoint_dir, 'common.pt')
+        if is_master():
+            state_dict.update(kwargs)
+            torch.save(state_dict, common_path)
+        return
     async_save_request = dist_checkpointing.save(
         state_dict,
         checkpoint_dir,
@@ -304,8 +310,7 @@ def save_mcore_checkpoint(
             f.write(str(iteration))
 
         def iter_finalize_fn():
-            if models:
-                logger.info(f'Successfully saved Megatron model weights in `{output_dir}`.')
+            logger.info(f'Successfully saved Megatron model weights in `{output_dir}`.')
 
         if args.async_save:
             assert async_save_request is not None
