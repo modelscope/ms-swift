@@ -47,6 +47,8 @@ try:
 except ImportError:
     param_group_identifier_keys = None
 
+mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
+
 logger = get_logger()
 
 
@@ -193,17 +195,46 @@ class BaseMegatronTrainer(ABC):
 
     def get_optimizer_and_scheduler(self):
         args = self.args
-        kwargs = {}
-        for f in dataclasses.fields(OptimizerConfig):
-            if hasattr(args, f.name) and f.name != 'loss_scale':
-                kwargs[f.name] = getattr(args, f.name)
-        config = OptimizerConfig(**kwargs)
+        if mcore_016:
+            from megatron.core.optimizer import AdamOptimizerConfig, SGDOptimizerConfig
+            if args.optimizer == 'adam' or 'muon' in args.optimizer:
+                # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
+                # So for now we keep using adam config that's back compat with old way
+                config_cls = AdamOptimizerConfig
+            elif args.optimizer == 'sgd':
+                config_cls = SGDOptimizerConfig
+            else:
+                raise ValueError(f'Invalid optimizer type: {args.optimizer}')
+        else:
+            config_cls = OptimizerConfig
+
+        kwargs = {
+            f.name: getattr(args, f.name)
+            for f in dataclasses.fields(config_cls) if hasattr(args, f.name) and f.name != 'loss_scale'
+        }
+        config = config_cls(**kwargs)
+
         if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
             param_groups_context = self._patch_get_param_groups()
         else:
             param_groups_context = nullcontext()
         with param_groups_context:
-            optimizer = get_megatron_optimizer(config, self.wrapped_models)
+
+            if 'muon' not in config.optimizer:
+                # If the user is asking for a non-zero embedding init std, skip weight decay for embeddings
+                # to avoid embeddings from shrinking to zero as recommended in https://arxiv.org/abs/2312.16903
+                # default_skip_embedding_weight_decay=args.embedding_init_method_std is not None,
+                optimizer = get_megatron_optimizer(
+                    config,
+                    self.wrapped_models,
+                )
+            else:
+                from megatron.core.optimizer.muon import get_megatron_muon_optimizer
+                optimizer = get_megatron_muon_optimizer(
+                    config,
+                    self.wrapped_models,
+                    layer_wise_distributed_optimizer='dist' in config.optimizer,
+                )
         opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, opt_param_scheduler
 
@@ -415,7 +446,6 @@ class BaseMegatronTrainer(ABC):
     @contextmanager
     def _patch_get_param_groups(self):
         from megatron.core import optimizer
-        mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
         _get_param_groups = optimizer._get_param_groups
         if mcore_016:
             optimizer._get_param_groups = self._get_param_groups_mcore_016
@@ -431,7 +461,7 @@ class BaseMegatronTrainer(ABC):
         ckpt_dir = None
         if args.tuner_type == 'full':
             ckpt_dir = args.model
-        elif args.tuner_type == 'lora':
+        else:
             ckpt_dir = args.adapters[0] if args.adapters else args.model
         if ckpt_dir is None:
             return 0
@@ -699,7 +729,7 @@ class BaseMegatronTrainer(ABC):
         # safetensors
         if args.save_safetensors:
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
-            if args.tuner_type == 'lora' and args.merge_lora:
+            if args.tuner_type != 'full' and args.merge_lora:
                 self.merge_lora_adapters()
                 origin_output_dir = output_dir
                 output_dir = f'{output_dir}-merged'
@@ -718,7 +748,7 @@ class BaseMegatronTrainer(ABC):
                 is_peft_format=save_peft_format,
                 processor=self.template.processor,
                 hf_config=self.template.config)
-            if args.tuner_type == 'lora' and args.merge_lora:
+            if args.tuner_type != 'full' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
         if is_master():

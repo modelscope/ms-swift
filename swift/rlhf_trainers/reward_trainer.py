@@ -29,14 +29,6 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        try:
-            from trl.models import get_act_offloading_ctx_manager
-            if getattr(self.args, 'activation_offloading', False):
-                self.maybe_activation_offload_context = get_act_offloading_ctx_manager(model=self.model)
-            else:
-                self.maybe_activation_offload_context = nullcontext()
-        except ImportError:
-            self.maybe_activation_offload_context = nullcontext()
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         if version.parse(trl.__version__) >= version.parse('0.24'):
             # During evaluation, Trainer calls compute_loss() only if can_return_loss is True and label_names is empty.

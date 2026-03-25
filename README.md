@@ -141,11 +141,11 @@ Running Environment:
 | python       | >=3.9        | 3.11/3.12                |                                           |
 | cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        | 2.8.0/2.10.0         |                            |
-| transformers | >=4.33       | 4.57.6/5.3.0              |                          |
+| transformers | >=4.33       | 4.57.6/5.2.0              |                          |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.19 |                     |                                           |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.29 | 0.28.0              | RLHF                                      |
+| trl          | >=0.15,<0.30 | 0.28.0              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.18.8              | Training                                  |
 | vllm         | >=0.5.1      | 0.11.0/0.17.1       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |

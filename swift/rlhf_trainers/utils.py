@@ -593,7 +593,7 @@ def profiling_context(trainer, name: str):
         is_main_process = trainer.is_main_process
 
     if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
-        wandb.log(profiling_metrics)
+        wandb.log(profiling_metrics, commit=False)
 
     if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and is_main_process:
         swanlab.log(profiling_metrics)
