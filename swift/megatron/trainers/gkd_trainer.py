@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import random
-from turtle import st
 import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
