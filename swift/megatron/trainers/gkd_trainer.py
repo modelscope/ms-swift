@@ -677,9 +677,10 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             
             # shift masks to the left by one position, and append a False at the end
             student_mask = student_mask[:, 1:]
+            student_mask = torch.cat([student_mask, torch.zeros_like(student_mask[:, -1:])], dim=-1)
             teacher_mask = teacher_mask[:, 1:]
+            teacher_mask = torch.cat([teacher_mask, torch.zeros_like(teacher_mask[:, -1:])], dim=-1)
             
-
             if teacher_logits is not None:
                 s_logits = student_logits[student_mask][None]
                 t_logits = teacher_logits[teacher_mask][None]
@@ -694,6 +695,17 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 s_logits = student_logits[student_mask][None]
                 teacher_api_logprobs = teacher_api_logprobs[teacher_mask][None]
                 teacher_api_indices = teacher_api_indices[teacher_mask][None]
+                # DEBUG
+                first_sample_top1_ids = teacher_api_indices[0, :, 0]
+                first_sample_top1_logprobs = teacher_api_logprobs[0, :, 0]
+                valid_pos = torch.isfinite(first_sample_top1_logprobs)
+                first_sample_top1_ids = first_sample_top1_ids[valid_pos].detach().cpu().tolist()
+                first_sample_top1_tokens = [
+                    self.template.safe_decode([token_id], skip_special_tokens=False)
+                    for token_id in first_sample_top1_ids
+                ]
+                logger.info(f"DEBUG: teacher_top1_first_sample_tokens={first_sample_top1_tokens}")
+                # DEBUG END
                 jsd_loss = self.generalized_jsd_loss(
                     student_logits=s_logits,
                     teacher_logits=None,
