@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import random
+from turtle import st
 import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
@@ -666,22 +667,40 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
 
-        if opsd_teacher_labels is not None and teacher_logits is not None:
+        if opsd_teacher_labels is not None:
             student_mask = labels != -100
             teacher_mask = opsd_teacher_labels != -100
             assert student_mask.sum() == teacher_mask.sum(), (
                 f'OPSD label count mismatch: student={student_mask.sum().item()}, '
                 f'teacher={teacher_mask.sum().item()}. '
                 'Student and teacher must share the same response tokens.')
-            s_logits = student_logits[student_mask][None]
-            t_logits = teacher_logits[teacher_mask][None]
-            jsd_loss = self.generalized_jsd_loss(
-                student_logits=s_logits,
-                teacher_logits=t_logits,
-                beta=self.beta,
-                teacher_topk_logprobs=teacher_api_logprobs,
-                teacher_topk_indices=teacher_api_indices,
-            )
+            
+            # shift masks to the left by one position, and append a False at the end
+            student_mask = student_mask[:, 1:]
+            teacher_mask = teacher_mask[:, 1:]
+            
+
+            if teacher_logits is not None:
+                s_logits = student_logits[student_mask][None]
+                t_logits = teacher_logits[teacher_mask][None]
+                jsd_loss = self.generalized_jsd_loss(
+                    student_logits=s_logits,
+                    teacher_logits=t_logits,
+                    beta=self.beta,
+                    teacher_topk_logprobs=teacher_api_logprobs,
+                    teacher_topk_indices=teacher_api_indices,
+                )
+            elif teacher_api_logprobs is not None and teacher_api_indices is not None:
+                s_logits = student_logits[student_mask][None]
+                teacher_api_logprobs = teacher_api_logprobs[teacher_mask][None]
+                teacher_api_indices = teacher_api_indices[teacher_mask][None]
+                jsd_loss = self.generalized_jsd_loss(
+                    student_logits=s_logits,
+                    teacher_logits=None,
+                    beta=self.beta,
+                    teacher_topk_logprobs=teacher_api_logprobs,
+                    teacher_topk_indices=teacher_api_indices,
+                )
         else:
             jsd_loss = self.generalized_jsd_loss(
                 student_logits=student_logits,
