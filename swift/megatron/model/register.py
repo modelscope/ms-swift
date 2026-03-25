@@ -158,9 +158,9 @@ class MegatronModelLoader:
         return model
 
 
-def get_mcore_model(args, hf_config):
+def get_mcore_model(args, processor, hf_config):
     from mcore_bridge import get_mcore_model as _get_mcore_model
-    config = get_mcore_model_config(args, hf_config)
+    config = get_mcore_model_config(args, processor, hf_config)
     models = _get_mcore_model(config)
 
     # loader = args.megatron_model_meta.loader(args, hf_config)

@@ -33,7 +33,7 @@ class MegatronExport(SwiftPipeline):
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         hf_config = self.processor.model_info.config
-        mg_model = get_mcore_model(args, hf_config)[0]
+        mg_model = get_mcore_model(args, processor, hf_config)[0]
         logger.info('Megatron model created successfully.')
         bridge = args.megatron_model_meta.bridge_cls(args)
         if args.mcore_model is not None:
@@ -83,7 +83,7 @@ class MegatronExport(SwiftPipeline):
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         hf_config = self.processor.model_info.config
-        mg_model = get_mcore_model(args, hf_config)[0]
+        mg_model = get_mcore_model(args, processor, hf_config)[0]
         logger.info('Megatron model created successfully.')
         bridge = args.megatron_model_meta.bridge_cls(args)
         if args.model is not None:

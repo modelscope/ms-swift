@@ -11,8 +11,7 @@ from swift.pipelines import prepare_model_template
 from swift.utils import get_logger, get_n_params_grads, is_master
 from .arguments import MegatronArguments
 from .model import get_mcore_model
-from .utils import (load_mcore_checkpoint, patch_torch_dist_shard, save_mcore_checkpoint,
-                    test_convert_precision)
+from .utils import load_mcore_checkpoint, patch_torch_dist_shard, save_mcore_checkpoint, test_convert_precision
 
 logger = get_logger()
 
@@ -47,7 +46,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
         output_dir=args.output_dir,
         torch_dtype=args.torch_dtype)
 
-    mg_model = get_mcore_model(megatron_args, hf_config)[0]
+    mg_model = get_mcore_model(megatron_args, processor, hf_config)[0]
     logger.info('Megatron model created successfully.')
     bridge = mg_model.config.bridge
     bridge.load_weights([mg_model], args.model_info.model_dir)
@@ -82,7 +81,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         output_dir=args.output_dir if args.to_mcore else None,
         torch_dtype=args.torch_dtype)
 
-    mg_model = get_mcore_model(megatron_args, hf_config)[0]
+    mg_model = get_mcore_model(megatron_args, processor, hf_config)[0]
     if megatron_args.mcore_model is None:
         raise ValueError('Please specify `--mcore_model`.')
     load_mcore_checkpoint(megatron_args, [mg_model], load_arg='mcore_model')

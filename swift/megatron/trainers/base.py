@@ -177,7 +177,7 @@ class BaseMegatronTrainer(ABC):
     def prepare_model(self):
         args = self.args
         self.wrapped_models = []
-        self.unwrapped_models = get_mcore_model(args, self.template.config)
+        self.unwrapped_models = get_mcore_model(args, self.template.processor, self.template.config)
         self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
 

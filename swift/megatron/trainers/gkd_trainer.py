@@ -93,7 +93,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args.model_dir = args.teacher_model_dir
         args.model_type = args.teacher_model_type
         try:
-            self.teacher_models = get_mcore_model(args, self.teacher_config)
+            self.teacher_models = get_mcore_model(args, self.template.processor, self.teacher_config)
         finally:
             args.model_dir = orig_model_dir
             args.model_type = orig_model_type
