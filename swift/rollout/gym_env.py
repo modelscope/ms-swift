@@ -7,6 +7,9 @@ from typing import Any, Dict, List, Tuple
 from swift.infer_engine.protocol import RolloutInferRequest
 from swift.rewards.orm import MathAccuracy
 from swift.template import Messages
+from swift.utils import get_logger
+
+logger = get_logger()
 
 
 class ContextManager(ABC):
@@ -106,7 +109,7 @@ def count_qwen_tokens(messages: List[Dict[str, Any]], max_tokens: int = 2048) ->
         return token_count, token_count >= max_tokens
 
     except Exception as e:
-        print(f'Token calculation failed: {e}')
+        logger.warning(f'Token calculation failed: {e}')
         return 0, False
 
 

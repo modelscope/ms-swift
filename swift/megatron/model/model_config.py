@@ -596,6 +596,7 @@ def get_mcore_model_config(args, hf_config):
     config = MegatronModelConfig(**kwargs)
     config.hf_config = hf_config
     config.args = args
+    args._config = config
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
     _check_attention_backend(args, config)

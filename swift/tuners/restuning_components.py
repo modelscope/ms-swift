@@ -12,8 +12,10 @@ logger = get_logger()
 
 class ResTuner(nn.Module):
 
-    def __init__(self, dim=None, layer_num=-1, depth=-1, zero_init_last=False, stage='', tuner_cfg={}, **kwargs):
+    def __init__(self, dim=None, layer_num=-1, depth=-1, zero_init_last=False, stage='', tuner_cfg=None, **kwargs):
         super().__init__()
+        if tuner_cfg is None:
+            tuner_cfg = {}
         self.dim = dim
         self.layer_num = layer_num
         self.depth = depth
