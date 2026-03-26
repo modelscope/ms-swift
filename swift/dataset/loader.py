@@ -55,6 +55,9 @@ class DatasetLoader(BaseDatasetLoader):
             dataset = hf_load_dataset(file_type, data_files=dataset_path, **kwargs)
         if self.columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
+        if hasattr(dataset_meta.preprocess_func, 'set_root_path'):
+            dataset_meta.preprocess_func.set_root_path(os.path.dirname(dataset_path))
+
         dataset = dataset_meta.preprocess_func(
             dataset, num_proc=self.num_proc, load_from_cache_file=self.load_from_cache_file, strict=self.strict)
         if self.remove_unused_columns:

@@ -142,6 +142,12 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 response.raise_for_status()
                 content = response.content
                 res = BytesIO(content)
+
+        elif path.startswith('s3://'):
+            from swift.utils.aoss_client import client
+            image = client.get(path)
+            res = BytesIO(image)
+
         else:
             data = path
             path = _check_path(path)

@@ -2088,7 +2088,7 @@ class Template(ProcessorMixin):
             modeling_module._flash_attention_forward = _origin_flash_attention_forward
 
     @staticmethod
-    def _get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config):
+    def _get_inputs_embeds_hf(inputs_embeds, inputs, visual, processor, config, dummy_visual_input=False):
         input_ids = inputs['input_ids']
         pixel_values = inputs.get('pixel_values')
         pixel_values_videos = inputs.get('pixel_values_videos')
@@ -2096,14 +2096,15 @@ class Template(ProcessorMixin):
         video_grid_thw = inputs.get('video_grid_thw')
         dtype = visual.dtype
         if pixel_values is None and pixel_values_videos is None:  # plain-text
-            images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-            media_inputs = processor.image_processor(images=images, return_tensors='pt')
-            media_inputs = to_device(media_inputs, input_ids.device)
-            pixel_values = media_inputs['pixel_values'].type(dtype)
-            image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
-            if hasattr(image_embeds, 'pooler_output'):
-                image_embeds = image_embeds.pooler_output
-            inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
+            if dummy_visual_input:
+                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+                media_inputs = processor.image_processor(images=images, return_tensors='pt')
+                media_inputs = to_device(media_inputs, input_ids.device)
+                pixel_values = media_inputs['pixel_values'].type(dtype)
+                image_embeds = visual(pixel_values, grid_thw=media_inputs['image_grid_thw'])
+                if hasattr(image_embeds, 'pooler_output'):
+                    image_embeds = image_embeds.pooler_output
+                inputs_embeds = inputs_embeds + image_embeds.mean().to(device=inputs_embeds.device) * 0.
         else:
             if pixel_values is None:
                 pixel_values_mixed = pixel_values_videos

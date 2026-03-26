@@ -74,12 +74,14 @@ def _initialize_mpu(args):
                 context_parallel_size=args.context_parallel_size,
                 expert_model_parallel_size=args.expert_model_parallel_size,
                 expert_tensor_parallel_size=args.expert_tensor_parallel_size,
+                num_distributed_optimizer_instances=args.num_distributed_optimizer_instances,
                 distributed_timeout_minutes=distributed_timeout_minutes,
             )
         if is_master():
             logger.info(f'TP: {args.tensor_model_parallel_size}, PP: {args.pipeline_model_parallel_size}, '
                         f'VPP: {args.virtual_pipeline_model_parallel_size}, CP: {args.context_parallel_size}, '
-                        f'EP: {args.expert_model_parallel_size}, ETP: {args.expert_tensor_parallel_size}')
+                        f'EP: {args.expert_model_parallel_size}, ETP: {args.expert_tensor_parallel_size}, '
+                        f'num_distributed_optimizer_instances: {args.num_distributed_optimizer_instances}')
 
 
 def set_random_seed(
@@ -515,7 +517,6 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     for f in dataclasses.fields(DistributedDataParallelConfig):
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
-    kwargs['check_for_nan_in_grad'] = True
     ddp_config = DistributedDataParallelConfig(**kwargs)
 
     # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.

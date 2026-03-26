@@ -52,6 +52,7 @@ class RowPreprocessor:
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
+        self.root_path: Optional[str] = None
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
         self.random_state = random_state
@@ -74,8 +75,26 @@ class RowPreprocessor:
             assert role in {'system', 'user', 'tool_call', 'tool_response', 'tool', 'assistant'}, f'message: {message}'
             assert content is not None, f'message: {message}'
 
-    @staticmethod
-    def _cast_mm_data(row: Dict[str, Any]) -> None:
+    def set_root_path(self, root_path: Optional[str]) -> None:
+        self.root_path = os.path.abspath(root_path) if root_path else None
+
+    def _resolve_media_path(self, path: str) -> str:
+        if not self.root_path or not isinstance(path, str):
+            return path
+        if len(path) > 2000:
+            return path
+        if path.startswith(('http://', 'https://', 's3://', 'data:')):
+            return path
+        if os.path.isabs(path):
+            return path
+        if os.path.exists(path):
+            return path
+        candidate = os.path.join(self.root_path, path)
+        if os.path.exists(candidate):
+            return candidate
+        return path
+
+    def _cast_mm_data(self, row: Dict[str, Any]) -> None:
         for key in ['images', 'rejected_images']:
             images = row.get(key, None)
             if images is None:
@@ -85,17 +104,25 @@ class RowPreprocessor:
                 if isinstance(images, str):
                     images = [images]
                 for i, image in enumerate(images):
-                    images[i] = {'bytes': None, 'path': image}
+                    images[i] = {'bytes': None, 'path': self._resolve_media_path(image)}
                 row[key] = images
             elif isinstance(images, dict):
+                if 'path' in images and images['path']:
+                    images['path'] = self._resolve_media_path(images['path'])
                 row[key] = [images]
+            elif isinstance(images, list) and images and isinstance(images[0], dict):
+                for image in images:
+                    if image.get('path'):
+                        image['path'] = self._resolve_media_path(image['path'])
 
         for key in ['videos', 'audios']:
             mm_data = row.get(key)
             if mm_data is None:
                 continue
             elif isinstance(mm_data, str):
-                row[key] = [mm_data]
+                row[key] = [self._resolve_media_path(mm_data)]
+            elif isinstance(mm_data, list) and mm_data and isinstance(mm_data[0], str):
+                row[key] = [self._resolve_media_path(p) for p in mm_data]
 
     @staticmethod
     def _check_rejected_response(row: Dict[str, Any]) -> None:
@@ -532,15 +559,28 @@ class AutoPreprocessor:
     def __init__(self, *, columns: Optional[Dict[str, str]] = None, **kwargs) -> None:
         self.columns = columns or {}
         self.kwargs = kwargs
+        self.root_path: Optional[str] = None
+
+    def set_root_path(self, root_path: Optional[str]) -> None:
+        self.root_path = os.path.abspath(root_path) if root_path else None
 
     def _get_preprocessor(self, dataset: DATASET_TYPE) -> RowPreprocessor:
         features = dataset.features
         for key in ['conversation', 'conversations', 'messages']:
             if key in features:
-                return MessagesPreprocessor(**self.kwargs)
+                preprocessor = MessagesPreprocessor(**self.kwargs)
+                if self.root_path is not None:
+                    preprocessor.set_root_path(self.root_path)
+                return preprocessor
         if 'instruction' in features and 'input' in features:
-            return AlpacaPreprocessor(**self.kwargs)
-        return ResponsePreprocessor(**self.kwargs)
+            preprocessor = AlpacaPreprocessor(**self.kwargs)
+            if self.root_path is not None:
+                preprocessor.set_root_path(self.root_path)
+            return preprocessor
+        preprocessor = ResponsePreprocessor(**self.kwargs)
+        if self.root_path is not None:
+            preprocessor.set_root_path(self.root_path)
+        return preprocessor
 
     def __call__(
         self,
