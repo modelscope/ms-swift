@@ -1151,32 +1151,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 per_token_logps = per_token_logps_packed
                 per_token_entropy = per_token_entropy_packed
 
-                output_tensor = per_token_logps
-                data['per_token_entropy'] = per_token_entropy
-        else:
-            # Standard forward with labels, returns per-token loss (more efficient)
-            output_tensor = model(**inputs)
-
-            # Convert output_tensor (per-token loss) to per_token_logps on PP last stage
-            if is_pp_last_stage and output_tensor is not None:
-                per_token_logps_raw = self.get_logps(
-                    output_tensor,
-                    labels,
-                    packed_seq_params,
-                    packed_seq_params.num_samples if args.padding_free else micro_batch_size,
-                    per_token=True)
-
-                if args.padding_free:
-                    per_token_logps, _ = pad_logps_back_to_batch(
-                        logps_rmpad=per_token_logps_raw,
-                        logits_to_keep=max_seq_len,
-                        batch_size=micro_batch_size,
-                        seq_lengths=seq_lengths)
-                else:
-                    per_token_logps = per_token_logps_raw
-
-                data['per_token_logps'] = per_token_logps
-                data['per_token_entropy'] = None
+            output_tensor = per_token_logps
+            data['per_token_entropy'] = per_token_entropy
 
         if RouterReplayHelper.is_replay_forward_action(model.config):
             router_instance_list = RouterReplayHelper.get_micro_batch_router_list(model.config)
