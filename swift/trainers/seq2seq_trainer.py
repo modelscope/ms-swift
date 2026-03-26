@@ -108,8 +108,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 inputs['logits_to_keep'] = int(inputs['logits_to_keep'].sum())
 
         base_model = self.template.get_base_model(self.model)
-        if self.model.model_info.is_moe_model and 'output_router_logits' in inspect.signature(
-                base_model.forward).parameters:
+        if self.model.model_info.is_moe_model and any(
+                key in inspect.signature(base_model.forward).parameters for key in ['output_router_logits', 'kwargs']):
             HfConfigFactory.set_config_attr(base_model.config, 'router_aux_loss_coef', args.router_aux_loss_coef)
             base_model.router_aux_loss_coef = args.router_aux_loss_coef
             logger.info_once(f'router_aux_loss_coef: {args.router_aux_loss_coef}')
