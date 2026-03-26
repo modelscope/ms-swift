@@ -47,8 +47,6 @@ For execution scripts, refer to [here](https://github.com/modelscope/ms-swift/tr
 
 ## Async Reward Functions
 
-**Version requirement**: ms-swift>=3.12.1
-
 For reward functions involving I/O operations (such as API calls, database queries, etc.), you can use asynchronous (async) reward functions to improve performance. Async reward functions are executed in parallel using `asyncio.gather`, which can significantly speed up reward computation.
 
 ```python

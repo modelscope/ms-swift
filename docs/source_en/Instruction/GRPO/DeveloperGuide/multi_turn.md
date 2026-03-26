@@ -1,8 +1,5 @@
 # Multi-turn Training
 
-**Note** The multi-turn training logic was refactored in ms-swift 3.8.
-If your ms-swift version is earlier than 3.8, please consult the documentation for that version.
-
 In reinforcement-learning scenarios, the model may need to interact with the environment over multiple turns (e.g., tool calls).
 This interactive training requires the model to carry out continuous reasoning based on the feedback from the environment.
 This document explains in detail how to customise the multi-turn training workflow in GRPO training.
@@ -243,7 +240,7 @@ They can be read from `infer_request.data_dict`.
 
 ### Training-Inference-Mismatch
 
-Swift >= 3.11 supports returning rollout logprobs from the vLLM side to address training-inference mismatch issues. For details, please refer to this [document](../AdvancedResearch/training_inference_mismatch.md).
+Swift supports returning rollout logprobs from the vLLM side to address training-inference mismatch issues. For details, please refer to this [document](../AdvancedResearch/training_inference_mismatch.md).
 
 In multi-turn training, if `rollout_importance_sampling_mode` is enabled, the framework automatically collects log probabilities from each rollout turn to correct off-policy issues.
 

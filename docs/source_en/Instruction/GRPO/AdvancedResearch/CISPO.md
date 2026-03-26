@@ -1,7 +1,5 @@
 # Clipped Importance Sampling Policy Optimization (CISPO)
 
-**Version requirement**: ms-swift>=3.11
-
 Clipped Importance Sampling Policy Optimization (CISPO) is a reinforcement learning algorithm proposed in the [MiniMax-M1](https://arxiv.org/abs/2506.13585) paper. Compared to GRPO (Group Relative Policy Optimization), CISPO clips the importance sampling weights themselves.
 
 ## Algorithm Overview
