@@ -24,8 +24,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
-from swift.megatron.utils import (RouterReplayHelper, forward_step_helper, get_local_topk_idx_for_current_rank,
-                                  get_padding_to, get_router_replay_data, set_random_seed, set_router_replay_data)
+from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_random_seed, set_router_replay_data
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch, profiling_context,
@@ -982,7 +981,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             with self.null_ref_context() as ref_models:
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
                 ref_model = ref_models[0]
-                ref_per_token_logps_packed = self.compute_per_token_logps(
+                ref_per_token_logps_packed, _ = self.compute_per_token_logps(
                     ref_model, iter([deepcopy(inputs)]), temperature=self.temperature)
                 if self.template.padding_free:
                     ref_per_token_logps, _ = pad_logps_back_to_batch(
@@ -994,7 +993,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     ref_per_token_logps = ref_per_token_logps_packed
                 batch['ref_per_token_logps'] = ref_per_token_logps
 
-        old_per_token_logps_packed = self.compute_per_token_logps(
+        if self.enable_routing_replay:
+            if self.args.router_replay_mode == 'R2':
+                RouterReplay.set_global_router_replay_action(RouterReplayAction.RECORD)
+            if self.args.router_replay_mode == 'R3':
+                RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
+
+        old_per_token_logps_packed, routing_topk_idx = self.compute_per_token_logps(
             self.unwrapped_models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
         if self.template.padding_free:
             old_per_token_logps, _ = pad_logps_back_to_batch(
@@ -1006,10 +1011,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             old_per_token_logps = old_per_token_logps_packed
         batch['old_per_token_logps'] = old_per_token_logps
 
-        # if self.enable_routing_replay:
-        #     batch['routed_experts'] = output['layers_topk_idx']
-        #     RouterReplay.clear_global_indices()
-        #     RouterReplay.clear_global_router_replay_action()
+        if self.enable_routing_replay:
+            batch['routed_experts'] = routing_topk_idx
+            RouterReplay.clear_global_indices()
+            RouterReplay.clear_global_router_replay_action()
 
         return batch
 
