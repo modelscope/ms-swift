@@ -471,6 +471,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = self.args
         if labels is not None:
             mask = labels != -100
+            mask = mask[:, 1:]
+            mask = torch.cat([mask, torch.zeros_like(mask[:, -1:])], dim=-1)
             local_num_valid = mask.sum()
         else:
             mask = None
@@ -694,17 +696,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 s_logits = student_logits[student_mask][None]
                 teacher_api_logprobs = teacher_api_logprobs[teacher_mask][None]
                 teacher_api_indices = teacher_api_indices[teacher_mask][None]
-                # DEBUG
-                first_sample_top1_ids = teacher_api_indices[0, :, 0]
-                first_sample_top1_logprobs = teacher_api_logprobs[0, :, 0]
-                valid_pos = torch.isfinite(first_sample_top1_logprobs)
-                first_sample_top1_ids = first_sample_top1_ids[valid_pos].detach().cpu().tolist()
-                first_sample_top1_tokens = [
-                    self.template.safe_decode([token_id], skip_special_tokens=False)
-                    for token_id in first_sample_top1_ids
-                ]
-                logger.info(f"DEBUG: teacher_top1_first_sample_tokens={first_sample_top1_tokens}")
-                # DEBUG END
+
                 jsd_loss = self.generalized_jsd_loss(
                     student_logits=s_logits,
                     teacher_logits=None,
