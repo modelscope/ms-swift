@@ -532,6 +532,8 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
 - loss_scale: Overrides the template parameter. During RLHF training, the default is `'last_round'`.
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
+- top_k: Top-k parameter for rollout sampling. -1 means no top-k filtering is applied. Default is -1.
+- top_p: Top-p parameter for rollout sampling. 1.0 means no top-p filtering is applied. Default is 1.0.
 
 #### GKD Arguments
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
