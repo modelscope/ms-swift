@@ -361,7 +361,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                             flat_lps, dtype=torch.float32, device=self.device)
 
         encoded_batch['rollout_per_token_logps'] = rollout_per_token_logps
-
         return encoded_batch
 
     def _generate_and_score_completions(self, batch):
@@ -1052,9 +1051,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Check if this is the PP last stage (only last stage has labels and computes loss)
         is_pp_last_stage = mpu.is_pipeline_last_stage()
         inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
-        logits_packed = model(**inputs_for_logits)
-        output_tensor = None
-        if is_pp_last_stage and logits_packed is not None:
+        output_tensor = model(**inputs_for_logits)
+        if is_pp_last_stage and output_tensor is not None:
+            logits_packed = output_tensor
             if self.temperature != 1.0:
                 logits_packed.div_(self.temperature)
             per_token_logps_packed, per_token_entropy_packed = compute_logps_and_entropy_from_logits(
