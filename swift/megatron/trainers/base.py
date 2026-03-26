@@ -57,7 +57,6 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args, template: Template):
         self.args = args
         self.template = template
-        self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.prepare_model()
         self.config = self.unwrapped_models[0].config
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
@@ -180,6 +179,7 @@ class BaseMegatronTrainer(ABC):
         args = self.args
         self.wrapped_models = []
         self.unwrapped_models = get_mcore_model(args, self.template.config)
+        self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
 
