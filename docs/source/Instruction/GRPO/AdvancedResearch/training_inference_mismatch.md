@@ -1,6 +1,5 @@
 # Training-Inference-Mismatch
 
-**版本依赖**：ms-swift>=3.11
 
 **TL;DR**: GRPO 引入 vLLM 加速采样过程的同时，也引入了训练-推理不一致（Training-Inference Mismatch）的问题，从而可能影响训练稳定性。本文将解释这个问题的背景、原因以及相应的解决方案。
 
