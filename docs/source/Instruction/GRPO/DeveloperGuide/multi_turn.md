@@ -1,7 +1,5 @@
 # 多轮训练
 
-**注意** 多轮训练逻辑已在 ms-swift 3.8 中进行重构，如果您的 ms-swift 版本低于该版本，请参考对应版本的文档。
-
 在强化学习训练场景中，模型采样可能需要与环境进行多轮交互（如工具调用）。这种交互式训练要求模型能够根据环境反馈信息进行连续推理。本文档将详细介绍如何在 GRPO 训练中自定义多轮训练流程。
 
 以下是多轮训练示例图，模型可能涉及多轮 rollout，包括环境交互、工具调用等步骤：
@@ -226,7 +224,7 @@ class RewardFunction():
 在训练侧设置参数`--vllm_server_pass_dataset`，可将数据集中的其他列传入多轮规划器。在`infer_request.data_dict`中获取。
 
 ### 训推一致性兼容
-swift >= 3.11 支持从 vLLM 侧返回 rollout 的 logps 用于纠正训推不一致问题，具体请参考该[文档](../AdvancedResearch/training_inference_mismatch.md)
+swift 支持从 vLLM 侧返回 rollout 的 logps 用于纠正训推不一致问题，具体请参考该[文档](../AdvancedResearch/training_inference_mismatch.md)
 
 在多轮训练中，如果启用了 `rollout_importance_sampling_mode`，框架会自动收集每轮 rollout 的 log probabilities，用于校正训推不一致带来的 off-policy 问题。
 

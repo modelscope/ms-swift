@@ -306,7 +306,7 @@ temperature等参数默认从generation_config.json中读取。设置`--temperat
 ```text
 {"messages": [{"role": "system", "content": "<system>"}, {"role": "user", "content": "<query1>"}, {"role": "assistant", "content": "answer1, "}]}
 ```
-用swift3.0以后的版本是可以的，参考[examples/infer/demo_agent](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py)。
+参考[examples/infer/demo_agent](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_agent.py)。
 
 ### Q11: 多模态模型推理时如何限制最大像素，以减少显存占用？
 设置命令行参数`--max_pixels xxx`、环境变量`MAX_PIXELS=xxx`、或特定模型参数`--model_kwargs '{"max_pixels": xxx}'`，其中环境变量仅对文档中对应的模型生效，详见文档[特定模型参数](https://swift.readthedocs.io/zh-cn/latest/Instruction/Command-line-parameters.html#id18)。

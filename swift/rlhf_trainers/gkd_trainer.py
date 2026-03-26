@@ -582,7 +582,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         Returns:
             Tuple of (teacher_logprobs, teacher_indices) tensors with shapes [batch, seq_len, topk]
         """
-        input_ids = encoded_inputs['input_ids']
+        opsd_teacher_inputs = encoded_inputs.get('_opsd_teacher_inputs')
+        source = opsd_teacher_inputs if opsd_teacher_inputs is not None else encoded_inputs
+        input_ids = source['input_ids']
         teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
             self.teacher_model_server, input_ids.tolist(), topk=self.gkd_logits_topk)
         return teacher_logprobs.to(input_ids.device), teacher_indices.to(input_ids.device)
