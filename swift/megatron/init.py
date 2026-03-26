@@ -24,6 +24,7 @@ logger = get_logger()
 
 
 def _patch__batched_p2p_ops():
+    from megatron.core.pipeline_parallel import p2p_communication
 
     _batched_p2p_ops_origin = p2p_communication._batched_p2p_ops
 
@@ -32,6 +33,7 @@ def _patch__batched_p2p_ops():
         return _batched_p2p_ops_origin(**kwargs)
 
     p2p_communication._batched_p2p_ops = _batched_p2p_ops
+
 
 def _patch_torch_FileSystemReader():
     from torch.distributed.checkpoint.filesystem import FileSystemReader
@@ -94,7 +96,6 @@ def _patch_validate_non_overlapping_shards_metadata():
     default_planner._validate_global_plan = _validate_global_plan
 
 
-
 def _patch__write_item():
     import megatron.core
     if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
@@ -112,6 +113,7 @@ def _patch__write_item():
             return _origin__write_item(self, *args, **kwargs)
 
         filesystem_async._write_item = _write_item
+
 
 def _patch_unified_memory():
     if is_torch_npu_available():
@@ -155,7 +157,6 @@ def init_megatron_env():
     except Exception:
         logger.warning('Patch validate_non_overlapping_shards_metadata failed.')
         pass
-    try:
 
     import megatron.core
     logger.info(f'megatron.core.__version__: {megatron.core.__version__}')

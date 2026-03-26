@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import fields
+from mcore_bridge import ModelConfig, hf_to_mcore_config
 from transformers.utils import is_torch_npu_available
 
 from swift.utils import get_logger
@@ -32,14 +33,9 @@ def _check_padding_free(args, config):
         args.padding_free = False
 
 
-mcore_model_mapping = {'qwen3_emb': 'qwen3_emb'}
-
-
 def get_mcore_model_config(args, processor, hf_config):
-    from mcore_bridge import ModelConfig, hf_to_mcore_config
     kwargs = hf_to_mcore_config(hf_config)
-    if args.model_type in {'qwen3_emb'}:
-        kwargs['mcore_model_type'] = args.model_type
+    kwargs['mcore_model_type'] = args.megatron_model_meta.model_type
     kwargs['processor'] = processor
     kwargs['hf_config'] = hf_config
     for f in fields(ModelConfig):

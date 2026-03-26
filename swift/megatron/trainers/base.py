@@ -26,7 +26,6 @@ from typing import Callable, Dict, List, Optional
 from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
-from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (copy_original_module_weight, disable_forward_pre_hook, enable_forward_pre_hook,
                                   get_optimizer_param_scheduler, get_padding_to, init_persistent_async_worker,
                                   initialize_tp_communicators, load_mcore_checkpoint,
@@ -57,9 +56,7 @@ class BaseMegatronTrainer(ABC):
     def __init__(self, args, template: Template):
         self.args = args
         self.template = template
-        self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.prepare_model()
-        self.config = self.unwrapped_models[0].config
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
 
@@ -178,8 +175,9 @@ class BaseMegatronTrainer(ABC):
 
     def prepare_model(self):
         args = self.args
-        self.wrapped_models = []
         self.unwrapped_models = get_mcore_model(args, self.template.processor, self.template.config)
+        self.config = self.unwrapped_models[0].config
+        self.bridge = self.config.bridge
         self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
 

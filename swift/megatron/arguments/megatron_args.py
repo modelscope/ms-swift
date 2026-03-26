@@ -4,6 +4,7 @@ import megatron.core
 import os
 import torch
 from dataclasses import dataclass, field, fields
+from mcore_bridge.model import get_mcore_model_type, get_model_meta
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
 from packaging import version
@@ -12,7 +13,6 @@ from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from swift.arguments import ModelArguments
-from swift.megatron.model import get_megatron_model_meta
 from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
@@ -642,7 +642,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.model_type = self.model_info.model_type
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
-        self.megatron_model_meta = get_megatron_model_meta(self.model_type)
+        self.megatron_model_meta = get_model_meta(get_mcore_model_type(self.model_type))
         if self.megatron_model_meta is None:
             raise ValueError(f'Model: {self.model} is not supported.')
         self._init_teacher_model()
@@ -743,7 +743,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.teacher_model, model_type=self.teacher_model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.teacher_model_type = self.teacher_model_info.model_type
         self.teacher_model_dir = self.teacher_model_info.model_dir
-        self.teacher_megatron_model_meta = get_megatron_model_meta(self.teacher_model_type)
+        self.teacher_megatron_model_meta = get_model_meta(get_mcore_model_type(self.teacher_model_type))
         if self.teacher_megatron_model_meta is None:
             raise ValueError(f'Model: {self.teacher_model} is not supported.')
 
