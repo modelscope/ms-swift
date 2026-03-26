@@ -48,6 +48,8 @@ try:
 except ImportError:
     param_group_identifier_keys = None
 
+mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
+
 logger = get_logger()
 
 
@@ -63,7 +65,6 @@ class BaseMegatronTrainer(ABC):
 
         self.args = args
         self.template = template
-        self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.prepare_model()
         self.config = self.unwrapped_models[0].config
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
@@ -186,6 +187,7 @@ class BaseMegatronTrainer(ABC):
         args = self.args
         self.wrapped_models = []
         self.unwrapped_models = get_mcore_model(args, self.template.config)
+        self.bridge = args.megatron_model_meta.bridge_cls(args)
         self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
 
@@ -201,17 +203,46 @@ class BaseMegatronTrainer(ABC):
 
     def get_optimizer_and_scheduler(self):
         args = self.args
-        kwargs = {}
-        for f in dataclasses.fields(OptimizerConfig):
-            if hasattr(args, f.name) and f.name != 'loss_scale':
-                kwargs[f.name] = getattr(args, f.name)
-        config = OptimizerConfig(**kwargs)
+        if mcore_016:
+            from megatron.core.optimizer import AdamOptimizerConfig, SGDOptimizerConfig
+            if args.optimizer == 'adam' or 'muon' in args.optimizer:
+                # TODO(deyuf): Muon needs both adam + muon but get() only receive one config
+                # So for now we keep using adam config that's back compat with old way
+                config_cls = AdamOptimizerConfig
+            elif args.optimizer == 'sgd':
+                config_cls = SGDOptimizerConfig
+            else:
+                raise ValueError(f'Invalid optimizer type: {args.optimizer}')
+        else:
+            config_cls = OptimizerConfig
+
+        kwargs = {
+            f.name: getattr(args, f.name)
+            for f in dataclasses.fields(config_cls) if hasattr(args, f.name) and f.name != 'loss_scale'
+        }
+        config = config_cls(**kwargs)
+
         if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:
             param_groups_context = self._patch_get_param_groups()
         else:
             param_groups_context = nullcontext()
         with param_groups_context:
-            optimizer = get_megatron_optimizer(config, self.wrapped_models)
+
+            if 'muon' not in config.optimizer:
+                # If the user is asking for a non-zero embedding init std, skip weight decay for embeddings
+                # to avoid embeddings from shrinking to zero as recommended in https://arxiv.org/abs/2312.16903
+                # default_skip_embedding_weight_decay=args.embedding_init_method_std is not None,
+                optimizer = get_megatron_optimizer(
+                    config,
+                    self.wrapped_models,
+                )
+            else:
+                from megatron.core.optimizer.muon import get_megatron_muon_optimizer
+                optimizer = get_megatron_muon_optimizer(
+                    config,
+                    self.wrapped_models,
+                    layer_wise_distributed_optimizer='dist' in config.optimizer,
+                )
         opt_param_scheduler = get_optimizer_param_scheduler(args, optimizer)
         return optimizer, opt_param_scheduler
 
@@ -423,7 +454,6 @@ class BaseMegatronTrainer(ABC):
     @contextmanager
     def _patch_get_param_groups(self):
         from megatron.core import optimizer
-        mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
         _get_param_groups = optimizer._get_param_groups
         if mcore_016:
             optimizer._get_param_groups = self._get_param_groups_mcore_016

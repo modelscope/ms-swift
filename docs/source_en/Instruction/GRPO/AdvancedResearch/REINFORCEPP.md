@@ -1,7 +1,5 @@
 # REINFORCE++: An Efficient RLHF Algorithm with Robustness to Both Prompt and Reward Models
 
-**Version requirement**: ms-swift>=3.10
-
 [REINFORCE++ Baseline](https://arxiv.org/abs/2501.03262) is a simplified version of the REINFORCE++ algorithm, designed for outcome rewards (response-level scalar rewards). Similar to GRPO, it samples multiple model outputs for each prompt and uses an intra-group baseline to estimate advantages. The key difference lies in the statistics used for normalization.
 
 ## Algorithm Overview

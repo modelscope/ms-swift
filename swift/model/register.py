@@ -344,7 +344,7 @@ class ModelLoader(BaseModelLoader):
         model.model_meta = self.model_meta
         model.model_dir = model_dir
         self._init_generation_config(model, model_dir)
-        HfConfigFactory.set_model_config_attr(model, 'pad_token_id', self.pad_token)
+        HfConfigFactory.set_config_attr(model.config, 'pad_token_id', self.pad_token)
 
     def _add_new_special_tokens(self, model, processor, config):
         if not self.new_special_tokens:

@@ -278,16 +278,26 @@ def save_mcore_checkpoint(
         mpu.get_data_parallel_group(with_context_parallel=True),
     )
     kwargs = {'content_metadata': sharded_sd_metadata} if mcore_013 else {}
-    async_save_request = dist_checkpointing.save(
-        state_dict,
-        checkpoint_dir,
-        save_strategy,
-        async_sharded_save=args.async_save,
-        validate_access_integrity=True,
-        preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check,
-        **kwargs)
+    async_save = args.async_save
+    if not models:  # save GPU memory
+        assert 'optimizer' not in state_dict
+        async_save = False
+        common_path = os.path.join(checkpoint_dir, 'common.pt')
+        if is_master():
+            state_dict.update(kwargs)
+            torch.save(state_dict, common_path)
+        async_save_request = None
+    else:
+        async_save_request = dist_checkpointing.save(
+            state_dict,
+            checkpoint_dir,
+            save_strategy,
+            async_sharded_save=async_save,
+            validate_access_integrity=True,
+            preprocess_common_before_consistancy_check=_preprocess_common_before_consistancy_check,
+            **kwargs)
 
-    if not args.async_save:
+    if not async_save:
         assert async_save_request is None
         # Wait so everyone is done (necessary)
         if torch.distributed.is_initialized():
@@ -304,16 +314,15 @@ def save_mcore_checkpoint(
             f.write(str(iteration))
 
         def iter_finalize_fn():
-            if models:
-                logger.info(f'Successfully saved Megatron model weights in `{output_dir}`.')
+            logger.info(f'Successfully saved Megatron model weights in `{output_dir}`.')
 
-        if args.async_save:
+        if async_save:
             assert async_save_request is not None
             async_save_request.add_finalize_fn(iter_finalize_fn)
         else:
             iter_finalize_fn()
 
-    if args.async_save:
+    if async_save:
         schedule_async_save(async_save_request)
 
 

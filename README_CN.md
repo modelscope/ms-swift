@@ -79,7 +79,7 @@
 - 🎁 2025.10.28: Ray [已支持](docs/source/Instruction/Ray.md)。
 - 🎁 2025.09.07: 支持CHORD训练算法，请查看[文档](docs/source/Instruction/GRPO/AdvancedResearch/CHORD.md)。
 - 🎁 2025.09.06: Ulysses现已支持与ring-attention结合使用，使得输入序列可以被切分成任意数量的块（不再受限于num_heads），命令参数仍然是`--sequence_parallel_size N`。
-- 🎁 2025.09.02: Megatron-SWIFT支持多模态模型训练。文档参考[这里](./docs/source/Megatron-SWIFT/Mcore-Bridge.md)。
+- 🎁 2025.09.02: Megatron-SWIFT支持多模态模型训练。文档参考[这里](./docs/source/Megatron-SWIFT/Multimodal-Model.md)。
 - 🎁 2025.08.12: 支持在SFT训练中使用[Dynamic Fine-Tuning](https://arxiv.org/abs/2508.05629)(DFT)，使用参数 `--enable_dft_loss true`。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/full/dft.sh)
 - 🎁 2025.07.09: Megatron-SWIFT支持LoRA训练。相比ms-swift，在MoE模型提速显著。训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/lora)。
 - 🎁 2025.06.23: 支持Reranker模型训练，训练脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)。
@@ -141,7 +141,7 @@ uv pip install -e . --torch-backend=auto
 | modelscope   | >=1.23       |                     |                    |
 | peft         | >=0.11,<0.19 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
-| trl          | >=0.15,<0.29 | 0.28.0              | RLHF               |
+| trl          | >=0.15,<0.30 | 0.28.0              | RLHF               |
 | deepspeed    | >=0.14       | 0.18.8              | 训练                 |
 | vllm         | >=0.5.1      | 0.11.0/0.17.1        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
