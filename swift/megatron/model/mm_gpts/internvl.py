@@ -124,6 +124,8 @@ class InternvlHfVit(HuggingFaceModule):
                 vision_feature_layer=self.hf_config.vision_feature_layer,
                 vision_feature_select_strategy=self.hf_config.vision_feature_select_strategy,
             )
+            if hasattr(image_features, 'pooler_output'):
+                image_features = image_features.pooler_output
             special_image_mask = input_ids == self.hf_config.image_token_id
             special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
@@ -135,6 +137,8 @@ class InternvlHfVit(HuggingFaceModule):
                 vision_feature_layer=self.hf_config.vision_feature_layer,
                 vision_feature_select_strategy=self.hf_config.vision_feature_select_strategy,
             )
+            if hasattr(image_features, 'pooler_output'):
+                image_features = image_features.pooler_output
             inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return inputs_embeds
 
