@@ -15,6 +15,11 @@ megatron rlhf \
     --model Qwen/Qwen3-4B \
     --external_plugins examples/train/rlhf/opsd/opsd_plugin.py \
     --dataset 'open-r1/OpenThoughts-114k-math' \
+    --use_vllm true \
+    --vllm_mode colocate \
+    --vllm_gpu_memory_utilization 0.6 \
+    --vllm_max_model_len 10240 \
+    --sleep_level 1 \
     --lmbda 1.0 \
     --beta 0.5 \
     --temperature 1.2 \
@@ -22,7 +27,7 @@ megatron rlhf \
     --torch_dtype bfloat16 \
     --micro_batch_size 1 \
     --global_batch_size 32 \
-    --max_steps 1000 \
+    --train_iters 1000 \
     --lr 2e-5 \
     --save_steps 100 \
     --save_total_limit 10 \
