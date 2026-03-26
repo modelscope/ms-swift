@@ -439,6 +439,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     ddp_timeout: int = 18000000
     ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
     use_distributed_optimizer: bool = True
+    num_distributed_optimizer_instances: int = 1
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     decoder_first_pipeline_num_layers: Optional[int] = None
@@ -454,18 +455,27 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False
     overlap_param_gather_with_optimizer_step: bool = False
+    """DDP bucket size for grad reduce. Default: max(40M, 1M*dp_size). Only used when overlap_grad_reduce=True."""
+    bucket_size: Optional[int] = None
     align_grad_reduce: bool = True
     virtual_pipeline_model_parallel_size: Optional[int] = None
     microbatch_group_size_per_vp_stage: Optional[int] = None
     pipeline_model_parallel_layout: Optional[str] = None
     expert_model_parallel_size: int = 1
     expert_tensor_parallel_size: int = 1
+    overlap_moe_expert_parallel_comm: bool = False
+    delay_wgrad_compute: bool = False
 
-    # 'wandb', 'swanlab', 'tensorboard'
+    # 'wandb', 'swanlab', 'tensorboard', 'profile'
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     logging_steps: int = 5
     tensorboard_dir: Optional[str] = None
     tensorboard_queue_size: int = 50
+    profile: bool = True 
+    profile_step_start: int = 10
+    profile_step_end: int = 12
+    use_pytorch_profiler: bool = True 
+    profile_ranks: List[int] = field(default_factory=lambda: [0])
     wandb_project: str = 'megatron-swift'
     wandb_exp_name: Optional[str] = None
     swanlab_project: str = 'megatron-swift'
@@ -526,6 +536,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     vit_gradient_checkpointing: Optional[bool] = None
     vit_lr: Optional[float] = None
     aligner_lr: Optional[float] = None
+    dummy_visual_input: bool = False
     attn_impl: Optional[str] = None
     gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
 
@@ -538,6 +549,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     rope_scaling: Optional[Union[dict, str]] = None
     apply_wd_to_qk_layernorm: bool = False
+
+    # model architecture
+    num_layers: Optional[int] = None  # Override model's number of layers
 
     enable_dft_loss: bool = False
     enable_channel_loss: bool = False

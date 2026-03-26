@@ -18,7 +18,7 @@ from tqdm import tqdm
 from transformers.utils import is_torch_npu_available
 from typing import List, Optional, Tuple
 
-from swift.utils import get_logger, is_flash_attn_3_available, split_list
+from swift.utils import get_logger, is_flash_attn_3_available, setup_megatron_logging, split_list
 
 logger = get_logger()
 
@@ -990,3 +990,4 @@ def init_megatron_env():
 
     import megatron.core
     logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
+    setup_megatron_logging()

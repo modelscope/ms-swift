@@ -281,7 +281,30 @@ class MegatronModelConfig(TransformerConfig):
         _origin_rotary_interleaved = self.rotary_interleaved
         if self.multi_latent_attention and self.rotary_interleaved:
             self.rotary_interleaved = False
+        # Temporarily set context_parallel_size=1 to bypass the upstream assert in
+        # TransformerConfig.__post_init__ that rejects GDN+CP. Swift implements its own
+        # CP support for GDN via gather/split in gated_delta_net.py. This will be removed once Megatron supports GDN+CP. 
+        # TODO(yangbo1): remove this hack after Megatron supports GDN+CP natively.
+        _cp_size = self.context_parallel_size
+        if self.experimental_attention_variant == 'gated_delta_net' and _cp_size > 1:
+            self.context_parallel_size = 1
+        # hack end here
         super().__post_init__()
+        # TODO(yangbo1): remove this hack after Megatron supports GDN+CP natively.
+        if self.experimental_attention_variant == 'gated_delta_net' and _cp_size > 1:
+            self.context_parallel_size = _cp_size
+        if self.context_parallel_size > 1 and self.cp_comm_type is not None:
+            if isinstance(self.cp_comm_type, list):
+                assert len(self.cp_comm_type) == self.num_layers, (
+                    f"Length of cp_comm_type ({len(self.cp_comm_type)}) should equal to "
+                    f"the total number of transformer layers ({self.num_layers})!"
+                )
+            else:
+                assert isinstance(
+                    self.cp_comm_type, str
+                ), "Unsupported communication type for context parallelism!"
+        # hack end here
+        
         self.rotary_interleaved = _origin_rotary_interleaved
         self._check_npu()
         self.variable_seq_lengths = True

@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
+from megatron.core import parallel_state
 from megatron.core.extensions.transformer_engine import _get_extra_te_kwargs
 from megatron.core.models.huggingface import HuggingFaceModule as _HuggingFaceModule
 from megatron.core.tensor_parallel import (gather_from_sequence_parallel_region,
@@ -40,6 +41,7 @@ class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
         thd_format = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
         # Note: for packed inputs, we do not perform padding_free unpadding.
         # Doing so would allow different sequences to see each other; for efficiency we keep this implementation.
+        # CP with thd_format requires global cu_seqlens; for now we support CP only in non-thd case.
         if thd_format and not args.packing:
             new_hidden_states = hidden_states.new_zeros(
                 (packed_seq_params.num_samples, packed_seq_params.max_seqlen_q.item(), hidden_states.shape[-1]))
@@ -79,7 +81,7 @@ class Qwen3_5Vit(HuggingFaceModule):
         super().__init__(config, [Qwen3_5TextModel, Qwen3_5MoeTextModel])
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
-        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.hf_config)
+        return Template._get_inputs_embeds_hf(inputs_embeds, kwargs, self.visual, self.processor, self.hf_config, dummy_visual_input=self.config.args.dummy_visual_input)
 
 
 class Qwen3_5Bridge(Qwen3NextBridge):

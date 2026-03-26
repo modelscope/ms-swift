@@ -3,7 +3,13 @@ import torch
 import torch.nn.functional as F
 from megatron.core.inference.contexts import BaseInferenceContext
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.parallel_state import (
+    get_context_parallel_rank,
+    get_context_parallel_world_size,
+)
 from typing import Optional
+
+from swift.megatron.utils.parallel_utils import gather_cp_outputs, split_cp_inputs
 
 try:
     from fla.modules.convolution import causal_conv1d
@@ -22,6 +28,10 @@ except ImportError:
 
 
 class GatedDeltaNet(_GatedDeltaNet):
+
+    def __init__(self, *args, cp_comm_type=None, **kwargs):
+        # cp_comm_type is passed by TransformerLayer when cp>1 but GDN doesn't use it
+        super().__init__(*args, **kwargs)
 
     def forward(
         self,
@@ -60,7 +70,7 @@ class GatedDeltaNet(_GatedDeltaNet):
         inference_context = deprecate_inference_params(inference_context, inference_params)
 
         seq_len, batch, _ = hidden_states.shape
-        seq_len = seq_len * self.sp_size
+        seq_len = seq_len * self.sp_size  # seq_len = s/cp after SP all-gather inside in_proj
 
         if inference_context is not None:
             assert (
@@ -70,10 +80,19 @@ class GatedDeltaNet(_GatedDeltaNet):
             raise NotImplementedError('GDN does not support inference for now.')
 
         cu_seqlens = None if packed_seq_params is None else packed_seq_params.cu_seqlens_q
-        # Input projection
+        cp_size = get_context_parallel_world_size()
+        # Input projection (SP all-gather happens inside: [s/(cp·sp), b, h] → [s/cp, b, h] → linear)
         nvtx_range_push(suffix='in_proj')
         qkvzba, _ = self.in_proj(hidden_states)
         nvtx_range_pop(suffix='in_proj')
+
+        # Gather full sequence across CP ranks after SP has already been gathered inside in_proj.
+        # Data flow: split_cp first, then scatter_to_sp inside in_proj, so we must
+        # gather SP first (done inside in_proj) then gather CP here.
+        # After in_proj: qkvzba is [s/cp, b, proj/tp]; after CP gather: [s, b, proj/tp].
+        if cp_size > 1:
+            qkvzba = gather_cp_outputs(qkvzba, cu_seqlens, dim=0)
+            seq_len = seq_len * cp_size  # now full sequence length s
 
         # Transpose: s b x --> b s x
         # From sbhd to bshd format
@@ -183,6 +202,10 @@ class GatedDeltaNet(_GatedDeltaNet):
         # From bshd back to sbhd format
         norm_out = norm_out.reshape(batch, seq_len, -1)
         norm_out = norm_out.transpose(0, 1).contiguous()
+
+        # Split back to local CP rank's portion before output projection
+        if cp_size > 1:
+            norm_out = split_cp_inputs(norm_out, cu_seqlens, dim=0)
 
         # Output projection
         nvtx_range_push(suffix='out_proj')

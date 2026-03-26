@@ -18,8 +18,7 @@ init_loggers = {}
 
 # old format
 # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger_format = logging.Formatter('[%(levelname)s:%(name)s] %(message)s')
-
+logger_format = logging.Formatter('[%(asctime)s-%(levelname)s-%(name)s %(pathname)s:%(lineno)d] %(message)s')
 info_set = set()
 warning_set = set()
 
@@ -154,3 +153,43 @@ def add_file_handler_if_needed(logger, log_file, file_mode, log_level):
         file_handler.setFormatter(logger_format)
         file_handler.setLevel(log_level)
         logger.addHandler(file_handler)
+
+
+def setup_megatron_logging(log_file: Optional[str] = None):
+    """Configure Megatron loggers to output to the same stream/file as swift logs.
+
+    Call this after init_megatron_env() so Megatron logs (e.g. DDP bucket info,
+    param_and_grad_buffer) appear in ms-swift log files.
+
+    Reuses Swift's handlers to avoid log interleaving/corruption when both
+    Swift and Megatron write concurrently (shared handler lock serializes writes).
+
+    Args:
+        log_file: Optional log file path. If None, only uses Swift's StreamHandler.
+            When using tee (e.g. 2>&1 | tee node_rank_0.log), stderr is captured.
+    """
+    if importlib.util.find_spec('torch') is not None:
+        is_worker0 = int(os.getenv('LOCAL_RANK', -1)) in {-1, 0}
+    else:
+        is_worker0 = True
+    if not is_worker0:
+        return
+    log_level = os.getenv('LOG_LEVEL', 'INFO').upper()
+    log_level = getattr(logging, log_level, logging.INFO)
+    megatron_logger = logging.getLogger('megatron.core')
+    megatron_logger.setLevel(log_level)
+    megatron_logger.propagate = False  # Don't propagate to root (filters at ERROR)
+    # Reuse Swift logger's handlers to avoid interleaved/corrupted output
+    swift_logger = logging.getLogger('swift')
+    for handler in swift_logger.handlers:
+        if handler not in megatron_logger.handlers:
+            megatron_logger.addHandler(handler)
+    if log_file is not None:
+        for h in megatron_logger.handlers:
+            if isinstance(h, logging.FileHandler) and getattr(h, 'baseFilename', '') == log_file:
+                break
+        else:
+            file_handler = logging.FileHandler(log_file, 'a')
+            file_handler.setFormatter(logger_format)
+            file_handler.setLevel(log_level)
+            megatron_logger.addHandler(file_handler)

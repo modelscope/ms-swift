@@ -5,7 +5,7 @@ import torch
 from tqdm import tqdm
 
 from swift.megatron.utils import reduce_max_stat_across_model_parallel_group
-from swift.utils import JsonlWriter, format_time, get_logger, is_last_rank
+from swift.utils import JsonlWriter, format_time, get_logger, is_last_rank, is_master
 from .base import MegatronCallback
 
 logger = get_logger()
@@ -35,10 +35,14 @@ class PrintCallback(MegatronCallback):
         self.training_bar.close()
         self.training_bar = None
 
+    def on_step_begin(self):
+        self.iter_start_time = time.time()
+
     def on_step_end(self):
         n_step = self.state.iteration - self.current_step
         self.current_step = self.state.iteration
         self.training_bar.update(n_step)
+        self.current_iter_time = time.time() - self.iter_start_time
 
     def on_eval_begin(self):
         self.eval_bar = tqdm(
@@ -62,6 +66,10 @@ class PrintCallback(MegatronCallback):
         logs['remaining_time'] = format_time((args.train_iters - state.iteration) * train_speed)
         memory = reduce_max_stat_across_model_parallel_group(torch.cuda.max_memory_reserved() / 1024**3)
         logs['memory(GiB)'] = round(memory, 2)
+        free_mem, total_mem = torch.cuda.mem_get_info()
+        real_memory = reduce_max_stat_across_model_parallel_group((total_mem - free_mem) / 1024**3)
+        logs['real_memory(GiB)'] = round(real_memory, 2)
+        logs['iter_time(s)'] = round(self.current_iter_time, 2)
         logs['train_speed(s/it)'] = round(train_speed, 6)
         logs = {k: round(v, 8) if isinstance(v, float) else v for k, v in logs.items()}
         self.jsonl_writer.append(logs)

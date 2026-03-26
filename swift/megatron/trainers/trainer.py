@@ -69,6 +69,9 @@ class MegatronTrainer(BaseMegatronTrainer):
 
         # Reduce loss for logging.
         reporting_loss = loss.detach().clone()
+        if args.context_parallel_size > 1 and self.mcore_013:
+            # mcore_013 doesn't all_reduce loss across CP for backward, but we need it for logging.
+            torch.distributed.all_reduce(reporting_loss, group=mpu.get_context_parallel_group())
         torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
 
         lm_loss = loss[0]

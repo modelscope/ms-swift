@@ -582,7 +582,20 @@ class BaseMegatronTrainer(ABC):
 
         self.call_event('on_train_begin')
         train_metrics = {}
-        if args.virtual_pipeline_model_parallel_size is not None:
+        prof = None
+        prof_started = False
+        prof_stopped = False
+        rank = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+        if args.profile and args.use_pytorch_profiler and rank in args.profile_ranks:
+            if args.profile_step_end <= args.profile_step_start:
+                raise ValueError('`profile_step_end` must be greater than `profile_step_start`.')
+            tensorboard_dir = args.tensorboard_dir or args.output_dir
+            prof = torch.profiler.profile(
+                on_trace_ready=torch.profiler.tensorboard_trace_handler(tensorboard_dir),
+                record_shapes=True,
+                with_stack=True,
+            )
+        if self.args.virtual_pipeline_model_parallel_size is not None:
             train_data_iterator, val_data_iterator = [], []
             for _ in range(args.virtual_pipeline_model_parallel_size):
                 train_it, val_it = self._prepare_data_iterator(train_dataset, val_dataset)
@@ -593,7 +606,13 @@ class BaseMegatronTrainer(ABC):
         while state.iteration < args.train_iters:
             self.call_event('on_step_begin')
             maybe_finalize_async_save(args, blocking=False)
+            if prof is not None and not prof_started and state.iteration == args.profile_step_start:
+                prof.start()
+                prof_started = True
             metrics, grad_norm, update_successful = self.train_step(train_data_iterator)
+            if prof is not None and prof_started and not prof_stopped:
+                # Advance profiler after finishing one full train iteration.
+                prof.step()
             if state.iteration == start_iteration:
                 if update_successful:
                     # Enable forward pre-hook after training step has successfully run. All subsequent
@@ -607,6 +626,9 @@ class BaseMegatronTrainer(ABC):
                     start_iteration = state.iteration + 1
 
             state.iteration += 1
+            if prof is not None and prof_started and not prof_stopped and state.iteration >= args.profile_step_end:
+                prof.stop()
+                prof_stopped = True
             self.call_event('on_step_end')
             self._aggregated_metrics(metrics, train_metrics)
             train_metrics['grad_norm'] = grad_norm
@@ -672,6 +694,10 @@ class BaseMegatronTrainer(ABC):
     def save_checkpoint(self):
         args = self.args
         state = self.state
+        # Free cached memory before save to reduce OOM risk during checkpoint.
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
         args.consumed_train_samples = state.consumed_train_samples
         iteration = state.iteration
         output_dir = os.path.join(args.output_dir, f'checkpoint-{iteration}')
