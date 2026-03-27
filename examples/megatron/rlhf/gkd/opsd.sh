@@ -33,7 +33,7 @@ megatron rlhf \
     --global_batch_size 32 \
     --train_iters 1000 \
     --lr 2e-5 \
-    --save_steps 100 \
+    --save_steps 20 \
     --save_total_limit 10 \
     --logging_steps 1 \
     --max_length 8192 \

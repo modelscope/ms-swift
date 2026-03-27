@@ -368,6 +368,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             torch.distributed.broadcast(teacher_indices, src=rollout_src, group=rollout_group)
 
             opsd_teacher_labels = opsd_batch.get('labels') if opsd_batch is not None else None
+            if opsd_teacher_labels is not None:
+                opsd_teacher_labels = torch.roll(opsd_teacher_labels, shifts=-1, dims=-1)
             encoded_batch['teacher_output'] = TeacherOutput(
                 topk_logprobs=teacher_logprobs,
                 topk_indices=teacher_indices,
