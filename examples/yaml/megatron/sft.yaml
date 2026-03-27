@@ -1,4 +1,3 @@
-# env
 ENV:
   PYTORCH_CUDA_ALLOC_CONF: 'expandable_segments:True'
   MAX_PIXELS: '1003520'
