@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 import yaml
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from swift.utils import get_logger
 
