@@ -161,27 +161,27 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - ray_exp_name: Ray experiment name. This field will be used as the prefix for cluster and worker names, can be empty.
 - device_groups: String (jsonstring) type. When using ray, this field must be configured. For details, please refer to the [ray documentation](Ray.md).
 
-### YAML Arguments
+### YAML/JSON Support
 
-- config: You can use config instead of command-line arguments, for example:
+Here we use `swift sft` as an example. The YAML/JSON launch method also supports `swift infer/rlhf/...` as well as `megatron sft/rlhf`.
 
 ```shell
-swift sft --config demo.yaml
+swift sft xxx.yaml
+swift sft xxx.json
 ```
 
-The content of demo.yaml consists of other command-line configurations:
+The content of xxx.yaml/xxx.json contains specific command-line configurations:
 
 ```yaml
-# Model args
-model: Qwen/Qwen2.5-7B-Instruct
-dataset: swift/self-cognition
-...
+model: "Qwen/Qwen2.5-7B-Instruct"
+dataset: "swift/self-cognition#500"
+```
 
-# Train args
-output_dir: xxx/xxx
-gradient_checkpointing: true
-
-...
+```json
+{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "dataset": "swift/self-cognition#500"
+}
 ```
 
 ## Atomic Arguments

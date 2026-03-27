@@ -158,27 +158,27 @@
 - ray_exp_name: ray实验名字，这个字段会用作cluster和worker名称前缀，可以不填
 - device_groups: 字符串（jsonstring）类型。在使用ray时，该字段必须配置，具体可以查看[ray文档](Ray.md)。
 
-### yaml支持
+### yaml/json支持
 
-- config: 可以使用config代替命令行参数，例如：
+这里以`swift sft`为例子，yaml/json的方式启动也支持`swift infer/rlhf/...`以及`megatron sft/rlhf`。
 
 ```shell
-swift sft --config demo.yaml
+swift sft xxx.yaml
+swift sft xxx.json
 ```
 
-demo.yaml的内容为具体命令行配置：
+xxx.yaml/xxx.json的内容为具体命令行配置：
 
 ```yaml
-# Model args
-model: Qwen/Qwen2.5-7B-Instruct
-dataset: swift/self-cognition
-...
+model: "Qwen/Qwen2.5-7B-Instruct"
+dataset: "swift/self-cognition#500"
+```
 
-# Train args
-output_dir: xxx/xxx
-gradient_checkpointing: true
-
-...
+```json
+{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "dataset": "swift/self-cognition#500"
+}
 ```
 
 ## 原子参数
