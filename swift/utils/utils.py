@@ -183,6 +183,10 @@ def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[
         json_path = os.path.abspath(os.path.expanduser(argv[0]))
         args, = parser.parse_json_file(json_path)
         remaining_args = argv[1:]
+    elif len(argv) > 0 and argv[0].endswith('.yaml'):
+        yaml_path = os.path.abspath(os.path.expanduser(argv[0]))
+        args, = parser.parse_yaml_file(yaml_path)
+        remaining_args = argv[1:]
     else:
         args, remaining_args = parser.parse_args_into_dataclasses(argv, return_remaining_strings=True)
     return args, remaining_args

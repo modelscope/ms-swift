@@ -16,7 +16,6 @@ matplotlib
 modelscope>=1.23
 nltk
 numpy
-omegaconf
 openai
 oss2
 pandas
