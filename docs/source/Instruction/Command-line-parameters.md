@@ -522,6 +522,8 @@ RLHF参数继承于[训练参数](#训练参数)。
 - center_rewards_coefficient: 用于RM训练。用于激励奖励模型输出均值为零的奖励的系数，具体查看这篇[论文](https://huggingface.co/papers/2312.09244)。推荐值：0.01。
 - loss_scale: 覆盖模板参数。rlhf训练时，默认为'last_round'。
 - temperature: 默认为0.9，该参数将在PPO、GRPO、GKD中使用。
+- top_k: rollout采样的top-k参数，-1表示不进行top-k过滤。默认为-1。
+- top_p: rollout采样的top-p参数，1.0表示不进行top-p过滤。默认为1.0。
 
 #### GKD参数
 - lmbda: 默认为0.5。该参数在GKD中使用。控制学生数据比例的 lambda 参数（即策略内学生生成输出所占的比例）。若lmbda为0，则不使用学生生成数据。
