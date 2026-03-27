@@ -163,7 +163,8 @@ The following are parameters for quantizing models upon loading. See the [quanti
 
 ### YAML/JSON Support
 
-Here we use `swift sft` as an example. The YAML/JSON launch method also supports `swift infer/rlhf/...` as well as `megatron sft/rlhf`.
+Here we use `swift sft` as an example. The YAML/JSON launch method also supports `swift infer/rlhf/...` as well as `megatron sft/rlhf`. Please refer to [the examples here](https://github.com/modelscope/ms-swift/tree/main/examples/yaml).
+- The YAML/JSON file will be stored in `output_dir` after training/inference.
 
 ```shell
 swift sft xxx.yaml
@@ -181,6 +182,33 @@ dataset: "swift/self-cognition#500"
 {
     "model": "Qwen/Qwen2.5-7B-Instruct",
     "dataset": "swift/self-cognition#500"
+}
+```
+
+You can also use a combination of YAML and command-line arguments. For example, use YAML for parameters that are infrequently modified, and pass frequently changed parameters via command line.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer examples/yaml/deepspeed/infer.yaml \
+    --adapters output/vx-xxx/checkpoint-xxx
+```
+
+How to specify environment variables in YAML/JSON:
+
+```yaml
+ENV:
+  MAX_PIXELS: '1003520'
+  VIDEO_MAX_PIXELS: '50176'
+  FPS_MAX_FRAMES: '12'
+json
+
+```json
+{
+  "ENV": {
+      "MAX_PIXELS": "1003520",
+      "VIDEO_MAX_PIXELS": "50176",
+      "FPS_MAX_FRAMES": "12"
+  }
 }
 ```
 

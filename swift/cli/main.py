@@ -35,15 +35,25 @@ def use_torchrun() -> bool:
     return True
 
 
-def prepare_config_args(argv):
+def parse_yaml_args(argv):
     if not argv:
         return
+    config = None
     if argv[0].endswith('.json'):
         with open(argv[0], 'r') as f:
             config = json.load(f)
     elif argv[0].endswith('.yaml') or argv[0].endswith('.yml'):
         with open(argv[0], 'r') as f:
             config = yaml.safe_load(f)
+    if config is None:
+        return
+    # Used for saving configurations
+    os.environ['SWIFT_CONFIG_FILE'] = argv[0]
+
+    env = config.pop('ENV', None)
+    if env:
+        for k, v in env.items():
+            os.environ[k] = str(v)
     config_argv = []
     for k, v in config.items():
         config_argv.append(f'--{k}')
@@ -77,7 +87,7 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     torchrun_args = get_torchrun_args()
-    prepare_config_args(argv)
+    parse_yaml_args(argv)
     python_cmd = sys.executable
     if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
