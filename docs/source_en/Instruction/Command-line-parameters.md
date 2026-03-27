@@ -200,7 +200,7 @@ ENV:
   MAX_PIXELS: '1003520'
   VIDEO_MAX_PIXELS: '50176'
   FPS_MAX_FRAMES: '12'
-json
+```
 
 ```json
 {
