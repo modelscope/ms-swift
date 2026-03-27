@@ -161,27 +161,55 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - ray_exp_name: Ray experiment name. This field will be used as the prefix for cluster and worker names, can be empty.
 - device_groups: String (jsonstring) type. When using ray, this field must be configured. For details, please refer to the [ray documentation](Ray.md).
 
-### YAML Arguments
+### YAML/JSON Support
 
-- config: You can use config instead of command-line arguments, for example:
+Here we use `swift sft` as an example. The YAML/JSON launch method also supports `swift infer/rlhf/...` as well as `megatron sft/rlhf`. Please refer to [the examples here](https://github.com/modelscope/ms-swift/tree/main/examples/yaml).
+- The YAML/JSON file will be stored in `output_dir` after training/inference.
 
 ```shell
-swift sft --config demo.yaml
+swift sft xxx.yaml
+swift sft xxx.json
 ```
 
-The content of demo.yaml consists of other command-line configurations:
+The content of xxx.yaml/xxx.json contains specific command-line configurations:
 
 ```yaml
-# Model args
-model: Qwen/Qwen2.5-7B-Instruct
-dataset: swift/self-cognition
-...
+model: "Qwen/Qwen2.5-7B-Instruct"
+dataset: "swift/self-cognition#500"
+```
 
-# Train args
-output_dir: xxx/xxx
-gradient_checkpointing: true
+```json
+{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "dataset": "swift/self-cognition#500"
+}
+```
 
-...
+You can also use a combination of YAML and command-line arguments. For example, use YAML for parameters that are infrequently modified, and pass frequently changed parameters via command line.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer examples/yaml/deepspeed/infer.yaml \
+    --adapters output/vx-xxx/checkpoint-xxx
+```
+
+How to specify environment variables in YAML/JSON:
+
+```yaml
+ENV:
+  MAX_PIXELS: '1003520'
+  VIDEO_MAX_PIXELS: '50176'
+  FPS_MAX_FRAMES: '12'
+```
+
+```json
+{
+  "ENV": {
+      "MAX_PIXELS": "1003520",
+      "VIDEO_MAX_PIXELS": "50176",
+      "FPS_MAX_FRAMES": "12"
+  }
+}
 ```
 
 ## Atomic Arguments

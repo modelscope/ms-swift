@@ -311,6 +311,9 @@ class Qwen2VLTemplate(Template):
         from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         kwargs = {'image_patch_size': self.processor.image_processor.patch_size} if self.version == 'v3' else {}
+        if self.mode == 'vllm':
+            # resized in qwen_vl_utils, no need to resize again in vllm
+            inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]}, **kwargs)
             if self.mode == 'lmdeploy':
