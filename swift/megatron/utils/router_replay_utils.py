@@ -6,13 +6,25 @@ Utilities for handling router replay functionality in Megatron models.
 import torch
 from megatron.core import mpu
 from megatron.core.tensor_parallel import scatter_to_sequence_parallel_region
-from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
-from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
 from megatron.core.transformer.transformer_block import get_num_layers_to_build
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 
 from swift.megatron.trainers.utils import split_cp_inputs
+from swift.utils import get_logger
 from swift.utils.torch_utils import get_current_device
+
+logger = get_logger()
+
+try:
+    from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+    from megatron.core.transformer.moe.token_dispatcher import MoEAlltoAllTokenDispatcher
+    ROUTER_REPLAY_AVAILABLE = True
+except ImportError:
+    logger.warning('RouterReplay not available in current megatron-core version')
+    RouterReplay = None
+    RouterReplayAction = None
+    MoEAlltoAllTokenDispatcher = None
+    ROUTER_REPLAY_AVAILABLE = False
 
 device_name = get_current_device()
 
@@ -174,7 +186,10 @@ def apply_router_replay_patch():
     """
     Applies the monkey patch for MoE Router Replay functionality.
     """
-    print('Applying Router Replay Patch...')
+    logger.info('Applying Router Replay Patch...')
+
+    assert ROUTER_REPLAY_AVAILABLE, \
+        'The routing replay is not supported. Please upgrade megatron-core to 0.16.0 or higher'
 
     # Patch MoEAlltoAllTokenDispatcher.preprocess to handle router replay
     # When router replay is enabled, duplicate indices in top_indices can cause

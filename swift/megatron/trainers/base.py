@@ -17,7 +17,6 @@ from megatron.core.optimizer import OptimizerConfig, get_megatron_optimizer
 from megatron.core.pipeline_parallel import get_forward_backward_func
 from megatron.core.transformer.module import MegatronModule
 from megatron.core.transformer.moe.moe_utils import track_moe_metrics
-from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
 from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelper
 from modelscope import check_local_model_is_latest
 from packaging import version
@@ -45,8 +44,11 @@ from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
+    from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
 except ImportError:
     param_group_identifier_keys = None
+    RouterReplay = None
+    RouterReplayAction = None
 
 mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 
@@ -59,8 +61,6 @@ class BaseMegatronTrainer(ABC):
         # validate mcore version and patch routing_replay
         self.enable_routing_replay = args.router_replay_mode != 'disabled'
         if self.enable_routing_replay:
-            assert version.parse(megatron.core.__version__) >= version.parse('0.16.0'), \
-                'The routing replay is not supported. Please upgrade megatron-core to 0.16.0 or higher'
             apply_router_replay_patch()
 
         self.args = args

@@ -18,7 +18,6 @@ from dacite import from_dict
 from functools import partial
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
-from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
@@ -38,6 +37,12 @@ from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
+
+try:
+    from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+except ImportError:
+    RouterReplay = None
+    RouterReplayAction = None
 
 logger = get_logger()
 
@@ -1096,11 +1101,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         })
         data.pop('loss_scale', None)
 
-        if RouterReplayHelper.is_replay_backward_action(model.config):
+        if self.enable_routing_replay and RouterReplayHelper.is_replay_backward_action(model.config):
             router_instance_list = RouterReplayHelper.get_micro_batch_router_list(model.config)
             for router in router_instance_list:
                 router.set_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
-        if RouterReplayHelper.is_replay_forward_action(model.config):
+        if self.enable_routing_replay and RouterReplayHelper.is_replay_forward_action(model.config):
             layers_topk_idx = data.pop('routed_experts', None)
             set_router_replay_data(layers_topk_idx, model.config)
 
@@ -1154,7 +1159,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             output_tensor = per_token_logps
             data['per_token_entropy'] = per_token_entropy
 
-        if RouterReplayHelper.is_replay_forward_action(model.config):
+        if self.enable_routing_replay and RouterReplayHelper.is_replay_forward_action(model.config):
             router_instance_list = RouterReplayHelper.get_micro_batch_router_list(model.config)
             for router in router_instance_list:
                 router.set_router_replay_action(RouterReplayAction.REPLAY_BACKWARD)
