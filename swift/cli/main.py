@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import yaml
 from typing import Any, Dict, List, Optional
 
 from swift.utils import get_logger
@@ -34,6 +35,29 @@ def use_torchrun() -> bool:
     return True
 
 
+def prepare_config_args(argv):
+    if not argv:
+        return
+    if argv[0].endswith('.json'):
+        with open(argv[0], 'r') as f:
+            config = json.load(f)
+    elif argv[0].endswith('.yaml') or argv[0].endswith('.yml'):
+        with open(argv[0], 'r') as f:
+            config = yaml.safe_load(f)
+    config_argv = []
+    for k, v in config.items():
+        config_argv.append(f'--{k}')
+        if isinstance(v, list):
+            config_argv += v
+        else:
+            if isinstance(v, dict):
+                v = json.dumps(v)
+            else:
+                v = str(v)
+            config_argv.append(v)
+    argv[0:1] = config_argv
+
+
 def get_torchrun_args() -> Optional[List[str]]:
     if not use_torchrun():
         return
@@ -53,6 +77,7 @@ def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool =
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     torchrun_args = get_torchrun_args()
+    prepare_config_args(argv)
     python_cmd = sys.executable
     if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
