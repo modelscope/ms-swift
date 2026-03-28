@@ -29,6 +29,7 @@ convert_kwargs = {
 
 
 def convert_hf2mcore(args: ExportArguments) -> None:
+    args.experts_impl = 'eager'  # Compatible with transformers 5.4.0
     hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
     processor = template.processor
     if args.thread_count is None:
@@ -63,6 +64,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
+    args.experts_impl = 'eager'
     _, template = prepare_model_template(args, load_model=False)
     processor = template.processor
 
