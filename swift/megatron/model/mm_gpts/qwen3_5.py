@@ -26,7 +26,7 @@ class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
     def __init__(self, config: TransformerConfig, submodules: SelfAttentionSubmodules, layer_number: int, **kwargs):
         assert config.context_parallel_size == 1, 'Qwen3_5 currently does not support context parallel.'
         assert _Qwen3_5MoeGatedDeltaNet is not object, 'please update the `transformers` version.'
-        if config.args.packing:
+        if getattr(config.args, 'packing', False):
             raise ValueError('Please set the environment variable `SWIFT_USE_MCORE_GDN=1` to enable the megatron-core '
                              'implementation of GatedDeltaNet, which supports packing.')
         _Qwen3_5MoeGatedDeltaNet.__init__(self, config, layer_number)
@@ -43,7 +43,7 @@ class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
         thd_format = packed_seq_params is not None and packed_seq_params.qkv_format == 'thd'
         # Note: for packed inputs, we do not perform padding_free unpadding.
         # Doing so would allow different sequences to see each other; for efficiency we keep this implementation.
-        if thd_format and not args.packing:
+        if thd_format:
             new_hidden_states = hidden_states.new_zeros(
                 (packed_seq_params.num_samples, packed_seq_params.max_seqlen_q.item(), hidden_states.shape[-1]))
             attention_mask = hidden_states.new_zeros(
@@ -60,7 +60,7 @@ class Qwen3_5MoeGatedDeltaNet(_HuggingFaceModule, _Qwen3_5MoeGatedDeltaNet):
             if attention_mask is not None:
                 attention_mask = (~attention_mask).sum(dim=(1, 2)) > 0
         res = super().forward(hidden_states=hidden_states, attention_mask=attention_mask)
-        if thd_format and not args.packing:
+        if thd_format:
             res = res[attention_mask][:, None]
             res = torch.concat([res, res.new_zeros(seq_len - res.shape[0], 1, res.shape[2])])
         else:
