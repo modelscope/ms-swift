@@ -11,7 +11,6 @@ register_megatron_model(
             ModelType.qwen2,
             ModelType.llama,
             ModelType.codefuse_codellama,
-            ModelType.yi,
             ModelType.openbuddy_llama,
             ModelType.qwen3,
             ModelType.qwen3_reranker,

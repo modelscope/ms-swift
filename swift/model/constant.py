@@ -19,7 +19,6 @@ class LLMModelType:
     modelscope_agent = 'modelscope_agent'
 
     llama = 'llama'
-    yi = 'yi'
     gpt_oss = 'gpt_oss'
     seed_oss = 'seed_oss'
 
