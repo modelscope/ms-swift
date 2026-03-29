@@ -11,7 +11,7 @@ pip install -U ms-swift
 pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
-pip install -U flash-linear-attention --no-build-isolation
+pip install -U "flash-linear-attention>=0.4.2" --no-build-isolation
 
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation

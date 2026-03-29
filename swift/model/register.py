@@ -183,10 +183,11 @@ class ModelLoader(BaseModelLoader):
         self.attn_impl = attn_impl
         self.attn_impl_keys = None
         experts_impl = experts_impl or kwargs.get('experts_implementation')
-        if experts_impl == 'eager' and not transformers_5:
-            experts_impl = None
         if experts_impl is not None and not transformers_5:
-            raise ValueError('experts_impl is only supported in "transformers>=5.0".')
+            if experts_impl == 'eager':
+                experts_impl = None
+            else:
+                raise ValueError('experts_impl is only supported in "transformers>=5.0".')
         self.experts_impl = experts_impl
         self.rope_scaling = rope_scaling
         self.max_model_len = max_model_len
