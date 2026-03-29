@@ -463,6 +463,8 @@ class ModelLoader(BaseModelLoader):
         model_dir = self.model_info.model_dir
         with patch_get_dynamic_module(), patch_tp_plan(self.load_model), patch_offload_context:
             config = self.get_config(model_dir)
+            logger.info(f'config.transformers_version: {config.transformers_version}, '
+                        f'transformers.__version__: {transformers.__version__}')
             self._postprocess_config(config)
             model, processor = self._get_model_processor(model_dir, config)
             self._postprocess_processor(processor)
