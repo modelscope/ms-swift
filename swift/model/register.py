@@ -183,6 +183,8 @@ class ModelLoader(BaseModelLoader):
         self.attn_impl = attn_impl
         self.attn_impl_keys = None
         experts_impl = experts_impl or kwargs.get('experts_implementation')
+        if experts_impl == 'eager' and not transformers_5:
+            experts_impl = None
         if experts_impl is not None and not transformers_5:
             raise ValueError('experts_impl is only supported in "transformers>=5.0".')
         self.experts_impl = experts_impl
@@ -208,7 +210,6 @@ class ModelLoader(BaseModelLoader):
         else:
             model_kwargs['torch_dtype'] = self.torch_dtype
         _patch_awq_compat(model_info)
-        logger.info(f'model_kwargs: {model_kwargs}')
 
     def _postprocess_config(self, config):
         # fix prediction_step (internvl2, ovis, ...)
@@ -267,6 +268,7 @@ class ModelLoader(BaseModelLoader):
                   model_kwargs) -> PreTrainedModel:
         if self.experts_impl is not None:
             model_kwargs['experts_implementation'] = self.experts_impl
+        logger.info(f'model_kwargs: {model_kwargs}')
         model_info = self.model_info
         model_meta = self.model_meta
         auto_model_cls = self.auto_model_cls
