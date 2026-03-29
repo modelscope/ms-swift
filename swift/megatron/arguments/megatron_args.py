@@ -722,7 +722,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                              f'micro_batch_size: {self.micro_batch_size}.')
         self._check_muon()
 
-
     def _get_mcore_model_type(self, model_type):
         if self.model_type in {'qwen3_emb'}:
             mcore_model_type = model_type

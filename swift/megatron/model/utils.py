@@ -33,10 +33,9 @@ def _check_padding_free(args, config):
         args.padding_free = False
 
 
-def get_mcore_model_config(args, processor, hf_config):
+def get_mcore_model_config(args, hf_config):
     kwargs = hf_to_mcore_config(hf_config)
     kwargs['mcore_model_type'] = args.megatron_model_meta.model_type
-    kwargs['processor'] = processor
     kwargs['hf_config'] = hf_config
     for f in fields(ModelConfig):
         key, value = f.name, getattr(args, f.name, None)
@@ -74,9 +73,9 @@ def get_mcore_model_config(args, processor, hf_config):
     return config
 
 
-def get_mcore_model(args, processor, hf_config):
+def get_mcore_model(args, hf_config):
     from mcore_bridge import get_mcore_model as _get_mcore_model
-    config = get_mcore_model_config(args, processor, hf_config)
+    config = get_mcore_model_config(args, hf_config)
     models = _get_mcore_model(config)
 
     return models
