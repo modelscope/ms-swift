@@ -29,6 +29,7 @@ class MegatronExport(SwiftPipeline):
 
     def convert_mcore2hf(self) -> None:
         args = self.args
+        args.experts_impl = 'eager'
         download_model = args.model is not None
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
@@ -79,6 +80,7 @@ class MegatronExport(SwiftPipeline):
 
     def convert_hf2mcore(self) -> None:
         args = self.args
+        args.experts_impl = 'eager'
         download_model = args.model is not None
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
