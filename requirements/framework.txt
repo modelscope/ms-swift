@@ -16,7 +16,6 @@ matplotlib
 modelscope>=1.23
 nltk
 numpy
-omegaconf
 openai
 oss2
 pandas
@@ -33,7 +32,7 @@ sortedcontainers>=1.5.9
 tensorboard
 tiktoken
 tqdm
-transformers>=4.33,<5.4.0
+transformers>=4.33,<5.5.0
 transformers_stream_generator
 trl>=0.15,<0.30
 uvicorn

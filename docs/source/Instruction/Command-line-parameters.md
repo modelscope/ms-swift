@@ -158,27 +158,53 @@
 - ray_exp_name: ray实验名字，这个字段会用作cluster和worker名称前缀，可以不填
 - device_groups: 字符串（jsonstring）类型。在使用ray时，该字段必须配置，具体可以查看[ray文档](Ray.md)。
 
-### yaml支持
+### yaml/json支持
 
-- config: 可以使用config代替命令行参数，例如：
+这里以`swift sft`为例子，yaml/json的方式启动也支持`swift infer/rlhf/...`以及`megatron sft/rlhf`。请参考[这里的例子](https://github.com/modelscope/ms-swift/tree/main/examples/yaml)。
+- yaml/json文件会在训练/推理后，存储在`output_dir`中。
 
 ```shell
-swift sft --config demo.yaml
+swift sft xxx.yaml
+swift sft xxx.json
 ```
 
-demo.yaml的内容为具体命令行配置：
+xxx.yaml/xxx.json的内容为具体命令行配置：
 
 ```yaml
-# Model args
-model: Qwen/Qwen2.5-7B-Instruct
-dataset: swift/self-cognition
-...
+model: "Qwen/Qwen2.5-7B-Instruct"
+dataset: "swift/self-cognition#500"
+```
 
-# Train args
-output_dir: xxx/xxx
-gradient_checkpointing: true
+```json
+{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "dataset": "swift/self-cognition#500"
+}
+```
 
-...
+你也可以混合使用yaml和命令行方式。例如yaml为不经常修改的参数，命令行传入常修改参数。
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer examples/yaml/deepspeed/infer.yaml \
+    --adapters output/vx-xxx/checkpoint-xxx
+```
+
+如何在yaml/json中指定环境环境变量：
+```yaml
+ENV:
+  MAX_PIXELS: '1003520'
+  VIDEO_MAX_PIXELS: '50176'
+  FPS_MAX_FRAMES: '12'
+```
+
+```json
+{
+  "ENV": {
+      "MAX_PIXELS": "1003520",
+      "VIDEO_MAX_PIXELS": "50176",
+      "FPS_MAX_FRAMES": "12"
+  }
+}
 ```
 
 ## 原子参数
@@ -522,6 +548,8 @@ RLHF参数继承于[训练参数](#训练参数)。
 - center_rewards_coefficient: 用于RM训练。用于激励奖励模型输出均值为零的奖励的系数，具体查看这篇[论文](https://huggingface.co/papers/2312.09244)。推荐值：0.01。
 - loss_scale: 覆盖模板参数。rlhf训练时，默认为'last_round'。
 - temperature: 默认为0.9，该参数将在PPO、GRPO、GKD中使用。
+- top_k: rollout采样的top-k参数，-1表示不进行top-k过滤。默认为-1。
+- top_p: rollout采样的top-p参数，1.0表示不进行top-p过滤。默认为1.0。
 
 #### GKD参数
 - lmbda: 默认为0.5。该参数在GKD中使用。控制学生数据比例的 lambda 参数（即策略内学生生成输出所占的比例）。若lmbda为0，则不使用学生生成数据。

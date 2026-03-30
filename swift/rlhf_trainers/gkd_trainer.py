@@ -10,6 +10,7 @@ from accelerate.utils import gather_object, is_peft_model
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
+from dataclasses import dataclass
 from enum import Enum
 from packaging import version
 from transformers import PreTrainedModel
@@ -49,6 +50,26 @@ class DataSource(str, Enum):
     STUDENT = 'student'  # On-policy: student model generates responses
     TEACHER = 'teacher'  # Sequential KD: teacher model generates responses
     DATASET = 'dataset'  # Off-policy: use dataset responses
+
+
+@dataclass
+class TeacherOutput:
+    """Unified container for teacher model outputs from all three sources:
+    local full-vocab, local top-k, and external API top-k.
+    """
+    full_logits: Optional[torch.Tensor] = None
+    topk_logprobs: Optional[torch.Tensor] = None
+    topk_indices: Optional[torch.Tensor] = None
+    opsd_teacher_labels: Optional[torch.Tensor] = None
+
+    @property
+    def is_topk_mode(self) -> bool:
+        return self.topk_logprobs is not None and self.topk_indices is not None
+
+    def validate(self):
+        if self.full_logits is None and not self.is_topk_mode:
+            raise ValueError('TeacherOutput must provide either full_logits or '
+                             '(topk_logprobs, topk_indices). Got neither.')
 
 
 teacher_model_server_model_name = None
@@ -127,6 +148,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         """
         if not all('teacher_prompt' in data and data['teacher_prompt'] for data in inputs):
             return None
+
+        assert not self.use_liger_gkd_loss, 'OPSD is only supported when use_liger_gkd_loss is False.'
+
         teacher_data = []
         for data in inputs:
             teacher_item = {k: v for k, v in data.items() if k != 'teacher_prompt'}
@@ -141,53 +165,73 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             teacher_data.append(teacher_item)
         return teacher_data
 
-    def _compute_jsd_loss(self, outputs_student, outputs_teacher, inputs, opsd_teacher_inputs):
-        if opsd_teacher_inputs is not None:
-            student_shifted = torch.roll(inputs['labels'], shifts=-1, dims=1)
-            teacher_shifted = torch.roll(opsd_teacher_inputs['labels'], shifts=-1, dims=1)
-            student_mask = student_shifted != -100
-            teacher_mask = teacher_shifted != -100
+    def _compute_jsd_loss(self, student_logits, teacher_output: TeacherOutput, labels):
+        """Compute JSD loss using unified TeacherOutput.
+
+        Args:
+            student_logits: Student model logits [B, S, V].
+            teacher_output: Unified teacher output container.
+            labels: Student-side labels for masking.
+        """
+        teacher_output.validate()
+        shifted_labels = torch.roll(labels, shifts=-1, dims=1)
+        opsd_teacher_labels = teacher_output.opsd_teacher_labels
+
+        # OPSD mode: student and teacher have different prompts, so apply separate masks
+        if opsd_teacher_labels is not None:
+            shifted_teacher_labels = torch.roll(opsd_teacher_labels, shifts=-1, dims=1)
+            student_mask = shifted_labels != -100
+            teacher_mask = shifted_teacher_labels != -100
             assert student_mask.sum() == teacher_mask.sum(), (
                 f'OPSD label count mismatch: student={student_mask.sum().item()}, '
                 f'teacher={teacher_mask.sum().item()}. '
                 'Student and teacher must share the same response tokens.')
-            shifted_student_logits = outputs_student.logits[student_mask][None]
-            shifted_teacher_logits = outputs_teacher.logits[teacher_mask][None]
+            s_logits = student_logits[student_mask][None]
+            if teacher_output.is_topk_mode:
+                t_logits = None
+                topk_logprobs = teacher_output.topk_logprobs[teacher_mask][None]
+                topk_indices = teacher_output.topk_indices[teacher_mask][None]
+            else:
+                t_logits = teacher_output.full_logits[teacher_mask][None]
+                topk_logprobs = None
+                topk_indices = None
             return self.generalized_jsd_loss(
-                student_logits=shifted_student_logits,
-                teacher_logits=shifted_teacher_logits,
+                student_logits=s_logits,
+                teacher_logits=t_logits,
                 beta=self.beta,
                 temperature=self.temperature,
-                topk=self.gkd_logits_topk,
+                topk=self.gkd_logits_topk if t_logits is not None else None,
+                teacher_topk_logprobs=topk_logprobs,
+                teacher_topk_indices=topk_indices,
             )
 
-        shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
+        # Top-k mode: teacher logprobs from API
+        if teacher_output.is_topk_mode:
+            return self.generalized_jsd_loss(
+                student_logits=student_logits,
+                labels=shifted_labels,
+                beta=self.beta,
+                temperature=self.temperature,
+                teacher_topk_logprobs=teacher_output.topk_logprobs,
+                teacher_topk_indices=teacher_output.topk_indices,
+            )
+
+        # Full-vocab teacher with top-k reduction (local teacher model)
         if self.gkd_logits_topk is not None:
             return self.generalized_jsd_loss(
-                student_logits=outputs_student.logits,
-                teacher_logits=outputs_teacher.logits,
+                student_logits=student_logits,
+                teacher_logits=teacher_output.full_logits,
                 labels=shifted_labels,
                 beta=self.beta,
                 temperature=self.temperature,
                 topk=self.gkd_logits_topk,
             )
 
-        mask = shifted_labels != -100
-        shifted_student_logits = outputs_student.logits[mask][None]
-        shifted_teacher_logits = outputs_teacher.logits[mask][None]
-
-        stu_dim = shifted_student_logits.shape[-1]
-        tea_dim = shifted_teacher_logits.shape[-1]
-        if stu_dim < tea_dim:
-            shifted_student_logits = F.pad(shifted_student_logits, (0, tea_dim - stu_dim), 'constant', 0)
-            shifted_student_logits[..., stu_dim:] = shifted_teacher_logits[..., stu_dim:]
-        elif stu_dim > tea_dim:
-            shifted_teacher_logits = F.pad(shifted_teacher_logits, (0, stu_dim - tea_dim), 'constant', 0)
-            shifted_teacher_logits[..., tea_dim:] = shifted_student_logits[..., tea_dim:]
-
+        # Full-vocab mode without top-k: vocab alignment handled inside generalized_jsd_loss
         return self.generalized_jsd_loss(
-            student_logits=shifted_student_logits,
-            teacher_logits=shifted_teacher_logits,
+            student_logits=student_logits,
+            teacher_logits=teacher_output.full_logits,
+            labels=shifted_labels,
             beta=self.beta,
             temperature=self.temperature,
         )
@@ -311,12 +355,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         student_bias=getattr(student_head, 'bias', None),
                         teacher_bias=getattr(teacher_head, 'bias', None),
                     )
-                    # loss / grad norm is unexpectedly large, normalize by sequence length
-                    # https://github.com/linkedin/Liger-Kernel/blob/v0.6.3/src/liger_kernel/chunked_loss/jsd_loss.py#L9-L39
-                    # loss /= student_hidden.shape[1]
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
             outputs_student = None
+        # Teacher API mode: top-k logprobs fetched from external teacher server
         elif self.use_teacher_api:
             assert teacher_api_logprobs is not None
             if self.args.sft_alpha > 0:
@@ -324,14 +366,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             outputs_student = model(**model_inputs)
 
             # teacher_api shape: [batch, seq_len-1, topk]
-            # teacher[i] = P(token[i+1] | token[0..i]), matching logits[i].
-            # But teacher has seq_len-1 positions (no logits[seq_len-1] equivalent).
-            # Pad a -inf row at the end so teacher becomes [batch, seq_len, topk]
-            # (the last position will be masked out by shifted_labels = -100).
+            # Pad to [batch, seq_len, topk] so it aligns with student logits.
             teacher_api_logprobs = F.pad(teacher_api_logprobs, (0, 0, 0, 1), value=float('-inf'))
             teacher_api_indices = F.pad(teacher_api_indices, (0, 0, 0, 1), value=0)
-            # Now teacher is [batch, seq_len, topk], same as full logits.
-            # Apply logits_to_keep to truncate teacher the same way model truncates logits.
             logits_to_keep = inputs.get('logits_to_keep')
             if logits_to_keep is not None:
                 if isinstance(logits_to_keep, torch.Tensor) and logits_to_keep.dtype == torch.bool:
@@ -341,23 +378,19 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     n = logits_to_keep.item() if isinstance(logits_to_keep, torch.Tensor) else int(logits_to_keep)
                     teacher_api_logprobs = teacher_api_logprobs[:, -n:]
                     teacher_api_indices = teacher_api_indices[:, -n:]
-            shifted_labels = torch.roll(inputs['labels'], shifts=-1, dims=1)
 
-            loss = self.generalized_jsd_loss(
-                student_logits=outputs_student.logits,
-                labels=shifted_labels,
-                beta=self.beta,
-                temperature=self.temperature,
-                teacher_topk_logprobs=teacher_api_logprobs,
-                teacher_topk_indices=teacher_api_indices,
+            opsd_labels = opsd_teacher_inputs.get('labels') if opsd_teacher_inputs is not None else None
+            teacher_out = TeacherOutput(
+                topk_logprobs=teacher_api_logprobs,
+                topk_indices=teacher_api_indices,
+                opsd_teacher_labels=opsd_labels,
             )
+            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
+        # Self-distillation mode: student model doubles as teacher
         elif self._is_self_distillation:
-            # OPSD / Self-distillation: single model as both teacher and student.
-            # Dynamic mode: teacher = current student weights (no adapter context)
-            # Fixed mode: teacher = base model (via disable_adapter() for LoRA)
             if self.args.sft_alpha > 0:
                 model_inputs['labels'] = inputs['labels']
             outputs_student = model(**model_inputs)
@@ -374,12 +407,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     disable_gradient_checkpointing(model, self.args.gradient_checkpointing_kwargs):
                 outputs_teacher = model(**t_fwd)
 
-            loss = self._compute_jsd_loss(outputs_student, outputs_teacher, inputs, opsd_teacher_inputs)
+            opsd_labels = opsd_teacher_inputs.get('labels') if opsd_teacher_inputs is not None else None
+            teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, opsd_teacher_labels=opsd_labels)
+            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
+        # Separate teacher model provided
         else:
-            # Standard loss computation (local teacher model)
+            assert self.teacher_model is not None
             if self.args.sft_alpha > 0:
                 model_inputs['labels'] = inputs['labels']
             outputs_student = model(**model_inputs)
@@ -394,7 +430,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                                                                                self.args.gradient_checkpointing_kwargs):
                 outputs_teacher = self.teacher_model(**t_fwd)
 
-            loss = self._compute_jsd_loss(outputs_student, outputs_teacher, inputs, opsd_teacher_inputs)
+            opsd_labels = opsd_teacher_inputs.get('labels') if opsd_teacher_inputs is not None else None
+            teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, opsd_teacher_labels=opsd_labels)
+            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
@@ -672,6 +710,21 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             )
             self.use_liger_gkd_loss = True
 
+    @staticmethod
+    def _align_vocab_size(student_logits, teacher_logits):
+        """Align vocab dimensions between student and teacher by padding the smaller one."""
+        stu_vocab = student_logits.shape[-1]
+        tea_vocab = teacher_logits.shape[-1]
+        if stu_vocab == tea_vocab:
+            return student_logits, teacher_logits
+        if stu_vocab < tea_vocab:
+            student_logits = F.pad(student_logits, (0, tea_vocab - stu_vocab), 'constant', 0)
+            student_logits[..., stu_vocab:] = teacher_logits[..., stu_vocab:]
+        else:
+            teacher_logits = F.pad(teacher_logits, (0, stu_vocab - tea_vocab), 'constant', 0)
+            teacher_logits[..., tea_vocab:] = student_logits[..., tea_vocab:]
+        return student_logits, teacher_logits
+
     def generalized_jsd_loss(
         self,
         student_logits,
@@ -684,6 +737,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_topk_logprobs=None,
         teacher_topk_indices=None,
     ):
+        # Align vocab sizes when student and teacher have different vocabulary dimensions
+        if teacher_logits is not None:
+            student_logits, teacher_logits = self._align_vocab_size(student_logits, teacher_logits)
+
         # Top-k mode: gather/topk first to get small [*, k] tensors, then scale in-place
         if teacher_topk_logprobs is not None and teacher_topk_indices is not None:
             student_logits = torch.gather(student_logits, dim=-1, index=teacher_topk_indices)
