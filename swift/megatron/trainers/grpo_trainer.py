@@ -1152,8 +1152,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Only compute KL for loss if kl_in_reward=False (GRPO style)
         # When kl_in_reward=True, KL penalty is already applied to rewards in _compute_advantages
         if self.beta != 0.0 and ref_per_token_logps is not None and not self.kl_in_reward:
-            per_token_kl = (
-                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+            safe_ratio = torch.clamp(ref_per_token_logps - per_token_logps, min=-20, max=20)
+            per_token_kl = torch.clamp(torch.exp(safe_ratio) - safe_ratio - 1, min=-10, max=10)
         else:
             per_token_kl = None
 
@@ -1814,7 +1814,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         metrics['kl'] = gather(kl.unsqueeze(0), group=dp_group).nanmean()
 
         # 2b. k3_kl: K3 estimator for KL
-        k3_kl_matrix = torch.exp(log_ratio) - log_ratio - 1
+        log_ratio_safe = torch.clamp(log_ratio, min=-20, max=20)
+        k3_kl_matrix = torch.clamp(torch.exp(log_ratio_safe) - log_ratio_safe - 1, min=-10, max=10)
         k3_kl = masked_mean(k3_kl_matrix, completion_mask)
         metrics['k3_kl'] = gather(k3_kl.unsqueeze(0), group=dp_group).nanmean()
 
