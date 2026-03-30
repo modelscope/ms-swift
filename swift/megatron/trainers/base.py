@@ -10,6 +10,7 @@ import torch.nn
 from abc import ABC, abstractmethod
 from contextlib import contextmanager, nullcontext
 from functools import partial
+from mcore_bridge import LoraParallelLinear
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import finalize_model_grads
@@ -175,7 +176,7 @@ class BaseMegatronTrainer(ABC):
 
     def prepare_model(self):
         args = self.args
-        self.unwrapped_models = get_mcore_model(args, self.template.processor, self.template.config)
+        self.unwrapped_models = get_mcore_model(args, self.template.config)
         self.config = self.unwrapped_models[0].config
         self.bridge = self.config.bridge
         self.peft_models = self._prepare_peft_model(self.unwrapped_models)
@@ -188,7 +189,7 @@ class BaseMegatronTrainer(ABC):
         peft_models = [prepare_mcore_model(args, model) for model in models]
         if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
             assert len(args.adapters) == 1, 'Currently only support one adapter.'
-            self.bridge.load_weights(models, args.adapters[0], is_peft_format=True, adapter_name='default')
+            self.bridge.load_weights(models, args.adapters[0], peft_format=True, adapter_name='default')
         return peft_models
 
     def get_optimizer_and_scheduler(self):
@@ -717,7 +718,7 @@ class BaseMegatronTrainer(ABC):
             self.optimizer,
             self.opt_param_scheduler,
             iteration=iteration,
-            is_peft_format=args.tuner_type == 'lora',
+            peft_format=args.tuner_type == 'lora',
             output_dir=output_dir)
         state.last_model_checkpoint = output_dir
         if state.best_global_step:
@@ -743,7 +744,7 @@ class BaseMegatronTrainer(ABC):
             self.bridge.save_weights(
                 self.unwrapped_models,
                 output_dir,
-                is_peft_format=save_peft_format,
+                peft_format=save_peft_format,
                 processor=self.template.processor,
                 hf_config=self.template.config)
             if args.tuner_type != 'full' and args.merge_lora:

@@ -4,6 +4,7 @@ import re
 import torch
 import torch.distributed as dist
 from contextlib import contextmanager
+from mcore_bridge import LoraParallelLinear
 from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
@@ -56,8 +57,7 @@ def get_multimodal_target_regex(
     include_embedding: bool = False,
     include_router: bool = False,
 ) -> str:
-    from swift.megatron.model import get_megatron_model_meta
-    megatron_model_meta = get_megatron_model_meta(args.model_type)
+    megatron_model_meta = args.megatron_model_meta
     modules = []
     visual_cls = megatron_model_meta.visual_cls
     vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
@@ -181,7 +181,6 @@ def _patch_deepcopy():
 
 
 def prepare_adapter(args, model):
-    from swift.megatron.tuners import LoraParallelLinear
     set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
     modules_to_save = get_modules_to_save(args, model)
@@ -217,8 +216,7 @@ def prepare_adapter(args, model):
 
 
 def _prepare_full_vit(args, model):
-    from swift.megatron.model import get_megatron_model_meta
-    megatron_model_meta = get_megatron_model_meta(args.model_type)
+    megatron_model_meta = args.megatron_model_meta
     visual_cls = megatron_model_meta.visual_cls
     vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
     aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
@@ -277,7 +275,6 @@ def copy_original_module_weight(model):
 
 
 def copy_ref_adapter_weight(model, ref_adapter_name: str):
-    from swift.megatron.tuners import LoraParallelLinear
     for module in model.modules():
         if isinstance(module, LoraParallelLinear):
             for key in ['lora_A', 'lora_B']:
