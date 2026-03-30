@@ -1620,6 +1620,7 @@ class GPTBridge:
         else:
             hf_state_dict = self._convert_hf_state_dict(hf_state_dict, to_mcore)
             yield from list(self._add_prefix(hf_state_dict, hf_prefix).items())
+        prog_bar.close()
 
     def _convert_mtp_extra(self, mtp_layer, hf_state_dict, to_mcore, origin_hf_state_dict):
         for key in ['enorm.weight', 'hnorm.weight', 'eh_proj.weight']:

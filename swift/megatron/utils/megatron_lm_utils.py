@@ -101,7 +101,7 @@ def set_random_seed(
             tensor_parallel.model_parallel_cuda_manual_seed(seed, te_rng_tracker, inference_rng_tracker,
                                                             use_cudagraphable_rng)
     else:
-        raise ValueError('Seed ({}) should be a positive integer.'.format(seed_))
+        raise ValueError(f'Seed ({seed_}) should be a positive integer.')
 
 
 def initialize_megatron(args):
