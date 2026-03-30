@@ -111,8 +111,8 @@ The fine-tuning script is as follows:
 # 4 * 20GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
-MAX_PIXELS=1003520 \
-VIDEO_MAX_PIXELS=50176 \
+IMAGE_MAX_TOKEN_NUM=1024 \
+VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
@@ -155,8 +155,8 @@ After training, use the following script to perform inference on the validation 
 ```shell
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0 \
-MAX_PIXELS=1003520 \
-VIDEO_MAX_PIXELS=50176 \
+IMAGE_MAX_TOKEN_NUM=1024 \
+VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 swift infer \
     --adapters output/Qwen3.5-4B/vx-xxx/checkpoint-xxx \
@@ -234,8 +234,8 @@ Qwen3.5-35B-A3B Megatron training. For environment preparation, please refer to 
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-MAX_PIXELS=1003520 \
-VIDEO_MAX_PIXELS=50176 \
+IMAGE_MAX_TOKEN_NUM=1024 \
+VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
@@ -293,8 +293,8 @@ After training, use the following script to perform inference on the validation 
 ```shell
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
-MAX_PIXELS=1003520 \
-VIDEO_MAX_PIXELS=50176 \
+IMAGE_MAX_TOKEN_NUM=1024 \
+VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 swift infer \
     --model megatron_output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx-merged \

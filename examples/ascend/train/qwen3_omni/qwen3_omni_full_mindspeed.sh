@@ -2,8 +2,8 @@
 # Modified from https://github.com/modelscope/ms-swift/blob/main/examples/megatron/multimodal/omni/moe.sh
 PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=16 \
-MAX_PIXELS=1003520 \
-VIDEO_MAX_PIXELS=50176 \
+IMAGE_MAX_TOKEN_NUM=1024 \
+VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 megatron sft \
     --model Qwen/Qwen3-Omni-30B-A3B-Instruct \
