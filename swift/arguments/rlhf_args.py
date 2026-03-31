@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from swift.model import MODEL_MAPPING
 from swift.rlhf_trainers import GRPOArgumentsMixin
+from swift.template import TEMPLATE_MAPPING
 from swift.utils import get_current_device, get_logger, is_master, is_mp, json_parse_to_dict, set_default_ddp_config
 from .sft_args import SftArguments
 
@@ -32,7 +33,8 @@ class RewardModelArguments:
     reward_model_type: Optional[List[str]] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
     reward_model_revision: Optional[List[str]] = None
-    reward_template: Optional[str] = None
+    reward_template: Optional[List[str]] = field(
+        default=None, metadata={'help': f'template choices: {list(TEMPLATE_MAPPING.keys())}'})
 
 
 @dataclass

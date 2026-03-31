@@ -140,7 +140,7 @@ class SwiftRLHF(SwiftSft):
             rm_types = args.reward_model_type if args.reward_model_type else [None] * num_rms
             rm_templates = args.reward_template if args.reward_template else [None] * num_rms
             rm_revisions = args.reward_model_revision if args.reward_model_revision else [None] * num_rms
-            assert len(rms) == len(rm_types) == len(rm_templates) == len(rm_revisions) 
+            assert len(rms) == len(rm_types) == len(rm_templates) == len(rm_revisions)
 
             self.reward_model = []
             if args.rlhf_type == 'grpo':
