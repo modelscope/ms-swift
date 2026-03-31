@@ -6,7 +6,8 @@ from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import forward_step_helper, load_mcore_checkpoint
+from swift.megatron.utils import (RouterReplayHelper, forward_step_helper, get_local_topk_idx_for_current_rank,
+                                  get_router_replay_data, load_mcore_checkpoint, set_router_replay_data)
 from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_logger
 from .base import BaseMegatronTrainer
@@ -107,18 +108,30 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
         Returns:
             per_token_logps tensor, or None if on a non-last PP stage
+            routing_topk_idx tensor, or None if disbale router replay
         """
         data = self.get_batch(data_iterator)
         data.pop('loss_scale', None)
         labels = data.get('labels')
+
+        routing_topk_idx = None
+        global_topk_idx = data.pop('routed_experts', None)
+        if self.enable_routing_replay and RouterReplayHelper.is_replay_forward_action(model.config):
+            assert global_topk_idx is not None, 'When router_replay_mode = R3, routed_experts must be in data'
+            routing_topk_idx = get_local_topk_idx_for_current_rank(global_topk_idx, model.config,
+                                                                   data.get('packed_seq_params'))
+            set_router_replay_data(routing_topk_idx, model.config)
 
         data_for_forward = {k: v for k, v in data.items() if k != 'labels'}
         context = torch.no_grad() if no_grad else nullcontext()
         with context:
             output_tensor = forward_step_helper(self.args, model, data_for_forward)
 
+        if self.enable_routing_replay and RouterReplayHelper.is_r2_record_action(model.config):
+            routing_topk_idx = get_router_replay_data(model.config)
+
         if labels is None or output_tensor is None:
-            return None
+            return None, routing_topk_idx
 
         if temperature != 1.0:
             output_tensor.div_(temperature)
@@ -133,7 +146,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
 
         if self.args.context_parallel_size > 1:
             per_token_logps = self._postprocess_packed_tensor_cp(per_token_logps, packed_seq_params, num_samples)
-        return per_token_logps
+        return per_token_logps, routing_topk_idx
 
     def _postprocess_packed_tensor_cp(self, tensor, packed_seq_params, num_samples):
         """
