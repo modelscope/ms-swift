@@ -74,9 +74,6 @@ class BaseMegatronTrainer(ABC):
         if initialize_embedding:
             for m in self.unwrapped_models:
                 self._initialize_embedding(m)
-        if args.tuner_type != 'full' and args.modules_to_save:
-            for m in self.unwrapped_models:
-                copy_original_module_weight(m)
         self._load_checkpoint()
 
         self.eval_metrics = None

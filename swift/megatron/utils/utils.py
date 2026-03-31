@@ -183,7 +183,6 @@ def prepare_mcore_model(args, model):
         if args.trainable_parameters or args.trainable_parameters_regex:
             activate_parameters(model, args.trainable_parameters, args.trainable_parameters_regex)
     elif args.tuner_type in {'lora', 'lora_llm'}:
-        model.prepare_inputs_for_generation = None  # fix error
         model = prepare_adapter(args, model)
         if args.tuner_type == 'lora_llm':
             _prepare_full_vit(args, model)
@@ -192,33 +191,6 @@ def prepare_mcore_model(args, model):
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
         cond=mpu.get_data_parallel_rank() == 0)
     return model
-
-
-def copy_original_module_weight(model):
-    if hasattr(model, 'language_model'):
-        model = model.language_model
-    for module in model.modules():
-        if isinstance(module, ModulesToSaveWrapper):
-            original_module = module.original_module
-            default_module = module.modules_to_save['default']
-            original_module.load_state_dict(default_module.state_dict())
-
-
-def copy_ref_adapter_weight(model, ref_adapter_name: str):
-    for module in model.modules():
-        if isinstance(module, LoraParallelLinear):
-            for key in ['lora_A', 'lora_B']:
-                sub_module = getattr(module, key)
-                if 'default' in sub_module and ref_adapter_name in sub_module:
-                    sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
-            for key in ['lora_embedding_A', 'lora_embedding_B']:
-                sub_module = getattr(module, key)
-                if 'default' in sub_module and ref_adapter_name in sub_module:
-                    sub_module[ref_adapter_name].data.copy_(sub_module['default'])
-        elif isinstance(module, ModulesToSaveWrapper):
-            sub_module = module.modules_to_save
-            if 'default' in sub_module and ref_adapter_name in sub_module:
-                sub_module[ref_adapter_name].load_state_dict(sub_module['default'].state_dict())
 
 
 def forward_step_helper(args, model, inputs, dtype=None):

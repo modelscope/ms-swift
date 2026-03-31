@@ -5,6 +5,7 @@ import torch
 from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
 from dataclasses import dataclass
+from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
@@ -14,7 +15,6 @@ from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, Optional
 
 from swift.dataloader import DataLoaderDispatcher
-from swift.megatron.utils import split_cp_inputs
 from swift.utils import empty_cache, get_current_device, get_logger
 from swift.utils import get_packed_seq_params as _get_packed_seq_params
 from swift.utils import to_device

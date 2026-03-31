@@ -4,6 +4,7 @@ Utilities for handling router replay functionality in Megatron models.
 """
 
 import torch
+from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
 from megatron.core.tensor_parallel import scatter_to_sequence_parallel_region
 from megatron.core.transformer.transformer_block import get_num_layers_to_build
@@ -11,7 +12,6 @@ from megatron.core.transformer.transformer_layer import get_transformer_layer_of
 
 from swift.utils import get_logger
 from swift.utils.torch_utils import get_current_device
-from .parallel_utils import split_cp_inputs
 
 logger = get_logger()
 

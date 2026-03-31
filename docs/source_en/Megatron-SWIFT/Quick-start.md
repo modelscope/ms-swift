@@ -21,8 +21,6 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
 
 ```shell
-pip install pybind11
-
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
 pip install --no-build-isolation transformer_engine[pytorch] --no-cache-dir
@@ -33,8 +31,8 @@ git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
-# megatron-core
-pip install "megatron-core==0.15.*" -U
+# mcore-bridge megatron-core
+pip install "megatron-core==0.15.*" mcore-bridge -U
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.

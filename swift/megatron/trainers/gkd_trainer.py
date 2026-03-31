@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
+from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from transformers.utils import ContextManagers
@@ -12,7 +13,6 @@ from typing import Dict, List, Optional
 
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import set_random_seed
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 from swift.template import Template
 from swift.utils import get_logger, to_device
