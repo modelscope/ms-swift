@@ -34,7 +34,7 @@ class MegatronExport(SwiftPipeline):
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         hf_config = self.processor.model_info.config
-        mg_model = get_mcore_model(args, self.processor, hf_config)[0]
+        mg_model = get_mcore_model(args, hf_config)[0]
         logger.info('Megatron model created successfully.')
         bridge = mg_model.config.bridge
         if args.mcore_model is not None:
@@ -55,11 +55,13 @@ class MegatronExport(SwiftPipeline):
                 mg_model = peft_model.merge_and_unload()
         logger.info('Converting weights and saving the model...')
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
-        bridge.save_weights([mg_model],
-                            args.output_dir,
-                            peft_format=save_peft_format,
-                            processor=self.processor,
-                            hf_config=hf_config)
+        bridge.save_weights(
+            [mg_model],
+            args.output_dir,
+            peft_format=save_peft_format,
+            args=args,
+            processor=self.processor,
+        )
         args_path = os.path.join(args.mcore_adapter or args.mcore_model or args.model, 'args.json')
         if os.path.exists(args_path):
             if is_master():
@@ -85,7 +87,7 @@ class MegatronExport(SwiftPipeline):
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         hf_config = self.processor.model_info.config
-        mg_model = get_mcore_model(args, self.processor, hf_config)[0]
+        mg_model = get_mcore_model(args, hf_config)[0]
         logger.info('Megatron model created successfully.')
         bridge = mg_model.config.bridge
         if args.model is not None:

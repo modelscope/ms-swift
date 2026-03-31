@@ -96,7 +96,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
     if args.to_hf:
         bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
         logger.info('Converting weights and saving the model...')
-        bridge.save_weights([mg_model], args.output_dir, processor=processor, hf_config=hf_config)
+        bridge.save_weights([mg_model], args.output_dir, args=megatron_args, processor=processor)
         if is_master():
             args_path = os.path.join(megatron_args.mcore_adapter or megatron_args.mcore_model or args.model,
                                      'args.json')

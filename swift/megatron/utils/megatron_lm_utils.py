@@ -156,9 +156,9 @@ def _generate_state_dict(args,
     return state_dict
 
 
-def _filter_adapter_state_dict(state_dict, is_peft_format: bool, adapter_name: str = 'default'):
+def _filter_adapter_state_dict(state_dict, peft_format: bool, adapter_name: str = 'default'):
     """
-    When is_peft_format is True, keep only the PEFT format state_dict;
+    When peft_format is True, keep only the PEFT format state_dict;
     when False, remove the PEFT format state_dict.
 
     This function ensures it is called when tuner_type != 'full'.
@@ -178,7 +178,7 @@ def _filter_adapter_state_dict(state_dict, is_peft_format: bool, adapter_name: s
         new_state_dict = {}
         state_dict_model = state_dict[model_key]
         for k, v in state_dict_model.items():
-            if is_peft_format:
+            if peft_format:
                 if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
                     new_state_dict[k] = v
             else:
@@ -229,7 +229,7 @@ def save_mcore_checkpoint(
     opt_param_scheduler=None,
     iteration=1,
     output_dir: Optional[str] = None,
-    is_peft_format: bool = False,
+    peft_format: bool = False,
 ):
     if output_dir is None:
         output_dir = args.output_dir
@@ -249,7 +249,7 @@ def save_mcore_checkpoint(
         model_sd_kwargs={'metadata': sharded_sd_metadata},
         optim_sd_kwargs={'metadata': sharded_sd_metadata},
     )
-    _filter_adapter_state_dict(state_dict, is_peft_format)
+    _filter_adapter_state_dict(state_dict, peft_format)
 
     save_strategy = get_default_save_sharded_strategy()
     save_strategy = FullyParallelSaveStrategyWrapper(
@@ -370,16 +370,16 @@ def load_mcore_checkpoint(args,
                           load_arg: str = 'mcore_model',
                           adapter_name: str = 'default'):
     if load_arg in {'mcore_adapter', 'mcore_ref_adapter'}:
-        is_peft_format = True
+        peft_format = True
     else:
         # 'mcore_model', 'mcore_ref_model'
-        is_peft_format = False
+        peft_format = False
     load_dir = getattr(args, load_arg)
 
     no_load_optim = args.no_load_optim
     no_load_rng = args.no_load_rng
     finetune = args.finetune
-    if not is_peft_format and args.tuner_type != 'full':
+    if not peft_format and args.tuner_type != 'full':
         no_load_optim = True
         no_load_rng = True
         finetune = False
@@ -432,7 +432,7 @@ def load_mcore_checkpoint(args,
         iteration=iteration,
         model_sd_kwargs=model_sd_kwargs,
         optim_sd_kwargs=optim_sd_kwargs)
-    _filter_adapter_state_dict(sharded_state_dict, is_peft_format, adapter_name=adapter_name)
+    _filter_adapter_state_dict(sharded_state_dict, peft_format, adapter_name=adapter_name)
     model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
     for k in model_keys:
         patch_merge_fn(sharded_state_dict[k])

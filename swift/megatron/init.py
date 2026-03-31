@@ -3,28 +3,25 @@ import concurrent.futures
 import importlib.metadata
 import inspect
 import logging
+import megatron.core
 import os
-import peft
-import subprocess
-import sys
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy
-from functools import partial
+from mcore_bridge import GPTBridge
+from megatron.core.pipeline_parallel import p2p_communication
 from packaging import version
 from tqdm import tqdm
+from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
-from typing import List, Optional, Tuple
 
-from swift.utils import get_logger, is_flash_attn_3_available, split_list
+from swift.model import save_checkpoint
+from swift.utils import get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_master, split_list
 
 logger = get_logger()
 
 
 def _patch__batched_p2p_ops():
-    from megatron.core.pipeline_parallel import p2p_communication
 
     _batched_p2p_ops_origin = p2p_communication._batched_p2p_ops
 
@@ -97,7 +94,6 @@ def _patch_validate_non_overlapping_shards_metadata():
 
 
 def _patch__write_item():
-    import megatron.core
     if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
         return
     # mcore 0.12
@@ -141,9 +137,76 @@ def _patch_unified_memory():
         cpp_extension.load_inline = load_inline
 
 
+def _patch_mcore_bridge():
+    origin_save_weights = GPTBridge.save_weights
+
+    def save_weights(
+        self,
+        mg_models,
+        output_dir: str,
+        peft_format: bool = False,
+        max_shard_size: str = '5GB',
+        args=None,
+        processor=None,
+    ) -> None:
+        origin_save_weights(mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size)
+        if processor is None or args is None:
+            return
+        hf_config = self.config.hf_config
+        hf_config = copy(hf_config)
+        if is_master():
+            if peft_format:
+                peft_config = copy(mg_models[0].peft_config[self._adapter_name])
+                if args.task_type == 'seq_cls':
+                    peft_config.task_type = 'SEQ_CLS'
+                if self.is_multimodal and 'all-linear' in args.target_modules:
+                    peft_config.target_modules = get_multimodal_target_regex(
+                        self.hf_model,
+                        freeze_llm=args.freeze_llm,
+                        freeze_vit=args.freeze_vit,
+                        freeze_aligner=args.freeze_aligner,
+                        include_embedding='all-embedding' in args.target_modules,
+                        exclude_router='all-router' not in args.target_modules)
+                else:
+                    assert not isinstance(peft_config.target_modules, str), (
+                        'target_regex is not currently supported for LoRA conversion. Please set `--merge_lora true`.')
+                    peft_config.target_modules = self._peft_target_modules
+                peft_config.modules_to_save = self._peft_modules_to_save
+                peft_config.save_pretrained(output_dir)
+            else:
+                config = self.config
+                if config.mtp_num_layers:
+                    hf_config.num_nextn_predict_layers = config.mtp_num_layers
+                if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param:
+                    if getattr(hf_config, 'quantization_config', None) is None:
+                        from transformers.utils.quantization_config import FineGrainedFP8Config
+                        modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
+                        hf_config.quantization_config = FineGrainedFP8Config(
+                            modules_to_not_convert=modules_to_not_convert)
+                elif hasattr(hf_config, 'quantization_config'):
+                    del hf_config.quantization_config
+                hf_config.save_pretrained(output_dir)
+                if getattr(self.hf_model, '_auto_class') is not None:
+                    try:
+                        custom_object_save(self.hf_model, output_dir, config=hf_config)
+                    except FileNotFoundError as e:
+                        logger.error(f'custom_object_save Error: {e}')
+                save_checkpoint(
+                    None,
+                    processor,
+                    output_dir,
+                    model_dirs=[self.model_dir],
+                    additional_saved_files=self.hf_model.model_meta.additional_saved_files)
+            logger.info(f'Successfully saved `safetensors` model weights in `{output_dir}`.')
+        dist.barrier()  # Ensure all weights are saved completely
+
+    GPTBridge.save_weights = save_weights
+
+
 def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
+    _patch_mcore_bridge()
     _patch_unified_memory()
     _patch__batched_p2p_ops()
     _patch__write_item()
@@ -158,5 +221,4 @@ def init_megatron_env():
         logger.warning('Patch validate_non_overlapping_shards_metadata failed.')
         pass
 
-    import megatron.core
     logger.info(f'megatron.core.__version__: {megatron.core.__version__}')

@@ -27,9 +27,9 @@ from typing import Callable, Dict, List, Optional
 from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import (apply_router_replay_patch, copy_original_module_weight, disable_forward_pre_hook,
-                                  enable_forward_pre_hook, get_optimizer_param_scheduler, get_padding_to,
-                                  init_persistent_async_worker, initialize_tp_communicators, load_mcore_checkpoint,
+from swift.megatron.utils import (apply_router_replay_patch, disable_forward_pre_hook, enable_forward_pre_hook,
+                                  get_optimizer_param_scheduler, get_padding_to, init_persistent_async_worker,
+                                  initialize_tp_communicators, load_mcore_checkpoint,
                                   logical_and_across_model_parallel_group, maybe_finalize_async_save,
                                   prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
                                   save_mcore_checkpoint, should_disable_forward_pre_hook, warmup_jit_function,
@@ -750,8 +750,9 @@ class BaseMegatronTrainer(ABC):
                 self.unwrapped_models,
                 output_dir,
                 peft_format=save_peft_format,
+                args=args,
                 processor=self.template.processor,
-                hf_config=self.template.config)
+            )
             if args.tuner_type != 'full' and args.merge_lora:
                 self.unmerge_lora_adapters()
 
