@@ -144,44 +144,7 @@ def get_modules_to_save(args, model):
     return modules_to_save
 
 
-def set_linear_is_expert(model):
-    for n, module in model.named_modules():
-        if '.local_experts.' in n and isinstance(module, (TELinear, TELayerNormColumnParallelLinear)) or isinstance(
-                module, TEGroupedLinear):
-            module.is_expert = True
-
-
-@contextmanager
-def _patch_deepcopy():
-    import copy
-    _origin_deepcopy = copy.deepcopy
-
-    def new_deepcopy(x, *args, **kwargs):
-        tp_group_keys = ['tp_group', '_tp_group']
-        saved_tp_groups = {}
-
-        for key in tp_group_keys:
-            if getattr(x, key, None) is not None:
-                saved_tp_groups[key] = getattr(x, key)
-                setattr(x, key, None)
-
-        res = _origin_deepcopy(x, *args, **kwargs)
-
-        if saved_tp_groups:
-            for key, value in saved_tp_groups.items():
-                setattr(x, key, value)
-                setattr(res, key, value)
-        return res
-
-    copy.deepcopy = new_deepcopy
-    try:
-        yield
-    finally:
-        copy.deepcopy = _origin_deepcopy
-
-
 def prepare_adapter(args, model):
-    set_linear_is_expert(model)
     target_modules = get_target_modules(args, model)
     modules_to_save = get_modules_to_save(args, model)
     lora_kwargs = {
@@ -195,23 +158,13 @@ def prepare_adapter(args, model):
     }
     lora_config = LoraConfig(task_type='CAUSAL_LM', lora_dtype=args.lora_dtype, **lora_kwargs)
     logger.info(f'lora_config: {lora_config}')
-    with _patch_deepcopy():
-        model = Swift.prepare_model(model, lora_config)
+    model = Swift.prepare_model(model, lora_config)
     if args.mcore_ref_adapter or args.ref_adapters:
         model.add_adapter('ref_adapter', lora_config)
         model.base_model._cast_adapter_dtype(adapter_name='ref_adapter', autocast_adapter_dtype=True)
         for n, p in model.named_parameters():
             if '.ref_adapter.' in n:
                 p.requires_grad = False
-    # setting average_gradients_across_tp_domain
-    for m in model.modules():
-        if isinstance(m, LoraLinear):
-            # just check
-            assert args.is_multimodal or args.model_type == 'qwen3_next'
-            assert not isinstance(m, LoraParallelLinear)
-            for p in m.parameters():
-                if p.requires_grad:
-                    p.average_gradients_across_tp_domain = True
     return model
 
 
@@ -239,29 +192,6 @@ def prepare_mcore_model(args, model):
         f'[rank{dist.get_rank()}] model_parameter_info: {get_model_parameter_info(model)}',
         cond=mpu.get_data_parallel_rank() == 0)
     return model
-
-
-def tuners_sharded_state_dict(
-        module,
-        prefix: str = '',
-        sharded_offsets: Tuple[Tuple[int, int, int]] = (),
-        metadata: Optional[dict] = None,
-):
-    sharded_state_dict = {}
-    # Save parameters
-    module._save_to_state_dict(sharded_state_dict, '', keep_vars=True)
-    sharded_state_dict = make_sharded_tensors_for_checkpoint(
-        sharded_state_dict, prefix, sharded_offsets=sharded_offsets)
-    # Recurse into submodules
-    for name, module in module.named_children():
-        if 'Dict' in module.__class__.__name__:
-            modules = module.named_children()
-        else:
-            modules = [(None, module)]
-        for n, m in modules:
-            _prefix = f'{prefix}{name}.' if n is None else f'{prefix}{name}.{n}.'
-            sharded_state_dict.update(sharded_state_dict_default(m, _prefix, sharded_offsets, metadata))
-    return sharded_state_dict
 
 
 def copy_original_module_weight(model):
@@ -338,19 +268,3 @@ def get_padding_to(args):
     if args.attention_backend == 'fused':
         padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
     return padding_to
-
-
-def get_local_layer_specs(config, layer_specs, vp_stage=None):
-    kwargs = {'vp_stage': vp_stage} if mcore_013 else {}
-    num_layers_to_build = get_num_layers_to_build(config, **kwargs)
-
-    if getattr(config, 'pipeline_model_parallel_layout', None) is not None:
-        from megatron.core.transformer.enums import LayerType
-        local_layer_specs = [
-            layer_specs[layer_id] for layer_id in config.pipeline_model_parallel_layout.get_layer_id_list(
-                layer_type=LayerType.decoder, **kwargs)
-        ]
-    else:
-        offset = get_transformer_layer_offset(config, **kwargs)
-        local_layer_specs = layer_specs[offset:offset + num_layers_to_build]
-    return local_layer_specs

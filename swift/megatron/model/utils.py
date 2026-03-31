@@ -1,6 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import fields
-from mcore_bridge import ModelConfig, hf_to_mcore_config
+from mcore_bridge import ModelConfig
+from mcore_bridge import get_mcore_model as _get_mcore_model
+from mcore_bridge import hf_to_mcore_config
 from transformers.utils import is_torch_npu_available
 
 from swift.utils import get_logger
@@ -51,7 +53,6 @@ def get_mcore_model_config(args, hf_config):
     kwargs['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
     kwargs['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
     kwargs['fp8_param'] = args.fp8_param_gather
-    kwargs['batch_p2p_comm'] = not args.overlap_p2p_comm
     swiglu = kwargs.get('swiglu', True)
     add_bias_linear = kwargs.get('add_bias_linear', False)
     num_moe_experts = kwargs.get('num_moe_experts', None)
@@ -74,7 +75,6 @@ def get_mcore_model_config(args, hf_config):
 
 
 def get_mcore_model(args, hf_config):
-    from mcore_bridge import get_mcore_model as _get_mcore_model
     config = get_mcore_model_config(args, hf_config)
     models = _get_mcore_model(config)
 
