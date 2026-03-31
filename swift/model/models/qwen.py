@@ -1059,7 +1059,8 @@ class Qwen3VLLoader(Qwen2VLLoader):
         from transformers import Qwen3VLForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen3VLForConditionalGeneration
         model = super().get_model(model_dir, config, processor, model_kwargs)
-        _compat_qwen3_vl_mixed_data(model.model, processor)
+        is_moe = getattr(self, 'is_moe', False)
+        _compat_qwen3_vl_mixed_data(model.model, processor, is_moe=is_moe)
         return model
 
 
@@ -1093,6 +1094,7 @@ register_model(
 
 
 class Qwen3VLMoeLoader(Qwen3VLLoader):
+    is_moe = True
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen3VLMoeForConditionalGeneration
