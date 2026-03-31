@@ -1,7 +1,5 @@
 # GYM Environment Training
 
-Note: The GYM environment training logic was refactored in ms-swift 3.8. If you are using an earlier version of ms-swift, please refer to the documentation for that specific version.
-
 ## Gym Interface
 
 GYM originates from [OpenAI Gym](https://github.com/openai/gym) and is an abstract interface for reinforcement learning environments. Based on the current "Model as Agent" trend, we have defined a similar interface in swift to provide end-to-end reinforcement learning training for Agents.

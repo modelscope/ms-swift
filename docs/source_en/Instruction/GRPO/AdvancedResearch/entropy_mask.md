@@ -1,7 +1,5 @@
 # Beyond the 80/20 Rule: High-Entropy Minority Tokens Drive Effective Reinforcement Learning for LLM Reasoning
 
-**Version Requirement**: ms-swift>=3.7
-
 The [paper](https://arxiv.org/abs/2506.01939) finds that when training large language models for reasoning abilities with methods such as RLVR, the key to learning progress lies in a small fraction of high-entropy "minority tokens," rather than the majority of low-entropy tokens.
 
 The paper demonstrates that within the token distribution during model reasoning, only a few high-entropy tokens play a dominant role. These tokens typically appear at critical junctures where the reasoning or decision path diverges the most (e.g., tokens like "wait," "since," etc.), determining whether the model can master complex reasoning tasks. In contrast, most low-entropy tokens contribute little to the model's reasoning ability. The paper proposes computing policy gradients exclusively on high-entropy tokens, discarding gradients for low-entropy tokens.

@@ -1,7 +1,5 @@
 # REINFORCE Leave-One-Out (RLOO)
 
-**Version requirement**: ms-swift>=3.10
-
 [REINFORCE Leave-One-Out (RLOO)](https://arxiv.org/abs/2402.14740) is a reinforcement learning algorithm based on the classic REINFORCE policy-gradient method. It constructs an unbiased advantage baseline via the Leave-One-Out (LOO) technique.
 
 ## Algorithm Overview

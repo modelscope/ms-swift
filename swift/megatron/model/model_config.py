@@ -278,11 +278,7 @@ class MegatronModelConfig(TransformerConfig):
             assert not self.swiglu
             self.gated_linear_unit = True
             self.activation_func = quick_gelu
-        _origin_rotary_interleaved = self.rotary_interleaved
-        if self.multi_latent_attention and self.rotary_interleaved:
-            self.rotary_interleaved = False
         super().__post_init__()
-        self.rotary_interleaved = _origin_rotary_interleaved
         self._check_npu()
         self.variable_seq_lengths = True
 
@@ -481,8 +477,6 @@ def convert_hf_config(config) -> Dict[str, Any]:
             res.pop('num_query_groups', None)
         if llm_model_type == 'glm_moe_dsa':
             res['experimental_attention_variant'] = 'dsa'
-            # https://github.com/modelscope/ms-swift/pull/8085
-            # res['rotary_interleaved'] = False
     elif llm_model_type == 'qwen3_next' or hf_model_type in {'qwen3_5', 'qwen3_5_moe'}:
         use_mcore_gdn = get_env_args('SWIFT_USE_MCORE_GDN', bool, False)
         if use_mcore_gdn and llm_model_type == 'qwen3_next':
@@ -525,10 +519,6 @@ def convert_hf_config(config) -> Dict[str, Any]:
         mrope_interleaved = rope_scaling.get('mrope_interleaved', False) or rope_scaling.get('interleaved', False)
         res['mrope_interleaved'] = mrope_interleaved
 
-    if res.get('multi_latent_attention') and res.get('position_embedding_type') in {
-            'rope', None
-    } and 'rotary_interleaved' not in res:
-        res['rotary_interleaved'] = True
     if first_k_dense_replace is not None:
         res['moe_layer_freq'] = f'[0]*{first_k_dense_replace}+[1]*{res["num_layers"] - first_k_dense_replace}'
     if res.get('moe_router_score_function', 'softmax') == 'sigmoid' and 'moe_router_enable_expert_bias' not in res:
@@ -596,6 +586,7 @@ def get_mcore_model_config(args, hf_config):
     config = MegatronModelConfig(**kwargs)
     config.hf_config = hf_config
     config.args = args
+    args._config = config
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
     _check_attention_backend(args, config)

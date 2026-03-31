@@ -1,7 +1,5 @@
 # Training-Inference-Mismatch
 
-**Version Requirement**: ms-swift>=3.11
-
 **TL;DR**: While GRPO introduces vLLM to accelerate the sampling process, it also introduces Training-Inference Mismatch issues that may affect training stability. This document explains the background, causes, and solutions to this problem.
 
 ## Background

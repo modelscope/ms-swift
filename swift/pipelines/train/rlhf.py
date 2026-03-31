@@ -105,7 +105,7 @@ class SwiftRLHF(SwiftSft):
             self.train_msg['value_model_parameter_info'] = model_parameter_info
             logger.info(f'value_model_parameter_info: {model_parameter_info}')
 
-        HfConfigFactory.set_model_config_attr(model, 'use_cache', False)
+        HfConfigFactory.set_config_attr(model.config, 'use_cache', False)
         return model, processor
 
     def _prepare_model_tokenizer(self):

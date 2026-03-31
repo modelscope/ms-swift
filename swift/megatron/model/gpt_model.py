@@ -176,6 +176,10 @@ class GPTModel(McoreGPTModel):
 
             # ideally t_pass is empty so rotary pos embedding is applied to all tensor t
             t, t_pass = t[..., :rot_dim], t[..., rot_dim:]
+            if multi_latent_attention:
+                x1 = t[..., 0::2]
+                x2 = t[..., 1::2]
+                t = torch.cat((x1, x2), dim=-1)
 
             # first part is cosine component
             # second part is sine component, need to change signs with _rotate_half method
