@@ -27,7 +27,6 @@ from typing import Callable, Dict, List, Optional
 from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
-from swift.megatron.tuners import LoraParallelLinear
 from swift.megatron.utils import (apply_router_replay_patch, copy_original_module_weight, disable_forward_pre_hook,
                                   enable_forward_pre_hook, get_optimizer_param_scheduler, get_padding_to,
                                   init_persistent_async_worker, initialize_tp_communicators, load_mcore_checkpoint,

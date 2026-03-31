@@ -66,6 +66,9 @@ def get_mcore_model_config(args, hf_config):
     if num_moe_experts is None:
         kwargs['expert_model_parallel_size'] = 1
         kwargs['expert_tensor_parallel_size'] = 1
+
+    if args.router_replay_mode != 'disabled':
+        kwargs['moe_enable_routing_replay'] = True
     config = ModelConfig(**kwargs)
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
