@@ -9,5 +9,5 @@ from .megatron_lm_utils import (disable_forward_pre_hook, enable_forward_pre_hoo
 from .parallel_utils import (logical_and_across_model_parallel_group, reduce_max_stat_across_model_parallel_group,
                              split_cp_inputs)
 from .patcher import patch_merge_fn, patch_torch_dist_shard
-from .utils import (copy_original_module_weight, forward_step_helper, get_padding_to,
-                    prepare_mcore_model)
+from .router_replay_utils import *
+from .utils import copy_original_module_weight, forward_step_helper, get_padding_to, prepare_mcore_model

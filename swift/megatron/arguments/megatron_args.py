@@ -155,6 +155,8 @@ class RLHFMegatronArgumentsMixin:
     # Beyond the 80/20 Rule, https://arxiv.org/abs/2506.01939
     top_entropy_quantile: float = 1.0
 
+    router_replay_mode: Literal['disabled', 'R2', 'R3'] = 'disabled'
+
     # ───────────────────────────  Not Supported Yet  ───────────────────────────
 
     # reward model
