@@ -9,7 +9,7 @@ from megatron.core.tensor_parallel import scatter_to_sequence_parallel_region
 from megatron.core.transformer.transformer_block import get_num_layers_to_build
 from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
 
-from swift.megatron.trainers.utils import split_cp_inputs
+from swift.megatron.utils import split_cp_inputs
 from swift.utils import get_logger
 from swift.utils.torch_utils import get_current_device
 
