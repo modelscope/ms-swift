@@ -9,12 +9,12 @@ import torch
 import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy
-from mcore_bridge import GPTBridge
 from megatron.core.pipeline_parallel import p2p_communication
 from packaging import version
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
+from transformers.utils.versions import require_version
 
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_master, split_list
@@ -139,6 +139,8 @@ def _patch_unified_memory():
 
 
 def _patch_mcore_bridge():
+    require_version('mcore-bridge>=1.0.1.dev', 'please install mcore-bridge via `pip install mcore-bridge -U`')
+    from mcore_bridge import GPTBridge
     origin_save_weights = GPTBridge.save_weights
 
     def save_weights(
