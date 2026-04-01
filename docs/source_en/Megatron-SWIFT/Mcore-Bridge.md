@@ -77,8 +77,6 @@ swift infer \
 
 ### LoRA
 
-## LoRA Export
-
 In addition to full-parameter training, Mcore-Bridge also supports LoRA training.
 
 Below is an example of self-cognition training using LoRA for the text-only model Qwen3-Moe:

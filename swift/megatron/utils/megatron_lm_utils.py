@@ -29,7 +29,7 @@ from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_m
 from packaging import version
 from typing import Optional
 
-from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
+from swift.utils import check_json_format, get_logger, init_process_group, is_master, set_device
 from .patcher import patch_merge_fn
 
 logger = get_logger()
