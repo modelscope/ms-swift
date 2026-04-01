@@ -303,6 +303,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             template_type = self.template
         template_kwargs['template_type'] = template_type
         template = get_template(processor, **template_kwargs)
+        template.loss_type = getattr(self, 'loss_type', None)
         return template
 
     def get_model_processor(self,

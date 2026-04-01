@@ -1655,7 +1655,9 @@ class Template(ProcessorMixin):
         if self.is_training:
             max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
             max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
+            pointwise_negative_only = getattr(self, 'loss_type', None) == 'pointwise_reranker'
             labels_list = []
+            group_sizes = []
             new_batch = []
             for b in batch:
                 labels = b.pop('labels', None)
@@ -1663,22 +1665,39 @@ class Template(ProcessorMixin):
                 negative_num = len(labels) - positive_num
                 max_positive = min(positive_num, max_positive_samples)
                 max_negative = min(negative_num, max_negative_samples)
+                if pointwise_negative_only and positive_num == 0:
+                    # Pointwise BCE can train on all-negative samples, so keep them instead of dropping the row.
+                    sampled_negative_indices = random.sample(range(negative_num), max_negative)
+                    for j in sampled_negative_indices:
+                        new_batch.append(
+                            {key: b[key][j]
+                             for key in b.keys() if isinstance(b[key], list) and b[key][j] is not None})
+                        labels_list.append(0)
+                    if sampled_negative_indices:
+                        group_sizes.append(len(sampled_negative_indices))
+                    continue
                 for i in random.sample(range(positive_num), max_positive):
+                    group_size = 1
                     new_batch.append(
                         {key: b[key][i]
                          for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
                     labels_list.append(1)
-                    for j in random.sample(range(negative_num), max_negative):
+                    sampled_negative_indices = random.sample(range(negative_num), max_negative)
+                    for j in sampled_negative_indices:
                         new_batch.append({
                             key: b[key][j + positive_num]
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
                         })
                         labels_list.append(0)
+                        group_size += 1
+                    group_sizes.append(group_size)
             num_samples = len(new_batch)
             res = self._data_collator(new_batch, padding_to=padding_to)
             res['num_samples'] = num_samples
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
+            if group_sizes:
+                res['group_sizes'] = torch.tensor(group_sizes, dtype=torch.long)
         else:
             res = self._data_collator(batch, padding_to=padding_to)
         return res

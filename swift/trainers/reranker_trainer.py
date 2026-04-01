@@ -13,12 +13,15 @@ class RerankerTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.gather_function = gather_for_unpadded_tensors
+        if 'group_sizes' not in self.label_names:
+            self.label_names = [*self.label_names, 'group_sizes']
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Check if we have a custom loss function
         if self.compute_loss_func is not None:
             # Get labels and compute outputs
             labels = inputs.pop('labels', None)
+            group_sizes = inputs.pop('group_sizes', None)
             outputs = model(**inputs)
             if self.task_type == 'generative_reranker':
                 logits = outputs.logits
