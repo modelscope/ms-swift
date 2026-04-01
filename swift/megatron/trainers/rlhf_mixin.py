@@ -33,6 +33,8 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if args.tuner_type == 'full' and args.rlhf_type not in ['rm', 'gkd']:
             self.ref_models = get_mcore_model(args, self.template.config)
         for ref_model in self.ref_models:
+            if not args.use_cpu_initialization:
+                ref_model.cuda(torch.cuda.current_device())
             ref_model.requires_grad_(False)
             ref_model.eval()
         if self.ref_models and args.mcore_ref_model is None:
