@@ -11,8 +11,8 @@ pip install -U ms-swift
 pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
-# 请安装fla main分支，若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
-pip install -U git+https://github.com/fla-org/flash-linear-attention
+# 若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
+pip install -U "flash-linear-attention>=0.4.2" --no-build-isolation
 
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
