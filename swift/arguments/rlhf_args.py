@@ -368,6 +368,9 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         # disable normalization, REAL https://arxiv.org/abs/2602.05630
         if self.loss_type == 'real':
             self.scale_rewards = 'none'
+            logger.warning(
+                f"[REAL] scale_rewards='{self.scale_rewards}' is ignored. "
+                "It will be forced to 'none' because 'loss_type = real' does not support reward normalization.")
 
         if self.scale_rewards is None:
             if self.advantage_estimator == 'grpo':
