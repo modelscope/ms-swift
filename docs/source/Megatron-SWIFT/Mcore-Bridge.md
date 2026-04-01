@@ -129,32 +129,44 @@ megatron sft \
 ```
 
 
-对导出的LoRA权重进行推理：
+对导出的LoRA权重进行推理，这里使用vLLM推理引擎：
 ```shell
+# 具体模型vLLM的LoRA的支持情况请参考vLLM文档。
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --infer_backend vllm \
+    --vllm_max_model_len 8192 \
     --stream true
 ```
 
 如果你需要手动进行**Merge-LoRA**，你可以使用`megatron export`命令。注意：请不要使用`swift export`导出命令Merge-LoRA，因为Megatron与transformers的**Moe模型结构**并不一定一致。
 
 ```shell
-# torch_dist -> torch_dist
+# 如果是mcore格式的adapter，请使用`--mcore_adapter`
+# 如果最终格式需要是mcore格式，则使用`--to_mcore true`
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
     --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
     --merge_lora true \
-    --to_mcore true \
+    --to_hf true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
     --pipeline_model_parallel_size 2
 ```
 
+对Merge的全量权重进行推理，这里使用transformers推理引擎：
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
+    --stream true
+```
 
 ## `megatron export` 与 转换精度测试
 

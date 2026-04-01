@@ -32,7 +32,7 @@ cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
 # mcore-bridge megatron-core
-pip install "megatron-core==0.15.*" mcore-bridge -U
+pip install "megatron-core==0.16.*" mcore-bridge -U
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
@@ -66,7 +66,7 @@ Recommended Operating Environment:
 | torch        | >=2.0        | 2.8.0/2.10.0    |                    |
 | transformer_engine    | >=2.3       |  2.12.0  |                  |
 | apex |   |  0.1 | |
-| megatron_core    |    >=0.12,<0.16    | 0.15      |                  |
+| megatron_core    |    >=0.12,<0.17    | 0.16      |                  |
 | flash_attn    |        | 2.8.3/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.6/5.2.0    |                    |
 | modelscope   | >=1.23       |             |                    |

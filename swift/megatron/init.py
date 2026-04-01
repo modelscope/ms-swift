@@ -2,6 +2,7 @@
 import concurrent.futures
 import importlib.metadata
 import inspect
+import torch
 import logging
 import megatron.core
 import os
@@ -15,7 +16,7 @@ from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
 
-from swift.model import save_checkpoint
+from swift.model import get_model_processor, save_checkpoint
 from swift.utils import get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_master, split_list
 
 logger = get_logger()
@@ -149,15 +150,20 @@ def _patch_mcore_bridge():
         args=None,
         processor=None,
     ) -> None:
-        origin_save_weights(mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size)
+        origin_save_weights(self, mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size)
         if processor is None or args is None:
             return
         hf_config = self.config.hf_config
         hf_config = copy(hf_config)
+        if not hasattr(self, 'hf_model'):
+            with torch.device('meta'):
+                self.hf_model = get_model_processor(
+                    args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]
+
         if is_master():
             if peft_format:
                 peft_config = copy(mg_models[0].peft_config[self._adapter_name])
-                if args.task_type == 'seq_cls':
+                if self.config.task_type == 'seq_cls':
                     peft_config.task_type = 'SEQ_CLS'
                 if self.is_multimodal and 'all-linear' in args.target_modules:
                     peft_config.target_modules = get_multimodal_target_regex(
@@ -195,7 +201,7 @@ def _patch_mcore_bridge():
                     None,
                     processor,
                     output_dir,
-                    model_dirs=[self.model_dir],
+                    model_dirs=[args.model_dir],
                     additional_saved_files=self.hf_model.model_meta.additional_saved_files)
             logger.info(f'Successfully saved `safetensors` model weights in `{output_dir}`.')
         dist.barrier()  # Ensure all weights are saved completely
