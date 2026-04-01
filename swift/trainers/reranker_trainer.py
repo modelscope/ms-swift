@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 
+from swift.metrics import eval_metrics_map
 from swift.utils import get_last_valid_indices, get_logger
 from .trainer import Trainer
 from .utils import gather_for_unpadded_tensors
@@ -13,8 +14,7 @@ class RerankerTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.gather_function = gather_for_unpadded_tensors
-        if 'group_sizes' not in self.label_names:
-            self.label_names = [*self.label_names, 'group_sizes']
+        self.eval_metrics = eval_metrics_map['reranker'](self.args, self)
 
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         # Check if we have a custom loss function
@@ -42,12 +42,17 @@ class RerankerTrainer(Trainer):
 
             if labels is not None:
                 self._compute_acc(outputs, labels)
+                if not model.training:
+                    self.eval_metrics.update(outputs.logits.detach(), labels, group_sizes)
 
             return (loss, outputs) if return_outputs else loss
         else:
             return super().compute_loss(model, inputs, return_outputs, num_items_in_batch)
 
     def evaluation_loop(self, *args, **kwargs):
+        self.eval_metrics.reset()
         output = super().evaluation_loop(*args, **kwargs)
+        if self.eval_metrics.logits:
+            output.metrics.update({f'eval_{k}': v for k, v in self.eval_metrics.compute().items()})
         self.gather_function = gather_for_unpadded_tensors
         return output

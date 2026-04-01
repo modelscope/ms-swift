@@ -57,3 +57,18 @@ def test_listwise_reranker_collator_still_skips_negative_only():
     assert 'labels' not in res
     assert 'group_sizes' not in res
     assert res['encoded_batch'] == []
+
+
+def test_reranker_collator_does_not_emit_group_sizes_without_custom_loss():
+    template = _build_template(None)
+    batch = [{
+        'input_ids': [[401], [402]],
+        'attention_mask': [[1], [1]],
+        'labels': [1, 0],
+    }]
+
+    res = Template._reranker_data_collator(template, batch)
+
+    assert res['num_samples'] == 2
+    assert torch.equal(res['labels'], torch.tensor([1, 0], dtype=torch.long))
+    assert 'group_sizes' not in res

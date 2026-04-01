@@ -1657,7 +1657,7 @@ class Template(ProcessorMixin):
             max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
             pointwise_negative_only = getattr(self, 'loss_type', None) == 'pointwise_reranker'
             labels_list = []
-            group_sizes = []
+            group_sizes = [] if pointwise_negative_only else None
             new_batch = []
             for b in batch:
                 labels = b.pop('labels', None)
@@ -1673,7 +1673,7 @@ class Template(ProcessorMixin):
                             {key: b[key][j]
                              for key in b.keys() if isinstance(b[key], list) and b[key][j] is not None})
                         labels_list.append(0)
-                    if sampled_negative_indices:
+                    if sampled_negative_indices and group_sizes is not None:
                         group_sizes.append(len(sampled_negative_indices))
                     continue
                 for i in random.sample(range(positive_num), max_positive):
@@ -1690,7 +1690,8 @@ class Template(ProcessorMixin):
                         })
                         labels_list.append(0)
                         group_size += 1
-                    group_sizes.append(group_size)
+                    if group_sizes is not None:
+                        group_sizes.append(group_size)
             num_samples = len(new_batch)
             res = self._data_collator(new_batch, padding_to=padding_to)
             res['num_samples'] = num_samples
