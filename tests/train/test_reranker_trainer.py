@@ -1,8 +1,9 @@
 from types import SimpleNamespace
 
-from swift.trainers.reranker_trainer import RerankerTrainer
+import torch
+
+from swift.trainers.reranker_trainer import RerankerTrainer, gather_for_reranker_metrics
 from swift.trainers.trainer import Trainer
-from swift.trainers.utils import gather_for_unpadded_tensors
 
 
 def _fake_trainer_init(self, *args, **kwargs):
@@ -17,7 +18,7 @@ def test_pointwise_reranker_adds_group_sizes_to_label_names(monkeypatch):
     trainer = RerankerTrainer(args=SimpleNamespace(loss_type='pointwise_reranker'))
 
     assert trainer.label_names == ['labels', 'group_sizes']
-    assert trainer.gather_function is gather_for_unpadded_tensors
+    assert trainer.gather_function is gather_for_reranker_metrics
 
 
 def test_listwise_reranker_keeps_default_label_names(monkeypatch):
@@ -26,7 +27,18 @@ def test_listwise_reranker_keeps_default_label_names(monkeypatch):
     trainer = RerankerTrainer(args=SimpleNamespace(loss_type='listwise_reranker'))
 
     assert trainer.label_names == ['labels']
-    assert trainer.gather_function is gather_for_unpadded_tensors
+    assert trainer.gather_function is gather_for_reranker_metrics
+
+
+def test_gather_for_reranker_metrics_preserves_tuple_labels():
+    labels = torch.tensor([1, 0, 0, 1], dtype=torch.long)
+    group_sizes = torch.tensor([2, 2], dtype=torch.long)
+
+    gathered = gather_for_reranker_metrics((labels, group_sizes))
+
+    assert isinstance(gathered, tuple)
+    assert torch.equal(gathered[0], labels)
+    assert torch.equal(gathered[1], group_sizes)
 
 
 def test_evaluation_loop_preserves_metric_prefix(monkeypatch):
@@ -46,4 +58,4 @@ def test_evaluation_loop_preserves_metric_prefix(monkeypatch):
 
     assert captured['metric_key_prefix'] == 'test'
     assert output.metrics == {'test_mrr': 0.75}
-    assert trainer.gather_function is gather_for_unpadded_tensors
+    assert trainer.gather_function is gather_for_reranker_metrics

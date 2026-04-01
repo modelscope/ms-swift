@@ -8,11 +8,19 @@ from .utils import gather_for_unpadded_tensors
 logger = get_logger()
 
 
+def gather_for_reranker_metrics(input_data, use_gather_object=False):
+    if isinstance(input_data, tuple):
+        return tuple(gather_for_reranker_metrics(data, use_gather_object=use_gather_object) for data in input_data)
+    if isinstance(input_data, list):
+        return [gather_for_reranker_metrics(data, use_gather_object=use_gather_object) for data in input_data]
+    return gather_for_unpadded_tensors(input_data, use_gather_object=use_gather_object)
+
+
 class RerankerTrainer(Trainer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.gather_function = gather_for_unpadded_tensors
+        self.gather_function = gather_for_reranker_metrics
         if getattr(self.args, 'loss_type', None) == 'pointwise_reranker' and 'group_sizes' not in self.label_names:
             self.label_names.append('group_sizes')
 
@@ -49,5 +57,5 @@ class RerankerTrainer(Trainer):
 
     def evaluation_loop(self, *args, **kwargs):
         output = super().evaluation_loop(*args, **kwargs)
-        self.gather_function = gather_for_unpadded_tensors
+        self.gather_function = gather_for_reranker_metrics
         return output
