@@ -138,14 +138,15 @@ class SwiftRLHF(SwiftSft):
             rms = args.reward_model if isinstance(args.reward_model, list) else [args.reward_model]
             num_rms = len(rms)
             rm_types = args.reward_model_type if args.reward_model_type else [None] * num_rms
+            rm_templates = args.reward_template if args.reward_template else [None] * num_rms
             rm_revisions = args.reward_model_revision if args.reward_model_revision else [None] * num_rms
-            assert len(rms) == len(rm_types) == len(rm_revisions)
+            assert len(rms) == len(rm_types) == len(rm_templates) == len(rm_revisions)
 
             self.reward_model = []
             if args.rlhf_type == 'grpo':
                 self.reward_template = []
 
-            for reward_model_path, rm_type, rm_revision in zip(rms, rm_types, rm_revisions):
+            for reward_model_path, rm_type, rm_template, rm_revision in zip(rms, rm_types, rm_templates, rm_revisions):
                 args.reward_model = reward_model_path  # Temporarily set for prepare_single_model
                 result = self._prepare_single_model('reward', None, rm_type, rm_revision)
                 if result is not None:
@@ -153,14 +154,15 @@ class SwiftRLHF(SwiftSft):
                     self.reward_model.append(model)
 
                     if args.rlhf_type == 'grpo':
-                        reward_template = self.args.get_template(processor, template_type=processor.model_meta.template)
+                        template_type = rm_template or processor.model_meta.template
+                        reward_template = self.args.get_template(processor, template_type=template_type)
                         if reward_template.use_model:
                             reward_template.model = model
                         self.reward_template.append(reward_template)
-                args.reward_model = rms  # Restore original value
-                if args.rlhf_type != 'grpo' and self.reward_model:
-                    assert len(self.reward_model) <= 1
-                    self.reward_model = self.reward_model[0]
+            args.reward_model = rms  # Restore original value
+            if args.rlhf_type != 'grpo' and self.reward_model:
+                assert len(self.reward_model) <= 1
+                self.reward_model = self.reward_model[0]
 
         super()._prepare_model_tokenizer()
 
