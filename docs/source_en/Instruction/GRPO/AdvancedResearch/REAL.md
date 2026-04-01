@@ -79,7 +79,6 @@ $$
 | Parameter | Type | Default | Description                                                        |
 |-----------|------|---------|--------------------------------------------------------------------|
 | `--loss_type` | `str` | -       | Set to `real`                                                      |
-| `--scale_rewards` | `str` | -       | Set to `none` (disable normalization) |
 | `--real_tau` | `float` | `0.5`   | Temperature parameter controlling decision boundary sharpness |
 
 Training Script Reference

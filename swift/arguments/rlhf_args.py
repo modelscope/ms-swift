@@ -365,6 +365,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             else:
                 raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
 
+        # disable normalization, REAL https://arxiv.org/abs/2602.05630
+        if self.loss_type == 'real':
+            self.scale_rewards = 'none'
+
         if self.scale_rewards is None:
             if self.advantage_estimator == 'grpo':
                 self.scale_rewards = 'group'

@@ -35,5 +35,4 @@ swift rlhf \
     --num_iterations 1 \
     --beta 0 \
     --loss_type real \
-    --scale_rewards none \
     --deepspeed zero2
