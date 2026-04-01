@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 from megatron.core import mpu
-from typing import Optional
 
 
 def reduce_max_stat_across_model_parallel_group(stat: float) -> float:
