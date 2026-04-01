@@ -2,10 +2,10 @@
 import concurrent.futures
 import importlib.metadata
 import inspect
-import torch
 import logging
 import megatron.core
 import os
+import torch
 import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy
