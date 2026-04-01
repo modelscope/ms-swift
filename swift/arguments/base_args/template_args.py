@@ -153,7 +153,6 @@ class TemplateArguments:
             self.truncation_strategy = 'delete'
 
     def get_template_kwargs(self):
-        from ..sft_args import SftArguments
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':
             truncation_strategy = 'raise'
