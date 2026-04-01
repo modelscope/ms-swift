@@ -148,7 +148,6 @@ class SwiftRLHF(SwiftSft):
 
             for reward_model_path, rm_type, rm_template, rm_revision in zip(rms, rm_types, rm_templates, rm_revisions):
                 args.reward_model = reward_model_path  # Temporarily set for prepare_single_model
-                args.reward_template = rm_template  # Temporarily set for prepare_single_model
                 result = self._prepare_single_model('reward', None, rm_type, rm_revision)
                 if result is not None:
                     model, processor = result
@@ -161,7 +160,6 @@ class SwiftRLHF(SwiftSft):
                             reward_template.model = model
                         self.reward_template.append(reward_template)
             args.reward_model = rms  # Restore original value
-            args.reward_template = rm_templates  # Restore original value
             if args.rlhf_type != 'grpo' and self.reward_model:
                 assert len(self.reward_model) <= 1
                 self.reward_model = self.reward_model[0]
