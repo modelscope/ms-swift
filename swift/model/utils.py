@@ -245,7 +245,7 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     try:
         is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
                                                               and torch.npu.is_bf16_supported())
-    except:  # noqa
+    except Exception:  # noqa
         is_bf16_available = False
 
     if is_torch_cuda_available() or is_torch_npu_available():

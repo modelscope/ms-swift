@@ -876,9 +876,9 @@ def _patch_dsa():
             # x_pe   [seqlen, batch, *, qk_pos_emb_head_dim]
             x_pe, x_nope = torch.split(
                 x, [self.index_head_dim - self.qk_pos_emb_head_dim, self.qk_pos_emb_head_dim], dim=-1)
-            origin_rotary_interleaved = self.config.rotary_interleaved
+            origin_multi_latent_attention = self.config.multi_latent_attention
             try:
-                self.config.rotary_interleaved = self.config.dsa_indexer_rotary_interleaved
+                self.config.multi_latent_attention = self.config.dsa_indexer_rotary_interleaved
                 x_pe = apply_rotary_pos_emb(
                     x_pe,
                     rotary_pos_emb,
@@ -887,7 +887,7 @@ def _patch_dsa():
                     cp_group=self.pg_collection.cp,
                 )
             finally:
-                self.config.rotary_interleaved = origin_rotary_interleaved
+                self.config.multi_latent_attention = origin_multi_latent_attention
             # [seqlen, batch, *, index_head_dim]
             x = torch.cat([x_pe, x_nope], dim=-1)
             return x

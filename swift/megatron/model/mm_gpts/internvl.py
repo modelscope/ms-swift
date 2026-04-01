@@ -8,7 +8,7 @@ from ..register import MegatronModelMeta, register_megatron_model
 from .utils import HuggingFaceModule
 
 
-class Internvl3Bridge(GPTBridge):
+class InternvlBridge(GPTBridge):
     hf_layers_prefix = 'language_model.model.layers'
     hf_embed_key = 'language_model.model.embed_tokens.weight'
     hf_final_layernorm_key = 'language_model.model.norm.weight'
@@ -16,18 +16,20 @@ class Internvl3Bridge(GPTBridge):
     hf_score_key = 'language_model.score.weight'
 
     def _init_meta_hf_model(self):
-        internvl3_vit = Internvl3Vit(None)
-        self.hf_model = internvl3_vit._hf_model[0]
+        internvl_vit = InternvlVit(self.args._config)
+        self.hf_model = internvl_vit._hf_model[0]
         self.hf_model.vision_model = None
-        self.processor = internvl3_vit.processor
+        self.processor = internvl_vit.processor
 
 
-class Internvl3Vit(HuggingFaceModule):
+class InternvlVit(HuggingFaceModule):
     module_mapping = {'vision_model': 'vision_model', 'mlp1': 'mlp1'}
     _vision_tower = ['vision_model']
     _aligner = ['mlp1']
 
     def __init__(self, config):
+        if config.llm_model_type not in ['qwen2', 'qwen3', 'qwen3_moe', 'gpt_oss']:
+            raise ValueError(f'{config.llm_model_type} is not supported for internvl_chat model')
         model_cls = []
         from transformers.models.qwen2 import Qwen2ForCausalLM
         model_cls.append(Qwen2ForCausalLM)
@@ -39,6 +41,11 @@ class Internvl3Vit(HuggingFaceModule):
         try:
             from transformers.models import Qwen3MoeForCausalLM
             model_cls.append(Qwen3MoeForCausalLM)
+        except ImportError:
+            pass
+        try:
+            from transformers import GptOssForCausalLM
+            model_cls.append(GptOssForCausalLM)
         except ImportError:
             pass
         super().__init__(config, model_cls)
@@ -61,14 +68,12 @@ class Internvl3Vit(HuggingFaceModule):
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.internvl3,
+        MegatronModelType.internvl_chat,
         [
-            ModelType.internvl3,
-            ModelType.internvl3_5,
-            ModelType.internvl3_5_gpt,
+            ModelType.internvl_chat,
         ],
-        bridge_cls=Internvl3Bridge,
-        visual_cls=Internvl3Vit,
+        bridge_cls=InternvlBridge,
+        visual_cls=InternvlVit,
     ))
 
 
@@ -100,6 +105,11 @@ class InternvlHfVit(HuggingFaceModule):
             model_cls.append(Qwen3MoeModel)
         except ImportError:
             pass
+        try:
+            from transformers import GptOssModel
+            model_cls.append(GptOssModel)
+        except ImportError:
+            pass
         super().__init__(config, model_cls)
 
     def get_inputs_embeds(self, inputs_embeds, **kwargs):
@@ -114,6 +124,8 @@ class InternvlHfVit(HuggingFaceModule):
                 vision_feature_layer=self.hf_config.vision_feature_layer,
                 vision_feature_select_strategy=self.hf_config.vision_feature_select_strategy,
             )
+            if hasattr(image_features, 'pooler_output'):
+                image_features = image_features.pooler_output
             special_image_mask = input_ids == self.hf_config.image_token_id
             special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
@@ -125,16 +137,17 @@ class InternvlHfVit(HuggingFaceModule):
                 vision_feature_layer=self.hf_config.vision_feature_layer,
                 vision_feature_select_strategy=self.hf_config.vision_feature_select_strategy,
             )
+            if hasattr(image_features, 'pooler_output'):
+                image_features = image_features.pooler_output
             inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return inputs_embeds
 
 
 register_megatron_model(
     MegatronModelMeta(
-        MegatronModelType.internvl_hf,
+        MegatronModelType.internvl,
         [
-            ModelType.internvl_hf,
-            ModelType.internvl_gpt_hf,
+            ModelType.internvl,
         ],
         bridge_cls=InternvlHfBridge,
         visual_cls=InternvlHfVit,

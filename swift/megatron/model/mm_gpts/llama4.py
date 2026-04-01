@@ -37,6 +37,8 @@ class Llama4Vit(HuggingFaceModule):
             pixel_values=pixel_values,
             vision_feature_select_strategy=vision_feature_select_strategy,
         )
+        if hasattr(image_features, 'last_hidden_state'):
+            image_features = image_features.last_hidden_state
         vision_flat = image_features.view(-1, image_features.size(-1))
         projected_vision_flat = model.multi_modal_projector(vision_flat).to(inputs_embeds.device, inputs_embeds.dtype)
         if origin_pixel_values is None:

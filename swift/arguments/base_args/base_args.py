@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import json
 import os
+import shutil
 from dataclasses import dataclass, field, fields
 from packaging import version
 from typing import Any, Dict, List, Literal, Optional, Union
@@ -284,6 +285,9 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
             logger.info(f'The {self.__class__.__name__} will be saved in: {fpath}')
             with open(fpath, 'w', encoding='utf-8') as f:
                 json.dump(check_json_format(self.__dict__), f, ensure_ascii=False, indent=2)
+            config_file = os.getenv('SWIFT_CONFIG_FILE')
+            if config_file:
+                shutil.copy(config_file, output_dir)
 
     def _init_device(self):
         if is_dist():

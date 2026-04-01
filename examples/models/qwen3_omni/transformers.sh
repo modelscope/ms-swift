@@ -1,7 +1,7 @@
 # 2 * 48GiB
 # mcore shell: https://github.com/modelscope/ms-swift/blob/main/examples/megatron/multimodal/omni/moe.sh
-MAX_PIXELS=1003520 \
-VIDEO_MAX_PIXELS=50176 \
+IMAGE_MAX_TOKEN_NUM=1024 \
+VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \

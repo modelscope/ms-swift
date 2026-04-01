@@ -18,8 +18,8 @@ class MLLMMegatronModelType:
     qwen3_5 = 'qwen3_5'
     ovis2_5 = 'ovis2_5'
 
-    internvl3 = 'internvl3'
-    internvl_hf = 'internvl_hf'
+    internvl_chat = 'internvl_chat'
+    internvl = 'internvl'
     glm4v = 'glm4v'
     glm4v_moe = 'glm4v_moe'
     kimi_vl = 'kimi_vl'

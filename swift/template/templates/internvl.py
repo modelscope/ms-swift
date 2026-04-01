@@ -328,6 +328,8 @@ class InternvlhfTemplate(Internvl2Template):
                 vision_feature_layer=self.config.vision_feature_layer,
                 vision_feature_select_strategy=self.config.vision_feature_select_strategy,
             )
+            if hasattr(image_features, 'pooler_output'):
+                image_features = image_features.pooler_output
             special_image_mask = input_ids == self.config.image_token_id
             special_image_mask = special_image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
@@ -339,6 +341,8 @@ class InternvlhfTemplate(Internvl2Template):
                 vision_feature_layer=self.config.vision_feature_layer,
                 vision_feature_select_strategy=self.config.vision_feature_select_strategy,
             )
+            if hasattr(image_features, 'pooler_output'):
+                image_features = image_features.pooler_output
             inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return {'inputs_embeds': inputs_embeds}
 
