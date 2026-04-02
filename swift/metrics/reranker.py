@@ -3,8 +3,11 @@ import numpy as np
 from transformers import EvalPrediction
 from typing import Dict
 
+from swift.utils import get_logger
 from .base import EvalMetrics
 from .utils import Metric
+
+logger = get_logger()
 
 
 class RerankerMetrics(EvalMetrics, Metric):
@@ -86,12 +89,12 @@ class RerankerMetrics(EvalMetrics, Metric):
         for query_idx, (query_logits, query_labels) in enumerate(query_groups):
             # Skip groups that are too small (need at least 1 positive + 1 negative)
             if len(query_logits) < 2:
-                print(f'Query {query_idx}: Skipped (too small: {len(query_logits)} items)')
+                logger.info(f'Query {query_idx}: Skipped (too small: {len(query_logits)} items)')
                 continue
 
             # Verify that the first sample is positive (data format validation)
             if query_labels[0] != 1:
-                print(f'Query {query_idx}: Skipped (first sample not positive)')
+                logger.info(f'Query {query_idx}: Skipped (first sample not positive)')
                 continue
 
             # Step 3a: Calculate ranking within this query
@@ -131,7 +134,7 @@ class RerankerMetrics(EvalMetrics, Metric):
 
         # Step 4: Calculate mean metrics across all valid queries
         if len(mrr_scores) == 0:
-            print('No valid queries found for metric calculation')
+            logger.warning('No valid queries found for metric calculation')
             return {'mrr': 0.0, 'ndcg': 0.0}
 
         mean_mrr = np.mean(mrr_scores)

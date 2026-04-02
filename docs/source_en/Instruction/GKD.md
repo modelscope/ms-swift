@@ -240,8 +240,6 @@ Since the sampling process significantly slows down training speed, you can refe
 
 ### Solution 1: Student Model Sampling Acceleration
 
-**Requirement**: swift >= 3.10.dev
-
 Use vLLM as the inference backend to accelerate student model sampling. Supports two deployment modes, consistent with GRPO. Refer to [GRPO documentation](./GRPO/GetStarted/GRPO.md#cluster-support)
 
 > **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses Transformers. Pre-sampling scheme is recommended.
@@ -295,3 +293,61 @@ We can achieve the [On-Policy Distillation](https://thinkingmachines.ai/blog/on-
 ```
 
 For a complete implementation, refer to the example script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh).
+
+## OPSD (On-Policy Self-Distillation)
+
+OPSD ([On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)), is a method that requires no separate teacher model. The key idea: the same model serves as both teacher and student, where the teacher receives **privileged information** (e.g., reference solutions) to guide student learning.
+
+### Core Mechanism
+
+- **Student**: sees only the problem and reasons normally
+- **Teacher**: sees the problem + reference solution (privileged info via `teacher_prompt` column), producing a better probability distribution
+- **Training objective**: align student and teacher output distributions via JSD divergence
+
+### Two Self-Distillation Modes
+
+| Mode | Configuration | Teacher Weights | Description |
+|------|--------------|----------------|-------------|
+| **Dynamic** | No `--teacher_model` | Student's current weights | Teacher updates with training |
+| **Fixed** | `--teacher_model` = same as student | Initial base weights | Fixed teacher weight|
+
+### Data Format
+
+OPSD requires a `teacher_prompt` column in the dataset to provide privileged information for the teacher. Use `--external_plugins` to load a data preprocessing plugin that constructs this column.
+
+Example with `open-r1/OpenThoughts-114k-math`:
+
+```python
+from swift.dataset import DatasetMeta, RowPreprocessor, register_dataset
+
+class OpenThoughtsOPSDPreprocessor(RowPreprocessor):
+    def preprocess(self, row):
+        if not row.get('correct', True):
+            return None
+        problem = row.get('problem', '')
+        solution = row.get('solution', '')
+        teacher_prompt = f'{problem}\n\nReference solution:\n{solution}\n\nNow articulate your own reasoning.'
+        messages = [
+            {'role': 'system', 'content': 'Please reason step by step, and put your final answer within \\boxed{}.'},
+            {'role': 'user', 'content': problem},
+        ]
+        return {'messages': messages, 'teacher_prompt': teacher_prompt}
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='open-r1/OpenThoughts-114k-math',
+    preprocess_func=OpenThoughtsOPSDPreprocessor(),
+    tags=['math', 'opsd'],
+))
+```
+
+### Parameters
+
+OPSD reuses all GKD parameters. The key difference is `--teacher_model` configuration:
+
+| Parameter | Dynamic Mode | Fixed Mode |
+|-----------|-------------|-----------|
+| `--teacher_model` | Not set | Same model as `--model` |
+
+Full scripts available [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/opsd/)
+
+Megatron available [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd.sh)

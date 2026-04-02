@@ -42,7 +42,8 @@ def prepare_model_template(args, **kwargs):
         if template.use_model:
             template.model = model
         model = prepare_adapter(args, model, adapters=adapters)
-        update_generation_config_eos_token(model.generation_config, template)
+        if args.task_type == 'causal_lm':
+            update_generation_config_eos_token(model.generation_config, template)
     return model, template
 
 

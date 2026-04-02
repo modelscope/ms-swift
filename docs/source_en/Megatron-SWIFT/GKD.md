@@ -1,7 +1,5 @@
 # GKD
 
-**Version Requirement**: ms-swift >= 3.12
-
 If you are new to GKD, please refer to the [GKD Documentation](../Instruction/GKD.md) first.
 
 GKD (Generalized Knowledge Distillation) is a training method that transfers knowledge from a teacher model to a student model by computing the Jensen-Shannon Divergence (JSD) loss between their output distributions.

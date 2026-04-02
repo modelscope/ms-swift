@@ -245,7 +245,7 @@ def get_default_torch_dtype(torch_dtype: Optional[torch.dtype]):
     try:
         is_bf16_available = is_torch_bf16_gpu_available() or (is_torch_npu_available()
                                                               and torch.npu.is_bf16_supported())
-    except:  # noqa
+    except Exception:  # noqa
         is_bf16_available = False
 
     if is_torch_cuda_available() or is_torch_npu_available():
@@ -281,19 +281,8 @@ def _patch_conv3d():
     logger.info('Conv3d patched successfully')
 
 
-SWIFT_PATCH_CONV3D = get_env_args('SWIFT_PATCH_CONV3D', bool, None)
-torch_version = version.parse(torch.__version__)
-
-if SWIFT_PATCH_CONV3D is None:
-    # Default behavior: patch only for torch 2.9.x
-    SWIFT_PATCH_CONV3D = version.parse('2.9.0') < torch_version < version.parse('2.10.0')
-    logger.info(f'setting SWIFT_PATCH_CONV3D: {SWIFT_PATCH_CONV3D}.')
-elif SWIFT_PATCH_CONV3D and torch_version < version.parse('2.9.0'):
-    # User override for an unsupported version, correct it.
-    SWIFT_PATCH_CONV3D = False
-    logger.info('torch versions <2.9 do not require patching conv3d. setting SWIFT_PATCH_CONV3D: False.')
-
-if SWIFT_PATCH_CONV3D:
+requires_patch = version.parse('2.9.0') <= version.parse(torch.__version__) < version.parse('2.10.0')
+if requires_patch:
     _patch_conv3d()
 
 

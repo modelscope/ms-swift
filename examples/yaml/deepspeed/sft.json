@@ -1,0 +1,32 @@
+{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "torch_dtype": "bfloat16",
+    "tuner_type": "lora",
+    "lora_rank": 8,
+    "lora_alpha": 32,
+    "target_modules": "all-linear",
+    "dataset": [
+      "AI-ModelScope/alpaca-gpt4-data-zh#500",
+      "AI-ModelScope/alpaca-gpt4-data-en#500",
+      "swift/self-cognition#500"
+    ],
+    "split_dataset_ratio": 0.0,
+    "max_length": 2048,
+    "system": "You are a helpful assistant.",
+    "model_author": "swift",
+    "model_name": "swift-bot",
+    "num_train_epochs": 1,
+    "per_device_train_batch_size": 1,
+    "per_device_eval_batch_size": 1,
+    "learning_rate": 1e-4,
+    "gradient_accumulation_steps": 8,
+    "eval_steps": 50,
+    "save_steps": 50,
+    "save_total_limit": 2,
+    "logging_steps": 5,
+    "output_dir": "output",
+    "warmup_ratio": 0.05,
+    "dataloader_num_workers": 4,
+    "dataset_num_proc": 4,
+    "deepspeed": "zero2"
+}

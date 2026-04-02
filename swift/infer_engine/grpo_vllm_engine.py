@@ -122,7 +122,7 @@ class GRPOVllmEngine(VllmEngine):
                 finish_reason=output.finish_reason,
                 logprobs=logprobs,
                 token_ids=token_ids,
-            )
+                routed_experts=getattr(output, 'routed_experts', None))
             choices.append(choice)
         prompt_token_ids = None
         images_size = None

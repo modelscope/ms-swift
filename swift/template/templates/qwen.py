@@ -311,6 +311,10 @@ class Qwen2VLTemplate(Template):
         from qwen_vl_utils import fetch_image, fetch_video
         assert media_type in {'image', 'video'}
         kwargs = {'image_patch_size': self.processor.image_processor.patch_size} if self.version == 'v3' else {}
+        if self.mode == 'vllm':
+            # resized in qwen_vl_utils, no need to resize again in vllm
+            # ref: https://github.com/modelscope/ms-swift/issues/8445
+            inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
             inputs.images[index] = fetch_image({'image': inputs.images[index]}, **kwargs)
             if self.mode == 'lmdeploy':
@@ -638,8 +642,12 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_omni_utils import fetch_image, fetch_video
+        kwargs = {'image_patch_size': self.processor.image_processor.patch_size} if self.version == 'omni_v3' else {}
+        if self.mode == 'vllm':
+            # https://github.com/modelscope/ms-swift/issues/8445
+            inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': inputs.images[index]})
+            inputs.images[index] = fetch_image({'image': inputs.images[index]}, **kwargs)
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
             elif self.version == 'omni_v3':
@@ -653,7 +661,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            _video = fetch_video({'video': video})
+            _video = fetch_video({'video': video}, **kwargs)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video

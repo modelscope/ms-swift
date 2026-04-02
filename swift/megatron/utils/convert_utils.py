@@ -6,6 +6,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from contextlib import contextmanager
 from megatron.core import mpu
+from megatron.core.tensor_parallel import VocabParallelEmbedding
 from typing import Any, Dict
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
@@ -65,6 +66,9 @@ def _model_cpu_forward_context(modules,
         origin_torch_dtype = next(modules[0].parameters()).dtype
     except StopIteration:
         origin_torch_dtype = next(modules[-1].parameters()).dtype
+    embedding = None
+    if share_embedding:
+        embedding = [module for module in modules if isinstance(module, (nn.Embedding, VocabParallelEmbedding))][-1]
 
     def _to_cuda_hook(module, args):
         if compute_device is not None or torch_dtype is not None:
@@ -73,7 +77,7 @@ def _model_cpu_forward_context(modules,
         return args
 
     def _to_cpu_hook(module, args, output):
-        if share_embedding and module is modules[0]:
+        if share_embedding and module is embedding:
             return
         module.to(device=target_device, dtype=origin_torch_dtype)
 
@@ -184,7 +188,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         inputs = template.encode(get_examples(is_multimodal))
         hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
         template.register_post_encode_hook([hf_model])
-        HfConfigFactory.set_model_config_attr(hf_model, 'use_cache', False)
+        HfConfigFactory.set_config_attr(hf_model.config, 'use_cache', False)
         model_arch = hf_model.model_meta.model_arch
         ignore_modules = (model_arch.vision_tower + model_arch.aligner) if is_multimodal else []
         hf_modules = _find_modules(hf_model, ignore_modules=ignore_modules)

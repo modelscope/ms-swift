@@ -26,7 +26,7 @@ Please refer to our [Code of Conduct documentation](./CODE_OF_CONDUCT.md).
 Any feature development is carried out in the form of Fork and then PR on GitHub.
 1. Fork: Go to the [ms-swift](https://github.com/modelscope/ms-swift) page and click the **Fork button**. After completion, a SWIFT code repository will be cloned under your personal organization.
 2. Clone: Clone the code repository generated in the first step to your local machine and **create a new branch** for development. During development, please click the **Sync Fork button** in time to synchronize with the `main` branch to prevent code expiration and conflicts.
-3. Submit PR: After development and testing, push the code to the remote branch. On GitHub, go to the **Pull Requests page**, create a new PR, select your code branch as the source branch, and the `modelscope/swift:main` branch as the target branch.
+3. Submit PR: After development and testing, push the code to the remote branch. On GitHub, go to the **Pull Requests page**, create a new PR, select your code branch as the source branch, and the `modelscope/ms-swift:main` branch as the target branch.
 
 4. Write Description: It is necessary to provide a good feature description in the PR, so that the reviewers know the content of your modification.
 5. Review: We hope that the code to be merged is concise and efficient, so we may raise some questions and discuss them. Please note that any issues raised in the review are aimed at the code itself, not at you personally. Once all issues are discussed and resolved, your code will be approved.

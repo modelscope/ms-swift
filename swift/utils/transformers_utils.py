@@ -316,10 +316,13 @@ def get_modules_to_not_convert(model):
     if not hasattr(model, 'model_meta') or not hasattr(model, 'model_info'):
         return
     model_arch = model.model_meta.model_arch
+    model_type = model.model_meta.model_type
     prefix_list = []
     suffix_list = []
     if model.model_info.is_moe_model:
         suffix_list += ['mlp.gate', 'mlp.shared_expert_gate']
+    if model_type in {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}:
+        suffix_list += ['in_proj_a', 'in_proj_b']
     if model_arch is not None:
         for key in ['vision_tower', 'aligner']:
             value = getattr(model_arch, key, None)

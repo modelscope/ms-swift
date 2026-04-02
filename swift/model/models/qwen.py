@@ -944,6 +944,10 @@ def _patch_deepstack_process(model):
             return hidden_states + visual_embeds.mean() * 0
         visual_pos_masks = visual_pos_masks.to(hidden_states.device)
         visual_embeds = visual_embeds.to(hidden_states.device, hidden_states.dtype)
+        if hidden_states.ndim == 3 and visual_pos_masks.ndim == 3:
+            # https://github.com/huggingface/transformers/pull/41741
+            # fix qwen3-omni transformers<5.0
+            visual_pos_masks = visual_pos_masks[..., 0]
         local_this = hidden_states[visual_pos_masks, :].clone() + visual_embeds
         hidden_states[visual_pos_masks, :] = local_this
         return hidden_states
@@ -1055,7 +1059,8 @@ class Qwen3VLLoader(Qwen2VLLoader):
         from transformers import Qwen3VLForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen3VLForConditionalGeneration
         model = super().get_model(model_dir, config, processor, model_kwargs)
-        _compat_qwen3_vl_mixed_data(model.model, processor)
+        is_moe = getattr(self, 'is_moe', False)
+        _compat_qwen3_vl_mixed_data(model.model, processor, is_moe=is_moe)
         return model
 
 
@@ -1089,6 +1094,7 @@ register_model(
 
 
 class Qwen3VLMoeLoader(Qwen3VLLoader):
+    is_moe = True
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen3VLMoeForConditionalGeneration
@@ -1188,9 +1194,19 @@ register_model(
 
 class Qwen2_5OmniLoader(ModelLoader):
 
+    def _check_qwen_omni_utils(self):
+        try:
+            qwen_omni_utils_version = importlib.metadata.version('qwen_omni_utils')
+        except importlib.metadata.PackageNotFoundError:
+            raise importlib.metadata.PackageNotFoundError(
+                "The 'qwen_omni_utils' distribution was not found and is required by this application.")
+        if version.parse(qwen_omni_utils_version) >= version.parse('0.0.9'):
+            compat_qwen_vl_utils(image_patch_size=14)
+
     def get_config(self, model_dir):
         from transformers import Qwen2_5OmniConfig
-        self.autoconfig_class = Qwen2_5OmniConfig
+        self._check_qwen_omni_utils()
+        self.auto_config_cls = Qwen2_5OmniConfig
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         config = super().get_config(model_dir)
         if enable_audio_output is not None:
@@ -1392,9 +1408,14 @@ def _compat_qwen3_omni_mixed_data(model, processor):
 
 class Qwen3OmniLoader(ModelLoader):
 
+    def _check_qwen_omni_utils(self):
+        require_version('qwen_omni_utils>=0.0.9')
+        compat_qwen_vl_utils(image_patch_size=16)
+
     def get_config(self, model_dir: str):
         from transformers import Qwen3OmniMoeConfig
-        self.autoconfig_class = Qwen3OmniMoeConfig
+        self._check_qwen_omni_utils()
+        self.auto_config_cls = Qwen3OmniMoeConfig
         config = super().get_config(model_dir)
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         if enable_audio_output is not None:
@@ -1437,7 +1458,7 @@ register_model(
         Qwen3OmniLoader,
         model_arch=ModelArch.qwen3_omni,
         architectures=['Qwen3OmniMoeForConditionalGeneration'],
-        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils'],
+        requires=['transformers>=4.57.dev0', 'soundfile', 'decord', 'qwen_omni_utils>=0.0.9'],
         tags=['vision', 'video', 'audio'],
     ))
 
@@ -1649,6 +1670,7 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_emb,
+        mcore_model_type='qwen3_emb',
         additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
         architectures=['Qwen3ForCausalLM']))
 
@@ -1663,6 +1685,7 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_reranker,
+        mcore_model_type='qwen3',
         architectures=['Qwen3ForCausalLM'],
     ))
 
@@ -1687,6 +1710,7 @@ register_model(
         Qwen3VLEmbLoader,
         template=TemplateType.qwen3_vl_emb,
         model_arch=ModelArch.qwen3_vl,
+        mcore_model_type='qwen3_vl',
         architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
@@ -1712,6 +1736,7 @@ register_model(
         Qwen3VLRerankerLoader,
         template=TemplateType.qwen3_vl_reranker,
         model_arch=ModelArch.qwen3_vl,
+        mcore_model_type='qwen3_vl',
         architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))

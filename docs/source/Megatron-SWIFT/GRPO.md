@@ -1,6 +1,5 @@
 # GRPO
 
-**版本依赖**：ms-swift >= 3.11
 
 如果你是首次使用 GRPO，请先参考 [GRPO文档](../Instruction/GRPO/GetStarted/GRPO.md)。
 

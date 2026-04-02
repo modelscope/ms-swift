@@ -1,7 +1,5 @@
 # Soft Adaptive Policy Optimization (SAPO)
 
-**Version Requirement**: ms-swift>=3.11
-
 [Soft Adaptive Policy Optimization (SAPO)](https://arxiv.org/abs/2511.20347) addresses the issues caused by hard clipping in GRPO by proposing a temperature-controlled soft gate mechanism that smoothly attenuates off-policy updates while preserving useful learning signals.
 
 ## Background and Motivation

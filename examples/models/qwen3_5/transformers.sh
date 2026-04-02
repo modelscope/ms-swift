@@ -1,8 +1,8 @@
 # 4 * 30GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
-MAX_PIXELS=1003520 \
-VIDEO_MAX_PIXELS=50176 \
+IMAGE_MAX_TOKEN_NUM=1024 \
+VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift sft \
@@ -38,8 +38,8 @@ swift sft \
 
 # PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 # CUDA_VISIBLE_DEVICES=0,1,2,3 \
-# MAX_PIXELS=1003520 \
-# VIDEO_MAX_PIXELS=50176 \
+# IMAGE_MAX_TOKEN_NUM=1024 \
+# VIDEO_MAX_TOKEN_NUM=128 \
 # FPS_MAX_FRAMES=12 \
 # swift infer \
 #     --adapters output/Qwen3.5-35B-A3B/vx-xxx/checkpoint-xxx \

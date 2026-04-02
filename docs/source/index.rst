@@ -71,6 +71,7 @@ Swift DOCUMENTATION
    BestPractices/Reranker.md
    BestPractices/Rapidly-Training-VL-model.md
    BestPractices/NPU-support.md
+   BestPractices/Metax-support.md
    BestPractices/More-Best-Practices.md
 
 Indices and tables

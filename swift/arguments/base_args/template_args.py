@@ -153,13 +153,9 @@ class TemplateArguments:
             self.truncation_strategy = 'delete'
 
     def get_template_kwargs(self):
-        from ..sft_args import SftArguments
         truncation_strategy = self.truncation_strategy
         if truncation_strategy == 'delete':
             truncation_strategy = 'raise'
-        remove_unused_columns = self.remove_unused_columns  # from DataArguments
-        if not isinstance(self, SftArguments) or hasattr(self, 'rlhf_type') and self.rlhf_type == 'grpo':
-            remove_unused_columns = True
         return {
             'template_type': self.template,
             'default_system': self.system,
@@ -169,7 +165,7 @@ class TemplateArguments:
             'agent_template': self.agent_template,
             'norm_bbox': self.norm_bbox,
             'use_chat_template': self.use_chat_template,
-            'remove_unused_columns': remove_unused_columns,
+            'remove_unused_columns': self.remove_unused_columns,  # from DataArguments
             'padding_side': self.padding_side,
             # train
             'padding_free': self.padding_free,

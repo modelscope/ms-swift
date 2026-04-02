@@ -1,7 +1,5 @@
 # Soft Adaptive Policy Optimization (SAPO)
 
-**版本依赖**：ms-swift>=3.11
-
 [Soft Adaptive Policy Optimization (SAPO)](https://arxiv.org/abs/2511.20347) 针对 GRPO 中硬裁剪（hard clipping）带来的问题，提出了一种基于温度控制的软门控（soft gate）机制，用于平滑地衰减离策略更新，同时保留有用的学习信号。
 
 ## 背景与动机

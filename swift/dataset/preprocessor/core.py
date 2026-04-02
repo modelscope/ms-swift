@@ -30,6 +30,7 @@ class RowPreprocessor:
                                 'label',
                                 'channel',
                                 'margin',
+                                'teacher_prompt',
                             ]
 
     def __init__(self,

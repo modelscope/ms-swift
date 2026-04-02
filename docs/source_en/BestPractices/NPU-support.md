@@ -11,9 +11,9 @@ Base environment requirements:
 | Software  | Version         |
 | --------- | --------------- |
 | Python    | >= 3.10, < 3.12 |
-| CANN      | == 8.3.RC1      |
+| CANN      | == 8.5.1        |
 | torch     | == 2.7.1        |
-| torch_npu | == 2.7.1        |
+| torch_npu | == 2.7.1.post2  |
 
 For detailed environment setup, please refer to the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch).
 
@@ -47,8 +47,8 @@ pip install deepspeed
 pip install evalscope[opencompass]
 
 # If you need to use vllm-ascend for inference, please install the following packages
-pip install vllm==0.11.0
-pip install vllm-ascend==0.11.0rc3
+pip install vllm==0.14.0
+pip install vllm-ascend==0.14.0rc1
 ```
 
 Check if the test environment is installed correctly and whether the NPU can be loaded properly.

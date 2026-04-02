@@ -3,7 +3,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
     --model 'Qwen/Qwen3-8B' \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

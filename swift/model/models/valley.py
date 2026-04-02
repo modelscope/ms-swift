@@ -21,7 +21,7 @@ class ValleyLoader(ModelLoader):
             local_repo_path = git_clone_github(repo_path)
         sys.path.append(local_repo_path)
         from valley_eagle.model.language_model.valley_qwen2 import ValleyConfig
-        self.autoconfig_class = ValleyConfig
+        self.auto_config_cls = ValleyConfig
         return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:

@@ -1,6 +1,5 @@
 # Megatron GRPO
 
-**Version Requirement**: ms-swift >= 3.11
 
 If you are new to GRPO, please refer to the [GRPO documentation](../Instruction/GRPO/GetStarted/GRPO.md) first.
 

@@ -1,2 +1,2 @@
 OPENAI_API_KEY="xxx" \
-  swift sample --config distill.yaml
+swift sample examples/sampler/distill/distill.yaml

@@ -3,7 +3,7 @@ import inspect
 import torch
 import torch.nn as nn
 from collections import defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
@@ -42,6 +42,7 @@ class RLHFTrainerMixin:
         self.is_vision_model = False
         self.label_pad_token_id = -100
         self.use_dpo_data_collator = True
+        self.maybe_activation_offload_context = nullcontext()
         super().__init__(model, *_args, **kwargs)
         self.aux_loss_enabled = model.model_info.is_moe_model and args.router_aux_loss_coef > 0
         self.aux_loss_coef = args.router_aux_loss_coef

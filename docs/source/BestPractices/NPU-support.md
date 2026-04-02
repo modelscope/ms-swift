@@ -11,9 +11,9 @@
 | software  | version         |
 | --------- | --------------- |
 | Python    | >= 3.10, < 3.12 |
-| CANN      | == 8.3.RC1      |
+| CANN      | == 8.5.1        |
 | torch     | == 2.7.1        |
-| torch_npu | == 2.7.1        |
+| torch_npu | == 2.7.1.post2  |
 
 
 基础环境准备请参照这份 [Ascend PyTorch 安装文档](https://gitcode.com/Ascend/pytorch)。
@@ -49,8 +49,8 @@ pip install deepspeed
 pip install evalscope[opencompass]
 
 # 如果需要使用 vllm-ascend 进行推理，请安装以下包
-pip install vllm==0.11.0
-pip install vllm-ascend==0.11.0rc3
+pip install vllm==0.14.0
+pip install vllm-ascend==0.14.0rc1
 ```
 
 测试环境是否安装正确，NPU能否被正常加载：

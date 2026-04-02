@@ -28,6 +28,10 @@ from .args_mixin import GRPOArgumentsMixin, RolloutTrainerArgumentsMixin
 @dataclass
 class DPOConfig(TrainArgumentsMixin, HfDPOConfig):
     ld_alpha: Optional[float] = None  # compat trl==0.15
+    # Fields removed in trl 0.29, kept here for backward compatibility
+    rpo_alpha: Optional[float] = None
+    ref_adapter_name: Optional[str] = None
+    reference_free: Optional[bool] = None
 
     def __post_init__(self):
         TrainArgumentsMixin.__post_init__(self)

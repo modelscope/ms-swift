@@ -2,6 +2,7 @@
 import torch
 from bitsandbytes.optim.optimizer import Optimizer2State
 
+from swift.utils import synchronize
 from .galore_projector import GaLoreProjector
 
 
@@ -89,7 +90,7 @@ class AdamW8bit(Optimizer2State):
 
                 self.prefetch_state(p)
                 self.update_step(group, p, gindex, pindex)
-                torch.cuda.synchronize()
+                synchronize()
 
                 # GaLore Projection Back
                 if 'rank' in group:
@@ -104,7 +105,7 @@ class AdamW8bit(Optimizer2State):
         if self.is_paged:
             # all paged operation are asynchronous, we need
             # to sync to make sure all tensors are in the right state
-            torch.cuda.synchronize()
+            synchronize()
 
         return loss
 

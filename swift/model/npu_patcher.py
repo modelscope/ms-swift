@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import accelerate.utils.fsdp_utils as fsdp_utils
+import os
 import torch
 import torch.nn.functional as F
 import torch_npu
@@ -13,6 +14,23 @@ from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_moe import modeling_qwen3_moe
 from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
 from typing import Any
+
+from swift.utils.logger import get_logger
+
+logger = get_logger()
+
+_DEFAULT_NPU_HCCL_CONNECT_TIMEOUT = '600'
+
+
+def _set_default_hccl_connect_timeout_for_npu() -> None:
+    if 'HCCL_CONNECT_TIMEOUT' in os.environ:
+        return
+
+    os.environ['HCCL_CONNECT_TIMEOUT'] = _DEFAULT_NPU_HCCL_CONNECT_TIMEOUT
+    logger.info(f'Set HCCL_CONNECT_TIMEOUT={_DEFAULT_NPU_HCCL_CONNECT_TIMEOUT} by default for NPU.')
+
+
+_set_default_hccl_connect_timeout_for_npu()
 
 
 class NPUCastError(RuntimeError):

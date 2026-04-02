@@ -245,6 +245,11 @@ class MegatronRolloutMixin:
         vllm_engine_kwargs = args.vllm_engine_kwargs or {}
         load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
 
+        if self.args.router_replay_mode == 'R3':
+            assert check_vllm_version_ge('0.14.0'), \
+                'The enable_return_routed_experts attribute is not supported. Please upgrade vllm to 0.14.0 or higher'
+            vllm_engine_kwargs['enable_return_routed_experts'] = True
+
         engine = GRPOVllmEngine(
             args.model_info.model_dir,
             torch_dtype=args.torch_dtype,

@@ -1,7 +1,5 @@
 # TreePO: Bridging the Gap of Policy Optimization and Efficacy and Inference Efficiency with Heuristic Tree-based Modeling
 
-**Version Requirement**: ms-swift>=3.11
-
 Author: [li2zhi](https://github.com/li2zhi)
 
 ## Principle Introduction

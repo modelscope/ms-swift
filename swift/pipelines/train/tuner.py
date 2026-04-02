@@ -67,7 +67,7 @@ def apply_liger(model_type: str):
         elif model_type in (ModelType.glm4v_moe):
             from liger_kernel.transformers import apply_liger_kernel_to_glm4v_moe
             apply_liger_kernel_to_glm4v_moe()
-        elif model_type in (ModelType.internvl_hf, ModelType.internvl_gpt_hf):
+        elif model_type in (ModelType.internvl):
             from liger_kernel.transformers import apply_liger_kernel_to_internvl
             apply_liger_kernel_to_internvl()
         elif model_type in (ModelType.llama4):

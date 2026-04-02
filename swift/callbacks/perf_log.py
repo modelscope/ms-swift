@@ -4,7 +4,7 @@ import torch
 from transformers import TrainerControl, TrainerState
 from typing import TYPE_CHECKING
 
-from swift.utils import empty_cache, get_current_device, get_device_count, get_env_args, get_logger
+from swift.utils import empty_cache, get_current_device, get_device_count, get_env_args, get_logger, synchronize
 from .base import TrainerCallback
 
 if TYPE_CHECKING:
@@ -75,15 +75,6 @@ class PerfMetricsLogCallback(TrainerCallback):
 
     @staticmethod
     def _estimate_device_tflops_by_dtype(device: torch.device, dtype: torch.dtype, repeats: int = 60, dim: int = 8192):
-
-        def device_synchronize(sync_device):
-            if backend == 'cuda':
-                torch.cuda.synchronize(sync_device)
-            elif backend == 'npu':
-                torch.npu.synchronize(sync_device)
-            elif backend == 'cpu':
-                torch.cpu.synchronize(sync_device)
-
         # Set matrix dimension
         shape = (dim, dim)
         backend = device.type
@@ -97,13 +88,13 @@ class PerfMetricsLogCallback(TrainerCallback):
         # Warm-up
         for _ in range(5):
             c = torch.matmul(a, b)
-        device_synchronize(device)
+        synchronize(device)
 
         # Run benchmark test
         start = time.time()
         for _ in range(repeats):
             c = torch.matmul(a, b)
-        device_synchronize(device)
+        synchronize(device)
         end = time.time()
         total_time = end - start
         avg_time = total_time / repeats
@@ -114,7 +105,7 @@ class PerfMetricsLogCallback(TrainerCallback):
             start = time.time()
             for _ in range(repeats):
                 c = torch.matmul(a, b)
-            device_synchronize(device)
+            synchronize(device)
             end = time.time()
             total_time = end - start
             avg_time = total_time / repeats

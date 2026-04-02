@@ -29,13 +29,14 @@ class MegatronExport(SwiftPipeline):
 
     def convert_mcore2hf(self) -> None:
         args = self.args
+        args.experts_impl = 'eager'
         download_model = args.model is not None
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         hf_config = self.processor.model_info.config
         mg_model = get_mcore_model(args, hf_config)[0]
         logger.info('Megatron model created successfully.')
-        bridge = args.megatron_model_meta.bridge_cls(args)
+        bridge = mg_model.config.bridge
         if args.mcore_model is not None:
             load_mcore_checkpoint(args, [mg_model], load_arg='mcore_model')
         elif args.model is not None:
@@ -48,17 +49,19 @@ class MegatronExport(SwiftPipeline):
                 load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
             elif args.adapters:
                 assert len(args.adapters) == 1, 'Currently only support one adapter'
-                bridge.load_weights([mg_model], args.adapters[0], is_peft_format=True)
+                bridge.load_weights([mg_model], args.adapters[0], peft_format=True)
             if args.merge_lora:
                 logger.info('Merge LoRA...')
                 mg_model = peft_model.merge_and_unload()
         logger.info('Converting weights and saving the model...')
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
-        bridge.save_weights([mg_model],
-                            args.output_dir,
-                            is_peft_format=save_peft_format,
-                            processor=self.processor,
-                            hf_config=hf_config)
+        bridge.save_weights(
+            [mg_model],
+            args.output_dir,
+            peft_format=save_peft_format,
+            args=args,
+            processor=self.processor,
+        )
         args_path = os.path.join(args.mcore_adapter or args.mcore_model or args.model, 'args.json')
         if os.path.exists(args_path):
             if is_master():
@@ -79,13 +82,14 @@ class MegatronExport(SwiftPipeline):
 
     def convert_hf2mcore(self) -> None:
         args = self.args
+        args.experts_impl = 'eager'
         download_model = args.model is not None
         _, template = prepare_model_template(args, load_model=False, download_model=download_model)
         self.processor = template.processor
         hf_config = self.processor.model_info.config
         mg_model = get_mcore_model(args, hf_config)[0]
         logger.info('Megatron model created successfully.')
-        bridge = args.megatron_model_meta.bridge_cls(args)
+        bridge = mg_model.config.bridge
         if args.model is not None:
             bridge.load_weights([mg_model], args.model_info.model_dir)
         elif args.mcore_model is not None:
@@ -97,7 +101,7 @@ class MegatronExport(SwiftPipeline):
             peft_model = prepare_mcore_model(args, mg_model)
             if args.adapters:
                 assert len(args.adapters) == 1, 'Currently only support one adapter'
-                bridge.load_weights([mg_model], args.adapters[0], is_peft_format=True)
+                bridge.load_weights([mg_model], args.adapters[0], peft_format=True)
             elif args.mcore_adapter is not None:
                 load_mcore_checkpoint(args, [mg_model], load_arg='mcore_adapter')
             if args.merge_lora:
@@ -109,7 +113,7 @@ class MegatronExport(SwiftPipeline):
             args.save_args(args.output_dir)
             logger.info('Saving the model...')
             save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
-            save_mcore_checkpoint(args, [mg_model], is_peft_format=save_peft_format)
+            save_mcore_checkpoint(args, [mg_model], peft_format=save_peft_format)
         # hf_model does not support loading args.mcore_adapter, so test_convert_precision cannot be performed
         support_convert_precision = args.mcore_adapter is None
         if args.test_convert_precision:

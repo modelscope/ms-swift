@@ -55,7 +55,7 @@ deepspeed_config_or_type=deepspeed type or configuration file path, e.g., zero1 
 dlrover-run --nnodes 1:$NODE_NUM --nproc_per_node=1  \
 /opt/conda/lib/python3.10/site-packages/swift/cli/sft.py --model $model \
 --model_type qwen3 \
---train_type lora  \
+--tuner_type lora  \
 --torch_dtype bfloat16 \
 --dataset $dataset \
 --num_train_epochs 4 \
@@ -71,7 +71,7 @@ dlrover-run --nnodes 1:$NODE_NUM --nproc_per_node=1  \
 --warmup_ratio 0.01 \
 --dataloader_num_workers 4 \
 --temperature 1.0 \
---system You\ are\ a\ helpful\ assistant. \
+--system 'You are a helpful assistant.' \
 --lora_rank 8 \
 --lora_alpha 32 \
 --target_modules all-linear \

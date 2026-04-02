@@ -1,4 +1,7 @@
 # hardware: Atlas 900 A2
+# For NPU, in Transformers versions 5.0 and above, it is recommended to disable
+# cpu_ram_efficient_loading in fsdp.json to avoid timeout issues at the first
+# synchronization point caused by inter-card desynchronization when loading the model.
 export TASK_QUEUE_ENABLE=2
 export CPU_AFFINITY_CONF=2
 ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \

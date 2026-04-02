@@ -235,8 +235,6 @@ swift rlhf \
 
 ### 方案 1：学生模型采样加速
 
-**要求**：swift >= 3.10.dev
-
 使用 vLLM 作为推理后端来加速学生模型采样，支持两种部署模式，与 GRPO 一致，参考[GRPO文档](./GRPO/GetStarted/GRPO.md#集群支持), 相关参数参考[GRPO vLLM 参数](./Command-line-parameters.md#vllm_mode)
 
 > **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 Transformers，建议使用预采样方案。
@@ -288,3 +286,62 @@ swift rlhf \
 ```
 
 相关脚本可以参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh)
+
+## OPSD（On-Policy Self-Distillation）
+
+OPSD([On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)) 是一种**单模型自蒸馏**方法，无需额外的教师模型。核心思想是：同一个模型同时扮演教师和学生，教师通过接收**特权信息**（如参考解答）来引导学生学习。
+
+### 核心机制
+
+- **学生**：仅看到问题，正常推理
+- **教师**：看到问题 + 参考解答（通过 `teacher_prompt` 列提供特权信息），产出更优的概率分布
+- **训练目标**：用 JSD 散度对齐学生和教师的输出分布
+
+### 两种自蒸馏模式
+
+| 模式 | 参数配置 | 教师权重 | 说明 |
+|------|---------|---------|------|
+| **Dynamic**（动态） | 不传 `--teacher_model` | 学生当前权重 | 教师随训练同步更新 |
+| **Fixed**（固定） | `--teacher_model` 设为与学生相同的模型 | 初始教师权重 | 教师权重固定 |
+
+### 数据格式
+
+OPSD 需要数据集包含 `teacher_prompt` 列来提供教师的特权信息。可通过 `--external_plugins` 加载数据处理插件来构建该列。
+
+以数学推理数据集 `open-r1/OpenThoughts-114k-math` 为例：
+
+```python
+from swift.dataset import DatasetMeta, RowPreprocessor, register_dataset
+
+class OpenThoughtsOPSDPreprocessor(RowPreprocessor):
+    def preprocess(self, row):
+        if not row.get('correct', True):
+            return None
+        problem = row.get('problem', '')
+        solution = row.get('solution', '')
+        # 教师看到问题 + 参考解答
+        teacher_prompt = f'{problem}\n\nReference solution:\n{solution}\n\nNow articulate your own reasoning.'
+        messages = [
+            {'role': 'system', 'content': 'Please reason step by step, and put your final answer within \\boxed{}.'},
+            {'role': 'user', 'content': problem},
+        ]
+        return {'messages': messages, 'teacher_prompt': teacher_prompt}
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='open-r1/OpenThoughts-114k-math',
+    preprocess_func=OpenThoughtsOPSDPreprocessor(),
+    tags=['math', 'opsd'],
+))
+```
+
+### 参数设置
+
+OPSD 复用 GKD 的所有参数，核心区别在于 `--teacher_model` 的配置：
+
+| 参数 | Dynamic 模式 | Fixed 模式 |
+|------|-------------|-----------|
+| `--teacher_model` | 不设置 | 设为与 `--model` 相同的模型 |
+
+参考脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/opsd/)
+
+Megatron脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd.sh)
