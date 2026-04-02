@@ -23,7 +23,7 @@ To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you a
 ```shell
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
-pip install --no-build-isolation transformer_engine[pytorch] --no-cache-dir
+pip install --no-build-isolation transformer-engine[pytorch] --no-cache-dir
 
 # apex
 # Note: Megatron-SWIFT can run in environments without apex by setting `--gradient_accumulation_fusion false`.
@@ -64,10 +64,11 @@ Recommended Operating Environment:
 | python       | >=3.9        | 3.11/3.12    |                    |
 | cuda         |              | cuda12      |                    |
 | torch        | >=2.0        | 2.8.0/2.10.0    |                    |
-| transformer_engine    | >=2.3       |  2.12.0  |                  |
+| transformer-engine    | >=2.3       |  2.12.0  |                  |
 | apex |   |  0.1 | |
-| megatron_core    |    >=0.12,<0.17    | 0.16      |                  |
-| flash_attn    |        | 2.8.3/3.0.0b1   |                  |
+| megatron-core    |    >=0.12,<0.17    | 0.16      |                  |
+| mcore-bridge    |    >=1.0.1    |      |                  |
+| flash-attn    |        | 2.8.3/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.6/5.2.0    |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
