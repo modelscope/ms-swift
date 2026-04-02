@@ -157,10 +157,15 @@ def _patch_mcore_bridge():
             return
         hf_config = self.config.hf_config
         hf_config = copy(hf_config)
-        if not hasattr(self, 'hf_model'):
-            with torch.device('meta'):
-                self.hf_model = get_model_processor(
-                    args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]
+        if is_master() and not hasattr(self, 'hf_model'):
+            if hasattr(self, 'get_hf_meta_model'):
+                self.hf_model = self.get_hf_meta_model()
+                self.hf_model.model_meta = processor.model_meta
+                self.hf_model.model_info = processor.model_info
+            else:
+                with torch.device('meta'):
+                    self.hf_model = get_model_processor(
+                        args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]
 
         if is_master():
             if peft_format:
