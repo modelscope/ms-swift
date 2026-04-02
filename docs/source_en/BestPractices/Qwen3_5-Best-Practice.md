@@ -12,6 +12,7 @@ pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
+# Please use Python 3.12: https://github.com/fla-org/flash-linear-attention/issues/121
 pip install -U "flash-linear-attention>=0.4.2" --no-build-isolation
 
 # causal_conv1d
