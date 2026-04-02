@@ -1670,7 +1670,7 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_emb,
-        mcore_model_type='qwen3',
+        mcore_model_type='qwen3_emb',
         additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
         architectures=['Qwen3ForCausalLM']))
 
