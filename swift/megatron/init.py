@@ -3,13 +3,11 @@ import concurrent.futures
 import importlib.metadata
 import inspect
 import logging
-import megatron.core
 import os
 import torch
 import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy
-from megatron.core.pipeline_parallel import p2p_communication
 from packaging import version
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
@@ -23,6 +21,7 @@ logger = get_logger()
 
 
 def _patch__batched_p2p_ops():
+    from megatron.core.pipeline_parallel import p2p_communication
 
     _batched_p2p_ops_origin = p2p_communication._batched_p2p_ops
 
@@ -95,6 +94,7 @@ def _patch_validate_non_overlapping_shards_metadata():
 
 
 def _patch__write_item():
+    import megatron.core
     if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
         return
     # mcore 0.12
@@ -140,7 +140,9 @@ def _patch_unified_memory():
 
 def _patch_mcore_bridge():
     require_version('mcore-bridge>=1.0.1.dev', 'please install mcore-bridge via `pip install mcore-bridge -U`')
+    import mcore_bridge
     from mcore_bridge import GPTBridge
+    logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')
     origin_save_weights = GPTBridge.save_weights
 
     def save_weights(
@@ -219,8 +221,8 @@ def _patch_mcore_bridge():
 def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
-    _patch_mcore_bridge()
     _patch_unified_memory()
+    _patch_mcore_bridge()
     _patch__batched_p2p_ops()
     _patch__write_item()
     logging.root.setLevel(logging_level)  # revert logger level
@@ -233,5 +235,5 @@ def init_megatron_env():
     except Exception:
         logger.warning('Patch validate_non_overlapping_shards_metadata failed.')
         pass
-
+    import megatron.core
     logger.info(f'megatron.core.__version__: {megatron.core.__version__}')
