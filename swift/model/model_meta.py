@@ -63,6 +63,7 @@ class ModelMeta:
 
     template: Optional[str] = None
     model_arch: Optional[str] = None
+    mcore_model_type: Optional[str] = None
     architectures: List[str] = field(default_factory=list)
     # Additional files that need to be saved for full parameter training/merge-lora.
     additional_saved_files: List[str] = field(default_factory=list)

@@ -10,6 +10,7 @@ import torch
 from argparse import Namespace
 from contextlib import contextmanager
 from datetime import timedelta
+from mcore_bridge import set_random_seed, unwrap_model
 from megatron.core import dist_checkpointing, mpu, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedObject
 from megatron.core.dist_checkpointing.serialization import (get_default_load_sharded_strategy,
@@ -28,7 +29,7 @@ from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_m
 from packaging import version
 from typing import Optional
 
-from swift.utils import check_json_format, get_logger, init_process_group, is_master, seed_everything, set_device
+from swift.utils import check_json_format, get_logger, init_process_group, is_master, set_device
 from .patcher import patch_merge_fn
 
 logger = get_logger()
@@ -80,28 +81,6 @@ def _initialize_mpu(args):
             logger.info(f'TP: {args.tensor_model_parallel_size}, PP: {args.pipeline_model_parallel_size}, '
                         f'VPP: {args.virtual_pipeline_model_parallel_size}, CP: {args.context_parallel_size}, '
                         f'EP: {args.expert_model_parallel_size}, ETP: {args.expert_tensor_parallel_size}')
-
-
-def set_random_seed(
-    seed_: int,
-    data_parallel_random_init: bool = False,
-    te_rng_tracker: bool = False,
-    inference_rng_tracker: bool = False,
-    use_cudagraphable_rng: bool = False,
-):
-    """Set random seed for reproducability."""
-    if seed_ is not None and seed_ > 0:
-        # Ensure that different pipeline MP stages get different seeds.
-        seed = seed_ + (1009 * mpu.get_pipeline_model_parallel_rank())
-        # Ensure different data parallel ranks get different seeds
-        if data_parallel_random_init:
-            seed = seed + (11 * mpu.get_data_parallel_rank())
-        seed_everything(seed)
-        if torch.cuda.device_count() > 0:
-            tensor_parallel.model_parallel_cuda_manual_seed(seed, te_rng_tracker, inference_rng_tracker,
-                                                            use_cudagraphable_rng)
-    else:
-        raise ValueError(f'Seed ({seed_}) should be a positive integer.')
 
 
 def initialize_megatron(args):
@@ -177,9 +156,9 @@ def _generate_state_dict(args,
     return state_dict
 
 
-def _filter_adapter_state_dict(state_dict, is_peft_format: bool, adapter_name: str = 'default'):
+def _filter_adapter_state_dict(state_dict, peft_format: bool, adapter_name: str = 'default'):
     """
-    When is_peft_format is True, keep only the PEFT format state_dict;
+    When peft_format is True, keep only the PEFT format state_dict;
     when False, remove the PEFT format state_dict.
 
     This function ensures it is called when tuner_type != 'full'.
@@ -199,7 +178,7 @@ def _filter_adapter_state_dict(state_dict, is_peft_format: bool, adapter_name: s
         new_state_dict = {}
         state_dict_model = state_dict[model_key]
         for k, v in state_dict_model.items():
-            if is_peft_format:
+            if peft_format:
                 if '.lora_A.' in k or '.lora_B.' in k or '.modules_to_save.' in k:
                     new_state_dict[k] = v
             else:
@@ -250,7 +229,7 @@ def save_mcore_checkpoint(
     opt_param_scheduler=None,
     iteration=1,
     output_dir: Optional[str] = None,
-    is_peft_format: bool = False,
+    peft_format: bool = False,
 ):
     if output_dir is None:
         output_dir = args.output_dir
@@ -270,7 +249,7 @@ def save_mcore_checkpoint(
         model_sd_kwargs={'metadata': sharded_sd_metadata},
         optim_sd_kwargs={'metadata': sharded_sd_metadata},
     )
-    _filter_adapter_state_dict(state_dict, is_peft_format)
+    _filter_adapter_state_dict(state_dict, peft_format)
 
     save_strategy = get_default_save_sharded_strategy()
     save_strategy = FullyParallelSaveStrategyWrapper(
@@ -391,16 +370,16 @@ def load_mcore_checkpoint(args,
                           load_arg: str = 'mcore_model',
                           adapter_name: str = 'default'):
     if load_arg in {'mcore_adapter', 'mcore_ref_adapter'}:
-        is_peft_format = True
+        peft_format = True
     else:
         # 'mcore_model', 'mcore_ref_model'
-        is_peft_format = False
+        peft_format = False
     load_dir = getattr(args, load_arg)
 
     no_load_optim = args.no_load_optim
     no_load_rng = args.no_load_rng
     finetune = args.finetune
-    if not is_peft_format and args.tuner_type != 'full':
+    if not peft_format and args.tuner_type != 'full':
         no_load_optim = True
         no_load_rng = True
         finetune = False
@@ -453,7 +432,7 @@ def load_mcore_checkpoint(args,
         iteration=iteration,
         model_sd_kwargs=model_sd_kwargs,
         optim_sd_kwargs=optim_sd_kwargs)
-    _filter_adapter_state_dict(sharded_state_dict, is_peft_format, adapter_name=adapter_name)
+    _filter_adapter_state_dict(sharded_state_dict, peft_format, adapter_name=adapter_name)
     model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
     for k in model_keys:
         patch_merge_fn(sharded_state_dict[k])
@@ -589,31 +568,6 @@ def get_optimizer_param_scheduler(args, optimizer):
     )
 
     return opt_param_scheduler
-
-
-def unwrap_model(models, module_instances=None):
-    """Unwrap_model to return the final model instance"""
-    try:
-        from megatron.core.utils import unwrap_model
-        return unwrap_model(models, module_instances)
-    except ImportError:
-        pass
-    if module_instances is None:
-        from megatron.core.distributed import TorchFullyShardedDataParallel as torch_FSDP
-        module_instances = (DDP, torch_FSDP, Float16Module)
-
-    return_list = True
-    if not isinstance(models, list):
-        models = [models]
-        return_list = False
-    unwrapped_model = []
-    for model in models:
-        while isinstance(model, module_instances):
-            model = model.module
-        unwrapped_model.append(model)
-    if not return_list:
-        return unwrapped_model[0]
-    return unwrapped_model
 
 
 def should_disable_forward_pre_hook(args):
