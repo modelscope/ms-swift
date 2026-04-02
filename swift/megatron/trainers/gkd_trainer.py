@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
+from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from transformers.utils import ContextManagers
@@ -12,7 +13,6 @@ from typing import Dict, List, Optional
 
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import set_random_seed
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 from swift.template import Template
 from swift.utils import get_logger, to_device
@@ -107,7 +107,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()
-        self.teacher_bridge.load_weights(self.teacher_models, args.teacher_model)
+        self.teacher_bridge.load_weights(self.teacher_models, args.teacher_model_dir)
 
         # Offload teacher models to CPU if enabled
         if self.offload_teacher_model:

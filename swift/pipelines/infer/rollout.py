@@ -43,7 +43,7 @@ from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMet
                                        UpdateFlattenedParamsRequest, check_vllm_version_ge, chunk_list,
                                        patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader)
 from swift.rollout import RolloutScheduler, multi_turns
-from swift.utils import get_logger, get_seed, get_torch_device, is_vllm_ascend_available
+from swift.utils import get_logger, get_seed, get_torch_device, is_vllm_ascend_available, synchronize
 from ..base import SwiftPipeline
 
 try:
@@ -145,6 +145,7 @@ class WeightSyncWorkerExtension:
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
         self.communicator.broadcast(
             weight, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        synchronize()
         self.communicator.group.barrier()
 
         # Patch MoE weight_loader if needed
@@ -165,6 +166,7 @@ class WeightSyncWorkerExtension:
         flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
         self.communicator.broadcast(
             flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        synchronize()
         self.communicator.group.barrier()
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
         named_params = flattened_tensor_bucket.reconstruct_tensors()
@@ -200,6 +202,7 @@ class WeightSyncWorkerExtension:
                 tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
             named_params[name] = tensor
 
+        synchronize()
         self.communicator.group.barrier()
 
         lora_request = TensorLoRARequest(
@@ -227,6 +230,7 @@ class WeightSyncWorkerExtension:
 
         self.communicator.broadcast(
             flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        synchronize()
         self.communicator.group.barrier()
 
         flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)

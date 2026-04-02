@@ -11,6 +11,7 @@ pip install -U ms-swift
 pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
+# If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
 pip install -U "flash-linear-attention>=0.4.2" --no-build-isolation
 
 # causal_conv1d
@@ -307,8 +308,8 @@ Tips for training Qwen3.5 with Megatron-SWIFT:
 
 - Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh).
 - TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
-- By default, `GatedDeltaNet` uses the transformers implementation (to ensure stability, the default behavior remains unchanged for now). Using `megatron-core>=0.16` and setting the environment variable `SWIFT_USE_MCORE_GDN=1` switches to the mcore implementation, which supports TP for GDN and reduces memory usage.
-- Support for padding_free/packing: Packing can improve training speed. You need to set the `SWIFT_USE_MCORE_GDN=1` environment variable. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
+- By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set the environment variable `USE_MCORE_GDN=0` to switch to the transformers implementation. Note that the transformers implementation does not support packing and GDN's TP.
+- Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
 
 

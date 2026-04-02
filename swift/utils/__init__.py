@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
-from .dequantizer import Fp8Dequantizer, MxFp4Dequantizer
 from .env import (get_dist_setting, get_hf_endpoint, get_node_setting, get_pai_tensorboard_dir, is_deepspeed_enabled,
                   is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp, is_pai_training_job, use_hf_hub)
 from .hf_config import HfConfigFactory
@@ -12,7 +11,6 @@ from .io_utils import JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_
 from .logger import get_logger, ms_logger_context
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
 from .processor_utils import Processor, ProcessorMixin
-from .safetensors import LazyTensor, SafetensorLazyLoader, StreamingSafetensorSaver
 from .shutdown_manager import ShutdownManager
 from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
 from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_context_use_barrier, empty_cache, gc_collect,

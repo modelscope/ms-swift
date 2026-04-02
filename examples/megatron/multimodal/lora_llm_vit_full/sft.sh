@@ -6,7 +6,6 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
-SWIFT_USE_MCORE_GDN=1 \
 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
     --save_safetensors true \
