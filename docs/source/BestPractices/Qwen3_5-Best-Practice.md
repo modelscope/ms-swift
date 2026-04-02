@@ -311,8 +311,8 @@ Megatron-SWIFT训练Qwen3.5的提示：
 - 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh)。
 - 关于MTP训练：ms-swift暂不支持多模态MTP的训练。如果你只训练纯文本数据，请设置`SKIP_MULTIMODAL_MTP_VALIDATION=1`环境变量，忽略检查。
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
-- 默认 `GatedDeltaNet` 使用 transformers 实现（为保证稳定性，暂时保持默认行为不变）。使用 "megatron-core>=0.16"并设置环境变量 `SWIFT_USE_MCORE_GDN=1`可切换至 mcore 实现，支持 GDN 的 TP 并降低显存。
-- padding_free/packing的支持：packing可以提升训练速度，你需要设置`SWIFT_USE_MCORE_GDN=1`环境变量。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
+- 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0`可切换至 transformers 实现，transformers实现不支持packing和GDN的TP。
+- padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
 - apply_wd_to_qk_layernorm：对 qk layernorm 应用权重衰减。默认为False。
 
 

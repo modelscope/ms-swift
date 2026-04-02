@@ -1670,6 +1670,7 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_emb,
+        mcore_model_type='qwen3_emb',
         additional_saved_files=['config_sentence_transformers.json', '1_Pooling', 'modules.json'],
         architectures=['Qwen3ForCausalLM']))
 
@@ -1684,6 +1685,7 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_reranker,
+        mcore_model_type='qwen3',
         architectures=['Qwen3ForCausalLM'],
     ))
 
@@ -1708,6 +1710,7 @@ register_model(
         Qwen3VLEmbLoader,
         template=TemplateType.qwen3_vl_emb,
         model_arch=ModelArch.qwen3_vl,
+        mcore_model_type='qwen3_vl',
         architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
@@ -1733,6 +1736,7 @@ register_model(
         Qwen3VLRerankerLoader,
         template=TemplateType.qwen3_vl_reranker,
         model_arch=ModelArch.qwen3_vl,
+        mcore_model_type='qwen3_vl',
         architectures=['Qwen3VLForConditionalGeneration'],
         requires=['transformers>=4.57', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
