@@ -9,7 +9,7 @@ from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import (RouterReplayHelper, forward_step_helper, get_local_topk_idx_for_current_rank,
                                   get_router_replay_data, load_mcore_checkpoint, set_router_replay_data)
 from swift.rlhf_trainers.utils import identity_data_collator
-from swift.utils import get_logger
+from swift.utils import get_logger, safe_snapshot_download
 from .base import BaseMegatronTrainer
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
@@ -37,7 +37,8 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             ref_model.eval()
         if self.ref_models and args.mcore_ref_model is None:
             ref_model_id_or_path = args.ref_model or args.model
-            self.bridge.load_weights(self.ref_models, ref_model_id_or_path)
+            ref_model_dir = safe_snapshot_download(ref_model_id_or_path, use_hf=args.use_hf, hub_token=args.hub_token)
+            self.bridge.load_weights(self.ref_models, ref_model_dir)
         if args.tuner_type == 'lora' and args.ref_adapters and args.mcore_ref_adapter is None:
             assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
             self.bridge.load_weights(
