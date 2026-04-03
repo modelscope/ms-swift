@@ -243,14 +243,15 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 
 class Gemma4Template(Gemma3Template):
-    placeholder_tokens = ['<|image|>']
+    placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             return ['\n\n<|image|>\n\n']
         elif media_type == 'audio':
-            return ['\n\n<|audio|>\n\n']
+            inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
+            return ['<|audio|>']
         elif media_type == 'video':
             return ['\n\n<|video|>\n\n']
 
@@ -258,41 +259,52 @@ class Gemma4Template(Gemma3Template):
         encoded = super()._encode(inputs)
         split_token = self._tokenize('\n')
         media_inputs = self.processor(
-            text='\n'.join(['<|image|>'] * len(inputs.images)),
+            text='\n'.join(['<|image|>'] * len(inputs.images) + ['<|video|>'] * len(inputs.videos)
+                           + ['<|audio|>'] * len(inputs.audios)),
             audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
             return_tensors='pt',
             add_special_tokens=False,
         )
-        splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
+        splited_tokens = iter(self._split_list(media_inputs['input_ids'][0].tolist(), split_token))
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-        idx_list = findall(input_ids, self.config.image_token_id)
+
+        def _get_new_tokens(i):
+            return next(splited_tokens)
+
+        idx_list = []
+        for key in ['image', 'video', 'audio']:
+            idx_list += findall(input_ids, getattr(self.config, f'{key}_token_id'))
         if idx_list:
-
-            def _get_new_image_tokens(i):
-                return splited_tokens[i]
-
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
-                                                                _get_new_image_tokens)
-            for key in ['pixel_values', 'image_position_ids']:
+                                                                _get_new_tokens)
+        for key in [
+                'pixel_values', 'image_position_ids', 'pixel_values_videos', 'video_position_ids', 'input_features',
+                'input_features_mask'
+        ]:
+            if key in media_inputs:
                 encoded[key] = media_inputs[key]
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
         return encoded
 
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        res['mm_token_type_ids'] = self.create_mm_token_type_ids(res['input_ids'])
+        return res
+
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)
-        image_position_ids = [b['image_position_ids'] for b in batch if b.get('image_position_ids') is not None]
-
-        if image_position_ids:
-            res['image_position_ids'] = torch.concat(image_position_ids)
-
+        for key in ['image_position_ids', 'video_position_ids', 'input_features', 'input_features_mask']:
+            value = [b[key] for b in batch if b.get(key) is not None]
+            if value:
+                res[key] = torch.concat(value)
         return res
 
 

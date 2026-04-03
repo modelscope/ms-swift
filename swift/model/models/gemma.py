@@ -209,7 +209,7 @@ class Gemma4Loader(ModelLoader):
 
 register_model(
     ModelMeta(
-        LLMModelType.gemma4,
+        MLLMModelType.gemma4,
         [
             ModelGroup([
                 Model('google/gemma-4-E2B', 'google/gemma-4-E2B'),

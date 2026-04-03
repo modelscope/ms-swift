@@ -587,14 +587,6 @@ The table below introduces the models integrated with ms-swift:
 |[google/gemma-3-270m](https://modelscope.cn/models/google/gemma-3-270m)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-270m](https://huggingface.co/google/gemma-3-270m)|
 |[google/gemma-3-270m-it](https://modelscope.cn/models/google/gemma-3-270m-it)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/gemma-3-270m-it](https://huggingface.co/google/gemma-3-270m-it)|
 |[google/medgemma-27b-text-it](https://modelscope.cn/models/google/medgemma-27b-text-it)|gemma3_text|gemma3_text|transformers>=4.49|&#x2718;|-|[google/medgemma-27b-text-it](https://huggingface.co/google/medgemma-27b-text-it)|
-|[google/gemma-4-E2B](https://modelscope.cn/models/google/gemma-4-E2B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B](https://huggingface.co/google/gemma-4-E2B)|
-|[google/gemma-4-E2B-it](https://modelscope.cn/models/google/gemma-4-E2B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it)|
-|[google/gemma-4-E4B](https://modelscope.cn/models/google/gemma-4-E4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B)|
-|[google/gemma-4-E4B-it](https://modelscope.cn/models/google/gemma-4-E4B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it)|
-|[google/gemma-4-12B-A3B](https://modelscope.cn/models/google/gemma-4-12B-A3B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-12B-A3B](https://huggingface.co/google/gemma-4-12B-A3B)|
-|[google/gemma-4-12B-A3B-it](https://modelscope.cn/models/google/gemma-4-12B-A3B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-12B-A3B-it](https://huggingface.co/google/gemma-4-12B-A3B-it)|
-|[google/gemma-4-26B-A4B](https://modelscope.cn/models/google/gemma-4-26B-A4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B)|
-|[google/gemma-4-26B-A4B-it](https://modelscope.cn/models/google/gemma-4-26B-A4B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-26B-A4B-it](https://huggingface.co/google/gemma-4-26B-A4B-it)|
 |[skywork/Skywork-13B-base](https://modelscope.cn/models/skywork/Skywork-13B-base)|skywork|skywork|-|&#x2718;|-|[skywork/Skywork-13B-base](https://huggingface.co/skywork/Skywork-13B-base)|
 |[skywork/Skywork-13B-chat](https://modelscope.cn/models/skywork/Skywork-13B-chat)|skywork|skywork|-|&#x2718;|-|-|
 |[inclusionAI/Ling-lite](https://modelscope.cn/models/inclusionAI/Ling-lite)|ling|ling|-|&#x2718;|-|[inclusionAI/Ling-lite](https://huggingface.co/inclusionAI/Ling-lite)|
@@ -1101,6 +1093,14 @@ The table below introduces the models integrated with ms-swift:
 |[google/gemma-3n-E4B](https://modelscope.cn/models/google/gemma-3n-E4B)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B](https://huggingface.co/google/gemma-3n-E4B)|
 |[google/gemma-3n-E2B-it](https://modelscope.cn/models/google/gemma-3n-E2B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E2B-it](https://huggingface.co/google/gemma-3n-E2B-it)|
 |[google/gemma-3n-E4B-it](https://modelscope.cn/models/google/gemma-3n-E4B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B-it](https://huggingface.co/google/gemma-3n-E4B-it)|
+|[google/gemma-4-E2B](https://modelscope.cn/models/google/gemma-4-E2B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B](https://huggingface.co/google/gemma-4-E2B)|
+|[google/gemma-4-E2B-it](https://modelscope.cn/models/google/gemma-4-E2B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it)|
+|[google/gemma-4-E4B](https://modelscope.cn/models/google/gemma-4-E4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B)|
+|[google/gemma-4-E4B-it](https://modelscope.cn/models/google/gemma-4-E4B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it)|
+|[google/gemma-4-12B-A3B](https://modelscope.cn/models/google/gemma-4-12B-A3B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-12B-A3B](https://huggingface.co/google/gemma-4-12B-A3B)|
+|[google/gemma-4-12B-A3B-it](https://modelscope.cn/models/google/gemma-4-12B-A3B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-12B-A3B-it](https://huggingface.co/google/gemma-4-12B-A3B-it)|
+|[google/gemma-4-26B-A4B](https://modelscope.cn/models/google/gemma-4-26B-A4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B)|
+|[google/gemma-4-26B-A4B-it](https://modelscope.cn/models/google/gemma-4-26B-A4B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-26B-A4B-it](https://huggingface.co/google/gemma-4-26B-A4B-it)|
 |[mistralai/Mistral-Small-3.1-24B-Base-2503](https://modelscope.cn/models/mistralai/Mistral-Small-3.1-24B-Base-2503)|mistral3|mistral_2503|transformers>=4.49|&#x2718;|vision|[mistralai/Mistral-Small-3.1-24B-Base-2503](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Base-2503)|
 |[mistralai/Mistral-Small-3.1-24B-Instruct-2503](https://modelscope.cn/models/mistralai/Mistral-Small-3.1-24B-Instruct-2503)|mistral3|mistral_2503|transformers>=4.49|&#x2718;|vision|[mistralai/Mistral-Small-3.1-24B-Instruct-2503](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Instruct-2503)|
 |[mistralai/Ministral-3-3B-Base-2512](https://modelscope.cn/models/mistralai/Ministral-3-3B-Base-2512)|mistral3|mistral_2512|transformers>=5.0.0.dev0, mistral-common>=1.8.6|&#x2718;|vision|[mistralai/Ministral-3-3B-Base-2512](https://huggingface.co/mistralai/Ministral-3-3B-Base-2512)|
