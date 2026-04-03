@@ -91,7 +91,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
         self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
         self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
-        self.teacher_bridge = self.teacher_models[0].config
+        self.teacher_config = self.teacher_models[0].config
         if not args.use_cpu_initialization:
             # same as wrap_model in megatron_lm_utils.py
             for teacher_model in self.teacher_models:
@@ -99,7 +99,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()
-        self.teacher_bridge.load_weights(self.teacher_models, args.teacher_model_dir)
+        self.teacher_config.bridge.load_weights(self.teacher_models, args.teacher_model_dir)
 
         # Offload teacher models to CPU if enabled
         if self.offload_teacher_model:
