@@ -245,6 +245,7 @@ class MLLMTemplateType:
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
+    gemma4 = 'gemma4'
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
     mistral_2512 = 'mistral_2512'

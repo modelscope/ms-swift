@@ -84,6 +84,7 @@ class LLMModelType:
     gemma = 'gemma'
     gemma2 = 'gemma2'
     gemma3_text = 'gemma3_text'
+    gemma4 = 'gemma4'
 
     skywork = 'skywork'
 
