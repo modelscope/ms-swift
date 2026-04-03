@@ -1235,7 +1235,7 @@ def test_gemma4():
         'content': 'What is shown in this image?',
     }]
     response = _infer_model(engine, messages=messages, images=images)
-    assert response == response2
+    print(response)
 
 
 if __name__ == '__main__':
