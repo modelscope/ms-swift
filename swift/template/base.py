@@ -1861,11 +1861,11 @@ class Template(ProcessorMixin):
         video_token_id = getattr(processor, 'video_token_id', None)
         audio_token_id = getattr(processor, 'audio_token_id', None)
         mm_token_type_ids = torch.zeros_like(input_ids)
-        if image_token_id:
+        if image_token_id is not None:
             mm_token_type_ids[input_ids == image_token_id] = 1
-        if video_token_id:
+        if video_token_id is not None:
             mm_token_type_ids[input_ids == video_token_id] = 2
-        if audio_token_id:
+        if audio_token_id is not None:
             mm_token_type_ids[input_ids == audio_token_id] = 3
         return mm_token_type_ids
 
