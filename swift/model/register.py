@@ -258,7 +258,8 @@ class ModelLoader(BaseModelLoader):
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         auto_tokenizer_cls = self.auto_tokenizer_cls
         if auto_tokenizer_cls is None:
-            if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')):
+            if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')) or os.path.exists(
+                    os.path.join(model_dir, 'processor_config.json')):
                 from transformers import AutoProcessor
                 auto_tokenizer_cls = AutoProcessor
             else:

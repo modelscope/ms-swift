@@ -225,6 +225,6 @@ register_model(
         Gemma4Loader,
         template=TemplateType.gemma4,
         architectures=['Gemma4ForConditionalGeneration'],
-        model_arch=ModelArch.gemma4,
+        model_arch=ModelArch.gemma3n,
         requires=['transformers>=4.53'],
     ))
