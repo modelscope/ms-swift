@@ -8,6 +8,7 @@ from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
+from transformers import AutoConfig
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
@@ -49,9 +50,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
         if self._teacher_use_disable_adapter:
             logger.info('Self-distillation mode: using disable_adapter() for fixed teacher (no extra model)')
-        if args.teacher_model:
-            self.teacher_bridge = args.megatron_model_meta.bridge_cls(args, attr_prefix='teacher_')
-            self.teacher_config = self.teacher_bridge.processor.model_info.config
         self.sft_alpha = getattr(args, 'sft_alpha', 0.0)  # Weight for SFT loss
 
         # GKD top-k logits configuration
@@ -91,15 +89,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size')
         assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
-        orig_model_dir = args.model_dir
-        orig_model_type = args.model_type
-        args.model_dir = args.teacher_model_dir
-        args.model_type = args.teacher_model_type
-        try:
-            self.teacher_models = get_mcore_model(args, self.teacher_config)
-        finally:
-            args.model_dir = orig_model_dir
-            args.model_type = orig_model_type
+        self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
+        self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
+        self.teacher_bridge = self.teacher_models[0].config
         if not args.use_cpu_initialization:
             # same as wrap_model in megatron_lm_utils.py
             for teacher_model in self.teacher_models:
