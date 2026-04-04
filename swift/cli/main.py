@@ -61,7 +61,7 @@ def parse_yaml_args(argv):
             config_argv += v
         else:
             if isinstance(v, dict):
-                v = json.dumps(v)
+                v = json.dumps(v, ensure_ascii=False)
             else:
                 v = str(v)
             config_argv.append(v)
