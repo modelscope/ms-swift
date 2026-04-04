@@ -95,7 +95,7 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
-        bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
+        bridge = mg_model.config.bridge
         logger.info('Converting weights and saving the model...')
         bridge.save_weights([mg_model], args.output_dir, args=megatron_args, processor=processor)
         if is_master():

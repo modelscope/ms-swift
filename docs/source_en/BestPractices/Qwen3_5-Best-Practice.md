@@ -12,6 +12,7 @@ pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
+# Please use Python 3.12: https://github.com/fla-org/flash-linear-attention/issues/121
 pip install -U "flash-linear-attention>=0.4.2" --no-build-isolation
 
 # causal_conv1d
@@ -104,8 +105,7 @@ Qwen3.5's bbox output uses normalized relative coordinates with a scale of 1000.
 ### Dense Models
 
 Below is a fine-tuning script for the Qwen3.5-4B model. This example script is for demonstration purposes only. Training memory usage is 4 × 20GiB, with a training time of 12 minutes. Since transformers' GatedDeltaNet does not support packing/padding_free (Megatron does support it, see below), we use the `group_by_length` parameter to accelerate training, ensuring load balancing across data parallelism (DP) and reducing zero-padding in micro batches. However, this may cause fluctuations in the loss curve due to insufficient data shuffling. You can also remove this parameter if preferred.
-
-The fine-tuning script is as follows:
+- Regarding data preprocessing: When using the packing / group_by_length parameters, all data must be preprocessed in advance to obtain the input_ids length of each sample, which takes additional time. If you prefer to process data on-the-fly during training, you can remove these two parameters.
 
 ```shell
 # 4 * 20GiB

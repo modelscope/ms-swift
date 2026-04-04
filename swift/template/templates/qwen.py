@@ -435,7 +435,7 @@ class Qwen2VLTemplate(Template):
         for r in row:
             r_copy = r.copy()
             r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
-            r['position_ids'] = self._get_position_ids(r_copy)
+            r.update(self._get_position_ids(r_copy))
         packed = super().packing_row(row)
         return packed
 
@@ -454,23 +454,23 @@ class Qwen2VLTemplate(Template):
             attention_mask = inputs.get('attention_mask')
         input_ids = inputs['input_ids']
         if 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters:
-            mm_token_type_ids = torch.zeros_like(input_ids)
-            mm_token_type_ids[input_ids == self.processor.image_token_id] = 1
-            mm_token_type_ids[input_ids == self.processor.video_token_id] = 2
-            kwargs['mm_token_type_ids'] = mm_token_type_ids
+            kwargs['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids)
+        elif not self.is_training:
+            # Compatible with older versions of transformers
+            return {}
         position_ids, _ = get_rope_index(
             input_ids,
             image_grid_thw=inputs.get('image_grid_thw'),
             video_grid_thw=inputs.get('video_grid_thw'),
             attention_mask=attention_mask,
             **kwargs)
-        return self._concat_text_position_ids(position_ids)
+        return {'position_ids': self._concat_text_position_ids(position_ids)}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
-        if not self.padding_free and self.is_training:
-            res['position_ids'] = self._get_position_ids(res)
-        if 'position_ids' in res:
+        if not self.padding_free:
+            res.update(self._get_position_ids(res))
+        if 'position_ids' in res and self.is_training:
             position_ids = res['position_ids']
             res['position_ids'] = position_ids[1:]
             res['text_position_ids'] = text_position_ids = position_ids[0]
