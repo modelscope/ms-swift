@@ -456,6 +456,7 @@ class Qwen2VLTemplate(Template):
         if 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters:
             kwargs['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids)
         elif not self.is_training:
+            # Compatible with older versions of transformers
             return {}
         position_ids, _ = get_rope_index(
             input_ids,
@@ -463,9 +464,7 @@ class Qwen2VLTemplate(Template):
             video_grid_thw=inputs.get('video_grid_thw'),
             attention_mask=attention_mask,
             **kwargs)
-        return {
-            'position_ids': self._concat_text_position_ids(position_ids)
-        }
+        return {'position_ids': self._concat_text_position_ids(position_ids)}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
