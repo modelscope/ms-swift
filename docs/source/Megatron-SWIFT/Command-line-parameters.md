@@ -253,11 +253,12 @@ lora训练：
 
 **多模态参数**:
 - vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为True。（**Megatron-SWIFT的vit实现使用transformers实现**）
-- attn_impl: 多模态模型训练时，设置vit部分的attn_impl实现。默认为'flash_attn'。
+- vit_gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--vit_gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
+- vit_attn_impl: 多模态模型训练时，设置vit部分的attn_impl实现。默认为'flash_attn'。
 - vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
   - 提示：在日志中打印的"learning rate"为llm的学习率。
 - aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
-- gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。该参数只对`vit_gradient_checkpointing`生效。
+
 
 **其他参数**:
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
