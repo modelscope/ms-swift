@@ -544,10 +544,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # visual
     vit_gradient_checkpointing: Optional[bool] = None
+    vit_gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+    vit_attn_impl: Optional[str] = None
     vit_lr: Optional[float] = None
     aligner_lr: Optional[float] = None
-    attn_impl: Optional[str] = None
-    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
 
     # dsa
     dsa_indexer_loss_coeff: Optional[float] = None
@@ -657,8 +657,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.fp8 = self.fp8_format  # compat megatron-lm
         if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True
-        if self.gradient_checkpointing_kwargs is not None:
-            self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
+        if self.vit_gradient_checkpointing_kwargs is not None:
+            self.vit_gradient_checkpointing_kwargs = json_parse_to_dict(self.vit_gradient_checkpointing_kwargs)
         if self.gradient_accumulation_fusion:
             try:
                 import apex
