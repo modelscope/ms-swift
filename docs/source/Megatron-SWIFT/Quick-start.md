@@ -32,8 +32,13 @@ git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
-# mcore-bridge megatron-core
-pip install "megatron-core==0.16.*" mcore-bridge -U
+# mcore-bridge
+pip install mcore-bridge -U
+# 安装main分支
+# pip install git+https://github.com/modelscope/mcore-bridge.git
+
+# megatron-core
+pip install "megatron-core==0.16.*" -U
 
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度。
