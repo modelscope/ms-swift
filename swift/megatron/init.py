@@ -139,7 +139,7 @@ def _patch_unified_memory():
 
 
 def _patch_mcore_bridge():
-    require_version('mcore-bridge>=1.0.1.dev', 'please install mcore-bridge via `pip install mcore-bridge -U`')
+    require_version('mcore-bridge>=1.0.2', 'please install mcore-bridge via `pip install mcore-bridge -U`')
     import mcore_bridge
     from mcore_bridge import GPTBridge
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')

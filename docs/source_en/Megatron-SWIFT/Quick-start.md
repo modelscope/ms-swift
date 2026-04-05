@@ -67,7 +67,7 @@ Recommended Operating Environment:
 | transformer-engine    | >=2.3       |  2.12.0  |                  |
 | apex |   |  0.1 | |
 | megatron-core    |    >=0.12,<0.17    | 0.16      |                  |
-| mcore-bridge    |    >=1.0.1    |      |                  |
+| mcore-bridge    |    >=1.0.2    |      |                  |
 | flash-attn    |        | 2.8.3/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.6/5.2.0    |                    |
 | modelscope   | >=1.23       |             |                    |
