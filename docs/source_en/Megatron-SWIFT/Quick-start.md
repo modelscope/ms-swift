@@ -31,8 +31,13 @@ git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
-# mcore-bridge megatron-core
-pip install "megatron-core==0.16.*" mcore-bridge -U
+# mcore-bridge
+pip install mcore-bridge -U
+# Install from main branch
+# pip install git+https://github.com/modelscope/mcore-bridge.git
+
+# megatron-core
+pip install "megatron-core==0.16.*" -U
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
@@ -67,7 +72,7 @@ Recommended Operating Environment:
 | transformer-engine    | >=2.3       |  2.12.0  |                  |
 | apex |   |  0.1 | |
 | megatron-core    |    >=0.12,<0.17    | 0.16      |                  |
-| mcore-bridge    |    >=1.0.1    |      |                  |
+| mcore-bridge    |    >=1.0.2    |      |                  |
 | flash-attn    |        | 2.8.3/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.6/5.2.0    |                    |
 | modelscope   | >=1.23       |             |                    |
