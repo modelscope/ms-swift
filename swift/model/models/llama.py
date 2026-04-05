@@ -148,6 +148,10 @@ register_model(
                 Model('ChineseAlpacaGroup/llama-3-chinese-8b-instruct', 'hfl/llama-3-chinese-8b-instruct'),
                 Model('ChineseAlpacaGroup/llama-3-chinese-8b', 'hfl/llama-3-chinese-8b'),
             ], TemplateType.llama3),
+            ModelGroup([
+                Model('microsoft/UserLM-8b', 'microsoft/UserLM-8b'),
+            ],
+                       TemplateType.userlm),
             # llama3.1
             ModelGroup(
                 [
