@@ -496,7 +496,7 @@ class BaseMegatronTrainer(ABC):
             if self.args.vit_gradient_checkpointing:
                 dynamic_gradient_checkpointing(module, False)
                 try:
-                    module.gradient_checkpointing_enable(**(self.args.gradient_checkpointing_kwargs or {}))
+                    module.gradient_checkpointing_enable(**(self.args.vit_gradient_checkpointing_kwargs or {}))
                     module.enable_input_require_grads()
                 except AttributeError:
                     pass

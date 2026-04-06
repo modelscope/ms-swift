@@ -9,7 +9,7 @@ from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import (RouterReplayHelper, forward_step_helper, get_local_topk_idx_for_current_rank,
                                   get_router_replay_data, load_mcore_checkpoint, set_router_replay_data)
 from swift.rlhf_trainers.utils import identity_data_collator
-from swift.utils import get_logger, safe_snapshot_download
+from swift.utils import get_current_device, get_logger, safe_snapshot_download
 from .base import BaseMegatronTrainer
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
@@ -34,7 +34,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
             self.ref_models = get_mcore_model(args, self.template.config)
         for ref_model in self.ref_models:
             if not args.use_cpu_initialization:
-                ref_model.cuda(torch.cuda.current_device())
+                ref_model.to(get_current_device())
             ref_model.requires_grad_(False)
             ref_model.eval()
         if self.ref_models and args.mcore_ref_model is None:

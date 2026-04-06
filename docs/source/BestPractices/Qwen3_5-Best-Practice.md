@@ -108,8 +108,7 @@ Qwen3.5的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swif
 ### Dense模型
 
 以下提供对Qwen3.5-4B模型的微调脚本，该示例脚本仅作为演示用途。训练显存为 4 * 20GiB，训练时间为12分钟。由于transformers的GatedDeltaNet不支持packing/padding_free（megatron支持，见下文），因此我们使用group_by_length参数来加速训练，保证DP的负载均衡并减少micro batch中的零填充，但这会导致loss曲线跳动（因数据随机不充分），当然你也可以去掉此参数。
-
-对模型进行微调的脚本如下：
+- 关于数据预处理：若使用packing/group_by_length参数，则需要对所有数据做提前预处理，获取数据input_ids长度，这需要消耗一定时间。若你希望在训练时处理数据，你可以去除这个两个参数。
 
 ```shell
 # 4 * 20GiB
@@ -310,8 +309,9 @@ swift infer \
 
 Megatron-SWIFT训练Qwen3.5的提示：
 - 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh)。
-- 关于MTP训练：ms-swift暂不支持多模态MTP的训练。如果你只训练纯文本数据，请设置`SKIP_MULTIMODAL_MTP_VALIDATION=1`环境变量，忽略检查。
+- 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/14)），请安装对应版本。
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
+- CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/16)），此外需安装megatron-core dev分支。
 - 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0`可切换至 transformers 实现，transformers实现不支持packing和GDN的TP。
 - padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
 - apply_wd_to_qk_layernorm：对 qk layernorm 应用权重衰减。默认为False。

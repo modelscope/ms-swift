@@ -7,7 +7,9 @@
 ```shell
 # 推荐
 pip install 'ms-swift' -U
-# 使用评测
+# 额外安装megatron依赖
+pip install 'ms-swift[megatron]' -U
+# 额外安装评测依赖
 pip install 'ms-swift[eval]' -U
 # 全能力
 pip install 'ms-swift[all]' -U

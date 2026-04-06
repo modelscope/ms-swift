@@ -1097,8 +1097,8 @@ The table below introduces the models integrated with ms-swift:
 |[google/gemma-4-E2B-it](https://modelscope.cn/models/google/gemma-4-E2B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it)|
 |[google/gemma-4-E4B](https://modelscope.cn/models/google/gemma-4-E4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B)|
 |[google/gemma-4-E4B-it](https://modelscope.cn/models/google/gemma-4-E4B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it)|
-|[google/gemma-4-12B-A3B](https://modelscope.cn/models/google/gemma-4-12B-A3B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-12B-A3B](https://huggingface.co/google/gemma-4-12B-A3B)|
-|[google/gemma-4-12B-A3B-it](https://modelscope.cn/models/google/gemma-4-12B-A3B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-12B-A3B-it](https://huggingface.co/google/gemma-4-12B-A3B-it)|
+|[google/gemma-4-31B](https://modelscope.cn/models/google/gemma-4-31B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-31B](https://huggingface.co/google/gemma-4-31B)|
+|[google/gemma-4-31B-it](https://modelscope.cn/models/google/gemma-4-31B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-31B-it](https://huggingface.co/google/gemma-4-31B-it)|
 |[google/gemma-4-26B-A4B](https://modelscope.cn/models/google/gemma-4-26B-A4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B)|
 |[google/gemma-4-26B-A4B-it](https://modelscope.cn/models/google/gemma-4-26B-A4B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-26B-A4B-it](https://huggingface.co/google/gemma-4-26B-A4B-it)|
 |[mistralai/Mistral-Small-3.1-24B-Base-2503](https://modelscope.cn/models/mistralai/Mistral-Small-3.1-24B-Base-2503)|mistral3|mistral_2503|transformers>=4.49|&#x2718;|vision|[mistralai/Mistral-Small-3.1-24B-Base-2503](https://huggingface.co/mistralai/Mistral-Small-3.1-24B-Base-2503)|
