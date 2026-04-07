@@ -242,7 +242,7 @@ class Gemma3nTemplate(Gemma3Template):
 register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma3nTemplate))
 
 
-class Gemma4Template(Gemma3Template):
+class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -267,19 +267,23 @@ class Gemma4Template(Gemma3Template):
             return_tensors='pt',
             add_special_tokens=False,
         )
-        splited_tokens = iter(self._split_list(media_inputs['input_ids'][0].tolist(), split_token))
+        splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
 
-        def _get_new_tokens(i):
-            return next(splited_tokens)
-
         idx_list = []
         for key in ['image', 'video', 'audio']:
             idx_list += findall(input_ids, getattr(self.config, f'{key}_token_id'))
+        sorted_order = sorted(range(len(idx_list)), key=lambda i: idx_list[i])
+        idx_list = [idx_list[i] for i in sorted_order]
+        splited_tokens = [splited_tokens[i] for i in sorted_order]
+
+        def _get_new_tokens(i):
+            return splited_tokens[i]
+
         if idx_list:
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                 _get_new_tokens)
