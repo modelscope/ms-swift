@@ -926,7 +926,6 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     """
     import logging
     from concurrent.futures import ThreadPoolExecutor
-
     global _teacher_session
     if _teacher_session is None:
         _teacher_session = _build_teacher_session()
