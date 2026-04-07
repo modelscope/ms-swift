@@ -1855,6 +1855,20 @@ class Template(ProcessorMixin):
 
         return result
 
+    def create_mm_token_type_ids(self, input_ids):
+        processor = self.processor
+        image_token_id = getattr(processor, 'image_token_id', None)
+        video_token_id = getattr(processor, 'video_token_id', None)
+        audio_token_id = getattr(processor, 'audio_token_id', None)
+        mm_token_type_ids = torch.zeros_like(input_ids)
+        if image_token_id is not None:
+            mm_token_type_ids[input_ids == image_token_id] = 1
+        if video_token_id is not None:
+            mm_token_type_ids[input_ids == video_token_id] = 2
+        if audio_token_id is not None:
+            mm_token_type_ids[input_ids == audio_token_id] = 3
+        return mm_token_type_ids
+
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         # multimodal
         res = {}

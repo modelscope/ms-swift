@@ -1,3 +1,4 @@
+from itertools import chain
 from typing import Any, List
 
 from swift.model import MODEL_MAPPING, ModelType
@@ -9,6 +10,9 @@ def get_url_suffix(model_id):
     if ':' in model_id:
         return model_id.split(':')[0]
     return model_id
+
+
+supported_mcore_model_types = None
 
 
 def get_cache_mapping(fpath):
@@ -30,6 +34,7 @@ def get_cache_mapping(fpath):
 
 
 def get_model_info_table():
+    global supported_mcore_model_types
     fpaths = [
         'docs/source/Instruction/Supported-models-and-datasets.md',
         'docs/source_en/Instruction/Supported-models-and-datasets.md'
@@ -67,8 +72,16 @@ def get_model_info_table():
                 requires = ', '.join(group.requires or model_meta.requires) or '-'
                 template = group.template or model_meta.template
                 if is_megatron_available():
-                    from swift.megatron import model
-                    support_megatron = getattr(model_meta, 'support_megatron', False)
+                    from mcore_bridge.model import MODEL_MAPPING as MCORE_MODEL_MAPPING
+                    if supported_mcore_model_types is None:
+                        supported_mcore_model_types = set(
+                            list(chain.from_iterable([v.model_types for k, v in MCORE_MODEL_MAPPING.items()])))
+                    if model_meta.mcore_model_type is not None:
+                        support_megatron = True
+                    elif model_meta.model_type in supported_mcore_model_types:
+                        support_megatron = True
+                    else:
+                        support_megatron = False
                     for word in ['gptq', 'awq', 'bnb', 'aqlm', 'int4', 'int8', 'nf4']:
                         if word in ms_model_id.lower():
                             support_megatron = False
