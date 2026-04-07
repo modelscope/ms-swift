@@ -18,7 +18,7 @@ swift rlhf \
     --tuner_type full \
     --torch_dtype bfloat16 \
     --load_from_cache_file true \
-    --max_completion_length 2048 \
+    --max_completion_length 4096 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 8 \
     --learning_rate 2e-6 \
@@ -33,6 +33,6 @@ swift rlhf \
     --system """You are a helpful math assistant. Solve the problem step by step and put your final answer within \\boxed{}.""" \
     --log_completions true \
     --num_iterations 1 \
-    --beta 0 \
+    --beta 0.001 \
     --loss_type real \
     --deepspeed zero2
