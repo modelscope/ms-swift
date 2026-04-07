@@ -267,6 +267,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
         tau_neg (float): The temperature parameter for negative dominance in the SAPO algorithm, controlling the
             sharpness of the soft gating function. Typically, `tau_neg` is set > `tau_pos` to impose stronger
             constraints on negative dominance. The default value is 1.05.
+        real_tau (float): The temperature parameter. REAL induces monotonic and bounded gradient weighting with
+            magnitude upper-bounded by 1/tau. The default value is 0.5.
         advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
@@ -361,6 +363,9 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
     # If false, add KL into loss, otherwise add into reward
     kl_in_reward: Optional[bool] = None  # rloo/reinforce_plus_plus: true, grpo: false (default)
+
+    # REAL https://arxiv.org/abs/2602.05630
+    real_tau: float = 0.5
 
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
