@@ -2627,7 +2627,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps', 'rollout_logprobs',
+                'is_truncated', 'add_eos', 'response_token_ids', 'prompt_id', 'rollout_is_weights', 'finish_reason',
+                'request_id'
             ]
         }
 
