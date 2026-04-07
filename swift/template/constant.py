@@ -134,6 +134,7 @@ class MLLMTemplateType:
     qwen2_5_omni = 'qwen2_5_omni'
     qwen3_omni = 'qwen3_omni'
     qwen2_audio = 'qwen2_audio'
+    qwen3_asr = 'qwen3_asr'
     qwen3_vl = 'qwen3_vl'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'

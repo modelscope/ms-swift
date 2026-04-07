@@ -1460,6 +1460,44 @@ register_model(
         tags=['vision', 'video', 'audio'],
     ))
 
+try:
+    import qwen_asr  # noqa: F401
+except ImportError:
+    qwen_asr = None
+
+
+class Qwen3ASRLoader(ModelLoader):
+
+    def get_config(self, model_dir: str):
+        if qwen_asr is None:
+            raise ImportError('qwen-asr package required. Install with: pip install qwen-asr')
+        return super().get_config(model_dir)
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import AutoModel
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
+        use_submodel_func(base_model, 'thinker')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_asr,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-ASR-1.7B', 'Qwen/Qwen3-ASR-1.7B'),
+                Model('Qwen/Qwen3-ASR-0.6B', 'Qwen/Qwen3-ASR-0.6B'),
+            ], TemplateType.qwen3_asr)
+        ],
+        Qwen3ASRLoader,
+        model_arch=ModelArch.qwen3_asr,
+        architectures=['Qwen3ASRForConditionalGeneration'],
+        requires=['qwen-asr'],
+        tags=['audio'],
+    ))
+
 
 class MidashengLMLoader(ModelLoader):
 
