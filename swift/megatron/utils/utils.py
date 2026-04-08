@@ -174,7 +174,9 @@ def _prepare_full_vit(args, model):
     vision_tower = [f'visual.{vit}' for vit in visual_cls._vision_tower]
     aligner = [f'visual.{aligner}' for aligner in visual_cls._aligner]
     for module_prefix in vision_tower + aligner:
-        deep_getattr(model, module_prefix).requires_grad_(True)
+        module = deep_getattr(model, module_prefix)
+        if module is not None:
+            module.requires_grad_(True)
 
 
 def prepare_mcore_model(args, model):

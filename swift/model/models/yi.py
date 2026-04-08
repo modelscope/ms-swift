@@ -118,5 +118,6 @@ register_model(
             ], TemplateType.sus),
         ],
         architectures=['LlamaForCausalLM'],
+        mcore_model_type='gpt',
         model_arch=ModelArch.llama,
     ))

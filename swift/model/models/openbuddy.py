@@ -39,6 +39,7 @@ register_model(
                 requires=['transformers>=4.45']),
         ],
         model_arch=ModelArch.llama,
+        mcore_model_type='gpt',
         architectures=['LlamaForCausalLM'],
     ))
 
