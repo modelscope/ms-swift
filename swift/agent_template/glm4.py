@@ -109,24 +109,26 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             'You are provided with function signatures within <tools></tools> XML tags:\n<tools>'
         ]
         for tool in tools:
+            if self.model_type == 'glm5_1':
+                tool = self.unwrap_tool(tool)
             tool_descs.append(f'{json.dumps(tool, ensure_ascii=False)}')
         if self.model_type == 'glm4_5':
             tool_desc = ('</tools>\n\nFor each function call, output the function name and arguments within '
                          'the following XML format:\n<tool_call>{function-name}\n<arg_key>{arg-key-1}</arg_key>\n'
                          '<arg_value>{arg-value-1}</arg_value>\n<arg_key>{arg-key-2}</arg_key>\n'
                          '<arg_value>{arg-value-2}</arg_value>\n...\n</tool_call>')
-        elif self.model_type == 'glm4_7':
+        elif self.model_type in {'glm4_7', 'glm5_1'}:
             tool_desc = ('</tools>\n\nFor each function call, output the function name and arguments within '
                          'the following XML format:\n<tool_call>{function-name}<arg_key>{arg-key-1}</arg_key>'
                          '<arg_value>{arg-value-1}</arg_value><arg_key>{arg-key-2}</arg_key><arg_value>'
                          '{arg-value-2}</arg_value>...</tool_call>')
         else:
-            raise ValueError('model_type must be one of glm4_5 or glm4_7')
+            raise ValueError("model_type must be one of 'glm4_5', 'glm4_7', or 'glm5_1'.")
         tool_descs.append(tool_desc)
         tool_descs = '\n'.join(tool_descs)
         if system is not None and system.strip():
             tool_descs += '<|system|>\n' + system.strip()
-        elif self.model_type == 'glm4_7' and not tool_descs.startswith('\n'):
+        elif self.model_type in {'glm4_7', 'glm5_1'} and not tool_descs.startswith('\n'):
             tool_descs = '\n' + tool_descs
         return tool_descs
 
@@ -144,7 +146,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
                 tool_content = tool_message['content']
                 res.append(f'\n<tool_response>\n{tool_content}\n</tool_response>')
             res.append('<|assistant|>\n')
-        elif self.model_type == 'glm4_7':
+        elif self.model_type in {'glm4_7', 'glm5_1'}:
             res = []
             for tool_message in tool_messages:
                 tool_content = tool_message['content']
@@ -163,10 +165,14 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             tool_calls.append('</tool_call>')
         if self.model_type == 'glm4_5':
             sep = '\n'
-        elif self.model_type == 'glm4_7':
+        elif self.model_type in {'glm4_7', 'glm5_1'}:
             sep = ''
         return sep.join(tool_calls) + '<|observation|>'
 
 
 class GLM4_7AgentTemplate(GLM4_5AgentTemplate):
     model_type = 'glm4_7'
+
+
+class GLM5_1AgentTemplate(GLM4_5AgentTemplate):
+    model_type = 'glm5_1'
