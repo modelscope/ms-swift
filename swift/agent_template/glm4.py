@@ -104,9 +104,10 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         return functions
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
-        tool_descs = [('\n' if self.model_type == 'glm5_1' else '')
-                      + '# Tools\n\nYou may call one or more functions to assist with the user query.\n\n'
-                      'You are provided with function signatures within <tools></tools> XML tags:\n<tools>']
+        tool_descs = [
+            '# Tools\n\nYou may call one or more functions to assist with the user query.\n\n'
+            'You are provided with function signatures within <tools></tools> XML tags:\n<tools>'
+        ]
         for tool in tools:
             if self.model_type == 'glm5_1':
                 tool = self.unwrap_tool(tool)
@@ -122,12 +123,12 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
                          '<arg_value>{arg-value-1}</arg_value><arg_key>{arg-key-2}</arg_key><arg_value>'
                          '{arg-value-2}</arg_value>...</tool_call>')
         else:
-            raise ValueError('model_type must be one of glm4_5 or glm4_7')
+            raise ValueError("model_type must be one of 'glm4_5', 'glm4_7', or 'glm_5_1'.")
         tool_descs.append(tool_desc)
         tool_descs = '\n'.join(tool_descs)
         if system is not None and system.strip():
             tool_descs += '<|system|>\n' + system.strip()
-        elif self.model_type == 'glm4_7' and not tool_descs.startswith('\n'):
+        elif self.model_type in {'glm4_7', 'glm5_1'} and not tool_descs.startswith('\n'):
             tool_descs = '\n' + tool_descs
         return tool_descs
 
