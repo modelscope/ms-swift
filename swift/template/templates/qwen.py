@@ -975,8 +975,8 @@ class Qwen3ASRTemplate(Template):
                     def _get_new_audio_tokens(i):
                         return audio_token_id * int(audio_lengths[i])
 
-                    input_ids, labels, loss_scale = self._extend_tokens(
-                        input_ids, labels, loss_scale, idx_list, _get_new_audio_tokens)
+                    input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                        _get_new_audio_tokens)
                     encoded['input_ids'] = input_ids
                     encoded['labels'] = labels
                     encoded['loss_scale'] = loss_scale

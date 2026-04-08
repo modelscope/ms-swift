@@ -1460,17 +1460,11 @@ register_model(
         tags=['vision', 'video', 'audio'],
     ))
 
-try:
-    import qwen_asr  # noqa: F401
-except ImportError:
-    qwen_asr = None
-
 
 class Qwen3ASRLoader(ModelLoader):
 
     def get_config(self, model_dir: str):
-        if qwen_asr is None:
-            raise ImportError('qwen-asr package required. Install with: pip install qwen-asr')
+        import qwen_asr  # noqa: F401
         return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
