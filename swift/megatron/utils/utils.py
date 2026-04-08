@@ -205,9 +205,8 @@ def forward_step_helper(model, inputs, dtype=None):
         recv_from_prev_pipeline_rank_(recv_buffer)
         model.set_input_tensor(recv_buffer)
     output_tensor = model(**inputs)
-    if mpu.is_pipeline_first_stage():
-        recv_shape_buffer = torch.tensor(output_tensor.shape, device=torch.cuda.current_device(), dtype=torch.int64)
     if not mpu.is_pipeline_last_stage():
+        recv_shape_buffer = torch.tensor(output_tensor.shape, device=torch.cuda.current_device(), dtype=torch.int64)
         send_to_next_pipeline_rank(recv_shape_buffer)
         send_to_next_pipeline_rank(output_tensor)
         output_tensor = None
