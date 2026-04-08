@@ -298,6 +298,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             self.prepare_logits_to_keep(inputs)
             model_inputs['logits_to_keep'] = inputs['logits_to_keep']
 
+        teacher_model = self.choose_teacher_model()
         if self.use_liger_gkd_loss:
             # Liger fused JSD loss for memory efficiency
             # Get base models (exclude lm_head to save memory)
@@ -307,7 +308,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             base_student = getattr(unwrapped_student, getattr(unwrapped_student, 'base_model_prefix', 'model'),
                                    unwrapped_student)
 
-            unwrapped_teacher = self.accelerator.unwrap_model(self.teacher_model)
+            unwrapped_teacher = self.accelerator.unwrap_model(teacher_model)
             base_teacher = getattr(unwrapped_teacher, getattr(unwrapped_teacher, 'base_model_prefix', 'model'),
                                    unwrapped_teacher)
 
@@ -316,7 +317,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
             with load_context:
-                with torch.no_grad(), disable_gradient_checkpointing(self.teacher_model,
+                with torch.no_grad(), disable_gradient_checkpointing(teacher_model,
                                                                      self.args.gradient_checkpointing_kwargs):
                     teacher_outputs = base_teacher(**model_inputs, use_cache=False)
 
@@ -415,7 +416,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 loss = loss + self.args.sft_alpha * outputs_student.loss
         # Separate teacher model provided
         else:
-            assert self.teacher_model is not None
+            assert teacher_model is not None
             if self.args.sft_alpha > 0:
                 model_inputs['labels'] = inputs['labels']
             outputs_student = model(**model_inputs)
@@ -426,9 +427,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             }
 
             load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-            with torch.no_grad(), load_context, disable_gradient_checkpointing(self.teacher_model,
+            with torch.no_grad(), load_context, disable_gradient_checkpointing(teacher_model,
                                                                                self.args.gradient_checkpointing_kwargs):
-                outputs_teacher = self.teacher_model(**t_fwd)
+                outputs_teacher = teacher_model(**t_fwd)
 
             opsd_labels = opsd_teacher_inputs.get('labels') if opsd_teacher_inputs is not None else None
             teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, opsd_teacher_labels=opsd_labels)
@@ -442,6 +443,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             return (loss, outputs_student)
         else:
             return loss
+
+    def choose_teacher_model(self):
+        if not self.args.use_mopd:
+            return self.teacher_model
+        #todo 使用mopd时从教师模型组选择最佳模型
 
     def _prepare_batch_inputs(self, inputs: list, encode_prompt_only: bool = False) -> Dict[str, torch.Tensor]:
         """Prepare batch inputs for training.
@@ -788,6 +794,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             t_log_probs = F.log_softmax(t_chunk, dim=-1)
             del s_chunk, t_chunk
 
+            #todo 使用mopd的计算函数，增加教师模型权重
             if beta == 0:
                 jsd_chunk = F.kl_div(s_log_probs, t_log_probs, reduction='none', log_target=True)
             elif beta == 1:

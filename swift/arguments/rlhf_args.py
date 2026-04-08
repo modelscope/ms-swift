@@ -65,6 +65,7 @@ class TeacherModelArguments:
             remotely. When this is set, `teacher_model` is not required. Defaults to None.
     """
     teacher_model: Optional[str] = None
+    teacher_model_group: List[str] = field(default_factory=list)
     teacher_adapters: List[str] = field(default_factory=list)
     teacher_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
