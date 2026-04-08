@@ -459,7 +459,7 @@ CUDA_VISIBLE_DEVICES=0 swift sample \
 
 ### Evaluation
 ```shell
-CUDA_VISIBLE_DEVICES=7 swift eval \
+CUDA_VISIBLE_DEVICES=0 swift eval \
     --model Qwen/Qwen3-4B-Instruct-2507 \
     --infer_backend sglang \
     --eval_backend OpenCompass \
