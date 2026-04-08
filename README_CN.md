@@ -417,15 +417,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --stream true \
     --infer_backend transformers \
     --max_new_tokens 2048
-
-# LoRA
-CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen3-4B-Instruct-2507 \
-    --adapters swift/test_lora \
-    --stream true \
-    --infer_backend transformers \
-    --temperature 0 \
-    --max_new_tokens 2048
 ```
 
 ### 界面推理

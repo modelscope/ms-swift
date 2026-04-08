@@ -430,15 +430,6 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --stream true \
     --infer_backend transformers \
     --max_new_tokens 2048
-
-# LoRA
-CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen3-4B-Instruct-2507 \
-    --adapters swift/test_lora \
-    --stream true \
-    --infer_backend transformers \
-    --temperature 0 \
-    --max_new_tokens 2048
 ```
 
 ### Interface Inference
@@ -468,7 +459,7 @@ CUDA_VISIBLE_DEVICES=0 swift sample \
 
 ### Evaluation
 ```shell
-CUDA_VISIBLE_DEVICES=0 swift eval \
+CUDA_VISIBLE_DEVICES=7 swift eval \
     --model Qwen/Qwen3-4B-Instruct-2507 \
     --infer_backend sglang \
     --eval_backend OpenCompass \
