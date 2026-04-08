@@ -8,13 +8,13 @@ ms-swift内置的模型，你可以直接通过指定model_id或者model_path来
 
 ## 模型注册
 
-自定义模型通常使用模型注册的方式进行，可以参考[内置模型](https://github.com/modelscope/ms-swift/blob/main/swift/llm/model/model/qwen.py)、[内置对话模板](https://github.com/modelscope/ms-swift/blob/main/swift/llm/template/template/qwen.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)的示例代码。你可以通过指定`--custom_register_path xxx.py`解析外置注册的内容（方便pip install而非git clone的用户）。
+自定义模型通常使用模型注册的方式进行，可以参考[内置模型](https://github.com/modelscope/ms-swift/blob/main/swift/model/models/qwen.py)、[内置对话模板](https://github.com/modelscope/ms-swift/blob/main/swift/template/templates/qwen.py)或者[examples](https://github.com/modelscope/ms-swift/blob/main/examples/custom)的示例代码。你可以通过指定`--external_plugins xxx.py`解析外置注册的内容（方便pip install而非git clone的用户）。
 
 register_model会在`MODEL_MAPPING`中注册模型，调用函数`register_model(model_meta)`即可完成模型注册，其中model_meta将存储模型的元信息。ModelMeta的参数列表如下：
 - model_type: 必填项。模型类型，也是唯一ID。
 - model_groups: 必填项。罗列ModelScope/HuggingFace的模型id和模型本地路径。运行[run_model_info.py](https://github.com/modelscope/ms-swift/blob/main/scripts/utils/run_model_info.py)文件将自动产生[支持的模型文档](https://swift.readthedocs.io/zh-cn/latest/Instruction/Supported-models-and-datasets.html)以及自动根据`--model`后缀匹配model_type。
-- template: 必填项。命令行不额外指定`--template`时的默认template类型。
-- get_function: 必填项。模型和tokenizer/processor（多模态模型）的加载函数。LLM通常设置为`get_model_tokenizer_with_flash_attn`即可。
+- loader: 模型和tokenizer/processor（多模态模型）的加载器。默认使用`swift.model.ModelLoader`。
+- template: 命令行不额外指定`--template`时的默认template类型。默认为None。
 - model_arch: 模型架构。默认为None。多模态模型训练需要设置该参数来确定llm/vit/aligner的前缀。
 - architectures: config.json中的architectures项，用于自动匹配模型对应的model_type。默认为`[]`。
 - additional_saved_files: 全参数训练和merge-lora时需要额外保存的文件。默认为`[]`。

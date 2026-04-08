@@ -1,7 +1,8 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 # !/usr/bin/env python
-import os
 from setuptools import find_packages, setup
+
+import os
 from typing import List
 
 
@@ -119,6 +120,7 @@ if __name__ == '__main__':
     install_requires, deps_link = parse_requirements('requirements.txt')
     extra_requires = {}
     all_requires = []
+    extra_requires['megatron'], _ = parse_requirements('requirements/megatron.txt')
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
     extra_requires['swanlab'], _ = parse_requirements('requirements/swanlab.txt')
     extra_requires['ray'], _ = parse_requirements('requirements/ray.txt')
@@ -136,13 +138,12 @@ if __name__ == '__main__':
         long_description_content_type='text/markdown',
         author='DAMO ModelScope teams',
         author_email='contact@modelscope.cn',
-        keywords='python, petl, efficient tuners',
-        url='https://github.com/modelscope/swift',
-        packages=find_packages(exclude=('configs', 'demo')),
+        keywords=['transformers', 'LLM', 'lora', 'megatron', 'grpo', 'sft'],
+        url='https://github.com/modelscope/ms-swift',
+        packages=find_packages(exclude=('tests', 'tests.*')),
         include_package_data=True,
-        package_data={
-            '': ['*.h', '*.cpp', '*.cu'],
-        },
+        package_data={'': ['utils/*', 'dataset/data/*.*', 'config/*.json', 'loss_scale/config/*.json']},
+        python_requires='>=3.8.0',
         classifiers=[
             'Development Status :: 4 - Beta',
             'License :: OSI Approved :: Apache Software License',

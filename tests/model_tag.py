@@ -1,9 +1,8 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-
-import logging
-import os
+# Copyright (c) ModelScope Contributors. All rights reserved.
 
 import json
+import logging
+import os
 import requests
 
 from swift.version import __version__

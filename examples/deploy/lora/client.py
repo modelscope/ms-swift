@@ -1,4 +1,4 @@
-from swift.llm import InferClient, InferRequest, RequestConfig
+from swift.infer_engine import InferClient, InferRequest, RequestConfig
 
 
 def infer_multilora(engine: InferClient, infer_request: InferRequest):

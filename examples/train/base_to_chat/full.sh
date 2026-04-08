@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model Qwen/Qwen2.5-1.5B \
-    --train_type full \
+    --tuner_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition' \

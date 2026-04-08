@@ -1,9 +1,9 @@
 def _test_client(port: int, print_logprobs: bool = False, test_vlm: bool = False):
-    import requests
-    import time
     import aiohttp
+    import time
     from pprint import pprint
-    from swift.llm import InferClient, InferRequest, RequestConfig
+
+    from swift.infer_engine import InferClient, InferRequest, RequestConfig
 
     infer_client = InferClient(port=port)
 
@@ -67,9 +67,9 @@ def _test(infer_backend, test_vlm: bool = False):
     import os
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-    from swift.llm import DeployArguments
-    from swift.llm import deploy_main
     import multiprocessing
+
+    from swift import DeployArguments, deploy_main
     mp = multiprocessing.get_context('spawn')
     model = 'Qwen/Qwen2-VL-7B-Instruct' if test_vlm else 'Qwen/Qwen2-7B-Instruct'
     args = DeployArguments(model=model, infer_backend=infer_backend, verbose=False)
@@ -92,7 +92,7 @@ def test_lmdeploy():
 
 
 def test_pt():
-    _test('pt')
+    _test('transformers')
 
 
 def test_vllm_origin():

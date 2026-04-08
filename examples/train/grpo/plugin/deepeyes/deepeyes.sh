@@ -39,7 +39,7 @@ swift rlhf \
     --sleep_level 1 \
     --external_plugins examples/train/grpo/plugin/deepeyes/deepeyes_plugin.py \
     --reward_funcs deepeyes_reward \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --max_completion_length 2048 \
     --num_train_epochs 1 \

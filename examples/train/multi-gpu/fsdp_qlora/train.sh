@@ -1,11 +1,13 @@
 # 80GiB * 2
+# NOTE: for swift>=3.12, you can use --fsdp fsdp2 instead of accelerate launch
+
 nproc_per_node=2
 
 CUDA_VISIBLE_DEVICES=0,1 \
 accelerate launch --config_file "./examples/train/multi-gpu/fsdp_qlora/fsdp_offload.json" \
     swift/cli/sft.py \
     --model Qwen/Qwen2.5-72B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'swift/self-cognition#1000' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

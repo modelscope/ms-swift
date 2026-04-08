@@ -1,7 +1,7 @@
 import os
 from typing import List
 
-from swift.llm import BaseArguments, InferRequest, PtEngine, get_template
+from swift import BaseArguments, InferRequest, TransformersEngine, get_template
 
 os.environ['IMAGE_MAX_TOKEN_NUM'] = '1024'
 os.environ['VIDEO_MAX_TOKEN_NUM'] = '128'
@@ -20,14 +20,15 @@ infer_request = InferRequest(
 adapter_path = 'output/vx-xxx/checkpoint-xxx'
 args = BaseArguments.from_pretrained(adapter_path)
 
-engine = PtEngine(
+engine = TransformersEngine(
     args.model,
     adapters=[adapter_path],
     task_type='seq_cls',
     num_labels=args.num_labels,
     problem_type=args.problem_type)
-template = get_template(args.template, engine.processor, args.system, use_chat_template=args.use_chat_template)
-engine.default_template = template
+template = get_template(
+    engine.processor, args.system, template_type=args.template, use_chat_template=args.use_chat_template)
+engine.template = template
 
 resp_list = engine.infer([infer_request])
 response: List[int] = resp_list[0].choices[0].message.content

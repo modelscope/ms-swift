@@ -103,7 +103,7 @@ elif seq_kd:
     y = teacher.generate(x)
     source = "teacher"
 else:
-    # Mode 3: Off-Policy 学习，使用数据集中的输出序列
+    # Mode 3: 使用数据集中的输出序列
     y = y_ground_truth
     source = "dataset"
 
@@ -128,7 +128,7 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 **数据来源**：$y \sim P_{\text{teacher}}(\cdot | x)$
 
-### Mode 3: Off-Policy 学习（其他情况）
+### Mode 3: 离线学习（其他情况）
 
 **数据来源**：$y = y^* \sim \text{Dataset}$
 
@@ -139,14 +139,90 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 我们可以通过设置以下参数进行 GKD 训练：
 
+### 基础参数
+
 | 参数 | 类型 | 默认值 | 取值范围 | 说明 |
 |------|------|--------|---------|------|
-| `--teacher_model` | str | 必需 | - | 教师模型路径或模型 ID |
+| `--teacher_model` | str | None | - | 教师模型路径或模型 ID |
 | `--beta` | float | 0.5 | [0.0, 1.0] | 散度插值系数<br>• 0.0: Forward KL <br>• 0.5: JSD (平衡)<br>• 1.0: Reverse KL |
-| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 纯 Off-Policy<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
+| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy 学习触发概率<br>• 0.0: 离线学习<br>• 0.5: 混合策略<br>• 1.0: 纯 On-Policy |
 | `--seq_kd` | bool | False | True/False | 是否使用教师生成序列<br>• False: 非 on-policy 时使用数据集<br>• True: 非 on-policy 时使用教师生成 |
 | `--temperature` | float | 0.9 | > 0 | 生成采样温度，控制随机性 |
+| `--sft_alpha` | float | 0 | >= 0 | 混合一定比例的sft loss，对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | > 0 | 生成时的最大 token 数 |
+
+### Top-K KL 计算
+
+默认情况下，GKD 使用完整词表计算 KL 散度，容易造成 OOM，这种情况下可以使用 **Top-K** 模式来减少显存占用和计算量。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--gkd_logits_topk` | int | None | Top-K logits 数量<br>• None: 使用完整词表（默认）<br>• 正整数: 仅使用教师模型概率最高的 K 个 token 计算 KL |
+
+**Top-K 模式原理**：
+
+在 Top-K 模式下，选取**教师模型**输出概率最高的 K 个 token，在这个子集上计算两个模型分布的 KL 散度。
+$$
+D_{\text{JSD}(\beta)}^{\text{top-k}}(P_T, P_S) = \beta \cdot \text{KL}(\tilde{P}_T \| \tilde{M}) + (1-\beta) \cdot \text{KL}(\tilde{P}_S \| \tilde{M})
+$$
+
+其中 Top-K 索引来自教师模型：$\text{Top-K} = \text{argtop}_K(P_T)$，$\tilde{P}_T$ 和 $\tilde{P}_S$ 是在 Top-K 子集上**重新归一化**的概率分布：
+
+$$
+\tilde{P}_T(v) = \frac{P_T(v)}{\sum_{v' \in \text{Top-K}} P_T(v')}, \quad \tilde{P}_S(v) = \frac{P_S(v)}{\sum_{v' \in \text{Top-K}} P_S(v')}, \quad v \in \text{Top-K}
+$$
+
+**使用示例**：
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --teacher_model Qwen/Qwen2.5-72B-Instruct \
+    --gkd_logits_topk 64 \
+    --dataset your_dataset \
+    ...
+```
+
+> **注意**：Top-K 模式不能与 liger kernel 同时使用（`--use_liger_kernel`）。
+
+### 外部教师模型 API
+
+当设置 `gkd_logits_topk` 时，可以使用外部教师模型 API 服务来获取 logprobs，这样可以避免在训练进程中加载教师模型。
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `--teacher_model_server` | str | None | 教师模型服务地址<br>如：`http://localhost:8000` |
+| `--gkd_logits_topk` | int | **必需** | 使用外部 API 时必须设置，对应 API 返回的 top_logprobs 数量 |
+
+
+**步骤 1：部署教师模型服务**
+
+```bash
+# 使用 vllm serve 部署教师模型
+CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-14B-Instruct \
+    --port 8000 \
+    --max-logprobs 64 \
+    --gpu-memory-utilization 0.9
+```
+
+**步骤 2：启动 GKD 训练**
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2.5-7B \
+    --teacher_model_server http://localhost:8000 \
+    --gkd_logits_topk 64 \
+    --dataset your_dataset \
+    --lmbda 1.0 \
+    --beta 1.0 \
+    ...
+```
+
+> **vLLM max_logprobs 限制**：
+> - vLLM 默认 `max_logprobs=20`，可通过 `--max-logprobs N` 参数调整
+> - `gkd_logits_topk` 不能超过服务端的 `max_logprobs` 设置
 
 ## 采样加速
 
@@ -159,13 +235,13 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 ### 方案 1：学生模型采样加速
 
-**要求**：swift >= 3.10.dev
-
 使用 vLLM 作为推理后端来加速学生模型采样，支持两种部署模式，与 GRPO 一致，参考[GRPO文档](./GRPO/GetStarted/GRPO.md#集群支持), 相关参数参考[GRPO vLLM 参数](./Command-line-parameters.md#vllm_mode)
 
-> **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 PyTorch，建议使用预采样方案。
+> **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 Transformers，建议使用预采样方案。
 
 训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh)
+
+使用 Teacher Server 的训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh)
 
 ### 方案 2：教师模型预采样
 
@@ -210,3 +286,62 @@ swift rlhf \
 ```
 
 相关脚本可以参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh)
+
+## OPSD（On-Policy Self-Distillation）
+
+OPSD([On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)) 是一种**单模型自蒸馏**方法，无需额外的教师模型。核心思想是：同一个模型同时扮演教师和学生，教师通过接收**特权信息**（如参考解答）来引导学生学习。
+
+### 核心机制
+
+- **学生**：仅看到问题，正常推理
+- **教师**：看到问题 + 参考解答（通过 `teacher_prompt` 列提供特权信息），产出更优的概率分布
+- **训练目标**：用 JSD 散度对齐学生和教师的输出分布
+
+### 两种自蒸馏模式
+
+| 模式 | 参数配置 | 教师权重 | 说明 |
+|------|---------|---------|------|
+| **Dynamic**（动态） | 不传 `--teacher_model` | 学生当前权重 | 教师随训练同步更新 |
+| **Fixed**（固定） | `--teacher_model` 设为与学生相同的模型 | 初始教师权重 | 教师权重固定 |
+
+### 数据格式
+
+OPSD 需要数据集包含 `teacher_prompt` 列来提供教师的特权信息。可通过 `--external_plugins` 加载数据处理插件来构建该列。
+
+以数学推理数据集 `open-r1/OpenThoughts-114k-math` 为例：
+
+```python
+from swift.dataset import DatasetMeta, RowPreprocessor, register_dataset
+
+class OpenThoughtsOPSDPreprocessor(RowPreprocessor):
+    def preprocess(self, row):
+        if not row.get('correct', True):
+            return None
+        problem = row.get('problem', '')
+        solution = row.get('solution', '')
+        # 教师看到问题 + 参考解答
+        teacher_prompt = f'{problem}\n\nReference solution:\n{solution}\n\nNow articulate your own reasoning.'
+        messages = [
+            {'role': 'system', 'content': 'Please reason step by step, and put your final answer within \\boxed{}.'},
+            {'role': 'user', 'content': problem},
+        ]
+        return {'messages': messages, 'teacher_prompt': teacher_prompt}
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='open-r1/OpenThoughts-114k-math',
+    preprocess_func=OpenThoughtsOPSDPreprocessor(),
+    tags=['math', 'opsd'],
+))
+```
+
+### 参数设置
+
+OPSD 复用 GKD 的所有参数，核心区别在于 `--teacher_model` 的配置：
+
+| 参数 | Dynamic 模式 | Fixed 模式 |
+|------|-------------|-----------|
+| `--teacher_model` | 不设置 | 设为与 `--model` 相同的模型 |
+
+参考脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/opsd/)
+
+Megatron脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd.sh)

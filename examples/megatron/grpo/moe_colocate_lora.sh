@@ -4,14 +4,14 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 megatron rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
+    --merge_lora false \
     --context_parallel_size 2 \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --pipeline_model_parallel_size 2 \
     --dataset open-r1/DAPO-Math-17k-Processed \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --global_batch_size 64 \
     --micro_batch_size 2 \
     --steps_per_generation 2 \
@@ -24,7 +24,7 @@ megatron rlhf \
     --vllm_max_model_len 16384 \
     --max_length 8192 \
     --max_completion_length 8192 \
-    --train_type lora \
+    --tuner_type lora \
     --lr 5e-5 \
     --bf16 true \
     --beta 0.00 \
@@ -38,10 +38,10 @@ megatron rlhf \
     --offload_model true \
     --offload_bridge false \
     --offload_optimizer true \
-    --log_interval 1 \
+    --logging_steps 1 \
     --recompute_granularity selective \
     --finetune \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim \
     --no_save_rng \
@@ -50,5 +50,4 @@ megatron rlhf \
     --padding_free true \
     --sequence_parallel true \
     --log_completions true \
-    --wandb_project megatron_swift \
-    --wandb_exp_name megatron_grpo \
+    --report_to wandb

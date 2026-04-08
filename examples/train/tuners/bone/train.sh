@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type bone \
+    --tuner_type bone \
     --dataset 'swift/self-cognition#1000' \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \

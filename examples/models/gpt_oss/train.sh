@@ -3,7 +3,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model openai-mirror/gpt-oss-20b \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \

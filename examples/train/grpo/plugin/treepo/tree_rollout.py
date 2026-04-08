@@ -1,13 +1,12 @@
 import re
+import torch
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import Enum
+from modelscope.preprocessors.templates.utils import Messages
 from typing import List
 
-import torch
-from modelscope.preprocessors.templates.utils import Messages
-
-from swift.llm.infer.protocol import ChatCompletionResponseChoice
+from swift.infer_engine.protocol import ChatCompletionResponseChoice
 
 
 class SampleStatus(Enum):

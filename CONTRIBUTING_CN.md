@@ -33,7 +33,7 @@
 
 2. Clone：将第一步产生的代码库clone到本地并**拉新分支**进行开发，开发中请及时点击**Sync Fork按钮**同步`main`分支，防止代码过期并冲突
 
-3. 提交PR：开发、测试完成后将代码推送到远程分支。在github上点击**Pull Requests页面**，新建一个PR，源分支选择您提交的代码分支，目标分支选择`modelscope/swift:main`分支
+3. 提交PR：开发、测试完成后将代码推送到远程分支。在github上点击**Pull Requests页面**，新建一个PR，源分支选择您提交的代码分支，目标分支选择`modelscope/ms-swift:main`分支
 
 4. 撰写描述：在PR中填写良好的feature描述是必要的，让Reviewers知道您的修改内容
 
@@ -63,14 +63,6 @@ SWIFT在PR提交后会进行两类测试：
 ### Running CI Tests
 
 在提交PR前，请保证您的开发代码已经受到了测试用例的保护。例如，对新功能的冒烟测试，或者各种边缘case的单元测试等。在代码review时Reviewers也会关注这一点。同时，也会有服务专门运行CI Tests，运行所有的测试用例，测试用例通过后代码才可以合并。
-
-另外，由于运行时间过长，我们跳过了部分重要测试，为保证您的逻辑是正确的，可以在本地执行该测试：
-
-```shell
-python tests/llm/test_run.py
-```
-
-请保证该测试可以正常通过。
 
 ## ✅ 资源支持
 

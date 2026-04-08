@@ -10,7 +10,7 @@ torchrun \
     --master_addr=127.0.0.1 \
     swift/cli/sft.py \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type full \
+    --tuner_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#20000' \
               'AI-ModelScope/alpaca-gpt4-data-en#20000' \
     --load_from_cache_file true \

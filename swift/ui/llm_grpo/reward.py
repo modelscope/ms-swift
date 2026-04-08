@@ -1,12 +1,8 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-from functools import partial
+# Copyright (c) ModelScope Contributors. All rights reserved.
+import gradio as gr
 from typing import Type
 
-import gradio as gr
-
-from swift.llm import BaseArguments, ModelType
-from swift.llm.model.register import get_all_models
-from swift.ui.base import BaseUI
+from ..base import BaseUI
 
 
 class Reward(BaseUI):

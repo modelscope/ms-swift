@@ -5,7 +5,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rlhf \
     --rlhf_type dpo \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
-    --train_type full \
+    --tuner_type full \
     --dataset swift/RLAIF-V-Dataset \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -26,4 +26,5 @@ swift rlhf \
     --deepspeed zero3 \
     --attn_impl flash_attn \
     --use_liger_kernel true \
+    --rpo_alpha 0.1 \
     --sequence_parallel_size 4

@@ -5,10 +5,11 @@ MAX_PIXELS=1003520 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load Qwen2.5-VL-7B-Instruct-mcore \
+    --model Qwen/Qwen2.5-VL-7B-Instruct \
+    --save_safetensors true \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
-    --train_type full \
+    --tuner_type full \
     --tensor_model_parallel_size 4 \
     --sequence_parallel true \
     --freeze_llm false \
@@ -26,15 +27,15 @@ megatron rlhf \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen2.5-VL-7B-Instruct \
-    --save_interval 200 \
-    --vit_gradient_checkpointing true \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen2.5-VL-7B-Instruct \
+    --save_steps 200 \
     --max_length 8192 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 8 \
     --attention_backend flash \
+    --rpo_alpha 0.1 \
     --beta 0.1 \
     --loss_type sigmoid

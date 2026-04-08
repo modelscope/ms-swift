@@ -8,6 +8,9 @@ SWIFT已经支持Reranker模型的训练，目前已经支持的模型有：
    - 0.6B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-0.6B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-0.6B)
    - 4B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-4B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-4B)
    - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-Reranker-8B)
+3. qwen3-vl-reranker模型
+   - 2B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-2B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-2B)
+   - 8B: [ModelScope](https://www.modelscope.cn/models/Qwen/Qwen3-VL-Reranker-8B) [Hugging Face](https://huggingface.co/Qwen/Qwen3-VL-Reranker-8B)
 
 ## 实现方式
 
@@ -61,12 +64,15 @@ Listwise方法将排序问题转化为多分类问题，从多个候选文档中
 - **Pointwise：** 独立判断相关性，训练简单，但忽略了文档间的相对关系
 - **Listwise：** 学习相对排序，性能更优，更适合排序任务的本质需求
 
-loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/loss.py)找到。
+loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/main/swift/loss/mapping.py)找到。
 
 ## 数据集格式
 
 ```json lines
+# LLM
 {"messages": [{"role": "user", "content": "query"}], "positive_messages": [[{"role": "assistant", "content": "relevant_doc1"}],[{"role": "assistant", "content": "relevant_doc2"}]], "negative_messages": [[{"role": "assistant", "content": "irrelevant_doc1"}],[{"role": "assistant", "content": "irrelevant_doc2"}], ...]}
+# MLLM
+{"messages": [{"role": "user", "content": "<image>query"}], "images": ["/some/images.jpg"], "positive_messages": [[{"role": "assistant", "content": "<image>relevant_doc1"}]], "positive_images": [["/some/positive_images.jpg"]], "negative_messages": [[{"role": "assistant", "content": "<image><image>irrelevant_doc1"}], [{"role": "assistant", "content": "<image>irrelevant_doc2"}]], "negative_images": [["/some/negative_images1.jpg", "/some/negative_images2.jpg"], ["/some/negative_images3.jpg"]]}
 ```
 
 **字段说明：**
@@ -84,12 +90,15 @@ loss的源代码可以在[这里](https://github.com/modelscope/ms-swift/blob/ma
 
 ## 脚手架
 
-SWIFT提供了两个脚手架训练脚本：
+SWIFT提供的脚手架训练脚本：
 
+- [Qwen3-Reranker/Qwen3-VL-Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/qwen3)
 - [Pointwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker.sh)
 - [Pointwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker.sh)
 - [Listwise分类式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_reranker_listwise.sh)
 - [Listwise生成式Reranker](https://github.com/modelscope/ms-swift/blob/main/examples/train/reranker/train_generative_reranker_listwise.sh)
+
+推理脚本参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_reranker.py)。
 
 ## 高级功能
 

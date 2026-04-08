@@ -1,7 +1,5 @@
 # On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting (CHORD)
 
-**Version Requirement**: ms-swift>=3.9
-
 This document describes the CHORD algorithm proposed in the paper [On-Policy RL Meets Off-Policy Experts: Harmonizing SFT and RL via Dynamic Weighting](https://arxiv.org/abs/2508.11408). The core idea of CHORD is to dynamically integrate expert data (SFT) into reinforcement learning by a dual control mechanism: a global weight μ plus a token-level weight φ, thereby balancing imitation and exploration.
 
 ## Algorithm Overview

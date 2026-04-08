@@ -1,11 +1,11 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.util
+import json
 import os
 import subprocess
 import sys
-from typing import Any, Dict, List, Optional
-
-import json
+import yaml
+from typing import Dict, List, Optional
 
 from swift.utils import get_logger
 
@@ -35,6 +35,39 @@ def use_torchrun() -> bool:
     return True
 
 
+def parse_yaml_args(argv):
+    if not argv:
+        return
+    config = None
+    if argv[0].endswith('.json'):
+        with open(argv[0], 'r') as f:
+            config = json.load(f)
+    elif argv[0].endswith('.yaml') or argv[0].endswith('.yml'):
+        with open(argv[0], 'r') as f:
+            config = yaml.safe_load(f)
+    if config is None:
+        return
+    # Used for saving configurations
+    os.environ['SWIFT_CONFIG_FILE'] = argv[0]
+
+    env = config.pop('ENV', None)
+    if env:
+        for k, v in env.items():
+            os.environ[k] = str(v)
+    config_argv = []
+    for k, v in config.items():
+        config_argv.append(f'--{k}')
+        if isinstance(v, list):
+            config_argv += v
+        else:
+            if isinstance(v, dict):
+                v = json.dumps(v, ensure_ascii=False)
+            else:
+                v = str(v)
+            config_argv.append(v)
+    argv[0:1] = config_argv
+
+
 def get_torchrun_args() -> Optional[List[str]]:
     if not use_torchrun():
         return
@@ -47,64 +80,18 @@ def get_torchrun_args() -> Optional[List[str]]:
     return torchrun_args
 
 
-def prepare_config_args(argv):
-    for i in range(len(argv)):
-        if argv[i] == '--config':
-            if i + 1 >= len(argv):
-                raise ValueError('The `--config` argument requires a yaml file path.')
-            from omegaconf import OmegaConf, DictConfig, ListConfig
-            config = OmegaConf.load(argv[i + 1])
-
-            def parse_dict_config(cfg: DictConfig) -> Dict[str, Any]:
-                result = {}
-                for key, value in cfg.items():
-                    if isinstance(value, DictConfig):
-                        result[key] = json.dumps(OmegaConf.to_container(value))
-                    elif isinstance(value, ListConfig):
-                        result[key] = list(value)
-                    else:
-                        result[key] = value
-                return result
-
-            # Convert yaml to cmd line
-            cfg = parse_dict_config(config)
-            for key, value in cfg.items():
-                argv.append(f'--{key}')
-                if isinstance(value, list):
-                    argv.extend(value)
-                else:
-                    argv.append(str(value))
-
-            # Pop --config
-            argv.pop(i)
-            # Pop value of --config
-            argv.pop(i)
-            break
-
-
-def _compat_web_ui(argv):
-    # [compat]
-    method_name = argv[0]
-    if method_name in {'web-ui', 'web_ui'} and ('--model' in argv or '--adapters' in argv or '--ckpt_dir' in argv):
-        argv[0] = 'app'
-        logger.warning('Please use `swift app`.')
-
-
 def cli_main(route_mapping: Optional[Dict[str, str]] = None, is_megatron: bool = False) -> None:
     route_mapping = route_mapping or ROUTE_MAPPING
     argv = sys.argv[1:]
-    _compat_web_ui(argv)
     method_name = argv[0].replace('_', '-')
     argv = argv[1:]
     file_path = importlib.util.find_spec(route_mapping[method_name]).origin
     torchrun_args = get_torchrun_args()
-    prepare_config_args(argv)
+    parse_yaml_args(argv)
     python_cmd = sys.executable
-    if not is_megatron and (torchrun_args is None or method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
+    if torchrun_args is None or (not is_megatron and method_name not in {'pt', 'sft', 'rlhf', 'infer'}):
         args = [python_cmd, file_path, *argv]
     else:
-        if torchrun_args is None:
-            raise ValueError('Please set torchrun args: NPROC_PER_NODE, ...')
         args = [python_cmd, '-m', 'torch.distributed.run', *torchrun_args, file_path, *argv]
     print(f"run sh: `{' '.join(args)}`", flush=True)
     result = subprocess.run(args)

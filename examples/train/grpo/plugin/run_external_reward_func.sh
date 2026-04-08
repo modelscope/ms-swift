@@ -14,7 +14,7 @@ swift rlhf \
     --vllm_gpu_memory_utilization 0.6 \
     --vllm_tensor_parallel_size 1 \
     --vllm_max_model_len 16384 \
-    --train_type full \
+    --tuner_type full \
     --torch_dtype bfloat16 \
     --dataset 'AI-ModelScope/clevr_cogen_a_train' \
     --overlong_filter false \

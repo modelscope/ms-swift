@@ -1,0 +1,49 @@
+name: "🐛 Bug Report"
+description: Create a bug report to help us improve ms-swift
+labels: ["bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for supporting ms-swift and taking the time to submit this issue.
+        感谢你对 ms-swift 的支持和抽出时间提交相关 issue。
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist / 检查清单
+      options:
+        - label: I have searched existing issues, and this is a new bug report. / 我已经搜索过现有的 issues，确认这是一个新的 bug report。
+          required: true
+
+
+  - type: textarea
+    id: bug-description
+    validations:
+      required: true
+    attributes:
+      label: Bug Description / Bug 描述
+      description: |
+        Please describe the issue you encountered. It's better to include error screenshots or stack trace information.
+        请详细描述你遇到的问题，最好包含报错截图或报错栈信息。
+
+
+  - type: textarea
+    id: reproduction-steps
+    validations:
+      required: true
+    attributes:
+      label: How to Reproduce / 如何复现
+      description: |
+        Please provide steps to reproduce the issue, including ms-swift version, runtime environment, and detailed reproduction steps.
+        请提供复现问题的步骤，包括 ms-swift 的版本、运行环境、详细的复现步骤等。
+
+
+  - type: textarea
+    id: additional-information
+    attributes:
+      label: Additional Information / 补充信息
+      description: |
+        Please provide any additional information here.
+        在这里补充其他相关信息。

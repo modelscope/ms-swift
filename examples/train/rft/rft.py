@@ -54,7 +54,7 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
 
     handlers = []
     # Sample again, this time to filter with ORM & PRM
-    # Provide your PRM model or PRM name(add PRM in plugin/prm.py first)
+    # Provide your PRM model or PRM name(add PRM in swift/rewards/prm.py first)
     # You can define your custom PRM logic in the plugin
     # (like, split your steps, use the worst score/last score/avg score)
     for device in range(device_count):
@@ -69,9 +69,9 @@ def do_sample(model: str, model_type: str, dataset: List[str], iter: int):
             f'Give the final answer wrapped with \\boxed{{}}" '
             f'--load_args false '
             f'--sampler_engine no '
-            f'--orm_model math '  # math defines in plugin/orm.py
+            f'--orm_model math '  # math defines in swift/rewards/orm.py
             f'--prm_model Qwen/Qwen2.5-Math-PRM-7B '
-            f'--prm_threshold {min(0.7 + 0.1*iter, 0.9)} '
+            f'--prm_threshold {min(0.7 + 0.1 * iter, 0.9)} '
             f'--max_new_tokens 768 '
             f'--override_exist_file true '  # no not override the existing sample files
             f'--num_sampling_batch_size 1 '
@@ -114,7 +114,7 @@ def do_train(model: str, model_type: str, datasets: List[str], iter, cmd='sft'):
                  f'--max_length 2048 '
                  f'--num_train_epochs 1 '
                  f'--load_args false '
-                 f'--train_type full '
+                 f'--tuner_type full '
                  f'{extra_args} '
                  f'--eval_strategy no '
                  f'--split_dataset_ratio 0 '
@@ -205,7 +205,7 @@ def main():
         ts = time.time()
         datasets = do_sample(model, model_type, ['tastelikefeet/competition_math'], i)
         # add custom data filter here, for example: length or diversity control
-        print(f'do sample cost: {(time.time()-ts) / 60:.1f} minutes.', flush=True)
+        print(f'do sample cost: {(time.time() - ts) / 60:.1f} minutes.', flush=True)
         ts = time.time()
         # if want to train the original dataset with datasets, add the original dataset here
         # if want to train the original model everytime, change to first_model

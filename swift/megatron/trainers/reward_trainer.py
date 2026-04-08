@@ -1,8 +1,6 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
-from functools import partial
-
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
-from megatron.training import get_args, get_timers
+from functools import partial
 from torch import nn
 
 from swift.utils import get_logger
@@ -15,15 +13,13 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        assert args.padding_free, 'Currently `rlhf_type="rm"` only supports padding_free.'
         assert args.context_parallel_size == 1, 'Currently `rlhf_type="rm"` does not support context parallelism.'
 
     def loss_func(self, output_tensor, *, data):
         packed_seq_params = data.get('packed_seq_params')
         margin = data.pop('margin', None)
-        num_samples = packed_seq_params.num_samples
-        last_token = packed_seq_params.cu_seqlens_q[1:num_samples * 2 + 1] - 1
-        rewards = output_tensor[0, last_token]
+        num_samples = output_tensor.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
+        rewards = self.get_last_tokens(output_tensor, packed_seq_params, data.get('attention_mask'), 2 * num_samples)
         rewards_chosen, rewards_rejected = torch.split(rewards, num_samples, dim=0)
         if margin is not None:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - margin).mean()
@@ -47,15 +43,9 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        timers = get_timers()
-
         # Get the batch.
         vp_stage = model.module.module.vp_stage
-        timers('batch-generator', log_level=2).start()
-        with self.stimer(bdata=True):
-            data = self.get_batch(data_iterator, vp_stage)
-        timers('batch-generator').stop()
+        data = self.get_batch(data_iterator, vp_stage)
         data.pop('loss_scale', None)
-        with self.stimer:
-            output_tensor = model(**data)
+        output_tensor = model(**data)
         return output_tensor, partial(self.loss_func, data=data)

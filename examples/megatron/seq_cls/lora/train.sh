@@ -4,11 +4,13 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
-    --load Qwen3-30B-A3B-Instruct-2507-mcore \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
+    --save_safetensors true \
+    --merge_lora true \
     --dataset 'DAMO_NLP/jd:cls' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear all-router \
@@ -29,14 +31,14 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 2048 \
     --task_type seq_cls \
     --num_labels 2 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 4

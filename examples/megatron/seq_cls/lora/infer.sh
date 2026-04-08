@@ -2,7 +2,7 @@
 # 60GiB
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-  --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-hf \
+  --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
   --load_data_args true \
   --max_batch_size 16 \
   --attn_impl flash_attn \

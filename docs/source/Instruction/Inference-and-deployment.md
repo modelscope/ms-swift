@@ -4,7 +4,7 @@
 
 | 推理加速引擎 | OpenAI API | 多模态 |  量化模型 | 多LoRA | QLoRA | Batch推理 | 并行技术       |
 | ------------ | -------------- | ---------- | ------ | -------- | ------ | ----- | ----- |
-| pytorch      | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/llm/chat/openai_client.py) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh) |     ✅        | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) | ✅     | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/batch_ddp.sh) |DDP/device_map |
+| transformers      | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/client/llm/chat/openai_client.py) | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh) |     ✅        | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo_lora.py) | ✅     | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/batch_ddp.sh) |DDP/device_map |
 | [vllm](https://github.com/vllm-project/vllm)         | ✅          | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh) |    ✅        | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/deploy/lora/server.sh) | ❌    | ✅ |  TP/PP/DP   |
 | [sglang](https://github.com/sgl-project/sglang)    | ✅          | ❌ |      ✅        | ❌      | ❌     | ✅ | TP/PP/DP/EP |
 | [lmdeploy](https://github.com/InternLM/lmdeploy)    | ✅          | [✅](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh) |      ✅        | ❌      | ❌     | ✅ | TP/DP     |
@@ -22,7 +22,7 @@ ms-swift使用了分层式的设计思想，用户可以使用命令行界面、
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -32,7 +32,7 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --adapters swift/test_lora \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --temperature 0 \
     --max_new_tokens 2048
 ```
@@ -57,7 +57,7 @@ FPS_MAX_FRAMES=12 \
 swift infer \
     --model Qwen/Qwen2.5-VL-3B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --max_new_tokens 2048
 ```
 
@@ -94,25 +94,25 @@ The video shows a baby wearing sunglasses sitting on a bed and reading a book. T
 CUDA_VISIBLE_DEVICES=0 swift infer \
     --model Qwen/Qwen2.5-7B-Instruct \
     --stream true \
-    --infer_backend pt \
+    --infer_backend transformers \
     --val_dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --max_new_tokens 2048
 ```
 
 以上提供了全参数和LoRA流式推理的例子，以下介绍更多SWIFT中的推理技术：
 - 界面推理：你可以将`swift infer`改成`swift app`。
-- batch推理：`infer_backend=pt`可以指定`--max_batch_size`对大模型和多模态大模型进行batch推理，具体参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/batch_ddp.sh)。在进行batch推理时，你不能设置`--stream true`。
-- DDP/device_map推理：`infer_backend=pt`支持使用DDP/device_map技术进行并行推理，具体参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/mllm_device_map.sh)。
+- batch推理：`infer_backend=transformers`可以指定`--max_batch_size`对大模型和多模态大模型进行batch推理，具体参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/batch_ddp.sh)。在进行batch推理时，你不能设置`--stream true`。
+- DDP/device_map推理：`infer_backend=transformers`支持使用DDP/device_map技术进行并行推理，具体参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/mllm_device_map.sh)。
 - 推理加速：swift支持使用vllm/sglang/lmdeploy对推理、部署和评测模块进行推理加速，只需要额外指定`--infer_backend vllm/sglang/lmdeploy`即可。可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_ddp.sh)。
-- 多模态模型：我们提供了[pt](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/mllm_device_map.sh)/[vllm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh)/[lmdeploy](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh)对多模态模型进行多GPU推理的shell脚本。
+- 多模态模型：我们提供了[transformers](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/mllm_device_map.sh)/[vllm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/vllm/mllm_tp.sh)/[lmdeploy](https://github.com/modelscope/ms-swift/blob/main/examples/infer/lmdeploy/mllm_tp.sh)对多模态模型进行多GPU推理的shell脚本。
 - 量化模型：直接选择GPTQ、AWQ、BNB量化的模型，例如：`--model Qwen/Qwen2.5-7B-Instruct-GPTQ-Int4`即可。
-- 更多模型类型：我们提供了[bert](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/bert.sh)、[reward_model](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/reward_model.sh)、[prm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/pt/prm.sh)的推理脚本。
+- 更多模型类型：我们提供了[bert](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/bert.sh)、[reward_model](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/reward_model.sh)、[prm](https://github.com/modelscope/ms-swift/blob/main/examples/infer/transformers/prm.sh)的推理脚本。
 
 
 **小帖士：**
 - SWIFT会将推理结果保存起来，你可以通过`--result_path`指定保存路径。
 - 如果要输出logprobs，只需要在推理时，指定`--logprobs true`即可。SWIFT会保存。注意，设置`--stream true`将不会存储。
-- infer_backend为pt支持所有swift已支持模型的推理，而infer_backend为vllm/sglang/lmdeploy只支持部分模型，具体请参考[vllm](https://docs.vllm.ai/en/latest/models/supported_models.html)、[sglang](https://docs.sglang.ai/supported_models/generative_models.html)、[lmdeploy](https://lmdeploy.readthedocs.io/en/latest/supported_models/supported_models.html)文档。
+- infer_backend为'transformers'支持所有swift已支持模型的推理，而infer_backend为vllm/sglang/lmdeploy只支持部分模型，具体请参考[vllm](https://docs.vllm.ai/en/latest/models/supported_models.html)、[sglang](https://docs.sglang.ai/supported_models/generative_models.html)、[lmdeploy](https://lmdeploy.readthedocs.io/en/latest/supported_models/supported_models.html)文档。
 - 使用`--infer_backend vllm`出现OOM，可以通过降低`--vllm_max_model_len`，`--vllm_max_num_seqs`，选择合适的`--vllm_gpu_memory_utilization`，设置`--vllm_enforce_eager true`。或者使用tensor并行`--vllm_tensor_parallel_size`来解决。
 - 使用`--infer_backend vllm`推理多模态模型，需要传入多张图片。可以设置`--vllm_limit_mm_per_prompt`解决，例如：`--vllm_limit_mm_per_prompt '{"image": 10, "video": 5}'`。
 - 推理qwen2-vl/qwen2.5-vl出现OOM，可以通过设置`MAX_PIXELS`、`VIDEO_MAX_PIXELS`、`FPS_MAX_FRAMES`解决，可以参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/app/mllm.sh)。
@@ -129,11 +129,11 @@ CUDA_VISIBLE_DEVICES=0 swift infer \
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
-from swift.llm import PtEngine, RequestConfig, InferRequest
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 model = 'Qwen/Qwen2.5-0.5B-Instruct'
 
 # 加载推理引擎
-engine = PtEngine(model, max_batch_size=2)
+engine = TransformersEngine(model, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了2个infer_request来展示batch推理
@@ -157,11 +157,11 @@ os.environ['MAX_PIXELS'] = '1003520'
 os.environ['VIDEO_MAX_PIXELS'] = '50176'
 os.environ['FPS_MAX_FRAMES'] = '12'
 
-from swift.llm import PtEngine, RequestConfig, InferRequest
+from swift.infer_engine import TransformersEngine, RequestConfig, InferRequest
 model = 'Qwen/Qwen2.5-VL-3B-Instruct'
 
 # 加载推理引擎
-engine = PtEngine(model, max_batch_size=2)
+engine = TransformersEngine(model, max_batch_size=2)
 request_config = RequestConfig(max_tokens=512, temperature=0)
 
 # 这里使用了3个infer_request来展示batch推理
@@ -301,9 +301,7 @@ print()
 方案三：swift客户端
 
 ```python
-from swift.llm import InferRequest, InferClient, RequestConfig
-from swift.plugin import InferStats
-
+from swift import InferRequest, InferClient, RequestConfig, InferStats
 
 engine = InferClient(host='127.0.0.1', port=8000)
 print(f'models: {engine.models}')

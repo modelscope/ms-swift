@@ -5,7 +5,8 @@ PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
-    --load Qwen2.5-7B-mcore \
+    --model Qwen/Qwen2.5-7B \
+    --save_safetensors true \
     --dataset 'ZhipuAI/LongWriter-6k' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -23,11 +24,11 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/Qwen2.5-7B \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --output_dir megatron_output/Qwen2.5-7B \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 32768 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

@@ -1,1 +1,1 @@
-swift sft --config sft.yaml
+swift sft examples/train/multi-node/ray/sft.yaml

@@ -1,7 +1,5 @@
 # REINFORCE Leave-One-Out (RLOO)
 
-**版本依赖**：ms-swift>=3.10
-
 [REINFORCE Leave-One-Out (RLOO)](https://arxiv.org/abs/2402.14740) 基于经典的 REINFORCE 策略梯度方法，通过留一法（Leave-One-Out）构造无偏的优势函数基线。
 
 ## 算法原理

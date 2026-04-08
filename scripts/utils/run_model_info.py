@@ -1,6 +1,8 @@
+from itertools import chain
 from typing import Any, List
 
-from swift.llm import MODEL_MAPPING, TEMPLATE_MAPPING, ModelType, TemplateType
+from swift.model import MODEL_MAPPING, ModelType
+from swift.template import TEMPLATE_MAPPING, TemplateType
 from swift.utils import is_megatron_available
 
 
@@ -10,11 +12,15 @@ def get_url_suffix(model_id):
     return model_id
 
 
+supported_mcore_model_types = None
+
+
 def get_cache_mapping(fpath):
     with open(fpath, 'r', encoding='utf-8') as f:
         text = f.read()
     idx = text.find('| Model ID |')
-    text = text[idx:]
+    end_idx = text.find('| Dataset ID |')
+    text = text[idx:end_idx]
     text_list = text.split('\n')[2:]
     cache_mapping = {}
     for text in text_list:
@@ -28,6 +34,7 @@ def get_cache_mapping(fpath):
 
 
 def get_model_info_table():
+    global supported_mcore_model_types
     fpaths = [
         'docs/source/Instruction/Supported-models-and-datasets.md',
         'docs/source_en/Instruction/Supported-models-and-datasets.md'
@@ -49,7 +56,6 @@ def get_model_info_table():
 
     for model_type in ModelType.get_model_name_list():
         model_meta = MODEL_MAPPING[model_type]
-        template = model_meta.template
         for group in model_meta.model_groups:
             for model in group.models:
                 ms_model_id = model.ms_model_id
@@ -64,13 +70,25 @@ def get_model_info_table():
                     hf_model_id = '-'
                 tags = ', '.join(group.tags or model_meta.tags) or '-'
                 requires = ', '.join(group.requires or model_meta.requires) or '-'
+                template = group.template or model_meta.template
                 if is_megatron_available():
-                    from swift.megatron import model
-                    support_megatron = getattr(model_meta, 'support_megatron', False)
-                    for word in ['gptq', 'awq', 'bnb', 'aqlm', 'int4', 'int8', 'nf4', 'fp8']:
+                    from mcore_bridge.model import MODEL_MAPPING as MCORE_MODEL_MAPPING
+                    if supported_mcore_model_types is None:
+                        supported_mcore_model_types = set(
+                            list(chain.from_iterable([v.model_types for k, v in MCORE_MODEL_MAPPING.items()])))
+                    if model_meta.mcore_model_type is not None:
+                        support_megatron = True
+                    elif model_meta.model_type in supported_mcore_model_types:
+                        support_megatron = True
+                    else:
+                        support_megatron = False
+                    for word in ['gptq', 'awq', 'bnb', 'aqlm', 'int4', 'int8', 'nf4']:
                         if word in ms_model_id.lower():
                             support_megatron = False
                             break
+                    if support_megatron and 'fp8' in ms_model_id.lower() and not any(
+                            word in ms_model_id.lower() for word in ['qwen', 'longcat', 'intern']):
+                        support_megatron = False
                     support_megatron = '&#x2714;' if support_megatron else '&#x2718;'
                 else:
                     support_megatron = cache_mapping.get(ms_model_id, '&#x2718;')

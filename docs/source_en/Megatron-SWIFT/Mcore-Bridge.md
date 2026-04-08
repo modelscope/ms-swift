@@ -1,6 +1,6 @@
 # Mcore Bridge
 
-Megatron is renowned for its excellent training speed and rich parallelism techniques, but this also brings a relatively high barrier to entry. Therefore, mcore-bridge was created to make Megatron training as simple and easy to use as transformers. With Mcore-Bridge, users can:
+Megatron is renowned for its exceptional training speed and rich parallel techniques, but this also comes with a relatively high barrier to entry. Therefore, [mcore-bridge](https://github.com/modelscope/mcore-bridge) was created to make Megatron training as simple and user-friendly as transformers. Through Mcore-Bridge, users can:
 
 1. Directly load model weights in safetensors format and seamlessly use Megatron for efficient training. Save training weights directly in safetensors format without additional conversion.
 2. Support bidirectional conversion compatible with LoRA incremental weights.
@@ -11,9 +11,13 @@ Mcore-Bridge is compatible with various model architectures including Dense/MoE/
 
 ## Seamless Training
 
-Currently, Mcore-Bridge supports parallelism techniques including TP/PP/EP/ETP/VPP and all model architectures supported by Megatron-SWIFT. Refer to [Supported Models Documentation](../Instruction/Supported-models-and-datasets.md). The following introduces Mcore-Bridge's seamless training capabilities, covering both Dense and MoE models.
+Currently, Mcore-Bridge supports parallel techniques such as TP/PP/EP/ETP/VPP, and the supported models can be found in the [Supported Models Documentation](../Instruction/Supported-models-and-datasets.md). The following introduces Mcore-Bridge's seamless training capabilities.
 
-### Dense Models
+- When reading models with `--model/--adapters/--ref_model/--ref_adapters`, mcore-bridge is used to load safetensors format weights. With `--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`, the default mcore loading method is used.
+- `save_safetensors` determines whether weights are saved in safetensors or mcore format. When `--no_save_optim false` is set, mcore weights are always saved additionally for checkpoint resumption.
+- Tip: During GKD/GRPO training, if you encounter GPU OOM issues when updating vLLM weights, you can set `--offload_bridge true` to offload tensors to CPU to reduce GPU memory usage.
+
+### Full Parameter
 
 Below is an example of training the multimodal model Qwen3-VL:
 
@@ -27,7 +31,6 @@ FPS_MAX_FRAMES=16 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-VL-8B-Instruct \
-    --load_safetensors true \
     --save_safetensors true \
     --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#5000' \
     --load_from_cache_file true \
@@ -48,12 +51,11 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --max_epochs 1 \
-    --save megatron_output/Qwen3-VL-8B-Instruct \
-    --save_interval 200 \
-    --vit_gradient_checkpointing false \
+    --num_train_epochs 1 \
+    --output_dir megatron_output/Qwen3-VL-8B-Instruct \
+    --save_steps 200 \
     --max_length 2048 \
-    --num_workers 4 \
+    --dataloader_num_workers 4 \
     --no_save_optim true \
     --no_save_rng true \
     --dataset_num_proc 8
@@ -73,73 +75,15 @@ swift infer \
     --stream true
 ```
 
-### MoE Models
+### LoRA
 
-Below is an example of CoT training for the text-only model Qwen3-Moe:
-
-```shell
-# 8 * 76GiB, 3s/it
-PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
-NPROC_PER_NODE=8 \
-megatron sft \
-    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
-    --save_safetensors true \
-    --dataset 'swift/Chinese-Qwen3-235B-Thinking-2507-Distill-data-110k-SFT#20000' \
-    --load_from_cache_file true \
-    --split_dataset_ratio 0.01 \
-    --moe_permute_fusion true \
-    --pipeline_model_parallel_size 2 \
-    --decoder_first_pipeline_num_layers 25 \
-    --tensor_model_parallel_size 4 \
-    --expert_model_parallel_size 4 \
-    --moe_grouped_gemm true \
-    --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 1e-6 \
-    --micro_batch_size 1 \
-    --global_batch_size 4 \
-    --recompute_granularity full \
-    --recompute_method uniform \
-    --recompute_num_layers 1 \
-    --max_epochs 1 \
-    --finetune true \
-    --cross_entropy_loss_fusion true \
-    --lr 1e-5 \
-    --lr_warmup_fraction 0.05 \
-    --min_lr 1e-6 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
-    --eval_interval 500 \
-    --save_interval 500 \
-    --max_length 8192 \
-    --packing true \
-    --num_workers 8 \
-    --dataset_num_proc 8 \
-    --no_save_optim true \
-    --no_save_rng true \
-    --sequence_parallel true \
-    --moe_expert_capacity_factor 2 \
-    --attention_backend flash
-```
-
-Perform inference on the trained weights:
-
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift infer \
-    --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
-    --stream true \
-    --max_new_tokens 1024
-```
-
-## LoRA Export
-
-In addition to supporting full parameter import/export, Mcore-Bridge also supports separate import/export of LoRA incremental models.
+In addition to full-parameter training, Mcore-Bridge also supports LoRA training.
 
 Below is an example of self-cognition training using LoRA for the text-only model Qwen3-Moe:
 
 - If you want to export merged weights instead of LoRA delta weights, please set `--merge_lora true`. Setting `--merge_lora true` has better compatibility and supports all model series.
-- Note: Since the model structures of transformers and Megatron are not necessarily identical (for example, the expert part of transformers' Qwen3-VL-Moe is not implemented as Linear, but as Parameters), some models cannot convert LoRA delta weights (however, if Qwen3-VL-Moe only sets linear_proj and linear_qkv for LoRA training, conversion is also supported). But most models support LoRA conversion, such as: Qwen3-Moe, Qwen3-Omni-Moe, GLM4.5-V, etc.
+- Note: (For transformers>5.0) Transformers 5.0 refactored the MoE model architecture. This new structure does not support MoE LoRA inference and may cause inference anomalies. **It is recommended to merge LoRA for MoE models** (vLLM is not affected; refer to vLLM's support status).
+- Note: (For transformers<5.0) Due to structural differences between transformers and Megatron model experts (e.g., the expert components in transformers' Qwen3-VL-MoE are implemented as Parameters rather than Linear layers), some models cannot convert LoRA delta weights (however, Qwen3-VL-MoE does support conversion when LoRA training targets only linear_proj and linear_qkv). Most models support LoRA conversion, such as: Qwen3-MoE, Qwen3-Omni-MoE, GLM4.5-V, etc.
 
 ```shell
 # 50GiB
@@ -148,13 +92,12 @@ NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 megatron sft \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --load_safetensors true \
     --save_safetensors true \
     --merge_lora false \
     --dataset 'swift/Chinese-Qwen3-235B-2507-Distill-data-110k-SFT#2000' \
               'swift/self-cognition#1000' \
     --load_from_cache_file true \
-    --train_type lora \
+    --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
     --target_modules all-linear \
@@ -169,17 +112,17 @@ megatron sft \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
-    --max_epochs 1 \
+    --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507 \
-    --eval_interval 200 \
-    --save_interval 200 \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --max_length 2048 \
-    --num_workers 8 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \
@@ -190,19 +133,47 @@ megatron sft \
     --model_name swift-robot
 ```
 
-Perform inference on the exported LoRA weights:
+Perform inference on the exported LoRA weights using the vLLM inference engine:
 
 ```shell
+# For specific model LoRA support in vLLM, please refer to the vLLM documentation.
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
     --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --infer_backend vllm \
+    --vllm_max_model_len 8192 \
     --stream true
 ```
 
-Tip: If you encounter GPU OOM issues during weight synchronization with vLLM, you can set `--offload_bridge true` to offload intermediate tensors to the CPU and reduce GPU memory usage.
+If you need to manually **Merge-LoRA**, you can use the `megatron export` command. Note: Please do not use the `swift export` command to merge LoRA, as the **MoE model structures** in Megatron and transformers are not necessarily consistent.
 
-## Export and Conversion Precision Testing
+```shell
+# If the adapter is in mcore format, please use `--mcore_adapter`
+# If the final format needs to be in mcore format, use `--to_mcore true`
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
+megatron export \
+    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
+    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
+    --merge_lora true \
+    --to_hf true \
+    --tensor_model_parallel_size 2 \
+    --expert_model_parallel_size 2 \
+    --pipeline_model_parallel_size 2
+```
+
+Perform inference on the merged full weights using the transformers inference engine:
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer \
+    --model megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-merged \
+    --stream true
+```
+
+## `megatron export` and Conversion Accuracy Testing
 
 In addition to supporting safetensors conversion and saving during training, Mcore-Bridge also supports the `megatron export` command for standalone weight export. `megatron export` supports conversion precision testing during weight conversion, which is very helpful for verifying accuracy when integrating new models. Typically, models already integrated into Megatron-SWIFT will not have precision misalignment issues, so you can confidently set `--test_convert_precision false`.
 - Note: For multimodal models, please focus on the `mean_diff (with loss)` field. The `mean_diff` may show a large difference because it includes image tokens, and loss is not calculated for that portion.
@@ -215,7 +186,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --save Qwen3-30B-A3B-Instruct-2507-mcore \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-mcore \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -228,8 +199,8 @@ megatron export \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
-    --load Qwen3-30B-A3B-Instruct-2507-mcore \
-    --save Qwen3-30B-A3B-Instruct-2507-hf \
+    --mcore_model Qwen3-30B-A3B-Instruct-2507-mcore \
+    --output_dir Qwen3-30B-A3B-Instruct-2507-hf \
     --to_hf true \
     --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 2 \
@@ -242,13 +213,13 @@ LoRA weights:
 ```shell
 # torch_dist -> safetensors
 # If you need to perform merge-lora and test precision alignment after merge-lora, simply set `--merge_lora true`
-# You can also change `--model safetensors-path` to `--load torch-dist-path`. These two methods are equivalent, and mcore-bridge will handle it automatically.
+# You can also change `--model safetensors-path` to `--mcore_model torch-dist-path`. These two methods are equivalent, and mcore-bridge will handle it automatically.
 CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-lora \
+    --mcore_adapter megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
     --merge_lora false \
     --to_hf true \
     --tensor_model_parallel_size 2 \
@@ -263,8 +234,8 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 megatron export \
     --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-lora \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-mcore \
+    --adapters megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-lora \
+    --output_dir megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx/checkpoint-xxx-mcore \
     --merge_lora false \
     --to_mcore true \
     --tensor_model_parallel_size 2 \
@@ -273,116 +244,6 @@ megatron export \
     --test_convert_precision true
 ```
 
-Merge-LoRA:
-```shell
-# torch_dist -> torch_dist
-CUDA_VISIBLE_DEVICES=0,1,2,3 \
-NPROC_PER_NODE=4 \
-megatron export \
-    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapter_load megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx \
-    --save megatron_output/Qwen3-30B-A3B-Instruct-2507/vx-xxx-merged \
-    --merge_lora true \
-    --to_mcore true \
-    --tensor_model_parallel_size 2 \
-    --expert_model_parallel_size 2 \
-    --pipeline_model_parallel_size 2
-```
-
-
 ## Using Code
 
-You need to create the following file (test.py), then run `CUDA_VISIBLE_DEVICES=0,1 torchrun --nproc_per_node=2 test.py`. Below is sample code for loading, exporting, and saving weights using Mcore-Bridge.
-
-```python
-import torch
-
-from swift.megatron import MegatronArguments, convert_hf_config, get_megatron_model_meta
-from swift.llm import get_model_tokenizer
-from megatron.training.initialize import initialize_megatron
-
-model_id = 'Qwen/Qwen3-4B-Instruct-2507'
-_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
-model_info = processor.model_info
-megatron_model_meta = get_megatron_model_meta(model_info.model_type)
-config_kwargs = convert_hf_config(model_info.config)
-megatron_args = MegatronArguments(
-    model=model_id,
-    tensor_model_parallel_size=2,
-    torch_dtype=torch.bfloat16,
-    **config_kwargs,
-)
-extra_args = megatron_args.parse_to_megatron()
-initialize_megatron(args_defaults=extra_args)
-mg_model = megatron_model_meta.model_provider()
-bridge = megatron_model_meta.bridge_cls()
-# Load weights
-bridge.load_weights(mg_model, model_info.model_dir)
-# Export weights
-for name, parameters in bridge.export_weights([mg_model]):
-    pass
-# Save weights
-bridge.save_weights([mg_model], 'output/Qwen3-4B-Instruct-2507-new')
-```
-
-Inference with the newly generated weights:
-
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift infer \
-    --model output/Qwen3-4B-Instruct-2507-new \
-    --model_type qwen3_nothinking \
-    --stream true
-```
-
-Loading, exporting, and saving LoRA weights follows the same pattern. Run `CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --nproc_per_node=4 test.py`
-
-```python
-import torch
-
-from swift.megatron import (
-    MegatronArguments, convert_hf_config, get_megatron_model_meta, prepare_mcore_model
-)
-from swift.llm import get_model_tokenizer
-from megatron.training.initialize import initialize_megatron
-
-model_id = 'Qwen/Qwen3-30B-A3B-Instruct-2507'
-_, processor = get_model_tokenizer(model_id, load_model=False, download_model=True)
-model_info = processor.model_info
-megatron_model_meta = get_megatron_model_meta(model_info.model_type)
-config_kwargs = convert_hf_config(model_info.config)
-megatron_args = MegatronArguments(
-    model=model_id,
-    tensor_model_parallel_size=2,
-    pipeline_model_parallel_size=2,
-    expert_model_parallel_size=2,
-    sequence_parallel=True,
-    torch_dtype=torch.bfloat16,
-    train_type='lora',
-    **config_kwargs,
-)
-extra_args = megatron_args.parse_to_megatron()
-initialize_megatron(args_defaults=extra_args)
-mg_model = megatron_model_meta.model_provider()
-# Load weights
-bridge = megatron_model_meta.bridge_cls()
-bridge.load_weights(mg_model, model_info.model_dir)
-# Prepare LoRA and load
-peft_model = prepare_mcore_model(mg_model)
-print(f'peft_model: {peft_model}')
-# bridge.load_weights(mg_model, 'adapter-path', is_peft_format=True)
-# Export weights
-for name, parameters in bridge.export_weights([mg_model], is_peft_format=True):
-    pass
-bridge.save_weights([mg_model], 'output/Qwen3-30B-A3B-Instruct-2507-lora', is_peft_format=True)
-```
-
-Inference with the newly generated weights:
-
-```shell
-CUDA_VISIBLE_DEVICES=0 \
-swift infer \
-    --model Qwen/Qwen3-30B-A3B-Instruct-2507 \
-    --adapters output/Qwen3-30B-A3B-Instruct-2507-lora \
-    --stream true
-```
+Please refer to [mcore-bridge github](https://github.com/modelscope/mcore-bridge/tree/main?tab=readme-ov-file#-quick-Start)

@@ -10,7 +10,7 @@ swift rlhf \
     --dataset 'modelscope/coco_2014_caption:validation#2000' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
-    --train_type full \
+    --tuner_type full \
     --seq_kd true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
@@ -18,6 +18,7 @@ swift rlhf \
     --per_device_eval_batch_size 4 \
     --learning_rate 1e-5 \
     --freeze_vit true \
+    --freeze_aligner true \
     --gradient_accumulation_steps 1 \
     --eval_steps 50 \
     --save_steps 50 \

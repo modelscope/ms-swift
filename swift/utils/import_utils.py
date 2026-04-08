@@ -1,4 +1,4 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 # Copyright 2023-present the HuggingFace Inc. team.
 
 import importlib.util

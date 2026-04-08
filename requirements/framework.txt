@@ -9,15 +9,13 @@ dacite
 datasets>=3.0,<4.0
 einops
 fastapi
-gradio>=3.40.0
+gradio>=3.40.0,<6.0
 importlib_metadata
-jieba
 json_repair
 matplotlib
 modelscope>=1.23
 nltk
 numpy
-omegaconf
 openai
 oss2
 pandas
@@ -34,8 +32,8 @@ sortedcontainers>=1.5.9
 tensorboard
 tiktoken
 tqdm
-transformers>=4.33,<4.58
+transformers>=4.33,<5.6.0
 transformers_stream_generator
-trl>=0.15,<0.25
+trl>=0.15,<0.30
 uvicorn
 zstandard

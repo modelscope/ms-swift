@@ -75,14 +75,14 @@ CUDA_VISIBLE_DEVICES=0 \
 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
-    --infer_backend pt \
+    --infer_backend transformers \
     --eval_limit 10 \
     --eval_dataset gsm8k
 ```
 其中:
 - model: 可指定本地模型路径或者modelscope上的模型ID
 - eval_backend: 可选 Native, OpenCompass, VLMEvalKit，默认为 Native
-- infer_backend: 可选 pt, vllm, sglang, lmdeploy，默认为 pt
+- infer_backend: 可选 transformers, vllm, sglang, lmdeploy，默认为 transformers
 - eval_limit: 每个评测集的采样数，默认为None，表示使用全部数据，可用于快速验证
 - eval_dataset: 评测数据集，可设置多个数据集，用空格分割
 
@@ -93,7 +93,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
-    --infer_backend pt \
+    --infer_backend transformers \
     --eval_limit 10 \
     --eval_dataset gsm8k \
     --eval_dataset_args '{"gsm8k": {"few_shot_num": 0, "filters": {"remove_until": "</think>"}}}' \
@@ -113,7 +113,7 @@ SWIFT支持在训练过程中使用EvalScope对当前的模型进行评测，以
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
   --model "Qwen/Qwen2.5-0.5B-Instruct" \
-  --train_type "lora" \
+  --tuner_type "lora" \
   --dataset "AI-ModelScope/alpaca-gpt4-data-zh#100" \
   --torch_dtype "bfloat16" \
   --num_train_epochs "1" \
@@ -189,7 +189,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
-    --infer_backend pt \
+    --infer_backend transformers \
     --eval_dataset general_mcq \
     --eval_dataset_args '{"general_mcq": {"local_path": "/path/to/mcq", "subset_list": ["example"]}}'
 ```
@@ -238,7 +238,7 @@ CUDA_VISIBLE_DEVICES=0 \
 swift eval \
     --model Qwen/Qwen2.5-0.5B-Instruct \
     --eval_backend Native \
-    --infer_backend pt \
+    --infer_backend transformers \
     --eval_dataset general_qa \
     --eval_dataset_args '{"general_qa": {"local_path": "/path/to/qa", "subset_list": ["example"]}}'
 ```

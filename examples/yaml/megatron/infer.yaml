@@ -1,0 +1,10 @@
+ENV:
+  PYTORCH_CUDA_ALLOC_CONF: 'expandable_segments:True'
+  MAX_PIXELS: '1003520'
+  VIDEO_MAX_PIXELS: '50176'
+  FPS_MAX_FRAMES: '12'
+
+stream: true
+enable_thinking: false
+max_new_tokens: 512
+load_data_args: true

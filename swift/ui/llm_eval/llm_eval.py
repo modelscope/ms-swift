@@ -1,25 +1,23 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
+import gradio as gr
+import json
 import os
 import re
 import sys
 import time
 from datetime import datetime
 from functools import partial
-from typing import Type
-
-import gradio as gr
-import json
-import torch
 from json import JSONDecodeError
 from transformers.utils import is_torch_cuda_available, is_torch_npu_available
+from typing import Type
 
-from swift.llm import EvalArguments
-from swift.ui.base import BaseUI
-from swift.ui.llm_eval.eval import Eval
-from swift.ui.llm_eval.model import Model
-from swift.ui.llm_eval.runtime import EvalRuntime
-from swift.ui.llm_train.llm_train import run_command_in_background_with_popen
+from swift.arguments import EvalArguments
 from swift.utils import get_device_count
+from ..base import BaseUI
+from ..llm_train import run_command_in_background_with_popen
+from .eval import Eval
+from .model import Model
+from .runtime import EvalRuntime
 
 
 class LLMEval(BaseUI):
@@ -135,7 +133,8 @@ class LLMEval(BaseUI):
         kwargs.update(more_params)
         model = kwargs.get('model')
         if model and os.path.exists(model) and os.path.exists(os.path.join(model, 'args.json')):
-            kwargs['ckpt_dir'] = kwargs.pop('model')
+            if os.path.exists(os.path.join(model, 'adapter_config.json')):
+                kwargs['adapters'] = kwargs.pop('model')
 
         eval_args = EvalArguments(
             **{

@@ -1,10 +1,10 @@
 # 22GB
-# Change: https://github.com/modelscope/ms-swift/blob/main/swift/plugin/callback.py
+# Change: https://github.com/modelscope/ms-swift/blob/main/swift/callbacks/early_stop.py
 # If you have custom implementations
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \

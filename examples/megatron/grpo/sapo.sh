@@ -12,7 +12,6 @@ megatron rlhf \
   --tensor_model_parallel_size 1 \
   --pipeline_model_parallel_size 1 \
   --dataset AI-ModelScope/clevr_cogen_a_train \
-  --load_safetensors true \
   --save_safetensors true \
   --external_plugins examples/train/grpo/plugin/plugin.py \
   --reward_funcs external_r1v_acc format \
@@ -27,23 +26,23 @@ megatron rlhf \
   --vllm_max_model_len 8192 \
   --max_length 4096 \
   --max_completion_length 4096 \
-  --train_type full \
+  --tuner_type full \
   --bf16 true \
   --importance_sampling_level token \
   --epsilon 0.2 \
   --epsilon_high 0.2 \
   --overlong_filter true \
-  --max_epochs 1 \
-  --eval_interval 1000 \
-  --save_interval 1000 \
+  --num_train_epochs 1 \
+  --eval_steps 1000 \
+  --save_steps 1000 \
   --sleep_level 2 \
   --offload_model true \
   --offload_optimizer true \
-  --log_interval 1 \
+  --logging_steps 1 \
   --recompute_granularity selective \
   --finetune \
   --lr 1e-6 \
-  --num_workers 8 \
+  --dataloader_num_workers 8 \
   --dataset_num_proc 8 \
   --no_save_optim \
   --no_save_rng \
@@ -52,5 +51,4 @@ megatron rlhf \
   --system examples/train/grpo/prompt.txt \
   --beta 0.001 \
   --padding_free true \
-  --wandb_project swift-megatron \
-  --wandb_exp_name xxx
+  --report_to wandb

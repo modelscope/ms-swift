@@ -1,7 +1,5 @@
 # GYM环境训练
 
-**注意** GYM环境训练逻辑已在 ms-swift 3.8 中进行重构，如果您的 ms-swift 版本低于该版本，请参考对应版本的文档。
-
 ## Gym接口
 
 GYM源自于[OpenAI Gym](https://github.com/openai/gym)，是一个抽象的强化学习环境接口，基于现在Model as Agent的趋势，我们在swift中定义了类似的一个接口,为Agent提供端到端的强化学习训练。
@@ -107,7 +105,7 @@ RolloutResponseChoice(
 ```
 GYM环境训练可以视作一种特殊的多轮训练，区别在于使用GYM环境训练，奖励信息通过环境直接获取。
 
-在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口。我们提供了兼容GYM环境的多轮规划器参考实现，见[内置多轮调度器实现](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)中的 GymScheduler 类
+在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口。我们提供了兼容GYM环境的多轮规划器参考实现，见[内置多轮调度器实现](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)中的 GymScheduler 类
 
 
 ```bash

@@ -1,7 +1,5 @@
 # GYM Environment Training
 
-Note: The GYM environment training logic was refactored in ms-swift 3.8. If you are using an earlier version of ms-swift, please refer to the documentation for that specific version.
-
 ## Gym Interface
 
 GYM originates from [OpenAI Gym](https://github.com/openai/gym) and is an abstract interface for reinforcement learning environments. Based on the current "Model as Agent" trend, we have defined a similar interface in swift to provide end-to-end reinforcement learning training for Agents.
@@ -111,7 +109,7 @@ RolloutResponseChoice(
 Training with a GYM environment can be considered a special form of multi-turn training, the difference being that reward signals are obtained directly from the environment.
 
 To enable this mode, add the use_gym_env argument to the rollout command, which instructs the system to use GYM as the training environment interface.
-We also provide a multi-turn planner example compatible with GYM; see the GymScheduler class in the [built-in multi-turn scheduler implementation](https://github.com/modelscope/ms-swift/blob/main/swift/plugin/multi_turn.py)
+We also provide a multi-turn planner example compatible with GYM; see the GymScheduler class in the [built-in multi-turn scheduler implementation](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 \

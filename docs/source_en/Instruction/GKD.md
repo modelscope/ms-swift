@@ -1,6 +1,6 @@
 # GKD
 
-GKD (Generalized Knowledge Distillation) training algorithm is proposed in the paper [On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes](https://arxiv.org/pdf/2306.13649). This algorithm transfers knowledge from the teacher model to the student model by combining off-policy and on-policy learning strategies.
+GKD (Generalized Knowledge Distillation) training algorithm is proposed in the paper [On-Policy Distillation of Language Models: Learning from Self-Generated Mistakes](https://arxiv.org/pdf/2306.13649). This algorithm transfers knowledge from the teacher model to the student model by combining offline and on-policy learning strategies.
 
 ## Loss Function
 
@@ -103,7 +103,7 @@ elif seq_kd:
     y = teacher.generate(x)
     source = "teacher"
 else:
-    # Mode 3: Off-Policy learning, use output sequence from dataset
+    # Mode 3: Offline learning, use output sequence from dataset
     y = y_ground_truth
     source = "dataset"
 
@@ -128,7 +128,7 @@ Set parameter `seq_kd=True`, when on-policy is not triggered, use teacher model 
 
 **Data Source**: $y \sim P_{\text{teacher}}(\cdot | x)$
 
-### Mode 3: Off-Policy Learning (other cases)
+### Mode 3: Offline Learning (other cases)
 
 **Data Source**: $y = y^* \sim \text{Dataset}$
 
@@ -139,14 +139,95 @@ Set parameter `seq_kd=True`, when on-policy is not triggered, use teacher model 
 
 We can perform GKD training by setting the following parameters:
 
+### Basic Parameters
+
 | Parameter | Type | Default | Range | Description |
 |------|------|--------|---------|------|
-| `--teacher_model` | str | Required | - | Teacher model path or model ID |
+| `--teacher_model` | str | None | - | Teacher model path or model ID<br>*Can be omitted when using `teacher_model_server` |
 | `--beta` | float | 0.5 | [0.0, 1.0] | Divergence interpolation coefficient<br>• 0.0: Forward KL <br>• 0.5: JSD (balanced)<br>• 1.0: Reverse KL |
-| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy learning trigger probability<br>• 0.0: Pure Off-Policy<br>• 0.5: Mixed strategy (**recommended**)<br>• 1.0: Pure On-Policy |
+| `--lmbda` | float | 0.5 | [0.0, 1.0] | On-Policy learning trigger probability<br>• 0.0: Pure Offline<br>• 0.5: Mixed strategy (**recommended**)<br>• 1.0: Pure On-Policy |
 | `--seq_kd` | bool | False | True/False | Whether to use teacher-generated sequences<br>• False: Use dataset when not on-policy<br>• True: Use teacher generation when not on-policy |
 | `--temperature` | float | 0.9 | > 0 | Generation sampling temperature, controls randomness |
+| `--sft_alpha` | float | 0 | >= 0 | Mix in a proportion of SFT loss; applied to non-student-generated completions |
 | `--max_completion_length` | int | 512 | > 0 | Maximum number of tokens during generation |
+
+### Top-K KL Computation
+
+By default, GKD computes KL divergence over the full vocabulary. For models with large vocabularies, you can use **Top-K** mode to reduce memory usage and computation.
+
+| Parameter | Type | Default | Description |
+|------|------|--------|------|
+| `--gkd_logits_topk` | int | None | Number of Top-K logits<br>• None: Use full vocabulary (default)<br>• Positive integer: Only use the K tokens with highest teacher probability for KL computation |
+
+**Top-K Mode Principle**:
+
+In Top-K mode, the top-K token indices are selected from the **teacher model**, and the KL divergence is computed on both models' logits at these positions. It use the teacher model's top-k indices to gather logits from both models, then renormalize over the top-k subset before computing JSD.
+
+$$
+D_{\text{JSD}(\beta)}^{\text{top-k}}(P_T, P_S) = \beta \cdot \text{KL}(\tilde{P}_T \| \tilde{M}) + (1-\beta) \cdot \text{KL}(\tilde{P}_S \| \tilde{M})
+$$
+
+Where the Top-K indices come from the teacher model: $\text{Top-K} = \text{argtop}_K(P_T)$, and $\tilde{P}_T$ and $\tilde{P}_S$ are the probability distributions **renormalized** over the Top-K subset:
+
+$$
+\tilde{P}_T(v) = \frac{P_T(v)}{\sum_{v' \in \text{Top-K}} P_T(v')}, \quad \tilde{P}_S(v) = \frac{P_S(v)}{\sum_{v' \in \text{Top-K}} P_S(v')}, \quad v \in \text{Top-K}
+$$
+
+**Usage Example**:
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --teacher_model Qwen/Qwen2.5-14B-Instruct \
+    --gkd_logits_topk 64 \
+    --dataset your_dataset \
+    ...
+```
+
+> **Note**: Top-K mode cannot be used with liger kernel (`--use_liger_kernel`).
+
+### External Teacher Model API
+
+When `gkd_logits_topk` is set, you can use an external teacher model API service to fetch logprobs, which avoids loading the teacher model in the training process.
+
+| Parameter | Type | Default | Description |
+|------|------|--------|------|
+| `--teacher_model_server` | str | None | Teacher model service URL<br>e.g., `http://localhost:8000` |
+| `--gkd_logits_topk` | int | **Required** | Must be set when using external API; corresponds to the top_logprobs returned by the API |
+
+**Supported Backends**:
+- `vllm serve` (recommended)
+
+> **Note**: Only `vllm serve` is supported as the teacher server backend. The training code sends raw token IDs via the `prompt` field and uses the `prompt_logprobs` parameter in the `/v1/completions` API to obtain input token log-probabilities. This is a vLLM-native feature.
+
+**Step 1: Deploy Teacher Model Service**
+
+```bash
+# Deploy teacher model with vllm serve
+CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-14B-Instruct \
+    --port 8000 \
+    --max-logprobs 64 \
+    --gpu-memory-utilization 0.9
+```
+
+**Step 2: Start GKD Training**
+
+```bash
+swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen2.5-7B \
+    --teacher_model_server http://localhost:8000 \
+    --gkd_logits_topk 64 \
+    --dataset your_dataset \
+    --lmbda 1.0 \
+    --beta 1.0 \
+    ...
+```
+
+> **vLLM max_logprobs Limitation**:
+> - vLLM default `max_logprobs=20`, adjustable via `--max-logprobs N` parameter
+> - `gkd_logits_topk` cannot exceed the server's `max_logprobs` setting
 
 ## Sampling Acceleration
 
@@ -159,13 +240,13 @@ Since the sampling process significantly slows down training speed, you can refe
 
 ### Solution 1: Student Model Sampling Acceleration
 
-**Requirement**: swift >= 3.10.dev
-
 Use vLLM as the inference backend to accelerate student model sampling. Supports two deployment modes, consistent with GRPO. Refer to [GRPO documentation](./GRPO/GetStarted/GRPO.md#cluster-support)
 
-> **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses PyTorch. Pre-sampling scheme is recommended.
+> **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses Transformers. Pre-sampling scheme is recommended.
 
 Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh), for related parameters, please refer to [GRPO vLLM Parameters](./Command-line-parameters.md#vllm_mode).
+
+Training script using Teacher Server reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh).
 
 
 ### Solution 2: Teacher Model Pre-sampling
@@ -212,3 +293,61 @@ We can achieve the [On-Policy Distillation](https://thinkingmachines.ai/blog/on-
 ```
 
 For a complete implementation, refer to the example script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/on_policy_distillation.sh).
+
+## OPSD (On-Policy Self-Distillation)
+
+OPSD ([On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)), is a method that requires no separate teacher model. The key idea: the same model serves as both teacher and student, where the teacher receives **privileged information** (e.g., reference solutions) to guide student learning.
+
+### Core Mechanism
+
+- **Student**: sees only the problem and reasons normally
+- **Teacher**: sees the problem + reference solution (privileged info via `teacher_prompt` column), producing a better probability distribution
+- **Training objective**: align student and teacher output distributions via JSD divergence
+
+### Two Self-Distillation Modes
+
+| Mode | Configuration | Teacher Weights | Description |
+|------|--------------|----------------|-------------|
+| **Dynamic** | No `--teacher_model` | Student's current weights | Teacher updates with training |
+| **Fixed** | `--teacher_model` = same as student | Initial base weights | Fixed teacher weight|
+
+### Data Format
+
+OPSD requires a `teacher_prompt` column in the dataset to provide privileged information for the teacher. Use `--external_plugins` to load a data preprocessing plugin that constructs this column.
+
+Example with `open-r1/OpenThoughts-114k-math`:
+
+```python
+from swift.dataset import DatasetMeta, RowPreprocessor, register_dataset
+
+class OpenThoughtsOPSDPreprocessor(RowPreprocessor):
+    def preprocess(self, row):
+        if not row.get('correct', True):
+            return None
+        problem = row.get('problem', '')
+        solution = row.get('solution', '')
+        teacher_prompt = f'{problem}\n\nReference solution:\n{solution}\n\nNow articulate your own reasoning.'
+        messages = [
+            {'role': 'system', 'content': 'Please reason step by step, and put your final answer within \\boxed{}.'},
+            {'role': 'user', 'content': problem},
+        ]
+        return {'messages': messages, 'teacher_prompt': teacher_prompt}
+
+register_dataset(DatasetMeta(
+    ms_dataset_id='open-r1/OpenThoughts-114k-math',
+    preprocess_func=OpenThoughtsOPSDPreprocessor(),
+    tags=['math', 'opsd'],
+))
+```
+
+### Parameters
+
+OPSD reuses all GKD parameters. The key difference is `--teacher_model` configuration:
+
+| Parameter | Dynamic Mode | Fixed Mode |
+|-----------|-------------|-----------|
+| `--teacher_model` | Not set | Same model as `--model` |
+
+Full scripts available [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/opsd/)
+
+Megatron available [here](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/opsd.sh)

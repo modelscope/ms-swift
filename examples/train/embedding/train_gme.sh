@@ -1,12 +1,12 @@
 nproc_per_node=8
 
-# losses: plugin/loss.py
+# losses: swift/loss
 # 8*40G
 MAX_PIXELS=1003520 \
 NPROC_PER_NODE=$nproc_per_node \
 swift sft \
     --model iic/gme-Qwen2-VL-2B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --dataset 'swift/TextCaps:emb' \
     --load_from_cache_file true \
     --split_dataset_ratio 0.01 \
@@ -23,7 +23,7 @@ swift sft \
     --output_dir output \
     --lazy_tokenize true \
     --warmup_ratio 0.05 \
-    --learning_rate 5e-6 \
+    --learning_rate 5e-5 \
     --deepspeed zero3 \
     --dataloader_num_workers 4 \
     --task_type embedding \

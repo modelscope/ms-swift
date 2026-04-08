@@ -1,6 +1,5 @@
 # GRPO
 
-**版本依赖**：ms-swift >= 3.11
 
 如果你是首次使用 GRPO，请先参考 [GRPO文档](../Instruction/GRPO/GetStarted/GRPO.md)。
 
@@ -14,7 +13,6 @@ Megatron GRPO 当前已支持以下功能：
 
 以下参数或功能将在后续版本中逐步支持：
 
-- **Entropy 相关配置**：如 `top_entropy_quantile`、`log_entropy`
 - **Reward Model / Reward Model Plugin**
 - **多轮 Rollout 调度机制**（`multi_turn_scheduler`）：实现多轮对话策略优化
 - **虚拟流水线并行**（VPP）
@@ -25,7 +23,7 @@ Megatron GRPO 当前已支持以下功能：
 
 ⚠️ 注意：以下参数在 Megatron GRPO 中不生效：
 
-- **`use_vllm`**：Megatron GRPO 暂不支持使用 PTEngine 进行 Rollout 推理。
+- **`use_vllm`**：Megatron GRPO 仅使用 vLLM 进行 Rollout 推理。
 - **`move_model_batches`**：该参数专用于 DeepSpeed ZeRO-3 优化，在 Megatron 架构下无效。
 
 与 ms-swift GRPO 相同，Megatron GRPO batch size 相关的参数均以 **completion-level** 为单位，即表示模型生成的 completion 数量，而非 prompt 数量。

@@ -1,11 +1,15 @@
+import os
+
 from swift.megatron import MegatronExportArguments, megatron_export_main
+
+os.environ['SWIFT_TEST_CONVERT_PRECISION'] = '1'
 
 
 def test_to_mcore():
     megatron_export_main(
         MegatronExportArguments(
             model='Qwen/Qwen2.5-7B-Instruct',
-            save='Qwen2.5-7B-Instruct-mcore',
+            output_dir='Qwen2.5-7B-Instruct-mcore',
             to_mcore=True,
             exist_ok=True,
             tensor_model_parallel_size=2,
@@ -15,7 +19,7 @@ def test_to_mcore():
 def test_to_hf():
     megatron_export_main(
         MegatronExportArguments(
-            load='Qwen3-30B-A3B-mcore',
+            mcore_model='Qwen3-30B-A3B-mcore',
             to_hf=True,
             exist_ok=True,
             tensor_model_parallel_size=2,
@@ -28,7 +32,7 @@ def test_peft_to_mcore():
     megatron_export_main(
         MegatronExportArguments(
             model='Qwen/Qwen3-30B-A3B',
-            adapters=['megatron_output/Qwen3-30B-A3B/vx-xxx-hf'],
+            adapters=['megatron_output/Qwen3-30B-A3B/vx-xxx/checkpoint-xxx-hf'],
             merge_lora=False,
             to_mcore=True,
             exist_ok=True,
@@ -40,8 +44,8 @@ def test_peft_to_mcore():
 def test_peft_to_hf():
     megatron_export_main(
         MegatronExportArguments(
-            load='Qwen3-30B-A3B-mcore',
-            adapter_load='megatron_output/Qwen3-30B-A3B/vx-xxx',
+            mcore_model='Qwen3-30B-A3B-mcore',
+            mcore_adapter='megatron_output/Qwen3-30B-A3B/vx-xxx/checkpoint-xxx',
             merge_lora=False,
             to_hf=True,
             exist_ok=True,

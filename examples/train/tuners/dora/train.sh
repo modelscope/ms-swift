@@ -2,7 +2,7 @@
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
     --model Qwen/Qwen2.5-7B-Instruct \
-    --train_type lora \
+    --tuner_type lora \
     --use_dora true \
     --dataset 'swift/self-cognition#1000' \
     --num_train_epochs 1 \

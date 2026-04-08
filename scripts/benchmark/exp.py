@@ -1,8 +1,7 @@
-# Copyright (c) Alibaba, Inc. and its affiliates.
+# Copyright (c) ModelScope Contributors. All rights reserved.
 import argparse
 import os
 import os.path
-
 from exp_utils import ExpManager, find_all_config
 
 from swift.utils import *

@@ -3,7 +3,6 @@
 # CUDA_VISIBLE_DEVICES=7 \
 # swift rollout \
 #   --model Qwen/Qwen2.5-3B-Instruct \
-#   --model_type qwen2_5\
 #   --max_turns 3\
 #   --multi_turn_scheduler gym_scheduler \
 #   --use_gym_env true \
@@ -14,7 +13,7 @@ NPROC_PER_NODE=6 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen2.5-3B-Instruct \
-    --train_type full \
+    --tuner_type full \
     --use_vllm true \
     --vllm_mode server \
     --vllm_server_host 127.0.0.1 \

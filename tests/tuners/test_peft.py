@@ -1,11 +1,10 @@
 import copy
 import os
+import peft
 import shutil
 import tempfile
-import unittest
-
-import peft
 import torch
+import unittest
 from modelscope import Preprocessor
 from modelscope.models.nlp.structbert import SbertConfig, SbertForSequenceClassification
 from peft import PeftModel, inject_adapter_in_model
@@ -14,7 +13,7 @@ from peft.tuners.lora import Linear
 from peft.utils import WEIGHTS_NAME
 from torch import nn
 
-from swift import AdaLoraConfig, LoraConfig, LoRAConfig, Swift, get_peft_model
+from swift.tuners import AdaLoraConfig, LoraConfig, LoRAConfig, Swift, get_peft_model
 
 
 class TestPeft(unittest.TestCase):

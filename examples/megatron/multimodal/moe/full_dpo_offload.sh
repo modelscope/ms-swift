@@ -4,10 +4,11 @@ NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron rlhf \
     --rlhf_type dpo \
-    --load InternVL3_5-30B-A3B-mcore \
+    --model OpenGVLab/InternVL3_5-30B-A3B \
+    --save_safetensors true \
     --dataset 'swift/RLAIF-V-Dataset#20000' \
     --load_from_cache_file true \
-    --train_type full \
+    --tuner_type full \
     --tensor_model_parallel_size 4 \
     --expert_tensor_parallel_size 1 \
     --pipeline_model_parallel_size 2 \
@@ -29,12 +30,12 @@ megatron rlhf \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --save megatron_output/InternVL3_5-30B-A3B \
-    --eval_interval 500 \
-    --save_interval 500 \
+    --output_dir megatron_output/InternVL3_5-30B-A3B \
+    --eval_steps 500 \
+    --save_steps 500 \
     --max_length 16384 \
-    --max_epochs 1 \
-    --num_workers 8 \
+    --num_train_epochs 1 \
+    --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
     --no_save_rng true \

@@ -1,14 +1,13 @@
 import os.path
 import shutil
 import tempfile
-import unittest
-
 import torch
+import unittest
 from modelscope import Model
 from safetensors.torch import load_file as safe_load_file
 from safetensors.torch import save_file as safe_save_file
 
-from swift import LoRAConfig, Swift
+from swift.tuners import LoRAConfig, Swift
 from swift.tuners.utils import ModulesToSaveWrapper
 
 

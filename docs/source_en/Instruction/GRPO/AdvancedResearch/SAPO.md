@@ -1,6 +1,4 @@
-# Soft Adaptive Policy Optimization
-
-**Version Requirement**: ms-swift>=3.11
+# Soft Adaptive Policy Optimization (SAPO)
 
 [Soft Adaptive Policy Optimization (SAPO)](https://arxiv.org/abs/2511.20347) addresses the issues caused by hard clipping in GRPO by proposing a temperature-controlled soft gate mechanism that smoothly attenuates off-policy updates while preserving useful learning signals.
 
@@ -35,13 +33,13 @@ The core of SAPO is using the sigmoid function to apply soft gating on the impor
 For positive advantages ($A > 0$), use positive gating:
 
 $$
-g^{+}_t = \sigma\left( \tau_{\mathrm{pos}} \cdot (r_t - 1) \right)
+g^{+}_t = \sigma\left( \tau_{\mathrm{pos}} \cdot (r_t - 1) \right) \cdot \frac{4}{\tau_{\mathrm{pos}}}
 $$
 
 For negative advantages ($A < 0$), use negative gating:
 
 $$
-g^{-}_t = \sigma\left( \tau_{\mathrm{neg}} \cdot (r_t - 1) \right)
+g^{-}_t = \sigma\left( \tau_{\mathrm{neg}} \cdot (r_t - 1) \right) \cdot \frac{4}{\tau_{\mathrm{neg}}}
 $$
 
 where:
