@@ -305,8 +305,6 @@ swift infer \
 ```
 
 Tips for training Qwen3.5 with Megatron-SWIFT:
-
-- Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh).
 - Regarding MTP training: `mcore-bridge>=1.1.0` supports multimodal MTP training (currently requires installing the [main branch](https://github.com/modelscope/mcore-bridge/pull/14)). Please install the corresponding version.
 - TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
 - CP support: "mcore-bridge>=1.1.0" supports CP training for GDN (currently requires installing the [main branch](https://github.com/modelscope/mcore-bridge/pull/16)). Additionally, the megatron-core dev branch needs to be installed.

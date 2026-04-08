@@ -66,6 +66,13 @@ class BaseMegatronTrainer(ABC):
         self.args = args
         self.template = template
         self.prepare_model()
+        # Sync template.padding_free after prepare_model(), because _check_padding_free
+        # may override args.padding_free for certain models (e.g. DSA attention).
+        if template.padding_free != args.padding_free:
+            logger.warning(
+                f'template.padding_free({template.padding_free}) != args.padding_free({args.padding_free}), '
+                f'syncing template.padding_free to {args.padding_free}.')
+            template.padding_free = args.padding_free
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
 
