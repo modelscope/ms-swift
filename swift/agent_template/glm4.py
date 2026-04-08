@@ -104,10 +104,9 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
         return functions
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
-        tool_descs = [
-            '# Tools\n\nYou may call one or more functions to assist with the user query.\n\n'
-            'You are provided with function signatures within <tools></tools> XML tags:\n<tools>'
-        ]
+        tool_descs = [('\n' if self.model_type == 'glm5_1' else '')
+                      + '# Tools\n\nYou may call one or more functions to assist with the user query.\n\n'
+                      'You are provided with function signatures within <tools></tools> XML tags:\n<tools>']
         for tool in tools:
             if self.model_type == 'glm5_1':
                 tool = self.unwrap_tool(tool)
@@ -117,7 +116,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
                          'the following XML format:\n<tool_call>{function-name}\n<arg_key>{arg-key-1}</arg_key>\n'
                          '<arg_value>{arg-value-1}</arg_value>\n<arg_key>{arg-key-2}</arg_key>\n'
                          '<arg_value>{arg-value-2}</arg_value>\n...\n</tool_call>')
-        elif self.model_type == 'glm4_7':
+        elif self.model_type in {'glm4_7', 'glm5_1'}:
             tool_desc = ('</tools>\n\nFor each function call, output the function name and arguments within '
                          'the following XML format:\n<tool_call>{function-name}<arg_key>{arg-key-1}</arg_key>'
                          '<arg_value>{arg-value-1}</arg_value><arg_key>{arg-key-2}</arg_key><arg_value>'
