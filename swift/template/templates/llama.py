@@ -49,6 +49,7 @@ class Llama3TemplateMeta(TemplateMeta):
 
 register_template(Llama3TemplateMeta(LLMTemplateType.llama3))
 
+
 class UserLMTemplate(Template):
 
     def encode(self, inputs, return_template_inputs: bool = False, return_length: bool = False):
@@ -84,7 +85,8 @@ class UserLMTemplate(Template):
                 loss_scale_list.append(0.)
 
         if system:
-            self._concat_context_list(self.template_meta.system_prefix, res_context_list, res_context_types, system=system)
+            self._concat_context_list(
+                self.template_meta.system_prefix, res_context_list, res_context_types, system=system)
             loss_scale_list.extend([0.] * (len(res_context_list) - len(loss_scale_list)))
 
         last_role = messages[-1]['role']

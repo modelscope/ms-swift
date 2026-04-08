@@ -150,8 +150,7 @@ register_model(
             ], TemplateType.llama3),
             ModelGroup([
                 Model('microsoft/UserLM-8b', 'microsoft/UserLM-8b'),
-            ],
-                       TemplateType.userlm),
+            ], TemplateType.userlm),
             # llama3.1
             ModelGroup(
                 [
