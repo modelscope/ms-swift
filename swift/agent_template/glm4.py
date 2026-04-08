@@ -109,6 +109,8 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             'You are provided with function signatures within <tools></tools> XML tags:\n<tools>'
         ]
         for tool in tools:
+            if self.model_type == 'glm5_1':
+                tool = self.unwrap_tool(tool)
             tool_descs.append(f'{json.dumps(tool, ensure_ascii=False)}')
         if self.model_type == 'glm4_5':
             tool_desc = ('</tools>\n\nFor each function call, output the function name and arguments within '
@@ -170,3 +172,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
 
 class GLM4_7AgentTemplate(GLM4_5AgentTemplate):
     model_type = 'glm4_7'
+
+
+class GLM5_1AgentTemplate(GLM4_5AgentTemplate):
+    model_type = 'glm5_1'

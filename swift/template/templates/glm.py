@@ -336,6 +336,18 @@ register_template(
         agent_template='glm4_7',
     ))
 
+register_template(
+    GLM4_5TemplateMeta(
+        LLMTemplateType.glm5_1,
+        template_cls=GLM4_5Template,
+        prompt=['<|user|>{{QUERY}}<|assistant|>'],
+        system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
+        thinking_prefix='<think>',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        agent_template='glm5_1',
+    ))
+
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
     placeholder_tokens = ['<|image|>', '<|video|>']
