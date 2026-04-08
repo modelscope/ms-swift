@@ -479,7 +479,7 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
     --model Qwen/Qwen3-4B-Instruct-2507 \
-    --quant_bits 4 --quant_method fp8 \
+    --quant_method fp8 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --output_dir Qwen3-4B-Instruct-2507-FP8
 ```
