@@ -123,7 +123,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
                          '<arg_value>{arg-value-1}</arg_value><arg_key>{arg-key-2}</arg_key><arg_value>'
                          '{arg-value-2}</arg_value>...</tool_call>')
         else:
-            raise ValueError("model_type must be one of 'glm4_5', 'glm4_7', or 'glm_5_1'.")
+            raise ValueError("model_type must be one of 'glm4_5', 'glm4_7', or 'glm5_1'.")
         tool_descs.append(tool_desc)
         tool_descs = '\n'.join(tool_descs)
         if system is not None and system.strip():
