@@ -165,7 +165,7 @@ class GLM4_5AgentTemplate(BaseAgentTemplate):
             tool_calls.append('</tool_call>')
         if self.model_type == 'glm4_5':
             sep = '\n'
-        elif self.model_type == 'glm4_7':
+        elif self.model_type in {'glm4_7', 'glm5_1'}:
             sep = ''
         return sep.join(tool_calls) + '<|observation|>'
 
