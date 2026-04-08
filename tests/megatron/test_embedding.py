@@ -19,7 +19,7 @@ def test_embedding():
             recompute_method='uniform',
             recompute_num_layers=1,
             loss_type='infonce',
-            attn_impl='flash_attn',
+            vit_attn_impl='flash_attn',
             max_length=2048,
             eval_iters=5,
             save_steps=5,

@@ -54,6 +54,7 @@ class LLMTemplateType:
     glm4_z1_rumination = 'glm4_z1_rumination'
     glm4_5 = 'glm4_5'
     glm4_7 = 'glm4_7'
+    glm5_1 = 'glm5_1'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
@@ -245,6 +246,7 @@ class MLLMTemplateType:
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
+    gemma4 = 'gemma4'
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
     mistral_2512 = 'mistral_2512'

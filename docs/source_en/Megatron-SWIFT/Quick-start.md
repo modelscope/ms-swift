@@ -21,11 +21,9 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
 
 ```shell
-pip install pybind11
-
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
-pip install --no-build-isolation transformer_engine[pytorch] --no-cache-dir
+pip install --no-build-isolation transformer-engine[pytorch] --no-cache-dir
 
 # apex
 # Note: Megatron-SWIFT can run in environments without apex by setting `--gradient_accumulation_fusion false`.
@@ -33,8 +31,13 @@ git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
+# mcore-bridge
+pip install mcore-bridge -U
+# Install from main branch
+# pip install git+https://github.com/modelscope/mcore-bridge.git
+
 # megatron-core
-pip install "megatron-core==0.15.*" -U
+pip install "megatron-core==0.16.*" -U
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
@@ -66,10 +69,11 @@ Recommended Operating Environment:
 | python       | >=3.9        | 3.11/3.12    |                    |
 | cuda         |              | cuda12      |                    |
 | torch        | >=2.0        | 2.8.0/2.10.0    |                    |
-| transformer_engine    | >=2.3       |  2.12.0  |                  |
+| transformer-engine    | >=2.3       |  2.12.0  |                  |
 | apex |   |  0.1 | |
-| megatron_core    |    >=0.12,<0.16    | 0.15      |                  |
-| flash_attn    |        | 2.8.3/3.0.0b1   |                  |
+| megatron-core    |    >=0.12,<0.17    | 0.16      |                  |
+| mcore-bridge    |    >=1.0.2    |      |                  |
+| flash-attn    |        | 2.8.3/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.6/5.2.0    |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |

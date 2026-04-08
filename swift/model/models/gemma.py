@@ -197,3 +197,34 @@ register_model(
         template=TemplateType.dummy,
         architectures=['Gemma3TextModel'],
     ))
+
+
+class Gemma4Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import Gemma4ForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Gemma4ForConditionalGeneration
+        return super().get_model(model_dir, *args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.gemma4,
+        [
+            ModelGroup([
+                Model('google/gemma-4-E2B', 'google/gemma-4-E2B'),
+                Model('google/gemma-4-E2B-it', 'google/gemma-4-E2B-it'),
+                Model('google/gemma-4-E4B', 'google/gemma-4-E4B'),
+                Model('google/gemma-4-E4B-it', 'google/gemma-4-E4B-it'),
+                Model('google/gemma-4-31B', 'google/gemma-4-31B'),
+                Model('google/gemma-4-31B-it', 'google/gemma-4-31B-it'),
+                Model('google/gemma-4-26B-A4B', 'google/gemma-4-26B-A4B'),
+                Model('google/gemma-4-26B-A4B-it', 'google/gemma-4-26B-A4B-it'),
+            ], ),
+        ],
+        Gemma4Loader,
+        template=TemplateType.gemma4,
+        architectures=['Gemma4ForConditionalGeneration'],
+        model_arch=ModelArch.gemma3n,
+        requires=['transformers>=4.53'],
+    ))

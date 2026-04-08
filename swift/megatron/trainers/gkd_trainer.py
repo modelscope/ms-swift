@@ -5,14 +5,15 @@ import torch.nn.functional as F
 from contextlib import contextmanager
 from enum import Enum
 from functools import partial
+from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
+from transformers import AutoConfig
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import set_random_seed
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 from swift.template import Template
 from swift.utils import get_logger, to_device
@@ -49,9 +50,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
         if self._teacher_use_disable_adapter:
             logger.info('Self-distillation mode: using disable_adapter() for fixed teacher (no extra model)')
-        if args.teacher_model:
-            self.teacher_bridge = args.megatron_model_meta.bridge_cls(args, attr_prefix='teacher_')
-            self.teacher_config = self.teacher_bridge.processor.model_info.config
         self.sft_alpha = getattr(args, 'sft_alpha', 0.0)  # Weight for SFT loss
 
         # GKD top-k logits configuration
@@ -91,15 +89,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         args = self.args
         vp_size = getattr(args, 'virtual_pipeline_model_parallel_size')
         assert vp_size is None or vp_size == 1, 'GKD currently does not support VPP.'
-        orig_model_dir = args.model_dir
-        orig_model_type = args.model_type
-        args.model_dir = args.teacher_model_dir
-        args.model_type = args.teacher_model_type
-        try:
-            self.teacher_models = get_mcore_model(args, self.teacher_config)
-        finally:
-            args.model_dir = orig_model_dir
-            args.model_type = orig_model_type
+        self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
+        self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
+        self.teacher_config = self.teacher_models[0].config
         if not args.use_cpu_initialization:
             # same as wrap_model in megatron_lm_utils.py
             for teacher_model in self.teacher_models:
@@ -107,7 +99,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         for teacher_model in self.teacher_models:
             teacher_model.requires_grad_(False)
             teacher_model.eval()
-        self.teacher_bridge.load_weights(self.teacher_models, args.teacher_model)
+        self.teacher_config.bridge.load_weights(self.teacher_models, args.teacher_model_dir)
 
         # Offload teacher models to CPU if enabled
         if self.offload_teacher_model:
@@ -324,7 +316,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 }
                 teacher_data = self._prepare_batch(teacher_batch)
                 teacher_data.pop('loss_scale', None)
-                opsd_teacher_labels = teacher_data.pop('labels', None) if opsd_batch is not None else None
+                opsd_teacher_labels = teacher_data.pop('labels', None)
+                if opsd_batch is None:
+                    opsd_teacher_labels = None
                 teacher_logits = forward_step_helper(self.args, teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
