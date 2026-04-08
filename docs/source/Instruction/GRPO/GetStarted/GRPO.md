@@ -202,7 +202,7 @@ swift rollout \
 --vllm_server_timeout <超时时间> \
 ```
 #### 权重同步加速
-设置以下参数可以进一步优化 LoRA 训练的权重同步速度。
+设置以下参数可以进一步优化 LoRA 训练的权重同步速度，仅同步 LoRA adapter 权重而非全量模型权重。
 
 ```bash
 # rollout(server mode)
@@ -217,14 +217,28 @@ swift rlhf \
     --vllm_mode colocate \
     --vllm_enable_lora true \
     ...
+
+# megatron grpo(colocate mode)
+swift megatron rlhf \
+    --rlhf_type grpo \
+    --vllm_mode colocate \
+    --vllm_enable_lora true \
+    ...
 ```
 
-注意：以下情况无法使用该优化：
+**多模态模型 ViT 层 LoRA 同步：** 如果训练时开启了 ViT 层的 LoRA（`freeze_vit false`），
+需要额外在 vLLM 侧开启 tower/connector LoRA 支持，否则 ViT 部分的 LoRA 权重将通过合并到
+base weights 的方式同步（即退化为全量同步）。
 
-- 训练多模态模型的ViT层(freeze_vit false)
-- MoE 模型
+通过 `vllm_engine_kwargs` 传入：
 
-优化实现细节请参考该[PR](https://github.com/modelscope/ms-swift/pull/5773)
+```bash
+--vllm_engine_kwargs '{"enable_tower_connector_lora": true}'
+```
+
+该功能为 vLLM 实验性特性，目前支持 Qwen2.5-VL、Qwen3-VL 等模型。
+具体支持情况请参阅 [vLLM 文档](https://docs.vllm.ai/en/latest/features/lora/)
+和 [vllm issue](https://github.com/vllm-project/vllm/issues/31479)。
 
 ## logged metrics
 - completions/mean_length：生成的 completion 的平均长度。

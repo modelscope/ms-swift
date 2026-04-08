@@ -202,7 +202,8 @@ To configure the external vLLM server during training, use the following paramet
 ```
 
 #### Weight-Sync Acceleration
-Setting the following parameters can further improve the weight synchronization speed for LoRA training:
+Setting the following parameters enables adapter-only weight synchronization for LoRA training,
+syncing only the LoRA adapter weights instead of the full model weights.
 
 ```bash
 # rollout(server mode)
@@ -217,13 +218,27 @@ swift rlhf \
     --vllm_mode colocate \
     --vllm_enable_lora true \
     ...
+
+# megatron grpo(colocate mode)
+swift megatron rlhf \
+    --rlhf_type grpo \
+    --vllm_mode colocate \
+    --vllm_enable_lora true \
+    ...
 ```
-Note: This optimization cannot be used in the following cases:
 
-- Training the ViT layers of multimodal models (freeze_vit set to false)
-- MoE models
+**Multimodal ViT LoRA Sync:** If ViT LoRA is enabled during training (`freeze_vit false`),
+tower/connector LoRA support must also be enabled on the vLLM side. 
 
-For implementation details, please refer to the [PR](https://github.com/modelscope/ms-swift/pull/5773)
+- **colocate mode**: pass via `vllm_engine_kwargs`:
+
+```bash
+--vllm_engine_kwargs '{"enable_tower_connector_lora": true}'
+```
+
+This is an experimental vLLM feature, currently supporting models such as Qwen2.5-VL and Qwen3-VL.
+For model-specific support details, see the [vLLM documentation](https://docs.vllm.ai/en/latest/features/lora/)
+and the [vLLM issue](https://github.com/vllm-project/vllm/issues/31479).
 
 ## logged metrics
 - completions/mean_length: The average length of generated completions.

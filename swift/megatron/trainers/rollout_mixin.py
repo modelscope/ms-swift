@@ -9,16 +9,20 @@ import base64
 import inspect
 import json
 import os
+import time
 import torch
 import uuid
+from collections import OrderedDict
 from contextlib import contextmanager, nullcontext
 from copy import copy
 from dacite import from_dict
+from dataclasses import asdict
 from megatron.core import mpu
 from typing import Any, Dict, List, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
-from swift.rlhf_trainers.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
+from swift.rlhf_trainers.utils import (FlattenedTensorBucket, TensorLoRARequest, aggressive_empty_cache,
+                                       check_vllm_version_ge, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
                                        set_expandable_segments)
 from swift.utils import get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, to_device
@@ -195,6 +199,8 @@ class MegatronRolloutMixin:
         self.vllm_use_async_engine = False
         self.enable_offload = False
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
+        self.rollout_enable_lora = False
+        self.base_sync_done = False
 
         if not args.use_vllm:
             return
@@ -250,6 +256,16 @@ class MegatronRolloutMixin:
                 'The enable_return_routed_experts attribute is not supported. Please upgrade vllm to 0.14.0 or higher'
             vllm_engine_kwargs['enable_return_routed_experts'] = True
 
+        enable_lora = False
+        max_loras = 1
+        max_lora_rank = args.lora_rank
+        if args.tuner_type == 'lora' and args.vllm_enable_lora:
+            self._validate_lora_sync_compatibility()
+            enable_lora = True
+            self.rollout_enable_lora = True
+            patch_vllm_load_adapter()
+            logger.info(f'Enabled vLLM LoRA adapter sync with max_lora_rank={args.lora_rank}')
+
         engine = GRPOVllmEngine(
             args.model_info.model_dir,
             torch_dtype=args.torch_dtype,
@@ -269,6 +285,9 @@ class MegatronRolloutMixin:
             mm_processor_cache_gb=args.vllm_mm_processor_cache_gb,
             template=vllm_template,
             distributed_executor_backend='external_launcher',
+            enable_lora=enable_lora,
+            max_loras=max_loras,
+            max_lora_rank=max_lora_rank,
             engine_kwargs=vllm_engine_kwargs,
             logprobs_mode=logprobs_mode)
 
@@ -279,24 +298,91 @@ class MegatronRolloutMixin:
 
     @profiling_decorator
     def _move_model_to_vllm(self):
-        """Synchronize model weights to vLLM engine."""
-        is_lora_training = self.args.tuner_type == 'lora'
+        """Synchronize model weights to vLLM engine.
 
-        try:
-            if is_lora_training:
-                self.merge_lora_adapters()
+        Decision logic (following HF GRPOTrainer / twinkle / verl patterns):
+        - Full sync: when tuner_type is 'full', or first sync (base_sync_done=False),
+          or sleep_level==2, or rollout_enable_lora is disabled.
+        - Adapter-only sync: when LoRA training with rollout_enable_lora=True and
+          base weights have already been synced.
+        """
+        args = self.args
+        tuner_type = args.tuner_type
 
-            self._export_and_load_weights()
-
-        finally:
-            if is_lora_training:
-                self.unmerge_lora_adapters()
+        if tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
+            self._move_full_model_to_vllm()
+        else:
+            self._move_adapter_to_vllm()
 
         # Reset prefix cache
         if self.vllm_mode == 'server' and self.is_main_process:
             self.vllm_client.reset_prefix_cache()
         elif self.vllm_mode == 'colocate':
             self.engine.engine.reset_prefix_cache()
+
+    def _move_full_model_to_vllm(self):
+        """Transfer full model weights to vLLM engine.
+
+        For LoRA training:
+        - When rollout_enable_lora=False: merge LoRA into base, export merged weights, then unmerge.
+        - When rollout_enable_lora=True: export base weights only (no merge needed),
+          then follow up with adapter-only sync via _move_adapter_to_vllm.
+        """
+        is_lora_training = self.args.tuner_type == 'lora'
+        should_merge = is_lora_training and not self.rollout_enable_lora
+
+        try:
+            if should_merge:
+                self.merge_lora_adapters()
+
+            self._export_and_load_weights()
+
+        finally:
+            if should_merge:
+                self.unmerge_lora_adapters()
+
+        if is_lora_training:
+            self.base_sync_done = True
+            if self.rollout_enable_lora:
+                self._move_adapter_to_vllm()
+
+    def _move_adapter_to_vllm(self):
+        """Transfer only LoRA adapter weights to vLLM engine.
+
+        Exports adapter deltas from Megatron model via bridge.export_adapter_weights()
+        and loads them into vLLM as a TensorLoRARequest (colocate) or via server API (server).
+
+        The bridge.export_adapter_weights uses is_peft_format=True, so yielded names follow
+        PEFT convention: 'base_model.model.<hf_path>.lora_A.weight' etc.
+        """
+        target_device = 'cpu' if self.args.offload_bridge else None
+
+        with profiling_context(self, 'export_adapter_weights'):
+            adapter_iterator = self.bridge.export_adapter_weights(self.unwrapped_models, target_device=target_device)
+            lora_params = OrderedDict()
+            for name, tensor in adapter_iterator:
+                lora_params[name] = tensor.detach()
+
+        peft_config = self.unwrapped_models[0].peft_config.get('default', None)
+
+        if self.vllm_mode == 'colocate':
+            lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
+            lora_request = TensorLoRARequest(
+                lora_name=f'{lora_int_id}',
+                lora_int_id=lora_int_id,
+                lora_path='dummy_lora_path',
+                peft_config=asdict(peft_config),
+                lora_tensors=lora_params,
+            )
+            self.engine.engine.add_lora(lora_request)
+        elif self.vllm_mode == 'server' and self.is_main_process:
+            bucket = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
+            metadatas = bucket.get_metadata()
+            flattened_tensor = bucket.get_flattened_tensor()
+            self.vllm_client.update_adapter_flattened_param(peft_config, metadatas, flattened_tensor)
+            del bucket, metadatas, flattened_tensor
+
+        del lora_params
 
     def _export_and_load_weights(self):
         """Export weights from Megatron and load to vLLM."""

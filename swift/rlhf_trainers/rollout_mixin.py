@@ -397,6 +397,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         """Transfer LoRA adapter weights to vLLM engine"""
         lora_params = OrderedDict()
         gather_if_zero3 = get_gather_if_zero3_context(self)
+        peft_config = self.model.peft_config.get('default', None)
 
         for i, parameter_group in enumerate(self.parameter_groups):
             if not self._is_fsdp2:
@@ -418,7 +419,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                         if k in parameter_group or k.removeprefix('base_model.model.') in parameter_group
                     }
 
-                peft_config = self.model.peft_config.get('default', None)
                 if not self._is_fsdp2:
                     self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)

@@ -97,6 +97,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_max_num_seqs: Optional[int] = None
     vllm_mm_processor_cache_gb: Optional[float] = None
     vllm_engine_kwargs: Optional[Dict[str, Any]] = None
+    vllm_enable_lora: bool = False
 
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
