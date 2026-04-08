@@ -11,6 +11,7 @@ SWIFT supports quantization exports for AWQ, GPTQ, FP8, and BNB models. AWQ and 
 | Quantization Technique | Multimodal | Inference Acceleration | Continued Training |
 | ---------------------- | ---------- | ---------------------- | ------------------ |
 | GPTQ                   | ✅          | ✅                      | ✅                  |
+| FP8     | ✅      | ✅        | ✅        |
 | AWQ                    | ✅          | ✅                      | ✅                  |
 | BNB                    | ❌          | ✅                      | ✅                  |
 

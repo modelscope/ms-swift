@@ -280,6 +280,8 @@ class QuantEngine(ProcessorMixin):
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                            'Please be patient and wait...')
+            if not hasattr(self.model, 'hf_device_map'):
+                self.model.hf_device_map = {'': torch.device('cuda:0')}
             with self._patch_gptq_block(self.model, block_name_to_quantize):
                 gptq_quantizer.quantize_model(self.model, self.tokenizer)
             self.model.config.quantization_config.pop('dataset', None)
