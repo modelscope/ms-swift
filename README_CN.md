@@ -458,7 +458,7 @@ CUDA_VISIBLE_DEVICES=0 swift sample \
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift eval \
     --model Qwen/Qwen3-4B-Instruct-2507 \
-    --infer_backend vllm \
+    --infer_backend sglang \
     --eval_backend OpenCompass \
     --eval_dataset ARC_c
 ```
