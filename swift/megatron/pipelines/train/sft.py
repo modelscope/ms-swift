@@ -82,8 +82,10 @@ class MegatronSft(SwiftSft):
 
                 jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
                 append_to_jsonl(jsonl_path, self.train_msg, strict=False, write_on_rank='last')
-            if dist.is_initialized():
-                dist.destroy_process_group()
+        # Exceptions may cause the process to hang, preventing the exception from being propagated.
+        # Therefore, destroy_process_group() should not be placed inside the finally block.
+        if dist.is_initialized():
+            dist.destroy_process_group()
         return self.train_msg
 
 
