@@ -1714,7 +1714,7 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_reranker,
-        mcore_model_type='qwen3',
+        mcore_model_type='gpt',
         architectures=['Qwen3ForCausalLM'],
     ))
 
