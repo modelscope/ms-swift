@@ -14,6 +14,7 @@ from swift.utils import append_to_jsonl, get_logger, is_last_rank, plot_images
 if is_torch_npu_available():
     # Enable Megatron on Ascend NPU
     from mindspeed.megatron_adaptor import repatch
+
     from swift.model.npu_patcher import patch_mindspeed_te_cp_implementation
 else:
     repatch = None

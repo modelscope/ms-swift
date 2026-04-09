@@ -40,8 +40,8 @@ def patch_mindspeed_te_cp_implementation(megatron_args: dict[str, Any]) -> None:
     only supports kvallgather.
     """
     try:
-        from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
         import mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention as ms_te_dpa
+        from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
     except ImportError as e:
         logger.warning(f'Failed to import MindSpeed CP modules before repatch: {e}')
         return
