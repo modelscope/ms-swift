@@ -931,6 +931,73 @@ register_template(
         MLLMTemplateType.qwen3_omni, template_cls=Qwen3OmniTemplate, default_system=None, thinking_prefix='<think>\n'))
 
 
+def _qwen3_asr_get_feat_extract_output_lengths(input_lengths):
+    """Qwen3-ASR Conv2d encoder output length: chunks of 100 frames, 13 tokens each."""
+    input_lengths_leave = input_lengths % 100
+    feat_lengths = (input_lengths_leave - 1) // 2 + 1
+    output_lengths = ((feat_lengths - 1) // 2 + 1 - 1) // 2 + 1 + (input_lengths // 100) * 13
+    return output_lengths
+
+
+class Qwen3ASRTemplate(Template):
+    placeholder_tokens = ['<|audio_pad|>']
+
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        assert media_type == 'audio'
+        return ['<|audio_start|><|audio_pad|><|audio_end|>']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        if inputs.audios:
+            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=self.sampling_rate))
+            audio_inputs = self.processor.feature_extractor(
+                audios, sampling_rate=self.sampling_rate, return_attention_mask=True, return_tensors='pt')
+            audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
+            encoded.update(audio_inputs)
+
+            input_ids = encoded['input_ids']
+            labels = encoded['labels']
+            audio_token_id = self._tokenize('<|audio_pad|>')
+            idx_list = findall(input_ids, audio_token_id)
+
+            if idx_list:
+                feature_attention_mask = audio_inputs.get('feature_attention_mask')
+                if feature_attention_mask is not None:
+                    audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
+                    audio_lengths = _qwen3_asr_get_feat_extract_output_lengths(audio_feature_lengths)
+                    loss_scale = encoded.get('loss_scale')
+
+                    def _get_new_audio_tokens(i):
+                        return audio_token_id * int(audio_lengths[i])
+
+                    input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                        _get_new_audio_tokens)
+                    encoded['input_ids'] = input_ids
+                    encoded['labels'] = labels
+                    encoded['loss_scale'] = loss_scale
+
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        feature_attention_mask = [
+            b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
+        ]
+        if input_features:
+            res['input_features'] = torch.concat(input_features)
+            res['feature_attention_mask'] = torch.concat(feature_attention_mask)
+        return res
+
+
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_asr, template_cls=Qwen3ASRTemplate))
+
+
 class Ovis1_6Template(Template):
     skip_prompt = False
     use_model = True
