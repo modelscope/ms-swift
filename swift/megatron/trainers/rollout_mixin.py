@@ -21,7 +21,7 @@ from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, Roll
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, aggressive_empty_cache, check_vllm_version_ge,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
                                        set_expandable_segments)
-from swift.utils import get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, to_device
+from swift.utils import get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize, to_device
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
                     offload_megatron_optimizer)
 
@@ -338,6 +338,10 @@ class MegatronRolloutMixin:
         """Synchronize a bucket of parameters to vLLM server."""
         if not bucket_params or not self.is_main_process:
             return
+
+        # Ensure all async GPU ops (e.g. TP all-gather on NCCL stream from bridge.export_weights)
+        # are complete before .copy_() reads param data on the default stream.
+        synchronize()
 
         bucket = FlattenedTensorBucket(named_tensors=bucket_params)
         metadatas = bucket.get_metadata()
