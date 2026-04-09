@@ -319,7 +319,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 opsd_teacher_labels = teacher_data.pop('labels', None)
                 if opsd_batch is None:
                     opsd_teacher_labels = None
-                teacher_logits = forward_step_helper(self.args, teacher_model, teacher_data)
+                teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
 
