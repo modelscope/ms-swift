@@ -941,6 +941,7 @@ def _qwen3_asr_get_feat_extract_output_lengths(input_lengths):
 
 class Qwen3ASRTemplate(Template):
     placeholder_tokens = ['<|audio_pad|>']
+    support_padding_free = True
 
     def init_env_args(self) -> None:
         super().init_env_args()
@@ -956,12 +957,19 @@ class Qwen3ASRTemplate(Template):
         if inputs.audios:
             audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=self.sampling_rate))
             audio_inputs = self.processor.feature_extractor(
-                audios, sampling_rate=self.sampling_rate, return_attention_mask=True, return_tensors='pt')
+                audios,
+                sampling_rate=self.sampling_rate,
+                return_attention_mask=True,
+                return_tensors='pt',
+                padding=True,
+                truncation=False)
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
+            audio_inputs['input_features'] = to_float_dtype(audio_inputs['input_features'], self.model_info.torch_dtype)
             encoded.update(audio_inputs)
 
             input_ids = encoded['input_ids']
             labels = encoded['labels']
+            loss_scale = encoded.get('loss_scale')
             audio_token_id = self._tokenize('<|audio_pad|>')
             idx_list = findall(input_ids, audio_token_id)
 
@@ -970,7 +978,6 @@ class Qwen3ASRTemplate(Template):
                 if feature_attention_mask is not None:
                     audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
                     audio_lengths = _qwen3_asr_get_feat_extract_output_lengths(audio_feature_lengths)
-                    loss_scale = encoded.get('loss_scale')
 
                     def _get_new_audio_tokens(i):
                         return audio_token_id * int(audio_lengths[i])
@@ -983,19 +990,33 @@ class Qwen3ASRTemplate(Template):
 
         return encoded
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
         ]
         if input_features:
+            max_length = max(input_feature.shape[-1] for input_feature in input_features)
+            for i, input_feature in enumerate(input_features):
+                mask = feature_attention_mask[i]
+                input_features[i] = F.pad(input_feature, (0, max_length - input_feature.shape[-1]))
+                feature_attention_mask[i] = F.pad(mask, (0, max_length - mask.shape[-1]))
             res['input_features'] = torch.concat(input_features)
             res['feature_attention_mask'] = torch.concat(feature_attention_mask)
         return res
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen3_asr, template_cls=Qwen3ASRTemplate))
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_asr,
+        template_cls=Qwen3ASRTemplate,
+        # Even without adding a system message,
+        # the '<|im_start|>system\n<|im_end|>\n' prefix is still present.
+        # Align with the qwen3_asr template.
+        system_prefix=None,
+        default_system=None,
+        prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
 class Ovis1_6Template(Template):
