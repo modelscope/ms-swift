@@ -1487,7 +1487,7 @@ register_model(
         Qwen3ASRLoader,
         model_arch=ModelArch.qwen3_asr,
         architectures=['Qwen3ASRForConditionalGeneration'],
-        requires=['qwen-asr'],
+        requires=['qwen-asr', 'transformers==4.57.6'],
         tags=['audio'],
     ))
 
