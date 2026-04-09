@@ -941,6 +941,7 @@ def _qwen3_asr_get_feat_extract_output_lengths(input_lengths):
 
 class Qwen3ASRTemplate(Template):
     placeholder_tokens = ['<|audio_pad|>']
+    support_padding_free = True
 
     def init_env_args(self) -> None:
         super().init_env_args()
@@ -989,13 +990,18 @@ class Qwen3ASRTemplate(Template):
 
         return encoded
 
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         feature_attention_mask = [
             b['feature_attention_mask'] for b in batch if b.get('feature_attention_mask') is not None
         ]
         if input_features:
+            max_length = max(input_feature.shape[-1] for input_feature in input_features)
+            for i, input_feature in enumerate(input_features):
+                mask = feature_attention_mask[i]
+                input_features[i] = F.pad(input_feature, (0, max_length - input_feature.shape[-1]))
+                feature_attention_mask[i] = F.pad(mask, (0, max_length - mask.shape[-1]))
             res['input_features'] = torch.concat(input_features)
             res['feature_attention_mask'] = torch.concat(feature_attention_mask)
         return res

@@ -1472,7 +1472,6 @@ class Qwen3ASRLoader(ModelLoader):
         self.auto_model_cls = self.auto_model_cls or AutoModel
         model = super().get_model(model_dir, config, processor, model_kwargs)
         use_submodel_func(model, 'thinker')
-        # patch_get_input_embeddings(model.thinker.audio_tower, 'conv_out')
         return model
 
 
