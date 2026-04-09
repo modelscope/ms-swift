@@ -1464,15 +1464,14 @@ register_model(
 class Qwen3ASRLoader(ModelLoader):
 
     def get_config(self, model_dir: str):
-        import qwen_asr  # noqa: F401
+        import qwen_asr
         return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import AutoModel
         self.auto_model_cls = self.auto_model_cls or AutoModel
         model = super().get_model(model_dir, config, processor, model_kwargs)
-        base_model = model.model if 'AWQ' in model.__class__.__name__ else model
-        use_submodel_func(base_model, 'thinker')
+        use_submodel_func(model, 'thinker')
         return model
 
 
@@ -1488,7 +1487,7 @@ register_model(
         Qwen3ASRLoader,
         model_arch=ModelArch.qwen3_asr,
         architectures=['Qwen3ASRForConditionalGeneration'],
-        requires=['qwen-asr'],
+        requires=['qwen-asr', 'transformers==4.57.6'],
         tags=['audio'],
     ))
 
