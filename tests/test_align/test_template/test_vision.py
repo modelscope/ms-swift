@@ -1238,6 +1238,17 @@ def test_gemma4():
     print(response)
 
 
+def test_mineru2_5_pro():
+    engine = TransformersEngine('OpenDataLab/MinerU2.5-Pro-2604-1.2B')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    messages = [{
+        'role': 'user',
+        'content': '<image>\nText Recognition:',
+    }]
+    response = _infer_model(engine, messages=messages, images=images)
+    print(response)
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -1325,4 +1336,5 @@ if __name__ == '__main__':
     # test_step3_vl()
     # test_paddle_ocr_1_5()
     # test_glm_ocr()
-    test_gemma4()
+    # test_gemma4()
+    test_mineru2_5_pro()
