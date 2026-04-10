@@ -606,7 +606,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             # Fetch teacher logprobs from API if using external teacher service
             if self.use_teacher_api:
-                teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs)
+                raw_inputs_for_api = inputs if self.model.model_meta.is_multimodal else None
+                teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(
+                    encoded_inputs, raw_inputs=raw_inputs_for_api)
                 encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
                 encoded_inputs['_teacher_api_indices'] = teacher_indices
 
@@ -614,8 +616,14 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             loss = HFSFTTrainer.training_step(self, model, encoded_inputs, num_items_in_batch)
         return loss
 
-    def _fetch_teacher_logprobs_from_api(self, encoded_inputs: Dict[str, torch.Tensor]):
+    def _fetch_teacher_logprobs_from_api(self,
+                                         encoded_inputs: Dict[str, torch.Tensor],
+                                         raw_inputs: Optional[list] = None):
         """Fetch teacher logprobs from external API service.
+
+        Args:
+            encoded_inputs: Encoded batch with input_ids, labels, etc.
+            raw_inputs: Original raw data dicts (with messages, images, etc.) for multimodal.
 
         Returns:
             Tuple of (teacher_logprobs, teacher_indices) tensors with shapes [batch, seq_len, topk]
@@ -623,8 +631,21 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         opsd_teacher_inputs = encoded_inputs.get('_opsd_teacher_inputs')
         source = opsd_teacher_inputs if opsd_teacher_inputs is not None else encoded_inputs
         input_ids = source['input_ids']
-        teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
-            self.teacher_model_server, input_ids.tolist(), topk=self.gkd_logits_topk)
+
+        is_multimodal = self.model.model_meta.is_multimodal
+        if is_multimodal and raw_inputs is not None:
+            attn_mask = source.get('attention_mask')
+            eos_id = getattr(self.processing_class, 'eos_token_id', None)
+            teacher_logprobs, teacher_indices = fetch_teacher_logprobs_multimodal(
+                self.teacher_model_server,
+                input_ids,
+                raw_inputs,
+                topk=self.gkd_logits_topk,
+                attention_mask=attn_mask,
+                eos_token_id=eos_id)
+        else:
+            teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
+                self.teacher_model_server, input_ids.tolist(), topk=self.gkd_logits_topk)
         return teacher_logprobs.to(input_ids.device), teacher_indices.to(input_ids.device)
 
     def prediction_step(self, model, inputs, *args, **kwargs):
@@ -633,7 +654,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Fetch teacher logprobs from API if using external teacher service (for eval)
         if self.use_teacher_api:
-            teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs)
+            raw_inputs_for_api = inputs if self.model.model_meta.is_multimodal else None
+            teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(
+                encoded_inputs, raw_inputs=raw_inputs_for_api)
             encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
             encoded_inputs['_teacher_api_indices'] = teacher_indices
 
@@ -758,11 +781,17 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             mask = labels != -100
             student_logits = student_logits[mask]
             teacher_logits = teacher_logits[mask]
-            num_valid = mask.sum()
         else:
             student_logits = student_logits.view(-1, student_logits.size(-1))
             teacher_logits = teacher_logits.view(-1, teacher_logits.size(-1))
-            num_valid = student_logits.size(0)
+
+        # Exclude positions where teacher logprobs are all -inf (no valid teacher data)
+        finite_mask = (teacher_logits > float('-inf')).any(-1)
+        if not finite_mask.all():
+            student_logits = student_logits[finite_mask]
+            teacher_logits = teacher_logits[finite_mask]
+        num_valid = student_logits.size(0)
+
         student_logits.div_(temperature)
         teacher_logits.div_(temperature)
 
@@ -991,6 +1020,274 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
     if errors:
         failed = sorted(errors.keys())
         raise RuntimeError(f'Failed to fetch teacher logprobs for {len(errors)} sequence(s). '
+                           f'Failed indices: {failed}. Last errors: ' + '; '.join(f'seq {i}: {errors[i]}'
+                                                                                  for i in failed[:3]))
+
+    return logprobs_out, indices_out
+
+
+def _build_chat_payload(raw_input, model_name, topk):
+    """Build a vLLM /v1/chat/completions payload from a raw input dict.
+
+    Uses InferClient._prepare_request_data for base64 encoding, then inlines media
+    into messages for standard vLLM /v1/chat/completions compatibility.
+    """
+    from swift.infer_engine import InferClient, InferRequest, RequestConfig
+    from swift.template import StdTemplateInputs
+    from swift.template.base import Template
+
+    messages = deepcopy(raw_input.get('messages', []))
+    images = list(raw_input.get('images', []))
+    audios = list(raw_input.get('audios', []))
+    videos = list(raw_input.get('videos', []))
+
+    # Inject <image>/<audio>/<video> tags if missing (matches Template._add_default_tags)
+    tmp_inputs = StdTemplateInputs(messages=messages, images=images, audios=audios, videos=videos)
+    Template._add_default_tags(tmp_inputs)
+    messages = tmp_inputs.messages
+
+    # Use InferClient to handle base64 encoding of media data
+    infer_request = InferRequest(messages=messages, images=images, audios=audios, videos=videos)
+    request_config = RequestConfig(max_tokens=1, temperature=0)
+    payload = InferClient._prepare_request_data(model_name, infer_request, request_config)
+
+    # Convert <image>/<audio>/<video> placeholders + top-level media lists
+    # into inline content parts for standard vLLM /v1/chat/completions
+    media_queues = {}
+    for key, url_type in [('images', 'image_url'), ('audios', 'audio_url'), ('videos', 'video_url')]:
+        items = payload.pop(key, [])
+        if items:
+            media_queues[f'<{key[:-1]}>'] = (url_type, list(items))
+
+    if media_queues:
+        for msg in payload['messages']:
+            content = msg.get('content', '')
+            if not isinstance(content, str) or not any(tag in content for tag in media_queues):
+                continue
+            parts = []
+            remaining = content
+            while remaining:
+                best_tag, best_pos = None, len(remaining)
+                for tag in media_queues:
+                    pos = remaining.find(tag)
+                    if 0 <= pos < best_pos:
+                        best_tag, best_pos = tag, pos
+                if best_tag is None:
+                    parts.append({'type': 'text', 'text': remaining})
+                    break
+                if best_pos > 0:
+                    parts.append({'type': 'text', 'text': remaining[:best_pos]})
+                url_type, queue = media_queues[best_tag]
+                if queue:
+                    val = queue.pop(0)
+                    url = val if val.startswith(('http', 'data:')) else f'data:image/png;base64,{val}'
+                    parts.append({'type': url_type, url_type: {'url': url}})
+                remaining = remaining[best_pos + len(best_tag):]
+            msg['content'] = parts
+
+    payload.update({
+        'prompt_logprobs': topk,
+        'add_generation_prompt': False,
+        'return_token_ids': True,
+    })
+    return payload
+
+
+def _align_teacher_logprobs_to_student(teacher_logprobs_list,
+                                       teacher_token_ids,
+                                       student_input_ids,
+                                       topk,
+                                       eos_token_id=None):
+    """Align teacher prompt_logprobs (from vLLM chat completions) to student input_ids.
+
+    vLLM and swift may tokenize multimodal prompts differently (e.g., different numbers of
+    image placeholder tokens). This function aligns teacher logprobs to the student's sequence
+    by matching the response portion (text tokens after the prompt), which should be identical.
+
+    Strategy: Strip chat template trailing tokens (e.g., \\n after <|im_end|>) from teacher,
+    then match from the end of the sequences backwards.
+
+    Args:
+        teacher_logprobs_list: List of prompt_logprobs dicts from vLLM (length = teacher_seq_len).
+        teacher_token_ids: List of token IDs from vLLM (length = teacher_seq_len).
+        student_input_ids: List of student token IDs (length = student_seq_len).
+        topk: Number of top-k logprobs.
+        eos_token_id: EOS token ID to help strip trailing chat template tokens.
+
+    Returns:
+        Tuple of (logprobs, indices) arrays of shape [student_seq_len - 1, topk].
+    """
+    import numpy as np
+
+    student_len = len(student_input_ids)
+    out_len = student_len - 1
+
+    logprobs_out = np.full((out_len, topk), float('-inf'), dtype=np.float32)
+    indices_out = np.zeros((out_len, topk), dtype=np.int64)
+
+    # Both vLLM and swift may add trailing tokens after the final EOS (e.g., \n after <|im_end|>).
+    # Strip trailing tokens after the last EOS from both for matching, but keep original output size.
+    def _strip_after_last_eos(ids, eos_id):
+        if eos_id is None:
+            return ids
+        for i in range(len(ids) - 1, -1, -1):
+            if ids[i] == eos_id:
+                if i < len(ids) - 1:
+                    return ids[:i + 1]
+                break
+        return ids
+
+    t_ids = list(teacher_token_ids)
+    t_lps = list(teacher_logprobs_list)
+    s_ids_for_match = list(student_input_ids)
+    if eos_token_id is not None:
+        stripped_t = _strip_after_last_eos(t_ids, eos_token_id)
+        if len(stripped_t) < len(t_ids):
+            t_lps = t_lps[:len(stripped_t)]
+            t_ids = stripped_t
+        s_ids_for_match = _strip_after_last_eos(s_ids_for_match, eos_token_id)
+
+    teacher_len = len(t_ids)
+    match_student_len = len(s_ids_for_match)
+
+    # Match from the end using stripped sequences
+    match_len = 0
+    max_match = min(match_student_len, teacher_len)
+    while match_len < max_match and s_ids_for_match[-(match_len + 1)] == t_ids[-(match_len + 1)]:
+        match_len += 1
+
+    if match_len == 0:
+        logger.warning(f'No matching tokens between teacher ({teacher_len} tokens) and student ({student_len} tokens). '
+                       f'Teacher last 5: {t_ids[-5:]}, Student last 5: {s_ids_for_match[-5:]}. '
+                       'Teacher logprobs will be all -inf.')
+        return logprobs_out, indices_out
+
+    for offset in range(match_len):
+        teacher_pos = teacher_len - match_len + offset
+        # Position in stripped student
+        stripped_student_pos = match_student_len - match_len + offset
+        # Map back to original student output position (shifted by 1 for logprobs)
+        student_out_pos = stripped_student_pos - 1
+
+        if student_out_pos < 0 or student_out_pos >= out_len:
+            continue
+        if teacher_pos < 0 or teacher_pos >= len(t_lps):
+            continue
+
+        pos_lp = t_lps[teacher_pos]
+        if pos_lp is None:
+            continue
+
+        sorted_items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])[:topk]
+        for k, (tid_str, info) in enumerate(sorted_items):
+            indices_out[student_out_pos, k] = int(tid_str)
+            logprobs_out[student_out_pos, k] = info['logprob']
+
+    matched_pct = match_len / match_student_len * 100
+    if matched_pct < 50:
+        logger.warning(
+            f'Only {match_len}/{match_student_len} ({matched_pct:.1f}%) student tokens matched teacher tokens. '
+            f'Teacher has {teacher_len} tokens. Large mismatches may degrade GKD quality.')
+
+    return logprobs_out, indices_out
+
+
+def fetch_teacher_logprobs_multimodal(base_url,
+                                      student_input_ids,
+                                      raw_inputs,
+                                      topk=20,
+                                      timeout=300.0,
+                                      attention_mask=None,
+                                      eos_token_id=None):
+    """Fetch top-k prompt logprobs from a vLLM-compatible /v1/chat/completions endpoint for multimodal.
+
+    Uses /v1/chat/completions with messages (including image_url) and prompt_logprobs.
+    Aligns the returned logprobs to student's input_ids, handling potential tokenization
+    differences between vLLM and swift for multimodal prompts.
+
+    Args:
+        base_url: vLLM server URL (e.g., 'http://localhost:8000').
+        student_input_ids: Student input_ids tensor of shape [batch, seq_len].
+        raw_inputs: List of raw input dicts with messages, images, etc.
+        topk: Number of top log probabilities per token.
+        timeout: Request timeout in seconds.
+        attention_mask: Optional attention mask tensor of shape [batch, seq_len].
+        eos_token_id: EOS token ID to strip trailing chat template tokens for alignment.
+
+    Returns:
+        (logprobs, indices) tensors of shape [batch, max_seq_len - 1, topk].
+    """
+    import logging
+    from concurrent.futures import ThreadPoolExecutor
+
+    global _teacher_session
+    if _teacher_session is None:
+        _teacher_session = _build_teacher_session()
+    session = _teacher_session
+
+    _logger = logging.getLogger(__name__)
+    base_url = base_url.rstrip('/')
+
+    batch_size = student_input_ids.shape[0]
+    max_seq_len = student_input_ids.shape[1]
+    url = f'{base_url}/v1/chat/completions'
+
+    global teacher_model_server_model_name
+    if teacher_model_server_model_name is None:
+        try:
+            resp = session.get(f'{base_url}/v1/models', timeout=10)
+            model = resp.json()['data'][0]['id'] if resp.ok else 'default'
+        except Exception:
+            model = 'default'
+        teacher_model_server_model_name = model
+    else:
+        model = teacher_model_server_model_name
+
+    out_len = max_seq_len - 1
+    logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32)
+    indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long)
+    errors = {}
+
+    def _fetch_one(batch_idx):
+        try:
+            payload = _build_chat_payload(raw_inputs[batch_idx], model, topk)
+            resp = session.post(url, json=payload, timeout=timeout)
+            resp.raise_for_status()
+            result = resp.json()
+
+            teacher_logprobs_list = result.get('prompt_logprobs', [])
+            teacher_token_ids = result.get('prompt_token_ids', [])
+
+            if not teacher_logprobs_list and not teacher_token_ids:
+                choice = result.get('choices', [{}])[0]
+                teacher_logprobs_list = choice.get('prompt_logprobs', [])
+                teacher_token_ids = choice.get('prompt_token_ids', [])
+
+            student_ids = student_input_ids[batch_idx].tolist()
+            if attention_mask is not None:
+                mask = attention_mask[batch_idx].tolist()
+                student_ids = [tid for tid, m in zip(student_ids, mask) if m]
+            else:
+                while student_ids and student_ids[-1] == 0:
+                    student_ids.pop()
+
+            lp_arr, idx_arr = _align_teacher_logprobs_to_student(
+                teacher_logprobs_list, teacher_token_ids, student_ids, topk, eos_token_id=eos_token_id)
+
+            actual_out_len = len(student_ids) - 1
+            logprobs_out[batch_idx, :actual_out_len] = torch.from_numpy(lp_arr[:actual_out_len])
+            indices_out[batch_idx, :actual_out_len] = torch.from_numpy(idx_arr[:actual_out_len])
+
+        except Exception as e:
+            errors[batch_idx] = e
+            _logger.error(f'Failed to get multimodal teacher logprobs for sequence {batch_idx}: {e}')
+
+    with ThreadPoolExecutor(max_workers=min(batch_size, 8)) as pool:
+        list(pool.map(_fetch_one, range(batch_size)))
+
+    if errors:
+        failed = sorted(errors.keys())
+        raise RuntimeError(f'Failed to fetch multimodal teacher logprobs for {len(errors)} sequence(s). '
                            f'Failed indices: {failed}. Last errors: ' + '; '.join(f'seq {i}: {errors[i]}'
                                                                                   for i in failed[:3]))
 

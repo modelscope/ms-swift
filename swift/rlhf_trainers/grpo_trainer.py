@@ -1625,7 +1625,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         logits = model(**model_inputs).logits
 
         # Extract relevant portion and apply temperature
-        logits = logits[:, -(logits_to_keep + 1):-1, :] / self.temperature
+        logits = logits[:, -(logits_to_keep + 1):-1, :]
+        logits.div_(self.temperature)
         input_ids_for_logps = input_ids[:, -logits_to_keep:]
 
         is_padding_free = self.template.padding_free
@@ -1650,7 +1651,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 entropies = entropy_from_logits(logits)
             else:
                 entropies = None
-
+        del logits
         return logps, entropies
 
     @profiling_decorator

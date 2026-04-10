@@ -852,25 +852,17 @@ def prepare_fsdp(model, accelerator, evaluation_mode: bool = True):
     return model
 
 
-def patch_vllm_moe_model_weight_loader(model):
-    """
-    Patch vLLM MoE model to add weight_loader attribute to expert weights.
+_moe_model_registry_cache = None
 
-    This is a workaround for a bug in vLLM 0.8.2 where MoE weights (w13_weight, w2_weight)
-    don't have the weight_loader attribute, causing AttributeError during weight loading.
-    Code adapted from verl/verl/utils/vllm/patch.py
 
-    Args:
-        model: The vLLM model to patch.
-    """
+def _get_moe_model_registry():
+
+    global _moe_model_registry_cache
+    if _moe_model_registry_cache is not None:
+        return _moe_model_registry_cache
+
     import importlib
 
-    # Check if already patched (idempotent)
-    if getattr(model, '_swift_moe_weight_loader_patched', False):
-        return
-
-    # MoE model configurations: (module_path, class_names, mlp_attr)
-    # mlp_attr specifies the attribute name for the MoE layer in each model
     moe_model_configs = [
         ('vllm.model_executor.models.deepseek_v2', ('DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'), 'mlp'),
         ('vllm.model_executor.models.mixtral', ('MixtralForCausalLM', ), 'block_sparse_moe'),
@@ -881,7 +873,6 @@ def patch_vllm_moe_model_weight_loader(model):
         ('vllm.model_executor.models.kimi_vl', ('KimiVLForConditionalGeneration', ), 'mlp'),
     ]
 
-    # Build supported models list and MLP attribute mapping
     supported_moe_models = []
     mlp_attr_mapping = {}
 
@@ -893,10 +884,32 @@ def patch_vllm_moe_model_weight_loader(model):
                     model_class = getattr(module, class_name)
                     supported_moe_models.append(model_class)
                     mlp_attr_mapping[model_class] = mlp_attr
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError, RuntimeError):
             pass
 
-    # Early return if no MoE models are supported
+    _moe_model_registry_cache = (supported_moe_models, mlp_attr_mapping)
+    return _moe_model_registry_cache
+
+
+def patch_vllm_moe_model_weight_loader(model):
+    """
+    Patch vLLM MoE model to add weight_loader attribute to expert weights.
+
+    This is a workaround for a bug in vLLM 0.8.2 where MoE weights (w13_weight, w2_weight)
+    don't have the weight_loader attribute, causing AttributeError during weight loading.
+    Code adapted from verl/verl/utils/vllm/patch.py
+
+    Args:
+        model: The vLLM model to patch.
+    """
+    # Check if already patched (idempotent).
+    # Note: the flag can be lost when vLLM sleep/wake_up recreates the model
+    # object, so the expensive import step is cached in _get_moe_model_registry.
+    if getattr(model, '_swift_moe_weight_loader_patched', False):
+        return
+
+    supported_moe_models, mlp_attr_mapping = _get_moe_model_registry()
+
     if not supported_moe_models:
         return
 

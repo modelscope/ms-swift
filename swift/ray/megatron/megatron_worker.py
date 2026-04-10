@@ -1,20 +1,26 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """MegatronWorker — single-GPU Ray actor wrapping a Megatron model.
 
-Training:   init_model(trainable=True) → setup() → train_step(...)* → finalize()
+For training or inference only (no vLLM). Used in separated mode where
+each role runs as an independent worker process.
+
+Training:   init_model(trainable=True) → setup() → train_step(batch)* → finalize()
 Inference:  init_model(trainable=False) → forward(batch)*
+
+For co-located multi-role setups, use HybridWorker instead.
 """
 import os
 import torch
 from typing import Any, Dict, List, Optional
 
 from swift.utils import get_logger
+from .inference_mixin import create_inference_model, inference_forward, slice_batch
+from .worker_group import dispatch_collect
 
 logger = get_logger()
 
 
 class MegatronWorker:
-    """Thin RPC shell.  Not ``@ray.remote`` — decorated by WorkerGroup."""
 
     def init_model(
         self,
@@ -46,8 +52,10 @@ class MegatronWorker:
     def _init_trainable(self):
         p = self._pipeline
         args = p.args
-        self._train_dataset, self._val_dataset = p._prepare_dataset()
-        args.init_iters(self._train_dataset, self._val_dataset)
+        if args.train_iters is None:
+            logger.warning('train_iters not set in argv — using placeholder 1. '
+                           'LR scheduler may be misconfigured.')
+            args.train_iters = 1
 
         if self._trainer_cls_path:
             import importlib
@@ -58,96 +66,54 @@ class MegatronWorker:
             self.trainer = p.prepare_trainer()
 
     def _init_inference(self):
-        """Create model only — no optimizer, no dataset, no DDP."""
-        from megatron.core.transformer.module import Float16Module
+        """Create model only — no optimizer, no dataset, no DDP.
 
-        from swift.megatron.model import get_mcore_model
+        Uses ``create_inference_model`` which calls ``MegatronRLHF(argv)``
+        internally. The pipeline's ``__init__`` handles Megatron parallel
+        initialization via ``_init_megatron_args``.
+        """
+        self._infer_models = create_inference_model(self._pipeline)
+        self._args = self._pipeline.args
+        self._template = self._pipeline.template
 
-        p = self._pipeline
-        args = p.args
-        if args.train_iters is None:
-            args.train_iters = 1
-
-        models = get_mcore_model(args, p.template.config)
-        model_id = args.ref_model or args.model
-        p.bridge.load_weights(models, model_id)
-
-        for m in models:
-            m.requires_grad_(False)
-            m.eval()
-
-        if args.fp16 or args.bf16:
-            models = [Float16Module(m.config, m) for m in models]
-
-        self._infer_models = models
-        self._args = args
-        self._template = p.template
-        torch.cuda.empty_cache()
-
-    # ------------------------------------------------------------------
-    # Training API  (delegates to BaseMegatronTrainer primitives)
-    # ------------------------------------------------------------------
-
-    def setup(self) -> Dict[str, Any]:
-        """Configure DDP, build data iterators. Returns loop metadata."""
+    @dispatch_collect(dispatch='broadcast', collect='first')
+    def setup(self, iter_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Configure DDP, inject iter params from driver. Returns loop metadata."""
         trainer = self.trainer
-        self._train_data_iterator, self._val_data_iterator = (
-            trainer.setup_training(self._train_dataset, self._val_dataset))
+        if iter_params:
+            args = trainer.args
+            for k in ('train_iters', 'eval_iters', 'save_steps', 'eval_steps'):
+                if k in iter_params and iter_params[k] is not None:
+                    setattr(args, k, iter_params[k])
+        trainer.setup_model_training()
         return {
             'train_iters': trainer.args.train_iters,
             'iteration': trainer.state.iteration,
         }
 
-    def train_step(self) -> Dict[str, Any]:
-        """One training step. Algorithm-agnostic — reads from local iterator."""
-        trainer = self.trainer
-        trainer.run_train_step(self._train_data_iterator, self._val_data_iterator)
+    @dispatch_collect(dispatch='dp_split', collect='all')
+    def train_step(self, batch) -> Dict[str, Any]:
+        """One training step with a batch dispatched from the driver."""
+        data_iterator = self._batch_to_iterator(batch)
+        self.trainer.run_train_step(data_iterator, None)
+        return {'iteration': self.trainer.state.iteration}
 
-        state = trainer.state
-        result = {
-            'iteration': state.iteration,
-        }
-        return result
+    def _batch_to_iterator(self, batch):
+        """Convert dispatched batch into micro-batch iterator."""
+        from swift.utils import to_device
 
-    def get_current_batch(self) -> Optional[Dict[str, Any]]:
-        """Peek at the next micro-batches and stash them for train_step.
+        if isinstance(batch, list):
+            return iter([to_device(mb, 'cuda') for mb in batch])
 
-        Reads ``num_microbatches`` from the local data iterator, replaces
-        the iterator with a chain(stashed, original) so the subsequent
-        ``train_step`` re-reads them transparently.
+        batch = to_device(batch, 'cuda')
+        n_micro = self.trainer.args.num_microbatches
+        if n_micro <= 1:
+            return iter([batch])
 
-        Returns the merged global batch (only meaningful on collectors).
-        Not supported for Virtual-Pipeline parallelism.
-        """
-        import itertools
-        args = self.trainer.args
+        mbs = self.trainer.args.micro_batch_size
+        return iter([slice_batch(batch, i * mbs, (i + 1) * mbs) for i in range(n_micro)])
 
-        if isinstance(self._train_data_iterator, list):
-            raise NotImplementedError('get_current_batch does not support VP parallelism')
-
-        n_micro = args.num_microbatches
-        batches = []
-        for _ in range(n_micro):
-            try:
-                b = next(self._train_data_iterator)
-                batches.append(b)
-            except StopIteration:
-                break
-
-        if not batches:
-            return None
-
-        self._train_data_iterator = itertools.chain(iter(batches), self._train_data_iterator)
-
-        merged = {}
-        for k in batches[0]:
-            vals = [b[k] for b in batches if k in b]
-            if isinstance(vals[0], torch.Tensor):
-                merged[k] = torch.cat(vals, dim=0)
-            else:
-                merged[k] = vals[0]
-        return merged
-
+    @dispatch_collect(dispatch='broadcast', collect='all')
     def finalize(self) -> Dict[str, Any]:
         from swift.utils import is_last_rank
         trainer = self.trainer
@@ -160,77 +126,29 @@ class MegatronWorker:
             'best_metric': s.best_metric,
         }
 
-    # ------------------------------------------------------------------
-    # Inference API
-    # ------------------------------------------------------------------
-
-    def forward(
-        self,
-        raw_batch: Dict[str, torch.Tensor],
-    ) -> Optional[Dict[str, torch.Tensor]]:
-        """PP-aware forward for inference workers.
-
-        Returns ``{ref_logps: tensor (cpu)}`` on last PP stage, None otherwise.
-        """
-        from swift.megatron.utils import forward_step_helper
-        from swift.utils import to_device
-
-        batch = to_device(raw_batch, 'cuda', non_blocking=True)
-        batch = self._prepare_batch_inference(batch)
-
-        labels = batch.get('labels')
-        packed_seq_params = batch.get('packed_seq_params')
-        batch.pop('loss_scale', None)
-
-        model = self._infer_models[0]
-
-        with torch.no_grad():
-            output = forward_step_helper(self._args, model, batch)
-
-        if output is None or labels is None:
+    @dispatch_collect(dispatch='dp_split', collect='dp')
+    def forward(self, raw_batch):
+        """PP-aware forward for inference workers."""
+        if isinstance(raw_batch, list):
+            parts = [inference_forward(self._args, self._infer_models, mb) for mb in raw_batch]
+            if any(p is None for p in parts):
+                return None
+            return {'ref_logps': torch.cat([p['logps'] for p in parts], dim=0)}
+        result = inference_forward(self._args, self._infer_models, raw_batch)
+        if result is None:
             return None
+        return {'ref_logps': result['logps']}
 
-        num_samples = labels.shape[0] // 2
-        if packed_seq_params is not None:
-            num_samples = getattr(packed_seq_params, 'num_samples', num_samples)
+    # ------------------------------------------------------------------
+    # Weight export (for separated mode sync via driver)
+    # ------------------------------------------------------------------
 
-        logps = self._compute_logps_inference(output, labels, packed_seq_params, num_samples * 2)
-        return {'ref_logps': logps.cpu()}
-
-    def _prepare_batch_inference(self, batch):
-        from swift.megatron.trainers.utils import get_batch_on_this_cp_rank, get_batch_on_this_pp_rank
-        args = self._args
-        data = get_batch_on_this_pp_rank(args, batch)
-        if args.padding_free:
-            from swift.megatron.trainers.utils import get_packed_seq_params
-            data['packed_seq_params'] = get_packed_seq_params(data)
-        data = get_batch_on_this_cp_rank(args, data)
-        return data
-
-    def _compute_logps_inference(
-        self,
-        output_tensor,
-        labels,
-        packed_seq_params,
-        num_samples,
-    ):
-        from megatron.core import mpu
-        from torch.distributed.nn import all_reduce
-        args = self._args
-        per_token_logps = -output_tensor
-        loss_mask = labels != -100
-        per_token_logps = per_token_logps * loss_mask
-        if args.padding_free:
-            cu_seqlens = (packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size)
-            all_logps = per_token_logps.new_zeros((num_samples, ))
-            for i in range(num_samples):
-                s, e = cu_seqlens[i], cu_seqlens[i + 1]
-                all_logps[i] = per_token_logps[:, s:e].sum()
-        else:
-            all_logps = per_token_logps.sum(-1)
-        if args.context_parallel_size > 1:
-            all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
-        return all_logps
+    @dispatch_collect(dispatch='broadcast', collect='first')
+    def export_weights(self) -> List:
+        """Export model weights as a list of (name, cpu_tensor) pairs."""
+        bridge = self.trainer.bridge
+        models = self.trainer.unwrapped_models
+        return [(n, t.cpu().clone()) for n, t in bridge.export_weights(models, target_device='cpu')]
 
     # ------------------------------------------------------------------
     # Parallel info

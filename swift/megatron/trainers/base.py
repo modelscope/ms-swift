@@ -574,15 +574,7 @@ class BaseMegatronTrainer(ABC):
             val_data_iterator = iter(self.cyclic_iter(val_dataloader, use_origin_cyclic=use_origin_cyclic))
         return train_data_iterator, val_data_iterator
 
-    # ------------------------------------------------------------------
-    # Composable training primitives (used by both train() and Ray worker)
-    # ------------------------------------------------------------------
-
-    def setup_training(self, train_dataset, val_dataset):
-        """Configure DDP, build data iterators, prepare state.
-
-        Returns ``(train_data_iterator, val_data_iterator)``.
-        """
+    def setup_model_training(self):
         args = self.args
         config = self.config
 
@@ -620,6 +612,9 @@ class BaseMegatronTrainer(ABC):
         self.call_event('on_train_begin')
         self._train_metrics = {}
 
+    def setup_training(self, train_dataset, val_dataset):
+        self.setup_model_training()
+        args = self.args
         if args.virtual_pipeline_model_parallel_size is not None:
             train_data_iterator, val_data_iterator = [], []
             for _ in range(args.virtual_pipeline_model_parallel_size):

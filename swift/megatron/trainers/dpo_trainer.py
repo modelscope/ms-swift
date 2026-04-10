@@ -31,14 +31,20 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         super().__init__(args, template)
         self.dummy_dpo_trainer = DummyDPOTrainer(args)
 
-    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params):
-        ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
-        output_tensor = output_tensor[output_tensor.shape[0] // 2:]
+    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params, ref_logps=None):
         args = self.args
         num_samples = labels.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
 
-        logps = self.get_logps(output_tensor, labels, packed_seq_params, num_samples * 2)
-        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params, num_samples * 2)
+        if ref_logps is not None:
+            # Remote-ref mode: output_tensor is policy-only, ref_logps pre-computed.
+            logps = self.get_logps(output_tensor, labels, packed_seq_params, num_samples * 2)
+        else:
+            # Local-ref mode: output_tensor is [ref_output; policy_output].
+            ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
+            output_tensor = output_tensor[output_tensor.shape[0] // 2:]
+            logps = self.get_logps(output_tensor, labels, packed_seq_params, num_samples * 2)
+            ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params, num_samples * 2)
+
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
             logps[:num_samples],
             logps[num_samples:],
