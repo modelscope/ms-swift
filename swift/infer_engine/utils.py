@@ -155,6 +155,9 @@ def prepare_generation_config(model_generation_config: Optional[GenerationConfig
         else:
             kwargs[key] = new_value
 
+    if kwargs.get('top_k') is not None and kwargs['top_k'] <= 0:
+        kwargs['top_k'] = None
+
     if not model_generation_config.do_sample and request_config.temperature in {0, None}:
         kwargs['temperature'] = 0
     if kwargs['temperature'] == 0:
