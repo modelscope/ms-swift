@@ -260,7 +260,6 @@ class MegatronRolloutMixin:
         max_loras = 1
         max_lora_rank = args.lora_rank
         if args.tuner_type == 'lora' and args.vllm_enable_lora:
-            self._validate_lora_sync_compatibility()
             enable_lora = True
             self.rollout_enable_lora = True
             patch_vllm_load_adapter()
@@ -349,16 +348,14 @@ class MegatronRolloutMixin:
     def _move_adapter_to_vllm(self):
         """Transfer only LoRA adapter weights to vLLM engine.
 
-        Exports adapter deltas from Megatron model via bridge.export_adapter_weights()
-        and loads them into vLLM as a TensorLoRARequest (colocate) or via server API (server).
-
-        The bridge.export_adapter_weights uses is_peft_format=True, so yielded names follow
-        PEFT convention: 'base_model.model.<hf_path>.lora_A.weight' etc.
+        Uses bridge.export_weights(peft_format=True) to export LoRA delta weights.
+        Yielded names follow PEFT convention: 'base_model.model.<hf_path>.lora_A.weight'.
         """
         target_device = 'cpu' if self.args.offload_bridge else None
 
         with profiling_context(self, 'export_adapter_weights'):
-            adapter_iterator = self.bridge.export_adapter_weights(self.unwrapped_models, target_device=target_device)
+            adapter_iterator = self.bridge.export_weights(
+                self.unwrapped_models, target_device=target_device, peft_format=True)
             lora_params = OrderedDict()
             for name, tensor in adapter_iterator:
                 lora_params[name] = tensor.detach()
@@ -395,9 +392,53 @@ class MegatronRolloutMixin:
             llm_model = self.engine.inner_model
             # Patch MoE weight_loader if needed
             patch_vllm_moe_model_weight_loader(llm_model)
+
+            if self.rollout_enable_lora:
+                self._patch_vllm_load_weights_for_lora(llm_model)
+
             llm_model.load_weights(weight_iterator)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
+
+    def _patch_vllm_load_weights_for_lora(self, root_module):
+        """Patch vLLM submodules' load_weights to handle .base_layer key aliasing.
+
+        When LoRA is enabled, vLLM wraps target layers with LoRA modules, causing
+        named_parameters() to return keys like 'qkv_proj.base_layer.weight' instead
+        of 'qkv_proj.weight'. The model's load_weights() uses params_dict from
+        named_parameters(), so stacked param lookups fail.
+
+        This one-time patch wraps load_weights on affected submodules to add
+        plain-key aliases before parameter lookup.
+        """
+        for module in root_module.modules():
+            if module is root_module:
+                continue
+            load_weights_fn = getattr(module, 'load_weights', None)
+            if not callable(load_weights_fn):
+                continue
+            if getattr(module, '_lora_load_weights_patched', False):
+                continue
+
+            original_load_weights = load_weights_fn
+
+            def _make_patched_load_weights(orig_fn, mod):
+                def patched_load_weights(weights):
+                    orig_named_params = mod.named_parameters
+                    def _patched_named_params(*args, **kwargs):
+                        for name, param in orig_named_params(*args, **kwargs):
+                            yield name, param
+                            if '.base_layer.' in name:
+                                yield name.replace('.base_layer.', '.'), param
+                    mod.named_parameters = _patched_named_params
+                    try:
+                        return orig_fn(weights)
+                    finally:
+                        mod.named_parameters = orig_named_params
+                return patched_load_weights
+
+            module.load_weights = _make_patched_load_weights(original_load_weights, module)
+            module._lora_load_weights_patched = True
 
     def _load_weights_to_server_in_buckets(self, weight_iterator):
         """Load weights to vLLM server in buckets."""
