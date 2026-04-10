@@ -235,7 +235,7 @@ Multi-node training:
 ```bash
 export NNODES=2  # example: 2 nodes
 export NODE_RANK=0  # 0 on master, 1 on workers
-export MASTER_ADDR=127.0.0.1  # set to master node IP
+export MASTER_ADDR=<MASTER_NODE_IP>  # set to master node IP
 export MASTER_PORT=29500  # communication port
 export NCCL_SOCKET_IFNAME=ens50f1np1  # actual NIC name, check with ifconfig
 export GLOO_SOCKET_IFNAME=ens50f1np1  # same as above
