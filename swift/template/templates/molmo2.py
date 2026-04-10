@@ -107,7 +107,8 @@ class Molmo2Template(Template):
         if len(timestamps) <= 1:
             fps = 1.0
         else:
-            fps = 1.0 / float(np.median(np.diff(timestamps)))
+            median_diff = np.median(np.diff(timestamps))
+            fps = 1.0 / float(median_diff) if median_diff > 0 else 1.0
         frames_indices = np.rint(timestamps * fps).astype(int)
         return {
             'total_num_frames': int(frames.shape[0]),
@@ -132,7 +133,8 @@ class Molmo2Template(Template):
             media_inputs.update(image_inputs)
 
         if inputs.videos:
-            assert len(inputs.videos) == 1, 'Molmo2 currently only supports single-video samples.'
+            if len(inputs.videos) != 1:
+                raise ValueError('Molmo2 currently only supports single-video samples.')
             frames, timestamps, _ = self._load_video_descriptor(inputs.videos[0])
             video_metadata = [self._build_video_metadata(frames, timestamps)]
             video_inputs = self.processor.video_processor(

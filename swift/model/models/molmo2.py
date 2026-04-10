@@ -85,7 +85,9 @@ class Molmo2Loader(ModelLoader):
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
         model_cls = get_class_from_dynamic_module('modeling_molmo2.Molmo2ForConditionalGeneration', model_dir)
-        model_cls._no_split_modules = getattr(model_cls, '_no_split_modules', []) or ['MolmoSequentialBlock']
+        no_split_modules = getattr(model_cls, '_no_split_modules', []) or []
+        if 'MolmoSequentialBlock' not in no_split_modules:
+            model_cls._no_split_modules = no_split_modules + ['MolmoSequentialBlock']
         self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
         model = super().get_model(model_dir, *args, **kwargs)
         patch_output_clone(model.model.transformer.wte)
