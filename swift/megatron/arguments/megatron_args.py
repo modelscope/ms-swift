@@ -96,7 +96,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_disable_cascade_attn: bool = False
     vllm_max_num_seqs: Optional[int] = None
     vllm_mm_processor_cache_gb: Optional[float] = None
-    vllm_engine_kwargs: Optional[Dict[str, Any]] = None
+    vllm_engine_kwargs: Optional[Union[dict, str]] = None
 
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
@@ -203,6 +203,8 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type == 'grpo':
             assert self.vllm_mode is not None, 'vllm_mode is required for Megatron GRPO'
             self._init_grpo()
+            if self.cosine_max_len is None:
+                self.cosine_max_len = self.max_completion_length
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
