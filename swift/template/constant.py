@@ -244,6 +244,7 @@ class MLLMTemplateType:
     phi4_multimodal = 'phi4_multimodal'
     florence = 'florence'
     molmo = 'molmo'
+    molmo2 = 'molmo2'
     megrez_omni = 'megrez_omni'
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'

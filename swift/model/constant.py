@@ -239,6 +239,7 @@ class MLLMModelType:
     idefics3 = 'idefics3'
     paligemma = 'paligemma'
     molmo = 'molmo'
+    molmo2 = 'molmo2'
     molmoe = 'molmoe'
     pixtral = 'pixtral'
     megrez_omni = 'megrez_omni'
