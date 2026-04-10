@@ -888,7 +888,6 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             position_ids = position_ids.to(torch.int64)
         return {'position_ids': self._concat_text_position_ids(position_ids)}
 
-
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)
         video_second_per_grid = self.gather_list(batch, 'video_second_per_grid')
