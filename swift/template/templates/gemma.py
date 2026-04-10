@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
+import torch.nn.functional as F
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
@@ -240,3 +241,92 @@ class Gemma3nTemplate(Gemma3Template):
 
 
 register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma3nTemplate))
+
+
+class Gemma4Template(Template):
+    placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return ['\n\n<|image|>\n\n']
+        elif media_type == 'audio':
+            inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
+            return ['<|audio|>']
+        elif media_type == 'video':
+            return ['\n\n<|video|>\n\n']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        split_token = self._tokenize('\n')
+        media_inputs = self.processor(
+            text='\n'.join(['<|image|>'] * len(inputs.images) + ['<|video|>'] * len(inputs.videos)
+                           + ['<|audio|>'] * len(inputs.audios)),
+            audio=inputs.audios or None,
+            images=inputs.images or None,
+            videos=inputs.videos or None,
+            return_tensors='pt',
+            add_special_tokens=False,
+        )
+        splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
+        media_inputs.pop('input_ids')
+        media_inputs.pop('attention_mask')
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+
+        idx_list = []
+        for key in ['image', 'video', 'audio']:
+            idx_list += findall(input_ids, getattr(self.config, f'{key}_token_id'))
+        sorted_order = sorted(range(len(idx_list)), key=lambda i: idx_list[i])
+        idx_list = [idx_list[i] for i in sorted_order]
+        splited_tokens = [splited_tokens[i] for i in sorted_order]
+
+        def _get_new_tokens(i):
+            return splited_tokens[i]
+
+        if idx_list:
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
+        for key in [
+                'pixel_values', 'image_position_ids', 'pixel_values_videos', 'video_position_ids', 'input_features',
+                'input_features_mask'
+        ]:
+            if key in media_inputs:
+                encoded[key] = media_inputs[key]
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        return encoded
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        res['mm_token_type_ids'] = self.create_mm_token_type_ids(res['input_ids'])
+        return res
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        for key in ['image_position_ids', 'video_position_ids']:
+            value = [b[key] for b in batch if b.get(key) is not None]
+            if value:
+                res[key] = torch.concat(value)
+        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        if input_features:
+            input_features_mask = [b['input_features_mask'] for b in batch if b.get('input_features_mask') is not None]
+            max_len = max([x.shape[1] for x in input_features_mask])
+            res['input_features'] = torch.concat([F.pad(x, (0, 0, 0, max_len - x.shape[1])) for x in input_features])
+            res['input_features_mask'] = torch.concat(
+                [F.pad(x, (0, max_len - x.shape[1])) for x in input_features_mask])
+        return res
+
+
+@dataclass
+class Gemma4TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: ['<bos>'])
+    prompt: Prompt = field(default_factory=lambda: ['<|turn>user\n{{QUERY}}<turn|>\n<|turn>model\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<turn|>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<turn|>\n'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<bos><|turn>system\n{{SYSTEM}}<turn|>\n'])
+
+
+register_template(Gemma4TemplateMeta(MLLMTemplateType.gemma4, template_cls=Gemma4Template))

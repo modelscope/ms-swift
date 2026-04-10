@@ -27,7 +27,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_torch_device,
-                         is_swanlab_available, is_vllm_available, is_wandb_available, to_device)
+                         is_swanlab_available, is_vllm_available, is_wandb_available, synchronize, to_device)
 
 if is_wandb_available():
     import wandb
@@ -414,8 +414,8 @@ def memory_time_profiling_context(
     logger = get_logger()
 
     # ===== Entry phase: Record initial state =====
-    if sync_cuda and torch.cuda.is_available():
-        torch.cuda.synchronize()
+    if sync_cuda:
+        synchronize()
 
     gc_collect()
 
@@ -435,8 +435,8 @@ def memory_time_profiling_context(
     yield
 
     # Synchronize and clean up memory before measuring (important for offload operations)
-    if sync_cuda and torch.cuda.is_available():
-        torch.cuda.synchronize()
+    if sync_cuda:
+        synchronize()
     gc_collect()
 
     # ===== Exit phase: Record final state =====
@@ -593,7 +593,7 @@ def profiling_context(trainer, name: str):
         is_main_process = trainer.is_main_process
 
     if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
-        wandb.log(profiling_metrics)
+        wandb.log(profiling_metrics, commit=False)
 
     if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and is_main_process:
         swanlab.log(profiling_metrics)
@@ -852,25 +852,17 @@ def prepare_fsdp(model, accelerator, evaluation_mode: bool = True):
     return model
 
 
-def patch_vllm_moe_model_weight_loader(model):
-    """
-    Patch vLLM MoE model to add weight_loader attribute to expert weights.
+_moe_model_registry_cache = None
 
-    This is a workaround for a bug in vLLM 0.8.2 where MoE weights (w13_weight, w2_weight)
-    don't have the weight_loader attribute, causing AttributeError during weight loading.
-    Code adapted from verl/verl/utils/vllm/patch.py
 
-    Args:
-        model: The vLLM model to patch.
-    """
+def _get_moe_model_registry():
+
+    global _moe_model_registry_cache
+    if _moe_model_registry_cache is not None:
+        return _moe_model_registry_cache
+
     import importlib
 
-    # Check if already patched (idempotent)
-    if getattr(model, '_swift_moe_weight_loader_patched', False):
-        return
-
-    # MoE model configurations: (module_path, class_names, mlp_attr)
-    # mlp_attr specifies the attribute name for the MoE layer in each model
     moe_model_configs = [
         ('vllm.model_executor.models.deepseek_v2', ('DeepseekV2ForCausalLM', 'DeepseekV3ForCausalLM'), 'mlp'),
         ('vllm.model_executor.models.mixtral', ('MixtralForCausalLM', ), 'block_sparse_moe'),
@@ -881,7 +873,6 @@ def patch_vllm_moe_model_weight_loader(model):
         ('vllm.model_executor.models.kimi_vl', ('KimiVLForConditionalGeneration', ), 'mlp'),
     ]
 
-    # Build supported models list and MLP attribute mapping
     supported_moe_models = []
     mlp_attr_mapping = {}
 
@@ -893,10 +884,32 @@ def patch_vllm_moe_model_weight_loader(model):
                     model_class = getattr(module, class_name)
                     supported_moe_models.append(model_class)
                     mlp_attr_mapping[model_class] = mlp_attr
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError, RuntimeError):
             pass
 
-    # Early return if no MoE models are supported
+    _moe_model_registry_cache = (supported_moe_models, mlp_attr_mapping)
+    return _moe_model_registry_cache
+
+
+def patch_vllm_moe_model_weight_loader(model):
+    """
+    Patch vLLM MoE model to add weight_loader attribute to expert weights.
+
+    This is a workaround for a bug in vLLM 0.8.2 where MoE weights (w13_weight, w2_weight)
+    don't have the weight_loader attribute, causing AttributeError during weight loading.
+    Code adapted from verl/verl/utils/vllm/patch.py
+
+    Args:
+        model: The vLLM model to patch.
+    """
+    # Check if already patched (idempotent).
+    # Note: the flag can be lost when vLLM sleep/wake_up recreates the model
+    # object, so the expensive import step is cached in _get_moe_model_registry.
+    if getattr(model, '_swift_moe_weight_loader_patched', False):
+        return
+
+    supported_moe_models, mlp_attr_mapping = _get_moe_model_registry()
+
     if not supported_moe_models:
         return
 

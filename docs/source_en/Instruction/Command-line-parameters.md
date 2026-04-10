@@ -11,7 +11,7 @@ The command-line arguments will be introduced in four categories: basic argument
 ## Base Arguments
 
 - 🔥tuner_backend: Optional values are `'peft'` and `'unsloth'`. Default is `'peft'`.
-- 🔥tuner_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`. (**In ms-swift 3.x, the parameter name is `train_type`**)
+- 🔥tuner_type: Optional values are `'lora'`, `'full'`, `'longlora'`, `'adalora'`, `'llamapro'`, `'adapter'`, `'vera'`, `'boft'`, `'fourierft'`, `'reft'`. Default is `'lora'`.
 - 🔥adapters: A list specifying adapter IDs or paths. Default is `[]`. This parameter is typically used in inference/deployment commands, for example: `swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`. It can occasionally be used for resuming training from a checkpoint. The difference between this parameter and `resume_from_checkpoint` is that **this parameter only loads adapter weights**, without restoring the optimizer state or random seed, and does not skip already-trained portions of the dataset.
   - The difference between `--model` and `--adapters`: `--model` is followed by the directory path of the complete weights, which contains full weight information such as model/tokenizer/config, for example `model.safetensors`. `--adapters` is followed by a list of incremental adapter weight directory paths, which contain incremental weight information of the adapters, for example `adapter_model.safetensors`.
 - 🔥external_plugins: A list of external `plugin.py` files that will be additionally loaded (i.e., the modules will be imported). Defaults to `[]`. You can pass in `.py` file paths for custom model, template, and dataset registration, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh); or for custom GRPO components, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
@@ -22,7 +22,8 @@ The command-line arguments will be introduced in four categories: basic argument
   - The meaning of model-specific parameters can usually be found in the official repository or inference code of the corresponding model. MS-Swift includes these parameters to ensure alignment between trained models and official inference behavior.
 - load_args: When `--resume_from_checkpoint`, `--model`, or `--adapters` are specified, this flag controls whether to load `args.json` from the saved file. The loaded keys are defined in [base_args.py](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/base_args/base_args.py). Default is `True` for inference and export, and `False` for training. Usually, this parameter does not need to be modified.
 - load_data_args: If set to `True`, additional data-related arguments from `args.json` will be loaded. Default is `False`. **This is typically used during inference to run inference on validation sets split during training**, for example: `swift infer --adapters xxx --load_data_args true --stream true --max_new_tokens 512`.
-- use_hf: Controls whether ModelScope or HuggingFace is used for model downloading, dataset downloading, and model uploading. Default is `False` (uses ModelScope).
+- use_hf: Determines whether to use [ModelScope](https://modelscope.cn/) or [HuggingFace](https://huggingface.co/) for downloading models, downloading datasets, and pushing models. Defaults to False (uses ModelScope).
+  - Note: To access ModelScope internationally, you can use [ModelScope International](https://modelscope.ai/home) by setting the environment variable `MODELSCOPE_DOMAIN='www.modelscope.ai'`.
 - hub_token: Hub authentication token. For ModelScope, see [here](https://modelscope.cn/my/myaccesstoken). Default is `None`.
 - ddp_timeout: Default is 18000000, in seconds.
 - ddp_backend: Optional values are `"nccl"`, `"gloo"`, `"mpi"`, `"ccl"`, `"hccl"`, `"cncl"`, `"mccl"`. Default is `None`, which enables automatic selection.
@@ -160,27 +161,55 @@ The following are parameters for quantizing models upon loading. See the [quanti
 - ray_exp_name: Ray experiment name. This field will be used as the prefix for cluster and worker names, can be empty.
 - device_groups: String (jsonstring) type. When using ray, this field must be configured. For details, please refer to the [ray documentation](Ray.md).
 
-### YAML Arguments
+### YAML/JSON Support
 
-- config: You can use config instead of command-line arguments, for example:
+Here we use `swift sft` as an example. The YAML/JSON launch method also supports `swift infer/rlhf/...` as well as `megatron sft/rlhf`. Please refer to [the examples here](https://github.com/modelscope/ms-swift/tree/main/examples/yaml).
+- The YAML/JSON file will be stored in `output_dir` after training/inference.
 
 ```shell
-swift sft --config demo.yaml
+swift sft xxx.yaml
+swift sft xxx.json
 ```
 
-The content of demo.yaml consists of other command-line configurations:
+The content of xxx.yaml/xxx.json contains specific command-line configurations:
 
 ```yaml
-# Model args
-model: Qwen/Qwen2.5-7B-Instruct
-dataset: swift/self-cognition
-...
+model: "Qwen/Qwen2.5-7B-Instruct"
+dataset: "swift/self-cognition#500"
+```
 
-# Train args
-output_dir: xxx/xxx
-gradient_checkpointing: true
+```json
+{
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "dataset": "swift/self-cognition#500"
+}
+```
 
-...
+You can also use a combination of YAML and command-line arguments. For example, use YAML for parameters that are infrequently modified, and pass frequently changed parameters via command line.
+
+```shell
+CUDA_VISIBLE_DEVICES=0 \
+swift infer examples/yaml/deepspeed/infer.yaml \
+    --adapters output/vx-xxx/checkpoint-xxx
+```
+
+How to specify environment variables in YAML/JSON:
+
+```yaml
+ENV:
+  MAX_PIXELS: '1003520'
+  VIDEO_MAX_PIXELS: '50176'
+  FPS_MAX_FRAMES: '12'
+```
+
+```json
+{
+  "ENV": {
+      "MAX_PIXELS": "1003520",
+      "VIDEO_MAX_PIXELS": "50176",
+      "FPS_MAX_FRAMES": "12"
+  }
+}
 ```
 
 ## Atomic Arguments
@@ -222,6 +251,8 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 - router_aux_loss_coef: Used in MoE model training to set the weight of auxiliary loss. Default is `0.`.
 - enable_dft_loss: Whether to use [DFT](https://arxiv.org/abs/2508.05629) (Dynamic Fine-Tuning) loss during SFT training. Default is `False`.
 - enable_channel_loss: Enable channel-based loss. Default is `False`. Requires a `"channel"` field in the dataset. ms-swift groups and computes loss by this field (samples without `"channel"` are grouped into the default `None` channel). Dataset format reference: [channel loss](../Customization/Custom-dataset.md#channel-loss).  Channel loss is compatible with packing, padding_free, and loss_scale techniques.
+- safe_serialization: Whether to save the model in safetensors format. Default is True.
+- max_shard_size: Maximum size of a single storage file, default is '5GB'.
 - logging_dir: Directory for TensorBoard logs. Default is `None`, automatically set to `f'{self.output_dir}/runs'`.
 - predict_with_generate: Use generation during evaluation. Default is `False`.
 - metric_for_best_model: Default is `None`. If `predict_with_generate=False`, it's set to `'loss'`; otherwise `'rouge-l'` (in PPO training, no default; in GRPO, set to `'reward'`).
@@ -467,7 +498,7 @@ Parameter meanings can be found in the [lmdeploy documentation](https://lmdeploy
 
 Training arguments include the [base arguments](#base-arguments), [Seq2SeqTrainer arguments](#Seq2SeqTrainer-arguments), [tuner arguments](#tuner-arguments), and also include the following parts:
 
-- add_version: Add directory to output_dir with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
+- add_version: Add directory to `output_dir` with `'<version>-<timestamp>'` to prevent weight overwrite, default is True.
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. **If in an offline environment, please set to False.**
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Uses the `padding_free` approach to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures complete sequences are not split), achieving load balancing across nodes and processes during training (avoiding long texts slowing down short text training speed), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples are independent and invisible to each other. This parameter defaults to `False` and currently supports packing for CPT/SFT/DPO/KTO/GKD as well as embedding/reranker/seq_cls tasks. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation and learning rate accordingly**.
@@ -529,6 +560,8 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - center_rewards_coefficient: A coefficient used in reward model (RM) training to incentivize the model to output rewards with zero mean. See this [paper](https://huggingface.co/papers/2312.09244) for details. Recommended value: 0.01.
 - loss_scale: Overrides the template parameter. During RLHF training, the default is `'last_round'`.
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
+- top_k: Top-k parameter for rollout sampling. -1 means no top-k filtering is applied. Default is -1.
+- top_p: Top-p parameter for rollout sampling. 1.0 means no top-p filtering is applied. Default is 1.0.
 
 #### GKD Arguments
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
@@ -632,7 +665,7 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - importance_sampling_level: Controls how the importance sampling ratio is computed. Options are `token` and `sequence`. In `token` mode, the raw per-token log-probability ratios are used. In `sequence` mode, the log-probability ratios of all valid tokens in the sequence are averaged to produce a single ratio per sequence. The [GSPO paper](https://arxiv.org/abs/2507.18071) uses sequence-level importance sampling to stabilize training. The default is `token`.
 - advantage_estimator: Advantage estimator. Default is `grpo` (group-relative advantage). Options: `grpo`, [`rloo`](./GRPO/AdvancedResearch/RLOO.md), [`reinforce_plus_plus`](./GRPO/AdvancedResearch/REINFORCEPP.md).
 - kl_in_reward: Controls where the KL regularization is applied. `false`: KL is a separate loss term. `true`: KL is subtracted from the reward. The default is bound to `advantage_estimator`: `false` for `grpo`, and `true` for `rloo` and `reinforce_plus_plus`.
-- scale_rewards: Specifies the reward scaling strategy. Options: `group` (scale by intra-group std), `batch` (scale by batch-wide std), `none` (no scaling), `gdpo` (normalize each reward function separately within groups before weighted aggregation, see [GDPO paper](https://arxiv.org/abs/2601.05242)). In ms-swift < 3.10, this was a boolean where `true` corresponds to `group` and `false` to `none`. The default is bound to `advantage_estimator`: `group` for `grpo`, `none` for `rloo`, and `batch` for `reinforce_plus_plus`.
+- scale_rewards: Specifies the reward scaling strategy. Options: `group` (scale by intra-group std), `batch` (scale by batch-wide std), `none` (no scaling), `gdpo` (normalize each reward function separately within groups before weighted aggregation, see [GDPO paper](https://arxiv.org/abs/2601.05242)). The default is bound to `advantage_estimator`: `group` for `grpo`, `none` for `rloo`, and `batch` for `reinforce_plus_plus`.
   - Note: `gdpo` mode does not support `kl_in_reward=True`. If both are set, `kl_in_reward` will be automatically set to `False`.
   - GDPO is designed for multi-reward optimization: When using multiple reward functions, GDPO normalizes each reward function separately within groups (subtract mean, divide by std), then performs weighted aggregation using `reward_weights`, and finally applies batch-level normalization. This approach better preserves the relative differences between rewards and prevents different reward combinations from collapsing into identical advantage values.
 - sync_ref_model: Whether to synchronize the reference model. Default is False.
@@ -809,15 +842,8 @@ These parameters have the same meaning as in `qwen_vl_utils<0.0.12` or the `qwen
 - 🔥QWENVL_BBOX_FORMAT: Specifies whether to use `'legacy'` or `'new'` format for grounding. The `'legacy'` format is: `<|object_ref_start|>a dog<|object_ref_end|><|box_start|>(432,991),(1111,2077)<|box_end|>`. The `'new'` format refers to: [Qwen3-VL Cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb). For dataset formatting, see the [Grounding Dataset Format Documentation](../Customization/Custom-dataset.md#grounding). Default: `'legacy'`.
   - Note: This environment variable applies to Qwen2/2.5/3-VL and Qwen2.5/3-Omni series models.
 
-### qwen2_audio
+### qwen2_audio, qwen3_asr
 - SAMPLING_RATE: Default is 16000
-
-### qwen2_5_omni, qwen3_omni
-qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter:
-- USE_AUDIO_IN_VIDEO: Whether to use audio information from video. Default is `False`.
-- 🔥ENABLE_AUDIO_OUTPUT: Defaults to None, which means the value from `config.json` will be used. If training with zero3, please set it to False.
-  - Tip: ms-swift only fine-tunes the "thinker" component; it is recommended to set this to `False` to reduce GPU memory usage (only the thinker part of the model structure will be created).
-
 
 ### qwen3_vl, qwen3_5
 The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library — see here: https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24. By passing the following environment variables you can override the library's global default values: (It is also compatible with environment variables used by `qwen2_5_vl`, such as: `MAX_PIXELS`, `VIDEO_MAX_PIXELS`, and will perform automatic conversion.)
@@ -836,6 +862,13 @@ The parameter meanings are the same as in the `qwen_vl_utils>=0.0.14` library �
 - 🔥FPS_MAX_FRAMES: default 768, denotes the maximum number of sampled frames for a video segment. (used to avoid OOM)
 
 
+### qwen2_5_omni, qwen3_omni
+qwen2_5_omni not only includes the model-specific parameters of qwen2_5_vl and qwen2_audio, but also contains the following parameter: (Note: qwen3_omni includes model-specific parameters of **qwen3_vl** and qwen2_audio)
+- USE_AUDIO_IN_VIDEO: Whether to use audio information from video. Default is `False`.
+- 🔥ENABLE_AUDIO_OUTPUT: Defaults to None, which means the value from `config.json` will be used. If training with zero3, please set it to False.
+  - Tip: ms-swift only fine-tunes the "thinker" component; it is recommended to set this to `False` to reduce GPU memory usage (only the thinker part of the model structure will be created).
+
+
 ### qwen3_vl_emb, qwen3_vl_reranker
 
 The parameter meanings are the same as `qwen3_vl`, see the description above. The following are overrides to the default values:
@@ -845,12 +878,7 @@ The parameter meanings are the same as `qwen3_vl`, see the description above. Th
 - FPS_MAX_FRAMES: Default is 64.
 
 
-### internvl, internvl_phi3
-For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/Mini-InternVL-Chat-2B-V1-5)
-- MAX_NUM: Default is 12
-- INPUT_SIZE: Default is 448
-
-### internvl2, internvl2_phi3, internvl2_5, internvl3, internvl3_5
+### internvl_chat
 For the meaning of the arguments, please refer to [here](https://modelscope.cn/models/OpenGVLab/InternVL2_5-2B)
 - MAX_NUM: Default is 12
 - INPUT_SIZE: Default is 448
@@ -917,4 +945,3 @@ The meanings of the following parameters can be found in the example code [here]
 - SWIFT_TIMEOUT: If the multimodal dataset contains image URLs, this parameter controls the timeout for fetching images, defaulting to 20 seconds.
 - ROOT_IMAGE_DIR: The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
 - SWIFT_SINGLE_DEVICE_MODE: Single device mode, valid values are "0"(default)/"1". In this mode, each process can only see one device.
-- SWIFT_PATCH_CONV3D: If using torch==2.9, you may encounter slow Conv3d performance issues. You can work around this problem by setting `SWIFT_PATCH_CONV3D=1`. For more details, see [this issue](https://github.com/modelscope/ms-swift/issues/7108).

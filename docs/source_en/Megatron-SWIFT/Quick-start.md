@@ -21,11 +21,9 @@ ms-swift incorporates Megatron's parallelization techniques to accelerate the tr
 To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you also need to install the following:
 
 ```shell
-pip install pybind11
-
 # transformer_engine
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
-pip install --no-build-isolation transformer_engine[pytorch]
+pip install --no-build-isolation transformer-engine[pytorch] --no-cache-dir
 
 # apex
 # Note: Megatron-SWIFT can run in environments without apex by setting `--gradient_accumulation_fusion false`.
@@ -33,8 +31,13 @@ git clone https://github.com/NVIDIA/apex
 cd apex
 pip install -v --disable-pip-version-check --no-cache-dir --no-build-isolation --config-settings "--build-option=--cpp_ext" --config-settings "--build-option=--cuda_ext" ./
 
+# mcore-bridge
+pip install mcore-bridge -U
+# Install from main branch
+# pip install git+https://github.com/modelscope/mcore-bridge.git
+
 # megatron-core
-pip install "megatron-core==0.15.*" -U
+pip install "megatron-core==0.16.*" -U
 
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
@@ -49,9 +52,9 @@ MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
 
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
 ```
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.1-modelscope1.34.0-swift4.0.3
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.1-modelscope1.34.0-swift4.0.3
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.1-modelscope1.34.0-swift4.0.3
 
 # cu129 (fp8 training)
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
@@ -63,17 +66,18 @@ Recommended Operating Environment:
 
 |        | Range | Recommended | Notes |
 |--------------|--------------|-------------|--------------------|
-| python       | >=3.9        | 3.10/3.11        |                    |
+| python       | >=3.9        | 3.11/3.12    |                    |
 | cuda         |              | cuda12      |                    |
-| torch        | >=2.0        | 2.8.0    |                    |
-| transformer_engine    | >=2.3       |  2.10.0  |                  |
+| torch        | >=2.0        | 2.8.0/2.10.0    |                    |
+| transformer-engine    | >=2.3       |  2.12.0  |                  |
 | apex |   |  0.1 | |
-| megatron_core    |    >=0.12,<0.16    | 0.15      |                  |
-| flash_attn    |        | 2.8.3/3.0.0b1   |                  |
+| megatron-core    |    >=0.12,<0.17    | 0.16      |                  |
+| mcore-bridge    |    >=1.0.2    |      |                  |
+| flash-attn    |        | 2.8.3/3.0.0b1   |                  |
 | transformers | >=4.33       | 4.57.6/5.2.0    |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.19 |             |      LoRA          |
-| trl          | >=0.15,<0.29 |       |      RLHF        |
+| trl          | >=0.15,<0.30 |       |      RLHF        |
 
 
 ## Quick Start Example
@@ -97,7 +101,7 @@ swift export \
 ```
 
 Next, use the following script to start training. The required GPU memory resources are 2*80GiB:
-- If using multi-machine training, it is recommended to share a disk and specify the same path for `--save`.
+- If using multi-machine training, it is recommended to share a disk and specify the same path for `--output_dir`.
 ```shell
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \

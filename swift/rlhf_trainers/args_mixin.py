@@ -104,9 +104,10 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     the inference backend for generation.
 
     Args:
-        top_k (int): The number of highest probability vocabulary tokens to keep for top-k-filtering. Defaults to 50.
+        top_k (int): The number of highest probability vocabulary tokens to keep for top-k-filtering. -1 means
+            no filtering. Defaults to -1.
         top_p (float): If set to a float < 1, only the smallest set of most probable tokens with probabilities that
-            add up to top_p or higher are kept for generation. Defaults to 0.9.
+            add up to top_p or higher are kept for generation. Defaults to 1.0.
         repetition_penalty (float): The parameter for repetition penalty. 1.0 means no penalty. Defaults to 1.0.
         stop_words (List[str]): A list of strings that will stop the generation when they are generated. Defaults to an
             empty list.
@@ -150,8 +151,8 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
             Only effective when using vLLM backend (`use_vllm=True`).
     """
     # generation args
-    top_k: int = 50
-    top_p: float = 0.9
+    top_k: int = -1
+    top_p: float = 1.0
     repetition_penalty: float = 1.
     stop_words: List[str] = field(default_factory=list)
 
@@ -266,6 +267,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
         tau_neg (float): The temperature parameter for negative dominance in the SAPO algorithm, controlling the
             sharpness of the soft gating function. Typically, `tau_neg` is set > `tau_pos` to impose stronger
             constraints on negative dominance. The default value is 1.05.
+        real_tau (float): The temperature parameter. REAL induces monotonic and bounded gradient weighting with
+            magnitude upper-bounded by 1/tau. The default value is 0.5.
         advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
@@ -360,6 +363,9 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     advantage_estimator: Literal['grpo', 'rloo', 'reinforce_plus_plus'] = 'grpo'
     # If false, add KL into loss, otherwise add into reward
     kl_in_reward: Optional[bool] = None  # rloo/reinforce_plus_plus: true, grpo: false (default)
+
+    # REAL https://arxiv.org/abs/2602.05630
+    real_tau: float = 0.5
 
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None

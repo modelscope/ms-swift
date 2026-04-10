@@ -103,7 +103,6 @@ You can contact us and communicate with us by adding our group:
 - 🎁 2025.02.21: The `swift sample` command is now supported. The reinforcement fine-tuning script can be found [here](docs/source_en/Instruction/Reinforced-Fine-tuning.md), and the large model API distillation sampling script is available [here](examples/sampler/distill/distill.sh).
 - 🔥 2025.02.12: Support for the GRPO (Group Relative Policy Optimization) training algorithm has been added. Documentation is available [here](docs/source_en/Instruction/GRPO/GetStarted/GRPO.md).
 - 🎁 2024.12.04: Major update to **ms-swift 3.0**. Please refer to the [release notes and changes](docs/source_en/Instruction/ReleaseNote3.0.md).
-
 - 🎉 2024.08.12: The ms-swift paper has been published on arXiv and can be read [here](https://arxiv.org/abs/2408.05517).
 - 🔥 2024.08.05: Support for using [evalscope](https://github.com/modelscope/evalscope/) as a backend for evaluating large models and multimodal models.
 - 🔥 2024.07.29: Support for using [vllm](https://github.com/vllm-project/vllm) and [lmdeploy](https://github.com/InternLM/lmdeploy) to accelerate inference for large models and multimodal models. When performing infer/deploy/eval, you can specify `--infer_backend vllm/lmdeploy`.
@@ -115,6 +114,10 @@ You can contact us and communicate with us by adding our group:
 To install using pip:
 ```shell
 pip install ms-swift -U
+
+# Using uv
+pip install uv
+uv pip install ms-swift -U --torch-backend=auto
 ```
 
 To install from source:
@@ -126,22 +129,25 @@ cd ms-swift
 # The main branch is for swift 4.x. To install swift 3.x, please run the following command:
 # git checkout release/3.12
 pip install -e .
+
+# Using uv
+uv pip install -e . --torch-backend=auto
 ```
 
 Running Environment:
 
 |              | Range        | Recommended         | Notes                                     |
 |--------------|--------------|---------------------|-------------------------------------------|
-| python       | >=3.9        | 3.10/3.11                |                                           |
+| python       | >=3.9        | 3.11/3.12                |                                           |
 | cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
-| torch        | >=2.0        | 2.8.0/2.9.1         |   torch2.9 [conv3d slow](https://swift.readthedocs.io/en/latest/BestPractices/Qwen3-VL-Best-Practice.html#environment-setup)       |
+| torch        | >=2.0        | 2.8.0/2.10.0         |                            |
 | transformers | >=4.33       | 4.57.6/5.2.0              |                          |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.19 |                     |                                           |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.29 | 0.28.0              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.18.6              | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0/0.15.1       | Inference/Deployment                      |
+| trl          | >=0.15,<0.30 | 0.28.0              | RLHF                                      |
+| deepspeed    | >=0.14       | 0.18.8              | Training                                  |
+| vllm         | >=0.5.1      | 0.11.0/0.17.1       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | lmdeploy     | >=0.5   | 0.10.1                 | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |
@@ -328,7 +334,7 @@ Pre-training:
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift pt \
-    --model Qwen/Qwen2.5-7B \
+    --model Qwen/Qwen3-4B-Base \
     --dataset swift/chinese-c4 \
     --streaming true \
     --tuner_type full \
@@ -341,7 +347,7 @@ swift pt \
 Fine-tuning:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
     --tuner_type lora \
     --output_dir output \
@@ -352,7 +358,7 @@ RLHF:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --tuner_type lora \
     --output_dir output \
@@ -369,6 +375,7 @@ ms-swift supports using Megatron parallelism techniques to accelerate training, 
 | Pre-training           | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [Supervised Fine-Tuning](https://github.com/modelscope/ms-swift/tree/main/examples/megatron) | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [GRPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
+| [GKD](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd)                   | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [DPO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/dpo)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [KTO](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/kto)                    | ✅              | ✅    | ✅    | ✅          | ✅    |
 | [RM](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/rm)                     | ✅              | ✅    | ✅    | ✅          | ✅    |
@@ -379,7 +386,7 @@ ms-swift supports using Megatron parallelism techniques to accelerate training, 
 
 ```shell
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --tuner_type lora \
@@ -406,7 +413,7 @@ ms-swift supports a rich set of GRPO family algorithms:
 CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
@@ -419,25 +426,16 @@ swift rlhf \
 ### Inference
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --stream true \
     --infer_backend transformers \
-    --max_new_tokens 2048
-
-# LoRA
-CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --adapters swift/test_lora \
-    --stream true \
-    --infer_backend transformers \
-    --temperature 0 \
     --max_new_tokens 2048
 ```
 
 ### Interface Inference
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift app \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --stream true \
     --infer_backend transformers \
     --max_new_tokens 2048
@@ -446,14 +444,14 @@ CUDA_VISIBLE_DEVICES=0 swift app \
 ### Deployment
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --infer_backend vllm
 ```
 
 ### Sampling
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sample \
-    --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --sampler_engine transformers \
     --num_return_sequences 5 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
@@ -462,8 +460,8 @@ CUDA_VISIBLE_DEVICES=0 swift sample \
 ### Evaluation
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift eval \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend lmdeploy \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --infer_backend sglang \
     --eval_backend OpenCompass \
     --eval_dataset ARC_c
 ```
@@ -471,10 +469,10 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 ### Quantization
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --quant_bits 4 --quant_method awq \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --quant_method fp8 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --output_dir Qwen2.5-7B-Instruct-AWQ
+    --output_dir Qwen3-4B-Instruct-2507-FP8
 ```
 
 ### Push Model
@@ -488,7 +486,7 @@ swift export \
 
 ## 🏛 License
 
-This framework is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/modelscope/blob/master/LICENSE). For models and datasets, please refer to the original resource page and follow the corresponding License.
+This framework is licensed under the [Apache License (Version 2.0)](https://github.com/modelscope/ms-swift/blob/master/LICENSE). For models and datasets, please refer to the original resource page and follow the corresponding License.
 
 ## 📎 Citation
 
@@ -506,4 +504,4 @@ This framework is licensed under the [Apache License (Version 2.0)](https://gith
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=modelscope/ms-swift&type=Date)](https://star-history.com/#modelscope/ms-swift&Date)

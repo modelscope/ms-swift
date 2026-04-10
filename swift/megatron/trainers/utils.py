@@ -5,6 +5,7 @@ import torch
 from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
 from dataclasses import dataclass
+from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
@@ -14,7 +15,6 @@ from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, Optional
 
 from swift.dataloader import DataLoaderDispatcher
-from swift.megatron.utils import split_cp_inputs
 from swift.utils import empty_cache, get_current_device, get_logger
 from swift.utils import get_packed_seq_params as _get_packed_seq_params
 from swift.utils import to_device
@@ -28,7 +28,7 @@ def get_batch_on_this_pp_rank(args, data, vp_stage=None):
         data['labels'] = torch.roll(data['labels'], -1, dims=-1)
         if 'loss_scale' in data:
             data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
-    batch = to_device(data, 'cuda', non_blocking=True)
+    batch = to_device(data, get_current_device(), non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
         return batch
     if mcore_013:

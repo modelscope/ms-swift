@@ -24,10 +24,12 @@ convert_kwargs = {
     'no_load_rng': True,
     'finetune': True,
     'attention_backend': 'unfused',
+    'padding_free': False,
 }
 
 
 def convert_hf2mcore(args: ExportArguments) -> None:
+    args.experts_impl = 'eager'  # Compatible with transformers 5.4.0
     hf_model, template = prepare_model_template(args, patch_offload=not args.test_convert_precision)
     processor = template.processor
     if args.thread_count is None:
@@ -48,7 +50,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
     mg_model = get_mcore_model(megatron_args, hf_config)[0]
     logger.info('Megatron model created successfully.')
-    bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
+    bridge = mg_model.config.bridge
     bridge.load_weights([mg_model], args.model_info.model_dir)
     logger.info('Successfully transferred HF model weights to MG model.')
     _test_convert_precision = strtobool(os.getenv('SWIFT_TEST_CONVERT_PRECISION', '0'))
@@ -62,6 +64,7 @@ def convert_hf2mcore(args: ExportArguments) -> None:
 
 
 def convert_mcore2hf(args: ExportArguments) -> None:
+    args.experts_impl = 'eager'
     _, template = prepare_model_template(args, load_model=False)
     processor = template.processor
 
@@ -92,9 +95,9 @@ def convert_mcore2hf(args: ExportArguments) -> None:
         mg_model = peft_model.merge_and_unload()
     logger.info('Megatron model created successfully.')
     if args.to_hf:
-        bridge = megatron_args.megatron_model_meta.bridge_cls(megatron_args)
+        bridge = mg_model.config.bridge
         logger.info('Converting weights and saving the model...')
-        bridge.save_weights([mg_model], args.output_dir, processor=processor, hf_config=hf_config)
+        bridge.save_weights([mg_model], args.output_dir, args=megatron_args, processor=processor)
         if is_master():
             args_path = os.path.join(megatron_args.mcore_adapter or megatron_args.mcore_model or args.model,
                                      'args.json')

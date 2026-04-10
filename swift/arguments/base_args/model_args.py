@@ -236,6 +236,7 @@ class ModelArguments:
             'max_memory': self.max_memory,
             'quantization_config': self.get_quantization_config(),
             'attn_impl': self.attn_impl,
+            'experts_impl': self.experts_impl,
             'new_special_tokens': self.new_special_tokens,
             'rope_scaling': self.rope_scaling,
             'max_model_len': self.max_model_len,

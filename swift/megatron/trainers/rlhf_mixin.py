@@ -1,15 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from megatron.core import mpu
 from torch.distributed.nn import all_reduce
 from transformers.utils import ContextManagers
 
 from swift.megatron.model import get_mcore_model
-from swift.megatron.utils import load_mcore_checkpoint
+from swift.megatron.utils import (RouterReplayHelper, forward_step_helper, get_local_topk_idx_for_current_rank,
+                                  get_router_replay_data, load_mcore_checkpoint, set_router_replay_data)
 from swift.rlhf_trainers.utils import identity_data_collator
-from swift.utils import get_logger
+from swift.utils import get_current_device, get_logger, safe_snapshot_download
 from .base import BaseMegatronTrainer
+from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
 logger = get_logger()
 
@@ -31,15 +33,18 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if args.tuner_type == 'full' and args.rlhf_type not in ['rm', 'gkd']:
             self.ref_models = get_mcore_model(args, self.template.config)
         for ref_model in self.ref_models:
+            if not args.use_cpu_initialization:
+                ref_model.to(get_current_device())
             ref_model.requires_grad_(False)
             ref_model.eval()
         if self.ref_models and args.mcore_ref_model is None:
             ref_model_id_or_path = args.ref_model or args.model
-            self.bridge.load_weights(self.ref_models, ref_model_id_or_path)
+            ref_model_dir = safe_snapshot_download(ref_model_id_or_path, use_hf=args.use_hf, hub_token=args.hub_token)
+            self.bridge.load_weights(self.ref_models, ref_model_dir)
         if args.tuner_type == 'lora' and args.ref_adapters and args.mcore_ref_adapter is None:
             assert len(args.ref_adapters) == 1, 'Currently only support one adapter.'
             self.bridge.load_weights(
-                self.ref_models, args.ref_adapters[0], is_peft_format=True, adapter_name='ref_adapter')
+                self.ref_models, args.ref_adapters[0], peft_format=True, adapter_name='ref_adapter')
 
     def _get_data_collator(self):
         if self.args.rlhf_type in ('grpo', 'gkd'):
@@ -90,6 +95,61 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if args.context_parallel_size > 1:
             all_logps = all_reduce(all_logps, group=mpu.get_context_parallel_group())
         return all_logps
+
+    def compute_per_token_logps(self, model, data_iterator, no_grad=True, temperature=1.0):
+        """Forward pass to get logits, then compute temperature-scaled per-token logps.
+
+        Unlike get_logps (which recovers logps from cross-entropy loss), this method
+        obtains raw logits from the model and computes logps with temperature scaling,
+        which is required for importance sampling in GRPO and potentially other algorithms.
+
+        Args:
+            model: The model to forward
+            data_iterator: Iterator providing batch data
+            no_grad: Whether to disable gradient computation (default: True)
+            temperature: Temperature for scaling logits before log_softmax
+
+        Returns:
+            per_token_logps tensor, or None if on a non-last PP stage
+            routing_topk_idx tensor, or None if disbale router replay
+        """
+        data = self.get_batch(data_iterator)
+        data.pop('loss_scale', None)
+        labels = data.get('labels')
+
+        routing_topk_idx = None
+        global_topk_idx = data.pop('routed_experts', None)
+        if self.enable_routing_replay and RouterReplayHelper.is_replay_forward_action(model.config):
+            assert global_topk_idx is not None, 'When router_replay_mode = R3, routed_experts must be in data'
+            routing_topk_idx = get_local_topk_idx_for_current_rank(global_topk_idx, model.config,
+                                                                   data.get('packed_seq_params'))
+            set_router_replay_data(routing_topk_idx, model.config)
+
+        data_for_forward = {k: v for k, v in data.items() if k != 'labels'}
+        context = torch.no_grad() if no_grad else nullcontext()
+        with context:
+            output_tensor = forward_step_helper(model, data_for_forward)
+
+        if self.enable_routing_replay and RouterReplayHelper.is_r2_record_action(model.config):
+            routing_topk_idx = get_router_replay_data(model.config)
+
+        if labels is None or output_tensor is None:
+            return None, routing_topk_idx
+
+        if temperature != 1.0:
+            output_tensor.div_(temperature)
+        per_token_logps, _ = compute_logps_and_entropy_from_logits(output_tensor, labels)
+
+        packed_seq_params = data.get('packed_seq_params')
+        if packed_seq_params is not None:
+            num_samples = packed_seq_params.num_samples
+        else:
+            input_ids = data.get('input_ids')
+            num_samples = input_ids.shape[0] if input_ids is not None else labels.shape[0]
+
+        if self.args.context_parallel_size > 1:
+            per_token_logps = self._postprocess_packed_tensor_cp(per_token_logps, packed_seq_params, num_samples)
+        return per_token_logps, routing_topk_idx
 
     def _postprocess_packed_tensor_cp(self, tensor, packed_seq_params, num_samples):
         """

@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import torch
+import torch.distributed as dist
 from dataclasses import asdict
 from transformers.utils import is_torch_npu_available
 from typing import List, Optional, Union
@@ -81,6 +82,10 @@ class MegatronSft(SwiftSft):
 
                 jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
                 append_to_jsonl(jsonl_path, self.train_msg, strict=False, write_on_rank='last')
+        # Exceptions may cause the process to hang, preventing the exception from being propagated.
+        # Therefore, destroy_process_group() should not be placed inside the finally block.
+        if dist.is_initialized():
+            dist.destroy_process_group()
         return self.train_msg
 
 

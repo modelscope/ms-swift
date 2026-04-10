@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
@@ -119,7 +120,7 @@ class GLM4vPackingTemplateMixin:
         for r in row:
             r_copy = r.copy()
             r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
-            r['position_ids'] = self._get_position_ids(r_copy)
+            r.update(self._get_position_ids(r_copy))
         packed = super().packing_row(row)
         return packed
 
@@ -128,18 +129,26 @@ class GLM4vPackingTemplateMixin:
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
             attention_mask = inputs.get('attention_mask')
-        position_ids, _ = base_model.model.get_rope_index(
-            inputs['input_ids'],
-            inputs.get('image_grid_thw'),
-            inputs.get('video_grid_thw'),
-            attention_mask=attention_mask)
-        return self._concat_text_position_ids(position_ids)
+        kwargs = {}
+        input_ids = inputs['input_ids']
+        get_rope_index = base_model.model.get_rope_index
+        if 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters:
+            kwargs['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids)
+        elif not self.is_training:
+            return {}
+        position_ids, _ = get_rope_index(
+            input_ids,
+            image_grid_thw=inputs.get('image_grid_thw'),
+            video_grid_thw=inputs.get('video_grid_thw'),
+            attention_mask=attention_mask,
+            **kwargs)
+        return {'position_ids': self._concat_text_position_ids(position_ids)}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
-        if not self.padding_free and self.is_training:
-            res['position_ids'] = self._get_position_ids(res)
-        if 'position_ids' in res:
+        if not self.padding_free:
+            res.update(self._get_position_ids(res))
+        if 'position_ids' in res and self.is_training:
             position_ids = res['position_ids']
             res['position_ids'] = position_ids[1:]
             res['text_position_ids'] = text_position_ids = position_ids[0]
@@ -315,17 +324,28 @@ class GLM4_5Template(GLM4Template):
 
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
-register_template(
-    GLM4_5TemplateMeta(
-        LLMTemplateType.glm4_7,
-        template_cls=GLM4_5Template,
-        prompt=['<|user|>{{QUERY}}<|assistant|>'],
-        system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
-        thinking_prefix='<think>',
-        non_thinking_prefix='</think>',
-        history_thinking_prefix='</think>',
-        agent_template='glm4_7',
-    ))
+
+@dataclass
+class GLM4_7TemplateMeta(GLM4_5TemplateMeta):
+    prompt: Prompt = field(default_factory=lambda: ['<|user|>{{QUERY}}<|assistant|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
+
+    thinking_prefix: str = '<think>'
+    non_thinking_prefix: str = '</think>'
+    history_thinking_prefix: str = '</think>'
+
+
+register_template(GLM4_7TemplateMeta(
+    LLMTemplateType.glm4_7,
+    template_cls=GLM4_5Template,
+    agent_template='glm4_7',
+))
+
+register_template(GLM4_7TemplateMeta(
+    LLMTemplateType.glm5_1,
+    template_cls=GLM4_5Template,
+    agent_template='glm5_1',
+))
 
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):

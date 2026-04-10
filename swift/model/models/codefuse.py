@@ -58,5 +58,6 @@ register_model(
         CodeLlamaLoader,
         template=TemplateType.codefuse_codellama,
         model_arch=ModelArch.llama,
+        mcore_model_type='gpt',
         architectures=['LlamaForCausalLM'],
     ))

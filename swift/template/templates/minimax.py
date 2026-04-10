@@ -120,14 +120,32 @@ class MinimaxVLTemplate(Template):
 
 register_template(MinimaxTemplateMeta(LLMTemplateType.minimax_vl, template_cls=MinimaxVLTemplate))
 
+
+@dataclass
+class MinimaxM2TemplateMeta(TemplateMeta):
+    prefix: Prompt = field(default_factory=lambda: [']~!b[]~b]system\n{{SYSTEM}}[e~[\n'])
+    prompt: Prompt = field(default_factory=lambda: [']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[e~[\n'])
+    suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
+    agent_template: Optional[str] = 'minimax_m2'
+    is_thinking: bool = True
+    thinking_prefix: str = '<think>\n'
+
+
 register_template(
-    TemplateMeta(
+    MinimaxM2TemplateMeta(
         LLMTemplateType.minimax_m2,
-        prefix=[']~!b[]~b]system\n{{SYSTEM}}[e~[\n'],
-        prompt=[']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'],
-        chat_sep=['[e~[\n'],
-        suffix=['[e~['],
         default_system='You are MiniMax-M2, a helpful AI assistant built by MiniMax. Knowledge cutoff: 2025-06.',
-        is_thinking=True,
-        thinking_prefix='<think>\n',
+    ))
+
+register_template(
+    MinimaxM2TemplateMeta(
+        LLMTemplateType.minimax_m2_1,
+        default_system='You are a helpful assistant. Your name is MiniMax-M2.1 and is built by MiniMax.',
+    ))
+
+register_template(
+    MinimaxM2TemplateMeta(
+        LLMTemplateType.minimax_m2_5,
+        default_system='You are a helpful assistant. Your name is MiniMax-M2.5 and is built by MiniMax.',
     ))

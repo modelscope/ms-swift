@@ -60,6 +60,7 @@ class TransformersEngine(InferEngine):
             task_type: Optional[str] = None,
             quantization_config=None,
             model_kwargs: Optional[Dict[str, Any]] = None,
+            template_type: Optional[str] = None,
             # hub kwargs
             use_hf: Optional[bool] = None,
             revision: Optional[str] = None,
@@ -85,7 +86,7 @@ class TransformersEngine(InferEngine):
         self.hub_token = hub_token
         if isinstance(model, str):
             self.model, processor = self._get_model_processor(model, **kwargs)
-            template = self._get_template(processor)
+            template = self._get_template(processor, template_type=template_type)
         elif isinstance(model, nn.Module):
             self.model = model
             if template is None:

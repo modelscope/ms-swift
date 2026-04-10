@@ -14,6 +14,15 @@ try:
         vllm.sampling_params.GuidedDecodingParams = vllm.sampling_params.StructuredOutputsParams
 except ImportError:
     pass
+
+# https://github.com/modelscope/ms-swift/pull/8280
+try:
+    import trl.import_utils as _trl_import_utils
+    _orig = _trl_import_utils.is_vllm_ascend_available
+    if not isinstance(_orig(), bool):
+        _trl_import_utils.is_vllm_ascend_available = lambda: bool(_orig()[0])
+except Exception:
+    pass
 # fmt: on
 
 import asyncio
@@ -1123,8 +1132,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Only compute KL for loss if kl_in_reward=False (GRPO style)
         if self.beta != 0.0 and not self.kl_in_reward:
             ref_per_token_logps = inputs['ref_per_token_logps']
-            per_token_kl = (
-                torch.exp(ref_per_token_logps - per_token_logps) - (ref_per_token_logps - per_token_logps) - 1)
+            safe_ratio = torch.clamp(ref_per_token_logps - per_token_logps, min=-20, max=20)
+            per_token_kl = torch.clamp(torch.exp(safe_ratio) - safe_ratio - 1, min=-10, max=10)
         else:
             per_token_kl = None
 
@@ -1193,6 +1202,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
 
             per_token_loss = -soft_gate * advantages_expanded
+        elif self.loss_type == 'real':
+            per_token_loss = torch.zeros_like(per_token_logps)
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
@@ -1231,6 +1242,39 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         elif self.loss_type == 'dr_grpo':
             batch_size = completion_mask.shape[0]
             loss = (per_token_loss * completion_mask).sum() / (batch_size * self.max_completion_length)
+        elif self.loss_type == 'real':
+            global_scores = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+
+            group_scores = global_scores.view(-1, self.num_generations)
+            group_rewards = advantages.view(-1, self.num_generations)
+
+            pos_mask = (group_rewards > 0)
+            neg_mask = (group_rewards <= 0)
+            valid_mask = (pos_mask.sum(dim=1) != 0) & (neg_mask.sum(dim=1) != 0)
+
+            if not valid_mask.any():
+                loss = torch.tensor(0., device=global_scores.device) * global_scores.mean()
+            else:
+                batch_scores = group_scores[valid_mask]
+                batch_pos_mask = pos_mask[valid_mask]
+                batch_neg_mask = neg_mask[valid_mask]
+
+                scaled_scores = batch_scores / self.real_tau
+                zeros = torch.zeros(batch_scores.size(0), 1, device=batch_scores.device, dtype=batch_scores.dtype)
+
+                # Negative Loss: log(1 + sum(e^{S_neg}))
+                neg_input = scaled_scores.masked_fill(~batch_neg_mask, float('-inf'))
+                neg_loss = torch.logsumexp(torch.cat([neg_input, zeros], dim=1), dim=1)
+
+                # Positive Loss: log(1 + sum(e^{-S_pos}))
+                pos_input = (-scaled_scores).masked_fill(~batch_pos_mask, float('-inf'))
+                pos_loss = torch.logsumexp(torch.cat([pos_input, zeros], dim=1), dim=1)
+
+                loss = (neg_loss + pos_loss).sum() / group_rewards.size(0)
+
+            if self.beta != 0.0:
+                kl_loss = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+                loss = loss + kl_loss * self.beta
         elif self.loss_type in ['cispo', 'dapo']:
             # CISPO and DAPO: Normalize by total completion tokens across all processes
             normalizer = inputs['num_items_in_batch'] / self.accelerator.num_processes
@@ -1270,7 +1314,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             cispo_clip_ratio = masked_batch_mean(is_cispo_clipped.float())
             gathered_cispo_clip_ratio = self.accelerator.gather_for_metrics(cispo_clip_ratio)
             metrics_data['clipping'] = {'cispo_clip_ratio': gathered_cispo_clip_ratio.nanmean().item()}
-        elif self.loss_type == 'sapo':
+        elif self.loss_type in ['sapo', 'real']:
             pass
         else:
             is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
@@ -2174,6 +2218,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.tau_pos = args.tau_pos
         self.tau_neg = args.tau_neg
 
+        # REAL, https://arxiv.org/abs/2602.05630
+        self.real_tau = args.real_tau
+
         # RLOO,
         self.advantage_estimator = args.advantage_estimator
         self.kl_in_reward = args.kl_in_reward
@@ -2497,7 +2544,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # 2b. k3_kl: K3 estimator for KL(π_rollout || π_training)
         # More stable for small KL values
-        k3_kl_matrix = torch.exp(log_ratio) - log_ratio - 1
+        log_ratio_safe = torch.clamp(log_ratio, min=-20, max=20)
+        k3_kl_matrix = torch.clamp(torch.exp(log_ratio_safe) - log_ratio_safe - 1, min=-10, max=10)
         k3_kl = masked_mean(k3_kl_matrix, completion_mask)
         metrics['k3_kl'] = self.accelerator.gather_for_metrics(k3_kl).nanmean().item()
 
@@ -2617,7 +2665,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             k: v
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
-                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps'
+                'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps', 'rollout_logprobs',
+                'is_truncated', 'add_eos', 'response_token_ids', 'prompt_id', 'rollout_is_weights', 'finish_reason',
+                'request_id'
             ]
         }
 

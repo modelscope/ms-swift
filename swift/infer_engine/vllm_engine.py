@@ -59,6 +59,7 @@ class VllmEngine(InferEngine):
         adapters: Optional[List[str]] = None,
         use_async_engine: bool = False,
         model_type: Optional[str] = None,
+        template_type: Optional[str] = None,
         use_hf: Optional[bool] = None,
         hub_token: Optional[str] = None,
         revision: Optional[str] = None,
@@ -139,7 +140,7 @@ class VllmEngine(InferEngine):
         self._adapters_pool = {}
         if template is None:
             processor = self._get_processor()
-            template = self._get_template(processor)
+            template = self._get_template(processor, template_type=template_type)
         else:
             safe_snapshot_download(
                 model_id_or_path,
@@ -214,7 +215,7 @@ class VllmEngine(InferEngine):
                 'The current version of vLLM does not support `limit_mm_per_prompt`. Please upgrade vLLM.')
         for key in [
                 'enable_expert_parallel', 'enable_sleep_mode', 'disable_cascade_attn', 'load_format',
-                'mm_processor_cache_gb', 'speculative_config', 'logprobs_mode'
+                'mm_processor_cache_gb', 'speculative_config', 'logprobs_mode', 'quantization'
         ]:
             if key in parameters:
                 value = getattr(self, key, None)

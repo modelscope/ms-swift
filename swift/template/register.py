@@ -42,7 +42,7 @@ def get_template_meta(model_info: 'ModelInfo',
                 candidates_str = f'Multiple possible types found: {candidates}. '
             raise ValueError(
                 f'Failed to automatically match `template_type` for `{model_info.model_dir}`. {candidates_str}'
-                'Please specify `template_type` manually. See documentation: '
+                'Please specify `template_type` manually via `--template`. See documentation: '
                 'https://swift.readthedocs.io/en/latest/Instruction/Supported-models-and-datasets.html')
         elif len(candidates) == 1:
             template_type = candidates[0]

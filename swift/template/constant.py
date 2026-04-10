@@ -21,6 +21,7 @@ class LLMTemplateType:
     qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
+    yufeng_xguard = 'yufeng_xguard'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
 
@@ -37,6 +38,8 @@ class LLMTemplateType:
     minimax = 'minimax'
     minimax_m1 = 'minimax_m1'
     minimax_m2 = 'minimax_m2'
+    minimax_m2_1 = 'minimax_m2_1'
+    minimax_m2_5 = 'minimax_m2_5'
     minimax_vl = 'minimax_vl'
 
     numina = 'numina'
@@ -51,6 +54,7 @@ class LLMTemplateType:
     glm4_z1_rumination = 'glm4_z1_rumination'
     glm4_5 = 'glm4_5'
     glm4_7 = 'glm4_7'
+    glm5_1 = 'glm5_1'
     codegeex4 = 'codegeex4'
     longwriter_llama = 'longwriter_llama'
 
@@ -131,6 +135,7 @@ class MLLMTemplateType:
     qwen2_5_omni = 'qwen2_5_omni'
     qwen3_omni = 'qwen3_omni'
     qwen2_audio = 'qwen2_audio'
+    qwen3_asr = 'qwen3_asr'
     qwen3_vl = 'qwen3_vl'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
@@ -242,6 +247,7 @@ class MLLMTemplateType:
     valley = 'valley'
     gemma3_vision = 'gemma3_vision'
     gemma3n = 'gemma3n'
+    gemma4 = 'gemma4'
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
     mistral_2512 = 'mistral_2512'
