@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
+import torch.nn.functional as F
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
@@ -305,10 +306,17 @@ class Gemma4Template(Template):
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)
-        for key in ['image_position_ids', 'video_position_ids', 'input_features', 'input_features_mask']:
+        for key in ['image_position_ids', 'video_position_ids']:
             value = [b[key] for b in batch if b.get(key) is not None]
             if value:
                 res[key] = torch.concat(value)
+        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        if input_features:
+            input_features_mask = [b['input_features_mask'] for b in batch if b.get('input_features_mask') is not None]
+            max_len = max([x.shape[1] for x in input_features_mask])
+            res['input_features'] = torch.concat([F.pad(x, (0, 0, 0, max_len - x.shape[1])) for x in input_features])
+            res['input_features_mask'] = torch.concat(
+                [F.pad(x, (0, max_len - x.shape[1])) for x in input_features_mask])
         return res
 
 

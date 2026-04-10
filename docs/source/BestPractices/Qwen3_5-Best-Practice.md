@@ -308,6 +308,7 @@ swift infer \
 ```
 
 Megatron-SWIFT训练Qwen3.5的提示：
+- 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh)。
 - 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/14)），请安装对应版本。
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
 - CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/16)），此外需安装megatron-core dev分支。
