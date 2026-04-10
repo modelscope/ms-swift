@@ -792,6 +792,8 @@ register_model(
             ModelGroup([
                 Model('Qwen/QVQ-72B-Preview', 'Qwen/QVQ-72B-Preview'),
             ], TemplateType.qvq),
+            ModelGroup([Model('OpenDataLab/MinerU2.5-Pro-2604-1.2B', 'opendatalab/MinerU2.5-Pro-2604-1.2B')],
+                       TemplateType.qwen2_vl),
         ],
         Qwen2VLLoader,
         model_arch=ModelArch.qwen2_vl,
