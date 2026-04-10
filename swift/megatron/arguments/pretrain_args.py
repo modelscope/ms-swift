@@ -1,5 +1,7 @@
-from .sft_args import MegatronSftArguments
 from dataclasses import dataclass
+
+from .sft_args import MegatronSftArguments
+
 
 @dataclass
 class MegatronPretrainArguments(MegatronSftArguments):
