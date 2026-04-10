@@ -231,7 +231,7 @@ megatron sft \
 ```bash
 export NNODES=2  # 此处以 2 节点为例
 export NODE_RANK=0  # 主节点设置为 0，从节点设置为 1
-export MASTER_ADDR=127.0.0.1  # 根据主节点 ip 设置
+export MASTER_ADDR=<MASTER_NODE_IP>  # 根据主节点 ip 设置
 export MASTER_PORT=29500  # 设置通信端口
 export NCCL_SOCKET_IFNAME=ens50f1np1  # 根据机器实际通信网口名设置，可通过 ifconfig 查看
 export GLOO_SOCKET_IFNAME=ens50f1np1  # 根据机器实际通信网口名设置，可通过 ifconfig 查看
