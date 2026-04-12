@@ -329,4 +329,11 @@ class Gemma4TemplateMeta(TemplateMeta):
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<bos><|turn>system\n{{SYSTEM}}<turn|>\n'])
 
 
-register_template(Gemma4TemplateMeta(MLLMTemplateType.gemma4, template_cls=Gemma4Template))
+register_template(Gemma4TemplateMeta(MLLMTemplateType.gemma4_nothinking, template_cls=Gemma4Template))
+
+register_template(
+    Gemma4TemplateMeta(
+        MLLMTemplateType.gemma4,
+        template_cls=Gemma4Template,
+        is_thinking=True,
+        non_thinking_prefix='<|channel>thought\n<channel|>'))
