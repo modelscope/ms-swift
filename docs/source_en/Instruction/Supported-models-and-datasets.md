@@ -1099,10 +1099,10 @@ The table below introduces the models integrated with ms-swift:
 |[google/gemma-3n-E4B](https://modelscope.cn/models/google/gemma-3n-E4B)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B](https://huggingface.co/google/gemma-3n-E4B)|
 |[google/gemma-3n-E2B-it](https://modelscope.cn/models/google/gemma-3n-E2B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E2B-it](https://huggingface.co/google/gemma-3n-E2B-it)|
 |[google/gemma-3n-E4B-it](https://modelscope.cn/models/google/gemma-3n-E4B-it)|gemma3n|gemma3n|transformers>=4.53.1|&#x2718;|-|[google/gemma-3n-E4B-it](https://huggingface.co/google/gemma-3n-E4B-it)|
-|[google/gemma-4-E2B](https://modelscope.cn/models/google/gemma-4-E2B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B](https://huggingface.co/google/gemma-4-E2B)|
-|[google/gemma-4-E2B-it](https://modelscope.cn/models/google/gemma-4-E2B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it)|
-|[google/gemma-4-E4B](https://modelscope.cn/models/google/gemma-4-E4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B)|
-|[google/gemma-4-E4B-it](https://modelscope.cn/models/google/gemma-4-E4B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it)|
+|[google/gemma-4-E2B](https://modelscope.cn/models/google/gemma-4-E2B)|gemma4|gemma4_nothinking|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B](https://huggingface.co/google/gemma-4-E2B)|
+|[google/gemma-4-E2B-it](https://modelscope.cn/models/google/gemma-4-E2B-it)|gemma4|gemma4_nothinking|transformers>=4.53|&#x2718;|-|[google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it)|
+|[google/gemma-4-E4B](https://modelscope.cn/models/google/gemma-4-E4B)|gemma4|gemma4_nothinking|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B)|
+|[google/gemma-4-E4B-it](https://modelscope.cn/models/google/gemma-4-E4B-it)|gemma4|gemma4_nothinking|transformers>=4.53|&#x2718;|-|[google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it)|
 |[google/gemma-4-31B](https://modelscope.cn/models/google/gemma-4-31B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-31B](https://huggingface.co/google/gemma-4-31B)|
 |[google/gemma-4-31B-it](https://modelscope.cn/models/google/gemma-4-31B-it)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-31B-it](https://huggingface.co/google/gemma-4-31B-it)|
 |[google/gemma-4-26B-A4B](https://modelscope.cn/models/google/gemma-4-26B-A4B)|gemma4|gemma4|transformers>=4.53|&#x2718;|-|[google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B)|

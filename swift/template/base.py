@@ -1050,7 +1050,7 @@ class Template(ProcessorMixin):
         message = messages[i]
         return i >= start_idx and message['role'] == 'assistant'
 
-    def _add_non_thinking_prefix(self, inputs) -> None:
+    def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think>') -> None:
         messages = inputs.messages
         non_thinking_prefix = self.template_meta.non_thinking_prefix
         if non_thinking_prefix:
@@ -1063,14 +1063,14 @@ class Template(ProcessorMixin):
                 start_idx = -1
             for i, message in enumerate(messages):
                 if (self._is_add_non_thinking_round(messages, i, start_idx) and isinstance(message['content'], str)
-                        and not message['content'].startswith(('<think>', non_thinking_prefix))):
+                        and not message['content'].startswith((thinking_prefix, non_thinking_prefix))):
                     # During multi-turn SFT training/validation:
                     # If the message has no <think> block and does not start with the non_thinking_prefix,
                     # prepend the non_thinking_prefix to the content.
                     message['content'] = non_thinking_prefix + message['content']
 
-    def _remove_thinking_content(self, content: str) -> str:
-        content = content.split('</think>')[-1].strip()
+    def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
+        content = content.split(thinking_suffix)[-1].strip()
         return self.template_meta.history_thinking_prefix + content
 
     def _remove_history_thinking(self, inputs) -> None:
