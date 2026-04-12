@@ -215,7 +215,7 @@ ENV:
 
 - 🔥output_dir: 模型预测结果和检查点将被写入的输出目录。默认为None，设置为`'output/<model_name>'`。
 - 🔥gradient_checkpointing: 是否使用gradient_checkpointing，默认为True。该参数可以显著降低显存占用，但降低训练速度。
-- 🔥vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为None，即设置为`not args.freeze_vit`。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh)。
+- 🔥vit_gradient_checkpointing: 多模态模型训练时，是否对vit部分开启gradient_checkpointing。默认为None，即当`--freeze_vit`为`false`时开启。例子参考[这里](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh)。
 - 🔥deepspeed: 默认为None。可以设置为'zero0', 'zero1', 'zero2', 'zero3', 'zero2_offload', 'zero3_offload'来使用ms-swift内置的deepspeed配置文件。你也可以传入自定义deepspeed配置文件的路径。
 - zero_hpz_partition_size: 默认为None，这个参数是ZeRO++的特性，即node内模型分片，node间数据分片，如果遇到grad_norm NaN，请尝试使用`--torch_dtype float16`。
 - deepspeed_autotp_size: DeepSpeed张量并行大小，默认为1。使用DeepSpeed AutoTP时需将参数`--deepspeed`设置为'zero0'、'zero1'或'zero2'。（注意：该功能只支持全参数）
