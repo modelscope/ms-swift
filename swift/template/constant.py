@@ -40,6 +40,7 @@ class LLMTemplateType:
     minimax_m2 = 'minimax_m2'
     minimax_m2_1 = 'minimax_m2_1'
     minimax_m2_5 = 'minimax_m2_5'
+    minimax_m2_7 = 'minimax_m2_7'
     minimax_vl = 'minimax_vl'
 
     numina = 'numina'
