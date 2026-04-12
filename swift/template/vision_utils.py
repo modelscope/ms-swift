@@ -298,6 +298,12 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
 
 def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
     import librosa
+    if isinstance(audio, str):
+        audio = audio.strip()
+        local_path = _check_path(audio)
+        if local_path is not None:
+            res = librosa.load(local_path, sr=sampling_rate)
+            return res if return_sr else res[0]
     audio_io = load_file(audio)
     res = librosa.load(audio_io, sr=sampling_rate)
     return res if return_sr else res[0]

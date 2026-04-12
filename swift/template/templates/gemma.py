@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import upper_bound
+from swift.utils import get_env_args, upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -249,11 +249,22 @@ class Gemma4Template(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                return ['<|image|>']
             return ['\n\n<|image|>\n\n']
         elif media_type == 'audio':
+            if self.mode == 'vllm':
+                return ['<|audio|>']
             inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<|audio|>']
         elif media_type == 'video':
+            if self.mode == 'vllm':
+                from vllm.assets.video import video_get_metadata, video_to_ndarrays
+                num_frames = get_env_args('num_frames', int, 32)
+                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
+                video_metadata = video_get_metadata(inputs.videos[index], num_frames)
+                inputs.videos[index] = (video_data, video_metadata)
+                return ['<|video|>']
             return ['\n\n<|video|>\n\n']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
