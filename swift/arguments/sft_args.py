@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from transformers.utils.versions import require_version
 from typing import Literal, Optional
 
-from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
+from swift.trainers import Seq2SeqTrainingArguments, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_mp,
                          is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
 from .base_args import BaseArguments
@@ -124,7 +124,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
     """Arguments pertaining to the training process.
 
     SftArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
-    BaseArguments, TrainArgumentsMixin, Seq2SeqTrainingArguments.
+    BaseArguments, Seq2SeqTrainingArguments.
 
     Args:
         add_version (bool): Whether to add a versioned subdirectory like '<version>-<timestamp>' to the `output_dir` to
@@ -205,6 +205,8 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
+        if self.vit_gradient_checkpointing is None:
+            self.vit_gradient_checkpointing = not self.freeze_vit
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'
