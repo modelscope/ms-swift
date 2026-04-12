@@ -256,6 +256,19 @@ class Gemma4Template(Template):
         elif media_type == 'video':
             return ['\n\n<|video|>\n\n']
 
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        if self.enable_thinking:
+            if inputs.system is None:
+                inputs.system = ''
+            inputs.system = '<|think|>\n' + inputs.system
+        return super()._swift_encode(inputs)
+
+    def _add_non_thinking_prefix(self, inputs: StdTemplateInputs):
+        return super()._add_non_thinking_prefix(inputs, thinking_prefix='<|channel>thought')
+
+    def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
+        return super()._remove_thinking_content(content, thinking_suffix='<channel|>')
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         split_token = self._tokenize('\n')
