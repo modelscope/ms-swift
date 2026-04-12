@@ -263,11 +263,11 @@ class Gemma4Template(Template):
             inputs.system = '<|think|>\n' + inputs.system
         return super()._swift_encode(inputs)
 
-    def _add_non_thinking_prefix(self, inputs: StdTemplateInputs):
-        return super()._add_non_thinking_prefix(inputs, thinking_prefix='<|channel>thought')
+    def _add_non_thinking_prefix(self, inputs: StdTemplateInputs, thinking_prefix: str = '<|channel>thought'):
+        return super()._add_non_thinking_prefix(inputs, thinking_prefix=thinking_prefix)
 
-    def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
-        return super()._remove_thinking_content(content, thinking_suffix='<channel|>')
+    def _remove_thinking_content(self, content: str, thinking_suffix: str = '<channel|>') -> str:
+        return super()._remove_thinking_content(content, thinking_suffix=thinking_suffix)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
