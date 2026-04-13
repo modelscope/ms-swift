@@ -4,11 +4,39 @@
     "dataset_path": "randy/med_mcqa.jsonl"
   },
   {
-    "dataset_name": "topo_sel_sft",
-    "dataset_path": "${oc.env:WORK_DIR}/datasets/cxmt/sft/topo_sel_sft_v2.jsonl"
+    "dataset_name": "llava_pretrain_558k",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-Pretrain/llava_pretrain_558k.jsonl"
   },
   {
-    "dataset_name": "topo_sel_rlhf",
-    "dataset_path": "${oc.env:WORK_DIR}/datasets/cxmt/rlhf/topo_sel_rlhf_v1.jsonl"
+    "dataset_name": "llava_onevision_1_5_mid_training_3m",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-3M/merged_all.jsonl"
+  },
+  {
+    "dataset_name": "llava_onevision_1_5_mid_training_coyo",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/coyo.jsonl"
+  },
+  {
+    "dataset_name": "llava_onevision_1_5_mid_training_datacomp1b",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/datacomp1b.jsonl"
+  },
+  {
+    "dataset_name": "llava_onevision_1_5_mid_training_imagenet",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/imagenet.jsonl"
+  },
+  {
+    "dataset_name": "llava_onevision_1_5_mid_training_laioncn",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/laioncn.jsonl"
+  },
+  {
+    "dataset_name": "llava_onevision_1_5_mid_training_mint",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/mint.jsonl"
+  },
+  {
+    "dataset_name": "llava_next_780k",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-NeXT-780k/llava_next_780k.jsonl"
+  },
+  {
+    "dataset_name": "llava_onevision_1_5_instruct_22m",
+    "dataset_path": "${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Instruct-Data/merged_all.jsonl"
   }
 ]

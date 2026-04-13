@@ -1,0 +1,59 @@
+### model
+model: ${oc.env:WORK_DIR}/train/sft/full/LLaVA-OneVision-1.5-4B/v0-20260407-201327/checkpoint-2000
+model_type: llava_onevision1_5
+
+### method
+# debug: true
+stage: sft
+tuner_type: full
+lora_rank: 16
+lora_alpha: 32
+freeze_vit: false
+freeze_llm: false
+freeze_aligner: false
+
+### optimize
+attn_impl: flash_attn
+use_liger_kernel: false
+vit_gradient_checkpointing: true
+gradient_checkpointing_kwargs: {"use_reentrant": false}
+
+### dataset
+cached_dataset:
+  - ${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/cache/coyo
+  - ${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/cache/datacomp1b
+  - ${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/cache/imagenet
+  - ${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/cache/laioncn
+  - ${oc.env:WORK_DIR}/datasets/LLaVA-OneVision-1.5-Mid-Training-85M/cache/mint
+packing: true
+max_length: 8192
+dataset_num_proc: 4
+sequence_parallel_size: 1
+load_from_cache_file: false
+# split_dataset_ratio: 0.01
+
+### output
+output_dir: ${oc.env:WORK_DIR}/train/sft/full/LLaVA-OneVision-1.5-4B
+logging_steps: 10
+save_strategy: steps
+save_steps: 1000
+save_total_limit: 10
+report_to: tensorboard
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 2
+weight_decay: 0.0
+warmup_ratio: .002
+learning_rate: 1e-5
+num_train_epochs: 1.0
+lr_scheduler_type: cosine_with_min_lr
+lr_scheduler_kwargs: {"min_lr": 1e-6}
+torch_dtype: bfloat16
+deepspeed: zero3
+
+### plugins
+external_plugins:
+  - randy/plugins/model.py
+  - randy/plugins/dataset.py
+  - randy/plugins/template.py

@@ -1,11 +1,10 @@
 import os
 from pathlib import Path
 from omegaconf import OmegaConf
-from swift.llm.dataset.register import _register_d_info
-from swift.llm import register_dataset, DatasetMeta, ResponsePreprocessor
+from swift.dataset.register import _register_d_info
 
 
-PROJ_DIR = Path(__file__).parents[1].resolve()
+PROJ_DIR = Path(__file__).parents[2].resolve()
 WORK_DIR = PROJ_DIR.parents[1].resolve()
 os.environ['WORK_DIR'] = str(WORK_DIR)
 
