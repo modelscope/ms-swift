@@ -13,6 +13,7 @@ import re
 import time
 import torch
 import uuid
+from accelerate.utils import broadcast_object_list
 from collections import OrderedDict
 from contextlib import contextmanager, nullcontext
 from copy import copy
@@ -20,13 +21,12 @@ from dacite import from_dict
 from dataclasses import asdict
 from megatron.core import mpu
 from typing import Any, Dict, List, Tuple, Union
-from accelerate.utils import broadcast_object_list
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
-from swift.rlhf_trainers.utils import (FlattenedTensorBucket, TensorLoRARequest, aggressive_empty_cache,
-                                       check_vllm_version_ge, patch_vllm_load_adapter,
-                                       patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments, VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, vllm_supports_lora_load_inplace)
+from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
+                                       TensorLoRARequest, aggressive_empty_cache, check_vllm_version_ge,
+                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
+                                       profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
                          to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,

@@ -228,7 +228,7 @@ swift megatron rlhf \
 ```
 
 **Multimodal ViT LoRA Sync:** If ViT LoRA is enabled during training (`freeze_vit false`),
-tower/connector LoRA support must also be enabled on the vLLM side. 
+tower/connector LoRA support must also be enabled on the vLLM side.
 
 - **colocate mode**: pass via `vllm_engine_kwargs`:
 

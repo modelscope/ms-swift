@@ -35,11 +35,11 @@ from swift.tuners import Swift
 from swift.utils import get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response
 from .arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
-from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_buckets,
-                    _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
-                    get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
-                    patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                    set_expandable_segments, VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, vllm_supports_lora_load_inplace)
+from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
+                    _create_parameter_buckets, _process_bucket_with_flattened_tensor, aggressive_empty_cache,
+                    check_vllm_version_ge, get_even_process_data, get_gather_if_zero3_context, patch_lora_merge,
+                    patch_lora_unmerge, patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
+                    profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()

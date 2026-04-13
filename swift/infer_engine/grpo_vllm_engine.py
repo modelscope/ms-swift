@@ -6,12 +6,12 @@ from tqdm.asyncio import tqdm_asyncio
 from typing import Any, Dict, List, Optional, Union
 
 from swift.metrics import Metric
+from swift.rlhf_trainers.utils import VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH
 from swift.template import Template
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, InferRequest, RequestConfig,
                        RolloutOutput)
 from .utils import AdapterRequest
 from .vllm_engine import VllmEngine
-from swift.rlhf_trainers.utils import VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH
 
 try:
     os.environ['VLLM_WORKER_MULTIPROC_METHOD'] = 'spawn'
@@ -36,10 +36,7 @@ class GRPOVllmEngine(VllmEngine):
             lora_loaded = VLLM_LORA_INT_ID in self.engine.list_loras()
             if lora_loaded:
                 adapter_request = LoRARequest(
-                    lora_name=VLLM_LORA_NAME,
-                    lora_int_id=VLLM_LORA_INT_ID,
-                    lora_path=VLLM_LORA_PATH
-                )
+                    lora_name=VLLM_LORA_NAME, lora_int_id=VLLM_LORA_INT_ID, lora_path=VLLM_LORA_PATH)
 
         res = super().infer(
             infer_requests,
