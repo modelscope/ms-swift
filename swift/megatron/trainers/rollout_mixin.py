@@ -9,6 +9,7 @@ import base64
 import inspect
 import json
 import os
+import re
 import time
 import torch
 import uuid
@@ -19,6 +20,7 @@ from dacite import from_dict
 from dataclasses import asdict
 from megatron.core import mpu
 from typing import Any, Dict, List, Tuple, Union
+from accelerate.utils import broadcast_object_list
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, TensorLoRARequest, aggressive_empty_cache,
@@ -202,6 +204,7 @@ class MegatronRolloutMixin:
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.rollout_enable_lora = False
         self.base_sync_done = False
+        self._cached_vllm_param_names = None
 
         if not args.use_vllm:
             return
@@ -215,7 +218,12 @@ class MegatronRolloutMixin:
 
         if self.vllm_mode == 'server':
             # Server mode uses external vLLM server
-            pass
+            if self.is_main_process:
+                self.vllm_client.get_engine_type()
+                enable_lora = [self.vllm_client.enable_lora]
+            else:
+                enable_lora = [False]
+            self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=self.world_size - 1)
         elif self.vllm_mode == 'colocate':
             if self.world_size % self.vllm_tensor_parallel_size != 0:
                 raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
@@ -352,7 +360,6 @@ class MegatronRolloutMixin:
         Uses bridge.export_weights(peft_format=True) to export LoRA delta weights.
         Yielded names follow PEFT convention: 'base_model.model.<hf_path>.lora_A.weight'.
         """
-        logger.info("【DEBUG】 move adapter to vllm")
         target_device = 'cpu' if self.args.offload_bridge else None
 
         with profiling_context(self, 'export_adapter_weights'):
@@ -391,9 +398,9 @@ class MegatronRolloutMixin:
             weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
 
         if self.rollout_enable_lora:
-            peft_config = self.unwrapped_models[0].peft_config.get('default', None)
-            if peft_config is not None:
-                weight_iterator = self._add_base_layer_suffix(weight_iterator, peft_config.target_modules)
+            vllm_param_names = self._get_vllm_param_names_for_mapping()
+            if vllm_param_names:
+                weight_iterator = self._add_base_layer_suffix_by_param_names(weight_iterator, vllm_param_names)
 
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
@@ -402,35 +409,66 @@ class MegatronRolloutMixin:
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
 
-    @staticmethod
-    def _add_base_layer_suffix(weight_iterator, target_modules):
-        """Add .base_layer suffix to weight names that correspond to LoRA-wrapped modules.
+    def _get_vllm_param_names_for_mapping(self):
+        """Get vLLM runtime parameter names for base_layer mapping.
 
-        When vLLM has LoRA enabled, it wraps target linear layers with LoRA modules,
-        causing named_parameters() to return keys like 'qkv_proj.base_layer.weight'.
-        The model's load_weights() builds params_dict from named_parameters(),
-        so incoming weight names must include '.base_layer.' to match.
-
-        Instead of maintaining a hardcoded suffix list, we derive the set from the
-        model's actual peft_config.target_modules.
+        Returns an alias-expanded set so bridge/HF names can match vLLM packed names.
         """
-        if isinstance(target_modules, str):
-            target_modules = [target_modules]
-        lora_suffixes = set()
-        for mod in target_modules:
-            lora_suffixes.add(f'.{mod}.weight')
-            lora_suffixes.add(f'.{mod}.bias')
+        if self.vllm_mode == 'colocate':
+            llm_model = self.engine.inner_model
+            raw_names = set(dict[Any, Any](llm_model.named_parameters()).keys())
+            return self._expand_vllm_param_name_aliases(raw_names)
 
+        if self.vllm_mode != 'server' or not self.is_main_process:
+            return None
+
+        if self._cached_vllm_param_names is None:
+            keys = self.vllm_client.get_model_state_keys()
+            self._cached_vllm_param_names = self._expand_vllm_param_name_aliases(set(keys))
+        return self._cached_vllm_param_names
+
+    @staticmethod
+    def _add_base_layer_suffix_by_param_names(weight_iterator, vllm_param_names):
         for name, tensor in weight_iterator:
-            matched = ''
-            for suffix in lora_suffixes:
-                if name.endswith(suffix):
-                    matched = suffix
-                    break
-            if matched:
-                param_type = matched.rsplit('.', 1)[-1]
-                name = f'{name[:-len(param_type)]}base_layer.{param_type}'
+            if '.base_layer.' in name or '.' not in name:
+                yield name, tensor
+                continue
+
+            if name in vllm_param_names:
+                yield name, tensor
+                continue
+
+            module_name, param_type = name.rsplit('.', 1)
+            if param_type in {'weight', 'bias'}:
+                base_layer_name = f'{module_name}.base_layer.{param_type}'
+                if base_layer_name in vllm_param_names:
+                    name = base_layer_name
             yield name, tensor
+
+    @staticmethod
+    def _expand_vllm_param_name_aliases(param_names: set[str]) -> set[str]:
+        stacked_mappings = [
+            (re.compile(r'\bqkv_proj\b'), ('q_proj', 'k_proj', 'v_proj', 'q', 'k', 'v')),
+            (re.compile(r'\bgate_up_proj\b'), ('gate_proj', 'up_proj')),
+            (re.compile(r'\bin_proj_ba\b'), ('in_proj_b', 'in_proj_a')),
+            (re.compile(r'\blanguage_model\.model\b'), ('model.language_model', )),
+            (re.compile(r'^visual\.'), ('model.visual.', )),
+        ]
+
+        def _expand_once(keys: set[str]) -> set[str]:
+            expanded = set(keys)
+            for key in keys:
+                for pattern, aliases in stacked_mappings:
+                    if pattern.search(key):
+                        for alias in aliases:
+                            expanded.add(pattern.sub(alias, key))
+            return expanded
+
+        # Two passes allow chained replacement:
+        # e.g. language_model.model + qkv_proj -> model.language_model + q_proj
+        expanded = _expand_once(param_names)
+        expanded = _expand_once(expanded)
+        return expanded
 
     def _load_weights_to_server_in_buckets(self, weight_iterator):
         """Load weights to vLLM server in buckets."""
@@ -539,8 +577,6 @@ class MegatronRolloutMixin:
 
     def _server_rollout(self, inputs: DataType, request_config: RequestConfig) -> List[RolloutOutput]:
         """Perform rollout using vLLM server mode."""
-        from accelerate.utils import broadcast_object_list
-
         infer_requests = self._inputs_to_requests(inputs)
 
         all_requests = gather_object(infer_requests)

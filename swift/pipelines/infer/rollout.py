@@ -123,6 +123,10 @@ class WeightSyncWorkerExtension:
         # The client process that sends updated weights has the highest rank (world_size - 1).
         self.client_rank = world_size - 1
 
+    def get_state_keys(self) -> List[str]:
+        """Return runtime model parameter names for exact weight-name mapping."""
+        return list(dict(self.model_runner.model.named_parameters()).keys())
+
     def update_named_param(self, name: str, dtype: str, shape: Sequence[int]) -> None:
         """
         Receives updated weights from the client process and updates the named parameter in the model.
@@ -371,6 +375,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     def _register_rl_rollout_app(self):
         self.app.get('/health/')(self.health)
         self.app.get('/get_world_size/')(self.get_world_size)
+        self.app.get('/get_model_state_keys/')(self.get_model_state_keys)
         self.app.post('/init_communicator/')(self.init_communicator)
         self.app.post('/update_named_param/')(self.update_named_param)
         self.app.post('/update_adapter_flattened_param/')(self.update_adapter_flattened_param)
@@ -481,6 +486,25 @@ class SwiftRolloutDeploy(SwiftPipeline):
         ```
         """
         return {'world_size': self.args.vllm_tensor_parallel_size * self.args.vllm_data_parallel_size}
+
+    async def get_model_state_keys(self):
+        """Get runtime vLLM model parameter names from one worker group."""
+        if not self.connections:
+            return {'keys': []}
+        kwargs = {'method': 'get_state_keys'}
+        self.connections[0].send({'type': 'call', 'method': 'collective_rpc', 'kwargs': kwargs})
+        result = self.connections[0].recv()
+
+        keys = []
+        if isinstance(result, list):
+            if result and all(isinstance(x, str) for x in result):
+                keys = result
+            else:
+                for item in result:
+                    if isinstance(item, list) and item and all(isinstance(x, str) for x in item):
+                        keys = item
+                        break
+        return {'keys': keys}
 
     async def init_communicator(self, request: InitCommunicatorRequest):
         """

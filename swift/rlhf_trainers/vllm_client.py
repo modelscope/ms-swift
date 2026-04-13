@@ -442,6 +442,14 @@ class VLLMClient:
         self.enable_lora = result.get('enable_lora', False)
         return result
 
+    def get_model_state_keys(self):
+        """Fetch runtime vLLM model parameter names from server."""
+        response = self.sessions[0].get(f'{self.base_urls[0]}/get_model_state_keys/')
+        if response.status_code != 200:
+            raise Exception(f'Get model state keys failed: {response.text}')
+        data = response.json()
+        return data.get('keys', [])
+
     def close_communicator(self):
         for i in range(self.num_servers):
             try:
