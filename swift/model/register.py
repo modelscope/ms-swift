@@ -451,11 +451,9 @@ class ModelLoader(BaseModelLoader):
     def _init_generation_config(self, model, model_dir):
         # generation_config
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
-        if not hasattr(model, 'generation_config'):
-            generation_config = None
-            if os.path.isfile(generation_config_path):
-                generation_config = GenerationConfig.from_pretrained(model_dir)
-            model.generation_config = generation_config
+        if getattr(model, 'generation_config', None) is None:
+            model.generation_config = GenerationConfig.from_pretrained(model_dir) if os.path.isfile(
+                generation_config_path) else None
         # fix llama2 warning
         if getattr(model, 'generation_config', None):
             fix_do_sample_warning(model.generation_config)
