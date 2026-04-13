@@ -39,7 +39,7 @@ from .utils import (FlattenedTensorBucket, TensorLoRARequest, _create_parameter_
                     _process_bucket_with_flattened_tensor, aggressive_empty_cache, check_vllm_version_ge,
                     get_even_process_data, get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge,
                     patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                    set_expandable_segments)
+                    set_expandable_segments, VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, vllm_supports_lora_load_inplace)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -442,14 +442,16 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             else:
                 self.vllm_client.update_adapter_param(peft_config, lora_params)
         elif self.vllm_mode == 'colocate':
-            lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
-            lora_request = TensorLoRARequest(
-                lora_name=f'{lora_int_id}',
-                lora_int_id=lora_int_id,
-                lora_path='dummy_lora_path',
-                peft_config=asdict(peft_config),
-                lora_tensors=lora_params,
-            )
+            req_kw = {
+                'lora_name': VLLM_LORA_NAME,
+                'lora_int_id': VLLM_LORA_INT_ID,
+                'lora_path': VLLM_LORA_PATH,
+                'peft_config': asdict(peft_config),
+                'lora_tensors': lora_params,
+            }
+            if vllm_supports_lora_load_inplace():
+                req_kw['load_inplace'] = True
+            lora_request = TensorLoRARequest(**req_kw)
             self.engine.engine.add_lora(lora_request)
         del lora_params
 

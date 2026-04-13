@@ -261,12 +261,10 @@ class VLLMClient:
         errors = [None] * self.num_servers
         peft_config = peft_config_to_dict(peft_config)
         metadatas = [m.model_dump() if hasattr(m, 'model_dump') else m.dict() for m in metadatas]
-        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 
         def _update_single_server(i):
             try:
                 data = {
-                    'lora_int_id': lora_int_id,
                     'peft_config': {
                         **peft_config
                     },
@@ -310,7 +308,6 @@ class VLLMClient:
         """
         errors = [None] * self.num_servers
         peft_config = peft_config_to_dict(peft_config)
-        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 
         # Build metadata for each tensor
         lora_tensors_metadata = []
@@ -328,7 +325,6 @@ class VLLMClient:
         def _update_single_server(i):
             try:
                 data = {
-                    'lora_int_id': lora_int_id,
                     'peft_config': {
                         **peft_config
                     },

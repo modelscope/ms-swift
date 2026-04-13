@@ -26,7 +26,7 @@ from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, Roll
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, TensorLoRARequest, aggressive_empty_cache,
                                        check_vllm_version_ge, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments)
+                                       set_expandable_segments, VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, vllm_supports_lora_load_inplace)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
                          to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
@@ -223,7 +223,7 @@ class MegatronRolloutMixin:
                 enable_lora = [self.vllm_client.enable_lora]
             else:
                 enable_lora = [False]
-            self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=self.world_size - 1)
+            self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=self.world_size - 1)[0]
         elif self.vllm_mode == 'colocate':
             if self.world_size % self.vllm_tensor_parallel_size != 0:
                 raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
@@ -372,14 +372,16 @@ class MegatronRolloutMixin:
         peft_config = self.unwrapped_models[0].peft_config.get('default', None)
 
         if self.vllm_mode == 'colocate':
-            lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
-            lora_request = TensorLoRARequest(
-                lora_name=f'{lora_int_id}',
-                lora_int_id=lora_int_id,
-                lora_path='dummy_lora_path',
+            req_kw = dict(
+                lora_name=VLLM_LORA_NAME,
+                lora_int_id=VLLM_LORA_INT_ID,
+                lora_path=VLLM_LORA_PATH,
                 peft_config=asdict(peft_config),
                 lora_tensors=lora_params,
             )
+            if vllm_supports_lora_load_inplace():
+                req_kw['load_inplace'] = True
+            lora_request = TensorLoRARequest(**req_kw)
             self.engine.engine.add_lora(lora_request)
         elif self.vllm_mode == 'server' and self.is_main_process:
             bucket = FlattenedTensorBucket(named_tensors=list(lora_params.items()))

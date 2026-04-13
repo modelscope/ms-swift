@@ -40,8 +40,9 @@ from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig,
                                          UpdateWeightsRequest)
 from swift.rlhf_trainers.utils import (FlattenedTensorBucket, FlattenedTensorMetadata, TensorLoRARequest,
                                        UpdateAdapterRequest, UpdateFlattenedAdapterRequest,
-                                       UpdateFlattenedParamsRequest, check_vllm_version_ge, chunk_list,
-                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader)
+                                       UpdateFlattenedParamsRequest, VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH,
+                                       check_vllm_version_ge, chunk_list, patch_vllm_load_adapter,
+                                       patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
 from swift.utils import get_logger, get_seed, get_torch_device, is_vllm_ascend_available, synchronize
 from ..base import SwiftPipeline
@@ -158,7 +159,7 @@ class WeightSyncWorkerExtension:
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
 
-    def update_adapter_flattened_param(self, lora_int_id: int, peft_config: Dict, metadatas: list[Dict]) -> None:
+    def update_adapter_flattened_param(self, peft_config: Dict, metadatas: list[Dict]) -> None:
         """
         Receives and applies a flattened LoRA adapter to the model.
         """
@@ -174,21 +175,26 @@ class WeightSyncWorkerExtension:
         self.communicator.group.barrier()
 
         named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
-        lora_request = TensorLoRARequest(
-            lora_name=f'{lora_int_id}',
-            lora_int_id=lora_int_id,
-            lora_path='dummy_lora_path',
+        req_kw = dict(
+            lora_name=VLLM_LORA_NAME,
+            lora_int_id=VLLM_LORA_INT_ID,
+            lora_path=VLLM_LORA_PATH,
             peft_config=peft_config,
-            lora_tensors=named_params)
+            lora_tensors=named_params,
+        )
+        if vllm_supports_lora_load_inplace():
+            req_kw['load_inplace'] = True
+        else:
+            self.remove_lora(VLLM_LORA_INT_ID)
+        lora_request = TensorLoRARequest(**req_kw)
         self.add_lora(lora_request)
 
-    def update_adapter_param(self, lora_int_id: int, peft_config: Dict, lora_tensors_metadata: list[Dict]) -> None:
+    def update_adapter_param(self, peft_config: Dict, lora_tensors_metadata: list[Dict]) -> None:
         """
         Receives and applies a LoRA adapter to the model without flattening.
         Each tensor is broadcast individually.
 
         Args:
-            lora_int_id: Integer ID for the LoRA adapter.
             peft_config: PEFT configuration dictionary.
             lora_tensors_metadata: List of metadata dictionaries for each tensor.
         """
@@ -209,12 +215,18 @@ class WeightSyncWorkerExtension:
         synchronize()
         self.communicator.group.barrier()
 
-        lora_request = TensorLoRARequest(
-            lora_name=f'{lora_int_id}',
-            lora_int_id=lora_int_id,
-            lora_path='dummy_lora_path',
+        req_kw = dict(
+            lora_name=VLLM_LORA_NAME,
+            lora_int_id=VLLM_LORA_INT_ID,
+            lora_path=VLLM_LORA_PATH,
             peft_config=peft_config,
-            lora_tensors=named_params)
+            lora_tensors=named_params,
+        )
+        if vllm_supports_lora_load_inplace():
+            req_kw['load_inplace'] = True
+        else:
+            self.remove_lora(VLLM_LORA_INT_ID)
+        lora_request = TensorLoRARequest(**req_kw)
         self.add_lora(lora_request)
 
     def update_flattened_params(self, metadatas: list[Dict]) -> None:
@@ -552,7 +564,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
             for metadata in request.metadatas
         ]
-        kwargs = {'method': 'update_adapter_flattened_param', 'args': (request.lora_int_id, peft_config, metadatas)}
+        kwargs = {'method': 'update_adapter_flattened_param', 'args': (peft_config, metadatas)}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
@@ -565,7 +577,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
         Args:
             request (UpdateAdapterRequest):
-                - lora_int_id (int): Integer ID for the LoRA adapter.
                 - peft_config (LoraConfig): PEFT configuration for the adapter.
                 - lora_tensors_metadata (List[FlattenedTensorMetadata]): Metadata for each tensor.
         """
@@ -574,7 +585,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             metadata.model_dump() if hasattr(metadata, 'model_dump') else metadata.dict()
             for metadata in request.lora_tensors_metadata
         ]
-        kwargs = {'method': 'update_adapter_param', 'args': (request.lora_int_id, peft_config, lora_tensors_metadata)}
+        kwargs = {'method': 'update_adapter_param', 'args': (peft_config, lora_tensors_metadata)}
         for connection in self.connections:
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 

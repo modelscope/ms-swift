@@ -38,6 +38,11 @@ T = TypeVar('T')
 
 _ipv6_patch_applied = False
 
+# Constants for the RL training LoRA adapter identity.
+VLLM_LORA_INT_ID = 111
+VLLM_LORA_NAME = 'swift_lora'
+VLLM_LORA_PATH = 'swift_dummy_lora_path'
+
 if is_vllm_available():
     from vllm.lora.request import LoRARequest
 
@@ -1091,7 +1096,6 @@ class TensorMetadata(BaseModel):
 
 
 class UpdateFlattenedAdapterRequest(BaseModel):
-    lora_int_id: int
     peft_config: LoraConfig
     metadatas: List[FlattenedTensorMetadata]
 
@@ -1102,7 +1106,6 @@ class UpdateFlattenedParamsRequest(BaseModel):
 
 class UpdateAdapterRequest(BaseModel):
     """Request for non-flattened adapter weight update"""
-    lora_int_id: int
     peft_config: LoraConfig
     lora_tensors_metadata: List[TensorMetadata]
 
@@ -1478,6 +1481,14 @@ def check_vllm_version_ge(min_version: str) -> bool:
         return True
     return version.parse(vllm_version) >= version.parse(min_version)
 
+
+def vllm_supports_lora_load_inplace() -> bool:
+    """True when vLLM LoRARequest supports load_inplace (replaces same lora_int_id without remove_lora).
+
+    Introduced in vLLM v0.15.0 (see vllm/lora/request.py). Older versions require remove_lora before add_lora
+    when reusing a stable adapter id.
+    """
+    return check_vllm_version_ge('0.15.0')
 
 # ============================================================================
 # Padding-free utilities
