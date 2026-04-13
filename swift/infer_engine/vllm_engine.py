@@ -8,7 +8,7 @@ from copy import copy, deepcopy
 from packaging import version
 from PIL import Image
 from tqdm import tqdm
-from transformers import GenerationConfig
+from transformers import AutoConfig, GenerationConfig
 from transformers.utils import is_torch_npu_available
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
@@ -17,7 +17,7 @@ from swift.model import get_processor
 from swift.template import Template
 from swift.utils import get_device, get_dist_setting, get_logger, is_dist, safe_snapshot_download
 from .infer_engine import InferEngine
-from .patch import patch_auto_config, patch_auto_tokenizer
+from .patch import patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                        EmbeddingResponseData, InferRequest, RequestConfig, random_uuid)
@@ -177,30 +177,29 @@ class VllmEngine(InferEngine):
             num_labels=self.num_labels,
             task_type=self.task_type)
 
-    @contextmanager
-    def _patch_input_processing_context(self):
-        from vllm.multimodal.processing.context import InputProcessingContext
-        get_hf_config = InputProcessingContext.get_hf_config
-        config = self.config
-
-        def new_get_hf_config(self, typ=None):
-            if typ is not None and not isinstance(config, typ):
-                config.__class__ = typ
-            return get_hf_config(self)
-
-        InputProcessingContext.get_hf_config = new_get_hf_config
-        try:
-            yield
-        finally:
-            InputProcessingContext.get_hf_config = get_hf_config
-
     def _prepare_engine(self) -> None:
-        self.config = copy(self.config)
-        with patch_auto_tokenizer(self.tokenizer), patch_auto_config(
-                self.config), self._patch_input_processing_context():
+        with patch_auto_tokenizer(self.tokenizer), self._patch_auto_config():
             llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine
+
+    @contextmanager
+    def _patch_auto_config(self):
+        _old_from_pretrained = AutoConfig.from_pretrained
+
+        def _from_pretrained(*args, **kwargs):
+            if self._version_ge('0.19'):
+                config = _old_from_pretrained(*args, **kwargs)
+                if not isinstance(self.config, config.__class__):
+                    self.config = copy(self.config)
+                    self.config.__class__ = config.__class__
+            return self.config
+
+        AutoConfig.from_pretrained = _from_pretrained
+        try:
+            yield
+        finally:
+            AutoConfig.from_pretrained = _old_from_pretrained
 
     def _prepare_engine_kwargs(self, max_model_len, engine_kwargs) -> None:
         if engine_kwargs is None:
