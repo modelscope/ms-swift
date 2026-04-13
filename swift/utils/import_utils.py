@@ -19,6 +19,8 @@ def is_vllm_available():
 def is_vllm_ascend_available():
     return importlib.util.find_spec('vllm_ascend') is not None
 
+def is_vllm_metax_available():
+    return importlib.util.find_spec('vllm_metax') is not None
 
 def is_lmdeploy_available():
     return importlib.util.find_spec('lmdeploy') is not None

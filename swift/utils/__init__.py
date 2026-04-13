@@ -6,7 +6,7 @@ from .hf_config import HfConfigFactory
 from .hub_utils import download_ms_file, git_clone_github, safe_snapshot_download
 from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
                            is_lmdeploy_available, is_megatron_available, is_swanlab_available, is_trl_available,
-                           is_unsloth_available, is_vllm_ascend_available, is_vllm_available, is_wandb_available)
+                           is_unsloth_available, is_vllm_ascend_available, is_vllm_metax_available, is_vllm_available, is_wandb_available)
 from .io_utils import JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_jsonl, write_to_jsonl
 from .logger import get_logger, ms_logger_context
 from .np_utils import get_seed, stat_array, transform_jsonl_to_df
