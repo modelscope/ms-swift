@@ -410,6 +410,9 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'qwen3_moe':
                 from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
                 z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
+            elif hf_model_type == 'gemma4':
+                from transformers.models.gemma4.modeling_gemma4 import Gemma4TextExperts
+                z3_leaf_modules = [Gemma4TextExperts]
             elif hf_model_type == 'glm4_moe':
                 from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
                 z3_leaf_modules = [Glm4MoeMoE]
