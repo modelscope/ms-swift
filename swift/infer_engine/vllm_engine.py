@@ -195,7 +195,7 @@ class VllmEngine(InferEngine):
                     self._config_cls = config.__class__
                 if not isinstance(self.config, self._config_cls):
                     self.config = copy(self.config)
-                    self.config.__class__ = config.__class__
+                    self.config.__class__ = self._config_cls
             return self.config
 
         AutoConfig.from_pretrained = _from_pretrained
