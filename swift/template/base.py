@@ -1017,6 +1017,8 @@ class Template(ProcessorMixin):
 
     def _jinja_encode(self, inputs: StdTemplateInputs):
         messages = inputs.messages.copy()
+        if inputs.system is None:
+            inputs.system = self.template_meta.default_system
         if inputs.system is not None:
             messages.insert(0, {'role': 'system', 'content': inputs.system})
         if messages[-1]['content'] is None:
