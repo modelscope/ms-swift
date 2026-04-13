@@ -135,6 +135,7 @@ class VllmEngine(InferEngine):
         self.quantization = quantization
         self.num_labels = num_labels
         self.reranker_use_activation = reranker_use_activation
+        self._config_cls = None
 
         patch_vllm_memory_leak()
         self._adapters_pool = {}
@@ -189,8 +190,10 @@ class VllmEngine(InferEngine):
 
         def _from_pretrained(*args, **kwargs):
             if self._version_ge('0.19'):
-                config = _old_from_pretrained(*args, **kwargs)
-                if not isinstance(self.config, config.__class__):
+                if self._config_cls is None:
+                    config = _old_from_pretrained(*args, **kwargs)
+                    self._config_cls = config.__class__
+                if not isinstance(self.config, self._config_cls):
                     self.config = copy(self.config)
                     self.config.__class__ = config.__class__
             return self.config
