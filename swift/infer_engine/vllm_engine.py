@@ -3,8 +3,8 @@ import asyncio
 import inspect
 import os
 import torch
-from contextlib import nullcontext
-from copy import deepcopy
+from contextlib import contextmanager, nullcontext
+from copy import copy, deepcopy
 from packaging import version
 from PIL import Image
 from tqdm import tqdm
@@ -177,8 +177,27 @@ class VllmEngine(InferEngine):
             num_labels=self.num_labels,
             task_type=self.task_type)
 
+    @contextmanager
+    def _patch_input_processing_context(self):
+        from vllm.multimodal.processing.context import InputProcessingContext
+        get_hf_config = InputProcessingContext.get_hf_config
+        config = self.config
+
+        def new_get_hf_config(self, typ=None):
+            if typ is not None and not isinstance(config, typ):
+                config.__class__ = typ
+            return get_hf_config(self)
+
+        InputProcessingContext.get_hf_config = new_get_hf_config
+        try:
+            yield
+        finally:
+            InputProcessingContext.get_hf_config = get_hf_config
+
     def _prepare_engine(self) -> None:
-        with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
+        self.config = copy(self.config)
+        with patch_auto_tokenizer(self.tokenizer), patch_auto_config(
+                self.config), self._patch_input_processing_context():
             llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine
