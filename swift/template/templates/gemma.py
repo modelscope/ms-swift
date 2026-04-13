@@ -256,12 +256,13 @@ class Gemma4Template(Template):
         elif media_type == 'video':
             return ['\n\n<|video|>\n\n']
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
         if self.enable_thinking:
-            if inputs.system is None:
-                inputs.system = ''
-            inputs.system = '<|think|>\n' + inputs.system
-        return super()._swift_encode(inputs)
+            if system is None:
+                system = ''
+            system = '<|think|>\n' + system
+        return system
 
     def _add_non_thinking_prefix(self, inputs: StdTemplateInputs, thinking_prefix: str = '<|channel>thought'):
         return super()._add_non_thinking_prefix(inputs, thinking_prefix=thinking_prefix)

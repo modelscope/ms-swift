@@ -1134,8 +1134,9 @@ class Template(ProcessorMixin):
                 self._add_non_thinking_prefix(inputs)
             if template_meta.is_thinking or self.enable_thinking:
                 self._remove_history_thinking(inputs)
-        system = self._get_system(inputs)
-
+            system = self._get_system(inputs)
+        else:
+            system = None
         self._get_std_messages(inputs.messages)
         n_round = len(inputs.messages) // 2
         if n_round > 1 and not self.template_meta.support_multi_round:
