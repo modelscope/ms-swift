@@ -165,15 +165,15 @@ class WeightSyncWorkerExtension:
         metadatas = [FlattenedTensorMetadata(**metadata) for metadata in metadatas]
         if self.communicator is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
-        flatten_tensor_length = metadatas[-1].end_idx
-        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
-        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
+
+        total_bytes = metadatas[-1].end_idx
+        flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
         self.communicator.broadcast(
             flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
         synchronize()
         self.communicator.group.barrier()
-        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
-        named_params = flattened_tensor_bucket.reconstruct_tensors()
+
+        named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
         lora_request = TensorLoRARequest(
             lora_name=f'{lora_int_id}',
             lora_int_id=lora_int_id,
@@ -228,21 +228,17 @@ class WeightSyncWorkerExtension:
         if self.communicator is None:
             raise RuntimeError('Communicator not initialized. Call `init_communicator` first.')
 
-        flatten_tensor_length = metadatas[-1].end_idx
-        dtype = getattr(torch, metadatas[-1].dtype.split('.')[-1])
-        flatten_tensor = torch.empty(flatten_tensor_length, dtype=dtype, device=self.communicator.device)
+        total_bytes = metadatas[-1].end_idx
+        flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
 
         self.communicator.broadcast(
             flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
         synchronize()
         self.communicator.group.barrier()
 
-        flattened_tensor_bucket = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor)
-        named_params = flattened_tensor_bucket.reconstruct_tensors()
+        named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
 
-        # Patch MoE weight_loader if needed
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
-        # Load the reconstructed parameters into the model
         self.model_runner.model.load_weights(weights=list(named_params.items()))
 
     def close_communicator(self) -> None:

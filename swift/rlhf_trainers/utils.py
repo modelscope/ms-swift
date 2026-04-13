@@ -1071,18 +1071,6 @@ class FlattenedTensorMetadata(BaseModel):
     end_idx: int
     numel: int
 
-    @field_validator('shape', mode='before')
-    @classmethod
-    def ensure_shape_tuple(cls, v: Any) -> Tuple[int, ...]:
-        # accept tuple/list, torch.Size, or other iterable of ints
-        if torch is not None and isinstance(v, torch.Size):
-            return tuple(int(x) for x in v)
-        if isinstance(v, (list, tuple)):
-            return tuple(int(x) for x in v)
-        if isinstance(v, Iterable):
-            return tuple(int(x) for x in v)
-        raise ValueError('shape must be an iterable of ints (e.g. tuple/list/torch.Size)')
-
     @field_validator('dtype', mode='before')
     @classmethod
     def ensure_dtype_str(cls, v: Any) -> str:
@@ -1131,46 +1119,30 @@ class FlattenedTensorBucket:
         flattened_tensor: torch.Tensor = None,
         metadata: List[FlattenedTensorMetadata] = None,
     ):
-        """
-        Initialize a tensor bucket from a list of named tensors OR from pre-flattened data.
-        Args:
-            named_tensors: List of (name, tensor) tuples (for creating new bucket)
-            flattened_tensor: Pre-flattened tensor (for reconstruction)
-            metadata: Pre-computed metadata (for reconstruction)
-        """
         if named_tensors is not None:
-            # Create bucket from named tensors
-            self.metadata: List[FlattenedTensorMetadata] = [None] * len(named_tensors)
-            self.flattened_tensor: torch.Tensor = None
-
             if not named_tensors:
                 raise ValueError('Cannot create empty tensor bucket')
 
-            # First pass: compute total size and metadata
-            current_idx = 0
-            total_numel = 0
+            self.metadata: List[FlattenedTensorMetadata] = [None] * len(named_tensors)
+            flattened_chunks: List[torch.Tensor] = [None] * len(named_tensors)
+            current_byte = 0
+
             for i, (name, tensor) in enumerate(named_tensors):
-                numel = tensor.numel()
-                metadata_obj = FlattenedTensorMetadata(
+                flat_u8 = tensor.flatten().view(torch.uint8)
+                flattened_chunks[i] = flat_u8
+
+                numel = flat_u8.numel()
+                self.metadata[i] = FlattenedTensorMetadata(
                     name=name,
                     shape=tuple(tensor.shape),
                     dtype=str(tensor.dtype),
-                    start_idx=current_idx,
-                    end_idx=current_idx + numel,
+                    start_idx=current_byte,
+                    end_idx=current_byte + numel,
                     numel=numel,
                 )
-                self.metadata[i] = metadata_obj
-                current_idx += numel
-                total_numel += numel
+                current_byte += numel
 
-            # Pre-allocate the final flattened tensor to avoid intermediate copies
-            # Use the dtype and device of the first tensor
-            first_tensor = named_tensors[0][1]
-            self.flattened_tensor = torch.empty(total_numel, dtype=first_tensor.dtype, device=first_tensor.device)
-
-            # Second pass: copy data directly into pre-allocated tensor
-            for meta, (name, tensor) in zip(self.metadata, named_tensors):
-                self.flattened_tensor[meta.start_idx:meta.end_idx].copy_(tensor.flatten())
+            self.flattened_tensor = torch.cat(flattened_chunks, dim=0)
         else:
             # Initialize from pre-flattened data
             if flattened_tensor is None or metadata is None:
@@ -1195,14 +1167,10 @@ class FlattenedTensorBucket:
         reconstructed = {}
 
         for meta in self.metadata:
-            tensor = self.flattened_tensor[meta.start_idx:meta.end_idx].reshape(meta.shape)
             dtype = getattr(torch, meta.dtype.split('.')[-1])
-            # batch dtype conversion (if needed)
-            if tensor.dtype != dtype:
-                tensor = tensor.to(dtype)
-
+            byte_slice = self.flattened_tensor[meta.start_idx:meta.end_idx]
+            tensor = byte_slice.view(dtype).reshape(meta.shape)
             reconstructed[meta.name] = tensor
-
         return reconstructed
 
 
