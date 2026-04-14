@@ -452,7 +452,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # For RL rollout, we use 'dummy' load_format to prevent vLLM from loading weights from disk,
         # as they will be synced from the trainer process.
         # This will accelerate the rollout speed.
-        load_format = engine_kwargs.pop('load_format', 'dummy')
+        load_format = engine_kwargs.pop('load_format', 'auto')
         kwargs['load_format'] = load_format
 
         if args.vllm_use_async_engine and args.vllm_data_parallel_size > 1:
