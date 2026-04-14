@@ -57,6 +57,7 @@ try:
     from vllm.distributed.utils import StatelessProcessGroup
     if is_vllm_ascend_available():
         from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator as PyNcclCommunicator  # noqa
+
     if is_vllm_metax_available():
         import vllm_metax.patch
 except ImportError:
