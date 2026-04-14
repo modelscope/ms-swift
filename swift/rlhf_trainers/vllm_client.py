@@ -17,7 +17,7 @@ from swift.infer_engine import AdapterRequest, RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.metrics import Metric
 from swift.utils import (get_torch_device, is_trl_available, is_vllm_ascend_available,
-                         is_vllm_metax_available, is_vllm_available, synchronize)
+                         is_vllm_available, is_vllm_metax_available, synchronize)
 from .utils import format_host_for_url, is_valid_ipv6_address, peft_config_to_dict, resolve_hostname
 
 if is_vllm_available():
