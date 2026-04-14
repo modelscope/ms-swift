@@ -4,6 +4,7 @@ import functools
 import ipaddress
 import math
 import os
+import re
 import socket
 import time
 import torch
@@ -1064,6 +1065,49 @@ def patch_vllm_load_adapter():
         if TokenizerGroup is not None:
             TokenizerGroup._old_get_lora_tokenizer = TokenizerGroup.get_lora_tokenizer
             TokenizerGroup.get_lora_tokenizer = patched_get_lora_tokenizer
+
+
+def expand_vllm_param_name_aliases(param_names: set[str]) -> set[str]:
+    stacked_mappings = [
+        (re.compile(r'\bqkv_proj\b'), ('q_proj', 'k_proj', 'v_proj', 'q', 'k', 'v')),
+        (re.compile(r'\bgate_up_proj\b'), ('gate_proj', 'up_proj')),
+        (re.compile(r'\bin_proj_ba\b'), ('in_proj_b', 'in_proj_a')),
+        (re.compile(r'\blanguage_model\.model\b'), ('model.language_model', )),
+        (re.compile(r'^visual\.'), ('model.visual.', )),
+    ]
+
+    def _expand_once(keys: set[str]) -> set[str]:
+        expanded = set(keys)
+        for key in keys:
+            for pattern, aliases in stacked_mappings:
+                if pattern.search(key):
+                    for alias in aliases:
+                        expanded.add(pattern.sub(alias, key))
+        return expanded
+
+    # Two passes allow chained replacement:
+    # e.g. language_model.model + qkv_proj -> model.language_model + q_proj
+    expanded = _expand_once(param_names)
+    expanded = _expand_once(expanded)
+    return expanded
+
+
+def add_base_layer_suffix_by_param_names(weight_iterator: Iterable[Tuple[str, Any]],
+                                         vllm_param_names: set[str]) -> Iterable[Tuple[str, Any]]:
+    """Map HF dense param names to vLLM LoRA-wrapped modules (*.base_layer.weight / .bias)."""
+    for name, tensor in weight_iterator:
+        if '.base_layer.' in name or '.' not in name:
+            yield name, tensor
+            continue
+        if name in vllm_param_names:
+            yield name, tensor
+            continue
+        module_name, param_type = name.rsplit('.', 1)
+        if param_type in {'weight', 'bias'}:
+            bl = f'{module_name}.base_layer.{param_type}'
+            if bl in vllm_param_names:
+                name = bl
+        yield name, tensor
 
 
 # FlattenedTensor, code borrowed from sglang/srt/weight_sync/tensor_bucket.py

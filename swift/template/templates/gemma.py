@@ -246,25 +246,45 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
 
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        vp = getattr(self.processor, 'video_processor', None)
+        if vp is not None:
+            nf = get_env_args('num_frames', int, None)
+            if nf is not None:
+                vp.num_frames = int(nf)
+        ip = getattr(self.processor, 'image_processor', None)
+        if ip is not None and hasattr(ip, 'max_soft_tokens'):
+            mst = get_env_args('max_soft_tokens', int, None)
+            if mst is not None:
+                ip.max_soft_tokens = int(mst)
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if self.mode != 'vllm':
+            return
+        mp = inputs.mm_processor_kwargs
+        ip = getattr(self.processor, 'image_processor', None)
+        if ip is not None and hasattr(ip, 'max_soft_tokens'):
+            mp.setdefault('max_soft_tokens', int(ip.max_soft_tokens))
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             if self.mode == 'vllm':
-                return ['<|image|>']
+                image_tok = getattr(self.processor, 'image_token', None) or '<|image|>'
+                return ['\t' + image_tok]
             return ['\n\n<|image|>\n\n']
         elif media_type == 'audio':
             if self.mode == 'vllm':
-                return ['<|audio|>']
+                audio_tok = getattr(self.processor, 'audio_token', None) or '<|audio|>'
+                return [audio_tok]
             inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<|audio|>']
         elif media_type == 'video':
             if self.mode == 'vllm':
-                from vllm.assets.video import video_get_metadata, video_to_ndarrays
-                num_frames = get_env_args('num_frames', int, 32)
-                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
-                video_metadata = video_get_metadata(inputs.videos[index], num_frames)
-                inputs.videos[index] = (video_data, video_metadata)
-                return ['<|video|>']
+                video_tok = getattr(self.processor, 'video_token', None) or '<|video|>'
+                return [video_tok]
             return ['\n\n<|video|>\n\n']
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:

@@ -25,8 +25,9 @@ from typing import Any, Dict, List, Tuple, Union
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        TensorLoRARequest, aggressive_empty_cache, check_vllm_version_ge,
-                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
-                                       profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
+                                       expand_vllm_param_name_aliases, patch_vllm_load_adapter,
+                                       patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
+                                       set_expandable_segments, vllm_supports_lora_load_inplace)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
                          to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
@@ -309,15 +310,15 @@ class MegatronRolloutMixin:
         """Synchronize model weights to vLLM engine.
 
         Decision logic (following HF GRPOTrainer / twinkle / verl patterns):
-        - Full sync: when tuner_type is 'full', or first sync (base_sync_done=False),
-          or sleep_level==2, or rollout_enable_lora is disabled.
-        - Adapter-only sync: when LoRA training with rollout_enable_lora=True and
+        - Full sync: when tuner_type != 'lora' (e.g. full, lora_llm), or first sync
+          (base_sync_done=False), or sleep_level==2, or rollout_enable_lora is disabled.
+        - Adapter-only sync: when tuner_type == 'lora' with rollout_enable_lora=True and
           base weights have already been synced.
         """
         args = self.args
         tuner_type = args.tuner_type
 
-        if tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
+        if (tuner_type != 'lora' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora):
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()
@@ -331,13 +332,18 @@ class MegatronRolloutMixin:
     def _move_full_model_to_vllm(self):
         """Transfer full model weights to vLLM engine.
 
-        For LoRA training:
+        For LoRA training (tuner_type == 'lora'):
         - When rollout_enable_lora=False: merge LoRA into base, export merged weights, then unmerge.
         - When rollout_enable_lora=True: export base weights only (no merge needed),
           then follow up with adapter-only sync via _move_adapter_to_vllm.
+        For lora_llm: always merge LLM LoRA into exported dense weights (vLLM has no separate
+        adapter pass for this tuner_type; see _move_model_to_vllm).
         """
-        is_lora_training = self.args.tuner_type == 'lora'
-        should_merge = is_lora_training and not self.rollout_enable_lora
+        is_lora_training = self.args.tuner_type in ('lora', 'lora_llm')
+        is_pure_lora = self.args.tuner_type == 'lora'
+        should_merge = not self.rollout_enable_lora
+        if self.args.tuner_type == 'lora_llm' and self.rollout_enable_lora:
+            logger.warning('lora_llm is not supported with vllm_enable_lora=True. plz set vllm_enable_lora to False')
 
         try:
             if should_merge:
@@ -351,7 +357,7 @@ class MegatronRolloutMixin:
 
         if is_lora_training:
             self.base_sync_done = True
-            if self.rollout_enable_lora:
+            if self.rollout_enable_lora and is_pure_lora:
                 self._move_adapter_to_vllm()
 
     def _move_adapter_to_vllm(self):
@@ -419,14 +425,14 @@ class MegatronRolloutMixin:
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
             raw_names = set(dict[Any, Any](llm_model.named_parameters()).keys())
-            return self._expand_vllm_param_name_aliases(raw_names)
+            return expand_vllm_param_name_aliases(raw_names)
 
         if self.vllm_mode != 'server' or not self.is_main_process:
             return None
 
         if self._cached_vllm_param_names is None:
             keys = self.vllm_client.get_model_state_keys()
-            self._cached_vllm_param_names = self._expand_vllm_param_name_aliases(set(keys))
+            self._cached_vllm_param_names = expand_vllm_param_name_aliases(set(keys))
         return self._cached_vllm_param_names
 
     @staticmethod
@@ -446,31 +452,6 @@ class MegatronRolloutMixin:
                 if base_layer_name in vllm_param_names:
                     name = base_layer_name
             yield name, tensor
-
-    @staticmethod
-    def _expand_vllm_param_name_aliases(param_names: set[str]) -> set[str]:
-        stacked_mappings = [
-            (re.compile(r'\bqkv_proj\b'), ('q_proj', 'k_proj', 'v_proj', 'q', 'k', 'v')),
-            (re.compile(r'\bgate_up_proj\b'), ('gate_proj', 'up_proj')),
-            (re.compile(r'\bin_proj_ba\b'), ('in_proj_b', 'in_proj_a')),
-            (re.compile(r'\blanguage_model\.model\b'), ('model.language_model', )),
-            (re.compile(r'^visual\.'), ('model.visual.', )),
-        ]
-
-        def _expand_once(keys: set[str]) -> set[str]:
-            expanded = set(keys)
-            for key in keys:
-                for pattern, aliases in stacked_mappings:
-                    if pattern.search(key):
-                        for alias in aliases:
-                            expanded.add(pattern.sub(alias, key))
-            return expanded
-
-        # Two passes allow chained replacement:
-        # e.g. language_model.model + qkv_proj -> model.language_model + q_proj
-        expanded = _expand_once(param_names)
-        expanded = _expand_once(expanded)
-        return expanded
 
     def _load_weights_to_server_in_buckets(self, weight_iterator):
         """Load weights to vLLM server in buckets."""
