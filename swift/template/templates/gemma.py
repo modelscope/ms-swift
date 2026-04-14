@@ -267,6 +267,18 @@ class Gemma4Template(Template):
                 return ['<|video|>']
             return ['\n\n<|video|>\n\n']
 
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        if self.enable_thinking:
+            system = '<|think|>\n' + (system or '')
+        return system
+
+    def _add_non_thinking_prefix(self, inputs: StdTemplateInputs, thinking_prefix: str = '<|channel>thought'):
+        return super()._add_non_thinking_prefix(inputs, thinking_prefix=thinking_prefix)
+
+    def _remove_thinking_content(self, content: str, thinking_suffix: str = '<channel|>') -> str:
+        return super()._remove_thinking_content(content, thinking_suffix=thinking_suffix)
+
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         split_token = self._tokenize('\n')
@@ -340,4 +352,11 @@ class Gemma4TemplateMeta(TemplateMeta):
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<bos><|turn>system\n{{SYSTEM}}<turn|>\n'])
 
 
-register_template(Gemma4TemplateMeta(MLLMTemplateType.gemma4, template_cls=Gemma4Template))
+register_template(Gemma4TemplateMeta(MLLMTemplateType.gemma4_nothinking, template_cls=Gemma4Template))
+
+register_template(
+    Gemma4TemplateMeta(
+        MLLMTemplateType.gemma4,
+        template_cls=Gemma4Template,
+        is_thinking=True,
+        non_thinking_prefix='<|channel>thought\n<channel|>'))

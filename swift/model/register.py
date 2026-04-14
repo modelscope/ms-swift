@@ -277,7 +277,9 @@ class ModelLoader(BaseModelLoader):
         model = None
         if model_info.task_type in {'seq_cls', 'reranker'}:
             HfConfigFactory.set_config_attr(config, 'tie_word_embeddings', False)
-        if model_info.task_type in {'seq_cls', 'reranker'} and auto_model_cls is None and not self.return_dummy_model:
+        if model_info.task_type in {'seq_cls', 'reranker'} and auto_model_cls in {
+                None, AutoModelForSequenceClassification
+        } and not self.return_dummy_model:
             with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
@@ -410,6 +412,9 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'qwen3_moe':
                 from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
                 z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
+            elif hf_model_type == 'gemma4':
+                from transformers.models.gemma4.modeling_gemma4 import Gemma4TextExperts
+                z3_leaf_modules = [Gemma4TextExperts]
             elif hf_model_type == 'glm4_moe':
                 from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
                 z3_leaf_modules = [Glm4MoeMoE]
@@ -446,8 +451,9 @@ class ModelLoader(BaseModelLoader):
     def _init_generation_config(self, model, model_dir):
         # generation_config
         generation_config_path = os.path.join(model_dir, 'generation_config.json')
-        if not hasattr(model, 'generation_config') and os.path.isfile(generation_config_path):
-            model.generation_config = GenerationConfig.from_pretrained(model_dir)
+        if getattr(model, 'generation_config', None) is None:
+            model.generation_config = GenerationConfig.from_pretrained(model_dir) if os.path.isfile(
+                generation_config_path) else None
         # fix llama2 warning
         if getattr(model, 'generation_config', None):
             fix_do_sample_warning(model.generation_config)

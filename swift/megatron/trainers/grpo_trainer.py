@@ -1528,7 +1528,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _preprocess_inputs(self, inputs: DataType) -> DataType:
         """Preprocess inputs before inference"""
-        processed_inputs = self._add_prompt_id_to_inputs(inputs)
+        processed_inputs = self._add_request_id_to_inputs(inputs)
         for input_item in processed_inputs:
             remove_response(input_item['messages'])
         return processed_inputs
@@ -1594,24 +1594,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return valid_samples[:required_count]
 
-    def _add_prompt_id_to_inputs(self, inputs: DataType) -> DataType:
-        """Add unique prompt_id and request_id to each input"""
+    def _add_request_id_to_inputs(self, inputs: DataType) -> DataType:
+        """Add unique request_id to each input"""
         if not inputs:
             return inputs
 
-        all_messages = gather_object([inp['messages'] for inp in inputs])
-        messages_to_prompt_id = {}
-        prompt_id_counter = 0
-
-        for messages in all_messages:
-            key = json.dumps(messages)
-            if key not in messages_to_prompt_id:
-                messages_to_prompt_id[key] = f'prompt_{prompt_id_counter}'
-                prompt_id_counter += 1
-
         for input_item in inputs:
-            messages = input_item.get('messages')
-            input_item['prompt_id'] = messages_to_prompt_id[json.dumps(messages)]
             input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
 
         return inputs

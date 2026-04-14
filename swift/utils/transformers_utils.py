@@ -189,7 +189,8 @@ def find_all_linears(model, model_arch=None, extra_layers=None, sub_module=None)
     # 'v_head': reward model
     ignore_layers = [lm_head_name, 'score', 'v_head', 'classifier'] + ['lora_A', 'lora_B', 'base_layer']
     ignore_linear_cls = [
-        'glulinear'  # phi4-mm
+        'glulinear',  # phi4-mm
+        'gemma4clippablelinear',  # gemma4
     ]
 
     def _cond(name, module):
@@ -235,6 +236,9 @@ def get_multimodal_target_regex(
                     rejected_modules.append(aligner)
 
         sub_module = deep_getattr(model, module)
+        if sub_module is None:
+            logger.warning(f'module: {module} is None')
+            continue
         if isinstance(sub_module, nn.Linear) and module.endswith('lm_head'):
             target_modules = []
         else:
