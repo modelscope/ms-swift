@@ -233,7 +233,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
-            # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'dummy'
+            # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'auto'
             vllm_engine_kwargs = self.args.vllm_engine_kwargs or {}
             load_format = vllm_engine_kwargs.pop('load_format', 'auto')
             engine = GRPOVllmEngine(

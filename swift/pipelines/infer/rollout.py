@@ -449,9 +449,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
         # for RL rollout model weight sync
         engine_kwargs.update({'worker_extension_cls': 'swift.pipelines.infer.rollout.WeightSyncWorkerExtension'})
 
-        # For RL rollout, we use 'dummy' load_format to prevent vLLM from loading weights from disk,
-        # as they will be synced from the trainer process.
-        # This will accelerate the rollout speed.
         load_format = engine_kwargs.pop('load_format', 'auto')
         kwargs['load_format'] = load_format
 
