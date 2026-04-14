@@ -380,7 +380,7 @@ def load_mcore_checkpoint(args,
     no_load_rng = args.no_load_rng
     finetune = args.finetune
     if not peft_format and args.tuner_type != 'full':
-        # Loading the base model for LoRA training.
+        # When training with LoRA and loading the base model
         no_load_optim = True
         no_load_rng = True
         finetune = True
