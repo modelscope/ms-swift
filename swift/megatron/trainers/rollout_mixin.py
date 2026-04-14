@@ -24,8 +24,8 @@ from typing import Any, Dict, List, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
-                                       TensorLoRARequest, aggressive_empty_cache, check_vllm_version_ge,
-                                       expand_vllm_param_name_aliases, patch_vllm_load_adapter,
+                                       TensorLoRARequest, add_base_layer_suffix_by_param_names, aggressive_empty_cache,
+                                       check_vllm_version_ge, expand_vllm_param_name_aliases, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
                                        set_expandable_segments, vllm_supports_lora_load_inplace)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
@@ -407,7 +407,7 @@ class MegatronRolloutMixin:
         if self.rollout_enable_lora:
             vllm_param_names = self._get_vllm_param_names_for_mapping()
             if vllm_param_names:
-                weight_iterator = self._add_base_layer_suffix_by_param_names(weight_iterator, vllm_param_names)
+                weight_iterator = add_base_layer_suffix_by_param_names(weight_iterator, vllm_param_names)
 
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
@@ -433,24 +433,6 @@ class MegatronRolloutMixin:
             keys = self.vllm_client.get_model_state_keys()
             self._cached_vllm_param_names = expand_vllm_param_name_aliases(set(keys))
         return self._cached_vllm_param_names
-
-    @staticmethod
-    def _add_base_layer_suffix_by_param_names(weight_iterator, vllm_param_names):
-        for name, tensor in weight_iterator:
-            if '.base_layer.' in name or '.' not in name:
-                yield name, tensor
-                continue
-
-            if name in vllm_param_names:
-                yield name, tensor
-                continue
-
-            module_name, param_type = name.rsplit('.', 1)
-            if param_type in {'weight', 'bias'}:
-                base_layer_name = f'{module_name}.base_layer.{param_type}'
-                if base_layer_name in vllm_param_names:
-                    name = base_layer_name
-            yield name, tensor
 
     def _load_weights_to_server_in_buckets(self, weight_iterator):
         """Load weights to vLLM server in buckets."""

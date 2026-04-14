@@ -230,7 +230,7 @@ swift megatron rlhf \
 ```
 
 **多模态模型 ViT 层 LoRA 同步：** 如果训练时开启了 ViT 层的 LoRA（`freeze_vit false`），
-在近同步LoRA的模式下，需要相应在 vLLM 侧开启 tower/connector LoRA 支持。
+在仅同步LoRA的模式下，需要相应在 vLLM 侧开启 tower/connector LoRA 支持。
 
 通过 `vllm_engine_kwargs` 传入：
 
