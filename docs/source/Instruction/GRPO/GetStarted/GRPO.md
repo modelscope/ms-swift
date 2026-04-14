@@ -201,8 +201,11 @@ swift rollout \
 --vllm_server_port <服务端口> \
 --vllm_server_timeout <超时时间> \
 ```
-#### 权重同步加速
-设置以下参数可以进一步优化 LoRA 训练的权重同步速度，仅同步 LoRA adapter 权重而非全量模型权重。
+
+### 权重同步加速
+设置以下参数可以通过仅同步 LoRA adapter 权重而非全量模型权重，优化 LoRA 训练的权重同步速度。
+
+> 注意：这种同步方式会略微影响 vLLM 推理速度。
 
 ```bash
 # rollout(server mode)
@@ -227,8 +230,7 @@ swift megatron rlhf \
 ```
 
 **多模态模型 ViT 层 LoRA 同步：** 如果训练时开启了 ViT 层的 LoRA（`freeze_vit false`），
-需要额外在 vLLM 侧开启 tower/connector LoRA 支持，否则 ViT 部分的 LoRA 权重将通过合并到
-base weights 的方式同步（即退化为全量同步）。
+在近同步LoRA的模式下，需要相应在 vLLM 侧开启 tower/connector LoRA 支持。
 
 通过 `vllm_engine_kwargs` 传入：
 

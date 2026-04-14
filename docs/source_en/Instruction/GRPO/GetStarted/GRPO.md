@@ -201,9 +201,11 @@ To configure the external vLLM server during training, use the following paramet
 --vllm_server_timeout <timeout> \
 ```
 
-#### Weight-Sync Acceleration
-Setting the following parameters enables adapter-only weight synchronization for LoRA training,
-syncing only the LoRA adapter weights instead of the full model weights.
+### Weight-Sync Acceleration
+
+Setting the following parameters optimizes weight synchronization speed for LoRA training by syncing only the LoRA adapter weights instead of the full model weights.
+
+> Note: This synchronization method may slightly impact vLLM inference speed.
 
 ```bash
 # rollout(server mode)
@@ -230,7 +232,7 @@ swift megatron rlhf \
 **Multimodal ViT LoRA Sync:** If ViT LoRA is enabled during training (`freeze_vit false`),
 tower/connector LoRA support must also be enabled on the vLLM side.
 
-- **colocate mode**: pass via `vllm_engine_kwargs`:
+pass via `vllm_engine_kwargs`:
 
 ```bash
 --vllm_engine_kwargs '{"enable_tower_connector_lora": true}'
