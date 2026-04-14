@@ -309,7 +309,6 @@ class MegatronRolloutMixin:
     def _move_model_to_vllm(self):
         """Synchronize model weights to vLLM engine.
 
-        Decision logic (following HF GRPOTrainer / twinkle / verl patterns):
         - Full sync: when tuner_type != 'lora' (e.g. full, lora_llm), or first sync
           (base_sync_done=False), or sleep_level==2, or rollout_enable_lora is disabled.
         - Adapter-only sync: when tuner_type == 'lora' with rollout_enable_lora=True and
