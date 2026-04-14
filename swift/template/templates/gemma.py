@@ -1,11 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional
+
 import numpy as np
 import torch
 import torch.nn.functional as F
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import upper_bound
+from swift.utils import get_env_args, upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -243,17 +247,106 @@ class Gemma3nTemplate(Gemma3Template):
 register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma3nTemplate))
 
 
+def _gemma4_video_to_vllm_tuple(video: Any, processor: Any) -> tuple:
+    """Build (ndarray, metadata dict) for vLLM Gemma4.
+
+    vLLM's MultiModalDataParser treats bare ``str`` video as an iterable of
+    characters (first char ``'/'``), then fails with ``assert_never``. Gemma4
+    also requires ``video_needs_metadata=True``. Align decoding with vLLM's
+    ``VideoMediaIO`` (same frame count as HF ``video_processor.num_frames``).
+    """
+    if isinstance(video, (tuple, list)) and len(video) == 2:
+        arr, raw_meta = video[0], video[1]
+        if isinstance(arr, torch.Tensor):
+            arr = arr.detach().cpu().numpy()
+        if isinstance(raw_meta, (dict, Mapping)):
+            return arr, dict(raw_meta)
+        video = arr
+
+    if isinstance(video, torch.Tensor):
+        video = video.detach().cpu().numpy()
+
+    if isinstance(video, np.ndarray) and video.ndim == 4:
+        n = int(video.shape[0])
+        meta = {
+            'fps': 24.0,
+            'duration': n / 24.0,
+            'total_num_frames': n,
+            'frames_indices': list(range(n)),
+            'video_backend': 'numpy',
+            'do_sample_frames': False,
+        }
+        return video, meta
+
+    path: Optional[str] = None
+    if isinstance(video, str):
+        path = video
+    elif isinstance(video, Path):
+        path = os.fspath(video)
+
+    if path is not None:
+        vp = getattr(processor, 'video_processor', None)
+        num_frames = int(vp.num_frames) if vp is not None and getattr(vp, 'num_frames', None) is not None else 32
+        from urllib.request import urlopen
+
+        from vllm.multimodal.media.image import ImageMediaIO
+        from vllm.multimodal.media.video import VideoMediaIO
+
+        image_io = ImageMediaIO()
+        video_io = VideoMediaIO(image_io, num_frames=num_frames)
+        if path.startswith(('http://', 'https://')):
+            with urlopen(path) as resp:
+                data = resp.read()
+            return video_io.load_bytes(data)
+        return video_io.load_file(Path(path))
+
+    raise TypeError(
+        f'Gemma4 vLLM video must be path/str, 4D ndarray/tensor, or (array, metadata); got {type(video)}')
+
+
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
+
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        vp = getattr(self.processor, 'video_processor', None)
+        if vp is not None:
+            nf = get_env_args('num_frames', int, None)
+            if nf is not None:
+                vp.num_frames = int(nf)
+        ip = getattr(self.processor, 'image_processor', None)
+        if ip is not None and hasattr(ip, 'max_soft_tokens'):
+            mst = get_env_args('max_soft_tokens', int, None)
+            if mst is not None:
+                ip.max_soft_tokens = int(mst)
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if self.mode != 'vllm':
+            return
+        mp = inputs.mm_processor_kwargs
+        ip = getattr(self.processor, 'image_processor', None)
+        if ip is not None and hasattr(ip, 'max_soft_tokens'):
+            mp.setdefault('max_soft_tokens', int(ip.max_soft_tokens))
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                image_tok = getattr(self.processor, 'image_token', None) or '<|image|>'
+                return ['\t' + image_tok]
             return ['\n\n<|image|>\n\n']
         elif media_type == 'audio':
+            if self.mode == 'vllm':
+                audio_tok = getattr(self.processor, 'audio_token', None) or '<|audio|>'
+                return [audio_tok]
             inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<|audio|>']
         elif media_type == 'video':
+            if self.mode == 'vllm':
+                video_tok = getattr(self.processor, 'video_token', None) or '<|video|>'
+                inputs.videos[index] = _gemma4_video_to_vllm_tuple(inputs.videos[index], self.processor)
+                return [video_tok]
             return ['\n\n<|video|>\n\n']
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
