@@ -1,14 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
-import os
 import torch
 import torch.nn.functional as F
-from collections.abc import Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_env_args, upper_bound
+from swift.utils import upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
