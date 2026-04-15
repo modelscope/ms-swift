@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import accelerate.utils.fsdp_utils as fsdp_utils
+import importlib
 import os
 import torch
 import torch.nn.functional as F
@@ -21,6 +22,16 @@ logger = get_logger()
 
 _DEFAULT_NPU_HCCL_CONNECT_TIMEOUT = '600'
 _ORIGINAL_MINDSPEED_TE_CP_CLASS = None
+_MINDSPEED_FLA_CHUNK_KERNEL_PATCHES = (
+    ('chunk_gated_delta_rule_fwd_h', 'mindspeed.lite.ops.triton.chunk_delta_h', 'chunk_gated_delta_rule_fwd_h'),
+    ('chunk_gated_delta_rule_bwd_dhu', 'mindspeed.lite.ops.triton.chunk_delta_h', 'chunk_gated_delta_rule_bwd_dhu'),
+    ('chunk_bwd_dqkwg', 'mindspeed.lite.ops.triton.chunk_o', 'chunk_bwd_dqkwg'),
+    ('chunk_bwd_dv_local', 'mindspeed.lite.ops.triton.chunk_o', 'chunk_bwd_dv_local'),
+    ('chunk_fwd_o', 'mindspeed.lite.ops.triton.chunk_o', 'chunk_fwd_o'),
+    ('chunk_scaled_dot_kkt_fwd', 'mindspeed.lite.ops.triton.chunk_scaled_dot_kkt', 'chunk_scaled_dot_kkt_fwd'),
+    ('prepare_wy_repr_bwd', 'mindspeed.lite.ops.triton.wy_fast', 'prepare_wy_repr_bwd'),
+    ('recompute_w_u_fwd', 'mindspeed.lite.ops.triton.wy_fast', 'recompute_w_u_fwd'),
+)
 
 
 def _set_default_hccl_connect_timeout_for_npu() -> None:
@@ -32,6 +43,76 @@ def _set_default_hccl_connect_timeout_for_npu() -> None:
 
 
 _set_default_hccl_connect_timeout_for_npu()
+
+
+def _import_optional_module(module_name: str) -> Any | None:
+    try:
+        return importlib.import_module(module_name)
+    except ImportError as exc:
+        logger.debug('Failed to import optional module %s: %s', module_name, exc)
+        return None
+
+
+def _patch_transformers_flash_linear_attention_available() -> None:
+    def _is_flash_linear_attention_available() -> bool:
+        return True
+
+    transformers_utils = _import_optional_module('transformers.utils')
+    if transformers_utils is not None:
+        setattr(transformers_utils, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
+
+    transformers_import_utils = _import_optional_module('transformers.utils.import_utils')
+    if transformers_import_utils is not None:
+        setattr(transformers_import_utils, 'is_flash_linear_attention_available',
+                _is_flash_linear_attention_available)
+
+
+def _patch_fla_chunk_kernels_with_mindspeed() -> bool:
+    fla_chunk = _import_optional_module('fla.ops.gated_delta_rule.chunk')
+    if fla_chunk is None:
+        logger.info('FLA chunk kernels are unavailable; skip MindSpeed FLA kernel patch.')
+        return False
+
+    kernel_patches = []
+    for target_name, module_name, attr_name in _MINDSPEED_FLA_CHUNK_KERNEL_PATCHES:
+        module = _import_optional_module(module_name)
+        kernel = getattr(module, attr_name, None) if module is not None else None
+        if kernel is None:
+            logger.info('MindSpeed FLA kernel %s.%s is unavailable; skip FLA kernel patch.', module_name, attr_name)
+            return False
+
+        kernel_patches.append((target_name, kernel))
+
+    for target_name, kernel in kernel_patches:
+        setattr(fla_chunk, target_name, kernel)
+
+    patched_kernel_names = [target_name for target_name, _ in kernel_patches]
+    logger.info('Patched FLA chunk kernels to MindSpeed kernels: %s.', ', '.join(patched_kernel_names))
+    return True
+
+
+def patch_flash_linear_attention_with_mindspeed() -> None:
+    if not _patch_fla_chunk_kernels_with_mindspeed():
+        return
+
+    _patch_transformers_flash_linear_attention_available()
+
+    for module_name in ('transformers.models.qwen3_next.modeling_qwen3_next',
+                        'transformers.models.qwen3_5.modeling_qwen3_5',
+                        'transformers.models.qwen3_5_moe.modeling_qwen3_5_moe'):
+        module = _import_optional_module(module_name)
+        if module is None:
+            continue
+
+        is_flash_linear_attention_available = lambda: True
+        setattr(module, 'is_flash_linear_attention_available', is_flash_linear_attention_available)
+        setattr(module, 'is_fast_path_available', True)
+
+    logger.info('Patched Transformers flash-linear-attention availability for NPU.')
+
+
+patch_flash_linear_attention_with_mindspeed()
+modeling_qwen3_5 = _import_optional_module('transformers.models.qwen3_5.modeling_qwen3_5')
 
 
 def patch_mindspeed_te_cp_implementation(megatron_args: dict[str, Any]) -> None:
@@ -165,12 +246,43 @@ class NpuRMSNorm(nn.Module):
         return f'{tuple(self.weight.shape)}, eps={self.variance_epsilon}'
 
 
+class NpuQwen3_5RMSNorm(nn.Module):
+
+    def __init__(self, dim, eps=1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.zeros(dim))
+
+    def forward(self, x):
+        scale = (1.0 + self.weight).to(dtype=x.dtype)
+        return torch_npu.npu_rms_norm(x, scale, epsilon=self.eps)[0]
+
+    def extra_repr(self):
+        return f'{tuple(self.weight.shape)}, eps={self.eps}'
+
+
 def npu_apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
     """Applies Rotary Position Embedding to the query and key tensors."""
     cos = cos.unsqueeze(unsqueeze_dim)
     sin = sin.unsqueeze(unsqueeze_dim)
     q_embed = torch_npu.npu_rotary_mul(q, cos, sin)
     k_embed = torch_npu.npu_rotary_mul(k, cos, sin)
+    return q_embed, k_embed
+
+
+def npu_apply_rotary_pos_emb_qwen3_5(q, k, cos, sin, unsqueeze_dim=1):
+    cos = cos.unsqueeze(unsqueeze_dim)
+    sin = sin.unsqueeze(unsqueeze_dim)
+
+    rotary_dim = cos.shape[-1]
+    q_rot, q_pass = q[..., :rotary_dim], q[..., rotary_dim:]
+    k_rot, k_pass = k[..., :rotary_dim], k[..., rotary_dim:]
+
+    q_rot = torch_npu.npu_rotary_mul(q_rot, cos, sin)
+    k_rot = torch_npu.npu_rotary_mul(k_rot, cos, sin)
+
+    q_embed = torch.cat([q_rot, q_pass], dim=-1)
+    k_embed = torch.cat([k_rot, k_pass], dim=-1)
     return q_embed, k_embed
 
 
@@ -353,6 +465,14 @@ def _apply_patch_map(root: Any, patch_map: dict[str, Any]) -> None:
         _setattr_path(root, path, value)
 
 
+_QWEN3_5_PATCH_TABLE: tuple[tuple[Any, dict[str, Any]], ...] = ()
+if modeling_qwen3_5 is not None:
+    _QWEN3_5_PATCH_TABLE = ((modeling_qwen3_5, {
+        'Qwen3_5RMSNorm': NpuQwen3_5RMSNorm,
+        'apply_rotary_pos_emb': npu_apply_rotary_pos_emb_qwen3_5,
+        'Qwen3_5MLP.forward': npu_swiglu_forward,
+    }), )
+
 _PATCH_TABLE: tuple[tuple[Any, dict[str, Any]], ...] = (
     (
         modeling_qwen2,
@@ -370,6 +490,7 @@ _PATCH_TABLE: tuple[tuple[Any, dict[str, Any]], ...] = (
             'Qwen3MLP.forward': npu_swiglu_forward,
         },
     ),
+    *_QWEN3_5_PATCH_TABLE,
     (
         modeling_qwen3_moe,
         {
