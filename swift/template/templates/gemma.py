@@ -249,8 +249,6 @@ class Gemma4Template(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
-            if self.mode == 'vllm':
-                return ['\t' + '<|image|>']
             return ['<|image|>']
         elif media_type == 'audio':
             if self.mode != 'vllm':
