@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import numpy as np
 import os
+import torch
+import torch.nn.functional as F
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
-
-import numpy as np
-import torch
-import torch.nn.functional as F
 
 from swift.utils import get_env_args, upper_bound
 from ..base import Template
@@ -247,63 +246,6 @@ class Gemma3nTemplate(Gemma3Template):
 register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma3nTemplate))
 
 
-def _gemma4_video_to_vllm_tuple(video: Any, processor: Any) -> tuple:
-    """Build (ndarray, metadata dict) for vLLM Gemma4.
-
-    vLLM's MultiModalDataParser treats bare ``str`` video as an iterable of
-    characters (first char ``'/'``), then fails with ``assert_never``. Gemma4
-    also requires ``video_needs_metadata=True``. Align decoding with vLLM's
-    ``VideoMediaIO`` (same frame count as HF ``video_processor.num_frames``).
-    """
-    if isinstance(video, (tuple, list)) and len(video) == 2:
-        arr, raw_meta = video[0], video[1]
-        if isinstance(arr, torch.Tensor):
-            arr = arr.detach().cpu().numpy()
-        if isinstance(raw_meta, (dict, Mapping)):
-            return arr, dict(raw_meta)
-        video = arr
-
-    if isinstance(video, torch.Tensor):
-        video = video.detach().cpu().numpy()
-
-    if isinstance(video, np.ndarray) and video.ndim == 4:
-        n = int(video.shape[0])
-        meta = {
-            'fps': 24.0,
-            'duration': n / 24.0,
-            'total_num_frames': n,
-            'frames_indices': list(range(n)),
-            'video_backend': 'numpy',
-            'do_sample_frames': False,
-        }
-        return video, meta
-
-    path: Optional[str] = None
-    if isinstance(video, str):
-        path = video
-    elif isinstance(video, Path):
-        path = os.fspath(video)
-
-    if path is not None:
-        vp = getattr(processor, 'video_processor', None)
-        num_frames = int(vp.num_frames) if vp is not None and getattr(vp, 'num_frames', None) is not None else 32
-        from urllib.request import urlopen
-
-        from vllm.multimodal.media.image import ImageMediaIO
-        from vllm.multimodal.media.video import VideoMediaIO
-
-        image_io = ImageMediaIO()
-        video_io = VideoMediaIO(image_io, num_frames=num_frames)
-        if path.startswith(('http://', 'https://')):
-            with urlopen(path) as resp:
-                data = resp.read()
-            return video_io.load_bytes(data)
-        return video_io.load_file(Path(path))
-
-    raise TypeError(
-        f'Gemma4 vLLM video must be path/str, 4D ndarray/tensor, or (array, metadata); got {type(video)}')
-
-
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
 
@@ -337,15 +279,19 @@ class Gemma4Template(Template):
                 return ['\t' + image_tok]
             return ['\n\n<|image|>\n\n']
         elif media_type == 'audio':
+            inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             if self.mode == 'vllm':
                 audio_tok = getattr(self.processor, 'audio_token', None) or '<|audio|>'
                 return [audio_tok]
-            inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<|audio|>']
         elif media_type == 'video':
             if self.mode == 'vllm':
+                from vllm.assets.video import video_get_metadata, video_to_ndarrays
                 video_tok = getattr(self.processor, 'video_token', None) or '<|video|>'
-                inputs.videos[index] = _gemma4_video_to_vllm_tuple(inputs.videos[index], self.processor)
+                num_frames = get_env_args('vllm_num_frames', int, 32)
+                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
+                video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
+                inputs.videos[index] = [(video_data, video_metadatas)]
                 return [video_tok]
             return ['\n\n<|video|>\n\n']
 
