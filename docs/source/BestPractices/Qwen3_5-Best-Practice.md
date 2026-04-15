@@ -309,12 +309,13 @@ swift infer \
 
 Megatron-SWIFT训练Qwen3.5的提示：
 - 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh)。
-- 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/14)），请安装对应版本。
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
-- CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/16)），此外需安装megatron-core dev分支。
+- 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练。请安装对应版本。
+- CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练，需安装megatron-core main分支。
 - 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0`可切换至 transformers 实现，transformers实现不支持packing和GDN的TP。
 - padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
 - apply_wd_to_qk_layernorm：对 qk layernorm 应用权重衰减。默认为False。
+- 关于FP8训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh)。你需要安装mcore-bridge>=1.2.0（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/30)）。
 
 
 ## 强化学习（RL）
