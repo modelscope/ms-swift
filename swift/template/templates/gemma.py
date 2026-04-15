@@ -249,11 +249,21 @@ class Gemma4Template(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
+            if self.mode == 'vllm':
+                return ['\t' + '<|image|>']
             return ['\n\n<|image|>\n\n']
         elif media_type == 'audio':
-            inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
+            if self.mode != 'vllm':
+                inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<|audio|>']
         elif media_type == 'video':
+            if self.mode == 'vllm':
+                from vllm.assets.video import video_get_metadata, video_to_ndarrays
+                num_frames = self.processor.video_processor.num_frames
+                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
+                video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
+                inputs.videos[index] = [(video_data, video_metadatas)]
+                return ['<|video|>']
             return ['\n\n<|video|>\n\n']
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
