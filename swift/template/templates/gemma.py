@@ -250,8 +250,7 @@ class Gemma4Template(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             if self.mode == 'vllm':
-                image_tok = getattr(self.processor, 'image_token', None) or '<|image|>'
-                return ['\t' + image_tok]
+                return ['\t' + '<|image|>']
             return ['\n\n<|image|>\n\n']
         elif media_type == 'audio':
             if self.mode != 'vllm':
