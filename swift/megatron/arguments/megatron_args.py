@@ -97,6 +97,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_max_num_seqs: Optional[int] = None
     vllm_mm_processor_cache_gb: Optional[float] = None
     vllm_engine_kwargs: Optional[Union[dict, str]] = None
+    vllm_enable_lora: bool = False
 
     sleep_level: Literal[0, 1, 2] = 0
     offload_optimizer: bool = False
@@ -207,7 +208,6 @@ class RLHFMegatronArgumentsMixin:
                 self.cosine_max_len = self.max_completion_length
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
-            self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
         if self.rlhf_type == 'gkd':
             if self.teacher_model is not None and self.teacher_model_server is not None:
                 raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
@@ -236,6 +236,9 @@ class RLHFMegatronArgumentsMixin:
             # Validate gkd_logits_topk
             if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
                 raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
+
+        if self.rlhf_type in ['grpo', 'gkd']:
+            self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
     def _init_grpo(self):
 
