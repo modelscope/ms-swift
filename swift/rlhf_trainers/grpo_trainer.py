@@ -1659,8 +1659,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Forward pass
         logits = model(**model_inputs).logits
 
-        # Extract relevant portion and apply temperature
-        logits = logits[:, -(logits_to_keep + 1):-1, :] / self.temperature
+        logits = logits[:, -(logits_to_keep + 1):-1, :]
+        logits.div_(self.temperature)
+
         input_ids_for_logps = input_ids[:, -logits_to_keep:]
 
         is_padding_free = self.template.padding_free
@@ -2127,20 +2128,35 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def get_chunked_inputs(self, inputs, start_idx, end_idx):
         chunk_inputs = {}
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         # for LLM, slice the inputs
         for key, val in inputs.items():
             if isinstance(val, torch.Tensor):
-                chunk_inputs[key] = val if val.ndim == 0 else val[start_idx:end_idx]
+                if val.ndim == 0:
+                    chunk_inputs[key] = val
+                elif self.is_multimodal and val.shape[0] != batch_size:
+                    continue
+                else:
+                    chunk_inputs[key] = val[start_idx:end_idx]
+            elif isinstance(val, list) and len(val) == batch_size:
+                chunk_inputs[key] = val[start_idx:end_idx]
             else:
                 chunk_inputs[key] = val
         if self.is_multimodal:
             # for MLLM, re-encode to get mm-related inputs
             origin_data = inputs['_origin_data'][start_idx:end_idx]
             template = self.template
+            # prevent to be overwritten by data_collator
+            _preserved_chunk_keys = ('advantages', 'completion_mask', 'ref_per_token_logps', 'old_per_token_logps',
+                                     'rollout_per_token_logps', 'truncated_mask', 'rollout_is_weights', 'seq_lengths')
+            _preserved_dicts = {k: chunk_inputs.pop(k) for k in _preserved_chunk_keys if k in chunk_inputs}
+            current_length = inputs['input_ids'].shape[1]
             with self._template_context(template):
                 encoded_data = [template.encode(data) for data in origin_data]
-                chunk_inputs.update(to_device(template.data_collator(encoded_data), self.model.device))
+                chunk_inputs.update(
+                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.model.device))
                 chunk_inputs.pop('labels', None)
+            chunk_inputs.update(_preserved_dicts)
         return chunk_inputs
 
     def _prepare_liger_loss(self):
