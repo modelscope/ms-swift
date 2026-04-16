@@ -1,12 +1,13 @@
-# 8 * 80GiB
+# 2 * 50GiB
+# Save FP8 weights directly.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=8 \
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
 IMAGE_MAX_TOKEN_NUM=1024 \
 VIDEO_MAX_TOKEN_NUM=128 \
 FPS_MAX_FRAMES=12 \
 megatron sft \
-    --model Qwen/Qwen3.5-35B-A3B-FP8 \
+    --model Qwen/Qwen3.5-4B \
     --save_safetensors true \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
@@ -22,12 +23,7 @@ megatron sft \
     --fp8_param_gather true \
     --split_dataset_ratio 0.01 \
     --tuner_type full \
-    --tensor_model_parallel_size 4 \
-    --expert_model_parallel_size 8 \
-    --moe_permute_fusion true \
-    --moe_grouped_gemm true \
-    --moe_shared_expert_overlap true \
-    --moe_aux_loss_coeff 1e-6 \
+    --tensor_model_parallel_size 2 \
     --micro_batch_size 1 \
     --global_batch_size 2 \
     --recompute_granularity full \
@@ -43,7 +39,7 @@ megatron sft \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
-    --output_dir megatron_output/Qwen3.5-35B-A3B \
+    --output_dir megatron_output/Qwen3.5-4B-FP8 \
     --eval_steps 200 \
     --save_steps 200 \
     --max_length 4096 \
@@ -52,9 +48,16 @@ megatron sft \
     --no_save_optim true \
     --no_save_rng true \
     --sequence_parallel true \
-    --moe_expert_capacity_factor 2 \
     --mtp_num_layers 1 \
-    --use_precision_aware_optimizer true \
-    --exp_avg_dtype bf16 \
-    --exp_avg_sq_dtype bf16 \
     --attention_backend flash
+
+# PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+# CUDA_VISIBLE_DEVICES=0,1,2,3 \
+# IMAGE_MAX_TOKEN_NUM=1024 \
+# VIDEO_MAX_TOKEN_NUM=128 \
+# FPS_MAX_FRAMES=12 \
+# swift infer \
+#     --model megatron_output/Qwen3.5-4B-FP8/vx-xxx/checkpoint-xxx \
+#     --stream true \
+#     --enable_thinking false \
+#     --load_data_args true
