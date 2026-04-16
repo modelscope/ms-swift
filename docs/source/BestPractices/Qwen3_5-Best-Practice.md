@@ -314,8 +314,8 @@ Megatron-SWIFT训练Qwen3.5的提示：
 - CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练，需安装megatron-core main分支。
 - 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0`可切换至 transformers 实现，transformers实现不支持packing和GDN的TP。
 - padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
-- apply_wd_to_qk_layernorm：对 qk layernorm 应用权重衰减。默认为False。
-- 关于FP8训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh)。你需要安装mcore-bridge>=1.2.0（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/30)），并设置参数`--linear_decoupled_in_proj true`，将in_proj解耦为`in_proj_qkvz`, `in_proj_ba`，其中`in_proj_ba`仍使用原始精度训练。
+- apply_wd_to_qk_layernorm: 对 qk layernorm 应用权重衰减。默认为False。
+- 关于FP8训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh)。你需要安装mcore-bridge>=1.2.0（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/30)），并设置参数`--linear_decoupled_in_proj true`，将`in_proj`解耦为`in_proj_qkvz`, `in_proj_ba`，其中`in_proj_ba`仍使用原始精度训练。
 
 
 ## 强化学习（RL）
