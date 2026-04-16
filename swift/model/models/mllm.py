@@ -1,8 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from types import MethodType
+
 import torch
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from types import MethodType
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
@@ -130,6 +131,39 @@ register_model(
         architectures=['MolmoForCausalLM'],
         tags=['vision'],
         requires=['transformers>=4.45'],
+    ))
+
+
+class Molmo2Loader(ModelLoader):
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForImageTextToText
+        model_cls = get_class_from_dynamic_module('modeling_molmo2.Molmo2ForConditionalGeneration', model_dir)
+        no_split_modules = getattr(model_cls, '_no_split_modules', []) or []
+        if 'MolmoSequentialBlock' not in no_split_modules:
+            model_cls._no_split_modules = no_split_modules + ['MolmoSequentialBlock']
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        model = super().get_model(model_dir, *args, **kwargs)
+        patch_output_clone(model.model.transformer.wte)
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.molmo2,
+        [
+            ModelGroup([
+                Model('LLM-Research/Molmo2-4B', 'allenai/Molmo2-4B'),
+                Model('LLM-Research/Molmo2-8B', 'allenai/Molmo2-8B'),
+                Model('LLM-Research/Molmo2-O-7B', 'allenai/Molmo2-O-7B'),
+            ]),
+        ],
+        Molmo2Loader,
+        template=TemplateType.molmo2,
+        model_arch=ModelArch.molmo,
+        architectures=['Molmo2ForConditionalGeneration'],
+        tags=['vision', 'video'],
+        requires=['transformers>=4.57.1,<5', 'decord'],
     ))
 
 
