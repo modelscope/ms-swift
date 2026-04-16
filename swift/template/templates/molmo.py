@@ -92,9 +92,10 @@ class Molmo2Template(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             return ['<|image|>']
-        if media_type == 'video':
+        elif media_type == 'video':
             return ['<|video|>']
-        return []
+        else:
+            raise ValueError(f'Unsupported media_type: {media_type}')
 
     def _prepare_mm_inputs(self, inputs: StdTemplateInputs) -> Tuple[Dict[str, Any], List[List[int]], List[List[int]]]:
         media_inputs: Dict[str, Any] = {}
@@ -144,15 +145,15 @@ class Molmo2Template(Template):
         image_placeholder = self.tokenizer.convert_tokens_to_ids('<|image|>')
         idx_list = findall(input_ids, image_placeholder)
         if idx_list:
-            input_ids, labels, loss_scale = self._extend_tokens(
-                input_ids, labels, loss_scale, idx_list, lambda i: image_expansions[i])
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                lambda i: image_expansions[i])
 
         # Expand video placeholders
         video_placeholder = self.tokenizer.convert_tokens_to_ids('<|video|>')
         idx_list = findall(input_ids, video_placeholder)
         if idx_list:
-            input_ids, labels, loss_scale = self._extend_tokens(
-                input_ids, labels, loss_scale, idx_list, lambda i: video_expansions[i])
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                lambda i: video_expansions[i])
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
@@ -173,8 +174,7 @@ class Molmo2Template(Template):
         return res
 
 
-register_template(
-    ChatmlTemplateMeta(
-        MLLMTemplateType.molmo2,
-        template_cls=Molmo2Template,
-    ))
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.molmo2,
+    template_cls=Molmo2Template,
+))

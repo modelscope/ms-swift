@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from types import MethodType
-
 import torch
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from types import MethodType
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
