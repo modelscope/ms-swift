@@ -103,9 +103,7 @@ class Molmo2Template(Template):
         tokenizer = self.tokenizer
 
         if inputs.images:
-            images = [img if isinstance(img, Image.Image) else Image.open(img).convert('RGB')
-                      for img in inputs.images]
-            image_inputs = self.processor.image_processor(images=images, return_tensors='pt')
+            image_inputs = self.processor.image_processor(images=inputs.images, return_tensors='pt')
             for image_grid in image_inputs['image_grids']:
                 image_tokens = self.processor.get_image_tokens(image_grid.cpu().numpy())
                 image_expansions.append(tokenizer.encode(''.join(image_tokens), add_special_tokens=False))
@@ -143,14 +141,14 @@ class Molmo2Template(Template):
         loss_scale = encoded.get('loss_scale')
 
         # Expand image placeholders
-        image_placeholder = self.tokenizer.encode('<|image|>', add_special_tokens=False)
+        image_placeholder = self.tokenizer.convert_tokens_to_ids('<|image|>')
         idx_list = findall(input_ids, image_placeholder)
         if idx_list:
             input_ids, labels, loss_scale = self._extend_tokens(
                 input_ids, labels, loss_scale, idx_list, lambda i: image_expansions[i])
 
         # Expand video placeholders
-        video_placeholder = self.tokenizer.encode('<|video|>', add_special_tokens=False)
+        video_placeholder = self.tokenizer.convert_tokens_to_ids('<|video|>')
         idx_list = findall(input_ids, video_placeholder)
         if idx_list:
             input_ids, labels, loss_scale = self._extend_tokens(
