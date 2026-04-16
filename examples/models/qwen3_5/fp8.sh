@@ -12,6 +12,9 @@ megatron sft \
               'AI-ModelScope/alpaca-gpt4-data-en#500' \
               'swift/self-cognition#500' \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
+    --model_author swift \
+    --model_name swift-robot \
+    --linear_decoupled_in_proj true \
     --load_from_cache_file true \
     --add_non_thinking_prefix true \
     --fp8_recipe blockwise \

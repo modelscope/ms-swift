@@ -7,6 +7,7 @@ megatron export \
     --fp8_recipe blockwise \
     --fp8_format e4m3 \
     --fp8_param_gather true \
+    --mtp_num_layers 1 \
+    --linear_decoupled_in_proj true \
     --tensor_model_parallel_size 2 \
-    --expert_model_parallel_size 2 \
     --pipeline_model_parallel_size 2
