@@ -196,6 +196,8 @@ def _patch_mcore_bridge():
                     if getattr(hf_config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
                         modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
+                        if hasattr(self, '_fp8_skip_modules'):
+                            modules_to_not_convert += list(self._fp8_skip_modules)
                         hf_config.quantization_config = FineGrainedFP8Config(
                             modules_to_not_convert=modules_to_not_convert)
                 elif hasattr(hf_config, 'quantization_config'):
