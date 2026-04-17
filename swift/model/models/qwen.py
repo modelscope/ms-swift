@@ -614,7 +614,7 @@ register_model(
                 Model('AIDC-AI/Marco-Mini-Base', 'AIDC-AI/Marco-Mini-Base'),
                 Model('AIDC-AI/Marco-Mini-Instruct', 'AIDC-AI/Marco-Mini-Instruct'),
                 Model('AIDC-AI/Marco-Mini-Global-Base', 'AIDC-AI/Marco-Mini-Global-Base'),
-            ], TemplateType.qwen3),
+            ], TemplateType.qwen3_nothinking),
         ],
         requires=['transformers>=4.51'],
         architectures=['Qwen3MoeForCausalLM'],
