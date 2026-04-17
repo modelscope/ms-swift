@@ -2,6 +2,7 @@
 from .activation_cpu_offload import ActivationCpuOffloadCallBack
 from .adalora import AdaloraCallback
 from .deepspeed_elastic import DeepspeedElasticCallback, GracefulExitCallback
+from .dynamic_mix import DynamicMixingCallback
 from .early_stop import EarlyStopCallback
 from .lisa import LISACallback
 from .perf_log import PerfMetricsLogCallback
@@ -10,6 +11,7 @@ callbacks_map = {
     'activation_cpu_offload': ActivationCpuOffloadCallBack,
     'adalora': AdaloraCallback,
     'deepspeed_elastic': DeepspeedElasticCallback,
+    'dynamic_mix': DynamicMixingCallback,
     'early_stop': EarlyStopCallback,
     'graceful_exit': GracefulExitCallback,
     'lisa': LISACallback,

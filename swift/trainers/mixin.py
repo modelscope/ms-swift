@@ -37,7 +37,7 @@ from types import MethodType
 from typing import Callable, Dict, List, Optional
 
 from swift.callbacks import callbacks_map
-from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
+from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard, DynamicMixBatchSampler
 from swift.hub import get_hub
 from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
@@ -1221,11 +1221,26 @@ class DataLoaderMixin:
             }
 
             if hasattr(train_dataset, '__len__'):
-                if args.group_by_length:
-                    batch_sampler_params['group_by_length'] = args.group_by_length
-                    batch_sampler_params['lengths'] = train_dataset['lengths']
-                batch_sampler = BatchSamplerShard(
-                    len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
+                if getattr(args, 'dynamic_mix', False):
+                    domain_indices = self._build_domain_indices(train_dataset)
+                    ws = (dist.get_world_size() // batch_sampler_params.get('tp_size', 1)
+                          ) if dist.is_initialized() else 1
+                    total_per_rank = len(train_dataset) // ws
+                    if args.dataloader_drop_last:
+                        num_batches = total_per_rank // self._train_batch_size
+                    else:
+                        num_batches = (total_per_rank + self._train_batch_size - 1) // self._train_batch_size
+                    batch_sampler = DynamicMixBatchSampler(
+                        domain_indices=domain_indices,
+                        batch_size=self._train_batch_size,
+                        num_batches=num_batches,
+                        **batch_sampler_params)
+                else:
+                    if args.group_by_length:
+                        batch_sampler_params['group_by_length'] = args.group_by_length
+                        batch_sampler_params['lengths'] = train_dataset['lengths']
+                    batch_sampler = BatchSamplerShard(
+                        len(train_dataset), batch_size=self._train_batch_size, **batch_sampler_params)
                 dataloader_params['worker_init_fn'] = partial(
                     seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
                 if skip_batches > 0:
@@ -1240,6 +1255,25 @@ class DataLoaderMixin:
                 dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
                 dataloader = DataLoaderDispatcher(dataloader, self.accelerator.device, skip_batches=skip_batches)
         return dataloader
+
+    def _build_domain_indices(self, dataset):
+        """Extract channel -> index list mapping from the training dataset."""
+        domain_indices = collections.defaultdict(list)
+        # Unwrap LazyLLMDataset to get underlying HfDataset
+        hf_dataset = dataset
+        if hasattr(hf_dataset, 'dataset'):
+            hf_dataset = hf_dataset.dataset
+        if hasattr(hf_dataset, 'features') and 'channel' in hf_dataset.features:
+            channels = hf_dataset['channel']
+            for idx, ch in enumerate(channels):
+                domain_indices[ch if ch is not None else 'default'].append(idx)
+        else:
+            domain_indices['default'] = list(range(len(dataset)))
+            logger.warning('No "channel" column found in dataset. '
+                           'All data treated as single domain "default".')
+        logger.info(f'Dynamic mix domains: '
+                    f'{{{", ".join(f"{k}: {len(v)}" for k, v in sorted(domain_indices.items()))}}}')
+        return dict(domain_indices)
 
     @contextmanager
     def _disable_group_by_length(self):

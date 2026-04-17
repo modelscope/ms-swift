@@ -135,6 +135,13 @@ class TrainArgumentsMixin:
     router_aux_loss_coef: float = 0.
     enable_dft_loss: bool = False  # https://arxiv.org/abs/2508.05629
     enable_channel_loss: bool = False
+
+    # dynamic data mixing
+    dynamic_mix: bool = False
+    dynamic_mix_update_steps: int = 100
+    dynamic_mix_temperature: float = 1.0
+    dynamic_mix_warmup_steps: int = 0
+
     safe_serialization: bool = True
     max_shard_size: str = '5GB'
 
@@ -234,6 +241,10 @@ class TrainArgumentsMixin:
         fsdp_config = getattr(self, 'fsdp_config', {})
         if isinstance(fsdp_config, dict) and fsdp_config.get('activation_cpu_offload', False):
             self.callbacks.append('activation_cpu_offload')
+        if self.dynamic_mix:
+            self.enable_channel_loss = True
+            if 'dynamic_mix' not in self.callbacks:
+                self.callbacks.append('dynamic_mix')
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):
@@ -245,6 +256,15 @@ class TrainArgumentsMixin:
         if self.optimizer is None and (self.vit_lr is not None or self.aligner_lr is not None):
             self.optimizer = 'multimodal'
         self._init_callbacks()
+        if self.dynamic_mix:
+            if getattr(self, 'streaming', False):
+                raise ValueError('dynamic_mix does not support streaming mode.')
+            if getattr(self, 'interleave_prob', None) is not None:
+                raise ValueError('dynamic_mix and interleave_prob are mutually exclusive.')
+            if getattr(self, 'packing', False):
+                raise ValueError('dynamic_mix is not compatible with packing mode.')
+            if self.group_by_length:
+                raise ValueError('dynamic_mix is not compatible with group_by_length.')
         if self.gradient_accumulation_steps is None:
             world_size = get_dist_setting()[2]
             self.gradient_accumulation_steps = max(1, math.ceil(16 / self.per_device_train_batch_size / world_size))
