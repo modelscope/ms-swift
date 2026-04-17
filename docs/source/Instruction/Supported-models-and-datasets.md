@@ -249,6 +249,11 @@
 |[Qwen/Qwen3-235B-A22B-Thinking-2507](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-Thinking-2507)|qwen3_moe|qwen3_thinking|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-235B-A22B-Thinking-2507](https://huggingface.co/Qwen/Qwen3-235B-A22B-Thinking-2507)|
 |[Qwen/Qwen3-235B-A22B-Thinking-2507-FP8](https://modelscope.cn/models/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8)|qwen3_moe|qwen3_thinking|transformers>=4.51|&#x2714;|-|[Qwen/Qwen3-235B-A22B-Thinking-2507-FP8](https://huggingface.co/Qwen/Qwen3-235B-A22B-Thinking-2507-FP8)|
 |[swift/Qwen3-235B-A22B-Thinking-2507-AWQ](https://modelscope.cn/models/swift/Qwen3-235B-A22B-Thinking-2507-AWQ)|qwen3_moe|qwen3_thinking|transformers>=4.51|&#x2718;|-|-|
+|[AIDC-AI/Marco-Nano-Base](https://modelscope.cn/models/AIDC-AI/Marco-Nano-Base)|qwen3_moe|qwen3_nothinking|transformers>=4.51|&#x2714;|-|[AIDC-AI/Marco-Nano-Base](https://huggingface.co/AIDC-AI/Marco-Nano-Base)|
+|[AIDC-AI/Marco-Nano-Instruct](https://modelscope.cn/models/AIDC-AI/Marco-Nano-Instruct)|qwen3_moe|qwen3_nothinking|transformers>=4.51|&#x2714;|-|[AIDC-AI/Marco-Nano-Instruct](https://huggingface.co/AIDC-AI/Marco-Nano-Instruct)|
+|[AIDC-AI/Marco-Mini-Base](https://modelscope.cn/models/AIDC-AI/Marco-Mini-Base)|qwen3_moe|qwen3_nothinking|transformers>=4.51|&#x2714;|-|[AIDC-AI/Marco-Mini-Base](https://huggingface.co/AIDC-AI/Marco-Mini-Base)|
+|[AIDC-AI/Marco-Mini-Instruct](https://modelscope.cn/models/AIDC-AI/Marco-Mini-Instruct)|qwen3_moe|qwen3_nothinking|transformers>=4.51|&#x2714;|-|[AIDC-AI/Marco-Mini-Instruct](https://huggingface.co/AIDC-AI/Marco-Mini-Instruct)|
+|[AIDC-AI/Marco-Mini-Global-Base](https://modelscope.cn/models/AIDC-AI/Marco-Mini-Global-Base)|qwen3_moe|qwen3_nothinking|transformers>=4.51|&#x2714;|-|[AIDC-AI/Marco-Mini-Global-Base](https://huggingface.co/AIDC-AI/Marco-Mini-Global-Base)|
 |[Qwen/Qwen3-Next-80B-A3B-Instruct](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Instruct)|qwen3_next|qwen3_nothinking|transformers>=4.57|&#x2714;|-|-|
 |[Qwen/Qwen3-Next-80B-A3B-Instruct-FP8](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Instruct-FP8)|qwen3_next|qwen3_nothinking|transformers>=4.57|&#x2714;|-|-|
 |[Qwen/Qwen3-Next-80B-A3B-Thinking](https://modelscope.cn/models/Qwen/Qwen3-Next-80B-A3B-Thinking)|qwen3_next|qwen3_thinking|transformers>=4.57|&#x2714;|-|-|

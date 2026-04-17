@@ -608,6 +608,13 @@ register_model(
                     Model('swift/Qwen3-235B-A22B-Thinking-2507-AWQ'),
                 ],
                 TemplateType.qwen3_thinking),
+            ModelGroup([
+                Model('AIDC-AI/Marco-Nano-Base', 'AIDC-AI/Marco-Nano-Base'),
+                Model('AIDC-AI/Marco-Nano-Instruct', 'AIDC-AI/Marco-Nano-Instruct'),
+                Model('AIDC-AI/Marco-Mini-Base', 'AIDC-AI/Marco-Mini-Base'),
+                Model('AIDC-AI/Marco-Mini-Instruct', 'AIDC-AI/Marco-Mini-Instruct'),
+                Model('AIDC-AI/Marco-Mini-Global-Base', 'AIDC-AI/Marco-Mini-Global-Base'),
+            ], TemplateType.qwen3_nothinking),
         ],
         requires=['transformers>=4.51'],
         architectures=['Qwen3MoeForCausalLM'],
