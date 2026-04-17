@@ -223,7 +223,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
                 m.to(mg_dtype)
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
-        mg_logits = forward_step_helper(args, mg_model, mg_inputs, dtype=test_convert_dtype)
+        mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=test_convert_dtype)
         if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
             from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:

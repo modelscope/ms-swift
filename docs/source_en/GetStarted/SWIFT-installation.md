@@ -7,7 +7,9 @@ You can install it using pip:
 ```shell
 # recommend
 pip install 'ms-swift' -U
-# For evaluation usage
+# Install additional Megatron dependencies
+pip install 'ms-swift[megatron]' -U
+# Install additional evaluation dependencies
 pip install 'ms-swift[eval]' -U
 # Full capabilities
 pip install 'ms-swift[all]' -U

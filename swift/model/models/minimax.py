@@ -158,6 +158,9 @@ register_model(
             ModelGroup([
                 Model('MiniMax/MiniMax-M2.5', 'MiniMaxAI/MiniMax-M2.5'),
             ], TemplateType.minimax_m2_5),
+            ModelGroup([
+                Model('MiniMax/MiniMax-M2.7', 'MiniMaxAI/MiniMax-M2.7'),
+            ], TemplateType.minimax_m2_7),
         ],
         requires=['transformers==4.57.1'],
         architectures=['MiniMaxM2ForCausalLM']))

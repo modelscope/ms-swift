@@ -204,6 +204,8 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type == 'grpo':
             assert self.vllm_mode is not None, 'vllm_mode is required for Megatron GRPO'
             self._init_grpo()
+            if self.cosine_max_len is None:
+                self.cosine_max_len = self.max_completion_length
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
@@ -545,10 +547,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # visual
     vit_gradient_checkpointing: Optional[bool] = None
+    vit_gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
+    vit_attn_impl: Optional[str] = None
     vit_lr: Optional[float] = None
     aligner_lr: Optional[float] = None
-    attn_impl: Optional[str] = None
-    gradient_checkpointing_kwargs: Optional[Union[dict, str]] = None
 
     # dsa
     dsa_indexer_loss_coeff: Optional[float] = None
@@ -658,8 +660,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.fp8 = self.fp8_format  # compat megatron-lm
         if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True
-        if self.gradient_checkpointing_kwargs is not None:
-            self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
+        if self.vit_gradient_checkpointing_kwargs is not None:
+            self.vit_gradient_checkpointing_kwargs = json_parse_to_dict(self.vit_gradient_checkpointing_kwargs)
         if self.gradient_accumulation_fusion:
             try:
                 import apex

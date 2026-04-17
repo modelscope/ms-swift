@@ -258,7 +258,8 @@ class ModelLoader(BaseModelLoader):
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         auto_tokenizer_cls = self.auto_tokenizer_cls
         if auto_tokenizer_cls is None:
-            if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')):
+            if os.path.exists(os.path.join(model_dir, 'preprocessor_config.json')) or os.path.exists(
+                    os.path.join(model_dir, 'processor_config.json')):
                 from transformers import AutoProcessor
                 auto_tokenizer_cls = AutoProcessor
             else:
@@ -409,6 +410,9 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'qwen3_moe':
                 from transformers.models.qwen3_moe.modeling_qwen3_moe import Qwen3MoeSparseMoeBlock
                 z3_leaf_modules = [Qwen3MoeSparseMoeBlock]
+            elif hf_model_type == 'gemma4':
+                from transformers.models.gemma4.modeling_gemma4 import Gemma4TextExperts
+                z3_leaf_modules = [Gemma4TextExperts]
             elif hf_model_type == 'glm4_moe':
                 from transformers.models.glm4_moe.modeling_glm4_moe import Glm4MoeMoE
                 z3_leaf_modules = [Glm4MoeMoE]

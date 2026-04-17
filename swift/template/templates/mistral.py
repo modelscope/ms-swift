@@ -157,10 +157,11 @@ class Mistral2506Template(Mistral2503Template):
         yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
         return system_prompt.format(name=model_name, today=today, yesterday=yesterday)
 
-    def _swift_encode(self, inputs: StdTemplateInputs):
-        if inputs.system is None and self.use_chat_template:
-            inputs.system = self._get_mistral_system()
-        return super()._swift_encode(inputs)
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        if system is None:
+            system = self._get_mistral_system()
+        return system
 
 
 register_template(

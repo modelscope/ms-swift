@@ -792,6 +792,8 @@ register_model(
             ModelGroup([
                 Model('Qwen/QVQ-72B-Preview', 'Qwen/QVQ-72B-Preview'),
             ], TemplateType.qvq),
+            ModelGroup([Model('OpenDataLab/MinerU2.5-Pro-2604-1.2B', 'opendatalab/MinerU2.5-Pro-2604-1.2B')],
+                       TemplateType.qwen2_vl),
         ],
         Qwen2VLLoader,
         model_arch=ModelArch.qwen2_vl,
@@ -998,21 +1000,19 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         inputs_embeds, visual_pos_masks, deepstack_visual_embeds = _forward_qwen3_vl_or_qwen3_omni(
             self, processor, input_ids, inputs_embeds, pixel_values, pixel_values_videos, image_grid_thw,
             video_grid_thw)
+        mm_token_type_ids = kwargs.pop('mm_token_type_ids', None)
         if position_ids is None:
             past_key_values_length = 0 if past_key_values is None else past_key_values.get_seq_length()
             if self.rope_deltas is None or past_key_values_length == 0:
-                kwargs = {}
-                if 'mm_token_type_ids' in inspect.signature(self.get_rope_index).parameters:
-                    mm_token_type_ids = torch.zeros_like(input_ids)
-                    mm_token_type_ids[input_ids == processor.image_token_id] = 1
-                    mm_token_type_ids[input_ids == processor.video_token_id] = 2
-                    kwargs['mm_token_type_ids'] = mm_token_type_ids
+                get_kwargs = {}
+                if mm_token_type_ids is not None:
+                    get_kwargs['mm_token_type_ids'] = mm_token_type_ids
                 position_ids, rope_deltas = self.get_rope_index(
                     input_ids,
                     image_grid_thw=image_grid_thw,
                     video_grid_thw=video_grid_thw,
                     attention_mask=attention_mask,
-                    **kwargs,
+                    **get_kwargs,
                 )
                 self.rope_deltas = rope_deltas
             # then use the prev pre-calculated rope-deltas to get the correct position ids
@@ -1463,6 +1463,37 @@ register_model(
     ))
 
 
+class Qwen3ASRLoader(ModelLoader):
+
+    def get_config(self, model_dir: str):
+        import qwen_asr
+        return super().get_config(model_dir)
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import AutoModel
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        use_submodel_func(model, 'thinker')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_asr,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-ASR-1.7B', 'Qwen/Qwen3-ASR-1.7B'),
+                Model('Qwen/Qwen3-ASR-0.6B', 'Qwen/Qwen3-ASR-0.6B'),
+            ], TemplateType.qwen3_asr)
+        ],
+        Qwen3ASRLoader,
+        model_arch=ModelArch.qwen3_asr,
+        architectures=['Qwen3ASRForConditionalGeneration'],
+        requires=['qwen-asr', 'transformers==4.57.6'],
+        tags=['audio'],
+    ))
+
+
 class MidashengLMLoader(ModelLoader):
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
@@ -1685,7 +1716,7 @@ register_model(
             ]),
         ],
         template=TemplateType.qwen3_reranker,
-        mcore_model_type='qwen3',
+        mcore_model_type='gpt',
         architectures=['Qwen3ForCausalLM'],
     ))
 

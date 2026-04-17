@@ -220,8 +220,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 
 - 🔥output_dir: The output directory where the model predictions and checkpoints will be written. Default is `None`, automatically set to `'output/<model_name>'`.
 - 🔥gradient_checkpointing: Whether to use gradient checkpointing. Default is `True`. This significantly reduces GPU memory usage but slows down training.
-- 🔥vit_gradient_checkpointing: For multimodal model training, whether to enable gradient checkpointing for the ViT (Vision Transformer) component. Default is `None`, meaning it follows the value of `gradient_checkpointing`. For an example, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh).
-  - Note: When training multimodal models with LoRA and `--freeze_vit false`, if you see the warning: `UserWarning: None of the inputs have requires_grad=True. Gradients will be None`, try setting `--vit_gradient_checkpointing false` or open an issue. This issue does not occur in full-parameter training. (If this warning comes from the `ref_model` during RLHF LoRA training, it is normal.)
+- 🔥vit_gradient_checkpointing: Whether to enable gradient checkpointing for the ViT component during multimodal model training. Defaults to `None`, which means it is enabled when `--freeze_vit` is `false`. For an example, please refer to [here](https://github.com/modelscope/ms-swift/blob/main/examples/train/multimodal/vit_gradient_checkpointing.sh).
 - 🔥deepspeed: Default is `None`. Can be set to `'zero0'`, `'zero1'`, `'zero2'`, `'zero3'`, `'zero2_offload'`, `'zero3_offload'` to use built-in DeepSpeed configurations in ms-swift. You can also pass a path to a custom DeepSpeed config file.
 - zero_hpz_partition_size: Default is `None`. This enables ZeRO++ functionality—model sharding within nodes and data sharding across nodes. If encountering `grad_norm NaN`, try using `--torch_dtype float16`.
 - deepspeed_autotp_size: DeepSpeed tensor parallelism size. Default is 1. To use DeepSpeed AutoTP, set `--deepspeed` to `'zero0'`, `'zero1'`, or `'zero2'`. (Note: Only supports full-parameter training)
@@ -842,7 +841,7 @@ These parameters have the same meaning as in `qwen_vl_utils<0.0.12` or the `qwen
 - 🔥QWENVL_BBOX_FORMAT: Specifies whether to use `'legacy'` or `'new'` format for grounding. The `'legacy'` format is: `<|object_ref_start|>a dog<|object_ref_end|><|box_start|>(432,991),(1111,2077)<|box_end|>`. The `'new'` format refers to: [Qwen3-VL Cookbook](https://github.com/QwenLM/Qwen3-VL/blob/main/cookbooks/2d_grounding.ipynb). For dataset formatting, see the [Grounding Dataset Format Documentation](../Customization/Custom-dataset.md#grounding). Default: `'legacy'`.
   - Note: This environment variable applies to Qwen2/2.5/3-VL and Qwen2.5/3-Omni series models.
 
-### qwen2_audio
+### qwen2_audio, qwen3_asr
 - SAMPLING_RATE: Default is 16000
 
 ### qwen3_vl, qwen3_5

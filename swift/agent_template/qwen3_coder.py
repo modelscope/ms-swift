@@ -143,7 +143,7 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
                     # Handle different types of parameter values
                     if isinstance(args_value, (dict, list)):
                         # For dictionaries or lists, use json formatting
-                        args_value = json.dumps(args_value)
+                        args_value = json.dumps(args_value, ensure_ascii=False)
                     else:
                         # For other types, convert to strings
                         args_value = str(args_value)

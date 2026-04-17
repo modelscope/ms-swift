@@ -334,7 +334,7 @@ Pre-training:
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift pt \
-    --model Qwen/Qwen2.5-7B \
+    --model Qwen/Qwen3-4B-Base \
     --dataset swift/chinese-c4 \
     --streaming true \
     --tuner_type full \
@@ -347,7 +347,7 @@ swift pt \
 Fine-tuning:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
     --tuner_type lora \
     --output_dir output \
@@ -358,7 +358,7 @@ RLHF:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --tuner_type lora \
     --output_dir output \
@@ -386,7 +386,7 @@ ms-swift supports using Megatron parallelism techniques to accelerate training, 
 
 ```shell
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --tuner_type lora \
@@ -413,7 +413,7 @@ ms-swift supports a rich set of GRPO family algorithms:
 CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
@@ -426,25 +426,16 @@ swift rlhf \
 ### Inference
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --stream true \
     --infer_backend transformers \
-    --max_new_tokens 2048
-
-# LoRA
-CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --adapters swift/test_lora \
-    --stream true \
-    --infer_backend transformers \
-    --temperature 0 \
     --max_new_tokens 2048
 ```
 
 ### Interface Inference
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift app \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --stream true \
     --infer_backend transformers \
     --max_new_tokens 2048
@@ -453,14 +444,14 @@ CUDA_VISIBLE_DEVICES=0 swift app \
 ### Deployment
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --infer_backend vllm
 ```
 
 ### Sampling
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sample \
-    --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --sampler_engine transformers \
     --num_return_sequences 5 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
@@ -469,8 +460,8 @@ CUDA_VISIBLE_DEVICES=0 swift sample \
 ### Evaluation
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift eval \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend lmdeploy \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --infer_backend sglang \
     --eval_backend OpenCompass \
     --eval_dataset ARC_c
 ```
@@ -478,10 +469,10 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 ### Quantization
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --quant_bits 4 --quant_method awq \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --quant_method fp8 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --output_dir Qwen2.5-7B-Instruct-AWQ
+    --output_dir Qwen3-4B-Instruct-2507-FP8
 ```
 
 ### Push Model

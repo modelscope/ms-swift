@@ -1227,6 +1227,28 @@ def test_glm_ocr():
                         'ui功能了。')
 
 
+def test_gemma4():
+    engine = TransformersEngine('google/gemma-4-E2B-it')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+    messages = [{
+        'role': 'user',
+        'content': 'What is shown in this image?',
+    }]
+    response = _infer_model(engine, messages=messages, images=images)
+    print(response)
+
+
+def test_mineru2_5_pro():
+    engine = TransformersEngine('OpenDataLab/MinerU2.5-Pro-2604-1.2B')
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    messages = [{
+        'role': 'user',
+        'content': '<image>\nText Recognition:',
+    }]
+    response = _infer_model(engine, messages=messages, images=images)
+    print(response)
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -1313,4 +1335,6 @@ if __name__ == '__main__':
     # test_deepseek_ocr_2()
     # test_step3_vl()
     # test_paddle_ocr_1_5()
-    test_glm_ocr()
+    # test_glm_ocr()
+    # test_gemma4()
+    test_mineru2_5_pro()

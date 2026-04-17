@@ -73,6 +73,7 @@ Swift DOCUMENTATION
    BestPractices/Rapidly-Training-VL-model.md
    BestPractices/NPU-support.md
    BestPractices/Metax-support.md
+   BestPractices/AMD-support.md
    BestPractices/More-Best-Practices.md
 
 Indices and tables

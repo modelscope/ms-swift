@@ -120,6 +120,7 @@ if __name__ == '__main__':
     install_requires, deps_link = parse_requirements('requirements.txt')
     extra_requires = {}
     all_requires = []
+    extra_requires['megatron'], _ = parse_requirements('requirements/megatron.txt')
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
     extra_requires['swanlab'], _ = parse_requirements('requirements/swanlab.txt')
     extra_requires['ray'], _ = parse_requirements('requirements/ray.txt')

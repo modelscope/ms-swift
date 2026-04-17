@@ -91,6 +91,15 @@ def test_step_audio2_mini():
     assert response == 'A woman says "今天天气真好呀" in Mandarin.'
 
 
+def test_qwen3_asr():
+    messages = [{'role': 'user', 'content': '<audio>'}]
+    audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_zh.wav']
+    engine = TransformersEngine('Qwen/Qwen3-ASR-1.7B')
+    engine.template.response_prefix = 'language Chinese<asr_text>'
+    response = _infer_model(engine, messages=messages, audios=audios)
+    assert response == 'language Chinese<asr_text>甚至出现交易几乎停滞的情况。'
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -102,4 +111,5 @@ if __name__ == '__main__':
     # test_qwen2_5_omni()
     # test_gemma3n()
     # test_midashenglm()
-    test_step_audio2_mini()
+    # test_step_audio2_mini()
+    test_qwen3_asr()

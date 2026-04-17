@@ -149,3 +149,9 @@ register_template(
         LLMTemplateType.minimax_m2_5,
         default_system='You are a helpful assistant. Your name is MiniMax-M2.5 and is built by MiniMax.',
     ))
+
+register_template(
+    MinimaxM2TemplateMeta(
+        LLMTemplateType.minimax_m2_7,
+        default_system='You are a helpful assistant. Your name is MiniMax-M2.7 and is built by MiniMax.',
+    ))
