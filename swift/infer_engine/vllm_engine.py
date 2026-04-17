@@ -189,14 +189,14 @@ class VllmEngine(InferEngine):
         _old_from_pretrained = AutoConfig.from_pretrained
 
         def _from_pretrained(*args, **kwargs):
+            config = deepcopy(self.config)
             if self._version_ge('0.19'):
                 if self._config_cls is None:
-                    config = _old_from_pretrained(*args, **kwargs)
-                    self._config_cls = config.__class__
-                if not isinstance(self.config, self._config_cls):
-                    self.config = copy(self.config)
-                    self.config.__class__ = self._config_cls
-            return self.config
+                    hf_config = _old_from_pretrained(*args, **kwargs)
+                    self._config_cls = hf_config.__class__
+                if not isinstance(config, self._config_cls):
+                    config.__class__ = self._config_cls
+            return config
 
         AutoConfig.from_pretrained = _from_pretrained
         try:
