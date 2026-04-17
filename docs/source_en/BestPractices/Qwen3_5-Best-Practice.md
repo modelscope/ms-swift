@@ -308,7 +308,7 @@ Tips for training Qwen3.5 with Megatron-SWIFT:
 - Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh).
 - TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
 - Regarding MTP training: `mcore-bridge>=1.1.0` supports multimodal MTP training. Please install the corresponding version.
-- CP support: "mcore-bridge>=1.1.0" supports CP training for GDN. Additionally, the megatron-core main branch needs to be installed.
+- CP support: "mcore-bridge>=1.1.0" supports CP training for GDN. Additionally, the megatron-core [main branch](https://github.com/NVIDIA/Megatron-LM) needs to be installed.
 - By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set the environment variable `USE_MCORE_GDN=0` to switch to the transformers implementation. Note that the transformers implementation does not support packing and GDN's TP.
 - Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
