@@ -152,9 +152,9 @@ register_model(
         MLLMModelType.molmo2,
         [
             ModelGroup([
-                Model('LLM-Research/Molmo2-4B', 'allenai/Molmo2-4B'),
-                Model('LLM-Research/Molmo2-8B', 'allenai/Molmo2-8B'),
-                Model('LLM-Research/Molmo2-O-7B', 'allenai/Molmo2-O-7B'),
+                Model(None, 'allenai/Molmo2-4B'),
+                Model(None, 'allenai/Molmo2-8B'),
+                Model(None, 'allenai/Molmo2-O-7B'),
             ]),
         ],
         Molmo2Loader,
