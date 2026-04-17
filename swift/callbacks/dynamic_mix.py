@@ -23,8 +23,11 @@ class DynamicMixingCallback(TrainerCallback):
         self._last_update_step = 0
 
     def on_train_begin(self, args, state, control, **kwargs):
-        # Get sampler reference from the dataloader
-        dataloader = self.trainer.get_train_dataloader()
+        # Reuse the already-created training dataloader instead of re-calling the getter
+        dataloader = getattr(self.trainer, 'train_dataloader', None)
+        if dataloader is None:
+            logger.warning('DynamicMixingCallback: train_dataloader not found, dynamic mixing disabled.')
+            return
         sampler = getattr(dataloader, 'batch_sampler', None)
         from swift.dataloader import DynamicMixBatchSampler
         # Unwrap SkipBatchSampler if present

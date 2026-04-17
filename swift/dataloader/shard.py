@@ -161,8 +161,10 @@ class DynamicMixBatchSampler:
             # Re-read probabilities each batch so runtime updates take effect
             prob_tensor = torch.tensor([self.probabilities[n] for n in self.domain_names])
             global_batch = []
-            for _ in range(self.batch_size * self.world_size):
-                domain_idx = torch.multinomial(prob_tensor, 1, generator=generator).item()
+            batch_total = self.batch_size * self.world_size
+            sampled_domains = torch.multinomial(
+                prob_tensor, batch_total, replacement=True, generator=generator).tolist()
+            for domain_idx in sampled_domains:
                 domain_name = self.domain_names[domain_idx]
                 cursor = domain_cursors[domain_name]
                 if cursor >= len(domain_shuffled[domain_name]):
