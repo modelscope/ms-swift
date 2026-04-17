@@ -68,7 +68,7 @@ class QuantEngine(ProcessorMixin):
             args.output_dir,
             model_dirs=[args.model_dir],
             additional_saved_files=self.model.model_meta.additional_saved_files)
-        logger.info(f'Successfully quantized the model and saved in {args.output_dir}.')
+        logger.info(f'Successfully quantized the model and saved in `{args.output_dir}`.')
 
     @torch.inference_mode()
     def _prepare_gptq_dataset(self, examples: List[Dict[str, torch.LongTensor]], batch_size: int = 1, *args, **kwargs):
@@ -280,6 +280,8 @@ class QuantEngine(ProcessorMixin):
             logger.info('Start quantizing the model...')
             logger.warning('The process of packing the model takes a long time and there is no progress bar. '
                            'Please be patient and wait...')
+            if not hasattr(self.model, 'hf_device_map'):
+                self.model.hf_device_map = {'': torch.device('cuda:0')}
             with self._patch_gptq_block(self.model, block_name_to_quantize):
                 gptq_quantizer.quantize_model(self.model, self.tokenizer)
             self.model.config.quantization_config.pop('dataset', None)

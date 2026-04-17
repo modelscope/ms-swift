@@ -862,7 +862,7 @@ class SwiftMixin:
                         else:
                             vision_tower.gradient_checkpointing_disable()
                             vision_tower.disable_input_require_grads()
-                    except (NotImplementedError, AttributeError) as e:
+                    except (NotImplementedError, AttributeError, ValueError) as e:
                         logger.warning(f'prepare gradient_checkpointing failed: {e}')
         # Avoid vit_gradient_checkpointing being overwritten by transformers.Trainer.gradient_checkpointing_enable.
         self.args.gradient_checkpointing = False
@@ -889,7 +889,8 @@ class SwiftMixin:
 
         # gradient_checkpointing
         gradient_checkpointing = self.args.gradient_checkpointing
-        self._prepare_gradient_checkpointing(self.accelerator.unwrap_model(self.model))
+        base_model = self.template.get_base_model(self.accelerator.unwrap_model(self.model))  # fix peftmodel
+        self._prepare_gradient_checkpointing(base_model)
         with self.hub.patch_hub(), self._fix_grad_norm_nan(), self._patch_skip_first_batches(
         ), self._patch_deepspeed_load_checkpoint():
             res = super().train(*args, **kwargs)

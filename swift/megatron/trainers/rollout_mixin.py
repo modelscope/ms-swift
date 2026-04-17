@@ -9,9 +9,11 @@ import base64
 import inspect
 import json
 import os
+import re
 import time
 import torch
 import uuid
+from accelerate.utils import broadcast_object_list
 from collections import OrderedDict
 from contextlib import contextmanager, nullcontext
 from copy import copy
@@ -21,10 +23,11 @@ from megatron.core import mpu
 from typing import Any, Dict, List, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
-from swift.rlhf_trainers.utils import (FlattenedTensorBucket, TensorLoRARequest, aggressive_empty_cache,
-                                       check_vllm_version_ge, patch_vllm_load_adapter,
+from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
+                                       TensorLoRARequest, add_base_layer_suffix_by_param_names, aggressive_empty_cache,
+                                       check_vllm_version_ge, expand_vllm_param_name_aliases, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments)
+                                       set_expandable_segments, vllm_supports_lora_load_inplace)
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
                          to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
@@ -202,6 +205,7 @@ class MegatronRolloutMixin:
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.rollout_enable_lora = False
         self.base_sync_done = False
+        self._cached_vllm_param_names = None
 
         if not args.use_vllm:
             return
@@ -215,7 +219,12 @@ class MegatronRolloutMixin:
 
         if self.vllm_mode == 'server':
             # Server mode uses external vLLM server
-            pass
+            if self.is_main_process:
+                self.vllm_client.get_engine_type()
+                enable_lora = [self.vllm_client.enable_lora]
+            else:
+                enable_lora = [False]
+            self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=self.world_size - 1)[0]
         elif self.vllm_mode == 'colocate':
             if self.world_size % self.vllm_tensor_parallel_size != 0:
                 raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
@@ -250,7 +259,7 @@ class MegatronRolloutMixin:
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
         vllm_engine_kwargs = args.vllm_engine_kwargs or {}
-        load_format = vllm_engine_kwargs.pop('load_format', 'dummy')
+        load_format = vllm_engine_kwargs.pop('load_format', 'auto')
 
         if self.args.router_replay_mode == 'R3':
             assert check_vllm_version_ge('0.14.0'), \
@@ -261,7 +270,6 @@ class MegatronRolloutMixin:
         max_loras = 1
         max_lora_rank = args.lora_rank
         if args.tuner_type == 'lora' and args.vllm_enable_lora:
-            self._validate_lora_sync_compatibility()
             enable_lora = True
             self.rollout_enable_lora = True
             patch_vllm_load_adapter()
@@ -297,34 +305,19 @@ class MegatronRolloutMixin:
 
         return engine
 
-    def _validate_lora_sync_compatibility(self):
-        """Warn about potential LoRA sync issues for multimodal/MoE models."""
-        args = self.args
-        if args.is_multimodal:
-            logger.warning('vLLM LoRA is enabled for a multimodal model. If you are training ViT/connector with LoRA '
-                           '(e.g. target_modules=all-linear), you need to set `enable_tower_connector_lora: true` '
-                           'in vllm_engine_kwargs for colocate mode, or pass `--enable-tower-connector-lora` when '
-                           'starting the vLLM server. Currently supported models include Qwen2.5-VL, Qwen3-VL, '
-                           'and Qwen3.5-VL. See: https://docs.vllm.ai/en/stable/features/lora.html')
-        if args.model_info.is_moe_model:
-            logger.warning('vLLM LoRA is enabled for an MoE model. Note that LoRA on expert layers is generally '
-                           'not supported in the current training framework. If you encounter weight sync errors, '
-                           'set vllm_enable_lora to False to fall back to merged weight sync.')
-
     @profiling_decorator
     def _move_model_to_vllm(self):
         """Synchronize model weights to vLLM engine.
 
-        Decision logic (following HF GRPOTrainer / twinkle / verl patterns):
-        - Full sync: when tuner_type is 'full', or first sync (base_sync_done=False),
-          or sleep_level==2, or rollout_enable_lora is disabled.
-        - Adapter-only sync: when LoRA training with rollout_enable_lora=True and
+        - Full sync: when tuner_type != 'lora' (e.g. full, lora_llm), or first sync
+          (base_sync_done=False), or sleep_level==2, or rollout_enable_lora is disabled.
+        - Adapter-only sync: when tuner_type == 'lora' with rollout_enable_lora=True and
           base weights have already been synced.
         """
         args = self.args
         tuner_type = args.tuner_type
 
-        if tuner_type == 'full' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora:
+        if (tuner_type != 'lora' or (not self.base_sync_done or args.sleep_level == 2) or not self.rollout_enable_lora):
             self._move_full_model_to_vllm()
         else:
             self._move_adapter_to_vllm()
@@ -338,13 +331,18 @@ class MegatronRolloutMixin:
     def _move_full_model_to_vllm(self):
         """Transfer full model weights to vLLM engine.
 
-        For LoRA training:
+        For LoRA training (tuner_type == 'lora'):
         - When rollout_enable_lora=False: merge LoRA into base, export merged weights, then unmerge.
         - When rollout_enable_lora=True: export base weights only (no merge needed),
           then follow up with adapter-only sync via _move_adapter_to_vllm.
+        For lora_llm: always merge LLM LoRA into exported dense weights (vLLM has no separate
+        adapter pass for this tuner_type; see _move_model_to_vllm).
         """
-        is_lora_training = self.args.tuner_type == 'lora'
-        should_merge = is_lora_training and not self.rollout_enable_lora
+        is_lora_training = self.args.tuner_type in ('lora', 'lora_llm')
+        is_pure_lora = self.args.tuner_type == 'lora'
+        should_merge = not self.rollout_enable_lora
+        if self.args.tuner_type == 'lora_llm' and self.rollout_enable_lora:
+            logger.warning('lora_llm is not supported with vllm_enable_lora=True. plz set vllm_enable_lora to False')
 
         try:
             if should_merge:
@@ -358,7 +356,7 @@ class MegatronRolloutMixin:
 
         if is_lora_training:
             self.base_sync_done = True
-            if self.rollout_enable_lora:
+            if self.rollout_enable_lora and is_pure_lora:
                 self._move_adapter_to_vllm()
 
     def _move_adapter_to_vllm(self):
@@ -379,14 +377,16 @@ class MegatronRolloutMixin:
         peft_config = self.unwrapped_models[0].peft_config.get('default', None)
 
         if self.vllm_mode == 'colocate':
-            lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
-            lora_request = TensorLoRARequest(
-                lora_name=f'{lora_int_id}',
-                lora_int_id=lora_int_id,
-                lora_path='dummy_lora_path',
+            req_kw = dict(
+                lora_name=VLLM_LORA_NAME,
+                lora_int_id=VLLM_LORA_INT_ID,
+                lora_path=VLLM_LORA_PATH,
                 peft_config=asdict(peft_config),
                 lora_tensors=lora_params,
             )
+            if vllm_supports_lora_load_inplace():
+                req_kw['load_inplace'] = True
+            lora_request = TensorLoRARequest(**req_kw)
             self.engine.engine.add_lora(lora_request)
         elif self.vllm_mode == 'server' and self.is_main_process:
             bucket = FlattenedTensorBucket(named_tensors=list(lora_params.items()))
@@ -404,60 +404,35 @@ class MegatronRolloutMixin:
         with profiling_context(self, 'export_weights'):
             weight_iterator = self.bridge.export_weights(self.unwrapped_models, target_device=target_device)
 
+        if self.rollout_enable_lora:
+            vllm_param_names = self._get_vllm_param_names_for_mapping()
+            if vllm_param_names:
+                weight_iterator = add_base_layer_suffix_by_param_names(weight_iterator, vllm_param_names)
+
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
             patch_vllm_moe_model_weight_loader(llm_model)
-
-            if self.rollout_enable_lora:
-                self._patch_vllm_load_weights_for_lora(llm_model)
-
             llm_model.load_weights(weight_iterator)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
 
-    def _patch_vllm_load_weights_for_lora(self, root_module):
-        """Patch vLLM submodules' load_weights to handle .base_layer key aliasing.
+    def _get_vllm_param_names_for_mapping(self):
+        """Get vLLM runtime parameter names for base_layer mapping.
 
-        When LoRA is enabled, vLLM wraps target layers with LoRA modules, causing
-        named_parameters() to return keys like 'qkv_proj.base_layer.weight' instead
-        of 'qkv_proj.weight'. The model's load_weights() uses params_dict from
-        named_parameters(), so stacked param lookups fail.
-
-        This one-time patch wraps load_weights on affected submodules to add
-        plain-key aliases before parameter lookup.
+        Returns an alias-expanded set so bridge/HF names can match vLLM packed names.
         """
-        for module in root_module.modules():
-            if module is root_module:
-                continue
-            load_weights_fn = getattr(module, 'load_weights', None)
-            if not callable(load_weights_fn):
-                continue
-            if getattr(module, '_lora_load_weights_patched', False):
-                continue
+        if self.vllm_mode == 'colocate':
+            llm_model = self.engine.inner_model
+            raw_names = set(dict[Any, Any](llm_model.named_parameters()).keys())
+            return expand_vllm_param_name_aliases(raw_names)
 
-            original_load_weights = load_weights_fn
+        if self.vllm_mode != 'server' or not self.is_main_process:
+            return None
 
-            def _make_patched_load_weights(orig_fn, mod):
-
-                def patched_load_weights(weights):
-                    orig_named_params = mod.named_parameters
-
-                    def _patched_named_params(*args, **kwargs):
-                        for name, param in orig_named_params(*args, **kwargs):
-                            yield name, param
-                            if '.base_layer.' in name:
-                                yield name.replace('.base_layer.', '.'), param
-
-                    mod.named_parameters = _patched_named_params
-                    try:
-                        return orig_fn(weights)
-                    finally:
-                        mod.named_parameters = orig_named_params
-
-                return patched_load_weights
-
-            module.load_weights = _make_patched_load_weights(original_load_weights, module)
-            module._lora_load_weights_patched = True
+        if self._cached_vllm_param_names is None:
+            keys = self.vllm_client.get_model_state_keys()
+            self._cached_vllm_param_names = expand_vllm_param_name_aliases(set(keys))
+        return self._cached_vllm_param_names
 
     def _load_weights_to_server_in_buckets(self, weight_iterator):
         """Load weights to vLLM server in buckets."""
@@ -566,8 +541,6 @@ class MegatronRolloutMixin:
 
     def _server_rollout(self, inputs: DataType, request_config: RequestConfig) -> List[RolloutOutput]:
         """Perform rollout using vLLM server mode."""
-        from accelerate.utils import broadcast_object_list
-
         infer_requests = self._inputs_to_requests(inputs)
 
         all_requests = gather_object(infer_requests)

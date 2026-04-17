@@ -44,7 +44,7 @@
 
 请扫描下面的二维码来加入我们的交流群：
 
-[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  微信群
+[Discord Group](https://discord.gg/yeN59wxjwe)              |  微信群
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 

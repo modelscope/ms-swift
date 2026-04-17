@@ -45,7 +45,7 @@
 You can contact us and communicate with us by adding our group:
 
 
-[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  WeChat Group
+[Discord Group](https://discord.gg/yeN59wxjwe)              |  WeChat Group
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 

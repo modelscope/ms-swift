@@ -16,7 +16,8 @@ from urllib.parse import urlparse
 from swift.infer_engine import AdapterRequest, RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.metrics import Metric
-from swift.utils import get_torch_device, is_trl_available, is_vllm_ascend_available, is_vllm_available, synchronize
+from swift.utils import (get_torch_device, is_trl_available, is_vllm_ascend_available, is_vllm_available,
+                         is_vllm_metax_available, synchronize)
 from .utils import format_host_for_url, is_valid_ipv6_address, peft_config_to_dict, resolve_hostname
 
 if is_vllm_available():
@@ -25,6 +26,9 @@ if is_vllm_available():
 
     if is_vllm_ascend_available():
         from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator as PyNcclCommunicator  # noqa
+
+    if is_vllm_metax_available():
+        import vllm_metax.patch
 
 if is_trl_available():
     import trl
@@ -261,12 +265,10 @@ class VLLMClient:
         errors = [None] * self.num_servers
         peft_config = peft_config_to_dict(peft_config)
         metadatas = [m.model_dump() if hasattr(m, 'model_dump') else m.dict() for m in metadatas]
-        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 
         def _update_single_server(i):
             try:
                 data = {
-                    'lora_int_id': lora_int_id,
                     'peft_config': {
                         **peft_config
                     },
@@ -310,7 +312,6 @@ class VLLMClient:
         """
         errors = [None] * self.num_servers
         peft_config = peft_config_to_dict(peft_config)
-        lora_int_id = int(time.time_ns() % 0x7FFFFFFF)
 
         # Build metadata for each tensor
         lora_tensors_metadata = []
@@ -328,7 +329,6 @@ class VLLMClient:
         def _update_single_server(i):
             try:
                 data = {
-                    'lora_int_id': lora_int_id,
                     'peft_config': {
                         **peft_config
                     },
@@ -441,6 +441,14 @@ class VLLMClient:
         self.use_gym_env = result.get('use_gym_env', False)
         self.enable_lora = result.get('enable_lora', False)
         return result
+
+    def get_model_state_keys(self):
+        """Fetch runtime vLLM model parameter names from server."""
+        response = self.sessions[0].get(f'{self.base_urls[0]}/get_model_state_keys/')
+        if response.status_code != 200:
+            raise Exception(f'Get model state keys failed: {response.text}')
+        data = response.json()
+        return data.get('keys', [])
 
     def close_communicator(self):
         for i in range(self.num_servers):

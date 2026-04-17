@@ -380,9 +380,10 @@ def load_mcore_checkpoint(args,
     no_load_rng = args.no_load_rng
     finetune = args.finetune
     if not peft_format and args.tuner_type != 'full':
+        # When training with LoRA and loading the base model
         no_load_optim = True
         no_load_rng = True
-        finetune = False
+        finetune = True
     models = unwrap_model(ddp_models)
     tracker_path = os.path.join(load_dir, 'latest_checkpointed_iteration.txt')
     iteration = _load_iteration(tracker_path)

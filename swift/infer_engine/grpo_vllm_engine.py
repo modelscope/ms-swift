@@ -6,6 +6,7 @@ from tqdm.asyncio import tqdm_asyncio
 from typing import Any, Dict, List, Optional, Union
 
 from swift.metrics import Metric
+from swift.rlhf_trainers.utils import VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH
 from swift.template import Template
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatMessage, InferRequest, RequestConfig,
                        RolloutOutput)
@@ -32,14 +33,10 @@ class GRPOVllmEngine(VllmEngine):
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[RolloutOutput]:
         if not adapter_request and self.enable_lora:
-            lora_int_ids = list(self.engine.list_loras())
-            if lora_int_ids:
-                # since max_lora = 1, pick the first lora
+            lora_loaded = VLLM_LORA_INT_ID in self.engine.list_loras()
+            if lora_loaded:
                 adapter_request = LoRARequest(
-                    lora_name=f'{lora_int_ids[0]}',
-                    lora_int_id=lora_int_ids[0],
-                    lora_path='dummy_lora_path',
-                )
+                    lora_name=VLLM_LORA_NAME, lora_int_id=VLLM_LORA_INT_ID, lora_path=VLLM_LORA_PATH)
 
         res = super().infer(
             infer_requests,

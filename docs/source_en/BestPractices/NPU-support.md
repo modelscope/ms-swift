@@ -23,7 +23,7 @@ Experiment Environment: 8 * Ascend 910B3 64G
 ### Environment Installation
 ```shell
 # Create a new conda virtual environment (optional)
-conda create -n swift-npu python=3.10 -y
+conda create -n swift-npu python=3.11 -y
 conda activate swift-npu
 
 # Note: Before proceeding with subsequent operations, you need to source and activate CANN environment first
@@ -39,7 +39,7 @@ cd ms-swift
 pip install -e .
 
 # Install torch-npu
-pip install torch-npu decorator
+pip install torch_npu decorator
 # If you want to use deepspeed (to control memory usage, training speed might decrease)
 pip install deepspeed
 
@@ -63,20 +63,26 @@ print(torch.randn(10, device='npu:0'))
 
 **If you need to use MindSpeed (Megatron-LM), please follow the guide below to install the necessary dependencies**
 ```shell
-# 1. Obtain and switch Megatron-LM to core_v0.12.1
+# 1. Obtain and switch Megatron-LM to v0.15.3
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout core_v0.12.1
+git checkout v0.15.3
 cd ..
 
 # 2. Install MindSpeed
 git clone https://gitcode.com/Ascend/MindSpeed.git
 cd MindSpeed
-git checkout 2.3.0_core_r0.12.1
+git checkout core_r0.15.3
 pip install -e .
 cd ..
 
-# 3. Set environment variables
+# 3. Clone and install mcore-bridge
+git clone https://github.com/modelscope/mcore-bridge.git
+cd mcore-bridge
+pip install -e .
+cd ..
+
+# 4. Set environment variables
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 ```
@@ -284,10 +290,10 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 Install via PyPI:
 ```shell
 # Install vllm-project/vllm. The newest supported version is v0.11.0.
-pip install vllm==0.11.0
+pip install vllm==0.14.0
 
 # Install vllm-project/vllm-ascend from PyPI.
-pip install vllm-ascend==0.11.0rc3
+pip install vllm-ascend==0.14.0rc1
 ```
 
 Original model:
