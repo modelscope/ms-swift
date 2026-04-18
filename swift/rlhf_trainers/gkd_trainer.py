@@ -543,21 +543,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     encoded_inputs['attention_mask'] = new_attention_mask
                     encoded_inputs['labels'] = new_labels
 
-                    # OPSD: encode teacher prompt and concatenate with generated response
                     if teacher_data is not None:
-                        teacher_encoded = self._prepare_batch_inputs(teacher_data, encode_prompt_only=True)
-                        t_prompt_len = teacher_encoded['input_ids'].shape[1]
-                        response_ids = new_input_ids[:, student_prompt_len:]
-                        response_mask = new_attention_mask[:, student_prompt_len:]
-                        teacher_full_ids = torch.cat([teacher_encoded['input_ids'], response_ids], dim=1)
-                        teacher_full_mask = torch.cat([teacher_encoded['attention_mask'], response_mask], dim=1)
-                        teacher_labels = torch.full_like(teacher_full_ids, -100)
-                        teacher_labels[:, t_prompt_len:] = new_labels[:, student_prompt_len:]
-                        encoded_inputs['_opsd_teacher_inputs'] = {
-                            'input_ids': teacher_full_ids,
-                            'attention_mask': teacher_full_mask,
-                            'labels': teacher_labels,
-                        }
+                        for i, td in enumerate(teacher_data):
+                            mask = new_attention_mask[i, student_prompt_len:]
+                            resp_token = new_input_ids[i, student_prompt_len:][mask == 1].tolist()
+                            td['messages'].append({'role': 'assistant', 'content': resp_token})
+                            td['add_eos'] = False
+                        with self._template_context(self.template):
+                            encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
+                                teacher_data, encode_prompt_only=False)
 
             elif self.seq_kd:
                 # Sequential KD: teacher model generates responses
