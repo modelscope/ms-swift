@@ -545,8 +545,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
                     if teacher_data is not None:
                         for i, td in enumerate(teacher_data):
-                            resp = new_input_ids[i, student_prompt_len:]
-                            td['messages'].append({'role': 'assistant', 'content': resp.tolist()})
+                            mask = new_attention_mask[i, student_prompt_len:]
+                            resp_token = new_input_ids[i, student_prompt_len:][mask == 1].tolist()
+                            td['messages'].append({'role': 'assistant', 'content': resp_token})
                             td['add_eos'] = False
                         with self._template_context(self.template):
                             encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
