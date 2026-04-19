@@ -1088,6 +1088,9 @@
 |[LLM-Research/Molmo-7B-O-0924](https://modelscope.cn/models/LLM-Research/Molmo-7B-O-0924)|molmo|molmo|transformers>=4.45|&#x2718;|vision|[allenai/Molmo-7B-O-0924](https://huggingface.co/allenai/Molmo-7B-O-0924)|
 |[LLM-Research/Molmo-7B-D-0924](https://modelscope.cn/models/LLM-Research/Molmo-7B-D-0924)|molmo|molmo|transformers>=4.45|&#x2718;|vision|[allenai/Molmo-7B-D-0924](https://huggingface.co/allenai/Molmo-7B-D-0924)|
 |[LLM-Research/Molmo-72B-0924](https://modelscope.cn/models/LLM-Research/Molmo-72B-0924)|molmo|molmo|transformers>=4.45|&#x2718;|vision|[allenai/Molmo-72B-0924](https://huggingface.co/allenai/Molmo-72B-0924)|
+|[allenai/Molmo2-4B](https://modelscope.cn/models/allenai/Molmo2-4B)|molmo2|molmo2|transformers>=4.57.1,<5, decord|&#x2718;|vision, video|[allenai/Molmo2-4B](https://huggingface.co/allenai/Molmo2-4B)|
+|[allenai/Molmo2-8B](https://modelscope.cn/models/allenai/Molmo2-8B)|molmo2|molmo2|transformers>=4.57.1,<5, decord|&#x2718;|vision, video|[allenai/Molmo2-8B](https://huggingface.co/allenai/Molmo2-8B)|
+|[allenai/Molmo2-O-7B](https://modelscope.cn/models/allenai/Molmo2-O-7B)|molmo2|molmo2|transformers>=4.57.1,<5, decord|&#x2718;|vision, video|[allenai/Molmo2-O-7B](https://huggingface.co/allenai/Molmo2-O-7B)|
 |[LLM-Research/MolmoE-1B-0924](https://modelscope.cn/models/LLM-Research/MolmoE-1B-0924)|molmoe|molmo|transformers>=4.45|&#x2718;|vision|[allenai/MolmoE-1B-0924](https://huggingface.co/allenai/MolmoE-1B-0924)|
 |[AI-ModelScope/pixtral-12b](https://modelscope.cn/models/AI-ModelScope/pixtral-12b)|pixtral|pixtral|transformers>=4.45|&#x2718;|vision|[mistral-community/pixtral-12b](https://huggingface.co/mistral-community/pixtral-12b)|
 |[InfiniAI/Megrez-3B-Omni](https://modelscope.cn/models/InfiniAI/Megrez-3B-Omni)|megrez_omni|megrez_omni|-|&#x2718;|vision, audio|[Infinigence/Megrez-3B-Omni](https://huggingface.co/Infinigence/Megrez-3B-Omni)|
