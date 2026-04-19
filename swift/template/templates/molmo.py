@@ -168,9 +168,6 @@ class Molmo2Template(Template):
             value = self.concat_tensor(batch, key, 0)
             if value is not None:
                 res[key] = value
-        video_metadata = self.gather_list(batch, 'video_metadata')
-        if video_metadata:
-            res['video_metadata'] = video_metadata
         return res
 
 
