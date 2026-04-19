@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import math
+import numpy as np
 import torch
 from dataclasses import dataclass, field
 from functools import partial
@@ -11,7 +13,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, findall
-from ..vision_utils import load_video_minicpmv_mplug_owl3
+from ..vision_utils import load_audio, load_video_minicpmv_mplug_owl3
 from .llama import Llama3TemplateMeta
 from .qwen import Qwen2_5TemplateMeta, Qwen3MixedTemplateMeta, QwenTemplateMeta
 from .utils import ChatmlTemplateMeta
@@ -240,13 +242,6 @@ register_template(Qwen2_5TemplateMeta(
     template_cls=MiniCPMV2_6Template,
 ))
 
-register_template(
-    Qwen3MixedTemplateMeta(
-        MLLMTemplateType.minicpmo4_5,
-        template_cls=MiniCPMV2_6Template,
-        is_thinking=True,
-    ))
-
 
 class MiniCPMV4_5Template(MiniCPMV2_6Template):
 
@@ -317,4 +312,295 @@ register_template(
         template_cls=MiniCPMV4_5Template,
         is_thinking=True,
         thinking_prefix='<think>\n',
+    ))
+
+
+class MiniCPMO4_5Template(MiniCPMV4_5Template):
+    SAMPLING_RATE = 16000
+    MAX_AUDIO_DURATION = 30  # seconds
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return super().replace_tag(media_type, index, inputs)
+        elif media_type == 'audio':
+            # Load audio from file path to numpy array at 16kHz
+            if isinstance(inputs.audios[index], str):
+                inputs.audios[index] = load_audio(inputs.audios[index], sampling_rate=self.SAMPLING_RATE)
+            return ['<|audio_start|><|audio_end|>']
+        elif media_type == 'video':
+            from minicpmo.utils import get_video_frame_audio_segments
+            video = inputs.videos[inputs.video_idx]
+            video_segments, audio_segments, _ = get_video_frame_audio_segments(
+                video, use_audio=self.use_audio_in_video, stack_frames=1)
+            # Insert frames into images list at current position
+            images = inputs.images
+            inputs.images = images[:inputs.image_idx] + video_segments + images[inputs.image_idx:]
+            # Build context list
+            image_context = [[-100]]
+            context_list = []
+            if self.use_audio_in_video and audio_segments:
+                # Insert audio segments into audios list at current position
+                audios = inputs.audios
+                inputs.audios = audios[:inputs.audio_idx] + audio_segments + audios[inputs.audio_idx:]
+                audio_context = ['<|audio_start|><|audio_end|>']
+                # Interleave: one image placeholder + one audio placeholder per second
+                for i in range(len(video_segments)):
+                    context_list += image_context
+                    if i < len(audio_segments):
+                        context_list += audio_context
+                inputs.audio_idx += len(audio_segments)
+            else:
+                for _ in range(len(video_segments)):
+                    context_list += image_context
+            inputs.image_idx += len(video_segments)
+            return context_list
+
+    def _get_audio_num_tokens(self, audio_sample_len: int) -> int:
+        """Compute the number of <unk> placeholder tokens for an audio of given sample count.
+
+        This mirrors the official get_audio_placeholder logic:
+        1. mel frames = ceil(audio_samples / hop_length)
+        2. after CNN downsampling: (mel_frames - 1) // 2 + 1
+        3. after avg pooling: (cnn_frames - pool_step) // pool_step + 1
+        """
+        hop_length = self.processor.audio_processor.hop_length  # 160
+        pool_step = self.config.audio_pool_step  # 5
+        feature_lens = math.ceil(audio_sample_len / hop_length)
+        feature_lens_after_cnn = (feature_lens - 1) // 2 + 1
+        output_lens = (feature_lens_after_cnn - pool_step) // pool_step + 1
+        return output_lens
+
+    def _extract_audio_features(self, audios: List[np.ndarray]):
+        """Extract mel features from audio arrays using the WhisperFeatureExtractor.
+
+        Handles chunking of long audios (>30s) into segments.
+        Matches the official audio_feature_extract output format.
+
+        Returns:
+            audio_features: tensor [N, 80, max_frames] or [] if no audios
+            audio_feature_lens: [tensor([l1, l2, ...])] or None
+        """
+        audio_processor = self.processor.audio_processor
+        max_audio_inp_len = self.MAX_AUDIO_DURATION * self.SAMPLING_RATE
+        all_audio_features = []
+        all_audio_lens = []
+
+        for audio in audios:
+            # Chunk long audios at 30s boundaries
+            if len(audio) <= max_audio_inp_len:
+                chunks = [audio]
+            else:
+                chunks = [audio[i:i + max_audio_inp_len] for i in range(0, len(audio), max_audio_inp_len)]
+
+            for chunk in chunks:
+                audio_input = audio_processor(
+                    chunk,
+                    sampling_rate=self.SAMPLING_RATE,
+                    return_tensors='pt',
+                    padding='max_length',
+                    return_attention_mask=True,
+                )
+                feat = audio_input['input_features']  # [1, 80, frames]
+                actual_len = audio_input['attention_mask'].sum(dim=1)  # [1]
+                feat = feat[:, :, :actual_len[0]]
+                all_audio_features.append(feat.squeeze(0))  # [80, actual_frames]
+                all_audio_lens.append(actual_len[0])
+
+        if all_audio_features:
+            # Pad and stack: [N, 80, max_frames] — same as official processor
+            audio_features = torch.nn.utils.rnn.pad_sequence(
+                [f.transpose(0, 1) for f in all_audio_features],
+                batch_first=True,
+                padding_value=0.0,
+            ).transpose(1, 2)
+            audio_feature_lens = [torch.hstack(all_audio_lens)]
+        else:
+            audio_features = []
+            audio_feature_lens = None
+
+        return audio_features, audio_feature_lens
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        # Step 1: Base encode — produces input_ids with -100 for images
+        # and audio_start_id,audio_end_id pairs for audios
+        encoded = Template._encode(self, inputs)
+        images = inputs.images
+        use_video = bool(inputs.videos)
+        use_image_id = True
+        max_slice_nums = self.max_slice_nums
+        if use_video:
+            max_slice_nums = self.video_max_slice_nums
+            use_image_id = False
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+
+        # Step 2: Process images — replace -100 tokens with image placeholders
+        idx_list = findall(input_ids, -100)
+        image_processor = self.processor.image_processor
+        image_inputs = image_processor([images], return_tensors='pt',
+                                       max_slice_nums=max_slice_nums).to(self.model_info.torch_dtype)
+
+        def _get_new_tokens(i):
+            placeholder = image_processor.get_slice_image_placeholder(
+                image_inputs.image_sizes[0][i], image_idx=i, max_slice_nums=max_slice_nums, use_image_id=use_image_id)
+            placeholder += '\n'
+            return self.processor.encode(placeholder, add_special_tokens=False)
+
+        input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+
+        # Step 3: Process audios — expand audio_start/audio_end pairs with <unk> tokens
+        tokenizer = self.processor.tokenizer
+        audio_start_id = tokenizer.convert_tokens_to_ids('<|audio_start|>')
+        audio_end_id = tokenizer.convert_tokens_to_ids('<|audio_end|>')
+        unk_token_id = tokenizer.convert_tokens_to_ids('<unk>')
+
+        audio_features = None
+        audio_feature_lens = None
+
+        if inputs.audios:
+            audios = inputs.audios
+            audio_features, audio_feature_lens = self._extract_audio_features(audios)
+
+            # Find empty audio placeholder pairs (audio_start_id immediately followed by audio_end_id)
+            audio_placeholder_positions = []
+            for i in range(len(input_ids) - 1):
+                if input_ids[i] == audio_start_id and input_ids[i + 1] == audio_end_id:
+                    audio_placeholder_positions.append(i)
+
+            assert len(audio_placeholder_positions) == len(audios), \
+                f'Found {len(audio_placeholder_positions)} audio placeholders but have {len(audios)} audios'
+
+            # Expand each audio placeholder with <unk> tokens
+            offset = 0
+            for i, audio in enumerate(audios):
+                num_tokens = self._get_audio_num_tokens(len(audio))
+                unk_tokens = [unk_token_id] * num_tokens
+                pos = audio_placeholder_positions[i] + offset
+                # Current: [..., audio_start_id, audio_end_id, ...]
+                # Target:  [..., audio_start_id, unk*N, audio_end_id, ...]
+                input_ids = input_ids[:pos + 1] + unk_tokens + input_ids[pos + 1:]
+                if labels is not None:
+                    labels = labels[:pos + 1] + [-100] * num_tokens + labels[pos + 1:]
+                if loss_scale is not None:
+                    scale_val = loss_scale[pos]
+                    loss_scale = loss_scale[:pos + 1] + [scale_val] * num_tokens + loss_scale[pos + 1:]
+                offset += num_tokens
+
+        # Step 4: Compute image_bound using start/end token boundaries
+        # This is more robust than finding consecutive <unk> tokens, especially
+        # when both image and audio use <unk> as placeholder.
+        input_tensor_ids = torch.tensor(input_ids)
+
+        if images:
+            im_start_id = tokenizer.convert_tokens_to_ids('<image>')
+            im_end_id = tokenizer.convert_tokens_to_ids('</image>')
+            slice_start_id = tokenizer.convert_tokens_to_ids('<slice>')
+            slice_end_id = tokenizer.convert_tokens_to_ids('</slice>')
+
+            start_cond = (input_tensor_ids == im_start_id) | (input_tensor_ids == slice_start_id)
+            end_cond = (input_tensor_ids == im_end_id) | (input_tensor_ids == slice_end_id)
+            image_start_idx = torch.where(start_cond)[0] + 1
+            image_end_idx = torch.where(end_cond)[0]
+            valid_image_nums = min(len(image_start_idx), len(image_end_idx))
+            image_bound = [
+                torch.hstack([
+                    image_start_idx[:valid_image_nums].unsqueeze(-1),
+                    image_end_idx[:valid_image_nums].unsqueeze(-1),
+                ])
+            ]
+        else:
+            image_bound = [[]]
+
+        # Step 5: Compute audio_bounds
+        if inputs.audios:
+            audio_start_idx = torch.where(input_tensor_ids == audio_start_id)[0]
+            audio_end_idx = torch.where(input_tensor_ids == audio_end_id)[0]
+            assert len(audio_start_idx) == len(audio_end_idx)
+            audio_bounds = [torch.hstack([
+                (audio_start_idx + 1).unsqueeze(-1),
+                audio_end_idx.unsqueeze(-1),
+            ])]
+        else:
+            audio_bounds = [[]]
+
+        encoded = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'loss_scale': loss_scale,
+            'image_bound': image_bound,
+            'pixel_values': image_inputs['pixel_values'],
+            'tgt_sizes': image_inputs['tgt_sizes'],
+            'audio_features': audio_features,
+            'audio_feature_lens': audio_feature_lens,
+            'audio_bounds': audio_bounds,
+        }
+        return encoded
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        # Vision embeddings
+        inputs_embeds, _ = model.get_vllm_embedding(inputs)
+        # Audio embeddings — scatter audio features into the embedding
+        inputs_embeds = model.get_omni_embedding(
+            inputs,
+            input_embeddings=inputs_embeds,
+            chunk_length=getattr(self.config, 'audio_chunk_length', 1.0),
+        )
+        return {'inputs_embeds': inputs_embeds}
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = {}
+        # Vision data
+        for k in ['pixel_values', 'image_bound', 'tgt_sizes']:
+            res[k] = self.gather_list(batch, k)
+
+        # Audio data — collect from all samples
+        all_audio_feats = []  # list of [N_i, 80, frames_i] tensors
+        audio_feature_lens_list = []
+        audio_bounds_list = []
+
+        for b in batch:
+            af = b.pop('audio_features', None)
+            afl = b.pop('audio_feature_lens', None)
+            ab = b.pop('audio_bounds', None)
+
+            if af is not None and isinstance(af, torch.Tensor):
+                all_audio_feats.append(af)
+            if afl is not None:
+                audio_feature_lens_list.extend(afl)
+            if ab is not None:
+                audio_bounds_list.extend(ab)
+
+        # Re-pad audio features across the batch to the same max frame length
+        if all_audio_feats:
+            # Unpack per-sample tensors into individual segments, then re-pad
+            segments = []
+            for af in all_audio_feats:
+                for i in range(af.shape[0]):
+                    segments.append(af[i])  # [80, frames_i]
+            res['audio_features'] = torch.nn.utils.rnn.pad_sequence(
+                [s.transpose(0, 1) for s in segments],
+                batch_first=True,
+                padding_value=0.0,
+            ).transpose(1, 2)  # [total_segments, 80, max_frames]
+        else:
+            res['audio_features'] = []
+
+        res['audio_feature_lens'] = audio_feature_lens_list if audio_feature_lens_list else []
+        res['audio_bounds'] = audio_bounds_list if audio_bounds_list else []
+
+        res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        return res
+
+
+register_template(
+    Qwen3MixedTemplateMeta(
+        MLLMTemplateType.minicpmo4_5,
+        template_cls=MiniCPMO4_5Template,
+        is_thinking=True,
     ))
