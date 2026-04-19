@@ -533,6 +533,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1
     mtp_decoder_input_detach: bool = False
+    mtp_shared_weights: bool = False
 
     # mcore-bridge
     model: Optional[str] = None
