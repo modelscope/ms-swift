@@ -155,7 +155,7 @@ register_model(
         ],
         MiniCPMO2Loader,
         architectures=['MiniCPMO'],
-        model_arch=ModelArch.minicpmv,
+        model_arch=ModelArch.minicpmo,
         requires=['timm', 'transformers>=4.36', 'decord', 'soundfile'],
         tags=['vision', 'video', 'omni', 'audio'],
     ))
