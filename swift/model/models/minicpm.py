@@ -150,7 +150,7 @@ register_model(
                     Model('OpenBMB/MiniCPM-o-4_5', 'openbmb/MiniCPM-o-4_5'),
                 ],
                 template=TemplateType.minicpmo4_5,
-                requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile'],
+                requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile', 'minicpmo-utils==1.0.6'],
             ),
         ],
         MiniCPMO2Loader,
