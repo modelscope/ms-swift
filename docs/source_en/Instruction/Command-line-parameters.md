@@ -890,8 +890,9 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 
 ### minicpmo
-- INIT_TTS: Default is False
-- INIT_AUDIO: Default is False
+- INIT_TTS: Defaults to False. Whether to initialize and load the TTS model.
+- INIT_AUDIO: Defaults to True. Whether to initialize and load the Audio model.
+- USE_AUDIO_IN_VIDEO: Defaults to False. Whether to use the audio information from the video.
 
 ### ovis1_6, ovis2
 - MAX_PARTITION: Default is 9, refer to [here](https://github.com/AIDC-AI/Ovis/blob/d248e34d755a95d24315c40e2489750a869c5dbc/ovis/model/modeling_ovis.py#L312)

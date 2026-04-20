@@ -55,7 +55,7 @@ uv pip install -e . --torch-backend=auto
 
 ## Mirror
 
-You can check Docker [here](https://github.com/modelscope/modelscope/blob/build_swift_image/docker/build_image.py#L347).
+You can check Docker [here](https://github.com/modelscope/modelscope/blob/build_swift_image/docker/build_image.py#L392).
 ```
 # swift4.1.2
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py312-torch2.10.0-vllm0.19.0-modelscope1.35.4-swift4.1.2
