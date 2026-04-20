@@ -189,6 +189,7 @@ class BaseMegatronTrainer(ABC):
         args = self.args
         self.unwrapped_models = get_mcore_model(args, self.template.config)
         self.config = self.unwrapped_models[0].config
+        logger.info(f'model config: {self.config}')
         self.bridge = self.config.bridge
         self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
