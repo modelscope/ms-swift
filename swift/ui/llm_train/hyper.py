@@ -78,9 +78,13 @@ class Hyper(BaseUI):
         },
         'attn_impl': {
             'label': {
-                'zh': 'Flash Attention类型',
-                'en': 'Flash Attention Type',
+                'zh': 'Attention实现类型',
+                'en': 'Attention Implementation Type',
             },
+            'info': {
+                'zh': '设置Attention实现类型，NPU用户可选择npu_flash_attention获得最佳性能',
+                'en': 'Set attention implementation, NPU users can select npu_flash_attention for best performance',
+            }
         },
         'neftune_noise_alpha': {
             'label': {
@@ -137,7 +141,7 @@ class Hyper(BaseUI):
                     gr.Dropdown(
                         elem_id='attn_impl',
                         value=None,
-                        choices=[None, 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3'],
+                        choices=[None, 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3', 'npu_flash_attention'],
                         scale=20)
                     gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=20)
 
