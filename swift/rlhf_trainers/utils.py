@@ -23,7 +23,7 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 from types import MethodType
-from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, TypeVar, Union
 
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
@@ -705,6 +705,71 @@ def load_pil_img(img) -> Image:
         return Image.open(img['path'])
     else:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
+
+
+def normalize_log_image(img: Any) -> Any:
+    if img is None:
+        return None
+    if isinstance(img, (list, tuple)):
+        if not img:
+            return None
+        if len(img) > 1:
+            logger = get_logger()
+            logger.warning(
+                'Multiple images detected; only the first image will be logged. '
+                'Full multi-image logging is not yet supported.'
+            )
+        return img[0]
+    return img
+
+
+def collect_log_columns(rows: List[Dict[str, Any]],
+                        column_names: List[str],
+                        warned_columns: Optional[Set[str]] = None) -> Dict[str, List[Any]]:
+    """Collect configured columns for completion-table logging.
+
+    Missing values are filled with ``None``. For missing columns, a warning is emitted
+    only once per column when ``warned_columns`` is provided.
+    """
+    if not rows or not column_names:
+        return {}
+
+    warned_columns = warned_columns if warned_columns is not None else set()
+    logger = get_logger()
+    collected: Dict[str, List[Any]] = {}
+
+    for column in dict.fromkeys(column_names):
+        values = []
+        has_missing = False
+        for row in rows:
+            if column in row:
+                values.append(row[column])
+            else:
+                values.append(None)
+                has_missing = True
+
+        if has_missing and column not in warned_columns:
+            logger.warning(
+                'Column `%s` from `log_completions_extra_columns` is missing in some samples; '
+                'None will be logged for missing values.', column)
+            warned_columns.add(column)
+        collected[column] = values
+
+    return collected
+
+
+def select_log_completions_extra_columns(column_names: List[str],
+                                         occupied_columns: Optional[Iterable[str]] = None) -> List[str]:
+    """Return deduplicated extra log columns not occupied in the current logging pass.
+
+    This helper intentionally does not filter by historical ``self._logs`` keys.
+    Extra columns (e.g. metadata_log/refs_log) must be collected every step to
+    stay aligned with prompt/completion rows.
+    """
+    if not column_names:
+        return []
+    occupied = set(occupied_columns or [])
+    return [col for col in dict.fromkeys(column_names) if col not in occupied]
 
 
 def replace_assistant_response_with_ids(messages: 'Messages',

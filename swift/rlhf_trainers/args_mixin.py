@@ -295,6 +295,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
         log_rollout_offpolicy_metrics (bool): Whether to log rollout off-policy diagnostic metrics (KL, PPL, chi2, etc.)
             when `rollout_importance_sampling_mode` is not set. When `rollout_importance_sampling_mode` is set,
             metrics are always logged regardless of this setting. Defaults to False.
+        log_completions_extra_columns (List[str]): Extra dataset columns to include in completion tables when
+            `log_completions=true`. Missing values are logged as None with one warning per column. Defaults to [].
     """
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
@@ -380,6 +382,7 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
                                                        'sequence_mask']] = None
     rollout_importance_sampling_threshold: float = 2.0  # Threshold for truncation/masking (C in paper)
     log_rollout_offpolicy_metrics: bool = False  # Log off-policy metrics even when IS correction is disabled
+    log_completions_extra_columns: List[str] = field(default_factory=list)
     # Off-Policy Sequence Masking: mask out sequences that deviate too much from rollout policy
     # If set, compute mean(rollout_per_token_logps - per_token_logps) per sequence,
     # and mask sequences where this delta > threshold AND advantage < 0

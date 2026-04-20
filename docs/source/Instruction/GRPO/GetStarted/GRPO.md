@@ -295,10 +295,20 @@ IS 校正指标（需设置`rollout_importance_sampling_mode`）：
 
 设置 `report_to wandb/swanlab` 将训练动态Table推送到对应的平台
 
-如果需要在Table中额外记录其他列，请在 `GRPOTrainer._generate_and_score_completions` 方法中，设置 metrics_to_gather 字典。
+如果需要在Table中额外记录数据集的其他列，可以设置：
+
+```bash
+--log_completions_extra_columns col1 col2
+```
+
+- 会同时写入 `completions.jsonl`、wandb table、swanlab table。
+- 若某些样本缺少指定列，会记录为 `None`，并输出一次 warning。
+- 值会按原始类型记录（例如 list/dict 不会自动转成字符串）。
+
+如需更深度自定义，也可以在 `GRPOTrainer._generate_and_score_completions` 中扩展日志收集逻辑。
 
 默认自动检测
-- `image`：视觉数据集图像输入。(暂时只支持wandb)
+- `image`：视觉数据集图像输入（仅wandb）。若输入包含多张图片，只会记录第一张，并会输出warning；完整多图日志后续支持。
 - `solution`：数据集中的 solution 列。
 
 ## FAQ

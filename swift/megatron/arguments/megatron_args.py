@@ -140,6 +140,7 @@ class RLHFMegatronArgumentsMixin:
 
     wandb_log_unique_prompts: Optional[bool] = None
     log_completions: bool = False
+    log_completions_extra_columns: List[str] = field(default_factory=list)
 
     rollout_importance_sampling_mode: Optional[Literal['token_truncate', 'token_mask', 'sequence_truncate',
                                                        'sequence_mask']] = None

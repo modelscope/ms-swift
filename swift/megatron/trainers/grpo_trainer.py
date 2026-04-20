@@ -27,9 +27,10 @@ from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
 from swift.rewards import orms
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, nanstd, pad_logps_back_to_batch, profiling_context,
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, collect_log_columns, load_pil_img, nanstd,
+                                       normalize_log_image, pad_logps_back_to_batch, profiling_context,
                                        profiling_decorator, replace_assistant_response_with_ids,
-                                       set_expandable_segments)
+                                       select_log_completions_extra_columns, set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template, TemplateInputs
 from swift.utils import (JsonlWriter, get_logger, get_packed_seq_params, remove_response, shutdown_event_loop_in_daemon,
@@ -548,6 +549,23 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         completions = gather_object([data.response.choices[0].message.content for data in rollout_outputs])
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
         self._logs['completion'].extend(completions)
+        if all('images' in data for data in batch):
+            images = gather_object([normalize_log_image(data['images']) for data in batch])
+            if 'image' not in self._logs:
+                self._logs['image'] = deque(maxlen=self.args.generation_batch_size)
+            self._logs['image'].extend(images)
+
+        if self.log_completions_extra_columns:
+            extra_columns = select_log_completions_extra_columns(self.log_completions_extra_columns)
+            extra_metrics = collect_log_columns(
+                batch,
+                extra_columns,
+                warned_columns=self._missing_log_columns_warned,
+            )
+            for key, value in extra_metrics.items():
+                if key not in self._logs:
+                    self._logs[key] = deque(maxlen=self.args.generation_batch_size)
+                self._logs[key].extend(gather_object(value))
 
         return rollout_outputs
 
@@ -1437,11 +1455,21 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                    for k, v in self._logs['rewards'].items()},
                 'advantages': list(self._logs['advantages']),
             }
+            if self._logs.get('image'):
+                table['image'] = list(self._logs['image'])
+            for key, value in self._logs.items():
+                if key not in table and key != 'rewards':
+                    table[key] = list(value)
             self.jsonl_writer.append(table)
             args = self.args
             if 'wandb' in args.report_to:
                 import wandb
-                df = pd.DataFrame(table)
+                wandb_table = table.copy()
+                if self._logs.get('image'):
+                    wandb_table['image'] = [
+                        wandb.Image(load_pil_img(img)) if img is not None else None for img in self._logs['image']
+                    ]
+                df = pd.DataFrame(wandb_table)
                 if self.wandb_log_unique_prompts:
                     df = df.drop_duplicates(subset=['prompt'])
                 wandb.log({'completions': wandb.Table(dataframe=df)}, commit=False)
@@ -1661,6 +1689,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         self.log_completions = args.log_completions
         self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
+        self.log_completions_extra_columns = list(args.log_completions_extra_columns)
+        self._missing_log_columns_warned = set()
         self.jsonl_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
         self._last_logged_step = -1
