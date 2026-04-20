@@ -325,7 +325,7 @@ class MiniCPMO4_5Template(MiniCPMV4_5Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        if media_type == 'image':
+        if media_type == 'image' or media_type == 'video' and not self.use_audio_in_video:
             return super().replace_tag(media_type, index, inputs)
         elif media_type == 'audio':
             # Load audio from file path to numpy array at 16kHz

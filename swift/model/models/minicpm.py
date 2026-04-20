@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from transformers import PreTrainedModel
 from transformers.utils import strtobool
 from types import MethodType
-from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import get_env_args
@@ -40,11 +40,11 @@ def _patch_minicpmv_device_map(model) -> None:
         _old_get_vision_embedding = model.__class__.get_vision_embedding
 
         def _get_vision_embedding(self, pixel_values):
-            if len(pixel_values) == 0:
-                return _old_get_vision_embedding(self, pixel_values)
             output = _old_get_vision_embedding(self, pixel_values)
+            if len(pixel_values) == 0:
+                return output
             if isinstance(output, list):
-                return [x.to(device=device) for x in output]
+                return [x.to(device=device) if isinstance(x, torch.Tensor) else x for x in output]
             else:
                 return output.to(device=device)
 
@@ -134,7 +134,7 @@ class MiniCPMO2Loader(MiniCPMV2Loader):
 
     def get_model(self, model_dir: str, config, *args, **kwargs) -> PreTrainedModel:
         config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
-        config.init_audio = strtobool(get_env_args('init_audio', str, 'false'))
+        config.init_audio = strtobool(get_env_args('init_audio', str, 'true'))
         return super().get_model(model_dir, config, *args, **kwargs)
 
 
