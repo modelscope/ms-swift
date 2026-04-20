@@ -533,6 +533,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mtp_num_layers: Optional[int] = None
     mtp_loss_scaling_factor: float = 0.1
     mtp_decoder_input_detach: bool = False
+    mtp_shared_weights: bool = False
 
     # mcore-bridge
     model: Optional[str] = None
@@ -616,12 +617,21 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.apply_query_key_layer_scaling:
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
+    def _check_mcore_bridge(self):
+        if self.mtp_decoder_input_detach:
+            require_version('mcore-bridge>=1.1.2',
+                            'Please install mcore-bridge>=1.1.2 to use `mtp_decoder_input_detach`.')
+        if self.mtp_shared_weights:
+            require_version('mcore-bridge>=1.2.0.dev',
+                            'Please install mcore-bridge>=1.2.0 to use `mtp_shared_weights`.')
+
     def __post_init__(self):
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
+        self._check_mcore_bridge()
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
         if self.recompute_granularity == 'selective' and self.recompute_method is not None:
