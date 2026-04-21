@@ -235,7 +235,7 @@ swift infer \
 
 ## Benchmark
 
-使用`megatron sft`和`swift sft`在单机八卡A800环境下进行Dense模型全参数8K上下文训练的速度对比如下：
+使用`megatron sft`和`swift sft`在单机八卡A800环境下进行Dense模型全参数8K上下文训练的速度对比如下：（[shell](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/benchmark/deepspeed.sh)）
 
 **Dense** Qwen2.5-14B:
 
