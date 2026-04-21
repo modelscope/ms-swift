@@ -43,12 +43,17 @@ jobs:
     timeout-minutes: 240
     container:
       image: 'ascendai/cann:8.3.rc2-910b-ubuntu22.04-py3.11'
+    env:
+      UV_INDEX_URL: "http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple"
+      UV_EXTRA_INDEX_URL: "https://mirrors.huaweicloud.com/ascend/repos/pypi"
+      UV_INDEX_STRATEGY: "unsafe-best-match"
+      UV_NO_CACHE: 1
+      UV_SYSTEM_PYTHON: 1
     steps:
       - name: Config mirrors
         run: |
           sed -Ei 's@(ports|archive).ubuntu.com@cache-service.nginx-pypi-cache.svc.cluster.local:8081@g' /etc/apt/sources.list
-          pip config set global.index-url http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple
-          pip config set global.trusted-host cache-service.nginx-pypi-cache.svc.cluster.local
+          pip install uv
 
       - name: Checkout
         uses: actions/checkout@v3
