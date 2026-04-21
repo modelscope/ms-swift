@@ -143,7 +143,7 @@ More images can be found [here](https://modelscope.cn/docs/intro/environment-set
 
 |              | Range        | Recommended         | Notes                                     |
 |--------------|--------------|---------------------|-------------------------------------------|
-| python       | >=3.9        | 3.12                |                                           |
+| python       | >=3.10        | 3.12                |                                           |
 | cuda         |              | cuda12.8/12.9    | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        | 2.8.0/2.10.0         |                            |
 | transformers | >=4.33       | 4.57.6/5.5.4              |                          |
