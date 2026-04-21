@@ -67,7 +67,7 @@ Recommended Operating Environment:
 
 |        | Range | Recommended | Notes |
 |--------------|--------------|-------------|--------------------|
-| python       | >=3.9        | 3.12    |                    |
+| python       | >=3.10        | 3.12    |                    |
 | cuda         |              | cuda12.8/12.9   |                    |
 | torch        | >=2.0        | 2.8.0/2.10.0    |                    |
 | transformer-engine    | >=2.3       |  2.13.0  |                  |

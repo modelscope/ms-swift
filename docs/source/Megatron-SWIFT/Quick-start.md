@@ -67,7 +67,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 推荐运行环境：
 |              | 范围           | 推荐          | 备注                 |
 |--------------|--------------|-------------|--------------------|
-| python       | >=3.9        | 3.12        |                    |
+| python       | >=3.10        | 3.12        |                    |
 | cuda         |              | cuda12.8/12.9      |                    |
 | torch        | >=2.0        | 2.8.0/2.10.0       |                    |
 | transformer-engine    | >=2.3       |  2.13.0    |                  |
