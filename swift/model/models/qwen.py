@@ -1359,8 +1359,6 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
 
 
 def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
-    if os.environ.get('QWEN35_SP_LINEAR_HEAD_PARALLEL', '1') != '1':
-        return
     try:
         from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5GatedDeltaNet
     except Exception:
