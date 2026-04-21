@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import accelerate.utils.fsdp_utils as fsdp_utils
+import fcntl
 import importlib
 import os
 import torch
@@ -21,17 +22,8 @@ from swift.utils.logger import get_logger
 logger = get_logger()
 
 _DEFAULT_NPU_HCCL_CONNECT_TIMEOUT = '600'
+_DEFAULT_TRITON_ASCEND_LAUNCHER_LOCK_PATH = '/tmp/swift_triton_ascend_launcher_compile.lock'
 _ORIGINAL_MINDSPEED_TE_CP_CLASS = None
-_MINDSPEED_FLA_CHUNK_KERNEL_PATCHES = (
-    ('chunk_gated_delta_rule_fwd_h', 'mindspeed.lite.ops.triton.chunk_delta_h', 'chunk_gated_delta_rule_fwd_h'),
-    ('chunk_gated_delta_rule_bwd_dhu', 'mindspeed.lite.ops.triton.chunk_delta_h', 'chunk_gated_delta_rule_bwd_dhu'),
-    ('chunk_bwd_dqkwg', 'mindspeed.lite.ops.triton.chunk_o', 'chunk_bwd_dqkwg'),
-    ('chunk_bwd_dv_local', 'mindspeed.lite.ops.triton.chunk_o', 'chunk_bwd_dv_local'),
-    ('chunk_fwd_o', 'mindspeed.lite.ops.triton.chunk_o', 'chunk_fwd_o'),
-    ('chunk_scaled_dot_kkt_fwd', 'mindspeed.lite.ops.triton.chunk_scaled_dot_kkt', 'chunk_scaled_dot_kkt_fwd'),
-    ('prepare_wy_repr_bwd', 'mindspeed.lite.ops.triton.wy_fast', 'prepare_wy_repr_bwd'),
-    ('recompute_w_u_fwd', 'mindspeed.lite.ops.triton.wy_fast', 'recompute_w_u_fwd'),
-)
 
 
 def _set_default_hccl_connect_timeout_for_npu() -> None:
@@ -52,6 +44,33 @@ def _import_optional_module(module_name: str) -> Any | None:
         logger.debug('Failed to import optional module %s: %s', module_name, exc)
         return None
 
+def _patch_triton_ascend_launcher_compile_lock() -> None:
+    ascend_driver = _import_optional_module('triton.backends.ascend.driver')
+    if ascend_driver is None:
+        return
+
+    make_launcher_stub = getattr(ascend_driver, 'make_npu_launcher_stub', None)
+    if make_launcher_stub is None or getattr(make_launcher_stub, '_swift_compile_lock', False):
+        return
+
+    @wraps(make_launcher_stub)
+    def _locked_make_npu_launcher_stub(*args, **kwargs):
+        lock_path = os.environ.get('SWIFT_TRITON_ASCEND_LAUNCHER_LOCK',
+                                   _DEFAULT_TRITON_ASCEND_LAUNCHER_LOCK_PATH)
+        with open(lock_path, 'w') as lock_file:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            try:
+                return make_launcher_stub(*args, **kwargs)
+            finally:
+                fcntl.flock(lock_file, fcntl.LOCK_UN)
+
+    _locked_make_npu_launcher_stub._swift_compile_lock = True
+    ascend_driver.make_npu_launcher_stub = _locked_make_npu_launcher_stub
+    logger.info(
+        'Patched Ascend Triton launcher compilation with file lock: %s.',
+        os.environ.get('SWIFT_TRITON_ASCEND_LAUNCHER_LOCK', _DEFAULT_TRITON_ASCEND_LAUNCHER_LOCK_PATH),
+    )
+
 
 def _patch_transformers_flash_linear_attention_available() -> None:
     def _is_flash_linear_attention_available() -> bool:
@@ -67,51 +86,92 @@ def _patch_transformers_flash_linear_attention_available() -> None:
                 _is_flash_linear_attention_available)
 
 
-def _patch_fla_chunk_kernels_with_mindspeed() -> bool:
-    fla_chunk = _import_optional_module('fla.ops.gated_delta_rule.chunk')
-    if fla_chunk is None:
-        logger.info('FLA chunk kernels are unavailable; skip MindSpeed FLA kernel patch.')
+def _should_fallback_to_torch_chunk_gated_delta_rule(exc: BaseException) -> bool:
+    if not isinstance(exc, RuntimeError):
         return False
 
-    kernel_patches = []
-    for target_name, module_name, attr_name in _MINDSPEED_FLA_CHUNK_KERNEL_PATCHES:
-        module = _import_optional_module(module_name)
-        kernel = getattr(module, attr_name, None) if module is not None else None
-        if kernel is None:
-            logger.info('MindSpeed FLA kernel %s.%s is unavailable; skip FLA kernel patch.', module_name, attr_name)
-            return False
-
-        kernel_patches.append((target_name, kernel))
-
-    for target_name, kernel in kernel_patches:
-        setattr(fla_chunk, target_name, kernel)
-
-    patched_kernel_names = [target_name for target_name, _ in kernel_patches]
-    logger.info('Patched FLA chunk kernels to MindSpeed kernels: %s.', ', '.join(patched_kernel_names))
-    return True
+    message = str(exc)
+    fallback_patterns = (
+        'Failed to compile',
+        'launcher_cxx11abi1.cxx',
+        'internal compiler error',
+        'wide_int_to_tree_1',
+        'ConvertLinalgRToBinary',
+        'hivm.hir',
+    )
+    return any(pattern in message for pattern in fallback_patterns)
 
 
-def patch_flash_linear_attention_with_mindspeed() -> None:
-    if not _patch_fla_chunk_kernels_with_mindspeed():
+def _build_qwen3_5_chunk_gated_delta_rule_with_fallback(module_name: str, module: Any,
+                                                        mindspeed_chunk_gated_delta_rule):
+    torch_chunk_gated_delta_rule = getattr(module, 'torch_chunk_gated_delta_rule', None)
+    if torch_chunk_gated_delta_rule is None:
+        return mindspeed_chunk_gated_delta_rule
+
+    warned_runtime_fallback = False
+    warned_forced_fallback = False
+
+    @wraps(mindspeed_chunk_gated_delta_rule)
+    def _wrapped_chunk_gated_delta_rule(*args, **kwargs):
+        nonlocal warned_runtime_fallback, warned_forced_fallback
+
+        if os.environ.get('SWIFT_QWEN3_5_CHUNK_GATED_DELTA_RULE_FORCE_TORCH', '0') == '1':
+            if not warned_forced_fallback:
+                logger.warning('Using torch_chunk_gated_delta_rule for %s because '
+                               'SWIFT_QWEN3_5_CHUNK_GATED_DELTA_RULE_FORCE_TORCH=1.', module_name)
+                warned_forced_fallback = True
+            return torch_chunk_gated_delta_rule(*args, **kwargs)
+
+        if os.environ.get('SWIFT_QWEN3_5_CHUNK_GATED_DELTA_RULE_FORCE_TRITON', '0') == '1':
+            return mindspeed_chunk_gated_delta_rule(*args, **kwargs)
+
+        try:
+            return mindspeed_chunk_gated_delta_rule(*args, **kwargs)
+        except Exception as exc:
+            if not _should_fallback_to_torch_chunk_gated_delta_rule(exc):
+                raise
+            if not warned_runtime_fallback:
+                logger.warning('Falling back to torch_chunk_gated_delta_rule for %s after MindSpeed '
+                               'chunk_gated_delta_rule failed: %s', module_name, exc)
+                warned_runtime_fallback = True
+            return torch_chunk_gated_delta_rule(*args, **kwargs)
+
+    _wrapped_chunk_gated_delta_rule._swift_chunk_gated_delta_rule_fallback = True
+    return _wrapped_chunk_gated_delta_rule
+
+
+def patch_qwen3_5_chunk_gated_delta_rule_with_mindspeed() -> None:
+    try:
+        from .chunk_gated_delta_rule import chunk_gated_delta_rule
+    except ImportError as exc:
+        logger.warning('Failed to import embedded MindSpeed chunk_gated_delta_rule: %s', exc)
         return
 
-    _patch_transformers_flash_linear_attention_available()
-
-    for module_name in ('transformers.models.qwen3_next.modeling_qwen3_next',
-                        'transformers.models.qwen3_5.modeling_qwen3_5',
+    patched_modules = []
+    for module_name in ('transformers.models.qwen3_5.modeling_qwen3_5',
                         'transformers.models.qwen3_5_moe.modeling_qwen3_5_moe'):
         module = _import_optional_module(module_name)
         if module is None:
             continue
 
-        is_flash_linear_attention_available = lambda: True
-        setattr(module, 'is_flash_linear_attention_available', is_flash_linear_attention_available)
+        setattr(module, 'is_flash_linear_attention_available', lambda: True)
         setattr(module, 'is_fast_path_available', True)
+        # FLA's fused RMSNormGated initializes with torch.cuda.current_device(),
+        # so keep the native Qwen3.5 torch implementation on NPU.
+        setattr(module, 'FusedRMSNormGated', None)
+        setattr(
+            module, 'chunk_gated_delta_rule',
+            _build_qwen3_5_chunk_gated_delta_rule_with_fallback(module_name, module, chunk_gated_delta_rule))
+        patched_modules.append(module_name)
 
-    logger.info('Patched Transformers flash-linear-attention availability for NPU.')
+    if patched_modules:
+        logger.info('Patched Qwen3.5 chunk_gated_delta_rule to embedded MindSpeed implementation: %s.',
+                    ', '.join(patched_modules))
 
 
-patch_flash_linear_attention_with_mindspeed()
+_patch_triton_ascend_launcher_compile_lock()
+_patch_transformers_flash_linear_attention_available()
+patch_qwen3_5_chunk_gated_delta_rule_with_mindspeed()
 modeling_qwen3_5 = _import_optional_module('transformers.models.qwen3_5.modeling_qwen3_5')
 
 
