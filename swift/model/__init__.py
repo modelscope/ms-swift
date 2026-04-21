@@ -16,5 +16,6 @@ if is_torch_npu_available():
     try:
         from .npu_flash_attention import auto_register_npu_flash_attention
         auto_register_npu_flash_attention()
-    except Exception:
-        pass  # Gracefully skip if registration fails
+    except Exception as e:
+        from swift.utils import get_logger
+        get_logger().warning(f'Failed to auto-register NPU Flash Attention: {e}')

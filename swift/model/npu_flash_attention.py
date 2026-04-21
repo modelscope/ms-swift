@@ -71,23 +71,37 @@ def npu_flash_attention_forward(
     _, _, num_kv_heads, _ = key.shape
     
     # Handle GQA (Grouped Query Attention) - expand KV heads to match Q heads
+    # Note: npu_fusion_attention requires equal head counts
     if num_heads != num_kv_heads:
         n_rep = num_heads // num_kv_heads
-        key = key.unsqueeze(3).expand(batch_size, seq_len, num_kv_heads, n_rep, head_dim)
-        key = key.reshape(batch_size, seq_len, num_heads, head_dim)
-        value = value.unsqueeze(3).expand(batch_size, seq_len, num_kv_heads, n_rep, head_dim)
-        value = value.reshape(batch_size, seq_len, num_heads, head_dim)
+        key = key.repeat_interleave(n_rep, dim=2)
+        value = value.repeat_interleave(n_rep, dim=2)
     
-    # Convert from bshd to bsnd format: (b,s,h,d) -> (b,h,s,d)
+    # Convert from bshd to bnsd format: (b,s,h,d) -> (b,h,s,d)
+    # Note: .contiguous() is required by npu_fusion_attention
     query_bsnd = query.permute(0, 2, 1, 3).contiguous()
     key_bsnd = key.permute(0, 2, 1, 3).contiguous()
     value_bsnd = value.permute(0, 2, 1, 3).contiguous()
-    
-    # Determine if causal (auto-detect from module config if available)
-    is_causal = True
-    if hasattr(module, 'config') and hasattr(module.config, 'is_decoder'):
-        is_causal = module.config.is_decoder
-    
+
+    # Determine if causal (check kwargs first, then module config)
+    is_causal = kwargs.get('is_causal')
+    if is_causal is None:
+        # Fall back to module config
+        if hasattr(module, 'config') and hasattr(module.config, 'is_decoder'):
+            is_causal = module.config.is_decoder
+        else:
+            is_causal = True  # Default to causal for decoder models
+
+    # Handle attention_mask
+    # NPU flash attention only supports causal masking via the 'causal' parameter
+    # Custom masks (e.g., padding masks) are not supported by the underlying kernel
+    if attention_mask is not None and not torch.all(attention_mask == 1):
+        logger.warning(
+            "NPU Flash Attention: attention_mask is provided but will be ignored. "
+            "Only causal masking is supported via the 'causal' parameter. "
+            "For padded sequences, consider using a different attention implementation."
+        )
+
     # Call native NPU Flash Attention
     attn_output = npu_flash_attn_func(
         query_bsnd,
