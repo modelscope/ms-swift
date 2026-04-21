@@ -198,7 +198,7 @@ def _patch_mcore_bridge():
                             setattr(llm_config, key, config.mtp_num_layers)
                             break
                     else:
-                        llm_config.num_nextn_predict_layers = config.mtp_num_layer
+                        llm_config.num_nextn_predict_layers = config.mtp_num_layers
                 if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param:
                     if getattr(hf_config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
