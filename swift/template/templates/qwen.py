@@ -440,6 +440,8 @@ class Qwen2VLTemplate(Template):
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
+        if not self.is_training:
+            return {}
         # fix https://github.com/huggingface/transformers/pull/33487
         kwargs = {}
         if self.version == 'v2_5':
