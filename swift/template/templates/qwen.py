@@ -863,6 +863,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         return {'inputs_embeds': inputs_embeds}
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
+        if not self.is_training:
+            return {}
         feature_attention_mask = inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
