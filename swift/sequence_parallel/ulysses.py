@@ -140,13 +140,8 @@ class DistributedAttention(torch.nn.Module):
             # only ulysses
             position_ids = kwargs.pop('position_ids')
             if position_ids is not None:
-                shape0 = position_ids.shape[0]
-                position_ids_output = torch.empty(
-                    (shape0 * self.sequence_parallel.sp_world_size, position_ids.shape[1]),
-                    dtype=position_ids.dtype,
-                    device=position_ids.device)
-                dist.all_gather_into_tensor(position_ids_output, position_ids, group=self.sequence_parallel.sp_group)
-                position_ids = torch.cat(position_ids_output.split(shape0, dim=0), dim=1)
+                # Reuse the generic gather path so 2D and 3D position_ids share the same SP behavior.
+                position_ids = self.sequence_parallel.gather(position_ids.contiguous(), dim=-1, position_ids=None)
 
         context_layer = self.local_attn(
             query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
