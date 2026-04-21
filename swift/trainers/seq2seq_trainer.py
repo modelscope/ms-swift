@@ -137,8 +137,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                                     'take effect, potentially leading to increased GPU memory consumption.')
             labels = inputs.pop('labels')
         outputs = model(**inputs)
+        mode = 'train' if self.model.training else 'eval'
         if getattr(outputs, 'aux_loss', None) is not None:
-            mode = 'train' if self.model.training else 'eval'
             self.custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
@@ -172,7 +172,6 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                     outputs.loss = outputs.loss * loss_scale
 
                 if self.args.enable_channel_loss:
-                    mode = 'train' if self.model.training else 'eval'
                     metrics = self.custom_metrics[mode]
                     masks = torch.roll(labels, shifts=-1, dims=-1).view(-1) != -100
                     if self.template.padding_free:
@@ -202,7 +201,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                         # labels are sharded by SP; outputs.loss was gathered
                         # to full length via GatherLoss. Reduce the denominator
                         # across the SP group so it matches the gathered loss.
-                        dist.all_reduce(num_items_in_batch, op=dist.ReduceOp.SUM, group=sequence_parallel.sp_group)
+                        dist.all_reduce(num_items_in_batch, op=dist.ReduceOp.SUM)
                 loss = outputs.loss.sum() / num_items_in_batch
             else:
                 if model_name in MODEL_FOR_CAUSAL_LM_MAPPING_NAMES.values():
@@ -220,6 +219,8 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
         if getattr(self.args, 'average_tokens_across_devices',
                    False) and self.model_accepts_loss_kwargs and num_items_in_batch is not None:
             loss *= self.accelerator.num_processes
+            if mode == 'eval' and self.template.sequence_parallel_size > 1:
+                loss /= self.template.sequence_parallel_size
 
         if (outputs.logits is not None and labels is not None and self.args.tuner_backend != 'unsloth'):
             cu_seqlens = None
