@@ -141,7 +141,9 @@ class Hyper(BaseUI):
                     gr.Dropdown(
                         elem_id='attn_impl',
                         value=None,
-                        choices=[None, 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3', 'npu_flash_attention'],
+                        choices=[
+                            None, 'sdpa', 'eager', 'flash_attention_2', 'flash_attention_3', 'npu_flash_attention'
+                        ],
                         scale=20)
                     gr.Slider(elem_id='neftune_noise_alpha', minimum=0.0, maximum=20.0, step=0.5, scale=20)
 
