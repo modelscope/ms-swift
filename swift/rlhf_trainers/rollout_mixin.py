@@ -745,30 +745,29 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if zero3:
             import deepspeed
 
-            for parameter_group in self.parameter_groups:
-                names = [n for n in (parameter_group or []) if n in policy_named]
-                if not names:
-                    continue
-                policy_params = []
-                ref_params = []
-                for n in names:
-                    policy_params.append(policy_named[n])
-                    if n not in ref_named:
-                        raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
-                    ref_params.append(ref_named[n])
+        for parameter_group in self.parameter_groups:
+            names = [n for n in (parameter_group or []) if n in policy_named]
+            if not names:
+                continue
+
+            params_to_update = []
+            for n in names:
+                if n not in ref_named:
+                    raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
+                params_to_update.append((ref_named[n], policy_named[n]))
+
+            if zero3:
+                ref_params = [p[0] for p in params_to_update]
+                policy_params = [p[1] for p in params_to_update]
                 to_gather = policy_params + ref_params
                 # modifier_rank=0 matches TRL; only rank 0 applies the mix inside GatheredParameters.
                 with deepspeed.zero.GatheredParameters(to_gather, modifier_rank=0):
                     if deepspeed.comm.get_rank() == 0:
-                        for rp, pp in zip(ref_params, policy_params):
+                        for rp, pp in params_to_update:
                             _mix_inplace(rp, pp)
-        else:
-            for parameter_group in self.parameter_groups:
-                names = [n for n in (parameter_group or []) if n in policy_named]
-                for n in names:
-                    if n not in ref_named:
-                        raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
-                    _mix_inplace(ref_named[n], policy_named[n])
+            else:
+                for rp, pp in params_to_update:
+                    _mix_inplace(rp, pp)
 
     def _rollout(self,
                  inputs: Optional[DataType],
