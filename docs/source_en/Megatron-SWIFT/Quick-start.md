@@ -239,7 +239,7 @@ swift infer \
 
 
 ## Benchmark
-The training speed comparison for full-parameter dense models with 8K context length, using `megatron sft` and `swift sft`, under a single-node, eight-GPU A800 environment is as follows:
+The training speed comparison for full-parameter dense models with 8K context length, using `megatron sft` and `swift sft`, under a single-node, eight-GPU A800 environment is as follows: ([shell](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/benchmark/deepspeed.sh))
 
 **Dense** Qwen2.5-14B:
 
