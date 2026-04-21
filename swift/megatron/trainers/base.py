@@ -37,7 +37,8 @@ from swift.megatron.utils import (apply_router_replay_patch, disable_forward_pre
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
-from swift.utils import deep_getattr, get_last_valid_indices, get_logger, is_last_rank, is_master, ms_logger_context
+from swift.utils import (deep_getattr, gc_collect, get_last_valid_indices, get_logger, is_last_rank, is_master,
+                         ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_pp_rank,
                     get_packed_seq_params)
@@ -724,6 +725,7 @@ class BaseMegatronTrainer(ABC):
             model = []
         else:
             model = self.wrapped_models
+        gc_collect()
         save_mcore_checkpoint(
             args,
             model,
