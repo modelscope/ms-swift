@@ -15,8 +15,8 @@ from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.model import get_model_processor, save_checkpoint
-from swift.utils import (HfConfigFactory, get_logger, get_modules_to_not_convert, get_multimodal_target_regex,
-                         is_master, split_list)
+from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
+                         get_multimodal_target_regex, is_master, split_list)
 
 logger = get_logger()
 
@@ -166,7 +166,7 @@ def _patch_mcore_bridge():
                 self.hf_model.model_meta = processor.model_meta
                 self.hf_model.model_info = processor.model_info
             else:
-                with torch.device('meta'):
+                with torch.device('meta'), disable_safe_ddp_context_use_barrier():
                     self.hf_model = get_model_processor(
                         args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]
 
