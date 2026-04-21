@@ -104,7 +104,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             os.makedirs(output_dir, exist_ok=True)
             val_dataset_path = os.path.join(output_dir, 'val_dataset.jsonl')
             append_to_jsonl(val_dataset_path, val_dataset.to_list())
-            logger.info(f'The split dataset from the training set will be saved at: {val_dataset_path}.')
+            logger.info(f'The split dataset from the training set will be saved at: `{val_dataset_path}`.')
 
     @RayHelper.function(group='default')
     def _prepare_dataset(self):
