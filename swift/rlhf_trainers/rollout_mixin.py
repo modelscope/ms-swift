@@ -106,6 +106,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self._prepare_scheduler()
         self._prepare_vllm()
         self._prepare_async_generate()
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
     def _prepare_rollout_params(self):
         """Initialize rollout generation parameters"""
@@ -152,7 +153,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
         # split model parameters into batches for synchronized weight transfer / ref sync
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
         if not args.use_vllm:
             return
 
@@ -733,6 +733,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _sync_ref_model_weights(self, alpha: float) -> None:
         policy = self.accelerator.unwrap_model(self.model)
         ref = self.accelerator.unwrap_model(self.ref_model)
+        policy_named = dict(policy.named_parameters())
+        ref_named = dict(ref.named_parameters())
 
         deepspeed_plugin = self.accelerator.state.deepspeed_plugin
         zero3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
@@ -740,16 +742,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         def _mix_inplace(ref_p: torch.Tensor, pol_p: torch.Tensor) -> None:
             ref_p.data.mul_(1.0 - alpha).add_(pol_p.data, alpha=alpha)
 
+        def _names_for_group(parameter_group):
+            if not parameter_group:
+                return list(policy_named.keys())
+            return [n for n in parameter_group if n in policy_named]
+
         if zero3:
             import deepspeed
 
-            ref_named = dict(ref.named_parameters())
             for parameter_group in self.parameter_groups:
-                policy_in_group = [(n, p) for n, p in policy.named_parameters()
-                                   if not parameter_group or n in parameter_group]
-                policy_params = [p for _, p in policy_in_group]
+                names = _names_for_group(parameter_group)
+                policy_params = [policy_named[n] for n in names]
                 try:
-                    ref_params = [ref_named[n] for n, _ in policy_in_group]
+                    ref_params = [ref_named[n] for n in names]
                 except KeyError as e:
                     raise KeyError(
                         'sync_ref: policy and ref must have matching parameter names (same model layout).') from e
@@ -761,13 +766,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                             _mix_inplace(rp, pp)
         else:
             for parameter_group in self.parameter_groups:
-                policy_in_group = [(n, p) for n, p in policy.named_parameters()
-                                   if not parameter_group or n in parameter_group]
-                ref_named = dict(ref.named_parameters())
-                for n, p_pol in policy_in_group:
+                for n in _names_for_group(parameter_group):
                     if n not in ref_named:
                         raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
-                    _mix_inplace(ref_named[n], p_pol)
+                    _mix_inplace(ref_named[n], policy_named[n])
 
     def _rollout(self,
                  inputs: Optional[DataType],
