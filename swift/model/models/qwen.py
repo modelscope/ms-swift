@@ -1380,6 +1380,13 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     ):
         from swift.sequence_parallel import sequence_parallel as sequence_parallel_context
 
+        if not _sp_is_enabled(sequence_parallel_context):
+            kwargs = {}
+            if 'cache_position' in parameters:
+                kwargs['cache_position'] = cache_position
+            return origin_forward(
+                mod, hidden_states, cache_params=cache_params, attention_mask=attention_mask, **kwargs)
+
         if int(getattr(sequence_parallel_context, 'rp_world_size', 1) or 1) > 1:
             requested_sp_size = int(getattr(sequence_parallel_context, 'world_size', 1) or 1)
             suggested_sp_size = int(getattr(sequence_parallel_context, 'sp_world_size', 1) or 1)
@@ -1389,12 +1396,6 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
                 f'sp_world_size={getattr(sequence_parallel_context, "sp_world_size", None)}, '
                 f'rp_world_size={getattr(sequence_parallel_context, "rp_world_size", None)}). '
                 f'Please reduce --sequence_parallel_size to {suggested_sp_size} so that rp_world_size becomes 1.')
-        if not _sp_is_enabled(sequence_parallel_context):
-            kwargs = {}
-            if 'cache_position' in parameters:
-                kwargs['cache_position'] = cache_position
-            return origin_forward(
-                mod, hidden_states, cache_params=cache_params, attention_mask=attention_mask, **kwargs)
 
         return _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
             mod,
