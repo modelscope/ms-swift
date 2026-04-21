@@ -15,7 +15,8 @@ from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.model import get_model_processor, save_checkpoint
-from swift.utils import get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_master, split_list
+from swift.utils import (HfConfigFactory, get_logger, get_modules_to_not_convert, get_multimodal_target_regex,
+                         is_master, split_list)
 
 logger = get_logger()
 
@@ -190,8 +191,14 @@ def _patch_mcore_bridge():
                 peft_config.save_pretrained(output_dir)
             else:
                 config = self.config
+                llm_config = HfConfigFactory.get_text_config(hf_config)
                 if config.mtp_num_layers:
-                    hf_config.num_nextn_predict_layers = config.mtp_num_layers
+                    for key in ['num_nextn_predict_layers', 'mtp_num_hidden_layers']:
+                        if hasattr(llm_config, key):
+                            setattr(llm_config, key, config.mtp_num_layers)
+                            break
+                    else:
+                        llm_config.num_nextn_predict_layers = config.mtp_num_layer
                 if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param:
                     if getattr(hf_config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config

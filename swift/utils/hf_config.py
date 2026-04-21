@@ -25,6 +25,14 @@ class HfConfigFactory:
         return torch_dtype
 
     @staticmethod
+    def get_text_config(config):
+        for key in HfConfigFactory.llm_keys:
+            value = getattr(config, key, None)
+            if value is not None:
+                return value
+        return config
+
+    @staticmethod
     def _get_config_attrs(config: Union[PretrainedConfig, Dict[str, Any]],
                           attr_name: str,
                           include_vit: bool = False,
