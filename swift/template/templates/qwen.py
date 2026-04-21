@@ -440,8 +440,6 @@ class Qwen2VLTemplate(Template):
         return packed
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
-        if not self.is_training:
-            return {}
         # fix https://github.com/huggingface/transformers/pull/33487
         kwargs = {}
         if self.version == 'v2_5':
@@ -865,6 +863,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         return {'inputs_embeds': inputs_embeds}
 
     def _get_position_ids(self, inputs: Dict[str, Any]):
+        if not self.is_training:
+            return {}
         feature_attention_mask = inputs.get('feature_attention_mask')
         if feature_attention_mask is not None:
             audio_feature_lengths = torch.sum(feature_attention_mask, dim=1)
