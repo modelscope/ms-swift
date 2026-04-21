@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.metadata
+import inspect
 import math
 import os
 import torch
@@ -1368,6 +1369,7 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
         return
 
     origin_forward = Qwen3_5GatedDeltaNet.forward
+    parameters = inspect.signature(origin_forward).parameters
 
     def sp_linear_forward(
         mod,
@@ -1376,10 +1378,14 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
         cache_position=None,
         attention_mask: Optional[torch.Tensor] = None,
     ):
-        try:
-            from swift.sequence_parallel import sequence_parallel as sequence_parallel_context
-        except Exception:
-            sequence_parallel_context = None
+        from swift.sequence_parallel import sequence_parallel as sequence_parallel_context
+
+        if not _sp_is_enabled(sequence_parallel_context):
+            kwargs = {}
+            if 'cache_position' in parameters:
+                kwargs['cache_position'] = cache_position
+            return origin_forward(
+                mod, hidden_states, cache_params=cache_params, attention_mask=attention_mask, **kwargs)
 
         if int(getattr(sequence_parallel_context, 'rp_world_size', 1) or 1) > 1:
             requested_sp_size = int(getattr(sequence_parallel_context, 'world_size', 1) or 1)
@@ -1390,15 +1396,6 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
                 f'sp_world_size={getattr(sequence_parallel_context, "sp_world_size", None)}, '
                 f'rp_world_size={getattr(sequence_parallel_context, "rp_world_size", None)}). '
                 f'Please reduce --sequence_parallel_size to {suggested_sp_size} so that rp_world_size becomes 1.')
-
-        if not _sp_is_enabled(sequence_parallel_context):
-            return origin_forward(
-                mod,
-                hidden_states,
-                cache_params=cache_params,
-                cache_position=cache_position,
-                attention_mask=attention_mask,
-            )
 
         return _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
             mod,
