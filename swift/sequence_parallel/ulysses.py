@@ -182,16 +182,10 @@ class SequenceParallel:
 
             _origin_flash_attention_mask = masking_utils.flash_attention_mask
 
-            def flash_attention_mask(batch_size,
-                                     cache_position,
-                                     kv_length,
-                                     kv_offset=0,
-                                     mask_function=masking_utils.causal_mask_function,
-                                     attention_mask=None,
-                                     **kwargs):
+            def flash_attention_mask(*args, **kwargs):
                 if self.world_size == 1:
-                    return _origin_flash_attention_mask(batch_size, cache_position, kv_length, kv_offset, mask_function,
-                                                        attention_mask, **kwargs)
+                    return _origin_flash_attention_mask(*args, **kwargs)
+                attention_mask = kwargs.get('attention_mask')
                 if attention_mask is not None:
                     if attention_mask.all():
                         attention_mask = None
@@ -201,13 +195,15 @@ class SequenceParallel:
             masking_utils.flash_attention_mask = flash_attention_mask
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
 
-            def sdpa_mask(batch_size, cache_position, kv_length, *args, **kwargs):
+            def sdpa_mask(batch_size, *args, **kwargs):
                 if self.world_size == 1:
-                    return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
-                                                                                                     cache_position,
-                                                                                                     kv_length, *args,
+                    return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size, *args,
                                                                                                      **kwargs)
-                device = cache_position.device
+                if 'cache_position' in kwargs:
+                    device = kwargs['cache_position'].device
+                else:
+                    # transformers>=5.4.0
+                    device = kwargs['device']
                 cache_position = self.real_position_ids[0]
                 cache_position = self.pad(cache_position, padding_value=-1, position_ids=self.real_position_ids, dim=0)
                 cache_position = torch.arange(0, cache_position.shape[0], device=device)
