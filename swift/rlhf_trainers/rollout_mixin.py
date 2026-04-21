@@ -742,22 +742,20 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         def _mix_inplace(ref_p: torch.Tensor, pol_p: torch.Tensor) -> None:
             ref_p.data.mul_(1.0 - alpha).add_(pol_p.data, alpha=alpha)
 
-        def _names_for_group(parameter_group):
-            if not parameter_group:
-                return list(policy_named.keys())
-            return [n for n in parameter_group if n in policy_named]
-
         if zero3:
             import deepspeed
 
             for parameter_group in self.parameter_groups:
-                names = _names_for_group(parameter_group)
-                policy_params = [policy_named[n] for n in names]
-                try:
-                    ref_params = [ref_named[n] for n in names]
-                except KeyError as e:
-                    raise KeyError(
-                        'sync_ref: policy and ref must have matching parameter names (same model layout).') from e
+                names = [n for n in (parameter_group or []) if n in policy_named]
+                if not names:
+                    continue
+                policy_params = []
+                ref_params = []
+                for n in names:
+                    policy_params.append(policy_named[n])
+                    if n not in ref_named:
+                        raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
+                    ref_params.append(ref_named[n])
                 to_gather = policy_params + ref_params
                 # modifier_rank=0 matches TRL; only rank 0 applies the mix inside GatheredParameters.
                 with deepspeed.zero.GatheredParameters(to_gather, modifier_rank=0):
@@ -766,7 +764,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                             _mix_inplace(rp, pp)
         else:
             for parameter_group in self.parameter_groups:
-                for n in _names_for_group(parameter_group):
+                names = [n for n in (parameter_group or []) if n in policy_named]
+                for n in names:
                     if n not in ref_named:
                         raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
                     _mix_inplace(ref_named[n], policy_named[n])
