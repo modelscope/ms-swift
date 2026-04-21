@@ -195,10 +195,9 @@ class SequenceParallel:
             masking_utils.flash_attention_mask = flash_attention_mask
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
 
-            def sdpa_mask(batch_size, *args, **kwargs):
+            def sdpa_mask(*args, **kwargs):
                 if self.world_size == 1:
-                    return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size, *args,
-                                                                                                     **kwargs)
+                    return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](*args, **kwargs)
                 if 'cache_position' in kwargs:
                     device = kwargs['cache_position'].device
                 else:
@@ -207,11 +206,12 @@ class SequenceParallel:
                 cache_position = self.real_position_ids[0]
                 cache_position = self.pad(cache_position, padding_value=-1, position_ids=self.real_position_ids, dim=0)
                 cache_position = torch.arange(0, cache_position.shape[0], device=device)
-                kv_length = cache_position.shape[0]
-                return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
-                                                                                                 cache_position,
-                                                                                                 kv_length, *args,
-                                                                                                 **kwargs)
+                kwargs['kv_length'] = cache_position.shape[0]
+                if 'cache_position' in kwargs:
+                    kwargs['cache_position'] = cache_position
+                else:
+                    kwargs['q_length'] = kwargs['kv_length']
+                return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](*args, **kwargs)
 
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping[
                 'sdpa_origin'] = masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa']
