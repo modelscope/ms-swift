@@ -885,7 +885,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                                                                data['response_token_ids'], loss_mask)
                 batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
                 for encoded_inputs in batch_encoded_inputs:
-                    extra_kwargs = encoded_inputs['_extra_kwargs']
+                    extra_kwargs = encoded_inputs.get('_extra_kwargs') or {}
                     for k in list(extra_kwargs.keys()):
                         if k not in self._filtered_keys:
                             extra_kwargs.pop(k)
