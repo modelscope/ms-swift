@@ -991,7 +991,7 @@ class SwiftMixin:
         self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
         return self.optimizer
 
-    def create_scheduler(self, num_training_steps: int, optimizer):
+    def create_scheduler(self, num_training_steps: int, optimizer=None):
         self.lr_scheduler = self.optimizer_callback.create_scheduler(num_training_steps, optimizer)
         return self.lr_scheduler
 
