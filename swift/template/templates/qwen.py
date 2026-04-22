@@ -634,6 +634,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         elif self.version == 'omni_v3':
             from transformers.models.qwen3_omni_moe.processing_qwen3_omni_moe import Qwen3OmniMoeProcessorKwargs
             default = Qwen3OmniMoeProcessorKwargs._defaults
+            # Fix: WhisperFeatureExtractor defaults to truncation=True, which silently
+            # truncates audio longer than 30s. Qwen3 Omni supports variable-length audio,
+            # so we must disable truncation. See: huggingface/transformers#41473
+            default.setdefault('audio_kwargs', {})
+            default['audio_kwargs']['truncation'] = False
         self.seconds_per_chunk = default['videos_kwargs']['seconds_per_chunk']
         self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
