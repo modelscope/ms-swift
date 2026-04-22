@@ -735,7 +735,7 @@ class BaseMegatronTrainer(ABC):
             peft_format=args.tuner_type == 'lora',
             output_dir=output_dir)
         state.last_model_checkpoint = output_dir
-        if state.best_global_step:
+        if state.best_global_step is not None:
             best_model_checkpoint = os.path.join(args.output_dir, f'checkpoint-{state.best_global_step}')
             if os.path.exists(best_model_checkpoint):
                 state.best_model_checkpoint = best_model_checkpoint
