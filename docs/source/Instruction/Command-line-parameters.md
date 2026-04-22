@@ -301,7 +301,7 @@ ENV:
   - 注意：在LLM和多模态LLM中，'all-linear'的行为有所不同。若是LLM则自动寻找除lm_head外的linear并附加tuner；**若是多模态LLM，则默认只在LLM上附加tuner，该行为可以被`freeze_llm`、`freeze_vit`、`freeze_aligner`控制**。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。例如你可以设置`--target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'`，将符合该正则的模块指定为LoRA模块。该参数不限于LoRA，可用于其他tuners。
 - target_parameters: 要替换为LoRA的参数名称列表。该参数的行为与 `target_modules` 类似，但传入的应是参数名称而不是模块名称。该特性需要安装"peft>=0.17.0"。例如，在 Hugging Face Transformers 中许多混合专家（MoE）层中，并未使用 `nn.Linear`，而是使用了 `nn.Parameter`。这时可以使用target_parameters参数实现。
-- init_weights: 初始化weights的方法，LoRA可以指定为`true`、`false`、`gaussian`、`pissa`、`pissa_niter_[number of iters]`、`olora`、`loftq`、`lora-ga`，Bone可以指定为`true`、`false`、`bat`。默认值`true`。
+- init_weights: 初始化weights的方法，LoRA可以指定为'true'、'false'、'gaussian'、'pissa'、'pissa_niter_[number of iters]'、'olora'、'loftq'、'lora-ga'，Bone可以指定为'true'、'false'、'bat'。默认值'true'。
 - 🔥modules_to_save: 在已附加tuner后，额外指定一部分原模型模块参与训练和存储。默认为`[]`。该参数不限于LoRA，可用于其他tuners。例如设置为`--modules_to_save embed_tokens lm_head`，在LoRA训练中解开embed_tokens和lm_head层进行训练，这两部分的权重信息最终会保存在`adapter_model.safetensors`中。
 
 #### 全参
