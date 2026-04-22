@@ -77,7 +77,7 @@ class TrainArgumentsMixin:
         loss_type (Optional[str]): Custom loss_type name. Default is None, uses the model's built-in loss function.
             Available loss options can be found in `loss/mapping.py`
         metric (Optional[str]): Custom eval metric name. Default is None. Available eval_metric options can be found
-            in `eval_metric/mapping.py`.
+            in `metrics/mapping.py`.
         callbacks (List[str]): Custom trainer callbacks, default is `[]`. Available callbacks can be found
             in `callbacks/mapping.py`.
         early_stop_interval (Optional[int]): The interval for early stopping. Training will be terminated if the
