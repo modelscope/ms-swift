@@ -700,7 +700,7 @@ class BaseMegatronTrainer(ABC):
                 or args.metric_for_best_model not in metrics):
             if args.metric_for_best_model is None:
                 return False
-            tensor = torch.zeros((3, ), device=get_current_device(), dtype=torch.float32)
+            tensor = torch.zeros((3, ), device=get_current_device(), dtype=torch.float64)
             torch.distributed.all_reduce(tensor)
             is_new_best_metric = bool(tensor[2].item())
             if is_new_best_metric:
@@ -719,7 +719,7 @@ class BaseMegatronTrainer(ABC):
             is_new_best_metric = True
         tensor = torch.tensor([state.best_metric, state.best_global_step, is_new_best_metric],
                               device=get_current_device(),
-                              dtype=torch.float32)
+                              dtype=torch.float64)
         torch.distributed.all_reduce(tensor)
         return is_new_best_metric
 
