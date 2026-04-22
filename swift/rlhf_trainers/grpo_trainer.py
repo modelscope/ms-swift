@@ -133,6 +133,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_template = copy(self.template)
             infer_template.padding_free = False
             infer_template.sequence_parallel_size = 1
+            infer_template.remove_unused_columns = True
             self.engine = TransformersEngine(self.model, template=infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
