@@ -1,4 +1,5 @@
 from torch.optim import Optimizer
+from transformers.trainer import Trainer as HfTrainer
 from typing import TYPE_CHECKING
 
 try:
@@ -48,7 +49,7 @@ class OptimizerCallback:
         trainer.scheduler = self.create_scheduler(num_training_steps, trainer.optimizer)
 
     def create_optimizer(self) -> Optimizer:
-        return self.trainer.create_optimizer()
+        return HfTrainer.create_optimizer(self.trainer)
 
     def create_scheduler(self, num_training_steps: int, optimizer: Optimizer) -> LRScheduler:
-        return self.trainer.create_scheduler(num_training_steps, optimizer)
+        return HfTrainer.create_scheduler(self.trainer, num_training_steps, optimizer)

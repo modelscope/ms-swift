@@ -77,6 +77,7 @@ class SwiftMixin:
         self.padding_free = self.template.padding_free
         self.task_type = self.template.task_type
         self.problem_type = getattr(model.config, 'problem_type', None)
+        self.optimizer_callback = optimizers_map[args.optimizer or 'default'](args, self)
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), patch_modelscope_hub_timeout():
                 config_info = self._collect_config_info()
@@ -983,8 +984,16 @@ class SwiftMixin:
         return res
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
-        optimizer_callback: OptimizerCallback = optimizers_map[self.args.optimizer or 'default'](self.args, self)
-        optimizer_callback.create_optimizer_and_scheduler(num_training_steps)
+        self.optimizer_callback.create_optimizer_and_scheduler(num_training_steps)
+
+    def create_optimizer(self):
+        self.optimizer = self.optimizer_callback.create_optimizer()
+        self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
+        return self.optimizer
+
+    def create_scheduler(self, num_training_steps: int, optimizer):
+        self.lr_scheduler = self.optimizer_callback.create_scheduler(num_training_steps, optimizer)
+        return self.lr_scheduler
 
     @staticmethod
     def _get_listwise_reranker_preds(logits, labels):
