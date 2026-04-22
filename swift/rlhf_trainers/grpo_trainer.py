@@ -133,6 +133,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_template = copy(self.template)
             infer_template.padding_free = False
             infer_template.sequence_parallel_size = 1
+            infer_template.remove_unused_columns = True
             self.engine = TransformersEngine(self.model, template=infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
@@ -162,6 +163,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = None
         self._current_train_step_time = 0.0
+        self._filtered_keys = [
+            'prompt_id', 'request_id', 'response_token_ids', 'finish_reason', 'is_truncated', 'add_eos'
+        ]
 
     def _get_data_collator(self, args, template):
         return identity_data_collator
@@ -880,6 +884,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
                 batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
+                for encoded_inputs in batch_encoded_inputs:
+                    extra_kwargs = encoded_inputs.get('_extra_kwargs') or {}
+                    for k in list(extra_kwargs.keys()):
+                        if k not in self._filtered_keys:
+                            extra_kwargs.pop(k)
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
                 if self.dynamic_num_samples and self.is_multimodal:
                     batch_encoded_inputs['_origin_data'] = batch
@@ -2682,9 +2691,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
                 'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps', 'rollout_logprobs',
-                'is_truncated', 'add_eos', 'response_token_ids', 'prompt_id', 'rollout_is_weights', 'finish_reason',
-                'request_id'
-            ]
+                'rollout_is_weights'
+            ] + self._filtered_keys
         }
 
     def _get_eval_sampler(self, eval_dataset):

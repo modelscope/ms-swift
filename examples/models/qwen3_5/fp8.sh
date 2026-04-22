@@ -1,5 +1,6 @@
 # 2 * 50GiB
-# Save FP8 weights directly.
+# `--model` can directly accept a model with FP8 weights,
+# and the FP8 weight model will be saved directly upon training completion.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
