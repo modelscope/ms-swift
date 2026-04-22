@@ -698,11 +698,14 @@ class BaseMegatronTrainer(ABC):
         state = self.state
         if (args.metric_for_best_model is None or metrics is None or not is_last_rank()
                 or args.metric_for_best_model not in metrics):
+            if args.metric_for_best_model is None:
+                return False
             tensor = torch.zeros((3, ), device=get_current_device(), dtype=torch.float32)
             torch.distributed.all_reduce(tensor)
-            state.best_metric = tensor[0].item()
-            state.best_global_step = int(tensor[1].item())
             is_new_best_metric = bool(tensor[2].item())
+            if is_new_best_metric:
+                state.best_metric = tensor[0].item()
+                state.best_global_step = int(tensor[1].item())
             return is_new_best_metric
         metric_value = metrics[args.metric_for_best_model]
         op = operator.ge if args.greater_is_better else operator.le
