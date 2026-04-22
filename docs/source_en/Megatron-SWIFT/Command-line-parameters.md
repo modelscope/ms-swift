@@ -317,7 +317,7 @@ Megatron training parameters are inherited from Megatron parameters and basic pa
 In addition to inheriting the training parameters, the following parameters are also supported:
 
 - 🔥rlhf_type: Default is 'dpo'. Currently, 'dpo', 'grpo', 'kto', 'rm', and 'gkd' are available.
-- loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'.
+- loss_scale: Overrides the `loss_scale` in [basic parameters](../Instruction/Command-line-parameters.md). Default is 'last_round'. You can also specify different loss computation strategies for each data row using the row-level `"loss_scale"` field, which has higher priority than the command-line argument. Refer to [Custom Dataset documentation](../Customization/Custom-dataset.md#supervised-fine-tuning) for details.
 - calculate_per_token_loss: Overrides the Megatron parameter. Default is False.
 
 

@@ -4,7 +4,10 @@ import os
 from typing import List, Literal, Optional, Tuple
 
 from swift.template import ContextType, Messages, get_last_user_round
+from swift.utils import get_logger
 from .utils import calculate_loss_scale
+
+logger = get_logger()
 
 ALL_BASE_STRATEGY = ['default', 'last_round', 'all']
 
@@ -77,6 +80,10 @@ class LossScale:
                 context_types: List of context types corresponding to each context, indicating
                     whether it's a system prompt, user query, assistant response, etc.
                 messages: Complete message list containing the conversation history.
+                **kwargs: Additional keyword arguments. Supports 'loss_scale' to override
+                    the global loss scale strategy for this specific data row. The value
+                    can be a string like 'default', 'last_round', 'all', or combined
+                    strategies like 'last_round+ignore_empty_think'.
 
             Returns:
                 A tuple containing:
@@ -85,6 +92,22 @@ class LossScale:
                     - List[float]: Loss scale values corresponding one-to-one with the
                         returned context list
         """
+        # Check for per-row loss_scale override in kwargs (from data row)
+        row_loss_scale = kwargs.get('loss_scale')
+        if row_loss_scale is not None:
+            # Use per-row loss_scale with higher priority than global setting
+            from .mapping import get_loss_scale
+            try:
+                loss_scale_handler = get_loss_scale(row_loss_scale)
+                # Call the handler without 'loss_scale' in kwargs to avoid infinite recursion
+                kwargs_without_loss_scale = {k: v for k, v in kwargs.items() if k != 'loss_scale'}
+                return loss_scale_handler(context_list, context_types, messages, **kwargs_without_loss_scale)
+            except (KeyError, ValueError) as e:
+                # If invalid loss_scale specified in data row, fall back to global setting
+                logger.warning(f"Invalid loss_scale '{row_loss_scale}' specified in data row, "
+                               f"falling back to global setting '{self.base_strategy}'. Error: {e}")
+                pass
+
         res_context_list = []
         res_loss_scale = []
         i = 0

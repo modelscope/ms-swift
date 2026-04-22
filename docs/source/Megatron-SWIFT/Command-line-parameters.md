@@ -100,7 +100,6 @@
 - muon_tp_mode: 张量模型并行权重的 NS 计算方式。可选为'blockwise', 'duplicated', 'distributed'。默认为'blockwise'。
 - muon_extra_scale_factor: Muon 更新的额外缩放因子，默认为1。
 
-
 **checkpoint参数**:
 - 🔥output_dir: checkpoint的输出目录，默认None。在训练中，若未设置该参数，则默认为`f'megatron_output/{model_suffix}'`，例如`'megatron_output/Qwen2.5-7B-Instruct'`。
   - 注意：**若在多机训练时，请确保每个节点的保存路径指向相同位置**，否则你需要在训练后手动集中这些权重。
@@ -296,7 +295,7 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 ## RLHF参数
 除了继承训练参数外，还支持以下参数：
 - 🔥rlhf_type: 默认为'dpo'。目前可选择为'dpo'、'grpo'、'kto'、'rm'和'gkd'。
-- loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。
+- loss_scale: 覆盖[基本参数](../Instruction/Command-line-parameters.md)中的loss_scale。默认为'last_round'。支持通过数据行级别的`"loss_scale"`字段为每行数据指定不同的loss计算策略，该字段优先级高于命令行参数。参考[自定义数据集文档](../Customization/Custom-dataset.md#监督微调)。
 - calculate_per_token_loss: 覆盖Megatron参数，默认为False。
 
 

@@ -115,6 +115,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
   - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
   - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
+  - **Row-level setting**: You can also specify different loss computation strategies for each data row using the row-level `"loss_scale"` field, which has higher priority than the command-line argument. Refer to [Custom Dataset documentation](../Customization/Custom-dataset.md#supervised-fine-tuning) for details.
 - sequence_parallel_size: Size for sequence parallelism. Default is 1. Currently supported in CPT/SFT/DPO/GRPO. Training scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
 - template_backend: Backend for template processing. Options are `'swift'` or `'jinja'`. Default is `'swift'`. If `'jinja'` is used, `apply_chat_template` from Transformers will be applied.
   - Note: The `'jinja'` backend only supports inference and does not support training (as it cannot determine the token ranges for loss computation).

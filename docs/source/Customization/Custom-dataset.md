@@ -65,6 +65,16 @@ alpaca格式:
 {"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2", "loss": true}]}
 ```
 
+- 支持通过数据行级别的 `"loss_scale"` 字段为每行数据指定不同的 loss 计算策略，该字段优先级高于命令行参数 `--loss_scale`。可以设置的值包括：`'default'`、`'last_round'`、`'all'` 以及组合策略如 `'last_round+ignore_empty_think'` 等。这使得不同数据可以灵活使用不同的 loss 策略。示例数据格式如下：
+```jsonl
+# 使用 last_round 策略：只计算最后一轮对话的loss
+{"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好！"}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2"}], "loss_scale": "last_round"}
+# 使用 all 策略：计算所有token的loss（包括system和user部分）
+{"messages": [{"role": "system", "content": "你是数学专家"}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2"}], "loss_scale": "all"}
+# 使用组合策略：只计算最后一轮且忽略空的think标签
+{"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "<think>\n\n</think>\n\n你好！"}], "loss_scale": "last_round+ignore_empty_think"}
+```
+
 
 #### channel loss
 如果你要使用channel loss，你需要设置`--enable_channel_loss true`，并在数据集中增加"channel"字段。channel loss兼容packing/padding_free/loss_scale等技术。
