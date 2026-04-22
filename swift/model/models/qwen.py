@@ -1476,6 +1476,10 @@ register_model(
                     Model('Qwen/Qwen3.5-9B-Base', 'Qwen/Qwen3.5-9B-Base'),
                 ],
                 TemplateType.qwen3_5),
+            ModelGroup([
+                Model('Qwen/Qwen3.6-27B', 'Qwen/Qwen3.6-27B'),
+                Model('Qwen/Qwen3.6-27B-FP8', 'Qwen/Qwen3.6-27B-FP8'),
+            ], TemplateType.qwen3_5),
         ],
         Qwen3_5Loader,
         model_arch=ModelArch.qwen2_vl,
