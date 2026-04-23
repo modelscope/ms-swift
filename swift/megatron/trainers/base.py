@@ -56,9 +56,6 @@ mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0
 logger = get_logger()
 
 
-
-
-
 class BaseMegatronTrainer(ABC):
 
     def __init__(self, args, template: Template):
