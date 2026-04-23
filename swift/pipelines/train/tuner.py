@@ -322,10 +322,10 @@ def _patch_modules_to_save_zero3():
     if getattr(ModulesToSaveWrapper, '_patched', False):
         return
     ModulesToSaveWrapper._patched = True
-    __setattr__ = ModulesToSaveWrapper.__setattr__
+    _old_setattr = ModulesToSaveWrapper.__setattr__
 
     def _patched_setattr(self, name, value):
-        __setattr__(self, name, value)
+        _old_setattr(self, name, value)
         if name == 'ds_grads_remaining':
             for module in self.modules_to_save.values():
                 module.ds_grads_remaining = value
