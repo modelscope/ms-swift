@@ -266,6 +266,7 @@ register_template(
     MoonlightTemplateMeta(
         MLLMTemplateType.kimi_k25,
         template_cls=KimiK25Template,
+        system_prefix=['<|im_system|>{{SYSTEM}}<|im_end|>'],
         default_system=None,
         is_thinking=True,
         thinking_prefix='<think>\n',

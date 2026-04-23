@@ -88,7 +88,10 @@ class KimiK25AgentTemplate(BaseAgentTemplate):
         ts_tools = self._tools_to_typescript(tools)
         tool_content = f'# Tools\n\n## functions\nnamespace functions {{\n{ts_tools}\n}}\n'
         system = system or ''
-        return f'tool_declare<|im_middle|>{tool_content}<|im_end|><|im_system|>system<|im_middle|>{system}'
+        res = f'tool_declare<|im_middle|>{tool_content}'
+        if system:
+            res += f'<|im_end|><|im_system|>system<|im_middle|>{system}'
+        return res
 
     def _format_tool_calls(self, tool_call_messages) -> str:
         tool_calls = []
