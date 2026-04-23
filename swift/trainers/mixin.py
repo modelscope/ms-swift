@@ -209,7 +209,7 @@ class SwiftMixin:
             else:
                 use_logits_to_keep = default_value
             self.args.use_logits_to_keep = use_logits_to_keep
-            logger.info(f'use_logits_to_keep: {use_logits_to_keep}')
+            logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
         return use_logits_to_keep
 
     def _save_initial_model(self, output_dir):
