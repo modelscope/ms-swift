@@ -284,6 +284,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_api_logprobs = inputs.pop('_teacher_api_logprobs', None)
         teacher_api_indices = inputs.pop('_teacher_api_indices', None)
         opsd_teacher_inputs = inputs.pop('_opsd_teacher_inputs', None)
+        inputs.pop('_opsd_teacher_messages', None)
 
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
 
@@ -524,6 +525,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                             if 'response_token_ids' in gen_data:
                                 teacher_data[i]['response_token_ids'] = gen_data['response_token_ids']
                             teacher_data[i]['add_eos'] = False
+                        encoded_inputs['_opsd_teacher_messages'] = [deepcopy(td['messages']) for td in teacher_data]
                         with self._template_context(self.template):
                             encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
                                 teacher_data, encode_prompt_only=False)
@@ -549,6 +551,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                             resp_token = new_input_ids[i, student_prompt_len:][mask == 1].tolist()
                             td['messages'].append({'role': 'assistant', 'content': resp_token})
                             td['add_eos'] = False
+                        encoded_inputs['_opsd_teacher_messages'] = [
+                            deepcopy(td['messages'][:-1])
+                            + [{
+                                'role': 'assistant',
+                                'content': self.processing_class.decode(td['messages'][-1]['content'])
+                            }] for td in teacher_data
+                        ]
                         with self._template_context(self.template):
                             encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
                                 teacher_data, encode_prompt_only=False)
@@ -577,30 +586,19 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             else:
                 # Off-policy: use dataset responses, encode full messages
+                assert teacher_data is None, 'OPSD teacher data is not supported for off-policy mode'
                 data_source = DataSource.DATASET
                 total_length = self.template.max_length + self.max_completion_length
                 with self._template_context(self.template, max_length=total_length):
                     encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
-
-                # OPSD: encode teacher inputs with dataset response
-                if teacher_data is not None:
-                    for i, data in enumerate(inputs):
-                        messages = data.get('messages', [])
-                        if messages and messages[-1].get('role') == 'assistant':
-                            teacher_data[i]['messages'].append(dict(messages[-1]))
-                            if 'response_token_ids' in data:
-                                teacher_data[i]['response_token_ids'] = data['response_token_ids']
-                            teacher_data[i]['add_eos'] = False
-                    with self._template_context(self.template, max_length=total_length):
-                        encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
-                            teacher_data, encode_prompt_only=False)
 
             # Mark data source for downstream processing (e.g., conditional SFT loss)
             encoded_inputs['_data_source'] = data_source
 
             # Fetch teacher logprobs from API if using external teacher service
             if self.use_teacher_api:
-                teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs)
+                teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(
+                    encoded_inputs, raw_inputs=inputs)
                 encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
                 encoded_inputs['_teacher_api_indices'] = teacher_indices
 
@@ -608,18 +606,68 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             loss = HFSFTTrainer.training_step(self, model, encoded_inputs, num_items_in_batch)
         return loss
 
-    def _fetch_teacher_logprobs_from_api(self, encoded_inputs: Dict[str, torch.Tensor]):
+    def _fetch_teacher_logprobs_from_api(self,
+                                         encoded_inputs: Dict[str, torch.Tensor],
+                                         raw_inputs: Optional[list] = None):
         """Fetch teacher logprobs from external API service.
 
+        For multimodal data, uses /v1/chat/completions and aligns response logprobs
+        by resp_count (number of response tokens from local labels).
+
         Returns:
-            Tuple of (teacher_logprobs, teacher_indices) tensors with shapes [batch, seq_len, topk]
+            Tuple of (teacher_logprobs, teacher_indices) tensors with shapes
+            [batch, seq_len-1, topk], aligned to the local encode sequence grid.
         """
         opsd_teacher_inputs = encoded_inputs.get('_opsd_teacher_inputs')
         source = opsd_teacher_inputs if opsd_teacher_inputs is not None else encoded_inputs
         input_ids = source['input_ids']
-        teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
-            self.teacher_model_server, input_ids.tolist(), topk=self.gkd_logits_topk)
-        return teacher_logprobs.to(input_ids.device), teacher_indices.to(input_ids.device)
+        labels = source['labels']
+        batch_size, tea_seq_len = input_ids.shape
+        topk = self.gkd_logits_topk
+
+        # Build multimodal inputs if applicable
+        mm_raw_inputs = None
+        if raw_inputs is not None and any(
+                raw.get('images') or raw.get('audios') or raw.get('videos') for raw in raw_inputs):
+            # When under multi-modal training,
+            # we should use /v1/chat/completions when need messages inputs
+            opsd_teacher_messages = encoded_inputs.get('_opsd_teacher_messages')
+            mm_raw_inputs = []
+            for i, raw in enumerate(raw_inputs):
+                item = {k: raw[k] for k in ('images', 'audios', 'videos') if k in raw}
+                if opsd_teacher_messages is not None and opsd_teacher_messages[i] is not None:
+                    item['messages'] = opsd_teacher_messages[i]
+                else:
+                    item['messages'] = raw['messages']
+                mm_raw_inputs.append(item)
+
+        logprobs_raw, indices_raw, vllm_seq_lens = fetch_teacher_logprobs(
+            self.teacher_model_server, input_ids.tolist(), topk=topk, mm_raw_inputs=mm_raw_inputs)
+
+        out_len = tea_seq_len - 1
+        if logprobs_raw.shape[1] == out_len:
+            # Text-only or lengths match: direct use
+            return logprobs_raw.to(input_ids.device), indices_raw.to(input_ids.device)
+
+        # Multimodal: vLLM seq lengths may differ from local encode. Align by resp_count:
+        # take the last resp_count logprobs from vLLM output and place them at the
+        # corresponding response positions in the local sequence grid.
+        logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32)
+        indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long)
+        resp_counts = (labels != -100).sum(dim=1).tolist()
+
+        for idx in range(batch_size):
+            vllm_out_len = vllm_seq_lens[idx] - 1
+            resp_count = resp_counts[idx]
+            # Number of response logprobs to copy (capped by what vLLM returned)
+            n = min(resp_count, vllm_out_len, out_len)
+            if n <= 0:
+                continue
+            # Source: tail of vLLM logprobs; Dest: tail of local sequence
+            logprobs_out[idx, out_len - n:out_len] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
+            indices_out[idx, out_len - n:out_len] = indices_raw[idx, vllm_out_len - n:vllm_out_len]
+
+        return logprobs_out.to(input_ids.device), indices_out.to(input_ids.device)
 
     def prediction_step(self, model, inputs, *args, **kwargs):
         # Prediction uses full messages
@@ -627,7 +675,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Fetch teacher logprobs from API if using external teacher service (for eval)
         if self.use_teacher_api:
-            teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs)
+            teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs, raw_inputs=inputs)
             encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
             encoded_inputs['_teacher_api_indices'] = teacher_indices
 
@@ -896,29 +944,49 @@ def _build_teacher_session(max_retries=5):
 _teacher_session = None
 
 
-def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
-    """Fetch top-k prompt logprobs from a vLLM-compatible /v1/completions endpoint.
+def _parse_prompt_logprobs(prompt_logprobs_list, topk):
+    """Parse vLLM prompt_logprobs into per-position (logprobs, indices) lists.
 
-    Uses prompt_logprobs to get logprobs for input tokens without generating.
-    vLLM prompt_logprobs are always raw (temperature=1) log-probabilities from the model;
-    the temperature parameter in the API only affects token sampling, not prompt_logprobs.
+    Skips pos 0 (always None). Returns lists of length num_positions, where each
+    element is a (logprobs_row, indices_row) tuple of length topk.
+    """
+    lps, ixs = [], []
+    for raw_pos in range(1, len(prompt_logprobs_list)):
+        pos_lp = prompt_logprobs_list[raw_pos]
+        if pos_lp is None:
+            lps.append([float('-inf')] * topk)
+            ixs.append([0] * topk)
+        else:
+            sorted_items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])[:topk]
+            lp_row = [info['logprob'] for _, info in sorted_items]
+            ix_row = [int(tid_str) for tid_str, _ in sorted_items]
+            pad = topk - len(lp_row)
+            if pad > 0:
+                lp_row += [float('-inf')] * pad
+                ix_row += [0] * pad
+            lps.append(lp_row)
+            ixs.append(ix_row)
+    return lps, ixs
+
+
+def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0, mm_raw_inputs=None):
+    """Fetch top-k prompt logprobs from a vLLM-compatible server.
+
+    Text-only: uses /v1/completions with token IDs.
+    Multimodal (mm_raw_inputs provided): uses /v1/chat/completions with messages + media.
 
     Args:
-        base_url: vLLM server URL (e.g., 'http://localhost:8000').
-        input_ids: List of token ID sequences.
+        base_url: vLLM server URL.
+        input_ids: List of token ID sequences (used for text-only path).
         topk: Number of top log probabilities per token.
         timeout: Request timeout in seconds.
+        mm_raw_inputs: Optional list of dicts with 'messages' and media keys
+            for multimodal chat completions. When provided, text-only path is skipped.
 
     Returns:
         (logprobs, indices) tensors of shape [batch, max_seq_len - 1, topk].
-        The shift is because prompt_logprobs[0] is always None (first token has no
-        conditional probability), so position i in the output corresponds to
-        P(token_{i+1} | token_0..token_i), aligning with model logits[i].
-
-    Raises:
-        RuntimeError: If any sequence fails after all retry attempts.
+        For multimodal, max_seq_len is the max vLLM tokenized length across the batch.
     """
-    import logging
     from concurrent.futures import ThreadPoolExecutor
 
     global _teacher_session
@@ -926,58 +994,56 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
         _teacher_session = _build_teacher_session()
     session = _teacher_session
 
-    _logger = logging.getLogger(__name__)
     base_url = base_url.rstrip('/')
-    batch_size = len(input_ids)
-    max_seq_len = max(len(ids) for ids in input_ids)
-    url = f'{base_url}/v1/completions'
     global teacher_model_server_model_name
     if teacher_model_server_model_name is None:
         try:
             resp = session.get(f'{base_url}/v1/models', timeout=10)
-            model = resp.json()['data'][0]['id'] if resp.ok else 'default'
+            teacher_model_server_model_name = resp.json()['data'][0]['id'] if resp.ok else 'default'
         except Exception:
-            model = 'default'
-        teacher_model_server_model_name = model
-    else:
-        model = teacher_model_server_model_name
+            teacher_model_server_model_name = 'default'
+    model = teacher_model_server_model_name
 
-    # prompt_logprobs[0] is always None (no conditional prob for the first token),
-    # prompt_logprobs[i] = P(token_i | token_0..token_{i-1}) which aligns with logits[i-1].
-    # So we skip position 0 and the result has shape [batch, max_seq_len-1, topk],
-    # aligning with student logits which predict the next token at each position.
-    out_len = max_seq_len - 1
-    logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32)
-    indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long)
+    batch_size = len(input_ids)
+    # Per-sample results: (logprobs_list, indices_list, total_token_count)
+    results = [None] * batch_size
     errors = {}
 
-    def _fetch_one(batch_idx):
-        payload = {
-            'model': model,
-            'prompt': input_ids[batch_idx],
-            'max_tokens': 1,
-            'temperature': 0,
-            'prompt_logprobs': topk,
-        }
+    def _fetch_one(idx):
         try:
-            resp = session.post(url, json=payload, timeout=timeout)
-            resp.raise_for_status()
-            prompt_logprobs_list = resp.json()['choices'][0].get('prompt_logprobs', [])
-            # Skip position 0 (always None), shift left so pos 1 -> output pos 0
-            for raw_pos in range(1, len(prompt_logprobs_list)):
-                pos_lp = prompt_logprobs_list[raw_pos]
-                if pos_lp is None:
-                    continue
-                out_pos = raw_pos - 1
-                if out_pos >= out_len:
-                    break
-                sorted_items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])[:topk]
-                for k, (tid_str, info) in enumerate(sorted_items):
-                    indices_out[batch_idx, out_pos, k] = int(tid_str)
-                    logprobs_out[batch_idx, out_pos, k] = info['logprob']
+            if mm_raw_inputs is not None and mm_raw_inputs[idx] is not None:
+                from swift.infer_engine import InferClient, InferRequest, RequestConfig
+                raw = mm_raw_inputs[idx]
+                infer_request = InferRequest(
+                    **{k: raw[k]
+                       for k in ('messages', 'images', 'audios', 'videos') if k in raw})
+                payload = InferClient._prepare_request_data(model, infer_request,
+                                                            RequestConfig(max_tokens=1, temperature=0))
+                payload.update(prompt_logprobs=topk, add_generation_prompt=False, return_token_ids=True)
+                resp = session.post(f'{base_url}/v1/chat/completions', json=payload, timeout=timeout)
+                resp.raise_for_status()
+                data = resp.json()
+                choice = data.get('choices', [{}])[0]
+                raw_lps = data.get('prompt_logprobs') or choice.get('prompt_logprobs', [])
+                token_count = len(data.get('prompt_token_ids') or choice.get('prompt_token_ids', raw_lps))
+            else:
+                payload = {
+                    'model': model,
+                    'prompt': input_ids[idx],
+                    'max_tokens': 1,
+                    'temperature': 0,
+                    'prompt_logprobs': topk
+                }
+                resp = session.post(f'{base_url}/v1/completions', json=payload, timeout=timeout)
+                resp.raise_for_status()
+                raw_lps = resp.json()['choices'][0].get('prompt_logprobs', [])
+                token_count = len(input_ids[idx])
+
+            lps, ixs = _parse_prompt_logprobs(raw_lps, topk)
+            results[idx] = (lps, ixs, token_count)
         except Exception as e:
-            errors[batch_idx] = e
-            _logger.error(f'Failed to get teacher logprobs for sequence {batch_idx}: {e}')
+            errors[idx] = e
+            logger.error(f'Failed to get teacher logprobs for sequence {idx}: {e}')
 
     with ThreadPoolExecutor(max_workers=min(batch_size, 8)) as pool:
         list(pool.map(_fetch_one, range(batch_size)))
@@ -988,4 +1054,14 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0):
                            f'Failed indices: {failed}. Last errors: ' + '; '.join(f'seq {i}: {errors[i]}'
                                                                                   for i in failed[:3]))
 
-    return logprobs_out, indices_out
+    # Batch into tensors: shape [batch, max_out_len, topk]
+    max_out_len = max(len(r[0]) for r in results)
+    logprobs_out = torch.full((batch_size, max_out_len, topk), float('-inf'), dtype=torch.float32)
+    indices_out = torch.zeros((batch_size, max_out_len, topk), dtype=torch.long)
+    for idx, (lps, ixs, _) in enumerate(results):
+        n = len(lps)
+        logprobs_out[idx, :n] = torch.tensor(lps, dtype=torch.float32)
+        indices_out[idx, :n] = torch.tensor(ixs, dtype=torch.long)
+
+    vllm_seq_lens = [r[2] for r in results]
+    return logprobs_out, indices_out, vllm_seq_lens
