@@ -56,15 +56,7 @@ mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0
 logger = get_logger()
 
 
-def _should_use_npu_generated_attention_mask(args) -> bool:
-    return (
-        is_torch_npu_available()
-        and
-        args.task_type == 'causal_lm'
-        and not args.padding_free
-        and getattr(args, 'attention_backend', None) != 'local'
-        and getattr(args, 'use_flash_attn', False)
-    )
+
 
 
 class BaseMegatronTrainer(ABC):
@@ -958,6 +950,16 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
+    def _should_use_npu_generated_attention_mask(self, args) -> bool:
+        return (
+            is_torch_npu_available()
+            and
+            args.task_type == 'causal_lm'
+            and not args.padding_free
+            and getattr(args, 'attention_backend', None) != 'local'
+            and getattr(args, 'use_flash_attn', False)
+        )
+
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         batch = get_batch_on_this_pp_rank(self.args, data, vp_stage=vp_stage)
         if num_samples is None:
@@ -966,7 +968,7 @@ class BaseMegatronTrainer(ABC):
         text_position_ids = batch.pop('text_position_ids', None)
         if text_position_ids is None:
             text_position_ids = batch.get('position_ids')
-        if _should_use_npu_generated_attention_mask(args):
+        if self._should_use_npu_generated_attention_mask(args):
             if 'attention_mask_2d' not in batch and batch.get('attention_mask') is not None:
                 batch['attention_mask_2d'] = (~batch['attention_mask']).sum(dim=(1, 2)) > 0
             batch['attention_mask'] = None
