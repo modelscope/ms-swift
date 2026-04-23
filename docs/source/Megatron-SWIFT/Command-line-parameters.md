@@ -74,7 +74,7 @@
 - lr_warmup_iters: 线性学习率预热的迭代次数，默认为0。
 - 🔥lr_warmup_fraction: 线性学习率预热阶段所占比例，默认为None。
 - 🔥min_lr: 学习率的最小值，将低于该阈值的学习率裁剪为该值，默认为0。
-  - 注意：vit_lr的`min_lr`为`vit_lr * min_lr / lr`，aligner_lr的`min_lr同理。
+  - 注意：`vit_lr`的`min_lr`为`vit_lr * min_lr / lr`，aligner_lr的`min_lr同理。
 - lr_wsd_decay_style: WSD 退火阶段的衰减方式。默认为'exponential'。
 - lr_wsd_decay_iters: 学习率衰减的迭代次数。默认为 None。
 
