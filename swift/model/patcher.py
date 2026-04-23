@@ -15,6 +15,7 @@ from peft import PeftModel
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import PreTrainedModel, dynamic_module_utils, trainer
+from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
@@ -254,9 +255,14 @@ def _patch_sequence_classification(model, model_meta):
             setattr(lm_head_model, lm_head, nn.Identity())
             break
     lm_head_model.score = nn.Linear(hidden_size, lm_head_model.num_labels, bias=False, dtype=lm_head_model.dtype)
-    if lm_head_model.score.weight.device == torch.device('meta'):
-        lm_head_model.score.to_empty(device='cpu')
-    lm_head_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
+    if is_deepspeed_zero3_enabled():
+        import deepspeed
+        with deepspeed.zero.GatheredParameters(lm_head_model.score.weight, modifier_rank=0):
+            lm_head_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
+    else:
+        if lm_head_model.score.weight.device == torch.device('meta'):
+            lm_head_model.score.to_empty(device='cpu')
+        lm_head_model.score.weight.data.normal_(mean=0.0, std=initializer_range)
 
     origin_forward = lm_head_model.forward
 
