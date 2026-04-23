@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
@@ -109,6 +110,12 @@ class TemplateArguments:
             Note: During training, if the basic strategy of loss_scale is last_round, this modification is only
             applied to the last round; otherwise, for example 'default' or 'all', this modification is applied to
             every round of data. If set to False, no non-thinking prefix is added to data samples.
+        chat_template_kwargs (Optional[str]): Extra keyword arguments to pass to the Jinja chat template
+            when using the 'jinja' template_backend. The value should be a JSON string, e.g.
+            `'{"reasoning_effort": "no_think"}'`. These kwargs are forwarded directly to
+            `tokenizer.apply_chat_template()`. For the 'swift' backend, model-specific templates may also
+            use these kwargs (e.g. Hy3 uses `reasoning_effort` to control the reasoning mode token).
+            Defaults to None.
 
 
     """
@@ -133,6 +140,7 @@ class TemplateArguments:
     response_prefix: Optional[str] = None
     enable_thinking: Optional[bool] = None
     add_non_thinking_prefix: bool = True
+    chat_template_kwargs: Optional[str] = None
 
     def __post_init__(self):
         if getattr(self, 'model_meta', None) is not None:
@@ -151,6 +159,8 @@ class TemplateArguments:
             self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
+        if isinstance(self.chat_template_kwargs, str):
+            self.chat_template_kwargs = json.loads(self.chat_template_kwargs)
 
     def get_template_kwargs(self):
         truncation_strategy = self.truncation_strategy
@@ -177,4 +187,5 @@ class TemplateArguments:
             'response_prefix': self.response_prefix,
             'enable_thinking': self.enable_thinking,
             'add_non_thinking_prefix': self.add_non_thinking_prefix,
+            'chat_template_kwargs': self.chat_template_kwargs,
         }

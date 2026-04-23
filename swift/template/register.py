@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import os
-from typing import TYPE_CHECKING, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, Literal, Optional
 
 from swift.utils import Processor
 from .base import Template
@@ -75,6 +75,7 @@ def get_template(
     response_prefix: Optional[str] = None,
     enable_thinking: Optional[bool] = None,
     add_non_thinking_prefix: bool = True,
+    chat_template_kwargs: Optional[Dict[str, Any]] = None,
 ) -> 'Template':
     """Get or create a template instance for model input/output formatting.
 
@@ -202,4 +203,5 @@ def get_template(
         response_prefix=response_prefix,
         enable_thinking=enable_thinking,
         add_non_thinking_prefix=add_non_thinking_prefix,
+        chat_template_kwargs=chat_template_kwargs,
     )

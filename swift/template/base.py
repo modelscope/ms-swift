@@ -94,6 +94,7 @@ class Template(ProcessorMixin):
         response_prefix: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
         add_non_thinking_prefix: bool = True,
+        chat_template_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
         default_system: Override the default_system in the template.
@@ -133,6 +134,7 @@ class Template(ProcessorMixin):
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
         self.add_non_thinking_prefix = add_non_thinking_prefix
+        self.chat_template_kwargs = chat_template_kwargs or {}
         self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
@@ -1031,6 +1033,12 @@ class Template(ProcessorMixin):
             kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
         if self.template_meta.is_thinking or self.enable_thinking:
             kwargs[self.jinja_enable_thinking_key] = self.enable_thinking
+        # Merge template-level chat_template_kwargs
+        if self.chat_template_kwargs:
+            kwargs.update(self.chat_template_kwargs)
+        # Merge per-request chat_template_kwargs (highest priority)
+        if 'chat_template_kwargs' in inputs.extra_kwargs:
+            kwargs.update(inputs.extra_kwargs['chat_template_kwargs'])
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0

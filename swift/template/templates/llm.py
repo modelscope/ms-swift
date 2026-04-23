@@ -335,6 +335,73 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n',
         agent_template='hunyuan_hermes'))
 
+
+class Hy3Template(Template):
+    """Template for Tencent Hunyuan Hy3 models.
+
+    Handles the <｜reasoning_mode｜>reasoning_effort:xxx control token that tells
+    the model which reasoning mode to use. The reasoning_effort value is determined
+    by (in priority order):
+      1. Per-request chat_template_kwargs['reasoning_effort']
+      2. Template-level chat_template_kwargs['reasoning_effort'] (from CLI)
+      3. Derived from enable_thinking: True -> 'high', False -> 'no_think'
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set default reasoning_effort based on enable_thinking if not explicitly provided
+        if 'reasoning_effort' not in self.chat_template_kwargs:
+            self.chat_template_kwargs['reasoning_effort'] = 'high' if self.enable_thinking else 'no_think'
+
+    def _get_reasoning_effort(self, inputs=None):
+        """Determine reasoning_effort for the Hy3 model."""
+        # Per-request chat_template_kwargs take highest priority
+        if inputs:
+            ctk = inputs.extra_kwargs.get('chat_template_kwargs', {})
+            if 'reasoning_effort' in ctk:
+                return ctk['reasoning_effort']
+        # Template-level (includes default derived from enable_thinking)
+        return self.chat_template_kwargs.get('reasoning_effort', 'no_think')
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        reasoning_effort = self._get_reasoning_effort(inputs)
+        if inputs.tools:
+            # For tool calls, append reasoning_mode after </tool_calls> in the tool instruction
+            system = system.replace(
+                'you should print </tool_calls>',
+                f'you should print </tool_calls><｜reasoning_mode｜>reasoning_effort:{reasoning_effort}')
+        else:
+            # For non-tool calls, append reasoning_mode to the system/prefix area
+            mode_str = f'<｜reasoning_mode｜>reasoning_effort:{reasoning_effort}'
+            system = (system or '') + mode_str
+        return system
+
+    def _jinja_encode(self, inputs):
+        messages = inputs.messages.copy()
+        if inputs.system is None:
+            inputs.system = self.template_meta.default_system
+        if inputs.system is not None:
+            messages.insert(0, {'role': 'system', 'content': inputs.system})
+        if messages[-1]['content'] is None:
+            messages.pop()
+        add_generation_prompt = messages[-1]['role'] != 'assistant'
+        kwargs = {}
+        if inputs.tools:
+            kwargs['tools'] = inputs.tools
+        # Map enable_thinking to reasoning_effort string for jinja
+        kwargs['reasoning_effort'] = self._get_reasoning_effort(inputs)
+        # Merge additional chat_template_kwargs (excluding reasoning_effort already set)
+        for source in [self.chat_template_kwargs, inputs.extra_kwargs.get('chat_template_kwargs', {})]:
+            for k, v in source.items():
+                if k != 'reasoning_effort':
+                    kwargs[k] = v
+        text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
+        answer_len = 1 if self.is_training else 0
+        return [text], [1.], answer_len
+
+
 register_template(
     TemplateMeta(
         LLMTemplateType.hy3,
@@ -343,6 +410,7 @@ register_template(
         prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
         chat_sep=['<｜hy_eos｜>'],
         suffix=['<｜hy_eos｜>'],
+        template_cls=Hy3Template,
         is_thinking=True,
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
