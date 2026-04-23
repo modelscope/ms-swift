@@ -318,7 +318,7 @@ def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=N
     return model
 
 
-def _patch_modules_to_save_zero3(model):
+def _patch_modules_to_save_zero3():
     if getattr(ModulesToSaveWrapper, '_patched', False):
         return
     ModulesToSaveWrapper._patched = True
@@ -385,5 +385,5 @@ class TunerMixin:
             if args.galore_with_embedding:
                 args.galore_target_modules += find_embedding(model)
         if is_deepspeed_zero3_enabled():
-            _patch_modules_to_save_zero3(model)
+            _patch_modules_to_save_zero3()
         return model
