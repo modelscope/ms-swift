@@ -101,7 +101,7 @@ register_template(MoonlightTemplateMeta(MLLMTemplateType.kimi_vl, template_cls=K
 
 class KimiK25Template(Template):
     placeholder_tokens = ['<|media_pad|>', '<|kimi_k25_video_placeholder|>']
-    video_placeholder = ['<|kimi_k25_video_placeholder|>']
+    jinja_enable_thinking_key = 'thinking'
     use_model = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -228,8 +228,11 @@ class KimiK25Template(Template):
             image_features = model.mm_projector(image_features)
             inputs_embeds = inputs_embeds.to(image_features[0].dtype).clone()
             inputs_embeds, attention_mask, labels, position_ids = model._merge_input_ids_with_image_features(
-                image_features, inputs_embeds, input_ids,
-                inputs.get('attention_mask'), inputs.get('labels'),
+                image_features,
+                inputs_embeds,
+                input_ids,
+                inputs.get('attention_mask'),
+                inputs.get('labels'),
             )
             return {
                 'inputs_embeds': inputs_embeds,
@@ -257,7 +260,7 @@ register_template(
     MoonlightTemplateMeta(
         MLLMTemplateType.kimi_k25,
         template_cls=KimiK25Template,
-        default_system='You are Kimi, an AI assistant created by Moonshot AI.',
+        default_system=None,
         is_thinking=True,
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think></think>',

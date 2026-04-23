@@ -66,7 +66,6 @@ class KimiK25AgentTemplate(BaseAgentTemplate):
         for tool_message in tool_messages:
             tool_call_id = tool_message.get('tool_call_id', '')
             tool_content = tool_message['content']
-            res.append(
-                f'<|im_system|>tool<|im_middle|>## Return of {tool_call_id}\n{tool_content}<|im_end|>')
+            res.append(f'<|im_system|>tool<|im_middle|>## Return of {tool_call_id}\n{tool_content}<|im_end|>')
         res.append('<|im_assistant|>assistant<|im_middle|>')
         return assistant_content, res
