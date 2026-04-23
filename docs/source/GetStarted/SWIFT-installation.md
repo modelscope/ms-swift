@@ -149,7 +149,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | torch        | >=2.0        | 2.8.0/2.10.0         |                    |
 | transformers | >=4.33       | 4.57.6/5.5.4        |                    |
 | modelscope   | >=1.23       |                     |                    |
-| peft         | >=0.11,<0.19 |                     |                    |
+| peft         | >=0.11,<0.20 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
 | trl          | >=0.15,<0.30 | 0.29.1              | RLHF               |
 | deepspeed    | >=0.14       | 0.18.9              | 训练                 |
