@@ -56,6 +56,8 @@ from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels
 
 logger = get_logger()
 
+transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0')
+
 
 class SwiftMixin:
     FLASH_CKPT_WAIT_TIMEOUT = 1800
@@ -121,7 +123,7 @@ class SwiftMixin:
                 eval_dataset=eval_dataset,
                 **kwargs)
         # fix https://github.com/huggingface/transformers/pull/43919
-        if version.parse(transformers.__version__) >= version.parse('5.0.0'):
+        if transformers_5:
             self.accelerator.gradient_state.plugin_kwargs['num_steps'] = 1
         self._add_callbacks()
         if get_function(model.__class__.forward) is not get_function(model.forward):
@@ -200,9 +202,12 @@ class SwiftMixin:
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             base_model = self.template.get_base_model(self.model)
-            use_logits_to_keep = (not self.model.model_meta.is_multimodal
-                                  and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
-                                  and default_value)
+            if self.model.model_meta.is_multimodal and not transformers_5:
+                use_logits_to_keep = False
+            elif 'logits_to_keep' not in inspect.signature(base_model.forward).parameters:
+                use_logits_to_keep = False
+            else:
+                use_logits_to_keep = default_value
         logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
         return use_logits_to_keep
 
