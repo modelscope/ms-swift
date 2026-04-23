@@ -6,7 +6,6 @@ import warnings
 from typing import Optional
 
 import torch
-import copy
 
 from mindspeed.lite.ops.triton.chunk_delta_h import chunk_gated_delta_rule_bwd_dhu, chunk_gated_delta_rule_fwd_h
 from mindspeed.lite.ops.triton.chunk_o import chunk_bwd_dqkwg, chunk_bwd_dv_local, chunk_fwd_o
@@ -349,7 +348,7 @@ def chunk_gated_delta_rule(
     """
     if q.dtype != k.dtype or k.dtype != v.dtype:
         raise ValueError(
-            f"q current type is {q.dtype}, k current type is {k.dtype}, v current type is {v.dtype}, they should be equal"
+            f"q current type is {q.dtype} , k current type is {k.dtype} ,v current type is {v.dtype} , they should be equal"
         )
     if q.dtype == torch.float32:
         raise ValueError(
