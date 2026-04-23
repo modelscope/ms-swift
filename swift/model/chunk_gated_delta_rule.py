@@ -349,7 +349,7 @@ def chunk_gated_delta_rule(
     """
     if q.dtype != k.dtype or k.dtype != v.dtype:
         raise ValueError(
-            f"q current type is {q.dtype} , k current type is {k.dtype} ,v current type is {v.dtype} , they should are equal"
+            f"q current type is {q.dtype}, k current type is {k.dtype}, v current type is {v.dtype}, they should be equal"
         )
     if q.dtype == torch.float32:
         raise ValueError(
