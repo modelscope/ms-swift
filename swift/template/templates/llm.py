@@ -335,6 +335,20 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n',
         agent_template='hunyuan_hermes'))
 
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hy3,
+        prefix=['<｜hy_begin▁of▁sentence｜>'],
+        system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}'],
+        prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
+        chat_sep=['<｜hy_eos｜>'],
+        suffix=['<｜hy_eos｜>'],
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        agent_template='hy3'))
+
 
 class GptTemplate(Template):
     support_padding_free = False
