@@ -104,6 +104,12 @@ class KimiK25Template(Template):
     video_placeholder = ['<|kimi_k25_video_placeholder|>']
     use_model = True
 
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        if system is not None and '<|im_middle|>' not in system:
+            system = f'system<|im_middle|>{system}'
+        return system
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
@@ -257,6 +263,7 @@ register_template(
     MoonlightTemplateMeta(
         MLLMTemplateType.kimi_k25,
         template_cls=KimiK25Template,
+        system_prefix=['<|im_system|>{{SYSTEM}}<|im_end|>'],
         default_system='You are Kimi, an AI assistant created by Moonshot AI.',
         is_thinking=True,
         thinking_prefix='<think>\n',
