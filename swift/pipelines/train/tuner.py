@@ -3,7 +3,9 @@ import inspect
 import torch
 import transformers
 from packaging import version
+from peft.utils.other import ModulesToSaveWrapper
 from transformers import TrainingArguments
+from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import List, Union
 
 from swift.arguments import SftArguments
@@ -316,6 +318,21 @@ def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=N
     return model
 
 
+def _patch_modules_to_save_zero3(model):
+    if getattr(ModulesToSaveWrapper, '_patched', False):
+        return
+    ModulesToSaveWrapper._patched = True
+    __setattr__ = ModulesToSaveWrapper.__setattr__
+
+    def _patched_setattr(self, name, value):
+        __setattr__(self, name, value)
+        if name == 'ds_grads_remaining':
+            for module in self.modules_to_save.values():
+                module.ds_grads_remaining = value
+
+    ModulesToSaveWrapper.__setattr__ = _patched_setattr
+
+
 class TunerMixin:
 
     @classmethod
@@ -367,4 +384,6 @@ class TunerMixin:
                 args.galore_target_modules = find_all_linears(model)
             if args.galore_with_embedding:
                 args.galore_target_modules += find_embedding(model)
+        if is_deepspeed_zero3_enabled():
+            _patch_modules_to_save_zero3(model)
         return model
