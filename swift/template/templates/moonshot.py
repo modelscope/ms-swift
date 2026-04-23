@@ -104,6 +104,12 @@ class KimiK25Template(Template):
     jinja_enable_thinking_key = 'thinking'
     use_model = True
 
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        if system is not None and '<|im_middle|>' not in system:
+            system = f'system<|im_middle|>{system}'
+        return system
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
