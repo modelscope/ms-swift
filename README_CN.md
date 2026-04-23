@@ -137,9 +137,9 @@ uv pip install -e . --torch-backend=auto
 | python       | >=3.10        | 3.12            |                    |
 | cuda         |              | cuda12.8/12.9       | 使用cpu、npu、mps则无需安装 |
 | torch        | >=2.0        | 2.8.0/2.10.0         |                    |
-| transformers | >=4.33       | 4.57.6/5.5.4        |                    |
+| transformers | >=4.33       | 4.57.6/5.6.1        |                    |
 | modelscope   | >=1.23       |                     |                    |
-| peft         | >=0.11,<0.19 |                     |                    |
+| peft         | >=0.11,<0.20 |                     |                    |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
 | trl          | >=0.15,<0.30 | 0.29.1              | RLHF               |
 | deepspeed    | >=0.14       | 0.18.9              | 训练                 |

@@ -77,6 +77,7 @@
 - lr_warmup_iters: Number of iterations for linear learning rate warm-up, default is 0.
 - 🔥lr_warmup_fraction: The fraction of the linear learning rate warmup phase, defaults to None.
 - 🔥min_lr: Minimum value of the learning rate, clipping any learning rate below this threshold to this value, default is 0.
+  - Note: The `min_lr` for `vit_lr` is calculated as `vit_lr * min_lr / lr`, and the same applies to `min_lr` for `aligner_lr`.
 - lr_wsd_decay_style: The decay method for the WSD annealing phase. Defaults to 'exponential'.
 - lr_wsd_decay_iters: The number of iterations for learning rate decay. Defaults to None.
 
