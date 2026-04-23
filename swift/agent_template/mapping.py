@@ -4,6 +4,7 @@ from .extra import ReactGRPOAgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
                    GLM5_1AgentTemplate)
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
+from .kimi_k25 import KimiK25AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
 from .mistral import MistralAgentTemplate
@@ -43,4 +44,5 @@ agent_template_map = {
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate,
     'youtu': YoutuAgentTemplate,
+    'kimi_k25': KimiK25AgentTemplate,
 }
