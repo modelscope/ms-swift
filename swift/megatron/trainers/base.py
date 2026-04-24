@@ -969,6 +969,8 @@ class BaseMegatronTrainer(ABC):
             if 'attention_mask_2d' not in batch and batch.get('attention_mask') is not None:
                 batch['attention_mask_2d'] = (~batch['attention_mask']).sum(dim=(1, 2)) > 0
             batch['attention_mask'] = None
+        else:
+            batch['attention_mask'] = None
         if args.padding_free and text_position_ids is not None:
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples
