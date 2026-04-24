@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .deepseek_v3_1 import DeepSeekV31AgentTemplate
 from .extra import ReactGRPOAgentTemplate
-from .hy3 import Hy3AgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
                    GLM5_1AgentTemplate)
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
+from .hy3 import Hy3AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
 from .mistral import MistralAgentTemplate
