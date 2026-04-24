@@ -245,7 +245,7 @@ class ChunkGatedDeltaRuleFunction(torch.autograd.Function):
         do: torch.Tensor,
         dht: torch.Tensor
     ):
-        q, q_rstd, k, k_rstd, v, g, beta, A, initial_state, cu_seqlens= ctx.saved_tensors
+        q, q_rstd, k, k_rstd, v, g, beta, A, initial_state, cu_seqlens = ctx.saved_tensors
         dq, dk, dv, db, dg, dh0 = chunk_gated_delta_rule_bwd(
             q=q,
             k=k,

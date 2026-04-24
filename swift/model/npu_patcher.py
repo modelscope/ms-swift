@@ -43,6 +43,7 @@ def _import_optional_module(module_name: str) -> Any | None:
         logger.debug('Failed to import optional module %s: %s', module_name, exc)
         return None
 
+
 def _patch_transformers_flash_linear_attention_available() -> None:
     def _is_flash_linear_attention_available() -> bool:
         return True
@@ -82,6 +83,7 @@ def patch_qwen3_5_chunk_gated_delta_rule_with_mindspeed() -> None:
     if patched_modules:
         logger.info('Patched Qwen3.5 chunk_gated_delta_rule to embedded MindSpeed implementation: %s.',
                     ', '.join(patched_modules))
+
 
 def patch_mindspeed_te_cp_implementation(megatron_args: dict[str, Any]) -> None:
     """
@@ -431,6 +433,7 @@ def _setattr_path(root: Any, path: str, value: Any) -> None:
 def _apply_patch_map(root: Any, patch_map: dict[str, Any]) -> None:
     for path, value in patch_map.items():
         _setattr_path(root, path, value)
+
 
 modeling_qwen3_5 = _import_optional_module('transformers.models.qwen3_5.modeling_qwen3_5')
 if modeling_qwen3_5 is not None:
