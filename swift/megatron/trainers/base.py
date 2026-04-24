@@ -22,8 +22,8 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 from modelscope import check_local_model_is_latest
 from packaging import version
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
 from transformers.utils import is_torch_npu_available
+from typing import Callable, Dict, List, Optional
 
 from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
@@ -948,14 +948,8 @@ class BaseMegatronTrainer(ABC):
         pass
 
     def _should_use_npu_generated_attention_mask(self, args) -> bool:
-        return (
-            is_torch_npu_available()
-            and
-            args.task_type == 'causal_lm'
-            and not args.padding_free
-            and getattr(args, 'attention_backend', None) != 'local'
-            and getattr(args, 'use_flash_attn', False)
-        )
+        return (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
+                and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
 
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         batch = get_batch_on_this_pp_rank(self.args, data, vp_stage=vp_stage)
