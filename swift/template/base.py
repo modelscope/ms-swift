@@ -122,13 +122,7 @@ class Template(ProcessorMixin):
             template_meta.default_system = default_system
         if enable_thinking is None:
             enable_thinking = template_meta.is_thinking
-        if response_prefix is None:
-            if use_chat_template:
-                response_prefix = (
-                    template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix)
-            else:
-                response_prefix = ''
-        self.response_prefix = response_prefix
+        self._response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
@@ -160,6 +154,17 @@ class Template(ProcessorMixin):
 
         if processor is not None:
             self.init_processor(processor)
+
+    @property
+    def response_prefix(self):
+        if self._response_prefix is not None:
+            return self._response_prefix
+        elif not self.use_chat_template:
+            return ''
+        elif self.enable_thinking:
+            return self.template_meta.thinking_prefix
+        else:
+            return self.template_meta.non_thinking_prefix
 
     def init_env_args(self):
         if self.model_meta.is_multimodal:
