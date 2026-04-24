@@ -30,14 +30,13 @@ class Hy3AgentTemplate(BaseAgentTemplate):
             if not name_match:
                 continue
             name = name_match.group(1).strip()
-            # Extract arg_key/arg_value pairs
-            keys = re.findall(r'<arg_key>(.*?)</arg_key>', block, re.DOTALL)
-            values = re.findall(r'<arg_value>(.*?)</arg_value>', block, re.DOTALL)
+            # Extract arg_key/arg_value pairs together to avoid misalignment
+            pairs = re.findall(
+                r'<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>', block, re.DOTALL)
             arguments = {}
-            for k, v in zip(keys, values):
+            for k, v in pairs:
                 k = k.strip()
                 v = v.strip()
-                # Try to parse value as JSON for non-string types
                 parsed = self._parse_json(v)
                 arguments[k] = parsed if parsed is not None else v
             functions.append(Function(name=name, arguments=arguments))
