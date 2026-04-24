@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import accelerate.utils.fsdp_utils as fsdp_utils
 import fcntl
-from functools import wraps
 import importlib
 import os
 import torch
 import torch.nn.functional as F
 import torch_npu
 from accelerate.accelerator import Accelerator
+from functools import wraps
 from torch import nn
 from transformers.models.qwen2 import modeling_qwen2
 from transformers.models.qwen3 import modeling_qwen3
@@ -45,6 +45,7 @@ def _import_optional_module(module_name: str) -> Any | None:
 
 
 def _patch_transformers_flash_linear_attention_available() -> None:
+
     def _is_flash_linear_attention_available() -> bool:
         return True
 
@@ -54,8 +55,7 @@ def _patch_transformers_flash_linear_attention_available() -> None:
 
     transformers_import_utils = _import_optional_module('transformers.utils.import_utils')
     if transformers_import_utils is not None:
-        setattr(transformers_import_utils, 'is_flash_linear_attention_available',
-                _is_flash_linear_attention_available)
+        setattr(transformers_import_utils, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
 
 
 def patch_qwen3_5_chunk_gated_delta_rule_with_mindspeed() -> None:
