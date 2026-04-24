@@ -66,7 +66,7 @@ class Hy3AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
-        res = ['<｜hy_eos｜>', self._get_tool_responses(tool_messages)]
+        res = ['<｜hy_eos｜>', self._get_tool_responses(tool_messages), '<｜hy_Assistant｜>']
         return assistant_content, res
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
