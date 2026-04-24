@@ -320,21 +320,18 @@ def chunk_gated_delta_rule(
     """
     if q.dtype != k.dtype or k.dtype != v.dtype:
         raise ValueError(
-            f'q current type is {q.dtype}, k current type is {k.dtype}, v current type is {v.dtype}, they should be equal'
-        )
+            f'q current type is {q.dtype}, k current type is {k.dtype}, v current type is {v.dtype}, should be equal')
     if q.dtype == torch.float32:
         raise ValueError('ChunkGatedDeltaRuleFunction does not support float32. Please use bfloat16.')
     if len(beta.shape) != 3:
-        raise ValueError(
-            f'beta current shape len is {len(beta.shape)}, beta must be of shape [B, T, H] if head_first=False, or [B, H, T] otherwise.'
-        )
-
+        raise ValueError(f'beta current shape len is {len(beta.shape)}, beta must be of shape [B, T, H] '
+                         f'if head_first=False, or [B, H, T] otherwise.')
     if head_first:
         warnings.warn('head_first is deprecated and will be removed in a future version. '
                       'Please use head_first=False for now instead.')
     if not head_first and q.shape[1] < q.shape[2]:
         warnings.warn(
-            f'Input tensor shape suggests potential format mismatch: seq_len ({q.shape[1]}) < num_heads ({q.shape[2]}). '
+            f'Input tensor shape suggests format mismatch: seq_len ({q.shape[1]}) < num_heads ({q.shape[2]}). '
             'This may indicate the inputs were passed in head-first format [B, H, T, ...] '
             'when head_first=False was specified. '
             'Please verify your input tensor format matches the expected shape [B, T, H, ...].')
