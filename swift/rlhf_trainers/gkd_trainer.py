@@ -654,18 +654,19 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # corresponding response positions in the local sequence grid.
         logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32)
         indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long)
-        resp_counts = (labels != -100).sum(dim=1).tolist()
+        resp_mask = labels != -100
+        resp_counts = resp_mask.sum(dim=1).tolist()
 
         for idx in range(batch_size):
             vllm_out_len = vllm_seq_lens[idx] - 1
             resp_count = resp_counts[idx]
-            # Number of response logprobs to copy (capped by what vLLM returned)
             n = min(resp_count, vllm_out_len, out_len)
             if n <= 0:
                 continue
-            # Source: tail of vLLM logprobs; Dest: tail of local sequence
-            logprobs_out[idx, out_len - n:out_len] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
-            indices_out[idx, out_len - n:out_len] = indices_raw[idx, vllm_out_len - n:vllm_out_len]
+            resp_end = resp_mask[idx].nonzero()[-1].item() + 1
+            dest_end = min(resp_end, out_len)
+            logprobs_out[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
+            indices_out[idx, dest_end - n:dest_end] = indices_raw[idx, vllm_out_len - n:vllm_out_len]
 
         return logprobs_out.to(input_ids.device), indices_out.to(input_ids.device)
 

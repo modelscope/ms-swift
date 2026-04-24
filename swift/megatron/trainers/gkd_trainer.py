@@ -382,14 +382,17 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                                                   dtype=torch.float32,
                                                   device=device)
                     teacher_indices = torch.zeros(batch_size, out_len, topk, dtype=torch.long, device=device)
-                    resp_counts = (labels != -100).sum(dim=1).tolist()
+                    resp_mask = labels != -100
+                    resp_counts = resp_mask.sum(dim=1).tolist()
                     for idx in range(batch_size):
                         vllm_out_len = vllm_seq_lens[idx] - 1
                         n = min(resp_counts[idx], vllm_out_len, out_len)
                         if n <= 0:
                             continue
-                        teacher_logprobs[idx, out_len - n:out_len] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
-                        teacher_indices[idx, out_len - n:out_len] = indices_raw[idx, vllm_out_len - n:vllm_out_len]
+                        resp_end = resp_mask[idx].nonzero()[-1].item() + 1
+                        dest_end = min(resp_end, out_len)
+                        teacher_logprobs[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
+                        teacher_indices[idx, dest_end - n:dest_end] = indices_raw[idx, vllm_out_len - n:vllm_out_len]
                 # Pad from [B, seq_len-1, topk] to [B, seq_len, topk] to match student logits shape
                 teacher_logprobs = F.pad(teacher_logprobs, (0, 0, 0, 1), value=float('-inf'))
                 teacher_indices = F.pad(teacher_indices, (0, 0, 0, 1), value=0)
