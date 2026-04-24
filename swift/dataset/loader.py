@@ -29,7 +29,7 @@ class DatasetLoader(BaseDatasetLoader):
         strict: bool = False,
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
         columns: Optional[Dict[str, str]] = None,
-        remove_unused_columns: bool = True,
+        remove_unused_columns: bool = False,
     ):
         self.num_proc = num_proc
         self.load_from_cache_file = load_from_cache_file
@@ -220,7 +220,7 @@ def load_dataset(
     strict: bool = False,
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     columns: Optional[Dict[str, str]] = None,  # columns_mapping
-    remove_unused_columns: bool = True,
+    remove_unused_columns: bool = False,
     # self-cognition
     model_name: Optional[Union[Tuple[str, str], List[str]]] = None,  # zh, en
     model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
@@ -266,7 +266,7 @@ def load_dataset(
         columns: Manual column name mapping for datasets. Dictionary mapping source column
             names to target column names (e.g., {'text': 'content'}). Default: None.
         remove_unused_columns: Whether to remove columns not used in preprocessing.
-            Helps reduce memory usage. Default: True.
+            Helps reduce memory usage. Default: False.
         model_name: Model name for self-cognition task preprocessing. Can be a tuple of
             (Chinese_name, English_name) or list of names. Default: None.
         model_author: Model author for self-cognition task preprocessing. Can be a tuple of

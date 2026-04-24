@@ -81,7 +81,7 @@
   - 通常在使用hub端数据集报错时设置为`--download_mode force_redownload`。
 - columns: 用于对数据集进行列映射，使数据集满足AutoPreprocessor可以处理的样式，AutoPreprocessor可以处理的数据集格式查看[自定义数据集文档](../Customization/Custom-dataset.md)。你可以传入json字符串，例如：`'{"text1": "query", "text2": "response"}'`，代表将数据集中的"text1"映射为"query"，"text2"映射为"response"，而query-response格式可以被AutoPreprocessor处理。默认为None。
 - strict: 如果为True，则数据集只要某行有问题直接抛错，否则会丢弃出错数据样本。默认False。该参数通常用于排查错误。
-- 🔥remove_unused_columns: 是否删除数据集中不被使用的列，默认为True。
+- 🔥remove_unused_columns: 是否删除数据集中不被使用的列，默认为False。
   - 若该参数设置为False，则将额外的数据集列传递至trainer的`compute_loss`函数内，**方便自定义损失函数使用额外的数据集列**。
   - GRPO该参数的默认值为False。
 - 🔥model_name: **仅用于自我认知任务**，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{NAME}}`通配符。传入模型中文名和英文名，以空格分隔，例如：`--model_name 小黄 'Xiao Huang'`。默认为None。

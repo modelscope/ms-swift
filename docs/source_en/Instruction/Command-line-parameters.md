@@ -80,7 +80,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - Typically set to `--download_mode force_redownload` when encountering errors with hub datasets.
 - columns: Used to map dataset column names so that the dataset conforms to the format accepted by `AutoPreprocessor`. See [Custom Dataset Documentation](../Customization/Custom-dataset.md) for supported formats. You can pass a JSON string, e.g., `'{"text1": "query", "text2": "response"}'`, meaning column `"text1"` is mapped to `"query"` and `"text2"` to `"response"`, which `AutoPreprocessor` can process. Default is `None`.
 - strict: If `True`, any malformed row in the dataset will raise an error; otherwise, erroneous samples are dropped. Default is `False`. This is typically used for debugging.
-- 🔥remove_unused_columns: Whether to remove unused columns from the dataset. Default is `True`.
+- 🔥remove_unused_columns: Whether to remove unused columns from the dataset. Default is `False`.
   - If set to `False`, extra columns are passed to the trainer's `compute_loss` function, **facilitating custom loss functions that use additional dataset columns**.
   - Default value is `False` for GRPO.
 - 🔥model_name: **Used only for self-cognition tasks**, and only affects the `swift/self-cognition` dataset. Replaces the `{{NAME}}` placeholder in the dataset. Provide the model's Chinese and English names, separated by space, e.g., `--model_name 小黄 'Xiao Huang'`. Default is `None`.

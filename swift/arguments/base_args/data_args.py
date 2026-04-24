@@ -60,7 +60,7 @@ class DataArguments:
             sample and continues. Typically used for debugging. Defaults to False.
         remove_unused_columns (bool): Whether to remove columns not used by the model. If `False`, extra columns are
             passed to the trainer's `compute_loss` function, which is useful for custom loss calculations.
-            Defaults to True. Note: The default is `False` for GPRO.
+            Defaults to False.
         model_name (Optional[List[str]]): For self-cognition tasks, replaces the `{{NAME}}` placeholder in the
             `swift/self-cognition` dataset. Pass Chinese and English names.
             Example: `--model_name 小黄 'Xiao Huang'`. Defaults to None.
@@ -89,7 +89,7 @@ class DataArguments:
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists'
     columns: Optional[Union[dict, str]] = None
     strict: bool = False
-    remove_unused_columns: bool = True
+    remove_unused_columns: bool = False
     # Chinese name and English name
     model_name: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['魔搭', 'ModelScope']"})

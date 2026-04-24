@@ -63,7 +63,7 @@ def get_template(
     agent_template: Optional[str] = None,
     norm_bbox: Literal['norm1000', 'none', None] = None,
     use_chat_template: bool = True,
-    remove_unused_columns: bool = True,
+    remove_unused_columns: bool = False,
     padding_side: Literal['left', 'right'] = 'right',
     # train
     padding_free: bool = False,
@@ -126,7 +126,7 @@ def get_template(
             format. If False, uses a simpler generation-only template without chat structure.
             Defaults to True.
         remove_unused_columns (bool, optional): Whether to remove dataset columns not used
-            by the model during data processing. Helps reduce memory usage. Defaults to True.
+            by the model during data processing. Helps reduce memory usage. Defaults to False.
         padding_side (Literal['left', 'right'], optional): Side to add padding tokens:
             - 'left': Pad on the left (useful for batched inference)
             - 'right': Pad on the right (standard for training)

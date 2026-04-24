@@ -82,7 +82,7 @@ class Template(ProcessorMixin):
         agent_template: Optional[str] = None,
         norm_bbox: Literal['norm1000', 'none', None] = None,
         use_chat_template: bool = True,
-        remove_unused_columns: bool = True,
+        remove_unused_columns: bool = False,
         padding_side: Literal['left', 'right'] = 'right',
         # only for train
         padding_free: bool = False,
