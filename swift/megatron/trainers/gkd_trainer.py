@@ -387,8 +387,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     for idx in range(batch_size):
                         vllm_out_len = vllm_seq_lens[idx] - 1
                         n = min(resp_counts[idx], vllm_out_len, out_len)
-                        if n <= 0:
-                            continue
                         resp_end = resp_mask[idx].nonzero()[-1].item() + 1
                         dest_end = min(resp_end, out_len)
                         teacher_logprobs[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]

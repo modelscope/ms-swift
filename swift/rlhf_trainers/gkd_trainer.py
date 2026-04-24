@@ -661,8 +661,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             vllm_out_len = vllm_seq_lens[idx] - 1
             resp_count = resp_counts[idx]
             n = min(resp_count, vllm_out_len, out_len)
-            if n <= 0:
-                continue
             resp_end = resp_mask[idx].nonzero()[-1].item() + 1
             dest_end = min(resp_end, out_len)
             logprobs_out[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
@@ -985,8 +983,9 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0, mm_raw_i
             for multimodal chat completions. When provided, text-only path is skipped.
 
     Returns:
-        (logprobs, indices) tensors of shape [batch, max_seq_len - 1, topk].
+        (logprobs, indices, vllm_seq_lens) tensors of shape [batch, max_seq_len - 1, topk].
         For multimodal, max_seq_len is the max vLLM tokenized length across the batch.
+        vllm_seq_lens is the length of the vLLM tokenized sequence for each sample.
     """
     from concurrent.futures import ThreadPoolExecutor
 
