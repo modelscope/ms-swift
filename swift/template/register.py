@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import os
-from typing import TYPE_CHECKING, Any, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Dict, Literal, Optional
 
 from swift.utils import Processor
 from .base import Template
