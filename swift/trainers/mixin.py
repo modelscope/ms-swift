@@ -59,6 +59,21 @@ logger = get_logger()
 transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0')
 
 
+def _get_peft_selected_adapters(model: PeftModel) -> List[str]:
+    """Resolve active adapter name(s) for PeftModel.save_pretrained(selected_adapters=...).
+
+    When users pass a custom adapter_name (e.g. 'vision_only_lora') to Swift.prepare_model,
+    we must pass the same name(s) to save_pretrained; otherwise PEFT raises because
+    supported adapter names do not include 'default'. See: gh#8336.
+    """
+    active = getattr(model, 'active_adapter', None) or getattr(model, 'active_adapters', None)
+    if active is None:
+        return ['default']
+    if isinstance(active, str):
+        return [active]
+    return list(active)
+
+
 class SwiftMixin:
     FLASH_CKPT_WAIT_TIMEOUT = 1800
 
@@ -291,7 +306,7 @@ class SwiftMixin:
             if isinstance(_unwrap_model, supported_classes):
                 save_kwargs = {'state_dict': state_dict, 'max_shard_size': self.args.max_shard_size}
                 if isinstance(_unwrap_model, PeftModel):
-                    save_kwargs['selected_adapters'] = ['default']
+                    save_kwargs['selected_adapters'] = _get_peft_selected_adapters(_unwrap_model)
                 if use_flash_ckpt:
                     _unwrap_model.save_pretrained(
                         output_dir,
@@ -328,7 +343,7 @@ class SwiftMixin:
             if self.model.__class__.__name__ != 'SentenceTransformer':
                 save_kwargs = {'state_dict': state_dict, 'max_shard_size': self.args.max_shard_size}
                 if isinstance(self.model, PeftModel):
-                    save_kwargs['selected_adapters'] = ['default']
+                    save_kwargs['selected_adapters'] = _get_peft_selected_adapters(self.model)
                 if use_flash_ckpt:
                     self.model.save_pretrained(
                         output_dir,
