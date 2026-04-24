@@ -31,8 +31,7 @@ class Hy3AgentTemplate(BaseAgentTemplate):
                 continue
             name = name_match.group(1).strip()
             # Extract arg_key/arg_value pairs together to avoid misalignment
-            pairs = re.findall(
-                r'<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>', block, re.DOTALL)
+            pairs = re.findall(r'<arg_key>(.*?)</arg_key>\s*<arg_value>(.*?)</arg_value>', block, re.DOTALL)
             arguments = {}
             for k, v in pairs:
                 k = k.strip()
