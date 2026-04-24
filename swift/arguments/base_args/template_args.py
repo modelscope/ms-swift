@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import json
 import os
 from dataclasses import dataclass, field
 from typing import Literal, Optional
