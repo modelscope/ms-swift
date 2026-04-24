@@ -652,8 +652,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Multimodal: vLLM seq lengths may differ from local encode. Align by resp_count:
         # take the last resp_count logprobs from vLLM output and place them at the
         # corresponding response positions in the local sequence grid.
-        logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32)
-        indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long)
+        device = input_ids.device
+        logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32, device=device)
+        indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long, device=device)
         resp_mask = labels != -100
         resp_counts = resp_mask.sum(dim=1).tolist()
 
@@ -661,12 +662,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             vllm_out_len = vllm_seq_lens[idx] - 1
             resp_count = resp_counts[idx]
             n = min(resp_count, vllm_out_len, out_len)
-            resp_end = resp_mask[idx].nonzero()[-1].item() + 1
-            dest_end = min(resp_end, out_len)
-            logprobs_out[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
-            indices_out[idx, dest_end - n:dest_end] = indices_raw[idx, vllm_out_len - n:vllm_out_len]
+            if n <= 0:
+                continue
+            # logprobs[i] predicts token[i+1], so response ending at labels position
+            # resp_end aligns with logprobs position resp_end - 1.
+            dest_end = min(resp_mask[idx].nonzero()[-1].item(), out_len)
+            logprobs_out[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len].to(device)
+            indices_out[idx, dest_end - n:dest_end] = indices_raw[idx, vllm_out_len - n:vllm_out_len].to(device)
 
-        return logprobs_out.to(input_ids.device), indices_out.to(input_ids.device)
+        return logprobs_out, indices_out
 
     def prediction_step(self, model, inputs, *args, **kwargs):
         # Prediction uses full messages
