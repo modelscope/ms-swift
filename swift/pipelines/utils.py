@@ -2,7 +2,6 @@
 import numpy as np
 import os
 from datasets import load_from_disk
-from tqdm import tqdm
 
 from swift.dataset import DatasetSyntax, sample_dataset
 from swift.template import update_generation_config_eos_token
@@ -52,22 +51,19 @@ def _select_dataset(args, dataset):
     if 'length' in dataset.column_names and 'lengths' not in dataset.column_names:
         # Compatible with ms-swift 3.x cache_dataset
         dataset = dataset.rename_column('length', 'lengths')
+    max_length = args.max_length
     if args.truncation_strategy == 'delete':
+        lengths = dataset['lengths']
         idxs = [
-            i for i, length in enumerate(tqdm(dataset['lengths']))
-            if (max(length) if isinstance(length, list) else length) <= args.max_length
+            i for i, length in enumerate(lengths) if (max(length) if isinstance(length, list) else length) <= max_length
         ]
         new_dataset = dataset.select(idxs)
     else:
-
-        def func(rows):
-            lengths = rows['lengths']
-            for i, length in enumerate(lengths):
-                lengths[i] = [min(len_, args.max_length) for len_ in length]
-            return {'lengths': lengths}
-
         new_dataset = dataset.map(
-            func, num_proc=args.dataset_num_proc, load_from_cache_file=args.load_from_cache_file, batched=True)
+            lambda rows: {'lengths': [[min(length, max_length) for length in lengths] for lengths in rows['lengths']]},
+            num_proc=args.dataset_num_proc,
+            load_from_cache_file=args.load_from_cache_file,
+            batched=True)
     if len(new_dataset) < len(dataset):
         logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(new_dataset)}')
     return new_dataset
