@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, 
 from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
-from .vision_utils import load_audio, load_batch, load_image, rescale_image
+from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
@@ -313,16 +313,10 @@ class Template(ProcessorMixin):
         # passed as raw strings to model-specific templates. Templates that delegate
         # media loading to HF processors (e.g. Gemma4) need resolved absolute paths.
         if self.root_image_dir:
-            for i, video in enumerate(inputs.videos):
-                if isinstance(video, str) and not os.path.isfile(video) and not video.startswith('http'):
-                    resolved = os.path.join(self.root_image_dir, video)
-                    if os.path.isfile(resolved):
-                        inputs.videos[i] = resolved
-            for i, audio in enumerate(inputs.audios):
-                if isinstance(audio, str) and not os.path.isfile(audio) and not audio.startswith('http'):
-                    resolved = os.path.join(self.root_image_dir, audio)
-                    if os.path.isfile(resolved):
-                        inputs.audios[i] = resolved
+            for media_list in (inputs.videos, inputs.audios):
+                for i, media_file in enumerate(media_list):
+                    if isinstance(media_file, str) and not media_file.startswith('http'):
+                        media_list[i] = _check_path(media_file) or media_file
 
         if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
