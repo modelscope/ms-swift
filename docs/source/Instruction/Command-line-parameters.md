@@ -95,7 +95,7 @@
 - 🔥max_length: 限制单数据集样本经过`tokenizer.encode`后的tokens最大长度，超过的数据样本会根据`truncation_strategy`参数进行处理（避免训练OOM）。默认为None，即设置为模型支持的tokens最大长度(max_model_len)。
   - 当PPO、GRPO、GKD和推理情况下，`max_length`代表`max_prompt_length`。
 - truncation_strategy: 如果单样本的tokens超过`max_length`如何处理，支持'delete'、'left'、'right'和'split'，代表删除、左侧裁剪、右侧裁剪和切成多条数据样本，默认为'delete'。
-  - 注意：`--truncation_strategy split`只支持预训练时使用，即`swift/megatron pt`场景下，该策略会将超长字段切成多条数据样本，从而避免tokens浪费。（该特性不兼容cached_dataset）
+  - 注意：`--truncation_strategy split`只支持预训练时使用，即`swift/megatron pt`场景下，该策略会将超长字段切成多条数据样本，从而避免tokens浪费。（若与`cached_dataset`一起使用，必须确保数据集导出和训练时都设置了`--truncation_strategy split`。）
   - 注意：若多模态模型的训练时将'truncation_strategy'设置为`left`或`right`，**ms-swift会保留所有的image_token等多模态tokens**，这可能会导致训练时OOM。
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。

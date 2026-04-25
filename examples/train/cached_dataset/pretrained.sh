@@ -4,6 +4,8 @@ swift export \
     --dataset 'AI-ModelScope/ruozhiba:all' \
     --dataset_num_proc 64 \
     --to_cached_dataset true \
+    --truncation_strategy split \
+    --max_length 8192 \
     --split_dataset_ratio 0.01 \
     --use_chat_template false \
     --loss_scale all \
@@ -17,6 +19,7 @@ swift pt \
     --tuner_type full \
     --cached_dataset './pretrain_cached_dataset/train' \
     --cached_val_dataset './pretrain_cached_dataset/val' \
+    --truncation_strategy split \
     --num_train_epochs 3 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 1 \
