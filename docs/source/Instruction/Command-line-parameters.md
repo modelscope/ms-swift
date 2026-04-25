@@ -123,6 +123,7 @@
   - 'all': 计算所有tokens的损失。（**`swift pt`默认为该值**）
   - 'ignore_empty_think': 忽略空的`'<think>\n\n</think>\n\n'`损失计算。（满足正则匹配`'<think>\\s*</think>\\s*'`即可）。
   - 'react', 'hermes', 'qwen': 将`tool_call`部分的loss权重调整为2。
+- is_binary_loss_scale: 当loss_scale只可能为0/1时，该语义可被labels替代，将loss_scale为0的部分的labels设置为-100，从而兼容liger_kernel降低显存。默认为None，进行自动设置。
 - sequence_parallel_size: 序列并行大小，默认是1。当前支持CPT/SFT/DPO/GRPO。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
 - template_backend: 选择template后端，可选为'swift'、'jinja'，默认为'swift'。如果使用jinja，则使用transformers的`apply_chat_template`。
   - 注意：jinja的template后端只支持推理，不支持训练（无法确定损失计算的tokens范围）。
