@@ -22,7 +22,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
 
     pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
     pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
-    pip uninstall autoawq -y
+    pip uninstall autoawq auto-gptq -y
     pip install optimum
     pip install diffusers
     pip install "transformers<5.0"
