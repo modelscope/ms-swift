@@ -64,6 +64,19 @@ class AsyncGenerateCallback(TrainerCallback):
         self.trainer._prefetch(train_dataloader)
 
 
+class SyncRefModelCallback(TrainerCallback):
+
+    def __init__(self, trainer: 'RolloutTrainerMixin'):
+        self.trainer = trainer
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if self.trainer.ref_model is None:
+            return
+        if state.global_step % args.ref_model_sync_steps != 0:
+            return
+        self.trainer._sync_ref_model_weights(args.ref_model_mixup_alpha)
+
+
 class RolloutTrainerMixin(RLHFTrainerMixin):
     """
     Mixin for RLHF trainers that use rollout-based methods (e.g., GRPO, GKD).
@@ -93,6 +106,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self._prepare_scheduler()
         self._prepare_vllm()
         self._prepare_async_generate()
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
     def _prepare_rollout_params(self):
         """Initialize rollout generation parameters"""
@@ -138,6 +152,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.vllm_use_async_engine = False
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        # split model parameters into batches for synchronized weight transfer / ref sync
         if not args.use_vllm:
             return
 
@@ -148,9 +163,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
             raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
                              'please update vLLM to 0.10.2 or later.')
-
-        # split model parameters into batches for synchronized weight transfer
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
         if self.vllm_mode == 'server':
             if self.accelerator.is_main_process:
@@ -716,6 +728,46 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.base_sync_done = True
             if self.rollout_enable_lora:
                 self._move_adapter_to_vllm()
+
+    @torch.no_grad()
+    def _sync_ref_model_weights(self, alpha: float) -> None:
+        policy = self.accelerator.unwrap_model(self.model)
+        ref = self.accelerator.unwrap_model(self.ref_model)
+        policy_named = dict(policy.named_parameters())
+        ref_named = dict(ref.named_parameters())
+
+        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
+        zero3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+
+        def _mix_inplace(ref_p: torch.Tensor, pol_p: torch.Tensor) -> None:
+            ref_p.data.mul_(1.0 - alpha).add_(pol_p.data, alpha=alpha)
+
+        if zero3:
+            import deepspeed
+
+        for parameter_group in self.parameter_groups:
+            names = [n for n in (parameter_group or []) if n in policy_named]
+            if not names:
+                continue
+
+            params_to_update = []
+            for n in names:
+                if n not in ref_named:
+                    raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
+                params_to_update.append((ref_named[n], policy_named[n]))
+
+            if zero3:
+                ref_params = [p[0] for p in params_to_update]
+                policy_params = [p[1] for p in params_to_update]
+                to_gather = policy_params + ref_params
+                # modifier_rank=0 matches TRL; only rank 0 applies the mix inside GatheredParameters.
+                with deepspeed.zero.GatheredParameters(to_gather, modifier_rank=0):
+                    if deepspeed.comm.get_rank() == 0:
+                        for rp, pp in params_to_update:
+                            _mix_inplace(rp, pp)
+            else:
+                for rp, pp in params_to_update:
+                    _mix_inplace(rp, pp)
 
     def _rollout(self,
                  inputs: Optional[DataType],
