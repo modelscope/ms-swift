@@ -71,6 +71,12 @@ jobs:
         run: git lfs checkout
       - name: Run unittest
         shell: bash
+        env:
+          UV_INDEX_URL: "http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple"
+          UV_EXTRA_INDEX_URL: "https://mirrors.huaweicloud.com/ascend/repos/pypi"
+          UV_INDEX_STRATEGY: "unsafe-best-match"
+          UV_NO_CACHE: 1
+          UV_SYSTEM_PYTHON: 1
         run: |
           set -e
           source /mnt/modelscope/ci_env.sh
