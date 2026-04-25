@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, 
 from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
-from .vision_utils import load_audio, load_batch, load_image, rescale_image
+from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
@@ -322,6 +322,16 @@ class Template(ProcessorMixin):
                 if isinstance(image, Image.Image):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
+
+        # Resolve video/audio paths with ROOT_IMAGE_DIR.
+        # Image paths are resolved by _load_image above, but video/audio paths are
+        # passed as raw strings to model-specific templates. Templates that delegate
+        # media loading to HF processors (e.g. Gemma4) need resolved absolute paths.
+        if self.root_image_dir:
+            for media_list in (inputs.videos, inputs.audios):
+                for i, media_file in enumerate(media_list):
+                    if isinstance(media_file, str) and not media_file.startswith('http'):
+                        media_list[i] = _check_path(media_file) or media_file
 
         if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
