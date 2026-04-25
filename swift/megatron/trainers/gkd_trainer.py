@@ -453,7 +453,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if teacher_global_batch is not None:
                 teacher_slice = teacher_global_batch[start_idx:end_idx]
                 encoded_batch['opsd_teacher_batch'] = self._encode_batch(teacher_slice)
-                if raw_batches is not None:
+                if self.use_teacher_api:
                     encoded_batch['opsd_teacher_messages'] = [deepcopy(td['messages']) for td in teacher_slice]
             encoded_batches.append(encoded_batch)
             if self.use_teacher_api:

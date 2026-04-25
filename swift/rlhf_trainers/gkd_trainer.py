@@ -17,6 +17,7 @@ from transformers import PreTrainedModel
 from trl import SFTTrainer as HFSFTTrainer
 from typing import Dict, Optional, Union
 
+from swift.infer_engine import InferClient, InferRequest, RequestConfig
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response, to_device,
@@ -1016,7 +1017,6 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0, mm_raw_i
     def _fetch_one(idx):
         try:
             if mm_raw_inputs is not None and mm_raw_inputs[idx] is not None:
-                from swift.infer_engine import InferClient, InferRequest, RequestConfig
                 raw = mm_raw_inputs[idx]
                 infer_request = InferRequest(
                     **{k: raw[k]
