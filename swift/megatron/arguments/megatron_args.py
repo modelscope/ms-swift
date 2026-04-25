@@ -303,8 +303,6 @@ class RLHFMegatronArgumentsMixin:
 
         _check_not_supported()
         _check_batch_params()
-        self.remove_unused_columns = False
-        logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'left'
         if self.truncation_strategy not in {'left', 'delete'}:

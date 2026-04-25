@@ -340,8 +340,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             set_default_ddp_config()
         if self.async_generate or not self.use_vllm or self.vllm_mode == 'server':
             self.sleep_level = 0
-        self.remove_unused_columns = False
-        logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'left'
         if self.truncation_strategy not in {'left', 'delete'}:

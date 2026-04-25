@@ -316,7 +316,7 @@ class Qwen2VLTemplate(Template):
             # ref: https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': inputs.images[index]}, **kwargs)
+            inputs.images[index] = fetch_image({'image': inputs.images[index], **inputs.chat_template_kwargs}, **kwargs)
             if self.mode == 'lmdeploy':
                 return ['<|vision_start|>', [-100], '<|vision_end|>']
             else:
@@ -325,7 +325,7 @@ class Qwen2VLTemplate(Template):
             if self.version == 'v3':
                 kwargs['return_video_metadata'] = True
             video = inputs.videos[index]
-            video_inputs = {'video': video}
+            video_inputs = {'video': video, **inputs.chat_template_kwargs}
             if isinstance(video, list):  # image list
                 from qwen_vl_utils import vision_process
                 video_inputs['sample_fps'] = vision_process.FPS
@@ -652,7 +652,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             # https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
         if media_type == 'image':
-            inputs.images[index] = fetch_image({'image': inputs.images[index]}, **kwargs)
+            inputs.images[index] = fetch_image({'image': inputs.images[index], **inputs.chat_template_kwargs}, **kwargs)
             if self.version == 'omni_v2_5':
                 return ['<|vision_bos|><|IMAGE|><|vision_eos|>']
             elif self.version == 'omni_v3':
@@ -666,7 +666,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            _video = fetch_video({'video': video}, **kwargs)
+            _video = fetch_video({'video': video, **inputs.chat_template_kwargs}, **kwargs)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video

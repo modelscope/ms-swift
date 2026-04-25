@@ -83,7 +83,15 @@
 - strict: 如果为True，则数据集只要某行有问题直接抛错，否则会丢弃出错数据样本。默认False。该参数通常用于排查错误。
 - 🔥remove_unused_columns: 是否删除数据集中不被使用的列，默认为False。
   - 若该参数设置为False，则将额外的数据集列传递至trainer的`compute_loss`函数内，**方便自定义损失函数使用额外的数据集列**。
-  - GRPO该参数的默认值为False。
+- disable_auto_column_mapping: 默认情况下会对数据集的列名进行自动映射，该参数用于关闭此行为（columns 参数依旧生效），默认为False。自动映射规则如下：
+  - 以下字段会自动转成对应的images, videos, audios字段。
+    - images: image, images.
+    - videos: video, videos.
+    - audios: audio, audios.
+  - 以下字段会自动转成对应的system、query、response字段。（solution字段会保留）
+    - system: 'system', 'system_prompt'.
+    - query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
+    - response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
 - 🔥model_name: **仅用于自我认知任务**，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{NAME}}`通配符。传入模型中文名和英文名，以空格分隔，例如：`--model_name 小黄 'Xiao Huang'`。默认为None。
 - 🔥model_author: 仅用于自我认知任务，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{AUTHOR}}`通配符。传入模型作者的中文名和英文名，以空格分隔，例如：`--model_author '魔搭' 'ModelScope'`。默认为None。
 - custom_dataset_info: 自定义数据集注册的json文件路径，参考[自定义数据集](../Customization/Custom-dataset.md)和[内置'dataset_info.json'文件](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。默认为`[]`。

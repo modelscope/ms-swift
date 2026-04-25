@@ -28,8 +28,10 @@ class StdTemplateInputs:
     objects: Dict[str, Any] = field(default_factory=dict)
 
     margin: Optional[float] = None  # for reward modeling
-    mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
+    chat_template_kwargs: Dict[str, Any] = field(default_factory=dict)  # from dataset
     extra_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    mm_processor_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         self.image_idx = 0
@@ -63,6 +65,7 @@ class StdTemplateInputs:
         messages = inputs['messages']
         tools = inputs.get('tools')
         objects = inputs.get('objects') or {}
+        chat_template_kwargs = inputs.get('chat_template_kwargs') or {}
 
         if messages and messages[0]['role'] == 'system':
             message = messages.pop(0)
@@ -96,6 +99,7 @@ class StdTemplateInputs:
             system=system,
             tools=tools,
             objects=objects,
+            chat_template_kwargs=chat_template_kwargs,
             extra_kwargs=extra_kwargs,
             **kwargs,
             **media_kwargs)

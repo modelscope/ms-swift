@@ -68,6 +68,7 @@ def get_template(
     # train
     padding_free: bool = False,
     loss_scale: str = 'default',
+    is_binary_loss_scale: Optional[bool] = None,
     sequence_parallel_size: int = 1,
     # infer/deploy
     template_backend: Literal['swift', 'jinja'] = 'swift',
@@ -137,6 +138,7 @@ def get_template(
         loss_scale (str, optional): Loss scaling strategy identifier for different parts
             of sequences. Controls the contribution value of tokens to the loss.
             Defaults to 'default'.
+        is_binary_loss_scale (bool, optional):
         sequence_parallel_size (int, optional): Number of devices for sequence parallelism
             in distributed training. Splits long sequences across devices.
             Defaults to 1 (no parallelism).
@@ -195,6 +197,7 @@ def get_template(
         # train
         padding_free=padding_free,
         loss_scale=loss_scale,
+        is_binary_loss_scale=is_binary_loss_scale,
         sequence_parallel_size=sequence_parallel_size,
         # infer/deploy
         template_backend=template_backend,

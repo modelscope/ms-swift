@@ -82,7 +82,15 @@ The command-line arguments will be introduced in four categories: basic argument
 - strict: If `True`, any malformed row in the dataset will raise an error; otherwise, erroneous samples are dropped. Default is `False`. This is typically used for debugging.
 - 🔥remove_unused_columns: Whether to remove unused columns from the dataset. Default is `False`.
   - If set to `False`, extra columns are passed to the trainer's `compute_loss` function, **facilitating custom loss functions that use additional dataset columns**.
-  - Default value is `False` for GRPO.
+- disable_auto_column_mapping: By default, column names in the dataset are automatically mapped. This parameter disables that behavior (the `columns` parameter remains effective), defaulting to `False`. The automatic mapping rules are as follows:
+  - The following fields will be automatically mapped to the corresponding `images`, `videos`, and `audios` fields:
+    - `images`: `image`, `images`
+    - `videos`: `video`, `videos`
+    - `audios`: `audio`, `audios`
+  - The following fields will be automatically mapped to the corresponding `system`, `query`, and `response` fields (the `solution` field will be preserved):
+    - `system`: `system`, `system_prompt`
+    - `query`: `query`, `prompt`, `input`, `instruction`, `question`, `problem`
+    - `response`: `response`, `answer`, `output`, `targets`, `target`, `answer_key`, `answers`, `solution`, `text`, `completion`, `content`
 - 🔥model_name: **Used only for self-cognition tasks**, and only affects the `swift/self-cognition` dataset. Replaces the `{{NAME}}` placeholder in the dataset. Provide the model's Chinese and English names, separated by space, e.g., `--model_name 小黄 'Xiao Huang'`. Default is `None`.
 - 🔥model_author: Used only for self-cognition tasks, and only affects the `swift/self-cognition` dataset. Replaces the `{{AUTHOR}}` placeholder. Provide the model author's Chinese and English names, separated by space, e.g., `--model_author '魔搭' 'ModelScope'`. Default is `None`.
 - custom_dataset_info: Path to a JSON file for custom dataset registration. See [Custom Dataset Guide](../Customization/Custom-dataset.md) and the [built-in dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json). Default is `[]`.

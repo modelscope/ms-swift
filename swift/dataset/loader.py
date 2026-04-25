@@ -30,6 +30,7 @@ class DatasetLoader(BaseDatasetLoader):
         download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
         columns: Optional[Dict[str, str]] = None,
         remove_unused_columns: bool = False,
+        disable_auto_column_mapping: bool = False,
     ):
         self.num_proc = num_proc
         self.load_from_cache_file = load_from_cache_file
@@ -39,6 +40,7 @@ class DatasetLoader(BaseDatasetLoader):
         self.download_mode = download_mode
         self.columns = columns
         self.remove_unused_columns = remove_unused_columns
+        self.disable_auto_column_mapping = disable_auto_column_mapping
 
     def _load_dataset_path(
         self,
@@ -56,7 +58,11 @@ class DatasetLoader(BaseDatasetLoader):
         if self.columns:
             dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         dataset = dataset_meta.preprocess_func(
-            dataset, num_proc=self.num_proc, load_from_cache_file=self.load_from_cache_file, strict=self.strict)
+            dataset,
+            num_proc=self.num_proc,
+            load_from_cache_file=self.load_from_cache_file,
+            strict=self.strict,
+            enable_auto_mapping=not self.disable_auto_column_mapping)
         if self.remove_unused_columns:
             dataset = RowPreprocessor.remove_useless_columns(dataset)
         return dataset
@@ -122,7 +128,11 @@ class DatasetLoader(BaseDatasetLoader):
             if self.columns:
                 dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
             dataset = subset.preprocess_func(
-                dataset, num_proc=self.num_proc, load_from_cache_file=self.load_from_cache_file, strict=self.strict)
+                dataset,
+                num_proc=self.num_proc,
+                load_from_cache_file=self.load_from_cache_file,
+                strict=self.strict,
+                enable_auto_mapping=not self.disable_auto_column_mapping)
             if self.remove_unused_columns:
                 dataset = RowPreprocessor.remove_useless_columns(dataset)
             datasets.append(dataset)
@@ -221,6 +231,7 @@ def load_dataset(
     download_mode: Literal['force_redownload', 'reuse_dataset_if_exists'] = 'reuse_dataset_if_exists',
     columns: Optional[Dict[str, str]] = None,  # columns_mapping
     remove_unused_columns: bool = False,
+    disable_auto_column_mapping: bool = False,
     # self-cognition
     model_name: Optional[Union[Tuple[str, str], List[str]]] = None,  # zh, en
     model_author: Optional[Union[Tuple[str, str], List[str]]] = None,
@@ -267,6 +278,9 @@ def load_dataset(
             names to target column names (e.g., {'text': 'content'}). Default: None.
         remove_unused_columns: Whether to remove columns not used in preprocessing.
             Helps reduce memory usage. Default: False.
+        disable_auto_column_mapping: By default, column names in the dataset are automatically
+            mapped. This parameter disables that behavior
+            (the `columns` parameter remains effective), defaulting to `False`.
         model_name: Model name for self-cognition task preprocessing. Can be a tuple of
             (Chinese_name, English_name) or list of names. Default: None.
         model_author: Model author for self-cognition task preprocessing. Can be a tuple of
@@ -323,6 +337,7 @@ def load_dataset(
             download_mode=download_mode,
             columns=columns,  # columns_mapping
             remove_unused_columns=remove_unused_columns,
+            disable_auto_column_mapping=disable_auto_column_mapping,
         )
         train_dataset = loader.load(dataset_syntax, dataset_meta, use_hf=use_hf)
         train_dataset, val_dataset = loader.post_process(

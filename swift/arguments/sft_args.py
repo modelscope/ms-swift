@@ -228,7 +228,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         if not (self.eval_dataset or self._val_dataset_exists):
             self.eval_strategy = 'no'
         self.training_args = TrainerFactory.get_training_args(self)
-        self.training_args.remove_unused_columns = False
         self._add_version()
 
         if 'swanlab' in self.report_to:
