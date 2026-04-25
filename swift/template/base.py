@@ -308,6 +308,22 @@ class Template(ProcessorMixin):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
 
+        # Resolve video/audio paths with ROOT_IMAGE_DIR.
+        # Image paths are resolved by _load_image above, but video/audio paths are
+        # passed as raw strings to model-specific templates. Templates that delegate
+        # media loading to HF processors (e.g. Gemma4) need resolved absolute paths.
+        if self.root_image_dir:
+            for i, video in enumerate(inputs.videos):
+                if isinstance(video, str) and not os.path.isfile(video) and not video.startswith('http'):
+                    resolved = os.path.join(self.root_image_dir, video)
+                    if os.path.isfile(resolved):
+                        inputs.videos[i] = resolved
+            for i, audio in enumerate(inputs.audios):
+                if isinstance(audio, str) and not os.path.isfile(audio) and not audio.startswith('http'):
+                    resolved = os.path.join(self.root_image_dir, audio)
+                    if os.path.isfile(resolved):
+                        inputs.audios[i] = resolved
+
         if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
             inputs.audios = load_batch(
