@@ -276,7 +276,6 @@ def test_glm4():
 
 
 def test_llama3():
-    agent_template = agent_template_map['llama3']()
     engine = TransformersEngine('LLM-Research/Llama-3.2-3B-Instruct')
     template = engine.template
     template._agent_template = 'llama3'
@@ -298,7 +297,6 @@ def test_llama3():
 
 
 def test_llama4():
-    agent_template = agent_template_map['llama4']()
     engine = TransformersEngine('LLM-Research/Llama-4-Scout-17B-16E-Instruct')
     template = engine.template
     template._agent_template = 'llama4'
@@ -374,7 +372,6 @@ def test_glm4_7():
 
 
 def test_qwen3_coder():
-    agent_template = agent_template_map['qwen3_coder']()
     engine = TransformersEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct')
     template = engine.template
     template._agent_template = 'qwen3_coder'
@@ -398,7 +395,6 @@ def test_qwen3_coder():
 
 
 def test_qwen3_5():
-    agent_template = agent_template_map['qwen3_5']()
     engine = TransformersEngine('Qwen/Qwen3.5-35B-A3B')
     template = engine.template
     template._agent_template = 'qwen3_5'
@@ -423,8 +419,6 @@ def test_qwen3_5():
 
 
 def test_deepseek_v3_1():
-    agent_template = agent_template_map['deepseek_v3_1']()
-
     engine = TransformersEngine('deepseek-ai/DeepSeek-V3.1', load_model=False)
     template = engine.template
     template._agent_template = 'deepseek_v3_1'
@@ -539,8 +533,6 @@ def test_youtu():
 
 
 def test_seed_oss():
-    agent_template = agent_template_map['seed_oss']()
-
     engine = TransformersEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False)
 
     template = engine.template
