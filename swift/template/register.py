@@ -138,7 +138,10 @@ def get_template(
         loss_scale (str, optional): Loss scaling strategy identifier for different parts
             of sequences. Controls the contribution value of tokens to the loss.
             Defaults to 'default'.
-        is_binary_loss_scale (bool, optional):
+        is_binary_loss_scale (bool, optional): When `loss_scale` can only take values of `0` or `1`,
+            its semantics can be represented by `labels` instead — by setting the `labels` of
+            positions where `loss_scale` is `0` to `-100`, thereby ensuring compatibility with
+            `liger_kernel` and reducing memory usage. Defaults to `None` for automatic configuration.
         sequence_parallel_size (int, optional): Number of devices for sequence parallelism
             in distributed training. Splits long sequences across devices.
             Defaults to 1 (no parallelism).

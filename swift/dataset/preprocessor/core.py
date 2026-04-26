@@ -63,6 +63,11 @@ class RowPreprocessor:
             return
         messages = row['messages']
         assert len(messages) > 0, f'messages: {messages}'
+        # fix swift/SlimOrca (concat)
+        for message in messages:
+            keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
+            for key in keys:
+                message.pop(key)
 
         for message in messages:
             role, content = message['role'], message['content']
@@ -250,8 +255,14 @@ class RowPreprocessor:
                     'role': Value(dtype='string'),
                     'content': Value(dtype='string'),
                 }]
-                features['messages'] = messages_feature
-                features['rejected_messages'] = messages_feature
+                messages_feature_with_loss = [{
+                    'role': Value(dtype='string'),
+                    'content': Value(dtype='string'),
+                    'loss': Value(dtype='bool'),
+                    'loss_scale': Value(dtype='float64'),
+                }]
+                features['messages'] = messages_feature_with_loss
+                features['rejected_messages'] = messages_feature_with_loss
                 features['positive_messages'] = [messages_feature]
                 features['negative_messages'] = [messages_feature]
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]

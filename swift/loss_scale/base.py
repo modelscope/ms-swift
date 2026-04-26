@@ -99,7 +99,7 @@ class LossScale:
                 loss_scale = messages[2 * i + 1].get('loss_scale')
                 assert context == messages[2 * i + 1]['content']
                 i += 1
-            if not isinstance(context, list):
+            if not isinstance(context, list) or (len(context) > 0 and isinstance(context[0], int)):
                 context = [context]
             for j in range(len(context)):
                 new_context, new_loss_scale = self._inner_call(
