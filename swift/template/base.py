@@ -1153,16 +1153,11 @@ class Template(ProcessorMixin):
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
                 # Consecutive messages from the assistant/user role need to be merged to prevent errors.
                 if self.template_backend == 'swift' and pre_role == 'assistant':
-                    new_message = {}
                     for key in ['content', 'loss', 'loss_scale']:
-                        values = []
-                        for msg in [pre_message, message]:
-                            value = msg.get(key)
-                            if not isinstance(value, list):
-                                value = [value]
-                            values += value
-                        new_message[key] = values
-                    pre_message.update(new_message)
+                        pre_val = pre_message.get(key)
+                        cur_val = message.get(key)
+                        pre_message[key] = (pre_val if isinstance(pre_val, list) else [pre_val]) + \
+                            (cur_val if isinstance(cur_val, list) else [cur_val])
                 else:
                     pre_message['content'] = pre_content + content
                 messages.pop(i)
