@@ -61,20 +61,37 @@ alpaca格式:
 ```
 
 - 可以通过增加"loss"字段，控制对应的模型回复部分是否计算损失。默认该字段为None。若"loss"设置为true，则对应content进行损失计算（具体loss_scale依旧由`--loss_scale`决定）；若"loss"设置为false，则对应content不进行损失计算。需要注意的是，该功能只对"role"为"assistant"的部分生效；该功能优先级高于命令行参数 `--loss_scale`的基本策略（即'default'、'last_round'、'all'部分），例如，loss_scale为`'default+ignore_empty_think'`时，"loss"字段优先级高于"default"，但'ignore_empty_think'依旧发挥作用。
-- 可以通过增加"loss_scale"字段，控制对应的模型回复部分的loss_scale。默认为None。
+- 可以通过增加"loss_scale"字段，控制对应的模型回复部分的loss_scale。（ms-swift>=4.2.0）默认为None。该功能优先级高于命令行参数 `--loss_scale`的其他策略部分，例如：'ignore_empty_think', 'hermes'等。当loss_scale中有`>1`的数字出现时，你需要额外设置`--is_binary_loss_scale false`参数。
 ```jsonl
 {"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2", "loss": true}]}
+{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.}, {"role": "assistant", "content": "hi!", "loss_scale": 2.}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
+```
 
 使用以下脚本进行测试：
+
+```python
+from swift import get_processor, get_template
+
+data = {"messages": [
+    {"role": "user", "content": "hello!"},
+    {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.},
+    {"role": "assistant", "content": "hi!", "loss_scale": 2.},
+    {"role": "user", "content": "1+1=?"},
+    {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": False},
+]}
+
+template = get_template(get_processor('Qwen/Qwen3-8B'), loss_scale='default+ignore_empty_think',
+                        is_binary_loss_scale=False)
+template.set_mode('train')
+inputs = template.encode(data)
+
+print(template.safe_decode(inputs['labels']))
+print(inputs['loss_scale'])
 ```
 
-```
-
-
-```
 - "chat_template_kwargs"字段，（需ms-swift>=4.2.0），你可以通过在数据集中传入该字段样本级别控制template的min_pixels, max_pixels, fps等多模态参数，以及enable_thinking等参数。
 ```jsonl
-{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只兔子", "loss": false}], "chat_template_kwargs": {"max_pixels": }}
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只兔子", "loss": false}], "chat_template_kwargs": {"max_pixels": 1048576, "enable_thinking": false}}
 ```
 
 #### channel loss
