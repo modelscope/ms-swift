@@ -83,6 +83,15 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥remove_unused_columns: Whether to remove unused columns from the dataset. Default is `True`.
   - If set to `False`, extra columns are passed to the trainer's `compute_loss` function, **facilitating custom loss functions that use additional dataset columns**.
   - Default value is `False` for GRPO.
+- disable_auto_column_mapping: By default, column names in the dataset are automatically mapped. This parameter disables that behavior (the `columns` parameter remains effective), defaulting to `False`. The automatic mapping rules are as follows:
+  - The following fields will be automatically mapped to the corresponding `images`, `videos`, and `audios` fields:
+    - `images`: `image`, `images`
+    - `videos`: `video`, `videos`
+    - `audios`: `audio`, `audios`
+  - The following fields will be automatically mapped to the corresponding `system`, `query`, and `response` fields (the `solution` field will be preserved):
+    - `system`: `system`, `system_prompt`
+    - `query`: `query`, `prompt`, `input`, `instruction`, `question`, `problem`
+    - `response`: `response`, `answer`, `output`, `targets`, `target`, `answer_key`, `answers`, `solution`, `text`, `completion`, `content`
 - 🔥model_name: **Used only for self-cognition tasks**, and only affects the `swift/self-cognition` dataset. Replaces the `{{NAME}}` placeholder in the dataset. Provide the model's Chinese and English names, separated by space, e.g., `--model_name 小黄 'Xiao Huang'`. Default is `None`.
 - 🔥model_author: Used only for self-cognition tasks, and only affects the `swift/self-cognition` dataset. Replaces the `{{AUTHOR}}` placeholder. Provide the model author's Chinese and English names, separated by space, e.g., `--model_author '魔搭' 'ModelScope'`. Default is `None`.
 - custom_dataset_info: Path to a JSON file for custom dataset registration. See [Custom Dataset Guide](../Customization/Custom-dataset.md) and the [built-in dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json). Default is `[]`.
@@ -115,6 +124,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
   - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
   - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
+- is_binary_loss_scale: When `loss_scale` can only take values of `0` or `1`, its semantics can be represented by `labels` instead — by setting the `labels` of positions where `loss_scale` is `0` to `-100`, thereby ensuring compatibility with `liger_kernel` and reducing memory usage. Defaults to `None` for automatic configuration.
 - sequence_parallel_size: Size for sequence parallelism. Default is 1. Currently supported in CPT/SFT/DPO/GRPO. Training scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
 - template_backend: Backend for template processing. Options are `'swift'` or `'jinja'`. Default is `'swift'`. If `'jinja'` is used, `apply_chat_template` from Transformers will be applied.
   - Note: The `'jinja'` backend only supports inference and does not support training (as it cannot determine the token ranges for loss computation).

@@ -87,6 +87,7 @@ class Template(ProcessorMixin):
         # only for train
         padding_free: bool = False,
         loss_scale: str = 'default',
+        is_binary_loss_scale: Optional[bool] = None,
         sequence_parallel_size: int = 1,
         # infer/deploy
         template_backend: Literal['swift', 'jinja'] = 'swift',
@@ -104,8 +105,6 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
-        from swift.agent_template import agent_template_map
-        from swift.loss_scale import LossScale, get_loss_scale
         self._processor_inited = False
         self._version = 'v6'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
@@ -137,7 +136,10 @@ class Template(ProcessorMixin):
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale: LossScale = get_loss_scale(loss_scale)
+        self._loss_scale_cache = {}
+        self._agent_template_cache = {}
+        self._loss_scale = loss_scale
+        self.is_binary_loss_scale = is_binary_loss_scale
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -145,7 +147,6 @@ class Template(ProcessorMixin):
         self.packing = False
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
-        self.agent_template = agent_template_map[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
@@ -159,6 +160,20 @@ class Template(ProcessorMixin):
 
         if processor is not None:
             self.init_processor(processor)
+
+    @property
+    def loss_scale(self):
+        from swift.loss_scale import get_loss_scale
+        if self._loss_scale not in self._loss_scale_cache:
+            self._loss_scale_cache[self._loss_scale] = get_loss_scale(self._loss_scale)
+        return self._loss_scale_cache[self._loss_scale]
+
+    @property
+    def agent_template(self):
+        from swift.agent_template import agent_template_map
+        if self._agent_template not in self._agent_template_cache:
+            self._agent_template_cache[self._agent_template] = agent_template_map[self._agent_template]()
+        return self._agent_template_cache[self._agent_template]
 
     def init_env_args(self):
         if self.model_meta.is_multimodal:
@@ -981,6 +996,9 @@ class Template(ProcessorMixin):
     def _encode_context_list(self,
                              context_list: List[Context],
                              loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float]]:
+        is_binary_loss_scale = self.is_binary_loss_scale
+        if is_binary_loss_scale is None:
+            is_binary_loss_scale = self.loss_scale.is_binary_loss_scale
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
@@ -996,9 +1014,9 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            if not self.loss_scale.is_loss_scale_binary:
+            if not is_binary_loss_scale:
                 loss_scale.extend([loss_weight] * len(token_list))
-        if self.loss_scale.is_loss_scale_binary:
+        if is_binary_loss_scale:
             loss_scale = None
         return input_ids, labels, loss_scale
 
@@ -1134,7 +1152,14 @@ class Template(ProcessorMixin):
                 i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
                 # Consecutive messages from the assistant/user role need to be merged to prevent errors.
-                pre_message['content'] = pre_content + content
+                if self.template_backend == 'swift' and pre_role == 'assistant':
+                    for key in ['content', 'loss', 'loss_scale']:
+                        pre_val = pre_message.get(key)
+                        cur_val = message.get(key)
+                        pre_message[key] = (pre_val if isinstance(pre_val, list) else [pre_val]) + \
+                            (cur_val if isinstance(cur_val, list) else [cur_val])
+                else:
+                    pre_message['content'] = pre_content + content
                 messages.pop(i)
             else:
                 i += 1
