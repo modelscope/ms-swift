@@ -68,6 +68,7 @@ class LLMTemplateType:
     deepseek_v2_5 = 'deepseek_v2_5'
     deepseek_r1 = 'deepseek_r1'
     deepseek_v3_1 = 'deepseek_v3_1'
+    deepseek_v4 = 'deepseek_v4'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -107,6 +108,7 @@ class LLMTemplateType:
     dots1 = 'dots1'
     hunyuan_moe = 'hunyuan_moe'
     hunyuan = 'hunyuan'
+    hy3 = 'hy3'
     ernie = 'ernie'
     ernie_thinking = 'ernie_thinking'
     longchat = 'longchat'

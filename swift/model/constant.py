@@ -45,6 +45,7 @@ class LLMModelType:
     deepseek_v2 = 'deepseek_v2'
     deepseek_v3 = 'deepseek_v3'
     deepseek_v32 = 'deepseek_v32'
+    deepseek_v4 = 'deepseek_v4'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_mistral = 'openbuddy_mistral'
@@ -106,6 +107,7 @@ class LLMModelType:
     dots1 = 'dots1'
     hunyuan = 'hunyuan'
     hunyuan_v1_dense = 'hunyuan_v1_dense'
+    hy3 = 'hy3'
     ernie4_5 = 'ernie4_5'
     ernie4_5_moe = 'ernie4_5_moe'
     gemma_emb = 'gemma_emb'
