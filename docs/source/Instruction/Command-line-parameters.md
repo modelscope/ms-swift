@@ -59,7 +59,7 @@
   - 采样数量: 默认使用完整的数据集。你可以通过设置`#采样数`对选择的数据集进行采样，例如`<dataset_path#1000>`。若采样数少于数据样本总数，则进行随机选择（不重复采样）。若采样数高于数据样本总数，则只额外随机采样`采样数%数据样本总数`的样本，数据样本重复采样`采样数//数据样本总数`次。注意：流式数据集（`--streaming true`）只进行顺序采样。若设置`--dataset_shuffle false`，则非流式数据集也进行顺序采样。
 - 🔥val_dataset: 验证集id或路径的list。默认为`[]`。
 - 🔥cached_dataset: 使用缓存数据集（使用`swift export --to_cached_dataset true ...`命令产生），避免大型数据集训练/推理时，tokenize过程占用gpu时间。该参数用于设置缓存训练数据集文件夹路径，默认为`[]`。例子参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset)。
-  - 提示：cached_dataset只会在数据集中额外存储length字段（为避免存储压力），并过滤掉会报错的数据样本。在训练/推理时，支持`--max_length`参数进行超长数据过滤/裁剪以及`--packing`参数。数据实际预处理过程将在训练时同步进行，该过程和训练是重叠的，并不会影响训练速度。
+  - 提示：cached_dataset只会在数据集中额外存储length字段（为避免存储压力），并过滤掉会报错的数据样本。在训练/推理时，支持`--max_length`参数进行超长数据过滤/裁剪以及`--packing`参数。数据实际预处理过程将在训练时同步进行，该过程和训练是重叠的，并不会影响训练速度。（例外情况：当设置`--truncation_strategy split`会存储'input_ids'，你需要在数据导出和训练时设置相同的`max_length`和`truncation_strategy`，packing兼容不受影响）
   - cached_dataset在`ms-swift`和`Megatron-SWIFT`之间是通用的，且支持pt/sft/infer/rlhf，使用`--template_mode`设置训练类型；支持embedding/reranker/seq_cls任务，使用`--task_type`设置任务类型。
   - 支持对cache_dataset进行采样，语法为`<cached_dataset_path>#采样数`，支持采样数高于和少于样本数的情况，功能与实现参考`--dataset`的介绍。
 - cached_val_dataset: 缓存验证数据集的文件夹路径，默认为`[]`。
@@ -84,6 +84,15 @@
 - 🔥remove_unused_columns: 是否删除数据集中不被使用的列，默认为True。
   - 若该参数设置为False，则将额外的数据集列传递至trainer的`compute_loss`函数内，**方便自定义损失函数使用额外的数据集列**。
   - GRPO该参数的默认值为False。
+- disable_auto_column_mapping: 默认情况下会对数据集的列名进行自动映射，该参数用于关闭此行为（columns 参数依旧生效），默认为False。自动映射规则如下：
+  - 以下字段会自动转成对应的images, videos, audios字段。
+    - images: image, images.
+    - videos: video, videos.
+    - audios: audio, audios.
+  - 以下字段会自动转成对应的system、query、response字段。（solution字段会保留）
+    - system: 'system', 'system_prompt'.
+    - query: 'query', 'prompt', 'input', 'instruction', 'question', 'problem'.
+    - response: 'response', 'answer', 'output', 'targets', 'target', 'answer_key', 'answers', 'solution', 'text', 'completion', 'content'.
 - 🔥model_name: **仅用于自我认知任务**，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{NAME}}`通配符。传入模型中文名和英文名，以空格分隔，例如：`--model_name 小黄 'Xiao Huang'`。默认为None。
 - 🔥model_author: 仅用于自我认知任务，只对`swift/self-cognition`数据集生效，替换掉数据集中的`{{AUTHOR}}`通配符。传入模型作者的中文名和英文名，以空格分隔，例如：`--model_author '魔搭' 'ModelScope'`。默认为None。
 - custom_dataset_info: 自定义数据集注册的json文件路径，参考[自定义数据集](../Customization/Custom-dataset.md)和[内置'dataset_info.json'文件](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json)。默认为`[]`。
@@ -95,7 +104,7 @@
 - 🔥max_length: 限制单数据集样本经过`tokenizer.encode`后的tokens最大长度，超过的数据样本会根据`truncation_strategy`参数进行处理（避免训练OOM）。默认为None，即设置为模型支持的tokens最大长度(max_model_len)。
   - 当PPO、GRPO、GKD和推理情况下，`max_length`代表`max_prompt_length`。
 - truncation_strategy: 如果单样本的tokens超过`max_length`如何处理，支持'delete'、'left'、'right'和'split'，代表删除、左侧裁剪、右侧裁剪和切成多条数据样本，默认为'delete'。
-  - 注意：`--truncation_strategy split`只支持预训练时使用，即`swift/megatron pt`场景下，该策略会将超长字段切成多条数据样本，从而避免tokens浪费。（该特性不兼容cached_dataset）
+  - 注意：`--truncation_strategy split`只支持预训练时使用，即`swift/megatron pt`场景下，该策略会将超长字段切成多条数据样本，从而避免tokens浪费。该策略只支持纯文本数据集，多模态数据集无法正确处理pixel_values的切分。
   - 注意：若多模态模型的训练时将'truncation_strategy'设置为`left`或`right`，**ms-swift会保留所有的image_token等多模态tokens**，这可能会导致训练时OOM。
 - 🔥max_pixels: 多模态模型输入图片的最大像素数（H\*W），将超过该限制的图像进行缩放（避免训练OOM）。默认为None，不限制最大像素数。
   - 注意：该参数适用于所有的多模态模型。而Qwen2.5-VL特有的模型参数`MAX_PIXELS`（你可以在文档最下面找到）只针对Qwen2.5-VL模型。
@@ -115,6 +124,7 @@
   - 'all': 计算所有tokens的损失。（**`swift pt`默认为该值**）
   - 'ignore_empty_think': 忽略空的`'<think>\n\n</think>\n\n'`损失计算。（满足正则匹配`'<think>\\s*</think>\\s*'`即可）。
   - 'react', 'hermes', 'qwen': 将`tool_call`部分的loss权重调整为2。
+- is_binary_loss_scale: 当loss_scale只可能为0/1时，该语义可被labels替代，将loss_scale为0的部分的labels设置为-100，从而兼容liger_kernel降低显存。默认为None，进行自动设置。
 - sequence_parallel_size: 序列并行大小，默认是1。当前支持CPT/SFT/DPO/GRPO。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
 - template_backend: 选择template后端，可选为'swift'、'jinja'，默认为'swift'。如果使用jinja，则使用transformers的`apply_chat_template`。
   - 注意：jinja的template后端只支持推理，不支持训练（无法确定损失计算的tokens范围）。
