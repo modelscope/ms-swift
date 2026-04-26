@@ -1133,7 +1133,6 @@ class Template(ProcessorMixin):
         Returns:
             None. The input messages list is updated in-place.
         """
-        from swift.dataset import RowPreprocessor
         messages = inputs.messages
         if len(messages) < 2:
             return
