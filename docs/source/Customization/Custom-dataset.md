@@ -64,7 +64,7 @@ alpaca格式:
 - 可以通过增加"loss_scale"字段，控制对应的模型回复部分的loss_scale。（ms-swift>=4.2.0）默认为None。该功能优先级高于命令行参数 `--loss_scale`的其他策略部分，例如：'ignore_empty_think', 'hermes'等。当loss_scale中有`>1`的数字出现时，你需要额外设置`--is_binary_loss_scale false`参数。
 ```jsonl
 {"messages": [{"role": "user", "content": "你好"}, {"role": "assistant", "content": "你好，有什么可以帮助你的吗？", "loss": false}, {"role": "user", "content": "1+1等于几？"}, {"role": "assistant", "content": "等于2", "loss": true}]}
-{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.}, {"role": "assistant", "content": "hi!", "loss_scale": 2.}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
+{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.0}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
 ```
 
 使用以下脚本进行测试：

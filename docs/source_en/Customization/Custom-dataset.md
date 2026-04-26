@@ -61,11 +61,42 @@ The following outlines the standard dataset format for ms-swift, where the "syst
 {"messages": [{"role": "system", "content": "You are a useful and harmless math calculator"}, {"role": "user", "content": "What is 1 + 1?"}, {"role": "assistant", "content": "It equals 2"}, {"role": "user", "content": "What about adding 1?"}, {"role": "assistant", "content": "It equals 3"}]}
 ```
 
-- You can control whether the loss is computed for specific parts of the model's response by adding the `"loss"` field. This field defaults to `None`. If `"loss"` is set to `true`, the corresponding content will contribute to the loss calculation (equivalent to a `loss_scale` of 1). If `"loss"` is set to `false`, the corresponding content will be excluded from loss computation. Note that this feature only takes effect for messages where `"role"` is `"assistant"`, and it has higher priority than the command-line argument `--loss_scale`. Example data format:
+- You can add a `"loss"` field to control whether the loss is computed for the corresponding model response. This field defaults to `None`. If `"loss"` is set to `true`, the loss will be computed for the corresponding content (the specific `loss_scale` is still determined by `--loss_scale`); if `"loss"` is set to `false`, the loss will not be computed for the corresponding content. Note that this field only takes effect for parts where `"role"` is `"assistant"`. This field takes priority over the basic strategies of the `--loss_scale` command-line argument (i.e., `'default'`, `'last_round'`, `'all'`). For example, when `loss_scale` is set to `'default+ignore_empty_think'`, the `"loss"` field takes priority over `'default'`, but `'ignore_empty_think'` still takes effect.
+- You can add a `"loss_scale"` field to control the `loss_scale` for the corresponding model response. (ms-swift >= 4.2.0) Defaults to `None`. This field takes priority over other strategy components of the `--loss_scale` command-line argument, such as `'ignore_empty_think'`, `'hermes'`, etc. If any value greater than `1` appears in `loss_scale`, you need to additionally set `--is_binary_loss_scale false`.
 
 ```jsonl
 {"messages": [{"role": "user", "content": "Hello!"}, {"role": "assistant", "content": "Hi, how can I help you?", "loss": false}, {"role": "user", "content": "What is 1+1?"}, {"role": "assistant", "content": "It equals 2", "loss": true}]}
+{"messages": [{"role": "user", "content": "hello!"}, {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.0}, {"role": "assistant", "content": "hi!", "loss_scale": 2.0}, {"role": "user", "content": "1+1=?"}, {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": false}]}
 ```
+
+Use the following script to test:
+
+```python
+from swift import get_processor, get_template
+
+data = {"messages": [
+    {"role": "user", "content": "hello!"},
+    {"role": "assistant", "content": "<think>\n...\n</think>\n", "loss_scale": 1.},
+    {"role": "assistant", "content": "hi!", "loss_scale": 2.},
+    {"role": "user", "content": "1+1=?"},
+    {"role": "assistant", "content": "<think>\n...\n</think>\n1+1=3", "loss": False},
+]}
+
+template = get_template(get_processor('Qwen/Qwen3-8B'), loss_scale='default+ignore_empty_think',
+                        is_binary_loss_scale=False)
+template.set_mode('train')
+inputs = template.encode(data)
+
+print(template.safe_decode(inputs['labels']))
+print(inputs['loss_scale'])
+```
+
+- The `"chat_template_kwargs"` field (requires ms-swift >= 4.2.0) allows you to pass this field in the dataset to control template parameters at the sample level, such as multimodal parameters like `min_pixels`, `max_pixels`, `fps`, as well as parameters like `enable_thinking`.
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只兔子", "loss": false}], "chat_template_kwargs": {"max_pixels": 1048576, "enable_thinking": false}}
+```
+
 
 #### Channel Loss
 If you want to use channel loss, you need to set `--enable_channel_loss true` and add a "channel" field to your dataset. Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
