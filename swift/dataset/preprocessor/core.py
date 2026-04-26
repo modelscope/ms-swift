@@ -258,7 +258,7 @@ class RowPreprocessor:
                 messages_feature_with_loss = [{
                     'role': Value(dtype='string'),
                     'content': Value(dtype='string'),
-                    'loss': Value(dtype='float64'),
+                    'loss': Value(dtype='bool'),
                     'loss_scale': Value(dtype='float64'),
                 }]
                 features['messages'] = messages_feature_with_loss
