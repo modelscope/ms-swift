@@ -147,7 +147,7 @@ Running Environment:
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
 | trl          | >=0.15,<0.30 | 0.29.1              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.18.9              | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0/0.19.0       | Inference/Deployment                      |
+| vllm         | >=0.5.1      | 0.11.0/0.19.1       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | lmdeploy     | >=0.5   | 0.10.1                 | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |

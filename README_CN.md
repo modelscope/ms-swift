@@ -143,7 +143,7 @@ uv pip install -e . --torch-backend=auto
 | flash_attn   |              | 2.8.3/3.0.0b1 |                    |
 | trl          | >=0.15,<0.30 | 0.29.1              | RLHF               |
 | deepspeed    | >=0.14       | 0.18.9              | 训练                 |
-| vllm         | >=0.5.1      | 0.11.0/0.19.0        | 推理/部署              |
+| vllm         | >=0.5.1      | 0.11.0/0.19.1        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | lmdeploy     | >=0.5   | 0.10.1                 | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |
