@@ -109,8 +109,7 @@ if __name__ == '__main__':
         from swift.infer_engine import LmdeployEngine
         engine = LmdeployEngine(model)
 
-    # agent_template = agent_template_map['hermes']()  # react_en/qwen_en/qwen_en_parallel
-    # engine.template.agent_template = agent_template
+    # engine.template._agent_template = 'hermes'  # react_en/qwen_en/qwen_en_parallel
 
     infer(engine, get_infer_request())
     infer_stream(engine, get_infer_request())
