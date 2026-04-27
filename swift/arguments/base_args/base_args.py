@@ -50,6 +50,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         model_kwargs (Optional[str]): Additional keyword arguments for specific models, passed as a JSON string
             (e.g., '{"key": "value"}'). It's recommended to use the same arguments for inference as for training.
             Default is None.
+        enable_npu_patcher (bool): Whether to enable model-related NPU patches. Default is True.
         load_args (bool): Whether to load `args.json` from a checkpoint when using `--resume_from_checkpoint`,
             `--model`, or `--adapters`. Defaults to True for inference/export and False for training. Usually,
             this does not need to be modified. Default is True.
@@ -78,6 +79,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
 
     seed: int = 42
     model_kwargs: Optional[Union[dict, str]] = None
+    enable_npu_patcher: bool = True
     load_args: bool = True
     load_data_args: bool = False
     # dataset
