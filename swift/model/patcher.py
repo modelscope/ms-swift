@@ -91,9 +91,12 @@ def patch_output_normalizer(module: torch.nn.Module, model_meta):
         hidden_states = output.logits
         sequence_lengths = -1 if attention_mask is None else get_last_valid_indices(attention_mask)
         embeddings = hidden_states[torch.arange(hidden_states.shape[0], device=hidden_states.device), sequence_lengths]
-        embeddings = F.normalize(embeddings, p=2, dim=1)
+        pre_norm_embeddings = embeddings
+        embeddings = F.normalize(pre_norm_embeddings, p=2, dim=1)
         return {
             'last_hidden_state': embeddings.contiguous(),
+            'pre_norm_last_hidden_state': pre_norm_embeddings.contiguous(),
+            'pre_projection_last_hidden_state': pre_norm_embeddings.contiguous(),
         }
 
     lm_head_model.register_forward_hook(_output_embedding_hook, with_kwargs=True)

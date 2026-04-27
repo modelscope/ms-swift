@@ -1,0 +1,22 @@
+{
+    "response":{
+        "Name:": [1.0, 3.0],
+        "Action:": [1.0, 3.0],
+        "ACTION:": [1.0,3.0],
+        "Tool:": [1.0, 3.0],
+        "Command": [1.0, 3.0],
+        "Arguments:": [1.0, 3.0],
+        "action input": [1.0, 3.0],
+        "ACTION_INPUT:":[1.0, 3.0],
+        "Action Input:": [1.0, 3.0],
+        "Thought:": [1.0, 1.0],
+        "Final Answer:": [1.0, 1.0],
+        "Observation:": [2.0, 0.0]
+    },
+    "query":{
+        "What is the tool you want to use": [3.0],
+        "What are the required parameter names": [3.0],
+        "What is the value of": [3.0],
+        "What are the required parameter names for this tool": [3.0]
+    }
+}
