@@ -37,7 +37,7 @@
 - task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'、'embedding'、'reranker'和'generative_reranker'。seq_cls的例子可以查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls)，embedding的例子查看[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding)。
   - 若设置为'seq_cls'，你通常需要额外设置`--num_labels`和`--problem_type`。
 - 🔥torch_dtype: 模型权重的数据类型，支持`float16`,`bfloat16`,`float32`。默认为None，从'config.json'文件中读取。
-- attn_impl: attention类型，可选项为'sdpa', 'eager', 'flash_attn', 'flash_attention_2', 'flash_attention_3'等。默认使用None，读取'config.json'。
+- attn_impl: attention类型，可选项为'sdpa', 'eager', 'flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4'等。默认使用None，读取'config.json'。
   - 注意：这几种attention实现并不一定都支持，这取决于对应模型transformers实现的支持情况。
   - 若设置为'flash_attn'（兼容旧版本），则使用'flash_attention_2'。
 - 🔥experts_impl: 专家实现类型，可选项为'grouped_mm', 'batched_mm', 'eager'。默认为None。该特性需要"transformers>=5.0.0"。

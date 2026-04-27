@@ -37,7 +37,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - model_revision: Model version. Default is `None`.
 - task_type: Default is `'causal_lm'`. Options include `'causal_lm'`, `'seq_cls'`, `'embedding'`, `'reranker'`, and `'generative_reranker'`. Examples for seq_cls can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/seq_cls), and examples for embedding can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/embedding).
 - 🔥torch_dtype: Data type for model weights. Supported values: `float16`, `bfloat16`, `float32`. Default is `None`, which reads from the `config.json` file.
-- attn_impl: Attention implementation. Options include `'sdpa'`, `'eager'`, `'flash_attn'`, `'flash_attention_2'`, `'flash_attention_3'`, etc. Default is `None`, reading from config.json.
+- attn_impl: Attention implementation. Options include `'sdpa'`, `'eager'`, `'flash_attn'`, `'flash_attention_2'`, `'flash_attention_3'`, `'flash_attention_4'`, etc. Default is `None`, reading from config.json.
   - Note: Not all attention implementations may be supported, depending on the underlying Transformers library's support for the specific model.
   - If set to `'flash_attn'` (for backward compatibility), `'flash_attention_2'` will be used.
 - 🔥experts_impl: Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'. Defaults to None. This feature requires "transformers>=5.0.0".
