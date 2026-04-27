@@ -1,11 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from dataclasses import dataclass, field
+from PIL import Image
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import is_deepspeed_enabled, to_device, upper_bound
+from swift.utils import to_device, upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -244,7 +246,6 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 
 class Gemma4Template(Template):
-    use_model = True
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -319,16 +320,19 @@ class Gemma4Template(Template):
         encoded['loss_scale'] = loss_scale
         return encoded
 
-    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle zero2/zero3 mixed-modality training by ensuring all towers participate in the forward pass.
+    def _forward_dummy_image(self, gemma4_model, inputs_embeds):
+        images = [Image.new('RGB', (32, 32), (0, 0, 0))]
+        image_inputs = self.processor.image_processor(images=images, return_tensors='pt')
+        image_inputs = to_device(image_inputs, inputs_embeds.device)
+        dummy_pixel = image_inputs['pixel_values'].to(gemma4_model.vision_tower.dtype)
+        dummy_pos_ids = image_inputs.get('image_position_ids')
+        image_features = gemma4_model.get_image_features(dummy_pixel, dummy_pos_ids, return_dict=True).pooler_output
+        inputs_embeds = inputs_embeds + image_features.mean() * 0.
+        return inputs_embeds
 
-        This avoids hangs caused by some processes having visual/audio data while others don't.
-        """
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
-
-        from PIL import Image
-        from transformers.integrations import is_deepspeed_zero3_enabled
 
         input_ids = inputs['input_ids']
         pixel_values = inputs.get('pixel_values')
@@ -341,59 +345,50 @@ class Gemma4Template(Template):
         base_model = self.get_base_model(model)
         gemma4_model = base_model.model
         inputs_embeds = gemma4_model.get_input_embeddings()(input_ids)
-
-        # Handle vision (image + video share vision_tower)
-        if pixel_values is None and pixel_values_videos is None:
-            if gemma4_model.vision_tower is not None:
-                # Plain text - create dummy to ensure vision_tower + embed_vision participate
-                images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-                image_inputs = self.processor.image_processor(images=images, return_tensors='pt')
-                image_inputs = to_device(image_inputs, input_ids.device)
-                dummy_pixel = image_inputs['pixel_values'].to(gemma4_model.vision_tower.dtype)
-                dummy_pos_ids = image_inputs.get('image_position_ids')
-                if dummy_pos_ids is not None:
-                    dummy_pos_ids = dummy_pos_ids.to(input_ids.device)
-                image_features = gemma4_model.get_image_features(
-                    dummy_pixel, dummy_pos_ids, return_dict=True).pooler_output
-                inputs_embeds = inputs_embeds + image_features.mean() * 0.
-        else:
-            if pixel_values is not None:
+        state = input_ids.new_tensor(
+            [pixel_values is not None, pixel_values_videos is not None, input_features is not None], dtype=torch.bool)
+        if dist.is_initialized():
+            dist.all_reduce(state)
+        has_image, has_video, has_audio = state.tolist()
+        if has_image:
+            if pixel_values is None:
+                inputs_embeds = self._forward_dummy_image(gemma4_model, inputs_embeds)
+            else:
                 image_features = gemma4_model.get_image_features(
                     pixel_values, image_position_ids, return_dict=True).pooler_output
                 image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
                 image_mask = (input_ids == self.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_features)
 
-            if pixel_values_videos is not None:
+        if has_video:
+            if pixel_values_videos is None:
+                inputs_embeds = self._forward_dummy_image(gemma4_model, inputs_embeds)
+            else:
                 video_features = gemma4_model.get_video_features(
                     pixel_values_videos, video_position_ids, return_dict=True).pooler_output
                 video_features = video_features.to(inputs_embeds.device, inputs_embeds.dtype)
                 video_mask = (input_ids == self.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
                 inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_features)
 
-        # Handle audio
-        if input_features is None:
-            if gemma4_model.audio_tower is not None and is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
-                num_mel_bins = getattr(base_model.config.audio_config, 'num_mel_bins',
-                                       getattr(base_model.config.audio_config, 'feature_size', 80))
-                dummy_features = input_ids.new_zeros([1, 128, num_mel_bins], dtype=gemma4_model.audio_tower.dtype)
+        if has_audio and gemma4_model.audio_tower is not None:
+
+            if input_features is None:
+                feature_size = self.processor.feature_extractor.feature_size
+                dummy_features = input_ids.new_zeros([1, 128, feature_size], dtype=gemma4_model.audio_tower.dtype)
                 dummy_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
                 audio_output = gemma4_model.get_audio_features(dummy_features, dummy_mask, return_dict=True)
                 audio_features = audio_output.pooler_output
                 inputs_embeds = inputs_embeds + audio_features.mean() * 0.
-        else:
-            audio_output = gemma4_model.get_audio_features(input_features, input_features_mask, return_dict=True)
-            audio_features = audio_output.pooler_output
-            audio_mask_from_encoder = audio_output.attention_mask
-            audio_features = audio_features[audio_mask_from_encoder]
-            audio_features = audio_features.to(inputs_embeds.device, inputs_embeds.dtype)
-            audio_mask = (input_ids == self.config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-            inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_features)
+            else:
+                audio_output = gemma4_model.get_audio_features(input_features, input_features_mask, return_dict=True)
+                audio_features = audio_output.pooler_output
+                audio_mask_from_encoder = audio_output.attention_mask
+                audio_features = audio_features[audio_mask_from_encoder]
+                audio_features = audio_features.to(inputs_embeds.device, inputs_embeds.dtype)
+                audio_mask = (input_ids == self.config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+                inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_features)
 
-        result = {'inputs_embeds': inputs_embeds}
-        if 'mm_token_type_ids' in inputs:
-            result['mm_token_type_ids'] = inputs['mm_token_type_ids']
-        return result
+        return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
