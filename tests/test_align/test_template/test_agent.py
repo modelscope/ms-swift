@@ -299,7 +299,6 @@ def test_llama3():
 def test_llama4():
     engine = TransformersEngine('LLM-Research/Llama-4-Scout-17B-16E-Instruct')
     template = engine.template
-    template._agent_template = 'llama4'
     messages = _infer(engine)
     template.set_mode('train')
     encoded = template.encode({'messages': messages})
@@ -374,7 +373,6 @@ def test_glm4_7():
 def test_qwen3_coder():
     engine = TransformersEngine('Qwen/Qwen3-Coder-30B-A3B-Instruct')
     template = engine.template
-    template._agent_template = 'qwen3_coder'
     template.template_backend = 'jinja'
     _infer(engine, num_tools=2)
 
@@ -397,7 +395,6 @@ def test_qwen3_coder():
 def test_qwen3_5():
     engine = TransformersEngine('Qwen/Qwen3.5-35B-A3B')
     template = engine.template
-    template._agent_template = 'qwen3_5'
     template.template_backend = 'jinja'
     _infer(engine, num_tools=2)
 
@@ -421,7 +418,6 @@ def test_qwen3_5():
 def test_deepseek_v3_1():
     engine = TransformersEngine('deepseek-ai/DeepSeek-V3.1', load_model=False)
     template = engine.template
-    template._agent_template = 'deepseek_v3_1'
 
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
@@ -536,8 +532,6 @@ def test_seed_oss():
     engine = TransformersEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False)
 
     template = engine.template
-    template._agent_template = 'seed_oss'
-
     dataset = load_dataset('AI-ModelScope/function-calling-chatml')[0]
     data = dataset[6]
     # To test multiple tool calls and responses, we duplicate some messages.
