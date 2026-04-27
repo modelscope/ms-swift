@@ -175,7 +175,9 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
     template.set_mode('train')
     _test_params_sum(mg_model)
 
-    is_multimodal = template.model_meta.is_multimodal
+    config = mg_model.config
+    is_multimodal = config.is_multimodal
+    support_multimodal = is_multimodal and getattr(config, 'support_multimodal', True)
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     if mg_language_model.config.fp8 is not None:
         raise ValueError('fp8 models currently do not support testing convert_precision. '
@@ -185,7 +187,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.eval()
         if dist.get_world_size() == 1:
             _test_params_sum(hf_model)
-        inputs = template.encode(get_examples(is_multimodal))
+        inputs = template.encode(get_examples(support_multimodal))
         hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
         template.register_post_encode_hook([hf_model])
         HfConfigFactory.set_config_attr(hf_model.config, 'use_cache', False)
@@ -200,7 +202,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.to('cpu')
 
     template.use_megatron = True
-    inputs = template.encode(get_examples(is_multimodal))
+    inputs = template.encode(get_examples(support_multimodal))
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
     packed_seq_params = None
     mg_model.eval()

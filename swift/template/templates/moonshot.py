@@ -102,7 +102,7 @@ register_template(MoonlightTemplateMeta(MLLMTemplateType.kimi_vl, template_cls=K
 class KimiK25Template(Template):
     placeholder_tokens = ['<|media_pad|>', '<|kimi_k25_video_placeholder|>']
     jinja_enable_thinking_key = 'thinking'
-    use_model = True
+    support_padding_free = True
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
