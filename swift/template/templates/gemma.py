@@ -374,19 +374,15 @@ class Gemma4Template(Template):
         # Handle audio
         if input_features is None:
             if gemma4_model.audio_tower is not None and is_deepspeed_enabled() and not is_deepspeed_zero3_enabled():
-                num_mel_bins = getattr(
-                    base_model.config.audio_config, 'num_mel_bins',
-                    getattr(base_model.config.audio_config, 'feature_size', 80))
-                dummy_features = input_ids.new_zeros(
-                    [1, 128, num_mel_bins], dtype=gemma4_model.audio_tower.dtype)
+                num_mel_bins = getattr(base_model.config.audio_config, 'num_mel_bins',
+                                       getattr(base_model.config.audio_config, 'feature_size', 80))
+                dummy_features = input_ids.new_zeros([1, 128, num_mel_bins], dtype=gemma4_model.audio_tower.dtype)
                 dummy_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-                audio_output = gemma4_model.get_audio_features(
-                    dummy_features, dummy_mask, return_dict=True)
+                audio_output = gemma4_model.get_audio_features(dummy_features, dummy_mask, return_dict=True)
                 audio_features = audio_output.pooler_output
                 inputs_embeds = inputs_embeds + audio_features.mean() * 0.
         else:
-            audio_output = gemma4_model.get_audio_features(
-                input_features, input_features_mask, return_dict=True)
+            audio_output = gemma4_model.get_audio_features(input_features, input_features_mask, return_dict=True)
             audio_features = audio_output.pooler_output
             audio_mask_from_encoder = audio_output.attention_mask
             audio_features = audio_features[audio_mask_from_encoder]
