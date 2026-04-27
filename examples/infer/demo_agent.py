@@ -84,9 +84,6 @@ def infer_continue_generate(engine):
     }, {
         'role': 'assistant',
         'content': 'It is sunny today, '
-    }, {
-        'role': 'assistant',
-        'content': None
     }])
     request_config = RequestConfig(max_tokens=512, temperature=0)
     resp_list = engine.infer([infer_request], request_config)
