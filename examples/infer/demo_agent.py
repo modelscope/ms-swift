@@ -84,9 +84,6 @@ def infer_continue_generate(engine):
     }, {
         'role': 'assistant',
         'content': 'It is sunny today, '
-    }, {
-        'role': 'assistant',
-        'content': None
     }])
     request_config = RequestConfig(max_tokens=512, temperature=0)
     resp_list = engine.infer([infer_request], request_config)
@@ -109,8 +106,7 @@ if __name__ == '__main__':
         from swift.infer_engine import LmdeployEngine
         engine = LmdeployEngine(model)
 
-    # agent_template = agent_template_map['hermes']()  # react_en/qwen_en/qwen_en_parallel
-    # engine.template.agent_template = agent_template
+    # engine.template._agent_template = 'hermes'  # react_en/qwen_en/qwen_en_parallel
 
     infer(engine, get_infer_request())
     infer_stream(engine, get_infer_request())

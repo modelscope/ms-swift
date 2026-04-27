@@ -14,7 +14,7 @@ class WandbCallback(MegatronCallback):
         self.config = check_json_format(vars(args))
         if args.wandb_exp_name is None:
             args.wandb_exp_name = args.output_dir
-        self.save_dir = os.path.join(args.output_dir, 'wandb')
+        self.save_dir = args.output_dir
         self.writer = None
         self.setup()
 

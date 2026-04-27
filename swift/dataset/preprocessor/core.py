@@ -63,9 +63,9 @@ class RowPreprocessor:
             return
         messages = row['messages']
         assert len(messages) > 0, f'messages: {messages}'
-        # fix swift/SlimOrca
+        # fix swift/SlimOrca (concat)
         for message in messages:
-            keys = set(message.keys()) - {'role', 'content', 'loss'}
+            keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
             for key in keys:
                 message.pop(key)
 
@@ -258,7 +258,8 @@ class RowPreprocessor:
                 messages_feature_with_loss = [{
                     'role': Value(dtype='string'),
                     'content': Value(dtype='string'),
-                    'loss': Value(dtype='float64'),
+                    'loss': Value(dtype='bool'),
+                    'loss_scale': Value(dtype='float64'),
                 }]
                 features['messages'] = messages_feature_with_loss
                 features['rejected_messages'] = messages_feature_with_loss
@@ -296,6 +297,7 @@ class RowPreprocessor:
         load_from_cache_file: bool = True,
         strict: bool = False,
         batch_size: Optional[int] = None,
+        enable_auto_mapping: bool = False,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
         if batch_size is None:
@@ -321,7 +323,8 @@ class RowPreprocessor:
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
-        dataset = self.safe_rename_columns(dataset, self.columns)
+        if enable_auto_mapping:
+            dataset = self.safe_rename_columns(dataset, self.columns)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         if isinstance(dataset, HfIterableDataset):
@@ -549,8 +552,8 @@ class AutoPreprocessor:
         *,
         num_proc: int = 1,
         load_from_cache_file: bool = True,
-        strict: bool = False,
+        **kwargs,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, **kwargs)

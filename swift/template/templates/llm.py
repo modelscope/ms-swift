@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from swift.utils import get_env_args
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -334,6 +335,48 @@ register_template(
         is_thinking=True,
         non_thinking_prefix='<think>\n\n</think>\n',
         agent_template='hunyuan_hermes'))
+
+
+class Hy3Template(Template):
+
+    def init_env_args(self):
+        super().init_env_args()
+        # reasoning_effort: "no_think", "low", "high" (deep chain-of-thought)
+        # TODO: sample level
+        self.reasoning_effort = get_env_args('reasoning_effort', str, None)
+        if self.reasoning_effort is None:
+            self.reasoning_effort = 'high' if self.enable_thinking else 'no_think'
+        self.enable_thinking = self.reasoning_effort != 'no_think'
+        self.chat_template_kwargs = {'reasoning_effort': self.reasoning_effort}
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        if inputs.tools:
+            # For tool calls, append reasoning_mode after </tool_calls> in the tool instruction
+            system = system.replace(
+                'you should print </tool_calls>',
+                f'you should print </tool_calls><｜reasoning_mode｜>reasoning_effort:{self.reasoning_effort}')
+        else:
+            # For non-tool calls, append reasoning_mode to the system/prefix area
+            mode_str = f'<｜reasoning_mode｜>reasoning_effort:{self.reasoning_effort}'
+            system = (system or '') + mode_str
+        return system
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hy3,
+        prefix=['<｜hy_begin▁of▁sentence｜>'],
+        system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}'],
+        prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
+        chat_sep=['<｜hy_eos｜>'],
+        suffix=['<｜hy_eos｜>'],
+        template_cls=Hy3Template,
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        agent_template='hy3'))
 
 
 class GptTemplate(Template):

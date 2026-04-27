@@ -58,7 +58,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - Sampling size: Uses the complete dataset by default. You can sample from the selected dataset by setting `#sample_size`, for example `<dataset_path#1000>`. If the sample size is less than the total number of samples, random sampling without replacement is performed. If the sample count exceeds the total, the dataset is repeated `sample_size // total_samples` times, with an additional `sample_size % total_samples` samples randomly sampled. Note: For streaming datasets (`--streaming true`), only sequential sampling is performed. If `--dataset_shuffle false` is set, non-streaming datasets also use sequential sampling.
 - 🔥val_dataset: A list of validation dataset IDs or paths. Default is `[]`.
 - 🔥cached_dataset: Use cached datasets (generated with the command `swift export --to_cached_dataset true ...`) to avoid GPU time being occupied by tokenization during training/inference on large datasets. This parameter is used to set the folder path(s) of cached training datasets, and defaults to `[]`. For examples, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/cached_dataset).
-  - Note: cached_dataset only stores an additional length field in the dataset (to avoid storage pressure) and filters out data samples that would cause errors. During training/inference, the `--max_length` parameter is supported for filtering/truncating excessively long data and the `--packing` parameter is supported. The actual data preprocessing process occurs synchronously during training and overlaps with the training process, which does not affect training speed.
+  - Note: cached_dataset only stores an additional length field in the dataset (to avoid storage pressure) and filters out data samples that would cause errors. During training/inference, the `--max_length` parameter is supported for filtering/truncating excessively long data and the `--packing` parameter is supported. The actual data preprocessing process occurs synchronously during training and overlaps with the training process, which does not affect training speed. (Exception: when `--truncation_strategy split` is set, `'input_ids'` will be stored instead of `'lengths'`. In this case, you must use the same `max_length` and `truncation_strategy` for both dataset export and training. Compatibility with packing is not affected.)
   - cached_dataset is compatible between `ms-swift` and `Megatron-SWIFT`, and supports pt/sft/infer/rlhf, set the training type using `--template_mode`; supports embedding/reranker/seq_cls tasks, set the task type using `--task_type`.
   - Supports sampling from cache_dataset with the syntax `<cached_dataset_path>#sample_count`, supports sampling counts both higher and lower than the number of samples. For functionality and implementation, refer to the `--dataset` description.
 - cached_val_dataset: Folder path(s) for cached validation datasets, default is `[]`.
@@ -83,6 +83,15 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥remove_unused_columns: Whether to remove unused columns from the dataset. Default is `True`.
   - If set to `False`, extra columns are passed to the trainer's `compute_loss` function, **facilitating custom loss functions that use additional dataset columns**.
   - Default value is `False` for GRPO.
+- disable_auto_column_mapping: By default, column names in the dataset are automatically mapped. This parameter disables that behavior (the `columns` parameter remains effective), defaulting to `False`. The automatic mapping rules are as follows:
+  - The following fields will be automatically mapped to the corresponding `images`, `videos`, and `audios` fields:
+    - `images`: `image`, `images`
+    - `videos`: `video`, `videos`
+    - `audios`: `audio`, `audios`
+  - The following fields will be automatically mapped to the corresponding `system`, `query`, and `response` fields (the `solution` field will be preserved):
+    - `system`: `system`, `system_prompt`
+    - `query`: `query`, `prompt`, `input`, `instruction`, `question`, `problem`
+    - `response`: `response`, `answer`, `output`, `targets`, `target`, `answer_key`, `answers`, `solution`, `text`, `completion`, `content`
 - 🔥model_name: **Used only for self-cognition tasks**, and only affects the `swift/self-cognition` dataset. Replaces the `{{NAME}}` placeholder in the dataset. Provide the model's Chinese and English names, separated by space, e.g., `--model_name 小黄 'Xiao Huang'`. Default is `None`.
 - 🔥model_author: Used only for self-cognition tasks, and only affects the `swift/self-cognition` dataset. Replaces the `{{AUTHOR}}` placeholder. Provide the model author's Chinese and English names, separated by space, e.g., `--model_author '魔搭' 'ModelScope'`. Default is `None`.
 - custom_dataset_info: Path to a JSON file for custom dataset registration. See [Custom Dataset Guide](../Customization/Custom-dataset.md) and the [built-in dataset_info.json](https://github.com/modelscope/ms-swift/blob/main/swift/dataset/data/dataset_info.json). Default is `[]`.
@@ -95,7 +104,7 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥max_length: Maximum token length after `tokenizer.encode` for a single data sample (to prevent OOM during training). Samples exceeding this limit are handled according to `truncation_strategy`. Default is `None`, meaning it's set to the model’s maximum supported sequence length (`max_model_len`).
   - In PPO, GRPO, GKD and inference scenarios, `max_length` refers to `max_prompt_length`.
 - truncation_strategy: How to handle samples whose tokens exceed `max_length`. Supports 'delete', 'left', 'right', and 'split', which represent deleting, left truncation, right truncation, and splitting into multiple data samples, respectively. The default is 'delete'.
-  - Note: `--truncation_strategy split` is only supported during pretraining, i.e., in `swift/megatron pt` scenarios. This strategy will split oversized fields into multiple data samples to avoid token waste. (This feature is not compatible with cached_dataset)
+  - Note: `--truncation_strategy split` is only supported during pretraining, i.e., in `swift/megatron pt` scenarios. This strategy will split oversized fields into multiple data samples to avoid token waste. This strategy only supports text-only datasets. Multimodal datasets cannot handle the splitting of pixel_values correctly.
   - Note: For multimodal models, if `truncation_strategy` is set to `'left'` or `'right'` during training, **ms-swift preserves all image tokens and other modality-specific tokens**, which may lead to OOM.
 - 🔥max_pixels: Maximum pixel count (H×W) for input images in multimodal models. Images exceeding this limit will be resized to avoid OOM during training. Default is `None` (no restriction).
   - Note: This parameter applies to all multimodal models. The Qwen2.5-VL specific parameter `MAX_PIXELS` (see bottom of doc) only affects Qwen2.5-VL.
@@ -115,6 +124,7 @@ The command-line arguments will be introduced in four categories: basic argument
   - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
   - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
   - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
+- is_binary_loss_scale: When `loss_scale` can only take values of `0` or `1`, its semantics can be represented by `labels` instead — by setting the `labels` of positions where `loss_scale` is `0` to `-100`, thereby ensuring compatibility with `liger_kernel` and reducing memory usage. Defaults to `None` for automatic configuration.
 - sequence_parallel_size: Size for sequence parallelism. Default is 1. Currently supported in CPT/SFT/DPO/GRPO. Training scripts can be found [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel).
 - template_backend: Backend for template processing. Options are `'swift'` or `'jinja'`. Default is `'swift'`. If `'jinja'` is used, `apply_chat_template` from Transformers will be applied.
   - Note: The `'jinja'` backend only supports inference and does not support training (as it cannot determine the token ranges for loss computation).
