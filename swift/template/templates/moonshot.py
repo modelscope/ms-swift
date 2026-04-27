@@ -23,7 +23,7 @@ class MoonlightTemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<|im_system|>system<|im_middle|>{{SYSTEM}}<|im_end|>'])
-    default_system: str = 'You are a helpful assistant'
+    default_system: Optional[str] = 'You are a helpful assistant'
 
 
 register_template(MoonlightTemplateMeta(LLMTemplateType.moonlight))
