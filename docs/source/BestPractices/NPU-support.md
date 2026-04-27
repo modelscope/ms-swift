@@ -96,13 +96,13 @@ python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import in
 
 ### NPU模型Patch开关
 
-ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Transformers 模型在昇腾 NPU 上的算子和兼容性需求。通常不需要关闭；如果需要排查 Transformers 原生行为，或者定位 NPU 模型 patch 的兼容问题，可以设置：
+ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Transformers 模型在昇腾 NPU 上的算子和兼容性需求。通常不需要关闭；如果怀疑某个模型的 loss 异常、forward 报错与 NPU 模型 patch 有关，需要临时切回 Transformers 原生实现做对比，可以设置：
 
 ```shell
-swift sft ... --enable_npu_patcher false
+swift sft ... --enable_npu_model_patch false
 ```
 
-该参数只控制模型相关 patch，不影响 HCCL 超时、FSDP fp32 cast，也不影响 Megatron NPU/CP 路径需要的 MindSpeed TE CP 兼容 patch。
+该参数只控制模型相关 patch，不影响 HCCL 超时、FSDP fp32 cast，也不影响 Megatron NPU/CP 路径需要的 MindSpeed TE CP 兼容 patch。该开关需要在进程首次导入 `swift.model` 前作为启动参数传入；普通 `swift sft xxx.yaml` 会先将配置展开为启动参数，因此同样支持，但在 Python 代码里先导入 `swift.model` 后再修改 Arguments，或从 `args.json` 恢复该字段，都不会反向撤销已经生效的 monkey patch。
 
 ### 环境查看
 
