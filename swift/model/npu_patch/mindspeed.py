@@ -15,6 +15,12 @@ def patch_mindspeed_te_cp_implementation(megatron_args: dict[str, Any]) -> None:
     Route NPU CP to the legacy MindSpeed TE adaptor when the new strategy factory
     only supports kvallgather.
     """
+    # MindSpeed 0.15.3 replaced the TE context-parallel attention class with a
+    # new implementation. That new class does not yet cover all CP algorithms,
+    # so the default non-kvallgather path can fail during Megatron training.
+    # For those algorithms, temporarily route TE attention back to the legacy
+    # MindSpeedCPDotProductAttention adaptor. Once MindSpeed's new CP class has
+    # feature parity, this compatibility patch can be removed.
     try:
         import mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention as ms_te_dpa
         from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention

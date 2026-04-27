@@ -11,33 +11,21 @@ class NPUCastError(RuntimeError):
     """Raised when fp32 casting fails during NPU FSDP2 preparation."""
 
 
-def _get_first_parameter(module: torch.nn.Module) -> torch.nn.Parameter | None:
-    for param in module.parameters(recurse=True):
-        return param
-    return None
-
-
-def _needs_fp32_cast_for_npu(
-    module: torch.nn.Module,
-    accelerator: Accelerator,
-) -> bool:
+def _cast_module_to_fp32_for_npu_if_needed(module: torch.nn.Module, accelerator: Accelerator) -> torch.nn.Module:
     if accelerator.device.type != 'npu':
-        return False
+        return module
 
-    param = _get_first_parameter(module)
+    param = next(module.parameters(recurse=True), None)
     if param is None:
-        return False
+        return module
 
-    return param.is_floating_point() and param.dtype != torch.float32
+    if not param.is_floating_point() or param.dtype == torch.float32:
+        return module
 
-
-def _cast_to_fp32(module: torch.nn.Module) -> torch.nn.Module:
-    """
-    Cast module parameters to fp32.
-
-    Assumes parameters are already on CPU or meta device.
-    Only dtype is changed; device is preserved.
-    """
+    # Accelerate FSDP2 flattens and shards parameters during prepare. On NPU,
+    # entering that path with bf16/fp16 parameters can fail before mixed
+    # precision policy has a chance to manage runtime compute dtype. Cast early
+    # while parameters are still on CPU or meta, so only dtype changes here.
     try:
         return module.to(torch.float32)
     except Exception as exc:
@@ -52,9 +40,8 @@ def wrapped_fsdp2_prepare_model(
     accelerator: Accelerator,
     model: torch.nn.Module,
 ):
-    if _needs_fp32_cast_for_npu(model, accelerator):
-        model = _cast_to_fp32(model)
-
+    # Public utility entry used by some code paths before Accelerator.prepare.
+    model = _cast_module_to_fp32_for_npu_if_needed(model, accelerator)
     return _original_fsdp2_prepare_model(accelerator, model)
 
 
@@ -67,9 +54,10 @@ def wrapped_prepare_fsdp2(
     *args,
     **kwargs,
 ):
+    # Accelerator.prepare may receive one or more modules directly; patch this
+    # private entry too so all FSDP2 NPU preparation paths get the same fp32 cast.
     patched_args = [
-        _cast_to_fp32(obj) if isinstance(obj, torch.nn.Module) and _needs_fp32_cast_for_npu(obj, self) else obj
-        for obj in args
+        _cast_module_to_fp32_for_npu_if_needed(obj, self) if isinstance(obj, torch.nn.Module) else obj for obj in args
     ]
 
     return _original_prepare_fsdp2(self, *patched_args, **kwargs)
