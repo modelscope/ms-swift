@@ -123,7 +123,7 @@ register_template(
         system_prefix=['<|im_system|>{{SYSTEM}}<|im_end|>'],
         default_system=None,
         is_thinking=True,
-        thinking_prefix='<think>\n',
+        thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         agent_template='kimi_k25',
