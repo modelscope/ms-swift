@@ -190,7 +190,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 feature = 'padding_free'
             supported_impls = ['flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4']
             if self.attn_impl not in supported_impls:
-                supported_impls_str = ", ".join([f'"{impl}"' for impl in supported_impls])
+                supported_impls_str = ', '.join([f'"{impl}"' for impl in supported_impls])
                 raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
                                  f'Please use one of: {supported_impls_str}.')
 
