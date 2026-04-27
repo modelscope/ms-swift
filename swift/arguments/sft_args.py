@@ -188,10 +188,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.padding_free = True
             else:
                 feature = 'padding_free'
-            if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4'}:
+            supported_impls = ['flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4']
+            if self.attn_impl not in supported_impls:
+                supported_impls_str = ", ".join([f'"{impl}"' for impl in supported_impls])
                 raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
-                                 'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3", '
-                                 '"flash_attention_4".')
+                                 f'Please use one of: {supported_impls_str}.')
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
