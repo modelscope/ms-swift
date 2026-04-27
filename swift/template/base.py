@@ -121,17 +121,12 @@ class Template(ProcessorMixin):
             template_meta.default_system = default_system
         if enable_thinking is None:
             enable_thinking = template_meta.is_thinking
-        if response_prefix is None:
-            if use_chat_template:
-                response_prefix = (
-                    template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix)
-            else:
-                response_prefix = ''
-        self.response_prefix = response_prefix
+        self._response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
         self.add_non_thinking_prefix = add_non_thinking_prefix
+        self.chat_template_kwargs = {}
         self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
@@ -160,6 +155,17 @@ class Template(ProcessorMixin):
 
         if processor is not None:
             self.init_processor(processor)
+
+    @property
+    def response_prefix(self):
+        if self._response_prefix is not None:
+            return self._response_prefix
+        elif not self.use_chat_template:
+            return ''
+        elif self.enable_thinking:
+            return self.template_meta.thinking_prefix
+        else:
+            return self.template_meta.non_thinking_prefix
 
     @property
     def loss_scale(self):
@@ -537,9 +543,6 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
-            if self.task_type == 'causal_lm' and not self.is_training:
-                if inputs['messages'][-1]['role'] == 'assistant':
-                    raise ValueError('...')
             inputs = TemplateInputs.from_dict(inputs)
         elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)
@@ -1060,6 +1063,8 @@ class Template(ProcessorMixin):
             kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
         if self.template_meta.is_thinking or self.enable_thinking:
             kwargs[self.jinja_enable_thinking_key] = self.enable_thinking
+        if self.chat_template_kwargs:
+            kwargs.update(self.chat_template_kwargs)
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0

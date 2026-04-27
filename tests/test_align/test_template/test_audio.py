@@ -95,7 +95,7 @@ def test_qwen3_asr():
     messages = [{'role': 'user', 'content': '<audio>'}]
     audios = ['https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-ASR-Repo/asr_zh.wav']
     engine = TransformersEngine('Qwen/Qwen3-ASR-1.7B')
-    engine.template.response_prefix = 'language Chinese<asr_text>'
+    engine.template._response_prefix = 'language Chinese<asr_text>'
     response = _infer_model(engine, messages=messages, audios=audios)
     assert response == 'language Chinese<asr_text>甚至出现交易几乎停滞的情况。'
 

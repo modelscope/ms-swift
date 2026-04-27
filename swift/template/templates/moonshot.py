@@ -23,7 +23,7 @@ class MoonlightTemplateMeta(TemplateMeta):
     suffix: Prompt = field(default_factory=lambda: ['<|im_end|>'])
     system_prefix: Optional[Prompt] = field(
         default_factory=lambda: ['<|im_system|>system<|im_middle|>{{SYSTEM}}<|im_end|>'])
-    default_system: str = 'You are a helpful assistant'
+    default_system: Optional[str] = 'You are a helpful assistant'
 
 
 register_template(MoonlightTemplateMeta(LLMTemplateType.moonlight))
@@ -97,3 +97,34 @@ class KimiVLTemplate(Template):
 
 
 register_template(MoonlightTemplateMeta(MLLMTemplateType.kimi_vl, template_cls=KimiVLTemplate))
+
+
+class KimiK25Template(Template):
+    placeholder_tokens = ['<|media_pad|>', '<|kimi_k25_video_placeholder|>']
+    jinja_enable_thinking_key = 'thinking'
+    support_padding_free = True
+
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        if system is not None and '<|im_middle|>' not in system:  # compat agent
+            system = f'system<|im_middle|>{system}'
+        return system
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        raise ValueError('KimiK25Template does not currently support image or video. '
+                         'Please open an issue to request support.')
+
+
+register_template(
+    MoonlightTemplateMeta(
+        MLLMTemplateType.kimi_k25,
+        template_cls=KimiK25Template,
+        system_prefix=['<|im_system|>{{SYSTEM}}<|im_end|>'],
+        default_system=None,
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        agent_template='kimi_k25',
+    ))
