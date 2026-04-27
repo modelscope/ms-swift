@@ -31,7 +31,7 @@ class AttnImpl:
     def to_use_flash_attn(attn_impl: Optional[str], auto_value: _T = None) -> Union[bool, _T]:
         if attn_impl is None:
             return auto_value
-        return attn_impl in {'flash_attn', 'flash_attention_2'}
+        return attn_impl in {'flash_attn', 'flash_attention_2', 'npu_flash_attention'}
 
     @staticmethod
     def update_attn_impl(config: PretrainedConfig,
@@ -41,7 +41,8 @@ class AttnImpl:
             return
         logger.info(f'attn_impl: {attn_impl}')
         use_flash_attn = AttnImpl.to_use_flash_attn(attn_impl)
-        if use_flash_attn:
+        # Keep npu_flash_attention as is, convert flash_attn to flash_attention_2
+        if use_flash_attn and attn_impl != 'npu_flash_attention':
             attn_impl = 'flash_attention_2'
         if isinstance(attn_impl_keys, str):
             attn_impl_keys = [attn_impl_keys]

@@ -1,0 +1,23 @@
+feat: Add native NPU Flash Attention support
+
+This commit adds native NPU Flash Attention support through transformers'
+native `npu_flash_attention` integration, providing a lightweight
+alternative to MindSpeed-based optimizations.
+
+Changes:
+- Add swift/model/npu_flash_attention.py: Registration module for NPU FA
+- Update swift/model/__init__.py: Auto-register NPU FA on import
+- Update swift/model/utils.py: Support 'npu_flash_attention' in AttnImpl
+- Update swift/ui/llm_train/hyper.py: Add UI option for npu_flash_attention
+
+Usage:
+    # Auto-enabled when NPU is available
+    swift sft --model_id qwen3.5-0.8B --attn_impl npu_flash_attention
+
+    # Or via Python API
+    from swift import sft
+    sft(..., attn_impl='npu_flash_attention')
+
+This complements the comprehensive MindSpeed integration by providing
+a simpler, zero-dependency approach for users who want quick NPU
+acceleration without heavy patching.
