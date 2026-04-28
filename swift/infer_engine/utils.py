@@ -16,7 +16,7 @@ from transformers.generation.streamers import BaseStreamer
 from typing import List, Optional, Union
 
 from swift.model.register import fix_do_sample_warning
-from swift.utils import get_device, synchronize
+from swift.utils import get_current_device, get_device, get_torch_device, synchronize
 from .protocol import RequestConfig
 
 
@@ -390,11 +390,12 @@ def patch_vllm_triton_device_guard():
 
     @functools.wraps(_orig_fn)
     def _patched_init_worker_distributed_environment(*args, **kwargs):
-        expected_device = torch.cuda.current_device()
+        expected_device = get_current_device()
         result = _orig_fn(*args, **kwargs)
-        actual_device = torch.cuda.current_device()
+        actual_device = get_current_device()
+        torch_device = get_torch_device()
         if actual_device != expected_device:
-            torch.cuda.set_device(expected_device)
+            torch_device.set_device(expected_device)
         return result
 
     _gw.init_worker_distributed_environment = _patched_init_worker_distributed_environment
