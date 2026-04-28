@@ -3,10 +3,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from dataclasses import dataclass, field
-from PIL import Image
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import to_device, upper_bound
+from swift.utils import upper_bound
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -318,16 +317,6 @@ class Gemma4Template(Template):
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
         return encoded
-
-    def _forward_dummy_image(self, gemma4_model, inputs_embeds):
-        images = [Image.new('RGB', (32, 32), (0, 0, 0))]
-        image_inputs = self.processor.image_processor(images=images, return_tensors='pt')
-        image_inputs = to_device(image_inputs, inputs_embeds.device)
-        dummy_pixel = image_inputs['pixel_values'].to(gemma4_model.vision_tower.dtype)
-        dummy_pos_ids = image_inputs.get('image_position_ids')
-        image_features = gemma4_model.get_image_features(dummy_pixel, dummy_pos_ids, return_dict=True).pooler_output
-        inputs_embeds = inputs_embeds + image_features.mean() * 0.
-        return inputs_embeds
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
