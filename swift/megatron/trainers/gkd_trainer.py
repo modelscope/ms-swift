@@ -316,7 +316,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # the teacher model parameters are stored in fp32 and flash attention
             # only supports fp16/bf16.
             autocast_dtype = self.args.torch_dtype
-            autocast_ctx = torch.autocast('cuda', dtype=autocast_dtype) if autocast_dtype != torch.float32 else nullcontext()
+            autocast_ctx = torch.autocast('cuda', dtype=autocast_dtype) if autocast_dtype in (torch.float16, torch.bfloat16) else nullcontext()
             with autocast_ctx:
                 for encoded_batch in encoded_batches:
                     opsd_batch = encoded_batch.get('opsd_teacher_batch')
