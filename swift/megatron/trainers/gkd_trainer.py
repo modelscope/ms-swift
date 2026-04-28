@@ -2,7 +2,7 @@
 import random
 import torch
 import torch.nn.functional as F
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from enum import Enum
 from functools import partial
@@ -311,30 +311,37 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             outer_context = self.load_teacher_model_context()
 
         with torch.no_grad(), outer_context:
-            for encoded_batch in encoded_batches:
-                opsd_batch = encoded_batch.get('opsd_teacher_batch')
-                source = opsd_batch if opsd_batch is not None else encoded_batch
-                teacher_batch = {
-                    k: v.clone() if isinstance(v, torch.Tensor) else v
-                    for k, v in source.items() if k not in ('data_source', 'opsd_teacher_batch', 'teacher_output')
-                }
-                teacher_data = self._prepare_batch(teacher_batch)
-                teacher_data.pop('loss_scale', None)
-                opsd_teacher_labels = teacher_data.pop('labels', None)
-                if opsd_batch is None:
-                    opsd_teacher_labels = None
-                teacher_logits = forward_step_helper(teacher_model, teacher_data)
-                if teacher_logits is not None:
-                    teacher_logits = teacher_logits.detach()
+            # Use autocast to ensure teacher forward uses bf16/fp16,
+            # which is required by flash attention. When main_params_dtype=fp32,
+            # the teacher model parameters are stored in fp32 and flash attention
+            # only supports fp16/bf16.
+            autocast_dtype = self.args.torch_dtype
+            autocast_ctx = torch.autocast('cuda', dtype=autocast_dtype) if autocast_dtype != torch.float32 else nullcontext()
+            with autocast_ctx:
+                for encoded_batch in encoded_batches:
+                    opsd_batch = encoded_batch.get('opsd_teacher_batch')
+                    source = opsd_batch if opsd_batch is not None else encoded_batch
+                    teacher_batch = {
+                        k: v.clone() if isinstance(v, torch.Tensor) else v
+                        for k, v in source.items() if k not in ('data_source', 'opsd_teacher_batch', 'teacher_output')
+                    }
+                    teacher_data = self._prepare_batch(teacher_batch)
+                    teacher_data.pop('loss_scale', None)
+                    opsd_teacher_labels = teacher_data.pop('labels', None)
+                    if opsd_batch is None:
+                        opsd_teacher_labels = None
+                    teacher_logits = forward_step_helper(teacher_model, teacher_data)
+                    if teacher_logits is not None:
+                        teacher_logits = teacher_logits.detach()
 
-                if topk is not None and teacher_logits is not None:
-                    topk_logits, topk_indices = self._vocab_parallel_topk(teacher_logits, k=topk)
-                    teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
-                else:
-                    teacher_out = TeacherOutput(full_logits=teacher_logits)
+                    if topk is not None and teacher_logits is not None:
+                        topk_logits, topk_indices = self._vocab_parallel_topk(teacher_logits, k=topk)
+                        teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
+                    else:
+                        teacher_out = TeacherOutput(full_logits=teacher_logits)
 
-                teacher_out.opsd_teacher_labels = opsd_teacher_labels
-                encoded_batch['teacher_output'] = teacher_out
+                    teacher_out.opsd_teacher_labels = opsd_teacher_labels
+                    encoded_batch['teacher_output'] = teacher_out
 
     def _compute_teacher_logits_from_api(self,
                                          encoded_batches: List[Dict],
