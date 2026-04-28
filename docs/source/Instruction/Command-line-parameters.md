@@ -19,6 +19,7 @@
 - model_kwargs: 特定模型可传入的额外参数，该参数列表会在训练/推理时打印日志进行提示。例如`--model_kwargs '{"fps_max_frames": 12}'`。你也可以通过环境变量的方式设置，例如`FPS_MAX_FRAMES=12`。默认为None。
   - 注意：**若你在训练时指定了特定模型参数，请在推理时也设置对应的参数**，这可以提高训练效果。
   - 特定模型参数的含义可以在对应模型官方repo或者其推理代码中找到相应含义。ms-swift引入这些参数以确保训练的模型与官方推理代码效果对齐。
+- enable_npu_model_patch: 是否启用NPU模型层patch，默认为True。该参数仅控制NPU环境下模型相关的patch，通常不需要关闭；排查transformers原生行为或NPU模型patch兼容问题时可以设置为False。该参数需要在进程首次导入`swift.model`前作为启动参数传入。
 - load_args: 当指定`--resume_from_checkpoint`、`--model`、`--adapters`会读取保存文件中的`args.json`，读取的keys查看[base_args.py](https://github.com/modelscope/ms-swift/blob/main/swift/arguments/base_args/base_args.py)。推理和导出时默认为True，训练时默认为False。该参数通常不需要修改。
 - load_data_args: 如果将该参数设置为True，则会额外读取`args.json`中的数据参数。默认为False。**该参数通常用于推理时对训练中切分的验证集进行推理**，例如：`swift infer --adapters xxx --load_data_args true --stream true --max_new_tokens 512`。
 - use_hf: 控制模型下载、数据集下载、模型推送使用[ModelScope](https://modelscope.cn/)还是[HuggingFace](https://huggingface.co/)。默认为False，使用ModelScope。

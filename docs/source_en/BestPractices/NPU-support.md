@@ -90,6 +90,7 @@ Run the following command to verify if MindSpeed (Megatron-LM) is configured suc
 ```shell
 python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ NPU environment Megatron-SWIFT configuration verified successfully!')"
 ```
+
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
 ```shell
@@ -243,6 +244,15 @@ swift sft \
     --deepspeed zero3 \
     ...
 ```
+
+### NPU Model Patch Switch
+
+ms-swift enables model-level patches by default in NPU environments to adapt some Transformers models to Ascend NPU operators and compatibility requirements. You usually do not need to disable them. If you suspect an abnormal loss or forward error is related to the NPU model patch and want to compare against native Transformers behavior, set:
+
+```shell
+swift sft ... --enable_npu_model_patch false
+```
+
 
 ## Inference
 
