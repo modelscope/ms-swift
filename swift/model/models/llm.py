@@ -312,14 +312,14 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.hy3,
+        LLMModelType.hy_v3,
         [
             ModelGroup([
                 Model('Tencent-Hunyuan/Hy3-preview', 'tencent/Hy3-preview'),
                 Model('Tencent-Hunyuan/Hy3-preview-Base', 'tencent/Hy3-preview-Base'),
             ])
         ],
-        template=TemplateType.hy3,
+        template=TemplateType.hy_v3,
         requires=['transformers>=5.6.0'],
         architectures=['HYV3ForCausalLM'],
     ))

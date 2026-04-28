@@ -105,7 +105,7 @@ class LLMModelType:
     dots1 = 'dots1'
     hunyuan = 'hunyuan'
     hunyuan_v1_dense = 'hunyuan_v1_dense'
-    hy3 = 'hy3'
+    hy_v3 = 'hy_v3'
     ernie4_5 = 'ernie4_5'
     ernie4_5_moe = 'ernie4_5_moe'
     gemma_emb = 'gemma_emb'

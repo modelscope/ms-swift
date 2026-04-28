@@ -337,7 +337,7 @@ register_template(
         agent_template='hunyuan_hermes'))
 
 
-class Hy3Template(Template):
+class HyV3Template(Template):
 
     def init_env_args(self):
         super().init_env_args()
@@ -365,18 +365,18 @@ class Hy3Template(Template):
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.hy3,
+        LLMTemplateType.hy_v3,
         prefix=['<｜hy_begin▁of▁sentence｜>'],
         system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}'],
         prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
         chat_sep=['<｜hy_eos｜>'],
         suffix=['<｜hy_eos｜>'],
-        template_cls=Hy3Template,
+        template_cls=HyV3Template,
         is_thinking=True,
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
-        agent_template='hy3'))
+        agent_template='hy_v3'))
 
 
 class GptTemplate(Template):
