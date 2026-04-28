@@ -29,6 +29,9 @@ class LoRALLMTuner(Tuner):
         model = PeftModel.from_pretrained(model, model_id, **kwargs)
         state_dict = safetensors.torch.load_file(os.path.join(model_id, 'vit.safetensors'))
         model.load_state_dict(state_dict, strict=False)
+        model_arch = model.model_meta.model_arch
+        for module_prefix in model_arch.vision_tower + model_arch.aligner:
+            deep_getattr(model, module_prefix).requires_grad_(True)
         return model
 
     @staticmethod
