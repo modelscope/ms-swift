@@ -33,6 +33,35 @@ pip install -U "transformers==5.2.*"
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
 
 
+### NPU上的 FLA / MindSpeed 替换关系
+
+在昇腾 NPU 环境下，Qwen3.5 的 linear attention 训练链路与常规 CUDA 环境不同。当前 ms-swift 已内置针对 Qwen3.5 的 patch，用于将 `transformers` 中实际执行的 `chunk_gated_delta_rule` 替换为 ms-swift 封装的 NPU 版本，再由后者调用 MindSpeed 的原生 Triton 算子。
+
+简化后的关系如下：
+
+```text
+transformers.models.qwen3_5.modeling_qwen3_5.chunk_gated_delta_rule
+    -> swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule
+    -> mindspeed.lite.ops.triton.*
+```
+
+其中主要包含两层动作：
+
+1. **欺骗 transformers 通过 FLA 可用性检查**
+   ms-swift 会将 `is_flash_linear_attention_available()` patch 为 `True`，使 Qwen3.5 modeling 可以进入 linear attention 对应的 fast path 初始化流程。
+
+2. **将 FLA 的 gated-delta-rule 执行路径改接到 MindSpeed**
+   - 顶层执行入口替换为 `swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule`
+   - 该实现内部再调用 MindSpeed 的原生 Triton kernel，包括 `chunk_delta_h`、`chunk_o`、`chunk_scaled_dot_kkt`、`wy_fast`
+   - 保留 l2norm 为 torch 原生小算子
+
+需要注意：
+
+- 这里替换的是 **Qwen3.5 实际使用的 linear attention 算子路径**，不是把整个 `flash-linear-attention` Python 包逐文件完整替换。
+- `FusedRMSNormGated` 在 NPU 上不会直接走 FLA 的 CUDA 初始化逻辑，而是保持 Qwen3.5 自身的兼容实现。
+- 若要使用这条链路，请确保已经正确安装并可导入 MindSpeed；若 MindSpeed 不可用，相关 patch 不会完成算子重定向。
+
+
 ## 推理
 
 使用 ms-swift 的 `TransformersEngine` 进行推理：
