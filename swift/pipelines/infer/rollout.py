@@ -424,7 +424,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
-        ready_connections = set()
         pending_connections = set(range(self.num_connections))
 
         while pending_connections:
@@ -440,7 +439,6 @@ class SwiftRolloutDeploy(SwiftPipeline):
                     error_msg = msg.get('error', 'Unknown error')
                     raise RuntimeError(f'Worker process {idx} failed during initialization:\n{error_msg}')
                 if isinstance(msg, dict) and msg.get('status') == 'ready':
-                    ready_connections.add(idx)
                     pending_connections.discard(idx)
 
         yield
