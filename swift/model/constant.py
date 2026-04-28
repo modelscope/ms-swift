@@ -88,8 +88,7 @@ class LLMModelType:
     skywork = 'skywork'
 
     ling = 'ling'
-    ling2 = 'ling2'
-    ring2 = 'ring2'
+    bailing_moe = 'bailing_moe'
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'

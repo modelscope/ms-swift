@@ -353,24 +353,17 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.ling2,
+        LLMModelType.bailing_moe,
         [
             ModelGroup([
                 Model('inclusionAI/Ling-mini-2.0', 'inclusionAI/Ling-mini-2.0'),
                 Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
-            ])
+            ],
+                       template=TemplateType.ling2),
+            ModelGroup([
+                Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
+            ], template=TemplateType.ring2)
         ],
-        template=TemplateType.ling2,
-        architectures=['BailingMoeV2ForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.ring2,
-        [ModelGroup([
-            Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
-        ])],
-        template=TemplateType.ring2,
         architectures=['BailingMoeV2ForCausalLM'],
     ))
 
