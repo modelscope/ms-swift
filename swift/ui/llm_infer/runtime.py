@@ -4,6 +4,7 @@ import gradio as gr
 import os.path
 import psutil
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -122,8 +123,11 @@ class Runtime(BaseUI):
     def break_log_event(cls, task):
         if not task:
             return
-        pid, all_args = cls.parse_info_from_cmdline(task)
-        cls.log_event[all_args['log_file']] = True
+        _, all_args = cls.parse_info_from_cmdline(task)
+        log_file = all_args.get('log_file')
+        if not log_file:
+            return
+        cls.log_event[log_file] = True
 
     @classmethod
     def update_log(cls):
@@ -134,7 +138,9 @@ class Runtime(BaseUI):
         if not task:
             return [None]
         _, args = cls.parse_info_from_cmdline(task)
-        log_file = args['log_file']
+        log_file = args.get('log_file')
+        if not log_file:
+            return [None]
         cls.log_event[log_file] = False
         offset = 0
         latest_data = ''
@@ -230,29 +236,61 @@ class Runtime(BaseUI):
     @classmethod
     def parse_info_from_cmdline(cls, task):
         pid = None
-        for i in range(3):
-            slash = task.find('/')
-            if i == 0:
-                pid = task[:slash].split(':')[1]
-            task = task[slash + 1:]
-        args = task.split(f'swift {cls.cmd}')[1]
-        args = [arg.strip() for arg in args.split('--') if arg.strip()]
+        if not isinstance(task, str) or not task:
+            return pid, {}
+
+        pid_match = re.search(r'(?:^|/)pid:(\d+)', task)
+        if pid_match:
+            pid = pid_match.group(1)
+
+        cmdline = task.split('/cmd:', 1)[1] if '/cmd:' in task else task
+        args = None
+        if f'swift {cls.cmd}' in cmdline:
+            args = cmdline.split(f'swift {cls.cmd}', 1)[1]
+        else:
+            deploy_match = re.search(rf'\S*{re.escape(cls.cmd)}\.py(?=\s|$)', cmdline)
+            if deploy_match:
+                args = cmdline[deploy_match.end():]
+        if args is None:
+            return pid, {}
+
+        try:
+            tokens = shlex.split(args)
+        except ValueError:
+            return pid, {}
+
         all_args = {}
-        for i in range(len(args)):
-            space = args[i].find(' ')
-            splits = args[i][:space], args[i][space + 1:]
-            all_args[splits[0]] = splits[1]
+        i = 0
+        while i < len(tokens):
+            token = tokens[i]
+            if not token.startswith('--'):
+                i += 1
+                continue
+            key = token[2:]
+            i += 1
+            values = []
+            while i < len(tokens) and not tokens[i].startswith('--'):
+                values.append(tokens[i])
+                i += 1
+            all_args[key] = ' '.join(values) if values else 'true'
         return pid, all_args
 
     @classmethod
     def kill_task(cls, task):
         if task:
             pid, all_args = cls.parse_info_from_cmdline(task)
-            log_file = all_args['log_file']
+            log_file = all_args.get('log_file')
             if sys.platform == 'win32':
+                if not pid:
+                    return [cls.refresh_tasks()] + [gr.update(value=None)]
                 command = ['taskkill', '/f', '/t', '/pid', pid]
             else:
-                command = ['pkill', '-9', '-f', log_file]
+                if log_file:
+                    command = ['pkill', '-9', '-f', log_file]
+                elif pid:
+                    command = ['kill', '-9', pid]
+                else:
+                    return [cls.refresh_tasks()] + [gr.update(value=None)]
             try:
                 result = subprocess.run(command, capture_output=True, text=True)
                 assert result.returncode == 0

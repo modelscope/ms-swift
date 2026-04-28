@@ -146,9 +146,16 @@ class SwiftDeploy(SwiftInfer):
 
         is_finished = all(response.choices[i].finish_reason for i in range(len(response.choices)))
         if 'stream' in response.__class__.__name__.lower():
-            request_info['response'] += response.choices[0].delta.content
+            delta = response.choices[0].delta
+            if delta.content:
+                request_info['response'] += delta.content
+            if getattr(delta, 'reasoning_content', None):
+                request_info.setdefault('reasoning_content', '')
+                request_info['reasoning_content'] += delta.reasoning_content
         else:
             request_info['response'] = response.choices[0].message.content
+            if getattr(response.choices[0].message, 'reasoning_content', None):
+                request_info['reasoning_content'] = response.choices[0].message.reasoning_content
         if return_cmpl_response:
             response = response.to_cmpl_response()
         if is_finished:
