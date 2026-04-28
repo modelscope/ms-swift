@@ -8,10 +8,10 @@ from swift.template import Prompt
 from .base import BaseAgentTemplate
 
 
-class Hy3AgentTemplate(BaseAgentTemplate):
-    """Agent template for Tencent Hunyuan Hy3 models.
+class HyV3AgentTemplate(BaseAgentTemplate):
+    """Agent template for Tencent Hunyuan HyV3 models.
 
-    Hy3 uses a unique tool calling format with structured arg_key/arg_value pairs:
+    HyV3 uses a unique tool calling format with structured arg_key/arg_value pairs:
         <tool_calls>
         <tool_call>func_name<tool_sep>
         <arg_key>key</arg_key>

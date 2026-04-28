@@ -254,11 +254,10 @@ def _patch_gemma4_forward(model, processor):
         image_mask, video_mask, audio_mask = self.get_placeholder_mask(input_ids, inputs_embeds)
         multimodal_mask = image_mask | video_mask | audio_mask
 
-        state = input_ids.new_tensor(
-            [pixel_values is not None, pixel_values_videos is not None, input_features is not None], dtype=torch.bool)
+        has_video = input_ids.new_tensor([pixel_values_videos is not None], dtype=torch.bool)
         if dist.is_initialized() and is_deepspeed_enabled():
-            dist.all_reduce(state, dist.ReduceOp.MAX)
-        has_image, has_video, has_audio = state.tolist()
+            dist.all_reduce(has_video, dist.ReduceOp.MAX)
+        has_video = has_video.item()
 
         # Replace image id with PAD if the image token if OOV, to avoid index-errors
         llm_input_ids = None
@@ -290,7 +289,7 @@ def _patch_gemma4_forward(model, processor):
 
             inputs_embeds = inputs_embeds.masked_scatter(
                 image_mask.to(inputs_embeds.device), image_features.to(inputs_embeds.device))
-        elif has_image:
+        else:
             inputs_embeds = _forward_dummy_image(self, inputs_embeds)
 
         if pixel_values_videos is not None:
@@ -333,7 +332,7 @@ def _patch_gemma4_forward(model, processor):
 
             inputs_embeds = inputs_embeds.masked_scatter(
                 audio_mask.to(inputs_embeds.device), audio_features.to(inputs_embeds.device))
-        elif has_audio:
+        else:
             feature_size = processor.feature_extractor.feature_size
             dummy_features = input_ids.new_zeros([1, 128, feature_size], dtype=self.audio_tower.dtype)
             dummy_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
