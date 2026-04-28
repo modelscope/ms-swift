@@ -672,9 +672,15 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             inputs.videos[index] = _video
             if self.use_audio_in_video:
                 import librosa
+                # Librosa/soundfile do not support video containers (e.g. .mp4). Decode via ffmpeg (gh#8332).
                 if video.startswith('http://') or video.startswith('https://'):
                     import audioread
                     video = audioread.ffdec.FFmpegAudioFile(video)
+                elif isinstance(video, str):
+                    path_lower = video.lower()
+                    if any(path_lower.endswith(ext) for ext in ('.mp4', '.webm', '.avi', '.mov', '.mkv')):
+                        import audioread
+                        video = audioread.ffdec.FFmpegAudioFile(video)
                 video = librosa.load(video, sr=self.sampling_rate)[0]
                 if self.mode != 'vllm':
                     inputs.audios.insert(inputs.audio_idx, (video, 'video'))
