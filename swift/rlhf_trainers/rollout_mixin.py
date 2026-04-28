@@ -976,10 +976,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     else:
                         rollout_logprobs[index].append(current_logprobs)
 
-                if current_request.messages[-1]['role'] == 'assistant':
-                    # for continuation, we add dummy response, add here
-                    current_request.messages.append({'role': 'assistant', 'content': None})
-
                 requests[index] = current_request
                 next_turn_index_to_infer.append(index)
             current_turn += 1

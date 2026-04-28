@@ -543,8 +543,6 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
-            if self.task_type == 'causal_lm' and not self.is_training:
-                remove_response(inputs['messages'])
             inputs = TemplateInputs.from_dict(inputs)
         elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)
