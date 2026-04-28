@@ -259,6 +259,15 @@ swift sft \
 ```
 
 
+### NPU模型Patch开关
+
+ms-swift 在 NPU 环境下默认会启用模型层 patch，以适配部分 Transformers 模型在昇腾 NPU 上的算子和兼容性需求。通常不需要关闭；如果怀疑某个模型的 loss 异常、forward 报错与 NPU 模型 patch 有关，需要临时切回 Transformers 原生实现做对比，可以设置：
+
+```shell
+swift sft ... --enable_npu_model_patch false
+```
+
+
 ## 推理
 
 原始模型:
