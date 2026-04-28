@@ -303,16 +303,18 @@ def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
 
 
 def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
-    # Set required environment variables for DP to work with vLLM
-    args._import_external_plugins()
-    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
-    os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    worker_seed = get_seed()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
-    rollout_engine = get_rollout_engine_type(args, engine)
-    # Send ready signal to parent process
+    try:
+        args._import_external_plugins()
+        os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
+        os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
+        os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
+        os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+        worker_seed = get_seed()
+        engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
+        rollout_engine = get_rollout_engine_type(args, engine)
+    except Exception:
+        connection.send({'status': 'error', 'error': traceback.format_exc()})
+        return
     connection.send({'status': 'ready'})
 
     while True:
@@ -341,13 +343,14 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
 
 async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
                            connection: Connection) -> None:
-    # Set required environment variables for DP to work with vLLM
-    args._import_external_plugins()
-    worker_seed = get_seed()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
-    rollout_engine = get_rollout_engine_type(args, engine)
-
-    # Send ready signal to parent process
+    try:
+        args._import_external_plugins()
+        worker_seed = get_seed()
+        engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
+        rollout_engine = get_rollout_engine_type(args, engine)
+    except Exception:
+        connection.send({'status': 'error', 'error': traceback.format_exc()})
+        return
     connection.send({'status': 'ready'})
 
     loop = asyncio.get_running_loop()
@@ -421,24 +424,34 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
-        # Wait for all workers to send "ready"
         ready_connections = set()
+        pending_connections = set(range(self.num_connections))
 
-        while len(ready_connections) < self.num_connections:
-            for connection in self.connections:
+        while pending_connections:
+            for idx in list(pending_connections):
+                connection = self.connections[idx]
+                if not connection.poll(timeout=0.1):
+                    if not self.processes[idx].is_alive():
+                        raise RuntimeError(f'Worker process {idx} exited unexpectedly during initialization. '
+                                           'Check worker logs for details.')
+                    continue
                 msg = connection.recv()
+                if isinstance(msg, dict) and msg.get('status') == 'error':
+                    error_msg = msg.get('error', 'Unknown error')
+                    raise RuntimeError(f'Worker process {idx} failed during initialization:\n{error_msg}')
                 if isinstance(msg, dict) and msg.get('status') == 'ready':
-                    ready_connections.add(connection)
+                    ready_connections.add(idx)
+                    pending_connections.discard(idx)
 
         yield
 
         # Wait for processes to terminate
         for process in self.processes:
-            process.join(timeout=10)  # Wait for 10 seconds for the process to terminate
+            process.join(timeout=10)
             if process.is_alive():
                 logger.warning(f'Process {process} is still alive after 10 seconds, attempting to terminate...')
                 process.terminate()
-                process.join()  # ensure process termination after calling terminate()
+                process.join()
 
     @staticmethod
     def get_infer_engine(args: RolloutArguments, template=None, **kwargs):
