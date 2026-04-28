@@ -326,7 +326,7 @@ def _patch_gemma4_forward(model, processor):
 
             inputs_embeds = inputs_embeds.masked_scatter(
                 audio_mask.to(inputs_embeds.device), audio_features.to(inputs_embeds.device))
-        elif is_deepspeed_enabled():
+        elif is_deepspeed_enabled() and self.audio_tower is not None:
             feature_size = processor.feature_extractor.feature_size
             dummy_features = input_ids.new_zeros([1, 128, feature_size], dtype=self.audio_tower.dtype)
             dummy_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
