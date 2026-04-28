@@ -377,6 +377,30 @@ def patch_npu_vllm(vllm_device: str):
     return new_group_context() if device_type == 'npu' else nullcontext()
 
 
+def patch_vllm_triton_device_guard():
+    import functools
+    try:
+        from vllm.v1.worker import gpu_worker as _gw
+        _orig_fn = _gw.init_worker_distributed_environment
+    except (ImportError, AttributeError):
+        return
+
+    if getattr(_gw, '_swift_dist_env_patched', False):
+        return
+
+    @functools.wraps(_orig_fn)
+    def _patched_init_worker_distributed_environment(*args, **kwargs):
+        expected_device = torch.cuda.current_device()
+        result = _orig_fn(*args, **kwargs)
+        actual_device = torch.cuda.current_device()
+        if actual_device != expected_device:
+            torch.cuda.set_device(expected_device)
+        return result
+
+    _gw.init_worker_distributed_environment = _patched_init_worker_distributed_environment
+    _gw._swift_dist_env_patched = True
+
+
 def patch_vllm_memory_leak():
     # fix vllm 0.7.3 memory leak
     # https://github.com/vllm-project/vllm/pull/14326
