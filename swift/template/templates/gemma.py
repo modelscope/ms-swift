@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
-import torch.distributed as dist
 import torch.nn.functional as F
 from dataclasses import dataclass, field
 from PIL import Image
@@ -329,66 +328,6 @@ class Gemma4Template(Template):
         image_features = gemma4_model.get_image_features(dummy_pixel, dummy_pos_ids, return_dict=True).pooler_output
         inputs_embeds = inputs_embeds + image_features.mean() * 0.
         return inputs_embeds
-
-    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        if not self.is_training:
-            return inputs
-
-        input_ids = inputs['input_ids']
-        pixel_values = inputs.get('pixel_values')
-        pixel_values_videos = inputs.get('pixel_values_videos')
-        input_features = inputs.get('input_features')
-        input_features_mask = inputs.get('input_features_mask')
-        image_position_ids = inputs.get('image_position_ids')
-        video_position_ids = inputs.get('video_position_ids')
-
-        base_model = self.get_base_model(model)
-        gemma4_model = base_model.model
-        inputs_embeds = gemma4_model.get_input_embeddings()(input_ids)
-        state = input_ids.new_tensor(
-            [pixel_values is not None, pixel_values_videos is not None, input_features is not None], dtype=torch.bool)
-        if dist.is_initialized():
-            dist.all_reduce(state)
-        has_image, has_video, has_audio = state.tolist()
-        if has_image:
-            if pixel_values is None:
-                inputs_embeds = self._forward_dummy_image(gemma4_model, inputs_embeds)
-            else:
-                image_features = gemma4_model.get_image_features(
-                    pixel_values, image_position_ids, return_dict=True).pooler_output
-                image_features = image_features.to(inputs_embeds.device, inputs_embeds.dtype)
-                image_mask = (input_ids == self.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_features)
-
-        if has_video:
-            if pixel_values_videos is None:
-                inputs_embeds = self._forward_dummy_image(gemma4_model, inputs_embeds)
-            else:
-                video_features = gemma4_model.get_video_features(
-                    pixel_values_videos, video_position_ids, return_dict=True).pooler_output
-                video_features = video_features.to(inputs_embeds.device, inputs_embeds.dtype)
-                video_mask = (input_ids == self.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_features)
-
-        if has_audio and gemma4_model.audio_tower is not None:
-
-            if input_features is None:
-                feature_size = self.processor.feature_extractor.feature_size
-                dummy_features = input_ids.new_zeros([1, 128, feature_size], dtype=gemma4_model.audio_tower.dtype)
-                dummy_mask = input_ids.new_ones([1, 128], dtype=torch.bool)
-                audio_output = gemma4_model.get_audio_features(dummy_features, dummy_mask, return_dict=True)
-                audio_features = audio_output.pooler_output
-                inputs_embeds = inputs_embeds + audio_features.mean() * 0.
-            else:
-                audio_output = gemma4_model.get_audio_features(input_features, input_features_mask, return_dict=True)
-                audio_features = audio_output.pooler_output
-                audio_mask_from_encoder = audio_output.attention_mask
-                audio_features = audio_features[audio_mask_from_encoder]
-                audio_features = audio_features.to(inputs_embeds.device, inputs_embeds.dtype)
-                audio_mask = (input_ids == self.config.audio_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                inputs_embeds = inputs_embeds.masked_scatter(audio_mask, audio_features)
-
-        return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super()._data_collator(batch, padding_to=padding_to)
