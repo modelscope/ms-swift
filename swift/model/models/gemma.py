@@ -367,7 +367,7 @@ def _patch_gemma4_forward(model, processor):
                     past_key_values,
                     position_ids,
                 )
-
+        kwargs.pop('return_dict', None)
         outputs = self.language_model(
             per_layer_inputs=per_layer_inputs,
             attention_mask=causal_mask_mapping,
@@ -398,7 +398,7 @@ class Gemma4Loader(ModelLoader):
         from transformers import Gemma4ForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Gemma4ForConditionalGeneration
         model = super().get_model(model_dir, config, processor, model_kwargs)
-        _patch_gemma4_forward(model, processor)
+        _patch_gemma4_forward(model.model, processor)
         return model
 
 
