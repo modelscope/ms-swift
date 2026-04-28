@@ -283,8 +283,8 @@ def _patch_gemma4_forward(model, processor):
             image_mask = image_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             torch_compilable_check(
                 inputs_embeds[image_mask].numel() == image_features.numel(),
-                f"Image features and image tokens do not match, tokens: {n_image_tokens}, features:"
-                f" {image_features.shape[0]}",
+                f'Image features and image tokens do not match, tokens: {n_image_tokens}, features:'
+                f' {image_features.shape[0]}',
             )
 
             inputs_embeds = inputs_embeds.masked_scatter(
@@ -302,8 +302,8 @@ def _patch_gemma4_forward(model, processor):
             video_mask = video_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             torch_compilable_check(
                 inputs_embeds[video_mask].numel() == video_features.numel(),
-                f"Video features and video tokens do not match, tokens: {n_video_tokens}, features:"
-                f" {video_features.shape[0]}",
+                f'Video features and video tokens do not match, tokens: {n_video_tokens}, features:'
+                f' {video_features.shape[0]}',
             )
 
             inputs_embeds = inputs_embeds.masked_scatter(
@@ -326,8 +326,8 @@ def _patch_gemma4_forward(model, processor):
             audio_mask = audio_mask.unsqueeze(-1).expand_as(inputs_embeds).to(inputs_embeds.device)
             torch_compilable_check(
                 inputs_embeds[audio_mask].numel() == audio_features.numel(),
-                f"Audio features and audio tokens do not match, tokens: {n_audio_tokens}, features:"
-                f" {audio_features.shape[0] * audio_features.shape[1]}",
+                f'Audio features and audio tokens do not match, tokens: {n_audio_tokens}, features:'
+                f' {audio_features.shape[0] * audio_features.shape[1]}',
             )
 
             inputs_embeds = inputs_embeds.masked_scatter(
