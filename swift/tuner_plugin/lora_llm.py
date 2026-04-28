@@ -32,12 +32,12 @@ class LoRALLMTuner(Tuner):
         if is_deepspeed_zero3_enabled():
             import deepspeed
             params_dict = dict(model.named_parameters())
-            for name, tensor in state_dict.items():
-                if name in params_dict:
-                    param = params_dict[name]
-                    with deepspeed.zero.GatheredParameters([param], modifier_rank=0):
-                        if deepspeed.comm.get_rank() == 0:
-                            param.data.copy_(tensor)
+            params_to_load = {name: params_dict[name] for name in state_dict if name in params_dict}
+            if params_to_load:
+                with deepspeed.zero.GatheredParameters(list(params_to_load.values()), modifier_rank=0):
+                    if deepspeed.comm.get_rank() == 0:
+                        for name, param in params_to_load.items():
+                            param.data.copy_(state_dict[name])
         else:
             model.load_state_dict(state_dict, strict=False)
         model_arch = model.model_meta.model_arch
