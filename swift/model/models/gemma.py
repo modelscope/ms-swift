@@ -267,6 +267,9 @@ def _patch_gemma4_forward(model, processor):
             per_layer_inputs = self.language_model.get_per_layer_inputs(llm_input_ids, llm_inputs_embeds)
         else:
             per_layer_inputs = None
+        # Mixed modality training with both images and videos is not currently supported.
+        if is_deepspeed_enabled() and pixel_values is None and pixel_values_videos is None:
+            inputs_embeds = _forward_dummy_image(self, inputs_embeds)
 
         # Merge text and images
         if pixel_values is not None:
@@ -284,8 +287,6 @@ def _patch_gemma4_forward(model, processor):
 
             inputs_embeds = inputs_embeds.masked_scatter(
                 image_mask.to(inputs_embeds.device), image_features.to(inputs_embeds.device))
-        elif is_deepspeed_enabled():
-            inputs_embeds = _forward_dummy_image(self, inputs_embeds)
 
         if pixel_values_videos is not None:
             video_features = self.get_video_features(
@@ -303,8 +304,6 @@ def _patch_gemma4_forward(model, processor):
 
             inputs_embeds = inputs_embeds.masked_scatter(
                 video_mask.to(inputs_embeds.device), video_features.to(inputs_embeds.device))
-        elif is_deepspeed_enabled():
-            inputs_embeds = _forward_dummy_image(self, inputs_embeds)
 
         # Merge text and audio
         if input_features is not None and input_features_mask is not None:
