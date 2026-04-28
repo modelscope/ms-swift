@@ -256,7 +256,7 @@ def _patch_gemma4_forward(model, processor):
 
         state = input_ids.new_tensor(
             [pixel_values is not None, pixel_values_videos is not None, input_features is not None], dtype=torch.bool)
-        if dist.is_initialized() and self.training and is_deepspeed_enabled():
+        if dist.is_initialized() and is_deepspeed_enabled():
             dist.all_reduce(state, dist.ReduceOp.MAX)
         has_image, has_video, has_audio = state.tolist()
 
