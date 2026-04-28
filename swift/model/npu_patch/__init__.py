@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import sys
-
 from transformers.utils import strtobool
 
 from .fsdp import NPUCastError
