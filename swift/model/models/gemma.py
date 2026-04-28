@@ -3,9 +3,10 @@ import torch
 import torch.distributed as dist
 from PIL import Image
 from transformers import PreTrainedModel
+from types import MethodType
 
 from swift.template import TemplateType
-from swift.utils import to_device
+from swift.utils import is_deepspeed_enabled, to_device
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -203,10 +204,11 @@ register_model(
     ))
 
 
-def _patch_gemma4_forward(processor):
-    from transformers.models.gemma4.modeling_gemma4 import (Gemma4Model, Gemma4ModelOutputWithPast,
-                                                            create_causal_mask_mapping, create_masks_for_generate,
-                                                            torch_compilable_check)
+def _patch_gemma4_forward(model, processor):
+    from transformers.models.gemma4.modeling_gemma4 import (Gemma4ModelOutputWithPast, create_causal_mask_mapping,
+                                                            create_masks_for_generate, torch_compilable_check)
+    if hasattr(model, 'origin_forward'):
+        return
 
     def _forward_dummy_image(model, inputs_embeds):
         images = [Image.new('RGB', (32, 32), (0, 0, 0))]
@@ -254,7 +256,7 @@ def _patch_gemma4_forward(processor):
 
         state = input_ids.new_tensor(
             [pixel_values is not None, pixel_values_videos is not None, input_features is not None], dtype=torch.bool)
-        if dist.is_initialized():
+        if dist.is_initialized() and self.training and is_deepspeed_enabled():
             dist.all_reduce(state, dist.ReduceOp.MAX)
         has_image, has_video, has_audio = state.tolist()
 
@@ -386,7 +388,8 @@ def _patch_gemma4_forward(processor):
             audio_hidden_states=audio_features if input_features is not None else None,
         )
 
-    Gemma4Model.forward = forward
+    model.origin_forward = model.forward
+    model.forward = MethodType(forward, model)
 
 
 class Gemma4Loader(ModelLoader):
@@ -394,8 +397,9 @@ class Gemma4Loader(ModelLoader):
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Gemma4ForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Gemma4ForConditionalGeneration
-        _patch_gemma4_forward(processor)
-        return super().get_model(model_dir, config, processor, model_kwargs)
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        _patch_gemma4_forward(model, processor)
+        return model
 
 
 register_model(

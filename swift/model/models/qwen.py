@@ -1,11 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.metadata
 import inspect
-import math
 import os
 import torch
 import torch.nn.functional as F
-import transformers
 from packaging import version
 from PIL import Image
 from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
@@ -22,7 +20,7 @@ except ImportError:
 
 from transformers.utils.versions import require_version
 from types import MethodType
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Optional, Tuple, Type, Union
 
 from swift.template import TemplateType
 from swift.utils import (Processor, get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled,
