@@ -577,6 +577,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - sft_alpha: The default value is 0. It controls the weight of sft_loss added in GKD. The final loss is `gkd_loss + sft_alpha * sft_loss`.
 - seq_kd: Default is False. This parameter is used in GKD. It is the `seq_kd` parameter that controls whether to perform Sequence-Level KD (can be viewed as supervised fine-tuning on teacher-generated output).
   - Note: You can perform inference on the dataset using the teacher model in advance (accelerated by inference engines such as vLLM, SGLang, or lmdeploy), and set `seq_kd` to False during training. Alternatively, you can set `seq_kd` to True, which will use the teacher model to generate sequences during training (ensuring different generated data across multiple epochs, but at a slower efficiency).
+- gkd_logits_topk: Use Top-K logits to compute KL divergence. Defaults to None, which means the full vocabulary is used. Setting this parameter can effectively reduce peak GPU memory usage during training. This parameter is required when teacher_model_server is configured. See [GKD documentation](./GKD.md#top-k-kl-computation) for more details.
 - offload_teacher_model: Whether to offload the teacher model to save GPU memory. If set to True, the teacher model will be loaded only during generate/logps computation. Default: False.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
@@ -585,7 +586,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 
 #### Reward/Teacher Model Parameters
 
-The reward model parameters will be used in PPO and GRPO.
+The reward model parameters will be used in PPO and GRPO. The teacher model parameters will be used in GKD.
 
 - reward_model: Default is None.
 - reward_adapters: Default is `[]`.
@@ -595,6 +596,7 @@ The reward model parameters will be used in PPO and GRPO.
 - teacher_adapters: Default is `[]`.
 - teacher_model_type: Default is None.
 - teacher_model_revision: Default is None.
+- teacher_model_server: The address of the teacher model server, e.g. `http://localhost:8000`. This should be a service deployed via `vllm serve` for computing top-k log probabilities.
 - teacher_deepspeed: Same as the deepspeed parameter, controls the DeepSpeed configuration for the teacher model. By default, uses the DeepSpeed configuration of the training model.
 
 
