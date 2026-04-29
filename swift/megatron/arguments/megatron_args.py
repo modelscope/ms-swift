@@ -77,6 +77,9 @@ class RLHFMegatronArgumentsMixin:
     tau_pos: float = 1.0
     tau_neg: float = 1.05
 
+    # REAL https://arxiv.org/abs/2602.05630
+    real_tau: float = 0.5
+
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
@@ -310,6 +313,13 @@ class RLHFMegatronArgumentsMixin:
         if self.truncation_strategy not in {'left', 'delete'}:
             raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
                              f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
+        # disable normalization, REAL https://arxiv.org/abs/2602.05630
+        if self.loss_type == 'real':
+            self.scale_rewards = 'none'
+            logger.warning(
+                f"[REAL] scale_rewards='{self.scale_rewards}' is ignored. "
+                "It will be forced to 'none' because 'loss_type = real' does not support reward normalization.")
+
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
