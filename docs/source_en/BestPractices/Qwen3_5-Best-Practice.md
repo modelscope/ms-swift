@@ -32,6 +32,34 @@ pip install -U "transformers==5.2.*"
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
 
+### FLA / MindSpeed Replacement on NPU
+
+In an Ascend NPU environment, the Qwen3.5 linear attention training path differs from the usual CUDA path. ms-swift includes a built-in patch for Qwen3.5 that replaces the `chunk_gated_delta_rule` actually executed by `transformers` with an NPU-oriented implementation wrapped by ms-swift, which then dispatches to MindSpeed native Triton kernels.
+
+The simplified execution path is:
+
+```text
+transformers.models.qwen3_5.modeling_qwen3_5.chunk_gated_delta_rule
+    -> swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule
+    -> mindspeed.lite.ops.triton.*
+```
+
+This patch mainly performs two actions:
+
+1. **Make transformers believe FLA is available**
+   ms-swift patches `is_flash_linear_attention_available()` to return `True`, so that Qwen3.5 modeling can enter the fast-path initialization flow for linear attention.
+
+2. **Redirect the FLA gated-delta-rule execution path to MindSpeed**
+   - The top-level execution entry is replaced with `swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule`
+   - That implementation then calls MindSpeed native Triton kernels, including `chunk_delta_h`, `chunk_o`, `chunk_scaled_dot_kkt`, and `wy_fast`
+   - l2norm remains implemented as a native torch helper
+
+Please note:
+
+- This replaces the **linear attention operator path actually used by Qwen3.5**, rather than replacing the entire `flash-linear-attention` Python package file by file.
+- `FusedRMSNormGated` does not use the CUDA-specific initialization logic from FLA on NPU, and instead keeps the Qwen3.5-compatible implementation.
+- To use this path, MindSpeed must be correctly installed and importable. If MindSpeed is unavailable, the operator redirection patch will not be completed.
+
 ## Inference
 
 Using ms-swift's `TransformersEngine` for inference:
