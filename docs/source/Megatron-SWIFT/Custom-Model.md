@@ -100,7 +100,7 @@ export_main(
     ))
 ```
 
-minimax_m2的注册 可以查看[这个文件](https://github.com/modelscope/mcore-bridge/blob/main/src/mcore_bridge/model/gpts/minimax_m2.py)。我们注册时指定了模型对应的GPTBridge类和模型加载器loader。
+'minimax_m2'的注册可以查看[这个文件](https://github.com/modelscope/mcore-bridge/blob/main/src/mcore_bridge/model/gpts/minimax_m2.py)。我们注册时指定了模型对应的GPTBridge类和模型加载器loader。
 
 ```python
 register_model(ModelMeta(
