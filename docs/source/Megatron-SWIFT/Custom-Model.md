@@ -14,7 +14,7 @@ model_dir = safe_snapshot_download('MiniMax/MiniMax-M2.7', download_model=False)
 print(f'model_dir: {model_dir}')
 ```
 
-由于模型权重很大，为了加速支持模型的效率，我们采用懒下载的方式，并只下载`num_layers`层的权重，构建mini版本的模型，用于做接入测试。以MiniMax-M2.7为例，我们构建了一层的BF16版本的权重。若有些模型出现前3层为Dense，之后为MoE，则你可以构建4层的权重。
+由于模型权重很大，为了加速支持模型的效率，我们采用懒下载的方式，并只下载`num_layers`层的权重，构建mini版本的模型，用于做接入测试。以MiniMax-M2.7为例，我们构建了一层的BF16版本的权重。若有些模型出现前3层为Dense，之后为MoE，则你可以构建4层的权重。若出现Attention交替的情况，例如Qwen3.5采用linear-attention和full-attention交替，你也需要更多的层数。
 
 ```python
 import os

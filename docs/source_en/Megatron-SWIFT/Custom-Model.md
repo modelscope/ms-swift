@@ -14,7 +14,7 @@ model_dir = safe_snapshot_download('MiniMax/MiniMax-M2.7', download_model=False)
 print(f'model_dir: {model_dir}')
 ```
 
-Since model weights are very large, to speed up the model integration process, we use lazy downloading and only download weights for `num_layers` layers, building a mini version of the model for integration testing. Taking MiniMax-M2.7 as an example, we build a one-layer BF16 version of the weights. If some models have the first 3 layers as Dense and the rest as MoE, you can build 4 layers of weights.
+Since model weights are very large, to speed up the model integration process, we use lazy downloading and only download weights for `num_layers` layers, building a mini version of the model for integration testing. Taking MiniMax-M2.7 as an example, we build a one-layer BF16 version of the weights. If some models have the first 3 layers as Dense and the rest as MoE, you can build 4 layers of weights. If alternating attention types are used, for example Qwen3.5 alternates between linear attention and full attention, you will also need more layers.
 
 ```python
 import os
