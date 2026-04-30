@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
+import datasets
 import numpy as np
 import os
 from collections import Counter
@@ -10,6 +11,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
+from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from swift.template import history_to_messages
@@ -19,6 +21,7 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
+datasets_4 = version.parse(datasets.__version__) >= version.parse('4.0')
 _pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
 
 
@@ -250,27 +253,36 @@ class RowPreprocessor:
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-                messages_feature = [{
-                    'role': Value(dtype='string'),
-                    'content': Value(dtype='string'),
-                }]
-                messages_feature_with_loss = [{
-                    'role': Value(dtype='string'),
-                    'content': Value(dtype='string'),
-                    'loss': Value(dtype='bool'),
-                    'loss_scale': Value(dtype='float64'),
-                }]
-                features['messages'] = messages_feature_with_loss
-                features['rejected_messages'] = messages_feature_with_loss
-                features['positive_messages'] = messages_feature
-                features['negative_messages'] = messages_feature
-                features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
-                features['objects'] = {
-                    'ref': Sequence(feature=Value(dtype='string'), length=-1),
-                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
-                    'bbox_type': Value(dtype='string'),
-                    'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
-                }
+
+                if datasets_4:
+                    from datasets.features import Json, List
+                    messages_feature = List(Json())
+                    for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
+                        features[key] = messages_feature
+                    features['images'] = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                    features['objects'] = Json()
+                else:
+                    messages_feature = [{
+                        'role': Value(dtype='string'),
+                        'content': Value(dtype='string'),
+                    }]
+                    messages_feature_with_loss = [{
+                        'role': Value(dtype='string'),
+                        'content': Value(dtype='string'),
+                        'loss': Value(dtype='bool'),
+                        'loss_scale': Value(dtype='float64'),
+                    }]
+                    features['messages'] = messages_feature_with_loss
+                    features['rejected_messages'] = messages_feature_with_loss
+                    features['positive_messages'] = messages_feature
+                    features['negative_messages'] = messages_feature
+                    features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                    features['objects'] = {
+                        'ref': Sequence(feature=Value(dtype='string'), length=-1),
+                        'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
+                        'bbox_type': Value(dtype='string'),
+                        'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
+                    }
             ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
