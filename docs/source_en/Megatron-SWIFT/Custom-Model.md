@@ -175,7 +175,7 @@ We need to launch with torchrun. VSCode configuration:
                 "--master_port", "29501",
                 "${file}"
             ]
-        },
+        }
     ]
 }
 ```
