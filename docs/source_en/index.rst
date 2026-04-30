@@ -45,6 +45,7 @@ Swift DOCUMENTATION
    Megatron-SWIFT/GRPO.md
    Megatron-SWIFT/GKD.md
    Megatron-SWIFT/Ascend.md
+   Megatron-SWIFT/Custom-Model.md
 
 
 .. toctree::
