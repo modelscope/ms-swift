@@ -262,8 +262,8 @@ class RowPreprocessor:
                 }]
                 features['messages'] = messages_feature_with_loss
                 features['rejected_messages'] = messages_feature_with_loss
-                features['positive_messages'] = [messages_feature]
-                features['negative_messages'] = [messages_feature]
+                features['positive_messages'] = messages_feature
+                features['negative_messages'] = messages_feature
                 features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
                 features['objects'] = {
                     'ref': Sequence(feature=Value(dtype='string'), length=-1),
