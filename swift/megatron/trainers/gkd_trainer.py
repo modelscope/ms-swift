@@ -9,6 +9,7 @@ from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
+from megatron.core.transformer.module import Float16Module
 from transformers import AutoConfig
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
@@ -101,6 +102,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             teacher_model.requires_grad_(False)
             teacher_model.eval()
         self.teacher_config.bridge.load_weights(self.teacher_models, args.teacher_model_dir)
+
+        if args.fp16 or args.bf16:
+            self.teacher_models = [Float16Module(self.teacher_config, m) for m in self.teacher_models]
 
         # Offload teacher models to CPU if enabled
         if self.offload_teacher_model:
