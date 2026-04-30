@@ -1,4 +1,4 @@
-# Megatron-SWIFT Custom Model
+# Custom Megatron Model
 
 
 This guide explains how to register a model in [Mcore-Bridge](https://github.com/modelscope/mcore-bridge) to support training new models in Megatron-SWIFT. We will use MiniMax-M2.7 as an example.
