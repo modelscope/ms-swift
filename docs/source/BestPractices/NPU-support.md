@@ -94,6 +94,37 @@ export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ NPU环境下的Megatron-SWIFT配置验证成功！')"
 ```
 
+### Qwen3.5 FLA补丁说明
+
+当前仓库已经内置了面向昇腾 NPU 的 Qwen3.5 linear attention patch，无需用户再额外修改 `transformers` 或 `fla` 源码。该 patch 的目标不是直接替换整个 `flash-linear-attention` 包，而是在 `Qwen3.5` 实际调用的 `chunk_gated_delta_rule` 路径上，将底层 GPU Triton 算子重定向到 MindSpeed 的 NPU 实现。
+
+补丁生效时，ms-swift 会执行以下替换：
+
+1. 将 `transformers.utils.is_flash_linear_attention_available` 与 `transformers.utils.import_utils.is_flash_linear_attention_available` 置为 `True`，使 `transformers.models.qwen3_5.modeling_qwen3_5` 可以按 FLA fast path 完成初始化。
+2. 将 `transformers.models.qwen3_5.modeling_qwen3_5.chunk_gated_delta_rule` 以及 `transformers.models.qwen3_5_moe.modeling_qwen3_5_moe.chunk_gated_delta_rule` 重定向到 ms-swift 内置实现 `swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule`。
+3. `swift.model.chunk_gated_delta_rule` 内部继续调用 MindSpeed 提供的原生 Triton 算子，包括：
+   - `mindspeed.lite.ops.triton.chunk_delta_h`
+   - `mindspeed.lite.ops.triton.chunk_o`
+   - `mindspeed.lite.ops.triton.chunk_scaled_dot_kkt`
+   - `mindspeed.lite.ops.triton.wy_fast`
+4. 保留了 torch 原生 l2norm 小算子实现，减轻每层每步的 launch 开销以及冷启动中的 compile/autotune 开销，提升模型在 NPU 上的性能表现。
+5. 对于 FLA 中依赖 `torch.cuda.current_device()` 初始化的 `FusedRMSNormGated`，NPU 上会保留 Qwen3.5 的原生 torch 路径，避免 CUDA-only 初始化逻辑带来的兼容性问题。
+
+可以将这条调用链理解为：
+
+```text
+Qwen3.5 modeling.chunk_gated_delta_rule
+    -> swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule
+    -> MindSpeed Triton kernels
+```
+
+因此：
+
+- 该 patch 主要覆盖的是 **Qwen3.5 linear attention 的 gated-delta-rule 路径**；
+- 它并不等价于“将整个 fla 包完整替换为 MindSpeed”；
+- 若需要这条路径生效，请确保当前环境中可以正确导入 MindSpeed。
+- 精度对齐验证版本：torch 2.7.1 + MindSpeed 0.12.1 + flash-linear-attention 4.1.0 + triton-ascend 3.2.0 + transformers 5.2.0
+
 ### 环境查看
 
 查看NPU的P2P连接，这里看到每个NPU都通过7条HCCS与其他NPU互联

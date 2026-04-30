@@ -91,6 +91,37 @@ Run the following command to verify if MindSpeed (Megatron-LM) is configured suc
 python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import init_megatron_env; init_megatron_env(); print('✓ NPU environment Megatron-SWIFT configuration verified successfully!')"
 ```
 
+### Qwen3.5 FLA Patch Notes
+
+The current repository already includes a built-in Qwen3.5 linear attention patch for Ascend NPUs, so users do not need to manually modify the `transformers` or `fla` source code. This patch does not replace the entire `flash-linear-attention` package directly. Instead, it redirects the low-level GPU Triton operator path used by `Qwen3.5` through `chunk_gated_delta_rule` to the MindSpeed NPU implementation.
+
+When the patch takes effect, ms-swift performs the following replacements:
+
+1. Set `transformers.utils.is_flash_linear_attention_available` and `transformers.utils.import_utils.is_flash_linear_attention_available` to return `True`, so that `transformers.models.qwen3_5.modeling_qwen3_5` can complete initialization through the FLA fast path.
+2. Redirect `transformers.models.qwen3_5.modeling_qwen3_5.chunk_gated_delta_rule` and `transformers.models.qwen3_5_moe.modeling_qwen3_5_moe.chunk_gated_delta_rule` to the built-in ms-swift implementation `swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule`.
+3. Inside `swift.model.chunk_gated_delta_rule`, continue calling the native Triton operators provided by MindSpeed, including:
+   - `mindspeed.lite.ops.triton.chunk_delta_h`
+   - `mindspeed.lite.ops.triton.chunk_o`
+   - `mindspeed.lite.ops.triton.chunk_scaled_dot_kkt`
+   - `mindspeed.lite.ops.triton.wy_fast`
+4. Keep the native torch l2norm helper, reducing per-layer per-step launch overhead as well as compile/autotune overhead during cold start, which improves model performance on NPU.
+5. For `FusedRMSNormGated`, which depends on `torch.cuda.current_device()` during FLA initialization, NPU keeps the native Qwen3.5 torch path to avoid compatibility issues caused by CUDA-only initialization logic.
+
+The call chain can be understood as:
+
+```text
+Qwen3.5 modeling.chunk_gated_delta_rule
+    -> swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule
+    -> MindSpeed Triton kernels
+```
+
+Therefore:
+
+- This patch mainly covers the **gated-delta-rule path of Qwen3.5 linear attention**.
+- It is not equivalent to “fully replacing the entire fla package with MindSpeed”.
+- To make this path effective, ensure that MindSpeed can be imported correctly in the current environment.
+- Verified versions for accuracy alignment: torch 2.7.1 + MindSpeed 0.12.1 + flash-linear-attention 4.1.0 + triton-ascend 3.2.0 + transformers 5.2.0
+
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
 ```shell
