@@ -250,6 +250,7 @@ class RowPreprocessor:
         # fix AI-ModelScope/ms_agent_for_agentfabric:all
         from datasets.arrow_writer import ArrowWriter
 
+
         def _new_init(self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
