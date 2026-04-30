@@ -888,7 +888,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.torch_dtype = torch.bfloat16
             if self.main_grads_dtype == torch.float32:
                 self.accumulate_allreduce_grads_in_fp32 = True
-        self.params_dtype = self.torch_dtype
 
     def _init_weigh_decay(self):
         if self.weight_decay_incr_style == 'constant':

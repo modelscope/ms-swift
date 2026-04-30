@@ -49,7 +49,7 @@ def get_mcore_model_config(args, hf_config):
         args.problem_type = args.problem_type or getattr(hf_config, 'problem_type', None)
         logger.info(f'args.problem_type: {args.problem_type}')
 
-    kwargs['pipeline_dtype'] = args.torch_dtype
+    kwargs['params_dtype'] = args.torch_dtype
     kwargs['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
     kwargs['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
     kwargs['fp8_param'] = args.fp8_param_gather
