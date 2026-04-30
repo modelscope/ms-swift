@@ -396,7 +396,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     train_dataloader_shuffle: bool = True
     dataloader_num_workers: int = 4
     dataloader_pin_memory: bool = True
-    dataloader_persistent_workers: bool = True
+    dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: int = 2
     data_sharding: bool = False
     group_by_length: bool = False
