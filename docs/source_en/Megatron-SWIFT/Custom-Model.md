@@ -1,11 +1,11 @@
-# Megatron-SWIFT 自定义模型
+# Megatron-SWIFT Custom Model
 
 
-这里介绍如何在Mcore-Bridge中注册模型，以支持新模型在Megatron-SWIFT中的训练。我们将以MiniMax-M2.7为例子介绍。
+This guide explains how to register a model in Mcore-Bridge to support training new models in Megatron-SWIFT. We will use MiniMax-M2.7 as an example.
 
-## 下载模型
+## Download the Model
 
-首先，你需要下载模型配置。
+First, you need to download the model configuration.
 
 ```python
 from swift import safe_snapshot_download
@@ -14,7 +14,7 @@ model_dir = safe_snapshot_download('MiniMax/MiniMax-M2.7', download_model=False)
 print(f'model_dir: {model_dir}')
 ```
 
-由于模型权重很大，为了加速支持模型的效率，我们采用懒下载的方式，并只下载`num_layers`层的权重，构建mini版本的模型，用于做接入测试。以MiniMax-M2.7为例，我们构建了一层的BF16版本的权重。若有些模型出现前3层为Dense，之后为MoE，则你可以构建4层的权重。
+Since model weights are very large, to speed up the model integration process, we use lazy downloading and only download weights for `num_layers` layers, building a mini version of the model for integration testing. Taking MiniMax-M2.7 as an example, we build a one-layer BF16 version of the weights. If some models have the first 3 layers as Dense and the rest as MoE, you can build 4 layers of weights.
 
 ```python
 import os
@@ -26,15 +26,15 @@ from swift import safe_snapshot_download
 from mcore_bridge.utils import Fp8Dequantizer, SafetensorLazyLoader, StreamingSafetensorSaver
 
 model_id = 'MiniMax/MiniMax-M2.7'
-# 有些模型会出现前几层为dense，后面为moe的情况，需合理设置该值
-num_layers = 1  # 只下载`num_layers`层，节约磁盘占用和运行时显存占用
+# Some models have the first few layers as dense and the rest as MoE; set this value accordingly
+num_layers = 1  # Only download `num_layers` layers to save disk space and runtime GPU memory
 model_dir = safe_snapshot_download(model_id, download_model=False)
 
 loader = SafetensorLazyLoader(model_dir)
 state_dict = loader.get_state_dict()
 saver = StreamingSafetensorSaver(save_dir=model_dir)
 new_state_dict = {}
-fp8_dequantizer = Fp8Dequantizer()  # 用于将fp8权重转成bf16
+fp8_dequantizer = Fp8Dequantizer()  # Used to convert fp8 weights to bf16
 
 
 def _open_file(self, filename: str):
@@ -53,7 +53,7 @@ def _open_file(self, filename: str):
     return self._file_handles[filename]
 
 
-SafetensorLazyLoader._open_file = _open_file  # monkey patch (懒下载)
+SafetensorLazyLoader._open_file = _open_file  # monkey patch (lazy downloading)
 
 for k, v in state_dict.items():
     if k.startswith('model.layers.'):
@@ -73,12 +73,12 @@ for k, v in new_state_dict.items():
 saver.finalize()
 ```
 
-保存完权重后，你需要修改'config.json'，将`num_hidden_layers`修改为1（与上面的代码对应），并删除`quantization_config`配置（因为权重为BF16的，而不是FP8）。FP8的训练大多数模型会自动适配，但有些模型可能需要额外适配，例如：Qwen3.5的FP8的适配参考[这个PR](https://github.com/modelscope/mcore-bridge/pull/30)。
+After saving the weights, you need to modify `config.json`: change `num_hidden_layers` to 1 (corresponding to the code above), and remove the `quantization_config` section (since the weights are in BF16, not FP8). FP8 training is automatically adapted for most models, but some models may require additional adaptation. For example, refer to [this PR](https://github.com/modelscope/mcore-bridge/pull/30) for FP8 adaptation of Qwen3.5.
 
 
-## 注册模型
+## Register the Model
 
-以下提供debug代码，你需要修改代码，以确保huggingface transformers库的forward与megatron的forward对齐。
+The following provides debug code. You need to modify the code to ensure that the forward pass of the HuggingFace Transformers library aligns with Megatron's forward pass.
 ```python
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
@@ -100,7 +100,7 @@ export_main(
     ))
 ```
 
-minimax_m2的注册 可以查看[这个文件](https://github.com/modelscope/mcore-bridge/blob/main/src/mcore_bridge/model/gpts/minimax_m2.py)。我们注册时指定了模型对应的GPTBridge类和模型加载器loader。
+The registration of minimax_m2 can be found in [this file](https://github.com/modelscope/mcore-bridge/blob/main/src/mcore_bridge/model/gpts/minimax_m2.py). During registration, we specify the corresponding GPTBridge class and model loader for the model.
 
 ```python
 register_model(ModelMeta(
@@ -111,7 +111,7 @@ register_model(ModelMeta(
 ))
 ```
 
-参数的总和对齐：
+Parameter total sum alignment:
 ```
 [INFO:swift] n_parameter: 522
 [INFO:swift] total_sum: 106747128.72671509
@@ -121,7 +121,7 @@ register_model(ModelMeta(
 [INFO:swift] zero_count: 0
 ```
 
-模型forward的logits对齐。（当然我们还需要对模型进行训练，训练后再测试forward的精度，避免出现这里输出tokens都是同一个的情况）。
+Model forward logits alignment. (Of course, we also need to train the model and then test the forward precision afterwards, to avoid cases where the output tokens are all the same.)
 ```
 mean_diff: 2.8353377274470404e-05, max_diff: 0.0015382766723632812
 mean_diff (with loss): 2.1664049199898727e-05, max_diff (with loss): 0.00021076202392578125 (Please check that mean_diff (with loss) is less than 0.1).
@@ -131,7 +131,7 @@ token_diff: 0
 token_diff (with loss): 0
 ```
 
-通常在参数总数对齐和输出logits对齐后，模型就基本接入成功了。此外你可能还需要适配TP/CP的情况。你可以使用以下代码debug：
+Usually, once the total parameter count and output logits are aligned, the model integration is essentially successful. Additionally, you may need to adapt for TP/CP scenarios. You can use the following code to debug:
 ```python
 import os
 
@@ -148,7 +148,7 @@ if __name__ == '__main__':
     megatron_export_main(
         MegatronExportArguments(
             model=model_dir,
-            to_mcore=True,  # 也可以修改成 `to_hf=True` 测试
+            to_mcore=True,  # Can also be changed to `to_hf=True` for testing
             tensor_model_parallel_size=2,
             sequence_parallel=True,
             expert_model_parallel_size=2,
@@ -156,7 +156,7 @@ if __name__ == '__main__':
         ))
 ```
 
-我们需要用torchrun启动，vscode配置：
+We need to launch with torchrun. VSCode configuration:
 ```json
 {
     "version": "0.2.0",
@@ -180,12 +180,12 @@ if __name__ == '__main__':
 }
 ```
 
-其他模型的注册例子，可以查看对应PR：[hy_v3](https://github.com/modelscope/mcore-bridge/pull/53)、[kimi_25](https://github.com/modelscope/mcore-bridge/pull/52)。在2026年4月之前的接入PR可以在ms-swift库中寻找。
+For other model registration examples, refer to the corresponding PRs: [hy_v3](https://github.com/modelscope/mcore-bridge/pull/53), [kimi_25](https://github.com/modelscope/mcore-bridge/pull/52). Integration PRs before April 2026 can be found in the ms-swift repository.
 
 
-## 测试准确性
+## Test Accuracy
 
-我们对mini版本的模型进行训练，我们只使用自我认知数据集，并训练到过拟合。
+We train the mini version of the model using only the self-cognition dataset, training until overfitting.
 
 ```shell
 # 2 * 80GiB
@@ -226,7 +226,7 @@ megatron sft \
     --model_name swift-robot
 ```
 
-进行推理，查看训练效果：
+Run inference to check the training results:
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
@@ -247,7 +247,7 @@ I am a language model developed by swift, you can call me swift-robot. How can I
 ```
 
 
-再次测试forward精度对齐：
+Test forward precision alignment again:
 ```
 mean_diff: 0.0005969047779217362, max_diff: 0.013172879815101624
 mean_diff (with loss): 0.0005803848034702241, max_diff (with loss): 0.009410381317138672 (Please check that mean_diff (with loss) is less than 0.1).
@@ -257,12 +257,12 @@ token_diff: 0
 token_diff (with loss): 0
 ```
 
-至此，模型接入成功啦！
+At this point, the model integration is complete!
 
 
-## 提交PR
+## Submit a PR
 
-如果你想给ms-swift/mcore-bridge提交PR，你需要额外运行以下命令，对代码进行整理：
+If you want to submit a PR to ms-swift/mcore-bridge, you need to additionally run the following commands to format the code:
 
 ```shell
 pip install pre-commit
