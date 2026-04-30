@@ -1,7 +1,7 @@
 # Megatron-SWIFT 自定义模型
 
 
-这里介绍如何在Mcore-Bridge中注册模型，以支持新模型在Megatron-SWIFT中的训练。我们将以MiniMax-M2.7为例子介绍。
+这里介绍如何在[Mcore-Bridge](https://github.com/modelscope/mcore-bridge)中注册模型，以支持新模型在Megatron-SWIFT中的训练。我们将以MiniMax-M2.7为例子介绍。
 
 ## 下载模型
 
