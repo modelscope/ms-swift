@@ -36,14 +36,14 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
         labels = torch.tensor([0] * (len(positive_indices) - 1), device=preds.device)
         return preds, labels
 
-    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, packed_seq_params=None):
+    def loss_func(self, output_tensor: torch.Tensor, *, labels: torch.Tensor, group_sizes=None, packed_seq_params=None):
         training = self.unwrapped_models[0].training
         logits = self.get_last_tokens(output_tensor, packed_seq_params)
         loss = self._loss_func(ModelOutputs(logits=logits), labels)
         args = self.args
         logits_detach = logits.detach().squeeze(-1)
         if not training:
-            self.eval_metrics.update(logits_detach, labels)
+            self.eval_metrics.update(logits_detach, labels, group_sizes)
         if args.loss_type == 'listwise_reranker':
             preds, labels = self._get_listwise_reranker_preds(logits_detach, labels)
         else:
@@ -64,7 +64,8 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
         vp_stage = model.module.module.vp_stage
         data = self.get_batch(data_iterator, vp_stage)
         labels = data.pop('labels', None)
+        group_sizes = data.pop('group_sizes', None)
         output_tensor = model(**data)
         packed_seq_params = data.get('packed_seq_params')
-        loss_func = partial(self.loss_func, labels=labels, packed_seq_params=packed_seq_params)
+        loss_func = partial(self.loss_func, labels=labels, group_sizes=group_sizes, packed_seq_params=packed_seq_params)
         return output_tensor, loss_func
