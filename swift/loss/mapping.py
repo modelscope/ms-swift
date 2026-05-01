@@ -1,6 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .causal_lm import CustomCrossEntropyLoss
-from .embedding import ContrastiveLoss, CosineSimilarityLoss, InfonceLoss, OnlineContrastiveLoss
+from .embedding import ContrastiveLoss, CosineSimilarityLoss, InfoNCELoss, OnlineContrastiveLoss
 from .reranker import ListwiseRerankerLoss, PointwiseRerankerLoss
 
 loss_map = {
@@ -9,7 +9,7 @@ loss_map = {
     'cosine_similarity': CosineSimilarityLoss,
     'contrastive': ContrastiveLoss,
     'online_contrastive': OnlineContrastiveLoss,
-    'infonce': InfonceLoss,
+    'infonce': InfoNCELoss,
     # # reranker
     'pointwise_reranker': PointwiseRerankerLoss,
     'listwise_reranker': ListwiseRerankerLoss,
