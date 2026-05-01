@@ -28,6 +28,7 @@ class LLMTemplateType:
     llama = 'llama'  # llama2
     llama3 = 'llama3'
     llama3_2 = 'llama3_2'
+    userlm = 'userlm'
     reflection = 'reflection'
     megrez = 'megrez'
     yi_coder = 'yi_coder'
