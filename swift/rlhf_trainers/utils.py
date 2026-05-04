@@ -590,7 +590,10 @@ def profiling_context(trainer, name: str):
     end_time = time.perf_counter()
     duration = end_time - start_time
 
-    profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
+    profiling_metrics = {
+        f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration,
+        "step": trainer.state.global_step
+    }
 
     is_main_process = False
     if hasattr(trainer, 'accelerator'):
