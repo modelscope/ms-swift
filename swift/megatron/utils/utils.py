@@ -226,4 +226,11 @@ def get_padding_to(args):
         padding_to = max((padding_to or 1) * 8, 16)
     if args.attention_backend == 'fused':
         padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
+
+    # padding to max seq_length to avoid hybridep all-gather-into-tensor hang
+    moe_backend = getattr(args, 'moe_flex_dispatcher_backend', None)
+    if moe_backend == 'hybridep':
+        seq_length = getattr(args, 'seq_length', None) or getattr(args, 'max_length', None)
+        if seq_length is not None:
+            padding_to = seq_length
     return padding_to
