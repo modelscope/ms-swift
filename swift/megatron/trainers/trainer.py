@@ -64,9 +64,6 @@ class MegatronTrainer(BaseMegatronTrainer):
             losses = losses * loss_scale
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
-        if args.context_parallel_size > 1:
-            loss = all_reduce(loss, group=mpu.get_context_parallel_group())
-
         # Reduce loss for logging.
         reporting_loss = loss.detach().clone()
         torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
