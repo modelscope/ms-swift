@@ -19,7 +19,6 @@ from swift.utils import empty_cache, get_current_device, get_logger
 from swift.utils import get_packed_seq_params as _get_packed_seq_params
 from swift.utils import to_device
 
-mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
 logger = get_logger()
 
 
@@ -31,12 +30,8 @@ def get_batch_on_this_pp_rank(args, data, vp_stage=None):
     batch = to_device(data, get_current_device(), non_blocking=True)
     if args.pipeline_model_parallel_size == 1:
         return batch
-    if mcore_013:
-        is_pp_first_stage = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage)
-        is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
-    else:
-        is_pp_first_stage = mpu.is_pipeline_first_stage()
-        is_pp_last_stage = mpu.is_pipeline_last_stage()
+    is_pp_first_stage = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage)
+    is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
     if not args.mtp_num_layers and not is_pp_first_stage:
         batch['input_ids'] = None
     if not is_pp_last_stage:
