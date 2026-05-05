@@ -96,8 +96,6 @@ class BaseMegatronTrainer(ABC):
                 })
                 check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
-        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        self.mcore_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         self.callbacks = []
         for callback in args.callbacks:
             self.callbacks.append(megatron_callbacks_map[callback](self))
@@ -142,15 +140,11 @@ class BaseMegatronTrainer(ABC):
             if config.moe_router_load_balancing_type == 'aux_loss':
                 track_names.append('load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'seq_aux_loss':
-                if self.mcore_014:
-                    track_names.append('seq_load_balancing_loss')
-                else:
-                    track_names.append('load_balancing_loss')
+                track_names.append('seq_load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'global_aux_loss':
                 track_names.append('global_load_balancing_loss')
             if config.moe_z_loss_coeff is not None:
                 track_names.append('z_loss')
-            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
             track_moe_metrics(
                 loss_scale=moe_loss_scale,
                 iteration=self.state.iteration,
@@ -160,6 +154,7 @@ class BaseMegatronTrainer(ABC):
                 track_names=track_names,
                 num_layers=config.num_layers,
                 moe_layer_freq=config.moe_layer_freq,
+                mtp_num_layers=args.mtp_num_layers,
                 **track_moe_kwargs)
         if args.mtp_num_layers is not None:
             mtp_loss_scale = 1 / args.num_microbatches / n_steps

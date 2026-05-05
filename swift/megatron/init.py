@@ -94,25 +94,6 @@ def _patch_validate_non_overlapping_shards_metadata():
     default_planner._validate_global_plan = _validate_global_plan
 
 
-def _patch__write_item():
-    import megatron.core
-    if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
-        return
-    # mcore 0.12
-    from megatron.core.dist_checkpointing.strategies import filesystem_async
-
-    _origin__write_item = filesystem_async._write_item
-    if 'serialization_format' in inspect.signature(_origin__write_item).parameters:
-        from torch.distributed.checkpoint.filesystem import SerializationFormat
-
-        def _write_item(self, *args, **kwargs):
-            if 'serialization_format' not in kwargs:
-                kwargs['serialization_format'] = SerializationFormat.TORCH_SAVE
-            return _origin__write_item(self, *args, **kwargs)
-
-        filesystem_async._write_item = _write_item
-
-
 def _patch_unified_memory():
     if is_torch_npu_available():
         return
@@ -233,7 +214,6 @@ def init_megatron_env():
     _patch_unified_memory()
     _patch_mcore_bridge()
     _patch__batched_p2p_ops()
-    _patch__write_item()
     logging.root.setLevel(logging_level)  # revert logger level
     try:
         _patch_torch_FileSystemReader()
