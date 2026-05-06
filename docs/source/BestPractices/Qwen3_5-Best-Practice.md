@@ -31,6 +31,7 @@ pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
+- 如果你在昇腾 NPU 上使用 Qwen3.5，并且需要了解 FLA / MindSpeed 的替换关系、补丁生效路径以及版本验证信息，请参考 [NPU支持文档中的 Qwen3.5 FLA补丁说明](./NPU-support.md#qwen35-fla补丁说明)。
 
 
 ## 推理

@@ -4,7 +4,7 @@ from .extra import ReactGRPOAgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
                    GLM5_1AgentTemplate)
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
-from .hy3 import Hy3AgentTemplate
+from .hy_v3 import HyV3AgentTemplate
 from .kimi_k25 import KimiK25AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
@@ -29,7 +29,7 @@ agent_template_map = {
     'qwen3_5': Qwen3_5AgentTemplate,
     'hermes': HermesAgentTemplate,
     'hunyuan_hermes': HunyuanHermesAgentTemplate,
-    'hy3': Hy3AgentTemplate,
+    'hy_v3': HyV3AgentTemplate,
     'toolbench': ToolBenchAgentTemplate,  # ref: https://modelscope.cn/datasets/swift/ToolBench
     'chatglm4': ChatGLM4AgentTemplate,
     'glm4': GLM4AgentTemplate,  # ref: https://modelscope.cn/models/ZhipuAI/GLM-4-9B-0414

@@ -3,6 +3,7 @@ import os
 import safetensors.torch
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
+from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import TYPE_CHECKING, Optional
 
 from swift.utils import deep_getattr, get_logger, get_multimodal_target_regex
@@ -28,7 +29,20 @@ class LoRALLMTuner(Tuner):
     def from_pretrained(model: torch.nn.Module, model_id: str, **kwargs) -> torch.nn.Module:
         model = PeftModel.from_pretrained(model, model_id, **kwargs)
         state_dict = safetensors.torch.load_file(os.path.join(model_id, 'vit.safetensors'))
-        model.load_state_dict(state_dict, strict=False)
+        if is_deepspeed_zero3_enabled():
+            import deepspeed
+            params_dict = dict(model.named_parameters())
+            params_to_load = {name: params_dict[name] for name in state_dict if name in params_dict}
+            if params_to_load:
+                with deepspeed.zero.GatheredParameters(list(params_to_load.values()), modifier_rank=0):
+                    if deepspeed.comm.get_rank() == 0:
+                        for name, param in params_to_load.items():
+                            param.data.copy_(state_dict[name])
+        else:
+            model.load_state_dict(state_dict, strict=False)
+        model_arch = model.model_meta.model_arch
+        for module_prefix in model_arch.vision_tower + model_arch.aligner:
+            deep_getattr(model, module_prefix).requires_grad_(True)
         return model
 
     @staticmethod

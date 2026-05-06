@@ -17,7 +17,6 @@ from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
-mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 logger = get_logger()
 
@@ -596,8 +595,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         return res
 
     def _set_default(self):
-        if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
-            raise ValueError('mlp_padding_free is not compatible with sequence parallel or context parallel.')
+        if self.mlp_padding_free:
+            if self.sequence_parallel:
+                require_version(
+                    'mcore-bridge>=1.3.0.dev',
+                    'Please install mcore-bridge>=1.3.0.dev to use mlp_padding_free with sequence parallel.')
+            if self.context_parallel_size > 1:
+                raise ValueError('mlp_padding_free is not compatible with context parallel.')
         if self.local_rank is None:
             self.local_rank = get_dist_setting()[1]
         if self.lr is None:
@@ -888,7 +892,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.torch_dtype = torch.bfloat16
             if self.main_grads_dtype == torch.float32:
                 self.accumulate_allreduce_grads_in_fp32 = True
-        self.params_dtype = self.torch_dtype
 
     def _init_weigh_decay(self):
         if self.weight_decay_incr_style == 'constant':

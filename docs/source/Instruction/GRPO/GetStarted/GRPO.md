@@ -240,7 +240,7 @@ swift megatron rlhf \
 
 该功能为 vLLM 实验性特性，目前支持 Qwen2.5-VL、Qwen3-VL 等模型。
 具体支持情况请参阅 [vLLM 文档](https://docs.vllm.ai/en/latest/features/lora/)
-和 [vllm issue](https://github.com/vllm-project/vllm/issues/31479)。
+和 [vLLM issue](https://github.com/vllm-project/vllm/issues/31479)。
 
 ## logged metrics
 - completions/mean_length：生成的 completion 的平均长度。
