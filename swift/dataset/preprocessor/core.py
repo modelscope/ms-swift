@@ -34,6 +34,7 @@ class RowPreprocessor:
                                 'channel',
                                 'margin',
                                 'teacher_prompt',
+                                'chat_template_kwargs',
                             ]
 
     def __init__(self,
