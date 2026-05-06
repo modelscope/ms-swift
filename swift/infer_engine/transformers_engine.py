@@ -388,18 +388,23 @@ class TransformersEngine(InferEngine):
 
     @contextmanager
     def _patch_kernels(self):
-        use_hf = self.use_hf
-        if use_hf is None:
-            use_hf = True if use_hf_hub() else False
-        if not use_hf:
-            try:
-                from modelscope import patch_hub, unpatch_hub
-            except ImportError:
-                use_hf = True
-        if not use_hf:
+        use_hf = self.use_hf if self.use_hf is not None else use_hf_hub()
+        if use_hf:
+            yield
+            return
+
+        try:
+            from modelscope import patch_hub, unpatch_hub
+        except ImportError:
+            yield
+            return
+        try:
             patch_hub()
-        yield
-        if not use_hf:
+        except AttributeError:
+            pass
+        try:
+            yield
+        finally:
             unpatch_hub()
 
     def _infer_full(self, inputs: Dict[str, Any], *, generation_config: GenerationConfig,
