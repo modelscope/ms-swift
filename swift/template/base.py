@@ -292,8 +292,16 @@ class Template(ProcessorMixin):
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool_call':
                     i += 1
-                tool_content = self.agent_template._format_tool_calls(messages[i_start:i + 1])
-                messages[i_start:i + 1] = [{'role': 'assistant', 'content': tool_content}]
+                tool_call_msgs = messages[i_start:i + 1]
+                tool_content = self.agent_template._format_tool_calls(tool_call_msgs)
+                merged_message = {'role': 'assistant', 'content': tool_content}
+                # Preserve loss/loss_scale fields from the first tool_call message.
+                for msg in tool_call_msgs:
+                    if 'loss' in msg and 'loss' not in merged_message:
+                        merged_message['loss'] = msg['loss']
+                    if 'loss_scale' in msg and 'loss_scale' not in merged_message:
+                        merged_message['loss_scale'] = msg['loss_scale']
+                messages[i_start:i + 1] = [merged_message]
                 i = i_start + 1
             else:
                 i += 1
