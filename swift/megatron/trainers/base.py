@@ -195,7 +195,7 @@ class BaseMegatronTrainer(ABC):
         if args.mcore_model is None:
             self.bridge.load_weights(models, args.model_dir)
         peft_models = [prepare_mcore_model(args, model) for model in models]
-        if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
+        if args.tuner_type in {'lora', 'lora_llm'} and args.adapters and args.mcore_adapter is None:
             assert len(args.adapters) == 1, 'Currently only support one adapter.'
             self.bridge.load_weights(models, args.adapters[0], peft_format=True, adapter_name='default')
         return peft_models
@@ -727,7 +727,7 @@ class BaseMegatronTrainer(ABC):
         os.makedirs(output_dir, exist_ok=True)
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
-        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
+        save_peft_format = args.tuner_type in {'lora', 'lora_llm'} and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
         else:
@@ -739,7 +739,7 @@ class BaseMegatronTrainer(ABC):
             self.optimizer,
             self.opt_param_scheduler,
             iteration=iteration,
-            peft_format=args.tuner_type == 'lora',
+            peft_format=args.tuner_type in {'lora', 'lora_llm'},
             output_dir=output_dir)
         state.last_model_checkpoint = output_dir
         if state.best_global_step is not None:

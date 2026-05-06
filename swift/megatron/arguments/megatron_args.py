@@ -706,10 +706,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.tuner_type == 'lora_llm':
             if not self.is_multimodal:
                 raise ValueError('`tuner_type="lora_llm"` is only supported for multimodal models.')
-            if not self.merge_lora:
-                raise ValueError('`merge_lora` must be True when using `--tuner_type lora_llm`')
-            if not self.no_save_optim:
-                raise ValueError('`no_save_optim` must be True when using `--tuner_type lora_llm`')
         if self.adapters or self.ref_adapters or self.mcore_adapter or self.mcore_ref_adapter:
             if self.tuner_type == 'full':
                 self.tuner_type = 'lora'
