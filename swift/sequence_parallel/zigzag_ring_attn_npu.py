@@ -1,8 +1,7 @@
 # Some code borrowed from the awesome work: https://github.com/zhuzilin/ring-flash-attention
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from functools import cache
-
 import torch
+from functools import cache
 
 from .utils import RingComm
 
@@ -199,10 +198,7 @@ def _call_npu_fusion_attention_grad(
         'softmax_max': softmax_max,
         'softmax_sum': softmax_sum,
         'softmax_in': None,
-        'attention_in': (
-            attention_out
-            if torch.is_tensor(attention_out) and attention_out.numel() > 0 else None
-        ),
+        'attention_in': (attention_out if torch.is_tensor(attention_out) and attention_out.numel() > 0 else None),
         'scale_value': common_kwargs['scale_value'],
         'keep_prob': common_kwargs['keep_prob'],
         'pre_tockens': common_kwargs['pre_tockens'],
@@ -240,9 +236,8 @@ def _npu_softmax_stats_from_global_lse(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     lse_h_t = _normalize_flash_attn_lse(softmax_lse_global, q_tokens)
     if lse_h_t.shape[0] != num_heads:
-        raise RuntimeError(
-            f'Unexpected global lse shape: {tuple(softmax_lse_global.shape)} '
-            f'for q_tokens={q_tokens}, num_heads={num_heads}')
+        raise RuntimeError(f'Unexpected global lse shape: {tuple(softmax_lse_global.shape)} '
+                           f'for q_tokens={q_tokens}, num_heads={num_heads}')
 
     # With softmax_layout='TND', Ascend returns softmax stats as [T, N, 8].
     # The split-attention backward only needs logsumexp; max=lse and sum=1
@@ -315,21 +310,21 @@ def _squeeze_batch(*tensors):
 
 
 def npu_backward(
-    process_group,
-    dout,
-    q,
-    k,
-    v,
-    out,
-    softmax_lse,
-    cu_seqlens,
-    max_seqlen,
-    half_index0,
-    half_index1,
-    softmax_scale,
-    dropout_p=0.0,
-    window_size=(-1, -1),
-    deterministic=False,
+        process_group,
+        dout,
+        q,
+        k,
+        v,
+        out,
+        softmax_lse,
+        cu_seqlens,
+        max_seqlen,
+        half_index0,
+        half_index1,
+        softmax_scale,
+        dropout_p=0.0,
+        window_size=(-1, -1),
+        deterministic=False,
 ):
     kv_comm = RingComm(process_group)
     d_kv_comm = RingComm(process_group)
