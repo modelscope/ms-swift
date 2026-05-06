@@ -505,6 +505,50 @@ register_template(
         default_system='You are MiMo, an AI assistant developed by Xiaomi.'))
 
 
+class MiMoV2Template(Qwen2_5VLTemplate):
+    """Template for XiaomiMiMo/MiMo-V2.5.
+
+    Differences from Qwen2_5VLTemplate:
+    - MiMo-V2.5 does not use 3D rope position IDs (no get_rope_index).
+    - Video key is named 'video_pixel_values' instead of 'pixel_values_videos'.
+    - Supports thinking mode with <think>...</think> tags.
+    """
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        # MiMo-V2.5 uses standard rotary position embeddings,
+        # not 3D rope like Qwen2VL. No special position IDs needed.
+        return {}
+
+    def forward_context(self, model, inputs):
+        # Skip Qwen2VL-specific flash attention patching
+        return Template.forward_context(self, model, inputs)
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            # During inference, rename key to match MiMo-V2.5 forward signature
+            if 'pixel_values_videos' in inputs:
+                inputs['video_pixel_values'] = inputs.pop('pixel_values_videos')
+            return inputs
+        # For training, compute embeddings manually
+        input_ids = inputs['input_ids']
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.model.embed_tokens(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.mimo_v2,
+        template_cls=MiMoV2Template,
+        default_system='You are MiMo, a helpful AI assistant engineered by Xiaomi.',
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n</think>\n\n',
+        history_thinking_prefix='<think>\n</think>\n\n',
+    ))
+
+
 class Qwen3VLTemplate(Qwen2VLTemplate):
     version = 'v3'
 
