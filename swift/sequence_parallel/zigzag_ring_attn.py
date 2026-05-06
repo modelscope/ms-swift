@@ -9,8 +9,8 @@ from functools import cache
 from .utils import RingComm
 from .zigzag_ring_attn_npu import (
     _is_npu_tensor,
+    _npu_backward,
     _npu_forward,
-    _zigzag_ring_flash_attn_varlen_backward_exact,
 )
 
 
@@ -410,20 +410,24 @@ def zigzag_ring_flash_attn_varlen_backward(
 ):
     assert causal, 'zigzag ring is meaningless for causal=False'
     if _is_npu_tensor(q):
-        # Correctness-first NPU path: replay the ring computation exactly in
-        # backward. A native-grad optimized path can be added behind this guard.
-        return _zigzag_ring_flash_attn_varlen_backward_exact(
+        # NPU backward uses native flash-attn grad with the final ring out/lse
+        # patched into each block ctx. Missing kernel support should fail loudly.
+        return _npu_backward(
             process_group,
             dout,
             q,
             k,
             v,
+            out,
+            softmax_lse,
             cu_seqlens,
             max_seqlen,
             half_index0,
             half_index1,
             softmax_scale,
-            window_size,
+            dropout_p=dropout_p,
+            window_size=window_size,
+            deterministic=deterministic,
         )
     kv_comm = RingComm(process_group)
     d_kv_comm = RingComm(process_group)

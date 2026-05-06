@@ -3,8 +3,6 @@
 from functools import cache
 
 import torch
-import torch.distributed as dist
-import torch.nn.functional as F
 
 from .utils import RingComm
 
@@ -123,6 +121,7 @@ def _call_npu_fusion_attention(
     causal: bool,
     window_size,
     deterministic: bool,
+    return_ctx: bool = False,
 ):
     import torch_npu
 
@@ -145,90 +144,194 @@ def _call_npu_fusion_attention(
     }
     params.update(common_kwargs)
     params.pop('scale_value')
-    try:
-        return torch_npu.npu_fusion_attention(**params)
-    except TypeError as exc:
-        # Older torch_npu builds do not expose softmax_layout. The returned lse
-        # is normalized below, so falling back preserves the same external shape.
-        if 'softmax_layout' not in str(exc):
-            raise
-        params.pop('softmax_layout', None)
-        return torch_npu.npu_fusion_attention(**params)
+    outputs = torch_npu.npu_fusion_attention(**params)
+    if not return_ctx:
+        return outputs
+
+    block_out, softmax_max, softmax_sum, softmax_in, seed, offset, numels = outputs
+    ctx = {
+        **common_kwargs,
+        'softmax_max': softmax_max,
+        'softmax_sum': softmax_sum,
+        'softmax_in': softmax_in,
+        'attention_in': block_out,
+        'seed': seed,
+        'offset': offset,
+        'numels': numels,
+        'softmax_layout': 'TND',
+    }
+    return outputs, ctx
 
 
-def _get_npu_manual_attention_mask(
-    causal: bool,
-    window_size,
-    q_len: int,
-    k_len: int,
-    device: torch.device,
-) -> torch.Tensor | None:
-    window_size = _normalize_window_size(window_size)
-    offset = k_len - q_len
-    q_idx = torch.arange(q_len, device=device).unsqueeze(1)
-    k_idx = torch.arange(k_len, device=device).unsqueeze(0)
-    mask = None
-    if causal:
-        mask = k_idx > (q_idx + offset)
-    if window_size != (-1, -1):
-        left, right = window_size
-        if left >= 0:
-            left_mask = k_idx < (q_idx + offset - left)
-            mask = left_mask if mask is None else (mask | left_mask)
-        if right >= 0:
-            right_mask = k_idx > (q_idx + offset + right)
-            mask = right_mask if mask is None else (mask | right_mask)
-    return mask
+def _call_npu_fusion_attention_grad(
+    dout: torch.Tensor,
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    ctx: dict,
+):
+    import torch_npu
+
+    if not hasattr(torch_npu, 'npu_fusion_attention_grad'):
+        raise AttributeError('torch_npu.npu_fusion_attention_grad is not available')
+
+    params = {
+        'query': q,
+        'key': k,
+        'value': v,
+        'dy': dout,
+        'head_num': ctx['head_num'],
+        'input_layout': ctx['input_layout'],
+        'atten_mask': ctx['atten_mask'],
+        'softmax_max': ctx['softmax_max'],
+        'softmax_sum': ctx['softmax_sum'],
+        'softmax_in': ctx.get('softmax_in'),
+        'attention_in': (
+            ctx['attention_in']
+            if torch.is_tensor(ctx['attention_in']) and ctx['attention_in'].numel() > 0 else None
+        ),
+        'scale_value': ctx['scale_value'],
+        'keep_prob': ctx['keep_prob'],
+        'pre_tockens': ctx['pre_tockens'],
+        'next_tockens': ctx['next_tockens'],
+        'seed': ctx['seed'],
+        'offset': ctx['offset'],
+        'numels': ctx['numels'],
+        'actual_seq_qlen': ctx['actual_seq_qlen'],
+        'actual_seq_kvlen': ctx['actual_seq_kvlen'],
+        'sparse_mode': ctx['sparse_mode'],
+        'sync': ctx['sync'],
+        'softmax_layout': ctx['softmax_layout'],
+    }
+    return torch_npu.npu_fusion_attention_grad(**params)
 
 
-def _manual_varlen_attention_forward(
-    q,
-    k,
-    v,
+def _normalize_flash_attn_lse(softmax_lse: torch.Tensor, total_len: int) -> torch.Tensor:
+    """Normalize flash-attn lse to [num_heads, total_len]."""
+    lse = softmax_lse
+    if lse.dim() == 3 and lse.shape[0] == 1:
+        lse = lse.squeeze(0)
+    if lse.dim() != 2:
+        raise RuntimeError(f'Unexpected softmax_lse shape: {tuple(softmax_lse.shape)}')
+    if lse.shape[1] != total_len:
+        lse = lse.transpose(0, 1).contiguous()
+    if lse.shape[1] != total_len:
+        raise RuntimeError(f'Unexpected softmax_lse shape: {tuple(softmax_lse.shape)} for total_len={total_len}')
+    return lse
+
+
+def _global_lse_like_npu_softmax(
+    softmax_lse_global: torch.Tensor,
+    softmax_max: torch.Tensor,
+    q_tokens: int,
+    num_heads: int,
+) -> torch.Tensor:
+    """Reshape final ring lse to the local NPU softmax-stat layout."""
+    lse_h_t = _normalize_flash_attn_lse(softmax_lse_global, q_tokens)
+    if lse_h_t.shape[0] != num_heads:
+        raise RuntimeError(
+            f'Unexpected global lse shape: {tuple(softmax_lse_global.shape)} '
+            f'for q_tokens={q_tokens}, num_heads={num_heads}')
+
+    lse_t_h = lse_h_t.transpose(0, 1).contiguous()
+    if softmax_max.shape == lse_t_h.shape:
+        return lse_t_h.to(torch.float32)
+    if softmax_max.shape == lse_h_t.shape:
+        return lse_h_t.to(torch.float32)
+
+    if softmax_max.dim() == 3:
+        if softmax_max.shape[:2] == lse_t_h.shape:
+            return lse_t_h.unsqueeze(-1).expand_as(softmax_max).to(torch.float32)
+        if softmax_max.shape[:2] == lse_h_t.shape:
+            return lse_h_t.unsqueeze(-1).expand_as(softmax_max).to(torch.float32)
+
+    if softmax_max.numel() == lse_t_h.numel():
+        return lse_t_h.reshape_as(softmax_max).to(torch.float32)
+
+    raise RuntimeError(
+        f'Cannot reshape global lse {tuple(lse_h_t.shape)} to NPU softmax stat shape {tuple(softmax_max.shape)}')
+
+
+def _patch_ctx_with_global_stats(
+    ctx: dict,
+    global_out_slice: torch.Tensor,
+    global_lse_slice: torch.Tensor,
+    q_tokens: int,
+    num_heads: int,
+) -> dict:
+    # Native NPU grad expects softmax stats from its own forward block. Ring
+    # attention needs gradients for the final merged output, so patch the local
+    # stats into an equivalent gauge of the global out/lse.
+    local_max = ctx['softmax_max'].to(torch.float32)
+    global_lse = _global_lse_like_npu_softmax(global_lse_slice, local_max, q_tokens, num_heads)
+
+    diff = global_lse - local_max
+    # softmax_max and softmax_sum are not unique: shifting max by c and scaling
+    # sum by exp(-c) keeps logsumexp unchanged. Prefer the local max to avoid
+    # feeding very large exp() values to the native grad kernel.
+    use_local_gauge = diff < 80.0
+    patched_max = torch.where(use_local_gauge, local_max, global_lse)
+    patched_sum = torch.where(use_local_gauge, torch.exp(diff), torch.ones_like(diff))
+
+    new_ctx = dict(ctx)
+    new_ctx['softmax_max'] = patched_max.to(ctx['softmax_max'].dtype)
+    new_ctx['softmax_sum'] = patched_sum.to(ctx['softmax_sum'].dtype)
+    new_ctx['attention_in'] = global_out_slice
+    return new_ctx
+
+
+def _get_second_half_lse(softmax_lse: torch.Tensor, cu_seqlens: torch.Tensor) -> torch.Tensor:
+    total_len = int(cu_seqlens[-1].item())
+    lse = _normalize_flash_attn_lse(softmax_lse, total_len)
+
+    # The step > rank branch only differentiates q[half_index1]. Slice the final
+    # merged lse per sequence so the native grad ctx sees the same query span.
+    second_half_lse = torch.empty((lse.shape[0], lse.shape[1] // 2), dtype=lse.dtype, device=lse.device)
+    for i in range(len(cu_seqlens) - 1):
+        start, end = cu_seqlens[i].item(), cu_seqlens[i + 1].item()
+        new_start, new_end = start // 2, end // 2
+        start += (end - start) // 2
+        second_half_lse[:, new_start:new_end] = lse[:, start:end]
+    return second_half_lse
+
+
+def _npu_block_backward_with_global_stats(
+    block_dout,
+    block_q,
+    block_k,
+    block_v,
+    block_out_global,
+    block_lse_global,
+    block_causal,
     cu_seqlens_q,
     cu_seqlens_kv,
     softmax_scale,
-    causal,
+    dropout_p,
     window_size,
+    deterministic,
 ):
-    """Reference TND attention used only to replay backward exactly on NPU."""
-    scale = softmax_scale or q.shape[-1]**(-0.5)
-    num_heads_q = q.shape[1]
-    num_heads_kv = k.shape[1]
-    groups = num_heads_q // num_heads_kv
-    assert groups * num_heads_kv == num_heads_q
-
-    outputs = []
-    lses = []
-    for i in range(len(cu_seqlens_q) - 1):
-        q_start, q_end = cu_seqlens_q[i].item(), cu_seqlens_q[i + 1].item()
-        k_start, k_end = cu_seqlens_kv[i].item(), cu_seqlens_kv[i + 1].item()
-        q_seq = q[q_start:q_end].to(torch.float32)
-        k_seq = k[k_start:k_end].to(torch.float32)
-        v_seq = v[k_start:k_end].to(torch.float32)
-
-        if groups > 1:
-            k_seq_expanded = k_seq.repeat_interleave(groups, dim=1)
-            v_seq_expanded = v_seq.repeat_interleave(groups, dim=1)
-        else:
-            k_seq_expanded = k_seq
-            v_seq_expanded = v_seq
-
-        scores = torch.einsum('qhd,khd->hqk', q_seq, k_seq_expanded) * scale
-        mask = _get_npu_manual_attention_mask(causal, window_size, q_seq.shape[0], k_seq.shape[0], scores.device)
-        if mask is not None:
-            scores = scores.masked_fill(mask.unsqueeze(0), torch.finfo(scores.dtype).min)
-        probs = torch.softmax(scores, dim=-1)
-        outputs.append(torch.einsum('hqk,khd->qhd', probs, v_seq_expanded))
-        lses.append(torch.logsumexp(scores, dim=-1))
-
-    return torch.cat(outputs, dim=0).contiguous(), torch.cat(lses, dim=1).contiguous()
-
-
-def _all_gather_step_grads(step_grads: torch.Tensor, process_group) -> list[torch.Tensor]:
-    gathered = [torch.empty_like(step_grads) for _ in range(dist.get_world_size(process_group))]
-    dist.all_gather(gathered, step_grads.contiguous(), group=process_group)
-    return gathered
+    """Run one native NPU block backward with ctx rebuilt from its forward kernel."""
+    _, block_ctx = _call_npu_fusion_attention(
+        block_q,
+        block_k,
+        block_v,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
+        softmax_scale=softmax_scale,
+        dropout_p=dropout_p,
+        causal=block_causal,
+        window_size=window_size,
+        deterministic=deterministic,
+        return_ctx=True,
+    )
+    block_ctx = _patch_ctx_with_global_stats(
+        block_ctx,
+        global_out_slice=block_out_global,
+        global_lse_slice=block_lse_global,
+        q_tokens=block_q.shape[0],
+        num_heads=block_q.shape[1],
+    )
+    return _call_npu_fusion_attention_grad(block_dout.to(block_q.dtype), block_q, block_k, block_v, block_ctx)[:3]
 
 
 def _squeeze_batch(*tensors):
@@ -241,131 +344,124 @@ def _squeeze_batch(*tensors):
     return tuple(squeezed)
 
 
-def _update_out_and_lse(out, lse, block_out, block_lse):
-    # Match the CUDA path's online softmax merge so exact backward can
-    # differentiate through the replayed ring computation.
-    if out is None:
-        out = block_out.to(torch.float32)
-        lse = block_lse.transpose(-2, -1).unsqueeze(dim=-1)
-    else:
-        block_out = block_out.to(torch.float32)
-        block_lse = block_lse.transpose(-2, -1).unsqueeze(dim=-1)
-
-        diff = block_lse - lse
-        sig_diff = torch.sigmoid(diff)
-
-        out = out - sig_diff * (out - block_out)
-        lse = lse - F.logsigmoid(lse - block_lse)
-    return out, lse
-
-
-def _zigzag_ring_flash_attn_varlen_backward_exact(
+def _npu_backward(
     process_group,
     dout,
     q,
     k,
     v,
+    out,
+    softmax_lse,
     cu_seqlens,
     max_seqlen,
     half_index0,
     half_index1,
     softmax_scale,
-    window_size,
+    dropout_p=0.0,
+    window_size=(-1, -1),
+    deterministic=False,
 ):
-    """Correctness-first NPU backward.
-
-    Ascend provides a fused forward kernel for TND varlen attention. For the
-    minimal ring-attention path, backward replays the same zigzag ring merge with
-    differentiable PyTorch ops and gathers per-step K/V grads back to owner ranks.
-    """
+    kv_comm = RingComm(process_group)
+    d_kv_comm = RingComm(process_group)
+    dout, q, k, v, out, softmax_lse = _squeeze_batch(dout, q, k, v, out, softmax_lse)
+    cu_seqlens = cu_seqlens // kv_comm.world_size
     del max_seqlen
 
-    kv_comm = RingComm(process_group)
-    dout, q, k, v = _squeeze_batch(dout, q, k, v)
-    cu_seqlens = cu_seqlens // kv_comm.world_size
-    block_seq_len = q.shape[0] // 2
     half_cu_seqlens = cu_seqlens // 2
+    q1 = q[half_index1]
+    dout1 = dout[half_index1]
+    out1 = out[half_index1]
+    softmax_lse1 = _get_second_half_lse(softmax_lse, cu_seqlens)
 
-    def _get_block_cu_seqlens(seqlen_q, seqlen_kv):
-        cu_seqlens_q = half_cu_seqlens if seqlen_q == block_seq_len else cu_seqlens
-        cu_seqlens_kv = half_cu_seqlens if seqlen_kv == block_seq_len else cu_seqlens
-        return cu_seqlens_q, cu_seqlens_kv
+    dq = torch.zeros_like(q, dtype=torch.float32)
+    current_step_dk = torch.empty_like(k, dtype=torch.float32)
+    current_step_dv = torch.empty_like(v, dtype=torch.float32)
+    next_dk = next_dv = None
 
-    with torch.enable_grad():
-        q_replay = q.detach().requires_grad_(True)
-        current_k = k.detach().requires_grad_(True)
-        current_v = v.detach().requires_grad_(True)
-        step_ks = []
-        step_vs = []
-        merged_out = None
-        merged_lse = None
-
-        for step in range(kv_comm.world_size):
-            step_ks.append(current_k)
-            step_vs.append(current_v)
-            if step + 1 != kv_comm.world_size:
-                next_k, next_v = kv_comm.send_recv_kv(current_k.detach(), current_v.detach())
-
-            if step == 0:
-                block_q = q_replay
-                block_k = current_k
-                block_v = current_v
-                block_causal = True
-            elif step <= kv_comm.rank:
-                block_q = q_replay
-                block_k = current_k[half_index0]
-                block_v = current_v[half_index0]
-                block_causal = False
-            else:
-                block_q = q_replay[half_index1]
-                block_k = current_k
-                block_v = current_v
-                block_causal = False
-
-            cu_seqlens_q, cu_seqlens_kv = _get_block_cu_seqlens(block_q.shape[0], block_k.shape[0])
-            block_out, block_lse = _manual_varlen_attention_forward(
-                block_q,
-                block_k,
-                block_v,
-                cu_seqlens_q,
-                cu_seqlens_kv,
+    for step in range(kv_comm.world_size):
+        current_step_dk.zero_()
+        current_step_dv.zero_()
+        if step == 0:
+            bdq, bdk, bdv = _npu_block_backward_with_global_stats(
+                dout,
+                q,
+                k,
+                v,
+                out,
+                softmax_lse,
+                True,
+                cu_seqlens,
+                cu_seqlens,
                 softmax_scale,
-                block_causal,
+                dropout_p,
                 window_size,
+                deterministic,
             )
+            dq += bdq.to(torch.float32)
+            current_step_dk += bdk.to(torch.float32)
+            current_step_dv += bdv.to(torch.float32)
+        elif step <= kv_comm.rank:
+            k0 = k[half_index0]
+            v0 = v[half_index0]
+            bdq, bdk, bdv = _npu_block_backward_with_global_stats(
+                dout,
+                q,
+                k0,
+                v0,
+                out,
+                softmax_lse,
+                False,
+                cu_seqlens,
+                half_cu_seqlens,
+                softmax_scale,
+                dropout_p,
+                window_size,
+                deterministic,
+            )
+            dq += bdq.to(torch.float32)
+            current_step_dk[half_index0] += bdk.to(torch.float32)
+            current_step_dv[half_index0] += bdv.to(torch.float32)
+        else:
+            bdq, bdk, bdv = _npu_block_backward_with_global_stats(
+                dout1,
+                q1,
+                k,
+                v,
+                out1,
+                softmax_lse1,
+                False,
+                half_cu_seqlens,
+                cu_seqlens,
+                softmax_scale,
+                dropout_p,
+                window_size,
+                deterministic,
+            )
+            dq[half_index1] += bdq.to(torch.float32)
+            current_step_dk += bdk.to(torch.float32)
+            current_step_dv += bdv.to(torch.float32)
 
-            if step == 0 or step <= kv_comm.rank:
-                merged_out, merged_lse = _update_out_and_lse(merged_out, merged_lse, block_out, block_lse)
-            else:
-                merged_out[half_index1], merged_lse[half_index1] = _update_out_and_lse(
-                    merged_out[half_index1],
-                    merged_lse[half_index1],
-                    block_out,
-                    block_lse,
-                )
+        # K/V gradients are owned by the rank that originally held that shard.
+        # Rotate the accumulated gradients in the opposite ring direction until
+        # each owner receives its final dk/dv.
+        if step == 0:
+            dk = current_step_dk
+            dv = current_step_dv
+        else:
+            dk = next_dk
+            dv = next_dv
+            dk += current_step_dk
+            dv += current_step_dv
 
-            if step + 1 != kv_comm.world_size:
-                kv_comm.wait()
-                current_k = next_k.detach().requires_grad_(True)
-                current_v = next_v.detach().requires_grad_(True)
+        next_dk, next_dv = d_kv_comm.send_recv_kv(dk, dv)
+        d_kv_comm.wait()
 
-        grads = torch.autograd.grad(
-            merged_out,
-            [q_replay, *step_ks, *step_vs],
-            grad_outputs=dout.to(merged_out.dtype),
-        )
+        if step + 1 != kv_comm.world_size:
+            next_k, next_v = kv_comm.send_recv_kv(k, v)
+            kv_comm.wait()
+            k, v = next_k, next_v
 
-    dq = grads[0].to(torch.float32)
-    num_steps = kv_comm.world_size
-    step_dk = torch.stack([grad.to(torch.float32) for grad in grads[1:1 + num_steps]], dim=0)
-    step_dv = torch.stack([grad.to(torch.float32) for grad in grads[1 + num_steps:]], dim=0)
-
-    gathered_dk = _all_gather_step_grads(step_dk, process_group)
-    gathered_dv = _all_gather_step_grads(step_dv, process_group)
-    dk = sum(gathered_dk[(kv_comm.rank + step) % kv_comm.world_size][step] for step in range(num_steps))
-    dv = sum(gathered_dv[(kv_comm.rank + step) % kv_comm.world_size][step] for step in range(num_steps))
-
-    return dq.to(q.dtype).unsqueeze(0), dk.to(q.dtype).unsqueeze(0), dv.to(q.dtype).unsqueeze(0)
+    return dq.to(q.dtype).unsqueeze(0), next_dk.to(q.dtype).unsqueeze(0), next_dv.to(q.dtype).unsqueeze(0)
 
 
 def _npu_forward(
