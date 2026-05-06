@@ -23,8 +23,6 @@ from swift.tuners import LoraConfig, Swift
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
                          get_model_parameter_info)
 
-mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-
 logger = get_logger()
 
 
