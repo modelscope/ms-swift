@@ -7,6 +7,11 @@ import torch.nn.functional as F
 from functools import cache
 
 from .utils import RingComm
+from .zigzag_ring_attn_npu import (
+    _is_npu_tensor,
+    _npu_forward,
+    _zigzag_ring_flash_attn_varlen_backward_exact,
+)
 
 
 def get_half_index(cu_seqlens, *, front: bool):
@@ -171,6 +176,21 @@ def forward(q, k, v, causal, cu_seqlens, max_seqlen, block_seq_len, dropout_p, s
     max_seqlen_q = half_max_seqlen if seqlen_q == block_seq_len else max_seqlen
     cu_seqlens_kv = half_cu_seqlens if seqlen_kv == block_seq_len else cu_seqlens
     max_seqlen_kv = half_max_seqlen if seqlen_kv == block_seq_len else max_seqlen
+    if _is_npu_tensor(q):
+        # Keep the ring schedule in this file unchanged; only the per-block
+        # flash-attn call is swapped to Ascend's TND varlen attention kernel.
+        return _npu_forward(
+            q,
+            k,
+            v,
+            causal,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            dropout_p,
+            softmax_scale,
+            deterministic=False,
+            window_size=window_size,
+        )
     from flash_attn.flash_attn_interface import _flash_attn_varlen_forward
     params = get_default_args(_flash_attn_varlen_forward).copy()
     params.update({
@@ -389,6 +409,22 @@ def zigzag_ring_flash_attn_varlen_backward(
         deterministic=False,
 ):
     assert causal, 'zigzag ring is meaningless for causal=False'
+    if _is_npu_tensor(q):
+        # Correctness-first NPU path: replay the ring computation exactly in
+        # backward. A native-grad optimized path can be added behind this guard.
+        return _zigzag_ring_flash_attn_varlen_backward_exact(
+            process_group,
+            dout,
+            q,
+            k,
+            v,
+            cu_seqlens,
+            max_seqlen,
+            half_index0,
+            half_index1,
+            softmax_scale,
+            window_size,
+        )
     kv_comm = RingComm(process_group)
     d_kv_comm = RingComm(process_group)
     dk_comm_buffer = dv_comm_buffer = None
