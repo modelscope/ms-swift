@@ -31,6 +31,7 @@ pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
+- If you are using Qwen3.5 on Ascend NPU and want details about the FLA / MindSpeed replacement, effective patch path, and verified version combinations, please refer to [Qwen3.5 FLA Patch Notes in the NPU Support document](./NPU-support.md#qwen35-fla-patch-notes).
 
 ## Inference
 
