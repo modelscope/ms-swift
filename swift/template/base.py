@@ -297,10 +297,9 @@ class Template(ProcessorMixin):
                 merged_message = {'role': 'assistant', 'content': tool_content}
                 # Preserve loss/loss_scale fields from the first tool_call message.
                 for msg in tool_call_msgs:
-                    if 'loss' in msg and 'loss' not in merged_message:
-                        merged_message['loss'] = msg['loss']
-                    if 'loss_scale' in msg and 'loss_scale' not in merged_message:
-                        merged_message['loss_scale'] = msg['loss_scale']
+                    for key in ['loss', 'loss_scale']:
+                        if key in msg and key not in merged_message:
+                            merged_message[key] = msg[key]
                 messages[i_start:i + 1] = [merged_message]
                 i = i_start + 1
             else:
