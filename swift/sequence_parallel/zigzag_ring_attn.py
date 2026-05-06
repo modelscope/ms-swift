@@ -8,9 +8,9 @@ from functools import cache
 
 from .utils import RingComm
 from .zigzag_ring_attn_npu import (
-    _is_npu_tensor,
-    _npu_backward,
-    _npu_forward,
+    is_npu_tensor,
+    npu_backward,
+    npu_forward,
 )
 
 
@@ -176,10 +176,10 @@ def forward(q, k, v, causal, cu_seqlens, max_seqlen, block_seq_len, dropout_p, s
     max_seqlen_q = half_max_seqlen if seqlen_q == block_seq_len else max_seqlen
     cu_seqlens_kv = half_cu_seqlens if seqlen_kv == block_seq_len else cu_seqlens
     max_seqlen_kv = half_max_seqlen if seqlen_kv == block_seq_len else max_seqlen
-    if _is_npu_tensor(q):
+    if is_npu_tensor(q):
         # Keep the ring schedule in this file unchanged; only the per-block
         # flash-attn call is swapped to Ascend's TND varlen attention kernel.
-        return _npu_forward(
+        return npu_forward(
             q,
             k,
             v,
@@ -409,10 +409,10 @@ def zigzag_ring_flash_attn_varlen_backward(
         deterministic=False,
 ):
     assert causal, 'zigzag ring is meaningless for causal=False'
-    if _is_npu_tensor(q):
+    if is_npu_tensor(q):
         # NPU backward uses native flash-attn grad with the final ring out/lse
         # patched into each block ctx. Missing kernel support should fail loudly.
-        return _npu_backward(
+        return npu_backward(
             process_group,
             dout,
             q,

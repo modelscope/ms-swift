@@ -8,9 +8,10 @@ from .utils import RingComm
 
 _NPU_BLOCK_MASK_SIZE = 2048
 _NPU_FULL_TOKENS = 2147483647
+_NPU_TND_SOFTMAX_STAT_REPEAT = 8
 
 
-def _is_npu_tensor(tensor: torch.Tensor) -> bool:
+def is_npu_tensor(tensor: torch.Tensor) -> bool:
     return tensor.device.type == 'npu'
 
 
@@ -121,7 +122,6 @@ def _call_npu_fusion_attention(
     causal: bool,
     window_size,
     deterministic: bool,
-    return_ctx: bool = False,
 ):
     import torch_npu
 
@@ -144,23 +144,7 @@ def _call_npu_fusion_attention(
     }
     params.update(common_kwargs)
     params.pop('scale_value')
-    outputs = torch_npu.npu_fusion_attention(**params)
-    if not return_ctx:
-        return outputs
-
-    block_out, softmax_max, softmax_sum, softmax_in, seed, offset, numels = outputs
-    ctx = {
-        **common_kwargs,
-        'softmax_max': softmax_max,
-        'softmax_sum': softmax_sum,
-        'softmax_in': softmax_in,
-        'attention_in': block_out,
-        'seed': seed,
-        'offset': offset,
-        'numels': numels,
-        'softmax_layout': 'TND',
-    }
-    return outputs, ctx
+    return torch_npu.npu_fusion_attention(**params)
 
 
 def _call_npu_fusion_attention_grad(
@@ -168,40 +152,69 @@ def _call_npu_fusion_attention_grad(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    ctx: dict,
+    *,
+    attention_out: torch.Tensor,
+    softmax_lse: torch.Tensor,
+    cu_seqlens_q: torch.Tensor,
+    cu_seqlens_kv: torch.Tensor,
+    softmax_scale: float,
+    dropout_p: float,
+    causal: bool,
+    window_size,
+    deterministic: bool,
 ):
     import torch_npu
 
     if not hasattr(torch_npu, 'npu_fusion_attention_grad'):
         raise AttributeError('torch_npu.npu_fusion_attention_grad is not available')
+    # Dropout backward needs the exact seed/offset from the original forward,
+    # which this ring ctx does not save. Fail instead of using a wrong mask.
+    if dropout_p != 0.0:
+        raise NotImplementedError('NPU ring attention native backward currently requires dropout_p=0.')
+
+    common_kwargs = _get_npu_attention_common_kwargs(
+        q,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_kv=cu_seqlens_kv,
+        softmax_scale=softmax_scale,
+        dropout_p=dropout_p,
+        causal=causal,
+        window_size=window_size,
+        deterministic=deterministic,
+    )
+    softmax_max, softmax_sum = _npu_softmax_stats_from_global_lse(
+        softmax_lse,
+        q_tokens=q.shape[0],
+        num_heads=q.shape[1],
+    )
 
     params = {
         'query': q,
         'key': k,
         'value': v,
         'dy': dout,
-        'head_num': ctx['head_num'],
-        'input_layout': ctx['input_layout'],
-        'atten_mask': ctx['atten_mask'],
-        'softmax_max': ctx['softmax_max'],
-        'softmax_sum': ctx['softmax_sum'],
-        'softmax_in': ctx.get('softmax_in'),
+        'head_num': common_kwargs['head_num'],
+        'input_layout': common_kwargs['input_layout'],
+        'atten_mask': common_kwargs['atten_mask'],
+        'softmax_max': softmax_max,
+        'softmax_sum': softmax_sum,
+        'softmax_in': None,
         'attention_in': (
-            ctx['attention_in']
-            if torch.is_tensor(ctx['attention_in']) and ctx['attention_in'].numel() > 0 else None
+            attention_out
+            if torch.is_tensor(attention_out) and attention_out.numel() > 0 else None
         ),
-        'scale_value': ctx['scale_value'],
-        'keep_prob': ctx['keep_prob'],
-        'pre_tockens': ctx['pre_tockens'],
-        'next_tockens': ctx['next_tockens'],
-        'seed': ctx['seed'],
-        'offset': ctx['offset'],
-        'numels': ctx['numels'],
-        'actual_seq_qlen': ctx['actual_seq_qlen'],
-        'actual_seq_kvlen': ctx['actual_seq_kvlen'],
-        'sparse_mode': ctx['sparse_mode'],
-        'sync': ctx['sync'],
-        'softmax_layout': ctx['softmax_layout'],
+        'scale_value': common_kwargs['scale_value'],
+        'keep_prob': common_kwargs['keep_prob'],
+        'pre_tockens': common_kwargs['pre_tockens'],
+        'next_tockens': common_kwargs['next_tockens'],
+        'seed': 0,
+        'offset': 0,
+        'numels': 0,
+        'actual_seq_qlen': common_kwargs['actual_seq_qlen'],
+        'actual_seq_kvlen': common_kwargs['actual_seq_kvlen'],
+        'sparse_mode': common_kwargs['sparse_mode'],
+        'sync': common_kwargs['sync'],
+        'softmax_layout': 'TND',
     }
     return torch_npu.npu_fusion_attention_grad(**params)
 
@@ -220,64 +233,27 @@ def _normalize_flash_attn_lse(softmax_lse: torch.Tensor, total_len: int) -> torc
     return lse
 
 
-def _global_lse_like_npu_softmax(
+def _npu_softmax_stats_from_global_lse(
     softmax_lse_global: torch.Tensor,
-    softmax_max: torch.Tensor,
     q_tokens: int,
     num_heads: int,
-) -> torch.Tensor:
-    """Reshape final ring lse to the local NPU softmax-stat layout."""
+) -> tuple[torch.Tensor, torch.Tensor]:
     lse_h_t = _normalize_flash_attn_lse(softmax_lse_global, q_tokens)
     if lse_h_t.shape[0] != num_heads:
         raise RuntimeError(
             f'Unexpected global lse shape: {tuple(softmax_lse_global.shape)} '
             f'for q_tokens={q_tokens}, num_heads={num_heads}')
 
-    lse_t_h = lse_h_t.transpose(0, 1).contiguous()
-    if softmax_max.shape == lse_t_h.shape:
-        return lse_t_h.to(torch.float32)
-    if softmax_max.shape == lse_h_t.shape:
-        return lse_h_t.to(torch.float32)
-
-    if softmax_max.dim() == 3:
-        if softmax_max.shape[:2] == lse_t_h.shape:
-            return lse_t_h.unsqueeze(-1).expand_as(softmax_max).to(torch.float32)
-        if softmax_max.shape[:2] == lse_h_t.shape:
-            return lse_h_t.unsqueeze(-1).expand_as(softmax_max).to(torch.float32)
-
-    if softmax_max.numel() == lse_t_h.numel():
-        return lse_t_h.reshape_as(softmax_max).to(torch.float32)
-
-    raise RuntimeError(
-        f'Cannot reshape global lse {tuple(lse_h_t.shape)} to NPU softmax stat shape {tuple(softmax_max.shape)}')
-
-
-def _patch_ctx_with_global_stats(
-    ctx: dict,
-    global_out_slice: torch.Tensor,
-    global_lse_slice: torch.Tensor,
-    q_tokens: int,
-    num_heads: int,
-) -> dict:
-    # Native NPU grad expects softmax stats from its own forward block. Ring
-    # attention needs gradients for the final merged output, so patch the local
-    # stats into an equivalent gauge of the global out/lse.
-    local_max = ctx['softmax_max'].to(torch.float32)
-    global_lse = _global_lse_like_npu_softmax(global_lse_slice, local_max, q_tokens, num_heads)
-
-    diff = global_lse - local_max
-    # softmax_max and softmax_sum are not unique: shifting max by c and scaling
-    # sum by exp(-c) keeps logsumexp unchanged. Prefer the local max to avoid
-    # feeding very large exp() values to the native grad kernel.
-    use_local_gauge = diff < 80.0
-    patched_max = torch.where(use_local_gauge, local_max, global_lse)
-    patched_sum = torch.where(use_local_gauge, torch.exp(diff), torch.ones_like(diff))
-
-    new_ctx = dict(ctx)
-    new_ctx['softmax_max'] = patched_max.to(ctx['softmax_max'].dtype)
-    new_ctx['softmax_sum'] = patched_sum.to(ctx['softmax_sum'].dtype)
-    new_ctx['attention_in'] = global_out_slice
-    return new_ctx
+    # With softmax_layout='TND', Ascend returns softmax stats as [T, N, 8].
+    # The split-attention backward only needs logsumexp; max=lse and sum=1
+    # encode the same value without replaying the block forward.
+    lse_t_h = lse_h_t.transpose(0, 1).contiguous().to(torch.float32)
+    softmax_max = lse_t_h.unsqueeze(-1).expand(
+        q_tokens,
+        num_heads,
+        _NPU_TND_SOFTMAX_STAT_REPEAT,
+    ).contiguous()
+    return softmax_max, torch.ones_like(softmax_max)
 
 
 def _get_second_half_lse(softmax_lse: torch.Tensor, cu_seqlens: torch.Tensor) -> torch.Tensor:
@@ -310,11 +286,14 @@ def _npu_block_backward_with_global_stats(
     window_size,
     deterministic,
 ):
-    """Run one native NPU block backward with ctx rebuilt from its forward kernel."""
-    _, block_ctx = _call_npu_fusion_attention(
+    """Run one native NPU block backward using the final merged ring stats."""
+    return _call_npu_fusion_attention_grad(
+        block_dout.to(block_q.dtype),
         block_q,
         block_k,
         block_v,
+        attention_out=block_out_global,
+        softmax_lse=block_lse_global,
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
         softmax_scale=softmax_scale,
@@ -322,16 +301,7 @@ def _npu_block_backward_with_global_stats(
         causal=block_causal,
         window_size=window_size,
         deterministic=deterministic,
-        return_ctx=True,
-    )
-    block_ctx = _patch_ctx_with_global_stats(
-        block_ctx,
-        global_out_slice=block_out_global,
-        global_lse_slice=block_lse_global,
-        q_tokens=block_q.shape[0],
-        num_heads=block_q.shape[1],
-    )
-    return _call_npu_fusion_attention_grad(block_dout.to(block_q.dtype), block_q, block_k, block_v, block_ctx)[:3]
+    )[:3]
 
 
 def _squeeze_batch(*tensors):
@@ -344,7 +314,7 @@ def _squeeze_batch(*tensors):
     return tuple(squeezed)
 
 
-def _npu_backward(
+def npu_backward(
     process_group,
     dout,
     q,
@@ -464,7 +434,7 @@ def _npu_backward(
     return dq.to(q.dtype).unsqueeze(0), next_dk.to(q.dtype).unsqueeze(0), next_dv.to(q.dtype).unsqueeze(0)
 
 
-def _npu_forward(
+def npu_forward(
     q,
     k,
     v,
