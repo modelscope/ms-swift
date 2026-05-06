@@ -399,7 +399,7 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 | RLHF     | GRPO                | 已支持   |
 |          | PPO                 | 已支持   |
 | 性能优化 | FA 等融合算子       | 已支持   |
-|          | Liger-Kernel        | 暂不支持 |
+|          | Liger-Kernel        | 已支持 |
 | 部署     | PT                  | 已支持   |
 |          | vLLM                | 已支持   |
 |          | SGLang              | 暂不支持 |
@@ -443,7 +443,6 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy \
 
 | item                              |
 | --------------------------------- |
-| Liger-kernel                      |
 | 量化/QLoRA相关                    |
 | 使用sglang作为推理引擎            |
 | 使用megatron时开启ETP进行lora训练 |
