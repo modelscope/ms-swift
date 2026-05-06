@@ -1,9 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import numpy as np
 import os
-import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal
+
+import numpy as np
+import torch
 
 from swift.utils import is_deepspeed_enabled, to_device
 from ..base import Template
@@ -56,7 +57,7 @@ class KeyeVLTemplate(Template):
             if mm_data:
                 if media_type == 'images':
                     media_token = self.image_token_id
-                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt', do_resize=False)
+                    media_inputs = processor.image_processor(images=mm_data, return_tensors='pt')
                     media_grid_thw = media_inputs['image_grid_thw']
                 else:
                     split_token = self._tokenize('\n')[0]
@@ -87,14 +88,79 @@ class KeyeVLTemplate(Template):
         encoded['loss_scale'] = loss_scale
         return encoded
 
+    @staticmethod
+    def _grid_thw_to_list(grid_thw):
+        grid_hws = []
+        for thw in grid_thw:
+            if isinstance(thw, torch.Tensor):
+                thw_tuple = tuple(thw.detach().cpu().numpy().tolist())
+            else:
+                thw_tuple = tuple(thw)
+            grid_hws.append(thw_tuple)
+        return grid_hws
+
+    @staticmethod
+    def _build_siglip_inputs(grid_hws, device):
+        position_ids = []
+        sample_indices = []
+        cu_seqlens = [0]
+        for idx, thw_tuple in enumerate(grid_hws):
+            numel = int(np.prod(thw_tuple))
+            media_position_ids = torch.arange(numel, device=device) % int(np.prod(thw_tuple[1:]))
+            position_ids.append(media_position_ids)
+            sample_indices.append(torch.full((numel, ), idx, dtype=torch.int64, device=device))
+            cu_seqlens.append(cu_seqlens[-1] + numel)
+        return (
+            torch.concat(position_ids, dim=0),
+            torch.concat(sample_indices, dim=0),
+            torch.tensor(cu_seqlens, dtype=torch.int32, device=device),
+        )
+
+    def _encode_visual_embeds(self, model, pixel_values, grid_thw, dtype):
+        pixel_values = pixel_values.type(dtype).unsqueeze(0)
+        if grid_thw is not None:
+            grid_hws = self._grid_thw_to_list(grid_thw)
+            siglip_position_ids, sample_indices, cu_seqlens = self._build_siglip_inputs(
+                grid_hws, pixel_values.device)
+            vision_outputs = model.visual(
+                pixel_values=pixel_values,
+                image_grid_thw=grid_hws,
+                position_ids=siglip_position_ids,
+                vision_return_embed_list=True,
+                interpolate_pos_encoding=True,
+                sample_indices=sample_indices,
+                cu_seqlens=cu_seqlens,
+                return_pooler_output=False,
+                use_rope=True,
+                window_size=-1,
+            )
+            media_embeds = vision_outputs.last_hidden_state
+            media_embeds = model.mlp_AR(media_embeds, grid_thw)
+            media_embeds = torch.cat(media_embeds, dim=0)
+        else:
+            num_patches = pixel_values.shape[1]
+            position_ids = torch.arange(num_patches, device=pixel_values.device)
+            vision_outputs = model.visual(pixel_values=pixel_values, position_ids=position_ids)
+            media_embeds = vision_outputs.last_hidden_state.reshape(-1, vision_outputs.last_hidden_state.shape[-1])
+        return media_embeds
+
+    @staticmethod
+    def _scatter_visual_embeds(inputs_embeds, input_ids, token_id, visual_embeds):
+        visual_mask = (input_ids == token_id).unsqueeze(-1).expand_as(inputs_embeds)
+        visual_embeds = visual_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
+        return inputs_embeds.masked_scatter(visual_mask, visual_embeds)
+
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:
             return inputs
         input_ids = inputs['input_ids']
+        attention_mask = inputs.get('attention_mask')
         pixel_values = inputs.get('pixel_values')
         pixel_values_videos = inputs.get('pixel_values_videos')
+        fast_pixel_values_videos = inputs.get('fast_pixel_values_videos')
         image_grid_thw = inputs.get('image_grid_thw')
         video_grid_thw = inputs.get('video_grid_thw')
+        fast_video_grid_thw = inputs.get('fast_video_grid_thw')
 
         base_model = self.get_base_model(model)
         if hasattr(base_model.model, 'embed_tokens'):
@@ -116,23 +182,17 @@ class KeyeVLTemplate(Template):
                 device = input_ids.device
                 media_inputs = to_device(media_inputs, device)
                 pixel_values = media_inputs['pixel_values'].type(dtype)
-                # Convert to 5D format for KeyeVL: [num_patches, 3, 14, 14] -> [1, num_patches, 3, 14, 14]
                 pixel_values = pixel_values.unsqueeze(0)
 
-                # KeyeVL requires position_ids when pixel_values is 5D
                 num_patches = pixel_values.shape[1]
                 position_ids = torch.arange(num_patches, device=device)
 
-                # Create dummy grid that works with mlp_AR
-                # Assuming merge_size is 2, we need h and w divisible by merge_size
                 merge_size = getattr(self.processor.image_processor, 'merge_size', 2)
                 grid_size = int(np.sqrt(num_patches))
 
-                # Adjust grid_size to be divisible by merge_size
                 if grid_size % merge_size != 0:
                     grid_size = ((grid_size + merge_size - 1) // merge_size) * merge_size
 
-                # For dummy case, use square layout that's compatible with mlp_AR
                 dummy_grid_hw = [(1, grid_size, grid_size)]
                 sample_indices = torch.zeros(num_patches, dtype=torch.int64, device=device)
                 cu_seqlens = torch.tensor([0, num_patches], dtype=torch.int32, device=device)
@@ -150,135 +210,45 @@ class KeyeVLTemplate(Template):
                     window_size=-1,
                 )
                 image_embeds = vision_outputs.last_hidden_state
-                # Process through projector like in normal cases
                 image_embeds = model.mlp_AR(image_embeds, dummy_grid_hw)
-                # Concatenate all embeddings
                 image_embeds = torch.cat(image_embeds, dim=0)
                 inputs_embeds += image_embeds.mean() * 0.
         else:
             if pixel_values is not None:
-                pixel_values = pixel_values.type(dtype)
-                # KeyeVL expects 5D input: (batch_size, sequence_len, channel, height, width)
-                # where sequence_len is the total number of patches from all images
-                pixel_values = pixel_values.unsqueeze(0)  # [num_patches, 3, 14, 14] -> [1, num_patches, 3, 14, 14]
-
-                if image_grid_thw is not None:
-                    image_grid_hws = []
-                    for thw in image_grid_thw:
-                        if isinstance(thw, torch.Tensor):
-                            thw_tuple = tuple(thw.detach().cpu().numpy().tolist())
-                        else:
-                            thw_tuple = tuple(thw)
-                        image_grid_hws.append(thw_tuple)
-
-                    # Prepare position_ids and other parameters for KeyeVL
-                    siglip_position_ids = []
-                    sample_indices = []
-                    cu_seqlens = [0]
-
-                    for idx, thw_tuple in enumerate(image_grid_hws):
-                        numel = np.prod(thw_tuple)
-                        image_position_ids = torch.arange(numel) % np.prod(thw_tuple[1:])
-                        siglip_position_ids.append(image_position_ids)
-                        sample_indices.append(torch.full((numel, ), idx, dtype=torch.int64))
-                        cu_seqlens.append(cu_seqlens[-1] + numel)
-
-                    siglip_position_ids = torch.concat(siglip_position_ids, dim=0).to(pixel_values.device)
-                    cu_seqlens = torch.tensor(cu_seqlens, dtype=torch.int32).to(pixel_values.device)
-                    sample_indices = torch.concat(sample_indices, dim=0).to(pixel_values.device)
-
-                    # Call KeyeVL visual model
-                    vision_outputs = model.visual(
-                        pixel_values=pixel_values,
-                        image_grid_thw=image_grid_hws,
-                        position_ids=siglip_position_ids,
-                        vision_return_embed_list=True,
-                        interpolate_pos_encoding=True,
-                        sample_indices=sample_indices,
-                        cu_seqlens=cu_seqlens,
-                        return_pooler_output=False,
-                        use_rope=True,
-                        window_size=-1,
-                    )
-                    image_embeds = vision_outputs.last_hidden_state
-
-                    # Process through projector
-                    image_embeds = model.mlp_AR(image_embeds, image_grid_thw)
-                    # Concatenate all image embeddings
-                    image_embeds = torch.cat(image_embeds, dim=0)
-                else:
-                    # Fallback for case without grid info
-                    num_patches = pixel_values.shape[1]
-                    position_ids = torch.arange(num_patches, device=pixel_values.device)
-                    vision_outputs = model.visual(pixel_values=pixel_values, position_ids=position_ids)
-                    image_embeds = vision_outputs.last_hidden_state.reshape(-1,
-                                                                            vision_outputs.last_hidden_state.shape[-1])
-
-                image_mask = (input_ids == model.config.image_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                image_embeds = image_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_embeds)
+                image_embeds = self._encode_visual_embeds(model, pixel_values, image_grid_thw, dtype)
+                inputs_embeds = self._scatter_visual_embeds(inputs_embeds, input_ids, model.config.image_token_id,
+                                                            image_embeds)
 
             if pixel_values_videos is not None:
-                pixel_values_videos = pixel_values_videos.type(dtype)
-                # Same processing for videos: convert to 5D format
-                pixel_values_videos = pixel_values_videos.unsqueeze(
-                    0)  # [num_patches, 3, 14, 14] -> [1, num_patches, 3, 14, 14]
+                video_embeds = self._encode_visual_embeds(model, pixel_values_videos, video_grid_thw, dtype)
+                inputs_embeds = self._scatter_visual_embeds(inputs_embeds, input_ids, model.config.video_token_id,
+                                                            video_embeds)
 
-                if video_grid_thw is not None:
-                    video_grid_hws = []
-                    for thw in video_grid_thw:
-                        if isinstance(thw, torch.Tensor):
-                            thw_tuple = tuple(thw.detach().cpu().numpy().tolist())
-                        else:
-                            thw_tuple = tuple(thw)
-                        video_grid_hws.append(thw_tuple)
+            if fast_pixel_values_videos is not None:
+                fast_video_embeds = self._encode_visual_embeds(model, fast_pixel_values_videos, fast_video_grid_thw,
+                                                               dtype)
+                inputs_embeds = self._scatter_visual_embeds(inputs_embeds, input_ids,
+                                                            model.config.fast_video_token_id, fast_video_embeds)
 
-                    siglip_position_ids = []
-                    sample_indices = []
-                    cu_seqlens = [0]
-
-                    for idx, thw_tuple in enumerate(video_grid_hws):
-                        numel = np.prod(thw_tuple)
-                        video_position_ids = torch.arange(numel) % np.prod(thw_tuple[1:])
-                        siglip_position_ids.append(video_position_ids)
-                        sample_indices.append(torch.full((numel, ), idx, dtype=torch.int64))
-                        cu_seqlens.append(cu_seqlens[-1] + numel)
-
-                    siglip_position_ids = torch.concat(siglip_position_ids, dim=0).to(pixel_values_videos.device)
-                    cu_seqlens = torch.tensor(cu_seqlens, dtype=torch.int32).to(pixel_values_videos.device)
-                    sample_indices = torch.concat(sample_indices, dim=0).to(pixel_values_videos.device)
-
-                    vision_outputs = model.visual(
-                        pixel_values=pixel_values_videos,
-                        image_grid_thw=video_grid_hws,
-                        position_ids=siglip_position_ids,
-                        vision_return_embed_list=True,
-                        interpolate_pos_encoding=True,
-                        sample_indices=sample_indices,
-                        cu_seqlens=cu_seqlens,
-                        return_pooler_output=False,
-                        use_rope=True,
-                        window_size=-1,
-                    )
-                    video_embeds = vision_outputs.last_hidden_state
-                    video_embeds = model.mlp_AR(video_embeds, video_grid_thw)
-                    video_embeds = torch.cat(video_embeds, dim=0)
-                else:
-                    # Fallback for case without grid info
-                    num_patches = pixel_values_videos.shape[1]
-                    position_ids = torch.arange(num_patches, device=pixel_values_videos.device)
-                    vision_outputs = model.visual(pixel_values=pixel_values_videos, position_ids=position_ids)
-                    video_embeds = vision_outputs.last_hidden_state.reshape(-1,
-                                                                            vision_outputs.last_hidden_state.shape[-1])
-
-                video_mask = (input_ids == model.config.video_token_id).unsqueeze(-1).expand_as(inputs_embeds)
-                video_embeds = video_embeds.to(inputs_embeds.device, inputs_embeds.dtype)
-                inputs_embeds = inputs_embeds.masked_scatter(video_mask, video_embeds)
-
-        return {'inputs_embeds': inputs_embeds}
+        position_ids, _ = model.get_rope_index_slowfast(
+            input_ids=input_ids,
+            image_grid_thw=image_grid_thw,
+            video_grid_thw=video_grid_thw,
+            fast_video_grid_thw=fast_video_grid_thw,
+            attention_mask=attention_mask,
+        )
+        return {'inputs_embeds': inputs_embeds, 'position_ids': position_ids}
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)
+        fast_pixel_values_videos = [b['fast_pixel_values_videos'] for b in batch if b.get('fast_pixel_values_videos') is not None]
+        if len(fast_pixel_values_videos) > 0:
+            res['fast_pixel_values_videos'] = torch.concat(fast_pixel_values_videos)
+
+        fast_video_grid_thw = self.concat_tensor(batch, 'fast_video_grid_thw', 0)
+        if fast_video_grid_thw is not None:
+            res['fast_video_grid_thw'] = fast_video_grid_thw
+
         second_per_grid_ts = self.gather_list(batch, 'second_per_grid_ts')
         if second_per_grid_ts:
             res['second_per_grid_ts'] = second_per_grid_ts
