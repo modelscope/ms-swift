@@ -59,7 +59,7 @@ class StdTemplateInputs:
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
         inputs = deepcopy(inputs)
         kwargs = {}
-        for key in ['label', 'channel', 'margin', 'rejected_response']:
+        for key in ['label', 'channel', 'margin', 'rejected_response', 'chat_template_kwargs']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']

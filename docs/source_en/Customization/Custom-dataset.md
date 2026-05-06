@@ -96,6 +96,15 @@ Note: If you set "loss"/"loss_scale" on consecutive "tool_call" messages in the 
 {"messages": [..., {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Beijing\"}}", "loss": false}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"Shanghai\"}}"}, ...]}
 ```
 
+- The "chat_template_kwargs" field (requires ms-swift>=4.2.1) allows you to control template multimodal parameters such as min_pixels, max_pixels, fps, as well as parameters like enable_thinking (during inference) at the **sample level** by passing this field in the dataset. The following parameters are supported by different models:
+  - Among them, enable_thinking is supported by all models (takes effect during inference); the max_pixels parameter is supported by all multimodal models.
+  - Qwen series multimodal models: parameters supported by qwen_vl_utils/qwen_omni_utils such as min_pixels, max_pixels, fps, etc.
+
+```jsonl
+{"messages": [{"role": "user", "content": "<image>What is this"}, {"role": "assistant", "content": "This is a rabbit", "loss": false}], "chat_template_kwargs": {"max_pixels": 1048576}}
+{"messages": [{"role": "user", "content": "who are you?"}], "chat_template_kwargs": {"enable_thinking": false}}
+```
+
 #### Channel Loss
 If you want to use channel loss, you need to set `--enable_channel_loss true` and add a "channel" field to your dataset. Channel loss is compatible with techniques such as packing, padding-free, and loss scaling.
 
