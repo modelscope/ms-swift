@@ -315,9 +315,10 @@ class MuonClip(Optimizer):
 
 class MuonClipOptimizerCallback(OptimizerCallback):
 
-    def create_optimizer(self):
+    def create_optimizer(self, model=None):
         args = self.args
-        model = self.trainer.model
+        if model is None:
+            model = self.trainer.model
         # parse args.optim_args
         optim_args = {}
         raw = getattr(args, 'optim_args', None)
