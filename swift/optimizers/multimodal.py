@@ -42,10 +42,11 @@ def get_param_startswith(model,
 
 class MultimodalOptimizerCallback(OptimizerCallback):
 
-    def create_optimizer(self):
-        args = self.args
-        model = self.trainer.model
+    def create_optimizer(self, model=None):
         """ViT/Aligner/LLM use different learning rates."""
+        args = self.args
+        if model is None:
+            model = self.trainer.model
         decay_parameters = set(HfTrainer.get_decay_parameter_names(None, model))
         model_arch = model.model_meta.model_arch
         vit_parameters = get_param_startswith(model, model_arch.vision_tower, model_arch.aligner)
