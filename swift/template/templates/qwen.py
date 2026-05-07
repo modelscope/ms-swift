@@ -569,6 +569,34 @@ class Qwen3_5Template(Qwen3VLTemplate):
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return Qwen2VLTemplate._post_encode(self, model, inputs)
 
+    def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
+        # Normalize message content so the swift backend byte-matches Qwen3.5/Qwen3.6
+        # HF `chat_template.jinja` rendering (per-role `|trim` and canonical <think> padding).
+        # Must run BEFORE super(), because super() merges/wraps tool messages into
+        # `<tool_response>...</tool_response>` blobs using the raw inner content.
+        # See: https://github.com/modelscope/ms-swift/issues/9276
+        if isinstance(inputs.system, str):
+            inputs.system = inputs.system.strip()
+        for message in inputs.messages:
+            role = message.get('role')
+            content = message.get('content')
+            if not isinstance(content, str):
+                continue
+            if role in ('user', 'system', 'tool'):
+                # HF applies `|trim` to user/system/tool content.
+                message['content'] = content.strip()
+            elif role == 'assistant':
+                # HF applies `|trim` and re-wraps the <think>...</think> block with canonical newlines.
+                stripped = content.strip()
+                if '</think>' in stripped and '<think>' in stripped:
+                    before, _, after = stripped.partition('</think>')
+                    reasoning = before.rstrip('\n').rsplit('<think>', 1)[-1].lstrip('\n').strip()
+                    rest = after.lstrip('\n')
+                    message['content'] = f'<think>\n{reasoning}\n</think>\n\n{rest}'
+                else:
+                    message['content'] = stripped
+        super()._swift_prepare_inputs(inputs)
+
 
 register_template(
     QwenTemplateMeta(
