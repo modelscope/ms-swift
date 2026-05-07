@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import re
 import torch
 import torch.nn.functional as F
 import transformers
@@ -568,6 +569,79 @@ class Qwen3_5Template(Qwen3VLTemplate):
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         return Qwen2VLTemplate._post_encode(self, model, inputs)
+
+    # ChatML role marker pattern, scoped to this template family. Captures the
+    # role name on the line right after `<|im_start|>`. Used to split a
+    # `tokenizer.apply_chat_template`-rendered text into alternating
+    # non-assistant / assistant chunks during training.
+    _CHATML_ROLE_PATTERN = re.compile(r'<\|im_start\|>([^\n]+)\n')
+
+    def _jinja_encode(self, inputs):
+        """Override base `_jinja_encode` so SFT under `template_backend='jinja'`
+        correctly masks non-assistant tokens.
+
+        The base implementation returns ``loss_scale=[1.]`` wholesale, which
+        means under ``template_backend='jinja'`` the trainer ends up
+        supervising every system / user / tool / role-marker token in the
+        rendered text. For Qwen3.5/3.6 we want jinja-backend training to
+        produce byte-identical ``input_ids`` to inference (no qwen3_5
+        agent_template ↔ HF chat_template drift) AND a correct loss mask.
+
+        Inference behavior is unchanged (the new logic is gated on
+        ``self.is_training``). Encoder-decoder is also unchanged: Qwen3.5/3.6
+        are decoder-only causal LM models, so ``answer_len`` is only used to
+        force the train mode bookkeeping by the parent encoder logic.
+        """
+        # Mirror base setup so the rendered text is byte-identical to it.
+        messages = inputs.messages.copy()
+        if inputs.system is None:
+            inputs.system = self.template_meta.default_system
+        if inputs.system is not None:
+            messages.insert(0, {'role': 'system', 'content': inputs.system})
+        if messages[-1]['content'] is None:
+            messages.pop()
+        add_generation_prompt = messages[-1]['role'] != 'assistant'
+        kwargs = {}
+        if inputs.tools:
+            kwargs['tools'] = inputs.tools
+        if 'thinking_budget' in inputs.extra_kwargs:
+            kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
+        if self.template_meta.is_thinking or self.enable_thinking:
+            kwargs[self.jinja_enable_thinking_key] = self.enable_thinking
+        if self.chat_template_kwargs:
+            kwargs.update(self.chat_template_kwargs)
+        text = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
+        answer_len = 1 if self.is_training else 0
+
+        if not self.is_training or '<|im_start|>' not in text:
+            return [text], [1.], answer_len
+
+        # Training: split rendered text into alternating non-assistant /
+        # assistant chunks so the existing encode pipeline assigns
+        # loss_scale=0 to system/user/tool spans and loss_scale=1 to
+        # assistant content + the trailing `<|im_end|>\n`. Recombination is
+        # byte-exact, preserving train↔infer parity.
+        contexts: List[str] = []
+        cursor = 0
+        matches = list(self._CHATML_ROLE_PATTERN.finditer(text))
+        for i, match in enumerate(matches):
+            role = match.group(1).strip()
+            next_start = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            if not role.startswith('assistant'):
+                continue
+            # Pre-assistant chunk includes the `<|im_start|>assistant\n` role
+            # line itself (masked: just the role marker).
+            contexts.append(text[cursor:match.end()])
+            # Assistant content + trailing `<|im_end|>\n` (supervised).
+            contexts.append(text[match.end():next_start])
+            cursor = next_start
+        if not contexts:
+            return [text], [1.], answer_len
+        # Trailing chunk after the last assistant span (masked, often empty).
+        contexts.append(text[cursor:])
+        loss_scale = [1. if i % 2 == 1 else 0. for i in range(len(contexts))]
+        return contexts, loss_scale, answer_len
 
 
 register_template(

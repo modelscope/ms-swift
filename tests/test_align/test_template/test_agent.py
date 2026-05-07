@@ -415,6 +415,95 @@ def test_qwen3_5():
     assert encoded['input_ids'] == encoded2['input_ids']
 
 
+def test_qwen3_6_jinja_train_infer_parity():
+    """Regression test for issue #9276.
+
+    The Qwen3.6 family is bound to ``TemplateType.qwen3_5`` (no separate
+    qwen3_6 template). With ``template_backend='jinja'`` (which calls
+    ``tokenizer.apply_chat_template`` directly), the rendered text used at
+    training time MUST be byte-identical to the inference render — and the
+    training labels must mask everything that is not part of an assistant
+    turn.
+
+    The repro uses agent data with multi-turn ``<think>`` reasoning + tool
+    calls + tool responses, where the user prompt also ends in a trailing
+    ``\\n`` (which Qwen3.6 ``chat_template.jinja`` ``|trim``s but the
+    swift backend prompt format does not). Before the fix, training under
+    ``template_backend='jinja'`` returned ``loss_scale=[1.]`` for the whole
+    rendered text, so the labels for system / user / tool tokens were not
+    masked — silently training on non-assistant tokens.
+    """
+    # Tokenizer + template are sufficient — don't load the 35B model in CI.
+    engine = TransformersEngine('Qwen/Qwen3.6-35B-A3B', load_model=False)
+    template = engine.template
+    template.template_backend = 'jinja'
+
+    # Agent-shaped multi-turn data: trailing-\n user content that exercises
+    # Qwen3.6's `|trim` filter, plus pre-rendered <think>+tool_call assistant
+    # content.
+    data = {
+        'tools': [{
+            'type': 'function',
+            'function': {
+                'name': 'search',
+                'description': 'Web search.',
+                'parameters': {
+                    'type': 'object',
+                    'properties': {'q': {'type': 'string'}},
+                    'required': ['q'],
+                },
+            },
+        }],
+        'messages': [
+            {'role': 'system', 'content': 'You are a helpful assistant.'},
+            {'role': 'user', 'content': 'Look up the capital of France.\n'},
+            {
+                'role': 'assistant',
+                'content': ('<think>\nThe user wants the capital.\n</think>\n\n'
+                            '<tool_call>\n<function=search>\n'
+                            '<parameter=q>\ncapital of France\n</parameter>\n'
+                            '</function>\n</tool_call>')
+            },
+            {'role': 'tool', 'tool_call_id': 'call_1',
+             'content': 'Paris is the capital of France.'},
+            {'role': 'assistant',
+             'content': '<think>\nGot it.\n</think>\n\nThe capital of France is Paris.'},
+        ],
+    }
+
+    # Inference render (the canonical, model-bundled chat_template).
+    infer_text = template.tokenizer.apply_chat_template(
+        data['messages'],
+        tools=data['tools'],
+        tokenize=False,
+        add_generation_prompt=False,
+    )
+    infer_input_ids = template.tokenizer.encode(infer_text, add_special_tokens=False)
+
+    # Training render via jinja backend.
+    template.set_mode('train')
+    encoded = template.encode(data)
+    train_input_ids = encoded['input_ids']
+
+    # 1) Train and inference must be byte-identical.
+    assert train_input_ids == infer_input_ids, (
+        f'jinja train/infer input_ids drift: train_len={len(train_input_ids)} '
+        f'infer_len={len(infer_input_ids)}')
+
+    # 2) Labels must mask non-assistant tokens (system / user / tool / role markers).
+    labels = encoded['labels']
+    assert len(labels) == len(train_input_ids)
+    n_supervised = sum(1 for x in labels if x != -100)
+    n_masked = sum(1 for x in labels if x == -100)
+    assert n_supervised > 0, 'No assistant tokens were supervised — fell back to wholesale loss_scale'
+    assert n_masked > 0, 'All tokens supervised — non-assistant tokens are not being masked'
+
+    # Spot-check: the user prompt content "Look up the capital of France." must be masked.
+    decoded_supervised = template.safe_decode([t for t, l in zip(train_input_ids, labels) if l != -100])
+    assert 'Look up the capital of France' not in decoded_supervised, (
+        'User prompt tokens leaked into supervised labels')
+
+
 def test_deepseek_v3_1():
     engine = TransformersEngine('deepseek-ai/DeepSeek-V3.1', load_model=False)
     template = engine.template
@@ -613,6 +702,7 @@ if __name__ == '__main__':
     # test_glm4_7()
     # test_qwen3_coder()
     test_qwen3_5()
+    # test_qwen3_6_jinja_train_infer_parity()  # issue #9276
     # test_deepseek_v3_1()
     # test_seed_oss()
     # test_youtu()
