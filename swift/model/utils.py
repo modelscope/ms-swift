@@ -296,7 +296,15 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     additional_saved_files: Optional[List[str]] = None) -> None:
     if model is not None:
         if model.__class__.__name__ != 'SentenceTransformer':
-            model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+            # Pass save_original_format=False to avoid transformers>=5.5 revert_weight_conversion bug
+            # that corrupts state_dict keys for composite models (e.g. Qwen3.5).
+            # See: https://github.com/modelscope/ms-swift/issues/9046
+            save_kwargs = {}
+            import inspect
+            if 'save_original_format' in inspect.signature(model.save_pretrained).parameters:
+                save_kwargs['save_original_format'] = False
+            model.save_pretrained(
+                output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size, **save_kwargs)
         else:
             model.save_pretrained(output_dir, safe_serialization=safe_serialization)
             # copy sentencetransformers files
