@@ -21,7 +21,6 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
-datasets_4 = version.parse(datasets.__version__) >= version.parse('4.0')
 _pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
 
 
@@ -55,6 +54,7 @@ class RowPreprocessor:
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
+        self.datasets_4 = version.parse(datasets.__version__) >= version.parse('4.0')
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
         self.random_state = random_state
@@ -244,17 +244,16 @@ class RowPreprocessor:
             dataset = dataset.select_columns(k_list)
         return dataset
 
-    @staticmethod
     @contextmanager
-    def _patch_arrow_writer():
+    def _patch_arrow_writer(self):
         # fix AI-ModelScope/ms_agent_for_agentfabric:all
         from datasets.arrow_writer import ArrowWriter
 
-        def _new_init(self, schema=None, features=None, *args, **kwargs):
+        def _new_init(_self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
 
-                if datasets_4:
+                if self.datasets_4:
                     from datasets.features import Json, List
                     messages_feature = List(Json())
                     for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
@@ -283,7 +282,7 @@ class RowPreprocessor:
                         'bbox_type': Value(dtype='string'),
                         'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
                     }
-            ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
+            ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
         ArrowWriter.__init__ = _new_init
