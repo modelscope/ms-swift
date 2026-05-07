@@ -588,7 +588,7 @@ class Qwen3_5Template(Qwen3VLTemplate):
             elif role == 'assistant':
                 # HF applies `|trim` and re-wraps the <think>...</think> block with canonical newlines.
                 stripped = content.strip()
-                if '</think>' in stripped:
+                if '</think>' in stripped and '<think>' in stripped:
                     before, _, after = stripped.partition('</think>')
                     reasoning = before.rstrip('\n').rsplit('<think>', 1)[-1].lstrip('\n').strip()
                     rest = after.lstrip('\n')
