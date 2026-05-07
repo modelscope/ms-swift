@@ -245,15 +245,15 @@ class RowPreprocessor:
         return dataset
 
     @contextmanager
-    def _patch_arrow_writer(_self):
+    def _patch_arrow_writer(self):
         # fix AI-ModelScope/ms_agent_for_agentfabric:all
         from datasets.arrow_writer import ArrowWriter
 
-        def _new_init(self, schema=None, features=None, *args, **kwargs):
+        def _new_init(_self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
 
-                if _self.datasets_4:
+                if self.datasets_4:
                     from datasets.features import Json, List
                     messages_feature = List(Json())
                     for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
@@ -282,7 +282,7 @@ class RowPreprocessor:
                         'bbox_type': Value(dtype='string'),
                         'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
                     }
-            ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
+            ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
         ArrowWriter.__init__ = _new_init
