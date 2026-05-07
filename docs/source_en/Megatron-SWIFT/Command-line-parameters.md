@@ -57,7 +57,7 @@
 - 🔥dataloader_num_workers: Number of workers for the dataloader. Defaults to 4.
   - Note: If `--streaming true` is set, it will be set to 1.
 - dataloader_pin_memory: Defaults to True.
-- dataloader_persistent_workers: Defaults to True.
+- dataloader_persistent_workers: Defaults to False.
 - dataloader_prefetch_factor: Defaults to 2.
 - data_sharding: Takes effect on train_dataloader when `--train_dataloader_shuffle true`. Defaults to False. This parameter controls the scope of dataset shuffling. If set to True, the dataset is first sharded, then each shard is shuffled (slightly saves memory); if set to False, the dataset is shuffled first, then sharded (better shuffling effect).
 - 🔥group_by_length: Whether to group samples with roughly similar lengths together in the training dataset (with randomness), to minimize padding and ensure load balancing across nodes and processes for improved efficiency. Defaults to False. For the specific algorithm, refer to `transformers.trainer_pt_utils.get_length_grouped_indices`.
