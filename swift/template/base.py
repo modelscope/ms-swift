@@ -156,14 +156,14 @@ class Template(ProcessorMixin):
         if processor is not None:
             self.init_processor(processor)
 
-    def _get_enable_thinking(self, inputs):
-        enable_thinking = inputs.chat_template_kwargs.get('enable_thinking')
+    def _get_enable_thinking(self, inputs=None):
+        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get('enable_thinking')
         if enable_thinking is None:
             enable_thinking = self.enable_thinking
         return enable_thinking
 
-    def _get_response_prefix(self, inputs):
-        response_prefix = inputs.chat_template_kwargs.get('response_prefix')
+    def _get_response_prefix(self, inputs=None):
+        response_prefix = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
         if response_prefix is None:
             response_prefix = self.response_prefix
         if response_prefix is not None:
@@ -317,8 +317,8 @@ class Template(ProcessorMixin):
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
         return {}
 
-    def _get_max_pixels(self, inputs):
-        max_pixels = inputs.chat_template_kwargs.get('max_pixels')
+    def _get_max_pixels(self, inputs=None):
+        max_pixels = None if inputs is None else inputs.chat_template_kwargs.get('max_pixels')
         if max_pixels is None:
             max_pixels = self.max_pixels
         return max_pixels
@@ -683,13 +683,20 @@ class Template(ProcessorMixin):
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
-    def decode(self, generate_ids: List[int], *, is_finished: bool = True, first_token=True, **kwargs) -> Any:
+    def decode(self,
+               generate_ids: List[int],
+               *,
+               is_finished: bool = True,
+               first_token=True,
+               template_inputs=None,
+               **kwargs) -> Any:
         if kwargs.get('spaces_between_special_tokens') is None:
             kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
         response = self.tokenizer.decode(generate_ids, **kwargs)
-        if first_token and self.response_prefix:
-            response = self.response_prefix + response
+        response_prefix = self._get_response_prefix(template_inputs)
+        if first_token and response_prefix:
+            response = response_prefix + response
         return response
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:

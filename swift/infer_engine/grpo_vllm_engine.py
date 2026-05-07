@@ -108,7 +108,7 @@ class GRPOVllmEngine(VllmEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = self.template.decode(output.token_ids)
+            response = self.template.decode(output.token_ids, template_inputs=inputs['template_inputs'])
             logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
             toolcall = self._get_toolcall(response)
 

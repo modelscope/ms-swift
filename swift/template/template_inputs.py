@@ -59,12 +59,13 @@ class StdTemplateInputs:
     def from_dict(cls, inputs: Dict[str, Any]) -> 'StdTemplateInputs':
         inputs = deepcopy(inputs)
         kwargs = {}
-        for key in ['label', 'channel', 'margin', 'rejected_response', 'chat_template_kwargs']:
+        for key in ['label', 'channel', 'margin', 'rejected_response']:
             if key in inputs:
                 kwargs[key] = inputs[key]
         messages = inputs['messages']
         tools = inputs.get('tools')
         objects = inputs.get('objects') or {}
+        chat_template_kwargs = inputs.get('chat_template_kwargs') or {}
 
         if messages and messages[0]['role'] == 'system':
             message = messages.pop(0)
@@ -98,6 +99,7 @@ class StdTemplateInputs:
             system=system,
             tools=tools,
             objects=objects,
+            chat_template_kwargs=chat_template_kwargs,
             extra_kwargs=extra_kwargs,
             **kwargs,
             **media_kwargs)

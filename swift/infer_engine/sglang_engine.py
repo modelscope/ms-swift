@@ -185,7 +185,7 @@ class SglangEngine(InferEngine):
         assert output is not None
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
-        response = self.template.decode(output['output_ids'])
+        response = self.template.decode(output['output_ids'], template_inputs=inputs['template_inputs'])
         toolcall = self._get_toolcall(response)
         token_ids = output['output_ids'] if return_details else None
         choice = ChatCompletionResponseChoice(
@@ -271,7 +271,7 @@ class SglangEngine(InferEngine):
         engine_inputs = {k: v for k, v in inputs.items() if k != 'template_inputs'}
         result_generator = await self.engine.async_generate(
             **engine_inputs, sampling_params=generation_config, stream=True)
-        infer_streamer = InferStreamer(self.template)
+        infer_streamer = InferStreamer(self.template, template_inputs=inputs['template_inputs'])
         async for output in result_generator:
             res = self._create_chat_completion_stream_response(output, infer_streamer)
             if res is None:
@@ -289,7 +289,7 @@ class SglangEngine(InferEngine):
         toolcall = None
         if is_finished:
             finish_reason = finish_reason['type']
-            toolcall = self._get_toolcall(self.template.decode(output['output_ids']))
+            toolcall = self._get_toolcall(self.template.decode(output['output_ids'], **infer_streamer.decode_kwargs))
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         # TODO: logprobs
