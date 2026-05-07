@@ -206,7 +206,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 generation_batch = self._generate_and_score_completions(generation_batch)
                 self._buffered_inputs = generation_batch  # < this is the change
             inputs = self._buffered_inputs[self._step % num_rollout_samples]
-            self._step += 1
         else:
             inputs = self._generate_and_score_completions(generation_batch)
         return inputs
