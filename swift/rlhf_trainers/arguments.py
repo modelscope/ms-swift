@@ -96,7 +96,7 @@ class GKDConfig(RolloutTrainerArgumentsMixin, TrainArgumentsMixin, HfGKDConfig):
 class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
 
     def __post_init__(self):
-        require_version('trl>=0.20')
+        require_version('trl>=0.26')
         GRPOArgumentsMixin.__post_init__(self)
         TrainArgumentsMixin.__post_init__(self)
         HfGRPOConfig.__post_init__(self)
