@@ -304,11 +304,9 @@ class RLHFMegatronArgumentsMixin:
                  f'please adjust generation_batch_size/steps_per_generation/num_generations to make it greater than 1')
 
             if self.loss_type == 'real':
-                assert (self.steps_per_generation * self.micro_batch_size) % self.num_generations == 0, \
-                    (f'"REAL loss requires that the training micro-batch size '
-                     f'(steps_per_generation * micro_batch_size = {self.steps_per_generation * self.micro_batch_size}) '
-                     f'is a multiple of num_generations ({self.num_generations}). '
-                     f'Please adjust your batch parameters.')
+                assert self.micro_batch_size % self.num_generations == 0, \
+                    (f'"REAL loss requires that the training micro_batch_size ({self.micro_batch_size}) '
+                     f'is a multiple of num_generations ({self.num_generations}). Please adjust your batch parameters.')
 
         _check_not_supported()
         _check_batch_params()
