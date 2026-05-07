@@ -154,6 +154,7 @@ class MLLMModelType:
     ovis2 = 'ovis2'
     ovis2_5 = 'ovis2_5'
     midashenglm = 'midashenglm'
+    mimo_v2 = 'mimo_v2'
 
     chatglm4v = 'chatglm4v'
     glm4v = 'glm4v'

@@ -87,6 +87,7 @@ class MLLMModelArch:
     keye_vl = 'keye_vl'
 
     midashenglm = 'midashenglm'
+    mimo_v2 = 'mimo_v2'
     step_audio2_mini = 'step_audio2_mini'
     hunyuan_vl = 'hunyuan_vl'
     step3_vl = 'step3_vl'
@@ -785,6 +786,14 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner='model.projector',
         vision_tower='model.visual',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.mimo_v2,
+        language_model=['model', 'lm_head'],
+        aligner='visual.merger',
+        vision_tower=['visual', 'audio_encoder', 'speech_embeddings'],
     ))
 
 

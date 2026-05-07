@@ -867,6 +867,28 @@ register_model(
         tags=['vision', 'video']))
 
 
+class MiMoV2Loader(Qwen2VLLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        patch_get_input_embeddings(model.visual, 'patch_embed')
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.mimo_v2, [
+            ModelGroup([
+                Model('XiaomiMiMo/MiMo-V2.5', 'XiaomiMiMo/MiMo-V2.5'),
+            ], TemplateType.mimo_v2),
+        ],
+        MiMoV2Loader,
+        model_arch=ModelArch.mimo_v2,
+        architectures=['MiMoV2ForCausalLM'],
+        requires=['transformers>=4.49', 'qwen_vl_utils>=0.0.6', 'decord'],
+        tags=['vision', 'video']))
+
+
 def patch_Qwen3VLMoeTextExperts_dtype():
     from transformers.models.qwen3_vl_moe.modeling_qwen3_vl_moe import Qwen3VLMoeTextExperts
     if hasattr(Qwen3VLMoeTextExperts, '_patch'):
