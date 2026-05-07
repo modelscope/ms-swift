@@ -2,6 +2,7 @@
 import inspect
 import os
 import random
+import re
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -15,13 +16,14 @@ from enum import Enum
 from packaging import version
 from transformers import PreTrainedModel
 from trl import SFTTrainer as HFSFTTrainer
+from trl.trainer.utils import RepeatSampler
 from typing import Dict, Optional, Union
 
-from swift.infer_engine import InferClient, InferRequest, RequestConfig
+from swift.infer_engine.protocol import MultiModalRequestMixin
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
-from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response, to_device,
-                         unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
+                         is_wandb_available, remove_response, to_device, unwrap_model_for_generation)
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (get_gather_if_zero3_context, identity_data_collator, prepare_deepspeed, profiling_context,
                     profiling_decorator)
@@ -139,8 +141,30 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         if self.template.truncation_strategy == 'raise':
             self._prepare_resample_data_iterator()
 
+        self._step = 0
+        self._buffered_inputs = None
+
     def _get_data_collator(self, args, template):
         return identity_data_collator
+
+    def _get_train_sampler(self, train_dataset=None):
+        return RepeatSampler(
+            data_source=train_dataset or self.train_dataset,
+            mini_repeat_count=1,
+            batch_size=self.args.generation_batch_size,
+            repeat_count=self.args.steps_per_generation,
+            shuffle=getattr(self, 'shuffle_dataset', True),
+            seed=self.args.seed,
+        )
+
+    def get_train_dataloader(self):
+        return self._get_dataloader(
+            dataset=self.train_dataset,
+            description='Training',
+            batch_size=self._train_batch_size * self.args.steps_per_generation,
+            sampler_fn=self._get_train_sampler,
+            is_training=True,
+        )
 
     def _build_opsd_teacher_data(self, inputs):
         """Build teacher data for OPSD by replacing the last user message with teacher_prompt.
@@ -287,6 +311,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         opsd_teacher_inputs = inputs.pop('_opsd_teacher_inputs', None)
         inputs.pop('_opsd_teacher_messages', None)
 
+        # If generate is used, then use_logits_to_keep must be set to False.
+        use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
+        if use_logits_to_keep and not self.use_liger_gkd_loss:
+            self.prepare_logits_to_keep(inputs)
+            if opsd_teacher_inputs is not None:
+                self.prepare_logits_to_keep(opsd_teacher_inputs)
+
         model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
 
         if opsd_teacher_inputs is not None:
@@ -294,11 +325,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             teacher_fwd_inputs.update({k: v for k, v in opsd_teacher_inputs.items() if k != 'labels'})
         else:
             teacher_fwd_inputs = None
-        # If generate is used, then use_logits_to_keep must be set to False.
-        use_logits_to_keep = self.get_use_logits_to_keep(True)
-        if use_logits_to_keep and not self.use_liger_gkd_loss:
-            self.prepare_logits_to_keep(inputs)
-            model_inputs['logits_to_keep'] = inputs['logits_to_keep']
 
         if self.use_liger_gkd_loss:
             # Liger fused JSD loss for memory efficiency
@@ -371,7 +397,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             # Pad to [batch, seq_len, topk] so it aligns with student logits.
             teacher_api_logprobs = F.pad(teacher_api_logprobs, (0, 0, 0, 1), value=float('-inf'))
             teacher_api_indices = F.pad(teacher_api_indices, (0, 0, 0, 1), value=0)
-            logits_to_keep = inputs.get('logits_to_keep')
+            # Use teacher's own logits_to_keep for OPSD (different seq_len),
+            # otherwise use student's logits_to_keep (same seq_len).
+            if opsd_teacher_inputs is not None:
+                logits_to_keep = opsd_teacher_inputs.get('logits_to_keep')
+            else:
+                logits_to_keep = inputs.get('logits_to_keep')
             if logits_to_keep is not None:
                 if isinstance(logits_to_keep, torch.Tensor) and logits_to_keep.dtype == torch.bool:
                     teacher_api_logprobs = teacher_api_logprobs[:, logits_to_keep]
@@ -460,7 +491,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Use 'transformers' mode for prompt-only encoding, 'train' mode for full encoding
         mode = 'transformers' if encode_prompt_only else 'train'
-        with self._template_context(template, mode=mode):
+        original_mode = template.mode
+        template.set_mode(mode)
+        try:
             for data in inputs:
                 if 'response_token_ids' in data and data['response_token_ids']:
                     data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
@@ -475,23 +508,31 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 batch_encoded_inputs.append(encoded)
 
             batch_encoded = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
+        finally:
+            template.set_mode(original_mode)
 
         return batch_encoded
 
-    # Code borrowed from huggingface/trl
-    @profiling_decorator
-    def training_step(self,
-                      model: nn.Module,
-                      inputs: DataType,
-                      num_items_in_batch: Optional[int] = None) -> torch.Tensor:
-        """
-        Perform a training step for the Generalized Knowledge Distillation (GKD) model.
+    def _log_student_completions(self, generated_inputs: DataType) -> None:
+        if not self.log_completions:
+            return
+        messages = [inp['messages'][:-1] for inp in generated_inputs]
+        completions = [deepcopy(inp['messages'][-1]['content']) for inp in generated_inputs]
+        valid_messages = gather_object(messages)
+        valid_completions = gather_object(completions)
+        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
+        self._logs['completion'].extend(valid_completions)
 
-        This method implements the on-policy learning approach described in the GKD paper.
-        With probability `self.lmbda`, it generates new responses using the student model,
-        which are then used for training instead of the original inputs.
+    def _build_encoded_inputs(self,
+                              model: nn.Module,
+                              inputs: DataType,
+                              data_source: DataSource,
+                              generated_inputs: Optional[DataType] = None) -> Dict[str, torch.Tensor]:
+        """Build encoded training inputs for one micro-batch.
 
-        When use_vllm is enabled, vLLM engine is used for faster generation.
+        Args:
+            data_source: Pre-determined by _prepare_inputs (STUDENT / TEACHER / DATASET).
+            generated_inputs: Pre-generated vLLM outputs for the STUDENT branch.
         """
         args = self.args
 
@@ -499,35 +540,30 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_data = self._build_opsd_teacher_data(inputs)
 
         with profiling_context(self, 'get_completions'):
-            if self._get_random_num() <= self.lmbda:
+            if data_source == DataSource.STUDENT:
                 # On-policy: student model generates responses
-                data_source = DataSource.STUDENT
-                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
-                if self.template.truncation_strategy == 'raise':
+                if generated_inputs is None and self.template.truncation_strategy == 'raise':
                     inputs = self.resample_encode_failed_inputs(inputs)
+                    teacher_data = self._build_opsd_teacher_data(inputs)
+
                 if args.use_vllm:
-                    processed_inputs = self._preprocess_inputs(inputs)
-                    generated_inputs = self._fast_infer(processed_inputs)
-                    if self.log_completions:
-                        messages = [inp['messages'][:-1] for inp in generated_inputs]
-                        completions = [deepcopy(inp['messages'][-1]['content']) for inp in generated_inputs]
-                        valid_messages = gather_object(messages)
-                        valid_completions = gather_object(completions)
-                        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
-                        self._logs['completion'].extend(valid_completions)
+                    if generated_inputs is None:
+                        processed_inputs = self._preprocess_inputs(inputs)
+                        generated_inputs = self._fast_infer(processed_inputs)
+
+                    # vLLM already generated complete responses; lift max_length to
+                    # avoid truncating the completion during encoding.
                     with self._template_context(self.template):
-                        # vLLM already generated response, encode full messages
                         encoded_inputs = self._prepare_batch_inputs(generated_inputs, encode_prompt_only=False)
 
-                    # OPSD: encode teacher inputs with vLLM-generated response
-                    if teacher_data is not None:
-                        for i, gen_data in enumerate(generated_inputs):
-                            teacher_data[i]['messages'].append(dict(gen_data['messages'][-1]))
-                            if 'response_token_ids' in gen_data:
-                                teacher_data[i]['response_token_ids'] = gen_data['response_token_ids']
-                            teacher_data[i]['add_eos'] = False
-                        encoded_inputs['_opsd_teacher_messages'] = [deepcopy(td['messages']) for td in teacher_data]
-                        with self._template_context(self.template):
+                        # OPSD: encode teacher inputs with vLLM-generated response
+                        if teacher_data is not None:
+                            for i, gen_data in enumerate(generated_inputs):
+                                teacher_data[i]['messages'].append(dict(gen_data['messages'][-1]))
+                                if 'response_token_ids' in gen_data:
+                                    teacher_data[i]['response_token_ids'] = gen_data['response_token_ids']
+                                teacher_data[i]['add_eos'] = False
+                            encoded_inputs['_opsd_teacher_messages'] = [deepcopy(td['messages']) for td in teacher_data]
                             encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
                                 teacher_data, encode_prompt_only=False)
                 else:
@@ -563,11 +599,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                             encoded_inputs['_opsd_teacher_inputs'] = self._prepare_batch_inputs(
                                 teacher_data, encode_prompt_only=False)
 
-            elif self.seq_kd:
+            elif data_source == DataSource.TEACHER:
                 # Sequential KD: teacher model generates responses
-                data_source = DataSource.TEACHER
-
-                # Resample inputs that fail encoding when truncation_strategy is 'raise'('delete')
                 if self.template.truncation_strategy == 'raise':
                     inputs = self.resample_encode_failed_inputs(inputs)
                 # Need prompt-only encoding for teacher generation
@@ -588,7 +621,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             else:
                 # Off-policy: use dataset responses, encode full messages
                 assert teacher_data is None, 'OPSD teacher data is not supported for off-policy mode'
-                data_source = DataSource.DATASET
                 total_length = self.template.max_length + self.max_completion_length
                 with self._template_context(self.template, max_length=total_length):
                     encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
@@ -603,81 +635,201 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
                 encoded_inputs['_teacher_api_indices'] = teacher_indices
 
-        with self.template.forward_context(self.model, encoded_inputs):
-            loss = HFSFTTrainer.training_step(self, model, encoded_inputs, num_items_in_batch)
-        return loss
+        return encoded_inputs
+
+    @profiling_decorator
+    def _prepare_inputs(self, inputs: DataType) -> Dict[str, torch.Tensor]:
+
+        model = self.model
+        steps_per_generation = self.args.steps_per_generation
+
+        if self._step % steps_per_generation == 0 or self._buffered_inputs is None:
+            if self._get_random_num() <= self.lmbda:
+                data_source = DataSource.STUDENT
+            elif self.seq_kd:
+                data_source = DataSource.TEACHER
+            else:
+                data_source = DataSource.DATASET
+
+            if data_source == DataSource.STUDENT and self.args.use_vllm:
+                rollout_inputs = inputs
+                if self.template.truncation_strategy == 'raise':
+                    rollout_inputs = self.resample_encode_failed_inputs(rollout_inputs)
+
+                processed_inputs = self._preprocess_inputs(rollout_inputs)
+                generated_inputs = self._fast_infer(processed_inputs)
+                self._log_student_completions(generated_inputs)
+
+                input_chunks = self.split_by_mini_batches(rollout_inputs)
+                generated_chunks = self.split_by_mini_batches(generated_inputs)
+                self._buffered_inputs = [
+                    self._build_encoded_inputs(
+                        model, chunk_inputs, data_source=data_source, generated_inputs=chunk_generated)
+                    for chunk_inputs, chunk_generated in zip(input_chunks, generated_chunks)
+                ]
+            else:
+                input_chunks = self.split_by_mini_batches(inputs)
+                self._buffered_inputs = [
+                    self._build_encoded_inputs(model, chunk_inputs, data_source=data_source)
+                    for chunk_inputs in input_chunks
+                ]
+
+        step_idx = self._step % steps_per_generation
+        encoded_inputs = self._buffered_inputs[step_idx]
+        self._step += 1
+        return encoded_inputs
+
+    @profiling_decorator
+    def training_step(self,
+                      model: nn.Module,
+                      inputs: DataType,
+                      num_items_in_batch: Optional[int] = None) -> torch.Tensor:
+        return HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
+
+    def _build_mm_raw_inputs(self, raw_inputs, opsd_teacher_messages=None):
+        """Build per-sample multimodal dicts for the teacher API.
+
+        Uses vllm-mode encode to obtain pre-processed PIL Images (same resolution
+        the student model sees) and mm_processor_kwargs, improving logprob alignment
+        with the student.  Falls back to raw images if encoding fails.
+        Videos and audios always use raw paths/dicts.
+        """
+        mm_raw_inputs = []
+        original_mode = self.template.mode
+        self.template.set_mode('vllm')
+        try:
+            for i, raw in enumerate(raw_inputs):
+                messages = (
+                    opsd_teacher_messages[i]
+                    if opsd_teacher_messages is not None and opsd_teacher_messages[i] is not None else raw['messages'])
+                entry = {'messages': messages}
+                if raw.get('images') or raw.get('videos') or raw.get('audios'):
+                    try:
+                        ti = TemplateInputs.from_dict({**raw, 'messages': messages})
+                        encoded = self.template.encode(ti)
+                        if encoded.get('images'):
+                            entry['images'] = encoded['images']
+                        if encoded.get('mm_processor_kwargs'):
+                            entry['mm_processor_kwargs'] = encoded['mm_processor_kwargs']
+                    except Exception:
+                        pass
+                if raw.get('images') and 'images' not in entry:
+                    entry['images'] = raw['images']
+                for key in ('videos', 'audios'):
+                    if raw.get(key):
+                        entry[key] = raw[key]
+                mm_raw_inputs.append(entry)
+        finally:
+            self.template.set_mode(original_mode)
+        return mm_raw_inputs
 
     def _fetch_teacher_logprobs_from_api(self,
                                          encoded_inputs: Dict[str, torch.Tensor],
                                          raw_inputs: Optional[list] = None):
-        """Fetch teacher logprobs from external API service.
+        """Fetch teacher logprobs via teacher_server_api.
 
-        For multimodal data, uses /v1/chat/completions and aligns response logprobs
-        by resp_count (number of response tokens from local labels).
-
-        Returns:
-            Tuple of (teacher_logprobs, teacher_indices) tensors with shapes
-            [batch, seq_len-1, topk], aligned to the local encode sequence grid.
+        Text-only uses /v1/completions with prompt token IDs; multimodal uses
+        /v1/chat/completions with image_url content blocks (vLLM ignores top-level
+        images fields on the chat endpoint).  In padding-free mode logprobs are
+        reassembled across packed sequences; for batched multimodal the response
+        positions are aligned by resp_count to handle vLLM's differing seq lengths.
         """
         opsd_teacher_inputs = encoded_inputs.get('_opsd_teacher_inputs')
         source = opsd_teacher_inputs if opsd_teacher_inputs is not None else encoded_inputs
         input_ids = source['input_ids']
         labels = source['labels']
-        batch_size, tea_seq_len = input_ids.shape
         topk = self.gkd_logits_topk
+        is_padding_free = self.template.padding_free
 
-        # Build multimodal inputs if applicable
+        if is_padding_free:
+            position_ids = source.get('text_position_ids')
+            if position_ids is None:
+                position_ids = source.get('position_ids')
+            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
+            num_seqs = len(cu_seqlens) - 1
+            flat_ids = input_ids.squeeze(0)
+            per_seq_ids = [flat_ids[cu_seqlens[i]:cu_seqlens[i + 1]].tolist() for i in range(num_seqs)]
+        else:
+            num_seqs = input_ids.shape[0]
+            per_seq_ids = input_ids.tolist()
+
+        tea_seq_len = input_ids.shape[1]
+
         mm_raw_inputs = None
         if raw_inputs is not None and any(
                 raw.get('images') or raw.get('audios') or raw.get('videos') for raw in raw_inputs):
-            # When under multi-modal training,
-            # we should use /v1/chat/completions when need messages inputs
             opsd_teacher_messages = encoded_inputs.get('_opsd_teacher_messages')
-            mm_raw_inputs = []
-            for i, raw in enumerate(raw_inputs):
-                item = {k: raw[k] for k in ('images', 'audios', 'videos') if k in raw}
-                if opsd_teacher_messages is not None and opsd_teacher_messages[i] is not None:
-                    item['messages'] = opsd_teacher_messages[i]
-                else:
-                    item['messages'] = raw['messages']
-                mm_raw_inputs.append(item)
+            mm_raw_inputs = self._build_mm_raw_inputs(raw_inputs, opsd_teacher_messages)
 
         logprobs_raw, indices_raw, vllm_seq_lens = fetch_teacher_logprobs(
-            self.teacher_model_server, input_ids.tolist(), topk=topk, mm_raw_inputs=mm_raw_inputs)
+            self.teacher_model_server, per_seq_ids, topk=topk, mm_raw_inputs=mm_raw_inputs)
+
+        if is_padding_free:
+            return self._reassemble_padding_free_logprobs(logprobs_raw, indices_raw, vllm_seq_lens, cu_seqlens,
+                                                          num_seqs, tea_seq_len, topk, input_ids.device, labels)
 
         out_len = tea_seq_len - 1
         if logprobs_raw.shape[1] == out_len:
-            # Text-only or lengths match: direct use
             return logprobs_raw.to(input_ids.device), indices_raw.to(input_ids.device)
 
-        # Multimodal: vLLM seq lengths may differ from local encode. Align by resp_count:
-        # take the last resp_count logprobs from vLLM output and place them at the
-        # corresponding response positions in the local sequence grid.
         device = input_ids.device
-        logprobs_out = torch.full((batch_size, out_len, topk), float('-inf'), dtype=torch.float32, device=device)
-        indices_out = torch.zeros((batch_size, out_len, topk), dtype=torch.long, device=device)
+        logprobs_out = torch.full((num_seqs, out_len, topk), float('-inf'), dtype=torch.float32, device=device)
+        indices_out = torch.zeros((num_seqs, out_len, topk), dtype=torch.long, device=device)
         resp_mask = labels != -100
         resp_counts = resp_mask.sum(dim=1).tolist()
 
-        for idx in range(batch_size):
+        for idx in range(num_seqs):
             vllm_out_len = vllm_seq_lens[idx] - 1
             resp_count = resp_counts[idx]
             n = min(resp_count, vllm_out_len, out_len)
             if n <= 0:
                 continue
-            # logprobs[i] predicts token[i+1], so response ending at labels position
-            # resp_end aligns with logprobs position resp_end - 1.
             dest_end = min(resp_mask[idx].nonzero()[-1].item(), out_len)
             logprobs_out[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len].to(device)
             indices_out[idx, dest_end - n:dest_end] = indices_raw[idx, vllm_out_len - n:vllm_out_len].to(device)
 
         return logprobs_out, indices_out
 
-    def prediction_step(self, model, inputs, *args, **kwargs):
-        # Prediction uses full messages
-        encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
+    def _reassemble_padding_free_logprobs(self, logprobs_raw, indices_raw, vllm_seq_lens, cu_seqlens, num_seqs,
+                                          total_len, topk, device, labels):
+        """Re-flatten per-sequence logprobs into padding-free [1, total_len-1, topk] format.
 
-        # Fetch teacher logprobs from API if using external teacher service (for eval)
+        For multimodal sequences vLLM may return fewer tokens than local (image patches
+        are expanded locally but hidden from the API response).  Alignment is done by
+        resp_count so only response-position logprobs are used.
+        """
+        out_len = total_len - 1
+        logprobs_flat = torch.full((out_len, topk), float('-inf'), dtype=torch.float32)
+        indices_flat = torch.zeros((out_len, topk), dtype=torch.long)
+        flat_labels = labels.squeeze(0)
+
+        for i in range(num_seqs):
+            start = cu_seqlens[i].item()
+            end = cu_seqlens[i + 1].item()
+            seq_len = end - start
+            vllm_out_len = vllm_seq_lens[i] - 1
+
+            seq_labels = flat_labels[start:end]
+            resp_mask = seq_labels != -100
+            resp_count = resp_mask.sum().item()
+
+            n = min(resp_count, vllm_out_len, seq_len - 1)
+            if n <= 0:
+                continue
+
+            resp_positions = resp_mask.nonzero(as_tuple=True)[0]
+            dest_end = min(resp_positions[-1].item(), seq_len - 1)
+            dest_start_in_flat = start + dest_end - n
+            dest_end_in_flat = start + dest_end
+            src_start = vllm_out_len - n
+
+            logprobs_flat[dest_start_in_flat:dest_end_in_flat] = logprobs_raw[i, src_start:vllm_out_len]
+            indices_flat[dest_start_in_flat:dest_end_in_flat] = indices_raw[i, src_start:vllm_out_len]
+
+        return logprobs_flat.unsqueeze(0).to(device), indices_flat.unsqueeze(0).to(device)
+
+    def prediction_step(self, model, inputs, *args, **kwargs):
+        encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
         if self.use_teacher_api:
             teacher_logprobs, teacher_indices = self._fetch_teacher_logprobs_from_api(encoded_inputs, raw_inputs=inputs)
             encoded_inputs['_teacher_api_logprobs'] = teacher_logprobs
@@ -688,14 +840,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @contextmanager
     def offload_context(self):
-        """Context manager for offloading model and optimizer during vLLM inference
-
-        This offloads:
-        - Student model (self.model)
-        - Optimizer states
-
-        to CPU to free up GPU memory for vLLM engine.
-        """
+        """Offload student model and optimizer to CPU during vLLM on-policy generation."""
         if self.args.offload_model:
             self.offload_model(self.accelerator.unwrap_model(self.model))
         if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
@@ -704,7 +849,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         try:
             yield
         finally:
-            # reload (load back) model when exiting context
             if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
             if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
@@ -825,6 +969,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         else:
             beta_t = log_beta = log_1_minus_beta = None
 
+        diff_sum = diff_abs_sum = 0.0
+        diff_abs_max = 0.0
+        total_elems = 0
+
         for start_idx in range(0, num_valid_int, chunk_size):
             end_idx = min(start_idx + chunk_size, num_valid_int)
             s_chunk = student_logits[start_idx:end_idx]
@@ -833,6 +981,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             s_log_probs = F.log_softmax(s_chunk, dim=-1)
             t_log_probs = F.log_softmax(t_chunk, dim=-1)
             del s_chunk, t_chunk
+
+            with torch.no_grad():
+                d = (s_log_probs - t_log_probs).float()
+                diff_sum += d.sum().item()
+                diff_abs_sum += d.abs().sum().item()
+                diff_abs_max = max(diff_abs_max, d.abs().max().item())
+                total_elems += d.numel()
 
             if beta == 0:
                 jsd_chunk = F.kl_div(s_log_probs, t_log_probs, reduction='none', log_target=True)
@@ -851,6 +1006,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             total_loss = total_loss + jsd_chunk.sum()
             del jsd_chunk, s_log_probs, t_log_probs
+
+        if total_elems > 0:
+            logger.info(f'logprobs diff (s-t): mean={diff_sum / total_elems:.4f}, '
+                        f'abs_mean={diff_abs_sum / total_elems:.4f}, '
+                        f'abs_max={diff_abs_max:.4f}')
 
         return total_loss / num_valid
 
@@ -973,6 +1133,78 @@ def _parse_prompt_logprobs(prompt_logprobs_list, topk):
     return lps, ixs
 
 
+_MM_PLACEHOLDER_PATTERN = re.compile(r'(<image>|<video>|<audio>)')
+_MM_DEFAULT_SUFFIX = {'image': 'png', 'video': 'mp4', 'audio': 'wav'}
+
+
+def _mm_messages_to_openai(messages, images=None, videos=None, audios=None):
+    """Convert swift messages (with <image>/<video>/<audio> placeholders) to OpenAI
+    multimodal message format, embedding media as base64 data URLs in content blocks.
+
+    vLLM's OpenAI-compatible endpoint requires images to be embedded as ``image_url``
+    content blocks inside messages; a top-level ``images`` field is ignored.
+    """
+    media = {'image': list(images or []), 'video': list(videos or []), 'audio': list(audios or [])}
+    idx = {k: 0 for k in media}
+    out = []
+
+    for msg in messages:
+        content = msg.get('content')
+        if not isinstance(content, str):
+            out.append(msg)
+            continue
+        parts = _MM_PLACEHOLDER_PATTERN.split(content)
+        chunks = []
+        used = False
+        for part in parts:
+            if not part:
+                continue
+            kind = part[1:-1] if part in ('<image>', '<video>', '<audio>') else None
+            if kind and idx[kind] < len(media[kind]):
+                val = media[kind][idx[kind]]
+                idx[kind] += 1
+                url = _media_to_data_url(val, kind)
+                chunks.append({'type': f'{kind}_url', f'{kind}_url': {'url': url}})
+                used = True
+            else:
+                chunks.append({'type': 'text', 'text': part})
+        msg_new = dict(msg)
+        if used:
+            msg_new['content'] = chunks
+        out.append(msg_new)
+
+    remaining = []
+    for kind in ('image', 'video', 'audio'):
+        for i in range(idx[kind], len(media[kind])):
+            url = _media_to_data_url(media[kind][i], kind)
+            remaining.append({'type': f'{kind}_url', f'{kind}_url': {'url': url}})
+    if remaining:
+        for i, msg in enumerate(out):
+            if msg.get('role') != 'user':
+                continue
+            c = msg.get('content', '')
+            if isinstance(c, str):
+                c = [{'type': 'text', 'text': c}] if c else []
+            msg_new = dict(msg)
+            msg_new['content'] = remaining + c
+            out[i] = msg_new
+            break
+    return out
+
+
+def _media_to_data_url(value, kind):
+    """Convert a PIL Image, local file path, or existing URL/base64 string to a data URL."""
+    if isinstance(value, dict):
+        value = value.get('url', value)
+    if isinstance(value, str) and (value.startswith('data:') or value.startswith('http')):
+        return value
+    suffix = (
+        os.path.splitext(value)[1][1:].lower()
+        if isinstance(value, str) and os.path.isfile(value) else _MM_DEFAULT_SUFFIX[kind])
+    b64 = MultiModalRequestMixin.to_base64(value)
+    return f'data:{kind}/{suffix};base64,{b64}'
+
+
 def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0, mm_raw_inputs=None):
     """Fetch top-k prompt logprobs from a vLLM-compatible server.
 
@@ -1018,13 +1250,25 @@ def fetch_teacher_logprobs(base_url, input_ids, topk=20, timeout=300.0, mm_raw_i
         try:
             if mm_raw_inputs is not None and mm_raw_inputs[idx] is not None:
                 raw = mm_raw_inputs[idx]
-                infer_request = InferRequest(
-                    **{k: raw[k]
-                       for k in ('messages', 'images', 'audios', 'videos') if k in raw})
-                payload = InferClient._prepare_request_data(model, infer_request,
-                                                            RequestConfig(max_tokens=1, temperature=0))
-                payload.update(prompt_logprobs=topk, add_generation_prompt=False, return_token_ids=True)
+                messages = _mm_messages_to_openai(raw['messages'], raw.get('images'), raw.get('videos'),
+                                                  raw.get('audios'))
+                payload = {
+                    'model': model,
+                    'messages': messages,
+                    'max_tokens': 1,
+                    'temperature': 0,
+                    'prompt_logprobs': topk,
+                    'add_generation_prompt': False,
+                    'return_token_ids': True,
+                }
+                mm_processor_kwargs = raw.get('mm_processor_kwargs')
+                if mm_processor_kwargs:
+                    payload['mm_processor_kwargs'] = mm_processor_kwargs
+
                 resp = session.post(f'{base_url}/v1/chat/completions', json=payload, timeout=timeout)
+                if resp.status_code == 400 and mm_processor_kwargs:
+                    payload.pop('mm_processor_kwargs', None)
+                    resp = session.post(f'{base_url}/v1/chat/completions', json=payload, timeout=timeout)
                 resp.raise_for_status()
                 data = resp.json()
                 choice = data.get('choices', [{}])[0]
