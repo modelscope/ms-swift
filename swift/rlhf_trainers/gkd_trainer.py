@@ -496,13 +496,14 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         try:
             for data in inputs:
                 if 'response_token_ids' in data and data['response_token_ids']:
+                    data = {**data}
                     data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
 
                 if encode_prompt_only:
                     # Remove response content for prompt-only encoding
                     messages = data.get('messages', [])
                     if messages and messages[-1].get('role') == 'assistant':
-                        messages[-1]['content'] = None
+                        data = {**data, 'messages': messages[:-1] + [{**messages[-1], 'content': None}]}
 
                 encoded = template.encode(data, return_length=True)
                 batch_encoded_inputs.append(encoded)
@@ -703,21 +704,17 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     opsd_teacher_messages[i]
                     if opsd_teacher_messages is not None and opsd_teacher_messages[i] is not None else raw['messages'])
                 entry = {'messages': messages}
-                if raw.get('images') or raw.get('videos') or raw.get('audios'):
-                    try:
-                        ti = TemplateInputs.from_dict({**raw, 'messages': messages})
-                        encoded = self.template.encode(ti)
-                        if encoded.get('images'):
-                            entry['images'] = encoded['images']
-                        if encoded.get('mm_processor_kwargs'):
-                            entry['mm_processor_kwargs'] = encoded['mm_processor_kwargs']
-                    except Exception:
-                        pass
-                if raw.get('images') and 'images' not in entry:
-                    entry['images'] = raw['images']
-                for key in ('videos', 'audios'):
-                    if raw.get(key):
-                        entry[key] = raw[key]
+                if raw.get('images'):
+                    ti = TemplateInputs.from_dict({**raw, 'messages': messages})
+                    encoded = self.template.encode(ti)
+                    if encoded.get('images'):
+                        entry['images'] = encoded['images']
+                    if encoded.get('mm_processor_kwargs'):
+                        entry['mm_processor_kwargs'] = encoded['mm_processor_kwargs']
+                else:
+                    for key in ('videos', 'audios'):
+                        if raw.get(key):
+                            entry[key] = raw[key]
                 mm_raw_inputs.append(entry)
         finally:
             self.template.set_mode(original_mode)
@@ -969,10 +966,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         else:
             beta_t = log_beta = log_1_minus_beta = None
 
-        diff_sum = diff_abs_sum = 0.0
-        diff_abs_max = 0.0
-        total_elems = 0
-
         for start_idx in range(0, num_valid_int, chunk_size):
             end_idx = min(start_idx + chunk_size, num_valid_int)
             s_chunk = student_logits[start_idx:end_idx]
@@ -981,13 +974,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             s_log_probs = F.log_softmax(s_chunk, dim=-1)
             t_log_probs = F.log_softmax(t_chunk, dim=-1)
             del s_chunk, t_chunk
-
-            with torch.no_grad():
-                d = (s_log_probs - t_log_probs).float()
-                diff_sum += d.sum().item()
-                diff_abs_sum += d.abs().sum().item()
-                diff_abs_max = max(diff_abs_max, d.abs().max().item())
-                total_elems += d.numel()
 
             if beta == 0:
                 jsd_chunk = F.kl_div(s_log_probs, t_log_probs, reduction='none', log_target=True)
@@ -1006,11 +992,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             total_loss = total_loss + jsd_chunk.sum()
             del jsd_chunk, s_log_probs, t_log_probs
-
-        if total_elems > 0:
-            logger.info(f'logprobs diff (s-t): mean={diff_sum / total_elems:.4f}, '
-                        f'abs_mean={diff_abs_sum / total_elems:.4f}, '
-                        f'abs_max={diff_abs_max:.4f}')
 
         return total_loss / num_valid
 
