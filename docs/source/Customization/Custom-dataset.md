@@ -94,6 +94,13 @@ print(inputs['loss_scale'])
 {"messages": [..., {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"北京\"}}", "loss": false}, {"role": "tool_call", "content": "{\"name\": \"realtime_aqi\", \"arguments\": {\"city\": \"上海\"}}"}, ...]}
 ```
 
+- "chat_template_kwargs"字段，（需ms-swift>=4.2.1），你可以通过在数据集中传入该字段**样本级别**控制template的min_pixels, max_pixels, fps等多模态参数，以及enable_thinking（推理时）等参数。以下为不同模型支持的参数：
+  - 其中"enable_thinking", "response_prefix"支持所有模型（推理时生效）；"max_pixels"参数支持所有多模态模型。
+  - Qwen系列多模态模型：min_pixels, max_pixels, fps等qwen_vl_utils/qwen_omni_utils支持的参数。
+```jsonl
+{"messages": [{"role": "user", "content": "<image>这是什么"}, {"role": "assistant", "content": "这是一只兔子", "loss": false}], "chat_template_kwargs": {"max_pixels": 1048576}}
+{"messages": [{"role": "user", "content": "who are you?"}], "chat_template_kwargs": {"enable_thinking": false}}
+```
 
 #### channel loss
 如果你要使用channel loss，你需要设置`--enable_channel_loss true`，并在数据集中增加"channel"字段。channel loss兼容packing/padding_free/loss_scale等技术。
