@@ -7,6 +7,7 @@ import os
 import re
 import time
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import uuid
 from accelerate.utils import broadcast_object_list, gather_object, is_peft_model, set_seed
@@ -32,7 +33,8 @@ from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response
+from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
+                         to_device)
 from .arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
@@ -107,6 +109,54 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self._prepare_vllm()
         self._prepare_async_generate()
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+
+    @staticmethod
+    def _split_data_by_steps(inputs: DataType, steps: int) -> List[DataType]:
+        """Split a list of inputs into `steps` chunks with balanced sizes."""
+        if steps <= 1:
+            return [inputs]
+
+        chunk_size = len(inputs) // steps
+        remainder = len(inputs) % steps
+        chunks: List[DataType] = []
+        start_idx = 0
+        for i in range(steps):
+            current_chunk_size = chunk_size + (1 if i < remainder else 0)
+            end_idx = start_idx + current_chunk_size
+            chunks.append(inputs[start_idx:end_idx])
+            start_idx = end_idx
+        return chunks
+
+    def split_by_mini_batches(self, inputs: DataType) -> List[DataType]:
+        """Split inputs into mini-batches based on steps_per_generation.
+
+        For sequence_parallel_size > 1, gathers inputs across SP/RP groups first,
+        then splits with an adjusted spg that accounts for the parallel world size.
+        Used by both GRPO and GKD trainers.
+        """
+        if self.template.sequence_parallel_size == 1:
+            mode: str = 'train' if self.model.training else 'eval'
+            spg: int = self.args.steps_per_generation if mode == 'train' else 1
+            return self._split_data_by_steps(inputs, spg)
+        else:
+            output = [None] * sequence_parallel.sp_world_size
+            dist.all_gather_object(output, inputs, group=sequence_parallel.sp_group)
+            if sequence_parallel.rp_world_size > 1:
+                output_rp = [None] * sequence_parallel.rp_world_size
+                output = [p for sublist in output for p in sublist]
+                dist.all_gather_object(output_rp, output, group=sequence_parallel.rp_group)
+                output = output_rp
+            inputs = [p for sublist in output for p in sublist]
+
+            mode = 'train' if self.model.training else 'eval'
+            if mode == 'eval':
+                inputs = inputs[:self.args.per_device_eval_batch_size]
+                spg = 1
+            else:
+                spg = self.args.steps_per_generation * sequence_parallel.world_size
+
+            spg_chunks = self._split_data_by_steps(inputs, spg)
+            return to_device(spg_chunks, device=self.accelerator.device)
 
     def _prepare_rollout_params(self):
         """Initialize rollout generation parameters"""

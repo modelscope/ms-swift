@@ -60,6 +60,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             logger.info(f'Using teacher model API for logprobs, top_logprobs={self.gkd_logits_topk}')
 
         self.use_vllm = getattr(args, 'use_vllm', False)
+        self.steps_per_generation = args.steps_per_generation
+        self.generation_batch_size = args.generation_batch_size
         super().__init__(args, template)
 
         # Get device for data processing
@@ -73,6 +75,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.max_completion_length = args.max_completion_length
 
         self.resample_data_iterator = None
+        self._buffered_inputs = None
 
     def train(self, train_dataset, val_dataset):
         if self.truncation_strategy == 'delete':
@@ -413,55 +416,58 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _replace_data_iterator(self, data_iterator):
         num_microbatches = self.args.num_microbatches
+        steps_per_generation = self.steps_per_generation
 
-        # Determine data source once for the entire global batch
-        data_source = self._determine_data_source()
+        if self._step % steps_per_generation == 0:
+            data_source = self._determine_data_source()
 
-        # Collect all micro-batches into a global batch
-        global_batch = []
-        for _ in range(num_microbatches):
-            raw_batch = next(data_iterator)
+            total_microbatches = num_microbatches * steps_per_generation
+            global_batch = []
+            for _ in range(total_microbatches):
+                raw_batch = next(data_iterator)
+                if self.truncation_strategy == 'delete' and self.resample_data_iterator is not None:
+                    raw_batch = self.resample_encode_failed_inputs(raw_batch)
+                global_batch.extend(raw_batch)
 
-            # Resample for encoding failed data when truncation_strategy is 'delete'
-            if self.truncation_strategy == 'delete' and self.resample_data_iterator is not None:
-                raw_batch = self.resample_encode_failed_inputs(raw_batch)
+            if data_source == DataSource.STUDENT:
+                local_batch = self._get_local_rollout_batch(global_batch)
+                local_batch = self._generate_completions(local_batch)
+                global_batch = self._gather_rollout_results(local_batch)
+            elif data_source == DataSource.TEACHER:
+                logger.warning_once(
+                    'Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
+                    'Falling back to dataset responses.')
 
-            global_batch.extend(raw_batch)
+            teacher_global_batch = self._build_opsd_teacher_data(global_batch)
 
-        # On-policy mode: generate completions for the entire global batch at once
-        if data_source == DataSource.STUDENT:
-            local_batch = self._get_local_rollout_batch(global_batch)
-            local_batch = self._generate_completions(local_batch)
-            global_batch = self._gather_rollout_results(local_batch)
-        elif data_source == DataSource.TEACHER:
-            logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
-                                'Falling back to dataset responses.')
-
-        # Build OPSD teacher data if teacher_prompt is present
-        teacher_global_batch = self._build_opsd_teacher_data(global_batch)
-
-        # Split global batch back into micro-batches for encoding
-        encoded_batches = []
-        raw_batches = []
-        micro_batch_size = len(global_batch) // num_microbatches
-        for i in range(num_microbatches):
-            start_idx = i * micro_batch_size
-            end_idx = start_idx + micro_batch_size
-            raw_batch = global_batch[start_idx:end_idx]
-            encoded_batch = self._encode_batch(raw_batch)
-            encoded_batch['data_source'] = data_source
-            if teacher_global_batch is not None:
-                teacher_slice = teacher_global_batch[start_idx:end_idx]
-                encoded_batch['opsd_teacher_batch'] = self._encode_batch(teacher_slice)
+            micro_batch_size = len(global_batch) // total_microbatches
+            assert micro_batch_size == self.args.micro_batch_size
+            all_encoded_batches = []
+            all_raw_batches = []
+            for i in range(total_microbatches):
+                start_idx = i * micro_batch_size
+                end_idx = start_idx + micro_batch_size
+                raw_batch = global_batch[start_idx:end_idx]
+                encoded_batch = self._encode_batch(raw_batch)
+                encoded_batch['data_source'] = data_source
+                if teacher_global_batch is not None:
+                    teacher_slice = teacher_global_batch[start_idx:end_idx]
+                    encoded_batch['opsd_teacher_batch'] = self._encode_batch(teacher_slice)
+                    if self.use_teacher_api:
+                        encoded_batch['opsd_teacher_messages'] = [deepcopy(td['messages']) for td in teacher_slice]
+                all_encoded_batches.append(encoded_batch)
                 if self.use_teacher_api:
-                    encoded_batch['opsd_teacher_messages'] = [deepcopy(td['messages']) for td in teacher_slice]
-            encoded_batches.append(encoded_batch)
-            if self.use_teacher_api:
-                raw_batches.append(raw_batch)
+                    all_raw_batches.append(raw_batch)
 
-        self._compute_teacher_logits(encoded_batches, raw_batches=raw_batches)
+            self._compute_teacher_logits(all_encoded_batches, raw_batches=all_raw_batches)
 
-        # Increment step counter (used for deterministic random and weight sync)
+            self._buffered_inputs = [
+                all_encoded_batches[i * num_microbatches:(i + 1) * num_microbatches]
+                for i in range(steps_per_generation)
+            ]
+
+        step_idx = self._step % steps_per_generation
+        encoded_batches = self._buffered_inputs[step_idx]
         self._step += 1
 
         return RerunDataIterator(iter(encoded_batches))
