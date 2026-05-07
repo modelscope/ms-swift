@@ -629,12 +629,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def _check_mcore_bridge(self):
-        if self.mtp_decoder_input_detach:
-            require_version('mcore-bridge>=1.1.2',
-                            'Please install mcore-bridge>=1.1.2 to use `mtp_decoder_input_detach`.')
-        if self.mtp_shared_weights:
-            require_version('mcore-bridge>=1.2.0.dev',
-                            'Please install mcore-bridge>=1.2.0 to use `mtp_shared_weights`.')
+        pass
 
     def __post_init__(self):
         if self.tuner_type != 'full':
