@@ -12,8 +12,8 @@ def infer(client, model: str, messages):
         max_tokens=512,
         temperature=0,
         extra_body={
-            "chat_template_kwargs": {
-                "enable_thinking": False
+            'chat_template_kwargs': {
+                'enable_thinking': False
             },
         })
     query = messages[0]['content']
@@ -31,8 +31,8 @@ def infer_stream(client, model: str, messages):
         stream=True,
         temperature=0,
         extra_body={
-            "chat_template_kwargs": {
-                "enable_thinking": False
+            'chat_template_kwargs': {
+                'enable_thinking': False
             },
         })
     print(f'messages: {messages}\nresponse: ', end='')
