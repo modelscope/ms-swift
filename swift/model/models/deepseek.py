@@ -165,7 +165,6 @@ register_model(
         architectures=['DeepseekV32ForCausalLM'],
     ))
 
-
 register_model(
     ModelMeta(
         LLMModelType.deepseek_v4,

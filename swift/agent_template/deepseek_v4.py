@@ -63,8 +63,7 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
         # Parse DSML tool calls from model output
         # Pattern: <｜DSML｜invoke name="tool_name">...params...</｜DSML｜invoke>
         invoke_pattern = re.compile(
-            rf'<{re.escape(DSML_TOKEN)}invoke\s+name="([^"]+)">\s*(.*?)\s*</{re.escape(DSML_TOKEN)}invoke>',
-            re.DOTALL)
+            rf'<{re.escape(DSML_TOKEN)}invoke\s+name="([^"]+)">\s*(.*?)\s*</{re.escape(DSML_TOKEN)}invoke>', re.DOTALL)
         param_pattern = re.compile(
             rf'<{re.escape(DSML_TOKEN)}parameter\s+name="([^"]+)"\s+string="(true|false)">'
             rf'(.*?)</{re.escape(DSML_TOKEN)}parameter>', re.DOTALL)
