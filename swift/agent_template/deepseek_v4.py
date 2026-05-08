@@ -37,7 +37,8 @@ Otherwise, output directly after </think> with tool calls or final response.
 
 {tool_schemas}
 
-You MUST strictly follow the above defined tool name and parameter schemas to invoke tool calls."""
+You MUST strictly follow the above defined tool name and parameter schemas to invoke tool calls.
+"""
 
 
 def _to_json(value: Any) -> str:
@@ -101,7 +102,11 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
-        res = ['<｜end▁of▁sentence｜>', self._get_tool_responses(tool_messages)]
+        res = [
+            '<｜end▁of▁sentence｜><｜User｜>',
+            self._get_tool_responses(tool_messages),
+            '<｜Assistant｜>',
+        ]
         return assistant_content, res
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
