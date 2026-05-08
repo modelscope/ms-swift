@@ -703,7 +703,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|audio_start|><|audio_pad|><|audio_end|>']
         elif media_type == 'video':
             video = inputs.videos[index]
-            _video = fetch_video({'video': video, **inputs.chat_template_kwargs}, **kwargs)
+            video_inputs = {'video': video, **inputs.chat_template_kwargs}
+            if isinstance(video, list):  # image list
+                from qwen_omni_utils import vision_process
+                video_inputs['sample_fps'] = vision_process.FPS
+            _video = fetch_video(video_inputs, **kwargs)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video

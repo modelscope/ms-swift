@@ -145,8 +145,7 @@ class Template(ProcessorMixin):
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
-        self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang',  # infer
-                           'train', 'rlhf', 'kto'] = 'transformers'  # train
+        self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
         self.use_megatron = False
@@ -1679,10 +1678,14 @@ class Template(ProcessorMixin):
         else:
             kl_res = {}
         res = {
-            **{f'completion_{k}': v
-               for k, v in res.items()},
-            **{f'KL_completion_{k}': v
-               for k, v in kl_res.items()},
+            **{
+                f'completion_{k}': v
+                for k, v in res.items()
+            },
+            **{
+                f'KL_completion_{k}': v
+                for k, v in kl_res.items()
+            },
         }
         label = [b['label'] for b in batch if b.get('label') is not None]
         if label:
