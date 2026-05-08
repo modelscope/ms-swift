@@ -143,14 +143,9 @@ class MiniCPMVTemplate(Template):
 
             # In packing/padding_free mode, text is concatenated into batch size 1.
             # Merge multimodal fields accordingly and shift image_bound by sample offsets.
-            if (
-                isinstance(inputs.get('input_ids'), torch.Tensor)
-                and inputs['input_ids'].shape[0] == 1
-                and isinstance(image_bound, list)
-                and len(image_bound) > 1
-                and isinstance(pixel_values, list)
-                and isinstance(tgt_sizes, list)
-            ):
+            if (isinstance(inputs.get('input_ids'), torch.Tensor) and inputs['input_ids'].shape[0] == 1
+                    and isinstance(image_bound, list) and len(image_bound) > 1 and isinstance(pixel_values, list)
+                    and isinstance(tgt_sizes, list)):
                 offsets = None
                 position_ids = inputs.get('position_ids')
                 if isinstance(position_ids, torch.Tensor) and position_ids.dim() == 2 and position_ids.shape[0] == 1:
@@ -705,14 +700,18 @@ class MiniCPMV4_6Template(MiniCPMV2_6Template):
                 combined_pv = torch.cat(valid_pvs, dim=-1)
                 combined_ts = torch.cat(valid_ts, dim=0)
                 vision_output = model.model.get_image_features(
-                    combined_pv, combined_ts,
+                    combined_pv,
+                    combined_ts,
                     downsample_mode=getattr(self, 'downsample_mode', None),
                 )
-                features = torch.cat(vision_output.pooler_output, dim=0).to(
-                    device=inputs_embeds.device, dtype=inputs_embeds.dtype
-                )
+                features = torch.cat(
+                    vision_output.pooler_output, dim=0).to(
+                        device=inputs_embeds.device, dtype=inputs_embeds.dtype)
                 mask = model.model.get_placeholder_mask(
-                    input_ids, inputs_embeds, features, image_token_id,
+                    input_ids,
+                    inputs_embeds,
+                    features,
+                    image_token_id,
                 )
                 inputs_embeds = inputs_embeds.masked_scatter(mask, features)
 
@@ -764,7 +763,7 @@ class MiniCPMV4_6Template(MiniCPMV2_6Template):
         for idx in range(image_idx):
             flat_index += num_patches_per_image[idx]
         n_patches = num_patches_per_image[image_idx]
-        img_target_sizes = target_sizes[flat_index : flat_index + n_patches]
+        img_target_sizes = target_sizes[flat_index:flat_index + n_patches]
 
         downsample_mode = self.downsample_mode or getattr(image_processor, 'downsample_mode', None)
         token_divisor = 4 if downsample_mode == '4x' else 16
@@ -779,13 +778,11 @@ class MiniCPMV4_6Template(MiniCPMV2_6Template):
         image_id_end = getattr(self.processor, 'image_id_end_token', '</image_id>')
         image_token = (
             getattr(self.processor, 'image_token', None)
-            or getattr(getattr(self.processor, 'tokenizer', None), 'image_token', None)
-            or '<image>'
-        )
+            or getattr(getattr(self.processor, 'tokenizer', None), 'image_token', None) or '<image>')
 
         image_placeholder = image_start + '<|placeholder|>' * int(num_tokens_per_patch[0]) + image_end
         if use_image_id:
-            image_placeholder = f"{image_id_start}{image_idx}{image_id_end}" + image_placeholder
+            image_placeholder = f'{image_id_start}{image_idx}{image_id_end}' + image_placeholder
 
         slice_mode = getattr(self.processor, 'slice_mode', True)
         if slice_mode and num_rows > 0 and num_cols > 0:
@@ -861,8 +858,7 @@ class MiniCPMV4_6Template(MiniCPMV2_6Template):
         return encoded
 
 
-register_template(
-    ChatmlTemplateMeta(
-        MLLMTemplateType.minicpmv4_6,
-        template_cls=MiniCPMV4_6Template,
-    ))
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.minicpmv4_6,
+    template_cls=MiniCPMV4_6Template,
+))
