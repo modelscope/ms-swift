@@ -483,7 +483,7 @@ register_model_arch(
         MLLMModelArch.minicpmv,
         language_model=['llm', 'model.language_model'],
         aligner=['resampler', 'model.merger'],
-        vision_tower=['vpm', 'model.vpm'],
+        vision_tower=['vpm', 'model.vpm', 'model.vision_tower'],
     ))
 
 register_model_arch(
