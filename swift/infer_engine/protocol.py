@@ -234,6 +234,7 @@ class ChatCompletionRequestMixin:
     messages: Messages
     tools: Optional[List[Tool]] = None
     tool_choice: Optional[Union[str, Dict]] = None
+    chat_template_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.tool_choice is None:
