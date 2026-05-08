@@ -496,14 +496,6 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        MLLMModelArch.minicpmo,
-        language_model='llm',
-        aligner='resampler',
-        vision_tower=['vpm', 'apm'],
-    ))
-
-register_model_arch(
-    MultiModelKeys(
         MLLMModelArch.phi3_vision,
         language_model='model.layers',
         aligner='model.vision_embed_tokens.img_projection',
