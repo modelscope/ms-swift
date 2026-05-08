@@ -4,11 +4,11 @@ repos:
     hooks:
       - id: flake8
   - repo: https://github.com/PyCQA/isort.git
-    rev: 8.0.0
+    rev: 8.0.1
     hooks:
       - id: isort
-  - repo: https://github.com/pre-commit/mirrors-yapf.git
-    rev: v0.32.0
+  - repo: https://github.com/google/yapf.git
+    rev: v0.43.0
     hooks:
       - id: yapf
   - repo: https://github.com/pre-commit/pre-commit-hooks.git

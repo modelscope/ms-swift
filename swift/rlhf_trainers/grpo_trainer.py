@@ -1906,8 +1906,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'step': [str(self.state.global_step)] * seen_nums,
                 'prompt': list(self._logs['prompt'])[:seen_nums],
                 'completion': list(self._logs['completion'])[:seen_nums],
-                **{k: list(v)[:seen_nums]
-                   for k, v in self._logs['rewards'].items()},
+                **{
+                    k: list(v)[:seen_nums]
+                    for k, v in self._logs['rewards'].items()
+                },
                 'advantages': list(self._logs['advantages'])[:seen_nums],
             }
             for key, value in self._logs.items():

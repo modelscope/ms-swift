@@ -25,6 +25,7 @@ To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you a
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
 pip install --no-build-isolation transformer-engine[pytorch] --no-cache-dir
 # cuda13
+pip install pybind11
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable --no-build-isolation
 
 # apex
@@ -49,7 +50,7 @@ export MODELSCOPE_CACHE='/xxx/shared'
 # flash_attn
 # Choose an appropriate version to install: https://github.com/Dao-AILab/flash-attention/releases/tag/v2.8.3
 # Note: Do not install a version higher than the maximum supported by transformer_engine: https://github.com/NVIDIA/TransformerEngine/blob/release_v2.10/transformer_engine/pytorch/attention/dot_product_attention/utils.py#L118
-MAX_JOBS=8 pip install "flash-attn==2.8.3" --no-build-isolation
+MAX_JOBS=64 pip install "flash-attn==2.8.3" --no-build-isolation
 ```
 
 Alternatively, you can also use the image: (See historical images [here](../GetStarted/SWIFT-installation.md#mirror))
