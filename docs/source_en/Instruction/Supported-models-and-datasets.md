@@ -607,6 +607,7 @@ The table below introduces the models integrated with ms-swift:
 |[inclusionAI/Ling-plus-base](https://modelscope.cn/models/inclusionAI/Ling-plus-base)|ling|ling|-|&#x2718;|-|[inclusionAI/Ling-plus-base](https://huggingface.co/inclusionAI/Ling-plus-base)|
 |[inclusionAI/Ling-mini-2.0](https://modelscope.cn/models/inclusionAI/Ling-mini-2.0)|bailing_moe|ling2|-|&#x2714;|-|[inclusionAI/Ling-mini-2.0](https://huggingface.co/inclusionAI/Ling-mini-2.0)|
 |[inclusionAI/Ling-mini-base-2.0](https://modelscope.cn/models/inclusionAI/Ling-mini-base-2.0)|bailing_moe|ling2|-|&#x2714;|-|[inclusionAI/Ling-mini-base-2.0](https://huggingface.co/inclusionAI/Ling-mini-base-2.0)|
+|[inclusionAI/Ling-1T](https://modelscope.cn/models/inclusionAI/Ling-1T)|bailing_moe|ling2|-|&#x2714;|-|[inclusionAI/Ling-1T](https://huggingface.co/inclusionAI/Ling-1T)|
 |[inclusionAI/Ring-mini-2.0](https://modelscope.cn/models/inclusionAI/Ring-mini-2.0)|bailing_moe|ring2|-|&#x2714;|-|[inclusionAI/Ring-mini-2.0](https://huggingface.co/inclusionAI/Ring-mini-2.0)|
 |[IEITYuan/Yuan2.0-2B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-2B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-2B-hf](https://huggingface.co/IEITYuan/Yuan2-2B-hf)|
 |[IEITYuan/Yuan2.0-51B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-51B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-51B-hf](https://huggingface.co/IEITYuan/Yuan2-51B-hf)|
