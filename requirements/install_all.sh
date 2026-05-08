@@ -4,7 +4,7 @@
 pip install "vllm>=0.5.1" -U
 pip install "transformers<5.9" "trl<1.0" peft -U
 pip install optimum bitsandbytes "gradio<5.33" -U
-pip install git+https://github.com/modelscope/ms-swift.git#egg=ms-swift[all]
+pip install "ms-swift[all]@git+https://github.com/modelscope/ms-swift.git"
 pip install timm "deepspeed<0.19" -U
 pip install qwen_vl_utils qwen_omni_utils keye_vl_utils -U
 pip install decord librosa icecream soundfile -U
