@@ -306,7 +306,7 @@ class Qwen2VLTemplate(Template):
         self.transformers_version = version.parse(transformers.__version__)
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
 
-    def _get_max_pixels(self, inputs):
+    def _get_max_pixels(self, inputs=None):
         return self.max_pixels
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
@@ -674,9 +674,6 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         self.position_id_per_seconds = default['videos_kwargs']['position_id_per_seconds']
         self.use_audio_in_video = get_env_args('use_audio_in_video', bool, False)
         self.sampling_rate = get_env_args('sampling_rate', int, self.processor.feature_extractor.sampling_rate)
-
-    def _get_max_pixels(self, inputs):
-        return self.max_pixels
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
