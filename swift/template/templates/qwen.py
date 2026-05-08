@@ -270,10 +270,13 @@ class Qwen2AudioTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
+        sampling_rate = inputs.chat_template_kwargs.get('sampling_rate')
+        if sampling_rate is None:
+            sampling_rate = self.sampling_rate
         if inputs.audios:
-            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=self.sampling_rate))
+            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
             audio_inputs = self.processor.feature_extractor(
-                audios, sampling_rate=self.sampling_rate, return_attention_mask=True, return_tensors='pt')
+                audios, sampling_rate=sampling_rate, return_attention_mask=True, return_tensors='pt')
             audio_inputs['feature_attention_mask'] = audio_inputs.pop('attention_mask')
             encoded.update(audio_inputs)
         return encoded
@@ -679,6 +682,9 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                     inputs: StdTemplateInputs) -> List[Context]:
         from qwen_omni_utils import fetch_image, fetch_video
         kwargs = {'image_patch_size': self.processor.image_processor.patch_size} if self.version == 'omni_v3' else {}
+        sampling_rate = inputs.chat_template_kwargs.get('sampling_rate')
+        if sampling_rate is None:
+            sampling_rate = self.sampling_rate
         if self.mode == 'vllm':
             # https://github.com/modelscope/ms-swift/issues/8445
             inputs.mm_processor_kwargs['do_resize'] = False
@@ -690,7 +696,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 return ['<|vision_start|><|image_pad|><|vision_end|>']
         elif media_type == 'audio':
             if self.mode != 'vllm':
-                inputs.audios[index] = load_audio(inputs.audios[index], self.sampling_rate)
+                inputs.audios[index] = load_audio(inputs.audios[index], sampling_rate)
             if self.version == 'omni_v2_5':
                 return ['<|audio_bos|><|AUDIO|><|audio_eos|>']
             elif self.version == 'omni_v3':
@@ -706,7 +712,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 if video.startswith('http://') or video.startswith('https://'):
                     import audioread
                     video = audioread.ffdec.FFmpegAudioFile(video)
-                video = librosa.load(video, sr=self.sampling_rate)[0]
+                video = librosa.load(video, sr=sampling_rate)[0]
                 if self.mode != 'vllm':
                     inputs.audios.insert(inputs.audio_idx, (video, 'video'))
                 else:
@@ -992,11 +998,14 @@ class Qwen3ASRTemplate(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
+        sampling_rate = inputs.chat_template_kwargs.get('sampling_rate')
+        if sampling_rate is None:
+            sampling_rate = self.sampling_rate
         if inputs.audios:
-            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=self.sampling_rate))
+            audios = load_batch(inputs.audios, load_func=partial(load_audio, sampling_rate=sampling_rate))
             audio_inputs = self.processor.feature_extractor(
                 audios,
-                sampling_rate=self.sampling_rate,
+                sampling_rate=sampling_rate,
                 return_attention_mask=True,
                 return_tensors='pt',
                 padding=True,
