@@ -166,15 +166,6 @@ register_model(
     ))
 
 
-class DeepseekV4Loader(ModelLoader):
-
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
-        if not self.return_dummy_model:
-            raise ValueError('DeepSeek-V4 is not supported in transformers. '
-                             'Please use vllm or sglang as infer_backend.')
-        return super().get_model(model_dir, *args, **kwargs)
-
-
 register_model(
     ModelMeta(
         LLMModelType.deepseek_v4,
@@ -182,13 +173,12 @@ register_model(
             ModelGroup([
                 Model('deepseek-ai/DeepSeek-V4-Flash', 'deepseek-ai/DeepSeek-V4-Flash'),
                 Model('deepseek-ai/DeepSeek-V4-Flash-Base', 'deepseek-ai/DeepSeek-V4-Flash-Base'),
-            ], TemplateType.deepseek_v4),
+            ]),
             ModelGroup([
                 Model('deepseek-ai/DeepSeek-V4-Pro', 'deepseek-ai/DeepSeek-V4-Pro'),
                 Model('deepseek-ai/DeepSeek-V4-Pro-Base', 'deepseek-ai/DeepSeek-V4-Pro-Base'),
-            ], TemplateType.deepseek_v4),
+            ]),
         ],
-        DeepseekV4Loader,
         template=TemplateType.deepseek_v4,
         architectures=['DeepseekV4ForCausalLM'],
     ))
