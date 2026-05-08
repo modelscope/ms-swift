@@ -26,7 +26,7 @@ uv pip install 'ms-swift' --torch-backend=auto
 # pip install git+https://github.com/modelscope/ms-swift.git
 
 # 全能力
-# pip install "git+https://github.com/modelscope/ms-swift.git#egg=ms-swift[all]"
+# pip install "ms-swift[all]@git+https://github.com/modelscope/ms-swift.git"
 
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
@@ -44,7 +44,7 @@ uv pip install -e . --torch-backend=auto
 # pip install "git+https://github.com/modelscope/ms-swift.git@release/3.12"
 
 # 全能力
-# pip install "git+https://github.com/modelscope/ms-swift.git@release/3.12#egg=ms-swift[all]"
+# pip install "ms-swift[all]@git+https://github.com/modelscope/ms-swift.git@release/3.12"
 
 git clone -b release/3.12 https://github.com/modelscope/ms-swift.git
 cd ms-swift
