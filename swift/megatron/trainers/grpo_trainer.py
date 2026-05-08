@@ -1433,8 +1433,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 'gen_step': [self._step - 1] * len(self._logs['prompt']),
                 'prompt': list(self._logs['prompt']),
                 'completion': list(self._logs['completion']),
-                **{k: list(v)
-                   for k, v in self._logs['rewards'].items()},
+                **{
+                    k: list(v)
+                    for k, v in self._logs['rewards'].items()
+                },
                 'advantages': list(self._logs['advantages']),
             }
             self.jsonl_writer.append(table)
