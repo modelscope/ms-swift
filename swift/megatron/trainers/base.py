@@ -22,6 +22,7 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 from modelscope import check_local_model_is_latest
 from packaging import version
 from pathlib import Path
+from transformers.utils import is_torch_npu_available
 from typing import Callable, Dict, List, Optional
 
 from swift.dataset import RowPreprocessor
@@ -95,8 +96,6 @@ class BaseMegatronTrainer(ABC):
                 })
                 check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
-        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        self.mcore_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         self.callbacks = []
         for callback in args.callbacks:
             self.callbacks.append(megatron_callbacks_map[callback](self))
@@ -141,15 +140,11 @@ class BaseMegatronTrainer(ABC):
             if config.moe_router_load_balancing_type == 'aux_loss':
                 track_names.append('load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'seq_aux_loss':
-                if self.mcore_014:
-                    track_names.append('seq_load_balancing_loss')
-                else:
-                    track_names.append('load_balancing_loss')
+                track_names.append('seq_load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'global_aux_loss':
                 track_names.append('global_load_balancing_loss')
             if config.moe_z_loss_coeff is not None:
                 track_names.append('z_loss')
-            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
             track_moe_metrics(
                 loss_scale=moe_loss_scale,
                 iteration=self.state.iteration,
@@ -159,7 +154,7 @@ class BaseMegatronTrainer(ABC):
                 track_names=track_names,
                 num_layers=config.num_layers,
                 moe_layer_freq=config.moe_layer_freq,
-                **track_moe_kwargs)
+                mtp_num_layers=args.mtp_num_layers)
         if args.mtp_num_layers is not None:
             mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
@@ -961,15 +956,24 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
+    def _should_use_npu_generated_attention_mask(self, args) -> bool:
+        return (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
+                and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
+
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         batch = get_batch_on_this_pp_rank(self.args, data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
         args = self.args
         text_position_ids = batch.pop('text_position_ids', None)
-        batch.pop('attention_mask_2d', None)
         if text_position_ids is None:
             text_position_ids = batch.get('position_ids')
+        if self._should_use_npu_generated_attention_mask(args):
+            if 'attention_mask_2d' not in batch and batch.get('attention_mask') is not None:
+                batch['attention_mask_2d'] = (~batch['attention_mask']).sum(dim=(1, 2)) > 0
+            batch['attention_mask'] = None
+        else:
+            batch.pop('attention_mask_2d', None)
         if args.padding_free and text_position_ids is not None:
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples

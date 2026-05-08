@@ -1,11 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.metadata
 import inspect
-import math
 import os
 import torch
 import torch.nn.functional as F
-import transformers
 from packaging import version
 from PIL import Image
 from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
@@ -22,7 +20,7 @@ except ImportError:
 
 from transformers.utils.versions import require_version
 from types import MethodType
-from typing import Any, Dict, Optional, Tuple, Type, Union
+from typing import Optional, Tuple, Type, Union
 
 from swift.template import TemplateType
 from swift.utils import (Processor, get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled,
@@ -1011,7 +1009,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
         cache_position: Optional[torch.LongTensor] = None,
         **kwargs: Unpack[TransformersKwargs],
     ) -> Union[tuple, output_cls]:
-        if not self.training or not is_deepspeed_enabled():
+        if not is_deepspeed_enabled():
             return self.origin_forward(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -1578,7 +1576,7 @@ def _compat_qwen3_omni_mixed_data(model, processor):
         video_second_per_grid=None,
         **kwargs,
     ) -> Union[tuple, Qwen3OmniMoeThinkerCausalLMOutputWithPast]:
-        if not self.training or not is_deepspeed_enabled():
+        if not is_deepspeed_enabled():
             return self.origin_forward(
                 input_ids=input_ids,
                 input_features=input_features,

@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-3.11-5be.svg">
+<img src="https://img.shields.io/badge/python-3.12-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A52.0-orange.svg">
 <a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.23-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-<a href="https://trendshift.io/repositories/6427" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6427" alt="modelscope%2Fswift | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/11937" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11937" alt="modelscope/ms-swift | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
 <p align="center">
@@ -141,13 +141,13 @@ Running Environment:
 | python       | >=3.10        | 3.12                |                                           |
 | cuda         |              | cuda12.8/12.9    | No need to install if using CPU, NPU, MPS |
 | torch        | >=2.0        | 2.8.0/2.10.0         |                            |
-| transformers | >=4.33       | 4.57.6/5.6.1              |                          |
+| transformers | >=4.33       | 4.57.6/5.6.2              |                          |
 | modelscope   | >=1.23       |                     |                                           |
 | peft         | >=0.11,<0.20 |                     |                                           |
 | flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.30 | 0.29.1              | RLHF                                      |
+| trl          | >=0.15,<1.0 | 0.29.1              | RLHF                                      |
 | deepspeed    | >=0.14       | 0.18.9              | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0/0.19.0       | Inference/Deployment                      |
+| vllm         | >=0.5.1      | 0.11.0/0.19.1       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
 | lmdeploy     | >=0.5   | 0.10.1                 | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |

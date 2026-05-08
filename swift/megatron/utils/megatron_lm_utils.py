@@ -34,8 +34,6 @@ from .patcher import patch_merge_fn
 
 logger = get_logger()
 
-mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-
 
 @contextmanager
 def _patch_megatron_timeout(distributed_timeout_minutes):
@@ -144,8 +142,6 @@ def _generate_state_dict(args,
         state_dict[key] = model_sd
 
     if not args.no_save_optim:
-        if not mcore_013:
-            optim_sd_kwargs = None
         if optimizer is not None:
             state_dict['optimizer'] = optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
         if opt_param_scheduler is not None:
@@ -256,7 +252,7 @@ def save_mcore_checkpoint(
         save_strategy,
         mpu.get_data_parallel_group(with_context_parallel=True),
     )
-    kwargs = {'content_metadata': sharded_sd_metadata} if mcore_013 else {}
+    kwargs = {'content_metadata': sharded_sd_metadata}
     async_save = args.async_save
     if not models:  # save GPU memory
         assert 'optimizer' not in state_dict

@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, 
 from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
-from .vision_utils import load_audio, load_batch, load_image, rescale_image
+from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image
 
 logger = get_logger()
 if TYPE_CHECKING:
@@ -87,6 +87,7 @@ class Template(ProcessorMixin):
         # only for train
         padding_free: bool = False,
         loss_scale: str = 'default',
+        is_binary_loss_scale: Optional[bool] = None,
         sequence_parallel_size: int = 1,
         # infer/deploy
         template_backend: Literal['swift', 'jinja'] = 'swift',
@@ -104,8 +105,6 @@ class Template(ProcessorMixin):
         padding_side: The padding_side when the training batch_size >= 2
         loss_scale: The loss scale function to use
         """
-        from swift.agent_template import agent_template_map
-        from swift.loss_scale import LossScale, get_loss_scale
         self._processor_inited = False
         self._version = 'v6'  # Avoid compatibility issues caused by load_from_cache_file caching.
         self.max_length = max_length
@@ -122,22 +121,20 @@ class Template(ProcessorMixin):
             template_meta.default_system = default_system
         if enable_thinking is None:
             enable_thinking = template_meta.is_thinking
-        if response_prefix is None:
-            if use_chat_template:
-                response_prefix = (
-                    template_meta.thinking_prefix if enable_thinking else template_meta.non_thinking_prefix)
-            else:
-                response_prefix = ''
         self.response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
         self.add_non_thinking_prefix = add_non_thinking_prefix
+        self.chat_template_kwargs = {}
         self.remove_unused_columns = remove_unused_columns
         self.template_backend = template_backend
         self.max_length = max_length
         self.truncation_strategy = truncation_strategy
-        self.loss_scale: LossScale = get_loss_scale(loss_scale)
+        self._loss_scale_cache = {}
+        self._agent_template_cache = {}
+        self._loss_scale = loss_scale
+        self.is_binary_loss_scale = is_binary_loss_scale
         self.max_pixels = max_pixels
         self.padding_side = padding_side
         self.sequence_parallel_size = sequence_parallel_size
@@ -145,7 +142,6 @@ class Template(ProcessorMixin):
         self.packing = False
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
-        self.agent_template = agent_template_map[agent_template]()
         self.norm_bbox = norm_bbox or self.norm_bbox
         if self.is_encoder_decoder:
             self.skip_prompt = False
@@ -159,6 +155,40 @@ class Template(ProcessorMixin):
 
         if processor is not None:
             self.init_processor(processor)
+
+    def _get_enable_thinking(self, inputs=None):
+        enable_thinking = None if inputs is None else inputs.chat_template_kwargs.get('enable_thinking')
+        if enable_thinking is None:
+            enable_thinking = self.enable_thinking
+        return enable_thinking
+
+    def _get_response_prefix(self, inputs=None):
+        response_prefix = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
+        if response_prefix is None:
+            response_prefix = self.response_prefix
+        if response_prefix is not None:
+            return response_prefix
+        elif not self.use_chat_template:
+            return ''
+        enable_thinking = self._get_enable_thinking(inputs)
+        if enable_thinking:
+            return self.template_meta.thinking_prefix
+        else:
+            return self.template_meta.non_thinking_prefix
+
+    @property
+    def loss_scale(self):
+        from swift.loss_scale import get_loss_scale
+        if self._loss_scale not in self._loss_scale_cache:
+            self._loss_scale_cache[self._loss_scale] = get_loss_scale(self._loss_scale)
+        return self._loss_scale_cache[self._loss_scale]
+
+    @property
+    def agent_template(self):
+        from swift.agent_template import agent_template_map
+        if self._agent_template not in self._agent_template_cache:
+            self._agent_template_cache[self._agent_template] = agent_template_map[self._agent_template]()
+        return self._agent_template_cache[self._agent_template]
 
     def init_env_args(self):
         if self.model_meta.is_multimodal:
@@ -271,14 +301,27 @@ class Template(ProcessorMixin):
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool_call':
                     i += 1
-                tool_content = self.agent_template._format_tool_calls(messages[i_start:i + 1])
-                messages[i_start:i + 1] = [{'role': 'assistant', 'content': tool_content}]
+                tool_call_msgs = messages[i_start:i + 1]
+                tool_content = self.agent_template._format_tool_calls(tool_call_msgs)
+                merged_message = {'role': 'assistant', 'content': tool_content}
+                # Preserve loss/loss_scale fields from the first tool_call message.
+                for msg in tool_call_msgs:
+                    for key in ['loss', 'loss_scale']:
+                        if key in msg and key not in merged_message:
+                            merged_message[key] = msg[key]
+                messages[i_start:i + 1] = [merged_message]
                 i = i_start + 1
             else:
                 i += 1
 
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
         return {}
+
+    def _get_max_pixels(self, inputs=None):
+        max_pixels = None if inputs is None else inputs.chat_template_kwargs.get('max_pixels')
+        if max_pixels is None:
+            max_pixels = self.max_pixels
+        return max_pixels
 
     def _preprocess_inputs(
         self,
@@ -292,21 +335,32 @@ class Template(ProcessorMixin):
         images = inputs.images
         load_images = self.load_images or self.mode in {'vllm', 'lmdeploy'}
         load_images_origin = load_images
-        if self.max_pixels is not None or inputs.objects:
+        max_pixels = self._get_max_pixels(inputs)
+        if max_pixels is not None or inputs.objects:
             load_images = True
         if images:
             for i, image in enumerate(images):
                 images[i] = self._load_image(images[i], load_images)
         if inputs.objects:
             self._get_height_width(inputs)
-        if self.max_pixels is not None:
+        if max_pixels is not None:
             # Scale the image proportionally without affecting the scaled objects.
-            images = [rescale_image(img, self.max_pixels) for img in images]
+            images = [rescale_image(img, max_pixels) for img in images]
         if images and not load_images_origin:  # fix pt & qwen-vl
             for i, image in enumerate(images):
                 if isinstance(image, Image.Image):
                     images[i] = self._save_pil_image(image)
         inputs.images = images
+
+        # Resolve video/audio paths with ROOT_IMAGE_DIR.
+        # Image paths are resolved by _load_image above, but video/audio paths are
+        # passed as raw strings to model-specific templates. Templates that delegate
+        # media loading to HF processors (e.g. Gemma4) need resolved absolute paths.
+        if self.root_image_dir:
+            for media_list in (inputs.videos, inputs.audios):
+                for i, media_file in enumerate(media_list):
+                    if isinstance(media_file, str) and not media_file.startswith('http'):
+                        media_list[i] = _check_path(media_file) or media_file
 
         if self.mode == 'vllm' and inputs.audios:
             sampling_rate = get_env_args('sampling_rate', int, None)
@@ -512,8 +566,6 @@ class Template(ProcessorMixin):
             inputs = asdict(inputs)
 
         if isinstance(inputs, dict):
-            if self.task_type == 'causal_lm' and not self.is_training:
-                remove_response(inputs['messages'])
             inputs = TemplateInputs.from_dict(inputs)
         elif isinstance(inputs, TemplateInputs):
             inputs = deepcopy(inputs)
@@ -631,13 +683,20 @@ class Template(ProcessorMixin):
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
-    def decode(self, generate_ids: List[int], *, is_finished: bool = True, first_token=True, **kwargs) -> Any:
+    def decode(self,
+               generate_ids: List[int],
+               *,
+               is_finished: bool = True,
+               first_token=True,
+               template_inputs=None,
+               **kwargs) -> Any:
         if kwargs.get('spaces_between_special_tokens') is None:
             kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
         response = self.tokenizer.decode(generate_ids, **kwargs)
-        if first_token and self.response_prefix:
-            response = self.response_prefix + response
+        response_prefix = self._get_response_prefix(template_inputs)
+        if first_token and response_prefix:
+            response = response_prefix + response
         return response
 
     def decode_prm(self, input_ids: torch.Tensor, logits: torch.Tensor) -> Any:
@@ -971,6 +1030,9 @@ class Template(ProcessorMixin):
     def _encode_context_list(self,
                              context_list: List[Context],
                              loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float]]:
+        is_binary_loss_scale = self.is_binary_loss_scale
+        if is_binary_loss_scale is None:
+            is_binary_loss_scale = self.loss_scale.is_binary_loss_scale
         input_ids: List[int] = []
         labels: List[int] = []
         loss_scale: List[float] = []
@@ -986,9 +1048,9 @@ class Template(ProcessorMixin):
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
-            if not self.loss_scale.is_loss_scale_binary:
+            if not is_binary_loss_scale:
                 loss_scale.extend([loss_weight] * len(token_list))
-        if self.loss_scale.is_loss_scale_binary:
+        if is_binary_loss_scale:
             loss_scale = None
         return input_ids, labels, loss_scale
 
@@ -1027,10 +1089,11 @@ class Template(ProcessorMixin):
         kwargs = {}
         if inputs.tools:
             kwargs['tools'] = inputs.tools
-        if 'thinking_budget' in inputs.extra_kwargs:
-            kwargs['thinking_budget'] = inputs.extra_kwargs.get('thinking_budget', 0)
-        if self.template_meta.is_thinking or self.enable_thinking:
-            kwargs[self.jinja_enable_thinking_key] = self.enable_thinking
+        enable_thinking = self._get_enable_thinking(inputs)
+        if self.template_meta.is_thinking or enable_thinking:
+            kwargs[self.jinja_enable_thinking_key] = enable_thinking
+        kwargs.update(self.chat_template_kwargs)
+        kwargs.update(inputs.chat_template_kwargs)
         text = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=add_generation_prompt, **kwargs)
         answer_len = 1 if self.is_training else 0
@@ -1124,7 +1187,14 @@ class Template(ProcessorMixin):
                 i = i_start + 1
             elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
                 # Consecutive messages from the assistant/user role need to be merged to prevent errors.
-                pre_message['content'] = pre_content + content
+                if self.template_backend == 'swift' and pre_role == 'assistant':
+                    for key in ['content', 'loss', 'loss_scale']:
+                        pre_val = pre_message.get(key)
+                        cur_val = message.get(key)
+                        pre_message[key] = (pre_val if isinstance(pre_val, list) else [pre_val]) + \
+                            (cur_val if isinstance(cur_val, list) else [cur_val])
+                else:
+                    pre_message['content'] = pre_content + content
                 messages.pop(i)
             else:
                 i += 1
@@ -1134,7 +1204,8 @@ class Template(ProcessorMixin):
         if self.use_chat_template:
             if self.add_non_thinking_prefix:
                 self._add_non_thinking_prefix(inputs)
-            if template_meta.is_thinking or self.enable_thinking:
+            enable_thinking = self._get_enable_thinking(inputs)
+            if template_meta.is_thinking or enable_thinking:
                 self._remove_history_thinking(inputs)
             system = self._get_system(inputs)
         else:
@@ -1186,6 +1257,7 @@ class Template(ProcessorMixin):
             context_list = prompt.copy()
             extra_context_list = []
             extra_context_type = None
+            response_prefix = self._get_response_prefix(inputs)
             if i < n_round - 1:
                 # Not the last round.
                 context_list.append('{{RESPONSE}}')
@@ -1216,9 +1288,9 @@ class Template(ProcessorMixin):
                 if add_eos:
                     extra_context_list = template_meta.suffix
                     extra_context_type = ContextType.SUFFIX
-            elif self.response_prefix:
+            elif response_prefix:
                 # final round and during inference.
-                context_list.append(self.response_prefix)
+                context_list.append(response_prefix)
 
             self._concat_context_list(
                 context_list,
@@ -1449,7 +1521,7 @@ class Template(ProcessorMixin):
         for k, v in old_kwargs.items():
             if k in {
                     'input_ids', 'attention_mask', 'labels', 'position_ids', 'output_hidden_states', 'logits_to_keep',
-                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k'
+                    'max_length_q', 'max_length_k', 'cu_seq_lens_q', 'cu_seq_lens_k', 'mm_token_type_ids'
             } and k not in kwargs:
                 kwargs[k] = v
         if 'inputs_embeds' in kwargs:

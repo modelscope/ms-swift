@@ -3,6 +3,7 @@ import random
 import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
+from copy import deepcopy
 from enum import Enum
 from functools import partial
 from mcore_bridge import set_random_seed
@@ -59,6 +60,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             logger.info(f'Using teacher model API for logprobs, top_logprobs={self.gkd_logits_topk}')
 
         self.use_vllm = getattr(args, 'use_vllm', False)
+        self.steps_per_generation = args.steps_per_generation
+        self.generation_batch_size = args.generation_batch_size
         super().__init__(args, template)
 
         # Get device for data processing
@@ -72,6 +75,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.max_completion_length = args.max_completion_length
 
         self.resample_data_iterator = None
+        self._buffered_inputs = None
 
     def train(self, train_dataset, val_dataset):
         if self.truncation_strategy == 'delete':
@@ -287,9 +291,12 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return valid_samples[:required_count]
 
-    def _compute_teacher_logits(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
+    def _compute_teacher_logits(self,
+                                encoded_batches: List[Dict],
+                                vp_stage: Optional[int] = None,
+                                raw_batches: Optional[List[List[Dict]]] = None) -> None:
         if self.use_teacher_api:
-            self._compute_teacher_logits_from_api(encoded_batches)
+            self._compute_teacher_logits_from_api(encoded_batches, raw_batches=raw_batches)
         else:
             self._compute_teacher_logits_local(encoded_batches, vp_stage)
 
@@ -332,89 +339,135 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 teacher_out.opsd_teacher_labels = opsd_teacher_labels
                 encoded_batch['teacher_output'] = teacher_out
 
-    def _compute_teacher_logits_from_api(self, encoded_batches: List[Dict]) -> None:
+    def _compute_teacher_logits_from_api(self,
+                                         encoded_batches: List[Dict],
+                                         raw_batches: Optional[List[List[Dict]]] = None) -> None:
         from swift.rlhf_trainers.gkd_trainer import fetch_teacher_logprobs
         topk = self.gkd_logits_topk
-        # One API call per DP group: rank 0 fetches, others receive via broadcast.
         rollout_group = self._get_rollout_group()
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
         rollout_src = torch.distributed.get_global_rank(rollout_group, 0)
 
-        for encoded_batch in encoded_batches:
+        for batch_idx, encoded_batch in enumerate(encoded_batches):
             opsd_batch = encoded_batch.get('opsd_teacher_batch')
             source = opsd_batch if opsd_batch is not None else encoded_batch
             input_ids = source['input_ids']
+            labels = source['labels']
+            batch_size, seq_len = input_ids.shape
+            out_len = seq_len - 1
             device = input_ids.device
 
             if rollout_rank == 0:
-                teacher_logprobs, teacher_indices = fetch_teacher_logprobs(
-                    self.teacher_model_server, input_ids.tolist(), topk=topk)
+                # Build multimodal inputs if applicable
+                mm_raw_inputs = None
+                if raw_batches is not None:
+                    raw_batch = raw_batches[batch_idx]
+                    if any(r.get('images') or r.get('audios') or r.get('videos') for r in raw_batch):
+                        opsd_teacher_messages = encoded_batch.get('opsd_teacher_messages')
+                        mm_raw_inputs = []
+                        for i, raw in enumerate(raw_batch):
+                            item = {k: raw[k] for k in ('images', 'audios', 'videos') if k in raw}
+                            if opsd_teacher_messages is not None and opsd_teacher_messages[i] is not None:
+                                item['messages'] = opsd_teacher_messages[i]
+                            else:
+                                item['messages'] = raw['messages']
+                            mm_raw_inputs.append(item)
+
+                logprobs_raw, indices_raw, vllm_seq_lens = fetch_teacher_logprobs(
+                    self.teacher_model_server, input_ids.tolist(), topk=topk, mm_raw_inputs=mm_raw_inputs)
+
+                if logprobs_raw.shape[1] == out_len:
+                    teacher_logprobs = logprobs_raw.to(device)
+                    teacher_indices = indices_raw.to(device)
+                else:
+                    teacher_logprobs = torch.full((batch_size, out_len, topk),
+                                                  float('-inf'),
+                                                  dtype=torch.float32,
+                                                  device=device)
+                    teacher_indices = torch.zeros(batch_size, out_len, topk, dtype=torch.long, device=device)
+                    resp_mask = labels != -100
+                    resp_counts = resp_mask.sum(dim=1).tolist()
+                    for idx in range(batch_size):
+                        vllm_out_len = vllm_seq_lens[idx] - 1
+                        n = min(resp_counts[idx], vllm_out_len, out_len)
+                        if n <= 0:
+                            continue
+                        dest_end = min(resp_mask[idx].nonzero()[-1].item(), out_len)
+                        teacher_logprobs[idx, dest_end - n:dest_end] = logprobs_raw[idx, vllm_out_len - n:vllm_out_len]
+                        teacher_indices[idx, dest_end - n:dest_end] = indices_raw[idx, vllm_out_len - n:vllm_out_len]
+                # Pad from [B, seq_len-1, topk] to [B, seq_len, topk] to match student logits shape
                 teacher_logprobs = F.pad(teacher_logprobs, (0, 0, 0, 1), value=float('-inf'))
                 teacher_indices = F.pad(teacher_indices, (0, 0, 0, 1), value=0)
-                teacher_logprobs = teacher_logprobs.to(device)
-                teacher_indices = teacher_indices.to(device)
             else:
-                bs, seq_len = input_ids.shape
-                teacher_logprobs = torch.empty(bs, seq_len, topk, dtype=torch.float32, device=device)
-                teacher_indices = torch.empty(bs, seq_len, topk, dtype=torch.long, device=device)
+                teacher_logprobs = torch.empty(batch_size, seq_len, topk, dtype=torch.float32, device=device)
+                teacher_indices = torch.empty(batch_size, seq_len, topk, dtype=torch.long, device=device)
 
             torch.distributed.broadcast(teacher_logprobs, src=rollout_src, group=rollout_group)
             torch.distributed.broadcast(teacher_indices, src=rollout_src, group=rollout_group)
 
-            opsd_teacher_labels = opsd_batch.get('labels') if opsd_batch is not None else None
-            if opsd_teacher_labels is not None:
-                opsd_teacher_labels = torch.roll(opsd_teacher_labels, shifts=-1, dims=-1)
+            opsd_labels = source['labels'] if opsd_batch is not None else None
+            if opsd_labels is not None:
+                opsd_labels = torch.roll(opsd_labels, shifts=-1, dims=-1)
             encoded_batch['teacher_output'] = TeacherOutput(
                 topk_logprobs=teacher_logprobs,
                 topk_indices=teacher_indices,
-                opsd_teacher_labels=opsd_teacher_labels,
+                opsd_teacher_labels=opsd_labels,
             )
 
     def _replace_data_iterator(self, data_iterator):
         num_microbatches = self.args.num_microbatches
+        steps_per_generation = self.steps_per_generation
 
-        # Determine data source once for the entire global batch
-        data_source = self._determine_data_source()
+        if self._step % steps_per_generation == 0:
+            data_source = self._determine_data_source()
 
-        # Collect all micro-batches into a global batch
-        global_batch = []
-        for _ in range(num_microbatches):
-            raw_batch = next(data_iterator)
+            total_microbatches = num_microbatches * steps_per_generation
+            global_batch = []
+            for _ in range(total_microbatches):
+                raw_batch = next(data_iterator)
+                if self.truncation_strategy == 'delete' and self.resample_data_iterator is not None:
+                    raw_batch = self.resample_encode_failed_inputs(raw_batch)
+                global_batch.extend(raw_batch)
 
-            # Resample for encoding failed data when truncation_strategy is 'delete'
-            if self.truncation_strategy == 'delete' and self.resample_data_iterator is not None:
-                raw_batch = self.resample_encode_failed_inputs(raw_batch)
+            if data_source == DataSource.STUDENT:
+                local_batch = self._get_local_rollout_batch(global_batch)
+                local_batch = self._generate_completions(local_batch)
+                global_batch = self._gather_rollout_results(local_batch)
+            elif data_source == DataSource.TEACHER:
+                logger.warning_once(
+                    'Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
+                    'Falling back to dataset responses.')
 
-            global_batch.extend(raw_batch)
+            teacher_global_batch = self._build_opsd_teacher_data(global_batch)
 
-        # On-policy mode: generate completions for the entire global batch at once
-        if data_source == DataSource.STUDENT:
-            local_batch = self._get_local_rollout_batch(global_batch)
-            local_batch = self._generate_completions(local_batch)
-            global_batch = self._gather_rollout_results(local_batch)
-        elif data_source == DataSource.TEACHER:
-            logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
-                                'Falling back to dataset responses.')
+            micro_batch_size = len(global_batch) // total_microbatches
+            assert micro_batch_size == self.args.micro_batch_size
+            all_encoded_batches = []
+            all_raw_batches = []
+            for i in range(total_microbatches):
+                start_idx = i * micro_batch_size
+                end_idx = start_idx + micro_batch_size
+                raw_batch = global_batch[start_idx:end_idx]
+                encoded_batch = self._encode_batch(raw_batch)
+                encoded_batch['data_source'] = data_source
+                if teacher_global_batch is not None:
+                    teacher_slice = teacher_global_batch[start_idx:end_idx]
+                    encoded_batch['opsd_teacher_batch'] = self._encode_batch(teacher_slice)
+                    if self.use_teacher_api:
+                        encoded_batch['opsd_teacher_messages'] = [deepcopy(td['messages']) for td in teacher_slice]
+                all_encoded_batches.append(encoded_batch)
+                if self.use_teacher_api:
+                    all_raw_batches.append(raw_batch)
 
-        # Build OPSD teacher data if teacher_prompt is present
-        teacher_global_batch = self._build_opsd_teacher_data(global_batch)
+            self._compute_teacher_logits(all_encoded_batches, raw_batches=all_raw_batches)
 
-        # Split global batch back into micro-batches for encoding
-        encoded_batches = []
-        micro_batch_size = len(global_batch) // num_microbatches
-        for i in range(num_microbatches):
-            start_idx = i * micro_batch_size
-            end_idx = start_idx + micro_batch_size
-            raw_batch = global_batch[start_idx:end_idx]
-            encoded_batch = self._encode_batch(raw_batch)
-            encoded_batch['data_source'] = data_source
-            if teacher_global_batch is not None:
-                encoded_batch['opsd_teacher_batch'] = self._encode_batch(teacher_global_batch[start_idx:end_idx])
-            encoded_batches.append(encoded_batch)
+            self._buffered_inputs = [
+                all_encoded_batches[i * num_microbatches:(i + 1) * num_microbatches]
+                for i in range(steps_per_generation)
+            ]
 
-        self._compute_teacher_logits(encoded_batches)
-
-        # Increment step counter (used for deterministic random and weight sync)
+        step_idx = self._step % steps_per_generation
+        encoded_batches = self._buffered_inputs[step_idx]
         self._step += 1
 
         return RerunDataIterator(iter(encoded_batches))
@@ -738,6 +791,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         data_source = data.pop('data_source', DataSource.DATASET)
         teacher_output = data.pop('teacher_output', TeacherOutput())
         data.pop('opsd_teacher_batch', None)
+        data.pop('opsd_teacher_messages', None)
         data = self._prepare_batch(data, vp_stage)
 
         data.pop('loss_scale', None)

@@ -48,8 +48,9 @@ class OptimizerCallback:
         trainer.optimizer = self.create_optimizer()
         trainer.scheduler = self.create_scheduler(num_training_steps, trainer.optimizer)
 
-    def create_optimizer(self) -> Optimizer:
-        return HfTrainer.create_optimizer(self.trainer)
+    def create_optimizer(self, model=None) -> Optimizer:
+        kwargs = {} if model is None else {'model': model}
+        return HfTrainer.create_optimizer(self.trainer, **kwargs)
 
     def create_scheduler(self, num_training_steps: int, optimizer: Optimizer) -> LRScheduler:
         return HfTrainer.create_scheduler(self.trainer, num_training_steps, optimizer)

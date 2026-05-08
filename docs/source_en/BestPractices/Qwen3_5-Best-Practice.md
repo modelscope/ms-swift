@@ -31,6 +31,7 @@ pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
+- If you are using Qwen3.5 on Ascend NPU and want details about the FLA / MindSpeed replacement, effective patch path, and verified version combinations, please refer to [Qwen3.5 FLA Patch Notes in the NPU Support document](./NPU-support.md#qwen35-fla-patch-notes).
 
 ## Inference
 
@@ -314,7 +315,7 @@ Tips for training Qwen3.5 with Megatron-SWIFT:
 - By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set the environment variable `USE_MCORE_GDN=0` to switch to the transformers implementation. Note that the transformers implementation does not support packing and GDN's TP.
 - Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
-- Regarding FP8 training: refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh). You need to install mcore-bridge>=1.2.0 (temporarily requires installing the [main branch](https://github.com/modelscope/mcore-bridge/pull/30)), and set the parameter `--linear_decoupled_in_proj true` to decouple `in_proj` into `in_proj_qkvz` and `in_proj_ba`, where `in_proj_ba` is still trained in original precision.
+- Regarding FP8 training: refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh). You need to install "mcore-bridge>=1.2.0", and set the parameter `--linear_decoupled_in_proj true` to decouple `in_proj` into `in_proj_qkvz` and `in_proj_ba`, where `in_proj_ba` is still trained in original precision.
 
 
 ## Reinforcement Learning (RL)

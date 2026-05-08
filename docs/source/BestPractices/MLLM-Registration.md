@@ -648,3 +648,12 @@ swift export \
     --hub_model_id '<your-model-id>' \
     --hub_token '<your-sdk-token>'
 ```
+
+## 提交PR
+
+如果你想给ms-swift提交PR，你需要额外运行以下命令，对代码进行整理：
+
+```shell
+pip install pre-commit
+pre-commit run --all-files
+```

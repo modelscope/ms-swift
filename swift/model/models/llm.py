@@ -312,14 +312,14 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.hy3,
+        LLMModelType.hy_v3,
         [
             ModelGroup([
                 Model('Tencent-Hunyuan/Hy3-preview', 'tencent/Hy3-preview'),
                 Model('Tencent-Hunyuan/Hy3-preview-Base', 'tencent/Hy3-preview-Base'),
             ])
         ],
-        template=TemplateType.hy3,
+        template=TemplateType.hy_v3,
         requires=['transformers>=5.6.0'],
         architectures=['HYV3ForCausalLM'],
     ))
@@ -353,24 +353,17 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.ling2,
+        LLMModelType.bailing_moe,
         [
             ModelGroup([
                 Model('inclusionAI/Ling-mini-2.0', 'inclusionAI/Ling-mini-2.0'),
                 Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
-            ])
+            ],
+                       template=TemplateType.ling2),
+            ModelGroup([
+                Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
+            ], template=TemplateType.ring2)
         ],
-        template=TemplateType.ling2,
-        architectures=['BailingMoeV2ForCausalLM'],
-    ))
-
-register_model(
-    ModelMeta(
-        LLMModelType.ring2,
-        [ModelGroup([
-            Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
-        ])],
-        template=TemplateType.ring2,
         architectures=['BailingMoeV2ForCausalLM'],
     ))
 

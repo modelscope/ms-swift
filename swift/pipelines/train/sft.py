@@ -243,17 +243,18 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         return self.train_msg
 
     def _get_resume_checkpoint(self, trainer):
-        if self.args.resume_from_checkpoint:
-            return self.args.resume_from_checkpoint
+        args = trainer.args
+        if args.resume_from_checkpoint:
+            return args.resume_from_checkpoint
         resume_checkpoint = None
         # If flash checkpoint is enabled, try to resume from the last complete checkpoint.
         # If the previous training finished, resume_checkpoint stays None.
-        if self.args.use_flash_ckpt:
+        if args.use_flash_ckpt:
             # resume_checkpoint = <resume_dir>/checkpoint-<step>
             resume_checkpoint = trainer.get_resume_checkpoint()
 
         # Elastic runs require a universal checkpoint; fall back when missing or incomplete.
-        callbacks = set(getattr(self.args, 'callbacks', []))
+        callbacks = set(getattr(args, 'callbacks', []))
         elastic_enabled = 'deepspeed_elastic' in callbacks
         if elastic_enabled and (resume_checkpoint is None
                                 or not os.path.exists(os.path.join(resume_checkpoint, 'latest_universal'))):
@@ -319,10 +320,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
         origin_template_model = template.model
         template.model = None  # Avoid serializing the model.
         if args.truncation_strategy == 'split':
-            if (args.task_type != 'causal_lm' or template.mode != 'train' or args.use_chat_template
-                    or args.model_meta.is_multimodal):
-                raise ValueError(
-                    '`--truncation_strategy split` is currently only supported for plain text model pretraining')
+            if args.task_type != 'causal_lm' or template.mode != 'train' or args.use_chat_template:
+                raise ValueError('`--truncation_strategy split` is currently only supported for pre-training.')
             assert not args.lazy_tokenize, '`--truncation_strategy split` does not support lazy_tokenize'
 
         for i, dataset in enumerate(datasets):

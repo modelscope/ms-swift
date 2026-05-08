@@ -17,7 +17,6 @@ from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
 
-mcore_015 = version.parse(megatron.core.__version__) >= version.parse('0.15.0rc0')
 mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 logger = get_logger()
 
@@ -237,8 +236,62 @@ class RLHFMegatronArgumentsMixin:
             if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
                 raise ValueError(f'gkd_logits_topk must be a positive integer, got {self.gkd_logits_topk}')
 
+            self.num_generations = 1
+            self._init_generation_batch_params()
+
         if self.rlhf_type in ['grpo', 'gkd']:
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
+
+    def _init_generation_batch_params(self):
+        if self.generation_batch_size is None and self.steps_per_generation is None:
+            self.steps_per_generation = 1
+            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+        elif self.generation_batch_size is not None and self.steps_per_generation is not None:
+            expected = self.global_batch_size * self.steps_per_generation
+            if self.generation_batch_size != expected:
+                raise ValueError(f'generation_batch_size ({self.generation_batch_size}) must equal '
+                                 f'global_batch_size ({self.global_batch_size}) * steps_per_generation '
+                                 f'({self.steps_per_generation}) = {expected}.')
+        elif self.generation_batch_size is not None:
+            if self.generation_batch_size % self.global_batch_size != 0:
+                raise ValueError(f'generation_batch_size ({self.generation_batch_size}) '
+                                 f'must be divisible by global_batch_size ({self.global_batch_size})')
+            self.steps_per_generation = self.generation_batch_size // self.global_batch_size
+        else:
+            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+
+        if self.steps_per_generation <= 0:
+            raise ValueError(f'steps_per_generation must be > 0, got {self.steps_per_generation}.')
+
+        if self.num_generations > 1 and self.generation_batch_size % self.num_generations != 0:
+            raise ValueError(f'generation_batch_size ({self.generation_batch_size}) must be divisible by '
+                             f'num_generations ({self.num_generations}).')
+
+        if torch.distributed.is_initialized():
+            world_size = torch.distributed.get_world_size()
+            dp_size = world_size // (
+                self.pipeline_model_parallel_size * self.tensor_model_parallel_size * self.context_parallel_size)
+            num_rollout_prompt = self.generation_batch_size // self.num_generations
+            if num_rollout_prompt % dp_size != 0:
+                raise ValueError(f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
+                                 f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
+                                 f'must be divisible by dp_size ({dp_size}).')
+
+            per_device_num_rollout_prompt = num_rollout_prompt // dp_size
+            if per_device_num_rollout_prompt < 1:
+                raise ValueError(f'per_device_num_rollout_prompt ({per_device_num_rollout_prompt}) must be >= 1, '
+                                 f'please adjust generation_batch_size/steps_per_generation/num_generations.')
+
+            if per_device_num_rollout_prompt % self.micro_batch_size != 0:
+                raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
+                                 f'(generation_batch_size ({self.generation_batch_size}) // '
+                                 f'num_generations ({self.num_generations})) // dp_size ({dp_size}) '
+                                 f'must be divisible by micro_batch_size ({self.micro_batch_size}).')
+
+            self.per_device_generation_batch_size = self.generation_batch_size // world_size
+            if self.per_device_generation_batch_size < 1:
+                raise ValueError(
+                    f'per_device_generation_batch_size ({self.per_device_generation_batch_size}) must be >= 1.')
 
     def _init_grpo(self):
 
@@ -254,55 +307,8 @@ class RLHFMegatronArgumentsMixin:
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 
-        def _check_batch_params():
-            # Set default values if both are None
-            if self.generation_batch_size is None and self.steps_per_generation is None:
-                self.steps_per_generation = 1
-                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
-            # Both configured - error
-            elif self.generation_batch_size is not None and self.steps_per_generation is not None:
-                raise ValueError("'generation_batch_size' and 'steps_per_generation' cannot be both configured")
-            # Only generation_batch_size configured
-            elif self.generation_batch_size is not None:
-                if self.generation_batch_size % self.global_batch_size != 0:
-                    raise ValueError(f'generation_batch_size ({self.generation_batch_size}) '
-                                     f'must be divisible by global_batch_size ({self.global_batch_size})')
-                self.steps_per_generation = self.generation_batch_size // self.global_batch_size
-            # Only steps_per_generation configured
-            else:
-                self.generation_batch_size = self.global_batch_size * self.steps_per_generation
-
-            world_size = torch.distributed.get_world_size()
-            dp_size = world_size // (
-                self.pipeline_model_parallel_size * self.tensor_model_parallel_size * self.context_parallel_size)
-            num_rollout_prompt = self.generation_batch_size // self.num_generations
-            if num_rollout_prompt % dp_size != 0:
-                raise ValueError(f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
-                                 f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
-                                 f'must be divisible by dp_size ({dp_size}). '
-                                 f'Please adjust generation_batch_size/steps_per_generation/num_generations.')
-
-            per_device_num_rollout_prompt = num_rollout_prompt // dp_size
-            assert per_device_num_rollout_prompt >= 1, \
-                (f'per_device_num_rollout_prompt ({per_device_num_rollout_prompt}) must be greater than 1, '
-                 f'please adjust generation_batch_size/steps_per_generation/num_generations to make it greater than 1')
-
-            if per_device_num_rollout_prompt % self.micro_batch_size != 0:
-                raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
-                                 f'(generation_batch_size ({self.generation_batch_size}) // '
-                                 f'num_generations ({self.num_generations})) // dp_size ({dp_size}) '
-                                 f'must be divisible by micro_batch_size ({self.micro_batch_size}). '
-                                 f'Please adjust arguments to satisfy: '
-                                 f'(generation_batch_size // num_generations) // dp_size % '
-                                 f'micro_batch_size == 0')
-
-            self.per_device_generation_batch_size = self.generation_batch_size // world_size
-            assert self.per_device_generation_batch_size >= 1, \
-                (f'per_device_generation_batch_size ({self.per_device_generation_batch_size}) must be greater than 1, '
-                 f'please adjust generation_batch_size/steps_per_generation/num_generations to make it greater than 1')
-
         _check_not_supported()
-        _check_batch_params()
+        self._init_generation_batch_params()
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
         if self.truncation_strategy is None:
@@ -596,8 +602,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         return res
 
     def _set_default(self):
-        if self.mlp_padding_free and (self.sequence_parallel or self.context_parallel_size > 1):
-            raise ValueError('mlp_padding_free is not compatible with sequence parallel or context parallel.')
+        if self.mlp_padding_free:
+            if self.sequence_parallel:
+                require_version(
+                    'mcore-bridge>=1.3.0.dev',
+                    'Please install mcore-bridge>=1.3.0.dev to use mlp_padding_free with sequence parallel.')
+            if self.context_parallel_size > 1:
+                raise ValueError('mlp_padding_free is not compatible with context parallel.')
         if self.local_rank is None:
             self.local_rank = get_dist_setting()[1]
         if self.lr is None:
@@ -618,12 +629,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def _check_mcore_bridge(self):
-        if self.mtp_decoder_input_detach:
-            require_version('mcore-bridge>=1.1.2',
-                            'Please install mcore-bridge>=1.1.2 to use `mtp_decoder_input_detach`.')
-        if self.mtp_shared_weights:
-            require_version('mcore-bridge>=1.2.0.dev',
-                            'Please install mcore-bridge>=1.2.0 to use `mtp_shared_weights`.')
+        pass
 
     def __post_init__(self):
         if self.tuner_type != 'full':
@@ -888,7 +894,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.torch_dtype = torch.bfloat16
             if self.main_grads_dtype == torch.float32:
                 self.accumulate_allreduce_grads_in_fp32 = True
-        self.params_dtype = self.torch_dtype
 
     def _init_weigh_decay(self):
         if self.weight_decay_incr_style == 'constant':
