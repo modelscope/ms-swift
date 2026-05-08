@@ -53,16 +53,55 @@ def _patch_minicpmv_device_map(model) -> None:
 
     if hasattr(model, 'resampler'):  # minicpm-v-v2_5-chat
         patch_fixed_device(model.resampler, device)
+    elif hasattr(model, 'model') and hasattr(model.model, 'merger'):  # minicpm-v-4_6
+        patch_fixed_device(model.model.merger, device)
+
+
+def _ensure_hf_device_map_for_meta(model) -> None:
+    if getattr(model, 'hf_device_map', None) is not None:
+        return
+    if not any(getattr(param, 'is_meta', False) for param in model.parameters()):
+        return
+    devices = {str(param.device) for param in model.parameters() if not getattr(param, 'is_meta', False)}
+    if len(devices) != 1:
+        return
+    device = next(iter(devices))
+    # Accelerate only treats the model as device-mapped when hf_device_map has more than one entry.
+    model.hf_device_map = {'llm': device, 'vision_tower': device}
+
+
+def _materialize_tied_lm_head(model) -> None:
+    llm = getattr(model, 'llm', None)
+    if llm is None and hasattr(model, 'model') and hasattr(model.model, 'language_model'):
+        llm = model.model.language_model
+    if llm is None or not hasattr(llm, 'lm_head'):
+        return
+    lm_head = llm.lm_head
+    weight = getattr(lm_head, 'weight', None)
+    if weight is None or not getattr(weight, 'is_meta', False):
+        return
+
+    input_embeddings = llm.get_input_embeddings()
+    embedding_weight = getattr(input_embeddings, 'weight', None)
+    if embedding_weight is None or getattr(embedding_weight, 'is_meta', False):
+        return
+
+    # Some checkpoints only store embed_tokens.weight even when tie_word_embeddings=True.
+    lm_head.weight = embedding_weight
 
 
 class MiniCPMVLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, config, processor, model_kwargs)
-        model.resampler.to(self.torch_dtype)  # fix float32
+        if hasattr(model, 'resampler'):
+            model.resampler.to(self.torch_dtype)  # fix float32
+        elif hasattr(model, 'model') and hasattr(model.model, 'merger'):
+            model.model.merger.to(self.torch_dtype)
         _patch_minicpmv_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
-        use_submodel_func(model, 'llm', func_list)
+        if hasattr(model, 'llm'):
+            use_submodel_func(model, 'llm', func_list)
         if hasattr(model, 'get_slice_image_placeholder'):
             processor.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, processor)
             processor.transform = MethodType(model.transform, processor)
@@ -90,8 +129,19 @@ register_model(
 class MiniCPMV2Loader(MiniCPMVLoader):
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        try:
+            from transformers import AutoModelForImageTextToText
+            self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        except ImportError:
+            try:
+                from transformers import AutoModelForVision2Seq
+                self.auto_model_cls = self.auto_model_cls or AutoModelForVision2Seq
+            except ImportError:
+                pass
         with patch_device_map():
             model = super().get_model(model_dir, *args, **kwargs)
+        _materialize_tied_lm_head(model)
+        _ensure_hf_device_map_for_meta(model)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
         return model
@@ -190,6 +240,22 @@ register_model(
         model_arch=ModelArch.minicpmv,
         requires=['timm', 'transformers>=4.36', 'decord'],
         tags=['vision', 'video'],
+    ))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.minicpmv4_6,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-V-4_6', 'openbmb/MiniCPM-V-4_6'),
+            ], ),
+        ],
+        MiniCPMV2Loader,
+        template=TemplateType.minicpmv4_6,
+        architectures=['MiniCPMV4_6ForConditionalGeneration'],
+        model_arch=ModelArch.minicpmv,
+        requires=['timm', 'transformers>=5.2.0'],
+        tags=['vision'],
     ))
 
 register_model(

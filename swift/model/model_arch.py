@@ -481,9 +481,17 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.minicpmv,
+        language_model=['llm', 'model.language_model'],
+        aligner=['resampler', 'model.merger'],
+        vision_tower=['vpm', 'model.vpm'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.minicpmo,
         language_model='llm',
         aligner='resampler',
-        vision_tower='vpm',
+        vision_tower=['vpm', 'apm'],
     ))
 
 register_model_arch(
