@@ -528,6 +528,135 @@ def test_youtu():
     assert encoded['input_ids'] == encoded2['input_ids']
 
 
+def test_deepseek_v4():
+    engine = TransformersEngine('deepseek-ai/DeepSeek-V4-Flash', load_model=False)
+    template = engine.template
+
+    tools = [{
+        'type': 'function',
+        'function': {
+            'name': 'get_weather',
+            'description': 'Get the weather for a specific location',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'location': {
+                        'type': 'string',
+                        'description': 'The city name'
+                    },
+                    'unit': {
+                        'type': 'string',
+                        'enum': ['celsius', 'fahrenheit'],
+                        'description': 'Temperature unit'
+                    }
+                },
+                'required': ['location']
+            }
+        }
+    }, {
+        'type': 'function',
+        'function': {
+            'name': 'search',
+            'description': 'Search the web for information',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'query': {
+                        'type': 'string',
+                        'description': 'Search query'
+                    },
+                    'num_results': {
+                        'type': 'integer',
+                        'description': 'Number of results to return'
+                    }
+                },
+                'required': ['query']
+            }
+        }
+    }]
+    data = {
+        'tools':
+        tools,
+        'messages': [{
+            'role': 'system',
+            'content': 'You are a helpful assistant.'
+        }, {
+            'role': 'user',
+            'content': "What's the weather in Beijing?"
+        }, {
+            'role':
+            'assistant',
+            'content':
+            '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>\n\n'
+        }, {
+            'role':
+            'tool_call',
+            'content':
+            '{"name": "get_weather", "arguments": "{\\"location\\": \\"Beijing\\", \\"unit\\": \\"celsius\\"}"}'
+        }, {
+            'role': 'tool_response',
+            'content': '{"temperature": 22, "condition": "sunny", "humidity": 45}'
+        }, {
+            'role':
+            'assistant',
+            'content': ('<think>Got the weather data. Let me format a nice response.</think>'
+                        'The weather in Beijing is currently sunny with a temperature of 22°C and 45% humidity.')
+        }]
+    }
+
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
+    expected_input_ids = (
+        '<｜begin▁of▁sentence｜>You are a helpful assistant.\n\n## Tools\n\n'
+        'You have access to a set of tools to help answer the user\'s question. '
+        'You can invoke tools by writing a "<｜DSML｜tool_calls>" block like the following:\n\n'
+        '<｜DSML｜tool_calls>\n'
+        '<｜DSML｜invoke name="$TOOL_NAME">\n'
+        '<｜DSML｜parameter name="$PARAMETER_NAME" string="true|false">$PARAMETER_VALUE</｜DSML｜parameter>\n'
+        '...\n'
+        '</｜DSML｜invoke>\n'
+        '<｜DSML｜invoke name="$TOOL_NAME2">\n'
+        '...\n'
+        '</｜DSML｜invoke>\n'
+        '</｜DSML｜tool_calls>\n\n'
+        'String parameters should be specified as is and set `string="true"`. '
+        'For all other types (numbers, booleans, arrays, objects), '
+        'pass the value in JSON format and set `string="false"`.\n\n'
+        'If thinking_mode is enabled (triggered by <think>), '
+        'you MUST output your complete reasoning inside <think>...</think> BEFORE any tool calls or final response.'
+        '\n\nOtherwise, output directly after </think> with tool calls or final response.\n\n'
+        '### Available Tool Schemas\n\n'
+        '{"name": "get_weather", "description": "Get the weather for a specific location", '
+        '"parameters": {"type": "object", "properties": {"location": {"type": "string", '
+        '"description": "The city name"}, "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], '
+        '"description": "Temperature unit"}}, "required": ["location"]}}\n'
+        '{"name": "search", "description": "Search the web for information", '
+        '"parameters": {"type": "object", "properties": {"query": {"type": "string", '
+        '"description": "Search query"}, "num_results": {"type": "integer", '
+        '"description": "Number of results to return"}}, "required": ["query"]}}\n\n'
+        'You MUST strictly follow the above defined tool name and parameter schemas to invoke tool calls.\n'
+        '<｜User｜>What\'s the weather in Beijing?<｜Assistant｜>'
+        '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>\n\n'
+        '<｜DSML｜tool_calls>\n'
+        '<｜DSML｜invoke name="get_weather">\n'
+        '<｜DSML｜parameter name="location" string="true">Beijing</｜DSML｜parameter>\n'
+        '<｜DSML｜parameter name="unit" string="true">celsius</｜DSML｜parameter>\n'
+        '</｜DSML｜invoke>\n'
+        '</｜DSML｜tool_calls>'
+        '<｜end▁of▁sentence｜>'
+        '<｜User｜><tool_result>{"temperature": 22, "condition": "sunny", "humidity": 45}</tool_result>'
+        '<｜Assistant｜>'
+        '<think>Got the weather data. Let me format a nice response.</think>'
+        'The weather in Beijing is currently sunny with a temperature of 22°C and 45% humidity.'
+        '<｜end▁of▁sentence｜>')
+
+    assert template.safe_decode(encoded['input_ids']) == expected_input_ids
+
+
 def test_seed_oss():
     engine = TransformersEngine('ByteDance-Seed/Seed-OSS-36B-Instruct', load_model=False)
 
@@ -612,7 +741,8 @@ if __name__ == '__main__':
     # test_glm4_5()
     # test_glm4_7()
     # test_qwen3_coder()
-    test_qwen3_5()
+    # test_qwen3_5()
     # test_deepseek_v3_1()
+    test_deepseek_v4()
     # test_seed_oss()
     # test_youtu()
