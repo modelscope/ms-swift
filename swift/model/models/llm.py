@@ -358,6 +358,7 @@ register_model(
             ModelGroup([
                 Model('inclusionAI/Ling-mini-2.0', 'inclusionAI/Ling-mini-2.0'),
                 Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
+                Model('inclusionAI/Ling-1T', 'inclusionAI/Ling-1T'),
             ],
                        template=TemplateType.ling2),
             ModelGroup([

@@ -488,6 +488,16 @@ register_template(
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>'))
 
+register_template(
+    DeepseekV2_5TemplateMeta(
+        LLMTemplateType.deepseek_v4,
+        agent_template='deepseek_v4',
+        is_thinking=True,
+        template_cls=DeepseekV3_1Template,
+        thinking_prefix='<think>',
+        non_thinking_prefix='</think>',
+        history_thinking_prefix='</think>'))
+
 
 class DeepseekVL2Template(DeepseekVLTemplate):
     image_placeholder = ['<image>\n']

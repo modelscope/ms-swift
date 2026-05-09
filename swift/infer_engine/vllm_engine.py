@@ -494,7 +494,9 @@ class VllmEngine(InferEngine):
     ) -> AsyncIterator[ChatCompletionStreamResponse]:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
-        infer_streamers = [InferStreamer(self.template) for _ in range(generation_config.n)]
+        infer_streamers = [
+            InferStreamer(self.template, template_inputs=inputs['template_inputs']) for _ in range(generation_config.n)
+        ]
         token_idxs = [0 for _ in range(generation_config.n)]
         async for result in result_generator:
             res = self._create_chat_completion_stream_response(result, request_config, request_id, infer_streamers,
@@ -559,7 +561,8 @@ class VllmEngine(InferEngine):
 
             toolcall = None
             if output.is_finished:
-                toolcall = self._get_toolcall(self.template.decode(output.token_ids))
+                toolcall = self._get_toolcall(
+                    self.template.decode(output.token_ids, **infer_streamers[i].decode_kwargs))
 
             choice = ChatCompletionResponseStreamChoice(
                 index=i,
@@ -593,7 +596,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = self.template.decode(output.token_ids)
+            response = self.template.decode(output.token_ids, template_inputs=inputs['template_inputs'])
 
             # Extract reasoning content if reasoning_parser is enabled
             reasoning_content = None
@@ -743,7 +746,10 @@ class VllmEngine(InferEngine):
             if request_config.stream:
 
                 def _gen_wrapper():
-                    infer_streamers = [InferStreamer(self.template) for _ in range(generation_config.n)]
+                    infer_streamers = [
+                        InferStreamer(self.template, template_inputs=inputs['template_inputs'])
+                        for _ in range(generation_config.n)
+                    ]
                     token_idxs = [0 for _ in range(generation_config.n)]
                     while self.engine.has_unfinished_requests():
                         result = self.engine.step()

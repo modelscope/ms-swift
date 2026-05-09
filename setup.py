@@ -3,6 +3,7 @@
 from setuptools import find_packages, setup
 
 import os
+import re
 from typing import List
 
 
@@ -17,8 +18,7 @@ version_file = 'swift/version.py'
 
 def get_version():
     with open(version_file, 'r', encoding='utf-8') as f:
-        exec(compile(f.read(), version_file, 'exec'))
-    return locals()['__version__']
+        return re.search(r'^__version__\s*=\s*["\'](.+?)["\']', f.read(), re.M).group(1)
 
 
 def parse_requirements(fname='requirements.txt', with_version=True):

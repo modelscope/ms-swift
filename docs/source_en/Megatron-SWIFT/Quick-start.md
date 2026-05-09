@@ -25,6 +25,7 @@ To use Megatron-SWIFT, in addition to installing the `swift` dependencies, you a
 # If an installation error occurs, you can refer to this issue for resolution: https://github.com/modelscope/ms-swift/issues/3793
 pip install --no-build-isolation transformer-engine[pytorch] --no-cache-dir
 # cuda13
+pip install pybind11
 pip install git+https://github.com/NVIDIA/TransformerEngine.git@stable --no-build-isolation
 
 # apex
