@@ -108,8 +108,12 @@ class WeightSyncWorkerExtension:
         if self.communicator is not None:
             raise RuntimeError('Weight update group already initialized. Call close_communicator first.')
 
-        # Get the rank of the current worker in the global world group.
-        rank = get_world_group().rank
+        # When using independent vLLM instances for DP (each with its own world group),
+        # offset the rank by dp_rank * tp_size so each DP worker gets a unique rank
+        # in the communicator's process group.
+        dp_rank = int(os.environ.get('SWIFT_ROLLOUT_DP_RANK', '0'))
+        tp_size = int(os.environ.get('SWIFT_ROLLOUT_TP_RANK', '1'))
+        rank = get_world_group().rank + dp_rank * tp_size
 
         # Create a stateless process group to manage communication between training processes and vLLM workers.
         # Initialize the NCCL-based communicator for weight synchronization.
@@ -329,6 +333,8 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
         args._import_external_plugins()
         _set_visible_devices_for_dp_rank(data_parallel_rank, args.vllm_tensor_parallel_size)
         os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+        os.environ['SWIFT_ROLLOUT_DP_RANK'] = str(data_parallel_rank)
+        os.environ['SWIFT_ROLLOUT_TP_RANK'] = str(args.vllm_tensor_parallel_size)
         worker_seed = get_seed()
         engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
         rollout_engine = get_rollout_engine_type(args, engine)
@@ -365,6 +371,8 @@ async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, mast
                            connection: Connection) -> None:
     try:
         args._import_external_plugins()
+        os.environ['SWIFT_ROLLOUT_DP_RANK'] = str(data_parallel_rank)
+        os.environ['SWIFT_ROLLOUT_TP_RANK'] = str(args.vllm_tensor_parallel_size)
         worker_seed = get_seed()
         engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
         rollout_engine = get_rollout_engine_type(args, engine)
