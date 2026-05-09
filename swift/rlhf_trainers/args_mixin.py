@@ -322,6 +322,14 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             constraints on negative dominance. The default value is 1.05.
         real_tau (float): The temperature parameter. REAL induces monotonic and bounded gradient weighting with
             magnitude upper-bounded by 1/tau. The default value is 0.5.
+        fipo_decay_rate (float): Half-life used to derive `fipo_gamma`. Defaults to 32.0.
+        fipo_clip_range (Optional[float]): Clip range for the FIPO influence weight. `0.2` clips to
+            `[0.8, 1.2]`; `None` or `0` disables clipping. Defaults to 0.2.
+        fipo_clip_high_only (bool): If `True`, clips the FIPO influence weight to `[1, 1 + fipo_clip_range]`.
+            Defaults to True.
+        fipo_detach_weight (bool): If `True`, stops gradients through the Future-KL influence weight. Defaults to True.
+        fipo_safety_threshold (Optional[float]): Safety threshold for negative advantages. Tokens with
+            `advantage < 0` and importance ratio above this value contribute zero policy loss. Defaults to 4.0.
         advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
@@ -413,6 +421,13 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
 
     # REAL https://arxiv.org/abs/2602.05630
     real_tau: float = 0.5
+
+    # FIPO https://arxiv.org/abs/2603.19835
+    fipo_decay_rate: float = 32.0
+    fipo_clip_range: Optional[float] = 0.2
+    fipo_clip_high_only: bool = True
+    fipo_detach_weight: bool = True
+    fipo_safety_threshold: Optional[float] = 4.0
 
     num_generations_eval: Optional[int] = None
 
