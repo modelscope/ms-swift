@@ -132,60 +132,8 @@ class MiniCPMVTemplate(Template):
         return encoded
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        if hasattr(model, 'get_vllm_embedding'):
-            inputs_embeds, _ = model.get_vllm_embedding(inputs)
-            return {'inputs_embeds': inputs_embeds}
-
-        if hasattr(model, 'model') and hasattr(model.model, '_build_vlm_inputs'):
-            pixel_values = inputs.get('pixel_values')
-            tgt_sizes = inputs.get('tgt_sizes')
-            image_bound = inputs.get('image_bound')
-
-            # In packing/padding_free mode, text is concatenated into batch size 1.
-            # Merge multimodal fields accordingly and shift image_bound by sample offsets.
-            if (isinstance(inputs.get('input_ids'), torch.Tensor) and inputs['input_ids'].shape[0] == 1
-                    and isinstance(image_bound, list) and len(image_bound) > 1 and isinstance(pixel_values, list)
-                    and isinstance(tgt_sizes, list)):
-                offsets = None
-                position_ids = inputs.get('position_ids')
-                if isinstance(position_ids, torch.Tensor) and position_ids.dim() == 2 and position_ids.shape[0] == 1:
-                    starts = torch.where(position_ids[0] == 0)[0].tolist()
-                    if len(starts) == len(image_bound):
-                        offsets = starts
-
-                if offsets is None:
-                    # Fallback: treat samples as already offset-aligned.
-                    offsets = [0] * len(image_bound)
-
-                merged_bounds = []
-                for bounds, offset in zip(image_bound, offsets):
-                    if isinstance(bounds, torch.Tensor):
-                        merged_bounds.append(bounds + int(offset))
-
-                if merged_bounds:
-                    image_bound = [torch.cat(merged_bounds, dim=0)]
-                else:
-                    image_bound = [[]]
-
-                merged_pixel_values = []
-                for pv in pixel_values:
-                    merged_pixel_values.extend(pv)
-                pixel_values = [merged_pixel_values]
-
-                merged_tgt_sizes = [ts for ts in tgt_sizes if isinstance(ts, torch.Tensor)]
-                if merged_tgt_sizes:
-                    tgt_sizes = [torch.vstack(merged_tgt_sizes)]
-
-            inputs_embeds = model.model._build_vlm_inputs(
-                input_ids=inputs['input_ids'],
-                pixel_values=pixel_values,
-                tgt_sizes=tgt_sizes,
-                image_bound=image_bound,
-                downsample_mode=getattr(self, 'downsample_mode', None),
-            )
-            return {'inputs_embeds': inputs_embeds}
-
-        raise AttributeError('MiniCPM model does not provide a supported VLM embedding interface.')
+        inputs_embeds, _ = model.get_vllm_embedding(inputs)
+        return {'inputs_embeds': inputs_embeds}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = {}
@@ -215,7 +163,6 @@ class MiniCPMV2_6Template(MiniCPMVTemplate):
         self.max_num_frames = get_env_args('max_num_frames', int, 64)
         self.max_slice_nums = get_env_args('max_slice_nums', int, None)
         self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)  # or 2
-        self.downsample_mode = get_env_args('downsample_mode', str, None)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -661,6 +608,10 @@ register_template(
 
 class MiniCPMV4_6Template(MiniCPMV2_6Template):
     support_padding_free = True
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.downsample_mode = get_env_args('downsample_mode', str, None)
 
     def _data_collator(self, batch, *, padding_to=None):
         """Collect per-sample pixel_values / tgt_sizes intact (no dim-0 flatten)

@@ -53,8 +53,6 @@ def _patch_minicpmv_device_map(model) -> None:
 
     if hasattr(model, 'resampler'):  # minicpm-v-v2_5-chat
         patch_fixed_device(model.resampler, device)
-    elif hasattr(model, 'model') and hasattr(model.model, 'merger'):  # minicpm-v-4_6
-        patch_fixed_device(model.model.merger, device)
 
 
 def _ensure_hf_device_map_for_meta(model) -> None:
@@ -94,14 +92,10 @@ class MiniCPMVLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, config, processor, model_kwargs)
-        if hasattr(model, 'resampler'):
-            model.resampler.to(self.torch_dtype)  # fix float32
-        elif hasattr(model, 'model') and hasattr(model.model, 'merger'):
-            model.model.merger.to(self.torch_dtype)
+        model.resampler.to(self.torch_dtype)  # fix float32
         _patch_minicpmv_device_map(model)
         func_list = ['generate', 'get_input_embeddings', 'forward']
-        if hasattr(model, 'llm'):
-            use_submodel_func(model, 'llm', func_list)
+        use_submodel_func(model, 'llm', func_list)
         if hasattr(model, 'get_slice_image_placeholder'):
             processor.get_slice_image_placeholder = MethodType(model.get_slice_image_placeholder, processor)
             processor.transform = MethodType(model.transform, processor)
@@ -129,19 +123,8 @@ register_model(
 class MiniCPMV2Loader(MiniCPMVLoader):
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
-        try:
-            from transformers import AutoModelForImageTextToText
-            self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
-        except ImportError:
-            try:
-                from transformers import AutoModelForVision2Seq
-                self.auto_model_cls = self.auto_model_cls or AutoModelForVision2Seq
-            except ImportError:
-                pass
         with patch_device_map():
             model = super().get_model(model_dir, *args, **kwargs)
-        _materialize_tied_lm_head(model)
-        _ensure_hf_device_map_for_meta(model)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
         return model
@@ -242,6 +225,35 @@ register_model(
         tags=['vision', 'video'],
     ))
 
+class MiniCPMV4_6Loader(MiniCPMV2Loader):
+
+    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+        try:
+            from transformers import AutoModelForImageTextToText
+            self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        except ImportError:
+            try:
+                from transformers import AutoModelForVision2Seq
+                self.auto_model_cls = self.auto_model_cls or AutoModelForVision2Seq
+            except ImportError:
+                pass
+        with patch_device_map():
+            model = ModelLoader.get_model(self, model_dir, *args, **kwargs)
+        _materialize_tied_lm_head(model)
+        _ensure_hf_device_map_for_meta(model)
+        # v4.6 uses 'merger' under 'model' instead of top-level 'resampler'
+        if hasattr(model, 'model') and hasattr(model.model, 'merger'):
+            model.model.merger.to(self.torch_dtype)
+        # Apply device map patching for v4.6 (merger instead of resampler)
+        if hasattr(model, 'hf_device_map') and len(model.hf_device_map.values()) > 1:
+            device = list(model.hf_device_map.values())[0]
+            if hasattr(model, 'model') and hasattr(model.model, 'merger'):
+                patch_fixed_device(model.model.merger, device)
+        embedding = model.get_input_embeddings()
+        patch_output_clone(embedding)
+        return model
+
+
 register_model(
     ModelMeta(
         MLLMModelType.minicpmv4_6,
@@ -250,7 +262,7 @@ register_model(
                 Model('OpenBMB/MiniCPM-V-4_6', 'openbmb/MiniCPM-V-4_6'),
             ], ),
         ],
-        MiniCPMV2Loader,
+        MiniCPMV4_6Loader,
         template=TemplateType.minicpmv4_6,
         architectures=['MiniCPMV4_6ForConditionalGeneration'],
         model_arch=ModelArch.minicpmv,
