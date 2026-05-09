@@ -327,7 +327,7 @@ class MegatronRolloutMixin:
         self._reset_vllm_cache()
 
     def _reset_vllm_cache(self):
-        # Reset prefix cache and encoder cache(vllm>=0.17)
+        # Reset prefix cache and encoder cache
         vllm_ge_16 = check_vllm_version_ge('0.16')
         if self.vllm_mode == 'server' and self.is_main_process:
             self.vllm_client.reset_prefix_cache()
