@@ -211,6 +211,7 @@ class MLLMTemplateType:
     minicpmv2_6 = 'minicpmv2_6'
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
+    minicpmv4_6 = 'minicpmv4_6'
     minicpmo = 'minicpmo'
     minicpmo4_5 = 'minicpmo4_5'
 
