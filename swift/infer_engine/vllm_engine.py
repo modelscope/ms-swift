@@ -15,7 +15,8 @@ from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 from swift.metrics import Metric
 from swift.model import get_processor
 from swift.template import Template
-from swift.utils import get_device, get_dist_setting, get_logger, is_dist, safe_snapshot_download
+from swift.utils import (disable_deepspeed_zero3, get_device, get_dist_setting, get_logger, is_dist,
+                         safe_snapshot_download)
 from .infer_engine import InferEngine
 from .patch import patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
@@ -180,7 +181,8 @@ class VllmEngine(InferEngine):
             task_type=self.task_type)
 
     def _prepare_engine(self) -> None:
-        with patch_auto_tokenizer(self.tokenizer), self._patch_auto_config():
+        with patch_auto_tokenizer(self.tokenizer), self._patch_auto_config(), \
+                disable_deepspeed_zero3():
             llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine

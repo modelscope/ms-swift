@@ -217,6 +217,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         if self.vllm_mode == 'server':
             if self.accelerator.is_main_process:
                 self.vllm_client.get_engine_type()
+                self.vllm_client.reset_mm_cache()
                 vllm_use_async_engine = [self.vllm_client.use_async_engine]
                 use_gym_env = [self.vllm_client.use_gym_env]
                 enable_multi_turn = [self.vllm_client.enable_multi_turn]
@@ -246,6 +247,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
             with context():
                 self.engine = self._prepare_vllm_engine()
+                self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
         self.dynamic_num_samples = False  # grpo multi-turn
@@ -451,11 +453,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         else:
             self._move_adapter_to_vllm()
 
-        # Reset prefix cache
+        self._reset_vllm_cache()
+
+    def _reset_vllm_cache(self):
+        # Reset prefix cache and encoder cache after weight update
+        vllm_ge_16 = check_vllm_version_ge('0.16')
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()
+            if vllm_ge_16:
+                self.vllm_client.reset_encoder_cache()
         elif self.vllm_mode == 'colocate':
             self.engine.engine.reset_prefix_cache()
+            if vllm_ge_16:
+                self.engine.engine.reset_encoder_cache()
 
     def _move_adapter_to_vllm(self):
         """Transfer LoRA adapter weights to vLLM engine"""
