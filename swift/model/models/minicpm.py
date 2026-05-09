@@ -225,6 +225,7 @@ register_model(
         tags=['vision', 'video'],
     ))
 
+
 class MiniCPMV4_6Loader(MiniCPMV2Loader):
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
