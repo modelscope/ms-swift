@@ -712,6 +712,8 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
             if self.use_audio_in_video:
+                if isinstance(video, list):  # image list
+                    raise ValueError('image list as video input does not support use_audio_in_video')
                 audio = load_audio(video, sampling_rate)
                 if self.mode != 'vllm':
                     inputs.audios.insert(inputs.audio_idx, (audio, 'video'))
