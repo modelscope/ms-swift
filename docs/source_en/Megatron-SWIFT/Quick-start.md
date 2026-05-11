@@ -39,9 +39,6 @@ pip install mcore-bridge -U
 # Install from main branch
 # pip install git+https://github.com/modelscope/mcore-bridge.git
 
-# megatron-core
-pip install "megatron-core==0.16.*" -U
-
 # If you are using multi-node training, please additionally set the `MODELSCOPE_CACHE` environment variable to a shared storage path.
 # This will ensure that the dataset cache is shared, thereby speeding up preprocessing.
 # Note: This step is crucial; otherwise multi-machine training may hang due to data inconsistencies caused by randomness in data preprocessing.
