@@ -604,3 +604,212 @@ register_template(
         template_cls=MiniCPMO4_5Template,
         is_thinking=True,
     ))
+
+
+class MiniCPMV4_6Template(MiniCPMV2_6Template):
+    support_padding_free = True
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.downsample_mode = get_env_args('downsample_mode', str, None)
+
+    def _data_collator(self, batch, *, padding_to=None):
+        """Collect per-sample pixel_values / tgt_sizes intact (no dim-0 flatten)
+        so that _post_encode can concatenate them along the NaViT axis."""
+        res = {}
+        for k in ['pixel_values', 'tgt_sizes']:
+            items = [b.pop(k) for b in batch if b.get(k) is not None]
+            if items:
+                res[k] = items
+        res.update(Template._data_collator(self, batch, padding_to=padding_to))
+        return res
+
+    def _post_encode(self, model, inputs):
+        """Build inputs_embeds for v4.6.  Concatenates pixel_values from all
+        samples (or packed segments) into a single NaViT tensor so that the
+        vision tower is called only once, avoiding DeepSpeed ZeRO errors about
+        gradients being reduced twice for the same parameter."""
+        pixel_values = inputs.get('pixel_values')
+        tgt_sizes = inputs.pop('tgt_sizes', None)
+        input_ids = inputs.get('input_ids')
+
+        if isinstance(pixel_values, list) and len(pixel_values) > 0 and input_ids is not None:
+            embed_fn = model.model.get_input_embeddings()
+            inputs_embeds = embed_fn(input_ids)
+            image_token_id = getattr(model.model.config, 'image_token_id', None)
+            if image_token_id is None:
+                image_token_id = getattr(self.processor, 'image_token_id', None)
+
+            # Select valid samples (those with both pixel_values and tgt_sizes)
+            valid_pvs, valid_ts = [], []
+            for pv, ts in zip(pixel_values, tgt_sizes or []):
+                if pv is not None and pv.numel() > 0 and ts is not None:
+                    valid_pvs.append(pv)
+                    valid_ts.append(ts)
+
+            if valid_pvs and image_token_id is not None:
+                combined_pv = torch.cat(valid_pvs, dim=-1)
+                combined_ts = torch.cat(valid_ts, dim=0)
+                vision_output = model.model.get_image_features(
+                    combined_pv,
+                    combined_ts,
+                    downsample_mode=getattr(self, 'downsample_mode', None),
+                )
+                features = torch.cat(
+                    vision_output.pooler_output, dim=0).to(
+                        device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+                mask = model.model.get_placeholder_mask(
+                    input_ids,
+                    inputs_embeds,
+                    features,
+                    image_token_id,
+                )
+                inputs_embeds = inputs_embeds.masked_scatter(mask, features)
+
+            inputs['inputs_embeds'] = inputs_embeds
+            inputs.pop('input_ids', None)
+            inputs.pop('pixel_values', None)
+        elif isinstance(pixel_values, torch.Tensor):
+            inputs['target_sizes'] = tgt_sizes
+            inputs['pixel_values'] = pixel_values
+
+        return inputs
+
+    def _unwrap_batched_grids(self, grids: Any) -> Any:
+        if isinstance(grids, list) and grids and isinstance(grids[0], list):
+            if grids[0] and isinstance(grids[0][0], list):
+                return grids[0]
+        return grids
+
+    def _unwrap_batched_list(self, value: Any) -> Any:
+        if isinstance(value, list) and len(value) == 1 and isinstance(value[0], list):
+            return value[0]
+        return value
+
+    def _build_v4_6_placeholder(
+        self,
+        image_inputs: Dict[str, Any],
+        image_idx: int,
+        use_image_id: bool,
+        max_slice_nums: Optional[int],
+    ) -> str:
+        image_processor = self.processor.image_processor
+        if hasattr(image_processor, 'get_slice_image_placeholder'):
+            grids = self._unwrap_batched_grids(image_inputs['grids'])
+            source_tokens = self._unwrap_batched_list(image_inputs['source_image_visual_tokens'])
+            patch_tokens = self._unwrap_batched_list(image_inputs['patch_visual_tokens'])
+            return image_processor.get_slice_image_placeholder(
+                grids[image_idx],
+                image_idx=image_idx,
+                max_slice_nums=max_slice_nums,
+                use_image_id=use_image_id,
+                source_image_visual_tokens=source_tokens[image_idx],
+                patch_visual_tokens=patch_tokens[image_idx],
+            )
+
+        grids = self._unwrap_batched_grids(image_inputs['grids'])
+        num_patches_per_image = image_inputs['num_patches_per_image']
+        target_sizes = image_inputs['target_sizes']
+        flat_index = 0
+        for idx in range(image_idx):
+            flat_index += num_patches_per_image[idx]
+        n_patches = num_patches_per_image[image_idx]
+        img_target_sizes = target_sizes[flat_index:flat_index + n_patches]
+
+        downsample_mode = self.downsample_mode or getattr(image_processor, 'downsample_mode', None)
+        token_divisor = 4 if downsample_mode == '4x' else 16
+        num_tokens_per_patch = img_target_sizes.prod(-1) // token_divisor
+        num_rows, num_cols = grids[image_idx]
+
+        image_start = getattr(self.processor, 'image_start_token', '<image>')
+        image_end = getattr(self.processor, 'image_end_token', '</image>')
+        slice_start = getattr(self.processor, 'slice_start_token', '<slice>')
+        slice_end = getattr(self.processor, 'slice_end_token', '</slice>')
+        image_id_start = getattr(self.processor, 'image_id_start_token', '<image_id>')
+        image_id_end = getattr(self.processor, 'image_id_end_token', '</image_id>')
+        image_token = (
+            getattr(self.processor, 'image_token', None)
+            or getattr(getattr(self.processor, 'tokenizer', None), 'image_token', None) or '<image>')
+
+        image_placeholder = image_start + '<|placeholder|>' * int(num_tokens_per_patch[0]) + image_end
+        if use_image_id:
+            image_placeholder = f'{image_id_start}{image_idx}{image_id_end}' + image_placeholder
+
+        slice_mode = getattr(self.processor, 'slice_mode', True)
+        if slice_mode and num_rows > 0 and num_cols > 0:
+            per_slice_tokens = int(num_tokens_per_patch[1]) if len(num_tokens_per_patch) > 1 else 0
+            slice_placeholder = slice_start + '<|placeholder|>' * per_slice_tokens + slice_end
+            slices = [slice_placeholder * num_cols for _ in range(num_rows)]
+            image_placeholder += '\n'.join(slices)
+
+        return image_placeholder.replace('<|placeholder|>', image_token)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = Template._encode(self, inputs)
+        images = inputs.images
+        use_video = bool(inputs.videos)
+        use_image_id = True
+        max_slice_nums = self.max_slice_nums
+        if use_video:
+            max_slice_nums = self.video_max_slice_nums
+            use_image_id = False
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        idx_list = findall(input_ids, -100)
+
+        image_processor = self.processor.image_processor
+        image_kwargs = {
+            'return_tensors': 'pt',
+            'downsample_mode': self.downsample_mode,
+        }
+        if max_slice_nums is not None:
+            image_kwargs['max_slice_nums'] = max_slice_nums
+
+        if hasattr(image_processor, 'valid_kwargs'):
+            image_inputs = image_processor(images, **image_kwargs).to(self.model_info.torch_dtype)
+        else:
+            image_inputs = image_processor([images], **image_kwargs).to(self.model_info.torch_dtype)
+
+        def _get_new_tokens(i):
+            placeholder = self._build_v4_6_placeholder(image_inputs, i, use_image_id, max_slice_nums)
+            placeholder += '\n'
+            return self.processor.encode(placeholder, add_special_tokens=False)
+
+        input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+
+        if inputs.images:
+            input_tensor_ids = torch.tensor(input_ids)
+            unk_token = self.processor.image_token_id
+            indices = (input_tensor_ids == unk_token).nonzero(as_tuple=True)[0].tolist()
+
+            ranges = []
+            start = indices[0]
+            for i in range(1, len(indices)):
+                if indices[i] != indices[i - 1] + 1:
+                    ranges.append([start, indices[i - 1] + 1])
+                    start = indices[i]
+            ranges.append([start, indices[-1] + 1])
+            image_bound = [torch.tensor(ranges)]
+        else:
+            image_bound = [[]]
+
+        tgt_sizes = image_inputs.get('tgt_sizes')
+        if tgt_sizes is None:
+            tgt_sizes = image_inputs.get('target_sizes')
+
+        encoded = {
+            'input_ids': input_ids,
+            'labels': labels,
+            'loss_scale': loss_scale,
+            'image_bound': image_bound,
+            'pixel_values': image_inputs['pixel_values'],
+            'tgt_sizes': tgt_sizes,
+        }
+        return encoded
+
+
+register_template(ChatmlTemplateMeta(
+    MLLMTemplateType.minicpmv4_6,
+    template_cls=MiniCPMV4_6Template,
+))
