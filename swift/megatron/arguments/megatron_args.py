@@ -300,14 +300,14 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('async_generate is not supported for Megatron GRPO right now')
             if self.sync_ref_model:
                 raise ValueError('sync_ref_model is not supported for Megatron GRPO right now')
-            if not self.dataset_shuffle:
-                raise ValueError('dataset_shuffle false is not supported for Megatron GRPO')
             if self.multi_turn_scheduler:
                 raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 
         _check_not_supported()
+        if self.dataset_shuffle is not None:
+            self.train_dataloader_shuffle = self.dataset_shuffle
         self._init_generation_batch_params()
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
