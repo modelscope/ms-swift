@@ -712,15 +712,11 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
             if self.use_audio_in_video:
-                import librosa
-                if video.startswith('http://') or video.startswith('https://'):
-                    import audioread
-                    video = audioread.ffdec.FFmpegAudioFile(video)
-                video = librosa.load(video, sr=sampling_rate)[0]
+                audio = load_audio(video, sr=sampling_rate)
                 if self.mode != 'vllm':
-                    inputs.audios.insert(inputs.audio_idx, (video, 'video'))
+                    inputs.audios.insert(inputs.audio_idx, (audio, 'video'))
                 else:
-                    inputs.audios.insert(inputs.audio_idx, video)
+                    inputs.audios.insert(inputs.audio_idx, audio)
                     inputs.mm_processor_kwargs['use_audio_in_video'] = True
                 inputs.audio_idx += 1
                 if self.version == 'omni_v2_5':
