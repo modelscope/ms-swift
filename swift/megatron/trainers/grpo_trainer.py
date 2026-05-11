@@ -90,6 +90,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.tau_pos = args.tau_pos
         self.tau_neg = args.tau_neg
 
+        # REAL, https://arxiv.org/abs/2602.05630
+        self.real_tau = args.real_tau
+
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
         self.max_resample_times = args.max_resample_times
@@ -1270,6 +1273,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_loss1 = coef_1 * advantages.unsqueeze(1)
             per_token_loss2 = coef_2 * advantages.unsqueeze(1)
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+        elif self.loss_type == 'real':
+            per_token_loss = torch.zeros_like(per_token_logps)
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1340,6 +1345,39 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             dp_size = mpu.get_data_parallel_world_size()
             normalizer = num_items_in_batch / dp_size
             loss = (per_token_loss * completion_mask).sum() / normalizer.clamp(min=1.0)
+        elif self.loss_type == 'real':
+            global_scores = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+
+            group_scores = global_scores.view(-1, self.num_generations)
+            group_rewards = advantages.view(-1, self.num_generations)
+
+            pos_mask = (group_rewards > 0)
+            neg_mask = (group_rewards <= 0)
+            valid_mask = (pos_mask.sum(dim=1) != 0) & (neg_mask.sum(dim=1) != 0)
+
+            if not valid_mask.any():
+                loss = torch.tensor(0., device=global_scores.device) * global_scores.mean()
+            else:
+                batch_scores = group_scores[valid_mask]
+                batch_pos_mask = pos_mask[valid_mask]
+                batch_neg_mask = neg_mask[valid_mask]
+
+                scaled_scores = batch_scores / self.real_tau
+                zeros = torch.zeros(batch_scores.size(0), 1, device=batch_scores.device, dtype=batch_scores.dtype)
+
+                # Negative Loss: log(1 + sum(e^{S_neg}))
+                neg_input = scaled_scores.masked_fill(~batch_neg_mask, float('-inf'))
+                neg_loss = torch.logsumexp(torch.cat([neg_input, zeros], dim=1), dim=1)
+
+                # Positive Loss: log(1 + sum(e^{-S_pos}))
+                pos_input = (-scaled_scores).masked_fill(~batch_pos_mask, float('-inf'))
+                pos_loss = torch.logsumexp(torch.cat([pos_input, zeros], dim=1), dim=1)
+
+                loss = (neg_loss + pos_loss).sum() / group_rewards.size(0)
+
+            if self.beta != 0.0 and per_token_kl is not None:
+                kl_loss = (per_token_kl * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
+                loss = loss + kl_loss * self.beta
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
 
@@ -1378,8 +1416,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
             self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
-        elif self.loss_type == 'sapo':
-            # SAPO: No hard clipping, skip clipping metrics
+        elif self.loss_type in ['sapo', 'real']:
+            # SAPO / REAL: No hard clipping, skip clipping metrics
             pass
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
             # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level
