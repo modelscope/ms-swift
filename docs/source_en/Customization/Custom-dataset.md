@@ -97,7 +97,7 @@ Note: If you set "loss"/"loss_scale" on consecutive "tool_call" messages in the 
 ```
 
 - The "chat_template_kwargs" field (requires ms-swift>=4.3.0) allows you to control template multimodal parameters such as min_pixels, max_pixels, fps, as well as parameters like enable_thinking (during inference) at the **sample level** by passing this field in the dataset. The following parameters are supported by different models:
-  - Among them, "enable_thinking" and "response_prefix" are supported by all models (takes effect during inference); the "max_pixels" parameter is supported by all multimodal models.
+  - Among them, "enable_thinking", "preserve_thinking" and "response_prefix" are supported by all models (takes effect during inference); the "max_pixels" parameter is supported by all multimodal models.
   - Qwen series multimodal models: parameters supported by qwen_vl_utils/qwen_omni_utils such as min_pixels, max_pixels, fps, etc.
 
 ```jsonl
