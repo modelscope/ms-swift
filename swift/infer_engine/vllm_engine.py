@@ -1,7 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import inspect
+import multiprocessing
 import os
+import time
 import torch
 from contextlib import contextmanager, nullcontext
 from copy import copy, deepcopy
@@ -47,6 +49,43 @@ except ImportError:
     ReasoningParserManager = None
 
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
+
+
+def _patch_vllm_dp_coordinator_timeout():
+    # https://github.com/vllm-project/vllm/pull/37452 introduced a 30-second default timeout,
+    # which is prone to timing out in spawn scenarios. Patch it to 180 seconds here.
+    try:
+        from vllm.v1.engine import coordinator as coordinator_module
+    except ImportError:
+        return
+
+    coordinator_cls = coordinator_module.DPCoordinator
+    if not hasattr(coordinator_cls, '_wait_for_zmq_addrs'):
+        return
+
+    if getattr(coordinator_cls, '_swift_timeout_patched', False):
+        return
+
+    def _wait_for_zmq_addrs(self, zmq_addr_pipe):
+        t0 = time.monotonic()
+        try:
+            ready = multiprocessing.connection.wait([zmq_addr_pipe, self.proc.sentinel], timeout=180)
+            elapsed = time.monotonic() - t0
+            if not ready:
+                raise RuntimeError(f'DP Coordinator process failed to report ZMQ addresses '
+                                   f'within 180s (elapsed={elapsed:.1f}s).')
+            try:
+                return zmq_addr_pipe.recv()
+            except EOFError:
+                raise RuntimeError('DP Coordinator process failed during startup.') from None
+        finally:
+            zmq_addr_pipe.close()
+
+    coordinator_cls._wait_for_zmq_addrs = _wait_for_zmq_addrs
+    coordinator_cls._swift_timeout_patched = True
+
+
+_patch_vllm_dp_coordinator_timeout()
 
 
 class VllmEngine(InferEngine):

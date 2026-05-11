@@ -106,13 +106,16 @@ class WeightSyncWorkerExtension:
                 Total number of participating processes in the update group.
         """
         if self.communicator is not None:
-            raise RuntimeError('Weight update group already initialized. Call close_communicator first.')
+            return
 
-        # When using independent vLLM instances for DP (each with its own world group),
-        # offset the rank by dp_rank * tp_size so each DP worker gets a unique rank
-        # in the communicator's process group.
-        dp_rank = int(os.environ.get('SWIFT_ROLLOUT_DP_RANK', '0'))
-        tp_size = int(os.environ.get('SWIFT_ROLLOUT_TP_RANK', '1'))
+        parallel_config = getattr(getattr(self, 'vllm_config', None), 'parallel_config', None)
+        dp_index = int(getattr(parallel_config, 'data_parallel_index', 0)) if parallel_config is not None else 0
+        if dp_index > 0:
+            dp_rank = dp_index
+            tp_size = int(parallel_config.tensor_parallel_size)
+        else:
+            dp_rank = int(os.environ.get('SWIFT_ROLLOUT_DP_RANK', '0'))
+            tp_size = int(os.environ.get('SWIFT_ROLLOUT_TP_RANK', '1'))
         rank = get_world_group().rank + dp_rank * tp_size
 
         # Create a stateless process group to manage communication between training processes and vLLM workers.
