@@ -94,6 +94,7 @@ class Template(ProcessorMixin):
         # thinking
         response_prefix: Optional[str] = None,
         enable_thinking: Optional[bool] = None,
+        preserve_thinking: Optional[bool] = None,
         add_non_thinking_prefix: bool = True,
     ) -> None:
         """
@@ -125,6 +126,7 @@ class Template(ProcessorMixin):
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
         self.enable_thinking = enable_thinking
+        self.preserve_thinking = preserve_thinking
         self.add_non_thinking_prefix = add_non_thinking_prefix
         self.chat_template_kwargs = {}
         self.remove_unused_columns = remove_unused_columns
@@ -160,6 +162,21 @@ class Template(ProcessorMixin):
         if enable_thinking is None:
             enable_thinking = self.enable_thinking
         return enable_thinking
+
+    def _get_preserve_thinking(self, inputs=None):
+        preserve_thinking = None if inputs is None else inputs.chat_template_kwargs.get('preserve_thinking')
+        if preserve_thinking is None:
+            preserve_thinking = self.preserve_thinking
+        if preserve_thinking is None:
+            enable_thinking = self._get_enable_thinking(inputs)
+            if template_meta.is_thinking or enable_thinking:
+                if self.is_training and self.loss_scale.base_strategy != 'last_round':
+                    preserve_thinking = True
+                else:
+                    preserve_thinking = False
+            else:
+                preserve_thinking = True
+        return preserve_thinking
 
     def _get_response_prefix(self, inputs=None):
         response_prefix = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
@@ -1138,8 +1155,6 @@ class Template(ProcessorMixin):
         return self.template_meta.history_thinking_prefix + content
 
     def _remove_history_thinking(self, inputs) -> None:
-        if self.is_training and self.loss_scale.base_strategy != 'last_round':
-            return
         messages = inputs.messages
         # Only during inference or training, and only if the loss_scale is set to 'last_round',
         # will the previous 'think' entries be deleted.
@@ -1203,8 +1218,8 @@ class Template(ProcessorMixin):
         if self.use_chat_template:
             if self.add_non_thinking_prefix:
                 self._add_non_thinking_prefix(inputs)
-            enable_thinking = self._get_enable_thinking(inputs)
-            if template_meta.is_thinking or enable_thinking:
+            preserve_thinking = self._get_preserve_thinking(inputs)
+            if not preserve_thinking:
                 self._remove_history_thinking(inputs)
             system = self._get_system(inputs)
         else:
