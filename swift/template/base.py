@@ -1108,6 +1108,9 @@ class Template(ProcessorMixin):
         enable_thinking = self._get_enable_thinking(inputs)
         if self.template_meta.is_thinking or enable_thinking:
             kwargs[self.jinja_enable_thinking_key] = enable_thinking
+        preserve_thinking = self._get_preserve_thinking(inputs)
+        if preserve_thinking:
+            kwargs['preserve_thinking'] = preserve_thinking
         kwargs.update(self.chat_template_kwargs)
         kwargs.update(inputs.chat_template_kwargs)
         text = self.tokenizer.apply_chat_template(
