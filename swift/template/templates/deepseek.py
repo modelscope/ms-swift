@@ -243,6 +243,7 @@ class DeepseekOCR(Template):
         # Delay loading dynamic modules that require specific transformers versions
         # These will be loaded lazily in _preprocess_image when actually needed
         # This avoids triggering transformers version compatibility issues for vllm backend
+        super().init_env_args()
         self._BasicImageTransform = None
         self._dynamic_preprocess = None
         self.crop_mode = get_env_args('crop_mode', bool, True)
