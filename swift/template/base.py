@@ -1157,8 +1157,7 @@ class Template(ProcessorMixin):
 
     def _remove_history_thinking(self, inputs) -> None:
         messages = inputs.messages
-        # Only during inference or training, and only if the loss_scale is set to 'last_round',
-        # will the previous 'think' entries be deleted.
+        # Delete the previous 'think' entries from the messages.
         last_user_round = get_last_user_round(messages)
         for i, message in enumerate(messages):
             # Delete the content before '</think>' in all assistant turns except the last round.
