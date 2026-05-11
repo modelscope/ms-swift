@@ -429,6 +429,44 @@ class VLLMClient:
         if all_errors:
             raise RuntimeError(f'Multiple errors on reset_prefix_cache: {all_errors}')
 
+    def reset_encoder_cache(self):
+        errors = [None] * self.num_servers
+
+        def _reset_single_server(i):
+            try:
+                response = self.sessions[i].post(f'{self.base_urls[i]}/reset_encoder_cache/')
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} reset failed: {response.text}')
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_reset_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors on reset_encoder_cache: {all_errors}')
+
+    def reset_mm_cache(self):
+        errors = [None] * self.num_servers
+
+        def _reset_single_server(i):
+            try:
+                response = self.sessions[i].post(f'{self.base_urls[i]}/reset_mm_cache/')
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} reset failed: {response.text}')
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_reset_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors on reset_mm_cache: {all_errors}')
+
     def get_engine_type(self):
         # assume that all server has same engine type
         response = self.sessions[0].post(f'{self.base_urls[0]}/get_engine_type/')
