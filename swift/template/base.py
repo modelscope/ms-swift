@@ -169,7 +169,7 @@ class Template(ProcessorMixin):
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
             enable_thinking = self._get_enable_thinking(inputs)
-            if template_meta.is_thinking or enable_thinking:
+            if self.template_meta.is_thinking or enable_thinking:
                 if self.is_training and self.loss_scale.base_strategy != 'last_round':
                     preserve_thinking = True
                 else:
