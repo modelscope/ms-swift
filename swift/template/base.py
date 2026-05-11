@@ -1109,7 +1109,7 @@ class Template(ProcessorMixin):
         if self.template_meta.is_thinking or enable_thinking:
             kwargs[self.jinja_enable_thinking_key] = enable_thinking
         preserve_thinking = self._get_preserve_thinking(inputs)
-        if preserve_thinking:
+        if self.template_meta.is_thinking or preserve_thinking:
             kwargs['preserve_thinking'] = preserve_thinking
         kwargs.update(self.chat_template_kwargs)
         kwargs.update(inputs.chat_template_kwargs)
