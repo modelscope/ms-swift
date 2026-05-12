@@ -617,7 +617,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             # Convert DTensor to regular Tensor if needed (FSDP2)
             if hasattr(param, 'full_tensor'):
                 if param.is_cpu:
-                    param = param.to(torch.device('cuda'))
+                    param = param.to(get_current_device())
                 param = param.full_tensor()
 
             processed[clean_name] = param
@@ -718,7 +718,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     continue
                 if hasattr(param, 'full_tensor'):
                     if param.is_cpu:
-                        param = param.to(torch.device('cuda'))
+                        param = param.to(get_current_device())
                     param = param.full_tensor()
                 raw_state_dict[name] = param
         else:
