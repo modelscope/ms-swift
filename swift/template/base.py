@@ -422,7 +422,7 @@ class Template(ProcessorMixin):
                        loss_scale: Optional[List[float]],
                        replace_idx_list: List[int],
                        get_new_tokens: Callable[[int], List[int]],
-                       mm_mask: Optional[List[int]] = None):
+                       mm_mask: Optional[List[bool]] = None):
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
             try:

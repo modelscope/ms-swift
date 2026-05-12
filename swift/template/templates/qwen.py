@@ -368,9 +368,7 @@ class Qwen2VLTemplate(Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-        mm_mask = None
-        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
-            mm_mask = [False] * len(input_ids)
+        mm_mask = [False] * len(input_ids)
         for media_type in ['images', 'videos']:
             mm_data = getattr(inputs, media_type)
             if mm_data:
@@ -407,7 +405,7 @@ class Qwen2VLTemplate(Template):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if mm_mask is not None:
+        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
             encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
@@ -527,9 +525,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-        mm_mask = None
-        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
-            mm_mask = [False] * len(input_ids)
+        mm_mask = [False] * len(input_ids)
         for media_type in ['images', 'videos']:
             mm_data = getattr(inputs, media_type)
             if mm_data:
@@ -567,7 +563,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if mm_mask is not None:
+        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
             encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
