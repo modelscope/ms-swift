@@ -1953,20 +1953,20 @@ class Template(ProcessorMixin):
 
         return result
 
-    def create_mm_token_type_ids(self, input_ids: List[int], mm_mask: List[bool]) -> torch.Tensor:
+    def create_mm_token_type_ids(self, input_ids: List[int], mm_mask: Optional[List[bool]] = None) -> torch.Tensor:
         processor = self.processor
-        image_token_id = getattr(processor, 'image_token_id', None)
-        video_token_id = getattr(processor, 'video_token_id', None)
-        audio_token_id = getattr(processor, 'audio_token_id', None)
-        input_ids = torch.tensor(input_ids)
-        mm_mask = torch.tensor(mm_mask, dtype=torch.bool)
+        if not isinstance(input_ids, torch.Tensor):
+            input_ids = torch.tensor(input_ids)
+        if mm_mask is None:
+            mm_mask = True
+        elif not isinstance(mm_mask, torch.Tensor):
+            mm_mask = torch.tensor(mm_mask, dtype=torch.bool)
         mm_token_type_ids = torch.zeros_like(input_ids)
-        if image_token_id is not None:
-            mm_token_type_ids[(input_ids == image_token_id) & mm_mask] = 1
-        if video_token_id is not None:
-            mm_token_type_ids[(input_ids == video_token_id) & mm_mask] = 2
-        if audio_token_id is not None:
-            mm_token_type_ids[(input_ids == audio_token_id) & mm_mask] = 3
+        for key, mm_token_id in zip(['image', 'video', 'audio'], [1, 2, 3]):
+            media_token_id = getattr(processor, f'{key}_token_id', None)
+            if media_token_id is None:
+                continue
+            mm_token_type_ids[(input_ids == media_token_id) & mm_mask] = mm_token_id
         return mm_token_type_ids
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:

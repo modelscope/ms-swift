@@ -306,8 +306,8 @@ class Gemma4Template(Template):
             return splited_tokens[i]
 
         if idx_list:
-            input_ids, labels, loss_scale, mm_mask = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
-                                                                _get_new_tokens, mm_mask=mm_mask)
+            input_ids, labels, loss_scale, mm_mask = self._extend_tokens(
+                input_ids, labels, loss_scale, idx_list, _get_new_tokens, mm_mask=mm_mask)
         for key in [
                 'pixel_values', 'image_position_ids', 'pixel_values_videos', 'video_position_ids', 'input_features',
                 'input_features_mask'
