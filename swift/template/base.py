@@ -659,7 +659,7 @@ class Template(ProcessorMixin):
             keys.update(r.keys())
             length.append(r['length'])
         for key in keys:
-            if key == 'position_ids' and is_3d_position_ids:
+            if key == 'position_ids' and is_3d_position_ids or key in {'token_type_ids', 'mm_token_type_ids'}:
                 packed[key] = torch.cat([x.get(key) for x in row], dim=-1)
             elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
@@ -1822,7 +1822,7 @@ class Template(ProcessorMixin):
                 encoded['position_ids'] = list(range(len(val)))
 
         res = {}
-        gather_keys = ['labels', 'position_ids', 'loss_scale', 'token_type_ids', 'mm_token_type_ids']
+        gather_keys = ['labels', 'loss_scale', 'position_ids', 'token_type_ids', 'mm_token_type_ids']
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
             for k in ['input_ids', 'channel'] + gather_keys:

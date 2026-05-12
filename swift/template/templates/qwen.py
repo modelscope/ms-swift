@@ -308,6 +308,8 @@ class Qwen2VLTemplate(Template):
         super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
+        self.get_rope_index = self._get_get_rope_index()
+        self.requires_mm_token_type_ids = inspect.signature(self.get_rope_index).parameters
 
     def _get_max_pixels(self, inputs=None):
         return self.max_pixels
@@ -405,7 +407,7 @@ class Qwen2VLTemplate(Template):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
+        if self.requires_mm_token_type_ids and any(mm_mask):
             encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
@@ -444,6 +446,7 @@ class Qwen2VLTemplate(Template):
         for r in row:
             r_copy = r.copy()
             r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
+            r_copy['mm_token_type_ids'] = r_copy['mm_token_type_ids'][None]
             r.update(self._get_position_ids(r_copy))
         packed = super().packing_row(row)
         return packed
@@ -461,7 +464,6 @@ class Qwen2VLTemplate(Template):
         kwargs = {}
         if self.version == 'v2_5':
             kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
-        get_rope_index = self._get_get_rope_index()
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
             attention_mask = inputs.get('attention_mask')
@@ -469,7 +471,7 @@ class Qwen2VLTemplate(Template):
         mm_token_type_ids = inputs.get('mm_token_type_ids')
         if mm_token_type_ids is not None:
             kwargs['mm_token_type_ids'] = mm_token_type_ids
-        position_ids, _ = get_rope_index(
+        position_ids, _ = self.get_rope_index(
             input_ids,
             image_grid_thw=inputs.get('image_grid_thw'),
             video_grid_thw=inputs.get('video_grid_thw'),
@@ -478,6 +480,10 @@ class Qwen2VLTemplate(Template):
         return {'position_ids': self._concat_text_position_ids(position_ids)}
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        if self.requires_mm_token_type_ids:
+            for b in batch:
+                if 'mm_token_type_ids' not in b:
+                    b['mm_token_type_ids'] = torch.zeros(len(b['input_ids']), dtype=torch.int64)
         res = super()._data_collator(batch, padding_to=padding_to)
         if not self.padding_free:
             res.update(self._get_position_ids(res))
@@ -563,7 +569,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
-        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
+        if self.requires_mm_token_type_ids and any(mm_mask):
             encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
