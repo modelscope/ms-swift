@@ -319,7 +319,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             # 解码清理后的 token IDs
             completion_text = self.template.safe_decode(cleaned_ids)
 
-            # 进一步清理空白字符（可选）
             completion_text = completion_text.strip()
 
             completion_texts.append(completion_text)
@@ -474,96 +473,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             else:
                 if not hasattr(self, 'student_tokenizer'):
                     student_model = model
-                    student_model_path = getattr(student_model, 'name_or_path', None)
-                    if student_model_path is None:
-                        # Try to get path from config
-                        if hasattr(student_model, 'config') and hasattr(student_model.config, '_name_or_path'):
-                            student_model_path = student_model.config._name_or_path
-
-                    if student_model_path is None:
-                        # If still None, try to get from model's base model
-                        unwrapped_student = self.accelerator.unwrap_model(student_model)
-                        if hasattr(unwrapped_student, 'base_model_prefix'):
-                            base_model = getattr(unwrapped_student, unwrapped_student.base_model_prefix, unwrapped_student)
-                            if hasattr(base_model, 'config') and hasattr(base_model.config, '_name_or_path'):
-                                student_model_path = base_model.config._name_or_path
-                    # Additional fallback: try to get from model's config name_or_path attribute
-                    if student_model_path is None:
-                        if hasattr(student_model, 'config') and hasattr(student_model.config, 'name_or_path'):
-                            student_model_path = student_model.config.name_or_path
-
-                    # Additional fallback: try to get from unwrapped model's name_or_path
-                    if student_model_path is None:
-                        unwrapped_student = self.accelerator.unwrap_model(student_model)
-                        student_model_path = getattr(unwrapped_student, 'name_or_path', None)
-
-                    # Additional fallback: try to get from unwrapped model's config name_or_path
-                    if student_model_path is None:
-                        unwrapped_student = self.accelerator.unwrap_model(student_model)
-                        if hasattr(unwrapped_student, 'config') and hasattr(unwrapped_student.config, 'name_or_path'):
-                            student_model_path = unwrapped_student.config.name_or_path
-
-                    if student_model_path is None:
-                        # Provide detailed error information for debugging
-                        model_info = f"Model type: {type(student_model)}, "
-                        if hasattr(student_model, 'config'):
-                            model_info += f"Config type: {type(student_model.config)}, "
-                            model_info += f"Config attributes: {[attr for attr in dir(student_model.config) if not attr.startswith('_')]}"
-                        else:
-                            model_info += "No config available"
+                    student_model_path = self.get_model_path(student_model)
                     self.student_tokenizer = AutoTokenizer.from_pretrained(student_model_path)
                     # Initialize teacher tokenizer (only once)
                     if not hasattr(self, 'teacher_tokenizer'):
-                        teacher_model_path = getattr(teacher_model, 'name_or_path', None)
-                        if teacher_model_path is None:
-                            # Try to get path from config
-                            if hasattr(teacher_model, 'config') and hasattr(teacher_model.config, '_name_or_path'):
-                                teacher_model_path = teacher_model.config._name_or_path
+                        teacher_model_path = self.get_model_path(teacher_model)
 
-                        if teacher_model_path is None:
-                            # If still None, try to get from model's base model
-                            unwrapped_teacher = self.accelerator.unwrap_model(teacher_model)
-                            if hasattr(unwrapped_teacher, 'base_model_prefix'):
-                                base_model = getattr(unwrapped_teacher, unwrapped_teacher.base_model_prefix,
-                                                     unwrapped_teacher)
-                                if hasattr(base_model, 'config') and hasattr(base_model.config, '_name_or_path'):
-                                    teacher_model_path = base_model.config._name_or_path
-                        # Additional fallback: try to get from model's config name_or_path attribute
-                        if teacher_model_path is None:
-                            if hasattr(teacher_model, 'config') and hasattr(teacher_model.config, 'name_or_path'):
-                                teacher_model_path = teacher_model.config.name_or_path
-
-                        # Additional fallback: try to get from unwrapped model's name_or_path
-                        if teacher_model_path is None:
-                            unwrapped_teacher = self.accelerator.unwrap_model(teacher_model)
-                            teacher_model_path = getattr(unwrapped_teacher, 'name_or_path', None)
-
-                        # Additional fallback: try to get from unwrapped model's config name_or_path
-                        if teacher_model_path is None:
-                            unwrapped_teacher = self.accelerator.unwrap_model(teacher_model)
-                            if hasattr(unwrapped_teacher, 'config') and hasattr(unwrapped_teacher.config,
-                                                                                'name_or_path'):
-                                teacher_model_path = unwrapped_teacher.config.name_or_path
-                        if teacher_model_path is None:
-                            # Provide detailed error information for debugging
-                            model_info = f"Model type: {type(teacher_model)}, "
-                            if hasattr(teacher_model, 'config'):
-                                model_info += f"Config type: {type(teacher_model.config)}, "
-                                model_info += f"Config attributes: {[attr for attr in dir(teacher_model.config) if not attr.startswith('_')]}"
-                            else:
-                                model_info += "No config available"
-
-                            unwrapped_info = ""
-                            try:
-                                unwrapped = self.accelerator.unwrap_model(teacher_model)
-                                unwrapped_info = f"Unwrapped model type: {type(unwrapped)}, "
-                                if hasattr(unwrapped, 'config'):
-                                    unwrapped_info += f"Unwrapped config attributes: {[attr for attr in dir(unwrapped.config) if not attr.startswith('_')]}"
-                            except Exception as e:
-                                unwrapped_info = f"Failed to unwrap model: {e}"
-
-                            raise ValueError(f"Cannot determine teacher model path for tokenizer initialization. "
-                                             f"Model info: {model_info}. Unwrapped info: {unwrapped_info}")
                         self.teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_model_path)
 
                     from .gold_loss_adapter import GOLDLossAdapter
@@ -626,7 +541,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     teacher_logits = outputs_teacher.logits.detach().requires_grad_(True)
 
                     # Release intermediate tensors to free memory
-                    del teacher_input_ids, teacher_attention_mask, student_input_ids, student_attention_mask
+                    del teacher_attention_mask, student_attention_mask
 
                     loss = self.gold_adapter(
                         student_logits=outputs_student.logits,
@@ -722,6 +637,34 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             teacher_prompt_length = max(prompt_lengths) if prompt_lengths else 0
 
             return teacher_input_ids, teacher_labels, teacher_attention_mask, teacher_prompt_length
+
+    def get_model_path(self, model):
+        model_path = getattr(model, 'name_or_path', None)
+        if model_path is None:
+            # Try to get path from config
+            if hasattr(model, 'config') and hasattr(model.config, '_name_or_path'):
+                model_path = model.config._name_or_path
+        if model_path is None:
+            # If still None, try to get from model's base model
+            unwrapped_student = self.accelerator.unwrap_model(model)
+            if hasattr(unwrapped_student, 'base_model_prefix'):
+                base_model = getattr(unwrapped_student, unwrapped_student.base_model_prefix, unwrapped_student)
+                if hasattr(base_model, 'config') and hasattr(base_model.config, '_name_or_path'):
+                    model_path = base_model.config._name_or_path
+        # Additional fallback: try to get from model's config name_or_path attribute
+        if model_path is None:
+            if hasattr(model, 'config') and hasattr(model.config, 'name_or_path'):
+                model_path = model.config.name_or_path
+        # Additional fallback: try to get from unwrapped model's name_or_path
+        if model_path is None:
+            unwrapped_student = self.accelerator.unwrap_model(model)
+            model_path = getattr(unwrapped_student, 'name_or_path', None)
+        # Additional fallback: try to get from unwrapped model's config name_or_path
+        if model_path is None:
+            unwrapped_student = self.accelerator.unwrap_model(model)
+            if hasattr(unwrapped_student, 'config') and hasattr(unwrapped_student.config, 'name_or_path'):
+                model_path = unwrapped_student.config.name_or_path
+        return model_path
 
     def _prepare_batch_inputs(self, inputs: list, encode_prompt_only: bool = False) -> Dict[str, torch.Tensor]:
         """Prepare batch inputs for training.
@@ -1068,7 +1011,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             t_log_probs = F.log_softmax(t_chunk, dim=-1)
             del s_chunk, t_chunk
 
-            #todo 使用mopd的计算函数，增加教师模型权重
             if beta == 0:
                 jsd_chunk = F.kl_div(s_log_probs, t_log_probs, reduction='none', log_target=True)
             elif beta == 1:

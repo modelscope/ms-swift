@@ -141,7 +141,7 @@ class GOLDLossAdapter(nn.Module):
         if not self.use_uld_loss:
             return torch.tensor(0.0, device=student_logits.device, requires_grad=True)
 
-        # 1. Cross-entropy loss (可选)
+        # 1. Cross-entropy loss (可选，通过crossentropy_weight设置权重)
         crossentropy_loss = self._compute_cross_entropy(student_logits, student_labels)
 
         # 2. Distillation loss (ULD)
