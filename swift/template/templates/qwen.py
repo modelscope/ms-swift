@@ -446,7 +446,8 @@ class Qwen2VLTemplate(Template):
         for r in row:
             r_copy = r.copy()
             r_copy['input_ids'] = torch.tensor(r_copy['input_ids'])[None]
-            r_copy['mm_token_type_ids'] = r_copy['mm_token_type_ids'][None]
+            if 'mm_token_type_ids' in r_copy:
+                r_copy['mm_token_type_ids'] = r_copy['mm_token_type_ids'][None]
             r.update(self._get_position_ids(r_copy))
         packed = super().packing_row(row)
         return packed
