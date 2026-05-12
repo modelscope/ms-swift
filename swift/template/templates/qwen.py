@@ -923,6 +923,9 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
 
         return {'inputs_embeds': inputs_embeds}
 
+    def _get_get_rope_index(self):
+        return self._get_model().thinker.get_rope_index
+
     def _get_position_ids(self, inputs: Dict[str, Any]):
         if not self.is_training:
             return {}
@@ -938,7 +941,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             attention_mask = inputs.get('attention_mask')
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
-        position_ids, _ = self._get_model().thinker.get_rope_index(
+        position_ids, _ = self.get_rope_index(
             input_ids,
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
