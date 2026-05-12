@@ -417,13 +417,12 @@ class Template(ProcessorMixin):
         inputs.generate_mode = generate_mode
 
     @staticmethod
-    def _extend_tokens(
-            input_ids: List[int],
-            labels: Optional[List[int]],
-            loss_scale: Optional[List[float]],
-            replace_idx_list: List[int],
-            get_new_tokens: Callable[[int], List[int]],
-            mm_mask: Optional[List[int]] = None) -> Tuple[List[int], Optional[List[int]], Optional[List[float]]]:
+    def _extend_tokens(input_ids: List[int],
+                       labels: Optional[List[int]],
+                       loss_scale: Optional[List[float]],
+                       replace_idx_list: List[int],
+                       get_new_tokens: Callable[[int], List[int]],
+                       mm_mask: Optional[List[int]] = None):
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
             try:
