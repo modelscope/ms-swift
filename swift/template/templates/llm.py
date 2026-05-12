@@ -482,8 +482,6 @@ class YoutuLLMTemplate(Template):
                     break
 
     def _remove_history_thinking(self, inputs) -> None:
-        if self.is_training and self.loss_scale.base_strategy != 'last_round':
-            return
         messages = inputs.messages
         first_tool_index = len(messages)
         for i, message in enumerate(messages):

@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from functools import cache
 
 from .utils import RingComm
+from .zigzag_ring_attn_npu import is_npu_tensor, npu_backward, npu_forward
 
 
 def get_half_index(cu_seqlens, *, front: bool):
@@ -171,6 +172,21 @@ def forward(q, k, v, causal, cu_seqlens, max_seqlen, block_seq_len, dropout_p, s
     max_seqlen_q = half_max_seqlen if seqlen_q == block_seq_len else max_seqlen
     cu_seqlens_kv = half_cu_seqlens if seqlen_kv == block_seq_len else cu_seqlens
     max_seqlen_kv = half_max_seqlen if seqlen_kv == block_seq_len else max_seqlen
+    if is_npu_tensor(q):
+        # Keep the ring schedule in this file unchanged; only the per-block
+        # flash-attn call is swapped to Ascend's TND varlen attention kernel.
+        return npu_forward(
+            q,
+            k,
+            v,
+            causal,
+            cu_seqlens_q,
+            cu_seqlens_kv,
+            dropout_p,
+            softmax_scale,
+            deterministic=False,
+            window_size=window_size,
+        )
     from flash_attn.flash_attn_interface import _flash_attn_varlen_forward
     params = get_default_args(_flash_attn_varlen_forward).copy()
     params.update({
@@ -389,6 +405,26 @@ def zigzag_ring_flash_attn_varlen_backward(
         deterministic=False,
 ):
     assert causal, 'zigzag ring is meaningless for causal=False'
+    if is_npu_tensor(q):
+        # NPU backward uses native flash-attn grad with the final ring out/lse
+        # patched into each block ctx. Missing kernel support should fail loudly.
+        return npu_backward(
+            process_group,
+            dout,
+            q,
+            k,
+            v,
+            out,
+            softmax_lse,
+            cu_seqlens,
+            max_seqlen,
+            half_index0,
+            half_index1,
+            softmax_scale,
+            dropout_p=dropout_p,
+            window_size=window_size,
+            deterministic=deterministic,
+        )
     kv_comm = RingComm(process_group)
     d_kv_comm = RingComm(process_group)
     dk_comm_buffer = dv_comm_buffer = None

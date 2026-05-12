@@ -40,9 +40,6 @@ pip install mcore-bridge -U
 # 安装main分支
 # pip install git+https://github.com/modelscope/mcore-bridge.git
 
-# megatron-core
-pip install "megatron-core==0.16.*" -U
-
 # 若使用多机训练，请额外设置`MODELSCOPE_CACHE`环境变量为共享存储路径
 # 这将确保数据集缓存共享，而加速预处理速度。
 # 注意：这步很关键，不然多机训练可能因随机性问题导致数据不一致而训练卡住。

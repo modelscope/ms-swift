@@ -76,6 +76,9 @@ class RLHFMegatronArgumentsMixin:
     tau_pos: float = 1.0
     tau_neg: float = 1.05
 
+    # REAL https://arxiv.org/abs/2602.05630
+    real_tau: float = 0.5
+
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
@@ -300,14 +303,19 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('async_generate is not supported for Megatron GRPO right now')
             if self.sync_ref_model:
                 raise ValueError('sync_ref_model is not supported for Megatron GRPO right now')
-            if not self.dataset_shuffle:
-                raise ValueError('dataset_shuffle false is not supported for Megatron GRPO')
             if self.multi_turn_scheduler:
                 raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 
+            if self.loss_type == 'real':
+                assert self.micro_batch_size % self.num_generations == 0, \
+                    (f'"REAL loss requires that the training micro_batch_size ({self.micro_batch_size}) '
+                     f'is a multiple of num_generations ({self.num_generations}). Please adjust your batch parameters.')
+
         _check_not_supported()
+        if self.dataset_shuffle is not None:
+            self.train_dataloader_shuffle = self.dataset_shuffle
         self._init_generation_batch_params()
         self.remove_unused_columns = False
         logger.info(f'Setting args.remove_unused_columns: {self.remove_unused_columns}')
@@ -316,6 +324,13 @@ class RLHFMegatronArgumentsMixin:
         if self.truncation_strategy not in {'left', 'delete'}:
             raise ValueError("GRPO requires `truncation_strategy 'left' or 'delete'`, "
                              f"Current value: `truncation_strategy='{self.truncation_strategy}'`.")
+        # disable normalization, REAL https://arxiv.org/abs/2602.05630
+        if self.loss_type == 'real':
+            self.scale_rewards = 'none'
+            logger.warning(
+                f"[REAL] scale_rewards='{self.scale_rewards}' is ignored. "
+                "It will be forced to 'none' because 'loss_type = real' does not support reward normalization.")
+
         if self.beta is None:
             self.beta = 0.04  # https://arxiv.org/abs/2402.03300
         if self.async_generate:
