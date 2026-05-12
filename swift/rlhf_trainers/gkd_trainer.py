@@ -566,7 +566,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                                              f"Model info: {model_info}. Unwrapped info: {unwrapped_info}")
                         self.teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_model_path)
 
-                    from .GOLDLossAdapter import GOLDLossAdapter
+                    from .gold_loss_adapter import GOLDLossAdapter
                     # Initialize adapter only once
                     if not hasattr(self, 'gold_adapter'):
                         self.gold_adapter = GOLDLossAdapter(
