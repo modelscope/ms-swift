@@ -441,10 +441,9 @@ class Template(ProcessorMixin):
             if mm_mask:
                 mm_mask = mm_mask[:idx + added_tokens_len] + [True] * token_len + mm_mask[added_tokens_len + idx + 1:]
             added_tokens_len += token_len - 1
-        res = input_ids, labels, loss_scale
         if mm_mask is not None:
-            res = res + (mm_mask, )
-        return res
+            return input_ids, labels, loss_scale, mm_mask
+        return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
         # This function is only used to handle scenarios where the model needs
@@ -1853,7 +1852,7 @@ class Template(ProcessorMixin):
             'attention_mask',
             'attention_mask_2d',
         ] + gather_keys
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0., 0, 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0, 0., 0, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in pad_keys:
