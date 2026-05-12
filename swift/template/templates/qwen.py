@@ -368,6 +368,9 @@ class Qwen2VLTemplate(Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
+        mm_mask = None
+        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
+            mm_mask = [False] * len(input_ids)
         for media_type in ['images', 'videos']:
             mm_data = getattr(inputs, media_type)
             if mm_data:
@@ -397,13 +400,15 @@ class Qwen2VLTemplate(Template):
                     token_len = (media_grid_thw[i].prod() // merge_length)
                     return [media_token] * token_len
 
-                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
-                                                                    _get_new_tokens)
+                input_ids, labels, loss_scale, mm_mask = self._extend_tokens(
+                    input_ids, labels, loss_scale, idx_list, _get_new_tokens, mm_mask=mm_mask)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        if mm_mask is not None:
+            encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
     def forward_context(self, model, inputs):
@@ -445,25 +450,27 @@ class Qwen2VLTemplate(Template):
         packed = super().packing_row(row)
         return packed
 
-    def _get_position_ids(self, inputs: Dict[str, Any]):
-        # fix https://github.com/huggingface/transformers/pull/33487
-        kwargs = {}
-        if self.version == 'v2_5':
-            kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
+    def _get_get_rope_index(self):
         base_model = self.get_base_model(self._get_model())
         if hasattr(base_model, 'get_rope_index'):
             get_rope_index = base_model.get_rope_index
         else:
             get_rope_index = base_model.model.get_rope_index
+        return get_rope_index
+
+    def _get_position_ids(self, inputs: Dict[str, Any]):
+        # fix https://github.com/huggingface/transformers/pull/33487
+        kwargs = {}
+        if self.version == 'v2_5':
+            kwargs = {'second_per_grid_ts': inputs.get('second_per_grid_ts')}
+        get_rope_index = self._get_get_rope_index()
         attention_mask = inputs.get('attention_mask_2d')
         if attention_mask is None:
             attention_mask = inputs.get('attention_mask')
         input_ids = inputs['input_ids']
-        if 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters:
-            kwargs['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids)
-        elif not self.is_training:
-            # Compatible with older versions of transformers
-            return {}
+        mm_token_type_ids = inputs.get('mm_token_type_ids')
+        if mm_token_type_ids is not None:
+            kwargs['mm_token_type_ids'] = mm_token_type_ids
         position_ids, _ = get_rope_index(
             input_ids,
             image_grid_thw=inputs.get('image_grid_thw'),
@@ -520,6 +527,9 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
+        mm_mask = None
+        if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
+            mm_mask = [0] * len(input_ids)
         for media_type in ['images', 'videos']:
             mm_data = getattr(inputs, media_type)
             if mm_data:
@@ -550,13 +560,15 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
                     else:
                         return splited_tokens[i]
 
-                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
-                                                                    _get_new_tokens)
+                input_ids, labels, loss_scale, mm_mask = self._extend_tokens(
+                    input_ids, labels, loss_scale, idx_list, _get_new_tokens, mm_mask=mm_mask)
                 encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        if mm_mask is not None:
+            encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
 
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:

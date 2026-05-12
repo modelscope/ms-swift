@@ -418,9 +418,12 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _extend_tokens(
-            input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
+            input_ids: List[int],
+            labels: Optional[List[int]],
+            loss_scale: Optional[List[float]],
             replace_idx_list: List[int],
-            get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]], Optional[List[float]]]:
+            get_new_tokens: Callable[[int], List[int]],
+            mm_mask: Optional[List[int]] = None) -> Tuple[List[int], Optional[List[int]], Optional[List[float]]]:
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
             try:
@@ -436,8 +439,13 @@ class Template(ProcessorMixin):
                 scale_idx = loss_scale[idx + added_tokens_len]
                 loss_scale = loss_scale[:idx + added_tokens_len] + [scale_idx] * token_len + loss_scale[added_tokens_len
                                                                                                         + idx + 1:]
+            if mm_mask:
+                mm_mask = mm_mask[:idx + added_tokens_len] + [True] * token_len + mm_mask[added_tokens_len + idx + 1:]
             added_tokens_len += token_len - 1
-        return input_ids, labels, loss_scale
+        res = input_ids, labels, loss_scale
+        if mm_mask is not None:
+            res = res + (mm_mask, )
+        return res
 
     def forward_context(self, model, inputs):
         # This function is only used to handle scenarios where the model needs
@@ -1816,9 +1824,10 @@ class Template(ProcessorMixin):
                 encoded['position_ids'] = list(range(len(val)))
 
         res = {}
+        gather_keys = ['labels', 'position_ids', 'loss_scale', 'token_type_ids', 'mm_token_type_ids']
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
+            for k in ['input_ids', 'channel'] + gather_keys:
                 v = batch[0].get(k)
                 if v is not None:
                     res[k] = v if k == 'channel' else [v]
@@ -1834,25 +1843,21 @@ class Template(ProcessorMixin):
             if any(channel):
                 res['channel'] = channel
 
-            for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
+            for key in gather_keys:
                 val = [b[key] for b in batch if b.get(key) is not None]
                 if val:
                     res[key] = val
 
-        keys = [
+        pad_keys = [
             'input_ids',
             'inputs_embeds',
             'attention_mask',
-            'labels',
-            'loss_scale',
-            'position_ids',
-            'token_type_ids',
             'attention_mask_2d',
-        ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0]
+        ] + gather_keys
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0., 0, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
-        for key in keys:
+        for key in pad_keys:
             if key not in res:
                 continue
             for i, val in enumerate(res[key]):
@@ -1892,7 +1897,7 @@ class Template(ProcessorMixin):
                     res['attention_mask'][i, :, :, seq_len:] = 0
                 res['attention_mask'] = ~res['attention_mask']
 
-        for key, pad_value in zip(keys, pad_values):
+        for key, pad_value in zip(pad_keys, pad_values):
             if key not in res:
                 continue
             if self.use_megatron and not self.padding_free and key == 'attention_mask':
@@ -1948,18 +1953,20 @@ class Template(ProcessorMixin):
 
         return result
 
-    def create_mm_token_type_ids(self, input_ids):
+    def create_mm_token_type_ids(self, input_ids: List[int], mm_mask: List[bool]) -> torch.Tensor:
         processor = self.processor
         image_token_id = getattr(processor, 'image_token_id', None)
         video_token_id = getattr(processor, 'video_token_id', None)
         audio_token_id = getattr(processor, 'audio_token_id', None)
+        input_ids = torch.tensor(input_ids)
+        mm_mask = torch.tensor(mm_mask, dtype=torch.bool)
         mm_token_type_ids = torch.zeros_like(input_ids)
         if image_token_id is not None:
-            mm_token_type_ids[input_ids == image_token_id] = 1
+            mm_token_type_ids[(input_ids == image_token_id) & mm_mask] = 1
         if video_token_id is not None:
-            mm_token_type_ids[input_ids == video_token_id] = 2
+            mm_token_type_ids[(input_ids == video_token_id) & mm_mask] = 2
         if audio_token_id is not None:
-            mm_token_type_ids[input_ids == audio_token_id] = 3
+            mm_token_type_ids[(input_ids == audio_token_id) & mm_mask] = 3
         return mm_token_type_ids
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
