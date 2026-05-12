@@ -293,6 +293,7 @@ class Gemma4Template(Template):
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
+        mm_mask = [False] * len(input_ids)
 
         idx_list = []
         for key in ['image', 'video', 'audio']:
@@ -305,8 +306,8 @@ class Gemma4Template(Template):
             return splited_tokens[i]
 
         if idx_list:
-            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
-                                                                _get_new_tokens)
+            input_ids, labels, loss_scale, mm_mask = self._extend_tokens(
+                input_ids, labels, loss_scale, idx_list, _get_new_tokens, mm_mask=mm_mask)
         for key in [
                 'pixel_values', 'image_position_ids', 'pixel_values_videos', 'video_position_ids', 'input_features',
                 'input_features_mask'
@@ -316,12 +317,8 @@ class Gemma4Template(Template):
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
+        encoded['mm_token_type_ids'] = self.create_mm_token_type_ids(input_ids, mm_mask)
         return encoded
-
-    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
-        res = super()._data_collator(batch, padding_to=padding_to)
-        res['mm_token_type_ids'] = self.create_mm_token_type_ids(res['input_ids'])
-        return res
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
         res = super()._data_collator_mm_data(batch)

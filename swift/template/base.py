@@ -384,10 +384,12 @@ class Template(ProcessorMixin):
         inputs.generate_mode = generate_mode
 
     @staticmethod
-    def _extend_tokens(
-            input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
-            replace_idx_list: List[int],
-            get_new_tokens: Callable[[int], List[int]]) -> Tuple[List[int], Optional[List[int]], Optional[List[float]]]:
+    def _extend_tokens(input_ids: List[int],
+                       labels: Optional[List[int]],
+                       loss_scale: Optional[List[float]],
+                       replace_idx_list: List[int],
+                       get_new_tokens: Callable[[int], List[int]],
+                       mm_mask: Optional[List[bool]] = None):
         added_tokens_len = 0
         for i, idx in enumerate(replace_idx_list):
             try:
@@ -403,7 +405,11 @@ class Template(ProcessorMixin):
                 scale_idx = loss_scale[idx + added_tokens_len]
                 loss_scale = loss_scale[:idx + added_tokens_len] + [scale_idx] * token_len + loss_scale[added_tokens_len
                                                                                                         + idx + 1:]
+            if mm_mask:
+                mm_mask = mm_mask[:idx + added_tokens_len] + [True] * token_len + mm_mask[added_tokens_len + idx + 1:]
             added_tokens_len += token_len - 1
+        if mm_mask is not None:
+            return input_ids, labels, loss_scale, mm_mask
         return input_ids, labels, loss_scale
 
     def forward_context(self, model, inputs):
@@ -620,9 +626,9 @@ class Template(ProcessorMixin):
             keys.update(r.keys())
             length.append(r['length'])
         for key in keys:
-            if key == 'position_ids' and is_3d_position_ids:
+            if key == 'position_ids' and is_3d_position_ids or key in {'mm_token_type_ids'}:
                 packed[key] = torch.cat([x.get(key) for x in row], dim=-1)
-            elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids'}:
+            elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
@@ -1777,9 +1783,10 @@ class Template(ProcessorMixin):
                 encoded['position_ids'] = list(range(len(val)))
 
         res = {}
+        gather_keys = ['labels', 'loss_scale', 'position_ids', 'token_type_ids', 'mm_token_type_ids']
         if self.padding_free:
             assert len(batch) == 1, f'batch: {batch}'
-            for k in ['input_ids', 'labels', 'position_ids', 'loss_scale', 'channel']:
+            for k in ['input_ids', 'channel'] + gather_keys:
                 v = batch[0].get(k)
                 if v is not None:
                     res[k] = v if k == 'channel' else [v]
@@ -1795,25 +1802,21 @@ class Template(ProcessorMixin):
             if any(channel):
                 res['channel'] = channel
 
-            for key in ['labels', 'loss_scale', 'position_ids', 'token_type_ids']:
+            for key in gather_keys:
                 val = [b[key] for b in batch if b.get(key) is not None]
                 if val:
                     res[key] = val
 
-        keys = [
+        pad_keys = [
             'input_ids',
             'inputs_embeds',
             'attention_mask',
-            'labels',
-            'loss_scale',
-            'position_ids',
-            'token_type_ids',
             'attention_mask_2d',
-        ]
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, -100, 0., 0., 0, 0]
+        ] + gather_keys
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0, 0, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
-        for key in keys:
+        for key in pad_keys:
             if key not in res:
                 continue
             for i, val in enumerate(res[key]):
@@ -1853,7 +1856,7 @@ class Template(ProcessorMixin):
                     res['attention_mask'][i, :, :, seq_len:] = 0
                 res['attention_mask'] = ~res['attention_mask']
 
-        for key, pad_value in zip(keys, pad_values):
+        for key, pad_value in zip(pad_keys, pad_values):
             if key not in res:
                 continue
             if self.use_megatron and not self.padding_free and key == 'attention_mask':
@@ -1909,18 +1912,20 @@ class Template(ProcessorMixin):
 
         return result
 
-    def create_mm_token_type_ids(self, input_ids):
+    def create_mm_token_type_ids(self, input_ids: List[int], mm_mask: Optional[List[bool]] = None) -> torch.Tensor:
         processor = self.processor
-        image_token_id = getattr(processor, 'image_token_id', None)
-        video_token_id = getattr(processor, 'video_token_id', None)
-        audio_token_id = getattr(processor, 'audio_token_id', None)
+        if not isinstance(input_ids, torch.Tensor):
+            input_ids = torch.tensor(input_ids)
+        if mm_mask is None:
+            mm_mask = True
+        elif not isinstance(mm_mask, torch.Tensor):
+            mm_mask = torch.tensor(mm_mask, dtype=torch.bool)
         mm_token_type_ids = torch.zeros_like(input_ids)
-        if image_token_id is not None:
-            mm_token_type_ids[input_ids == image_token_id] = 1
-        if video_token_id is not None:
-            mm_token_type_ids[input_ids == video_token_id] = 2
-        if audio_token_id is not None:
-            mm_token_type_ids[input_ids == audio_token_id] = 3
+        for key, mm_token_id in zip(['image', 'video', 'audio'], [1, 2, 3]):
+            media_token_id = getattr(processor, f'{key}_token_id', None)
+            if media_token_id is None:
+                continue
+            mm_token_type_ids[(input_ids == media_token_id) & mm_mask] = mm_token_id
         return mm_token_type_ids
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
