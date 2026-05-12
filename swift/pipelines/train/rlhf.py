@@ -300,6 +300,10 @@ class SwiftRLHF(SwiftSft):
             else:
                 trainer_kwargs['teacher_model_group'] = self.args.teacher_model_group
             trainer_kwargs['teacher_use_disable_adapter'] = getattr(self.args, '_teacher_use_disable_adapter', False)
+            if self.args.use_mopd:
+                trainer_kwargs['use_mopd'] = self.args.use_mopd
+                #todo
+                # trainer_kwargs['mopd_config'] = self.args.mopd_config
         return trainer_kwargs
 
 

@@ -66,6 +66,8 @@ class TeacherModelArguments:
     """
     teacher_model: Optional[str] = None
     teacher_model_group: List[str] = field(default_factory=list)
+    #todo 还需要增加mopd_config
+    use_mopd: bool = False
     teacher_adapters: List[str] = field(default_factory=list)
     teacher_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
