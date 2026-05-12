@@ -529,7 +529,7 @@ class Qwen3VLTemplate(Qwen2VLTemplate):
         loss_scale = encoded.get('loss_scale', None)
         mm_mask = None
         if 'mm_token_type_ids' in inspect.signature(self._get_get_rope_index()).parameters:
-            mm_mask = [0] * len(input_ids)
+            mm_mask = [False] * len(input_ids)
         for media_type in ['images', 'videos']:
             mm_data = getattr(inputs, media_type)
             if mm_data:
