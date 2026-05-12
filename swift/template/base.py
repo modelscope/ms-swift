@@ -659,9 +659,9 @@ class Template(ProcessorMixin):
             keys.update(r.keys())
             length.append(r['length'])
         for key in keys:
-            if key == 'position_ids' and is_3d_position_ids or key in {'token_type_ids', 'mm_token_type_ids'}:
+            if key == 'position_ids' and is_3d_position_ids or key in {'mm_token_type_ids'}:
                 packed[key] = torch.cat([x.get(key) for x in row], dim=-1)
-            elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids'}:
+            elif key in {'input_ids', 'labels', 'loss_scale', 'position_ids', 'token_type_ids'}:
                 packed[key] = sum((x.get(key) or [] for x in row), start=[])
             elif key == 'channel':
                 packed[key] = [x.get(key) for x in row]
@@ -1852,7 +1852,7 @@ class Template(ProcessorMixin):
             'attention_mask',
             'attention_mask_2d',
         ] + gather_keys
-        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0, 0., 0, 0]
+        pad_values = [self.tokenizer.pad_token_id, 0., 0, 0] + [-100, 0., 0, 0, 0]
         # Convert to tensor and remove unnecessary dimensions.
         seq_lens = None
         for key in pad_keys:

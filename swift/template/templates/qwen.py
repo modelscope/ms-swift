@@ -309,7 +309,7 @@ class Qwen2VLTemplate(Template):
         self.transformers_version = version.parse(transformers.__version__)
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
         self.get_rope_index = self._get_get_rope_index()
-        self.requires_mm_token_type_ids = inspect.signature(self.get_rope_index).parameters
+        self.requires_mm_token_type_ids = 'mm_token_type_ids' in inspect.signature(self.get_rope_index).parameters
 
     def _get_max_pixels(self, inputs=None):
         return self.max_pixels
@@ -482,7 +482,7 @@ class Qwen2VLTemplate(Template):
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.requires_mm_token_type_ids:
             for b in batch:
-                if 'mm_token_type_ids' not in b:
+                if 'input_ids' in b and 'mm_token_type_ids' not in b:
                     b['mm_token_type_ids'] = torch.zeros(len(b['input_ids']), dtype=torch.int64)
         res = super()._data_collator(batch, padding_to=padding_to)
         if not self.padding_free:
