@@ -5,7 +5,6 @@ import os.path
 import peft
 import torch
 import torch.nn
-import transformers
 from dataclasses import asdict, dataclass, field
 from functools import partial, reduce
 from modelscope import snapshot_download
@@ -15,7 +14,6 @@ from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig,
                   PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, VeraModel, get_peft_config,
                   get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
-from peft.tuners import lora
 from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
 from transformers import Trainer as HfTrainer

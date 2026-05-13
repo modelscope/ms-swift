@@ -747,10 +747,10 @@ class BaseMegatronTrainer(ABC):
                 state.best_model_checkpoint = best_model_checkpoint
         # safetensors
         if args.save_safetensors:
-            save_adapter = (
-                args.tuner_type != 'lora_llm' and not (args.tuner_type == 'lora' and args.merge_lora
-                                                       and not hasattr(self.bridge, '_support_hf_grouped_lora')))
-            if save_adapter:
+            skip_saving_adapter = args.tuner_type == 'lora_llm' or (
+                args.tuner_type == 'lora' and args.merge_lora and not hasattr(self.bridge, '_support_hf_grouped_lora'))
+
+            if not skip_saving_adapter:
                 self.bridge.save_weights(
                     self.unwrapped_models,
                     output_dir,
