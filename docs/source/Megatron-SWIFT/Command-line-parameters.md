@@ -179,7 +179,7 @@
 - fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent', 'max'。默认为'max'。
 
 **fp4参数**:
-- fp4_format: 用于前向和反向传播中FP8张量的FP4格式方案，可选为'e2m1'。默认为None。
+- fp4_format: 用于前向和反向传播中FP4张量的FP4格式方案，可选为'e2m1'。默认为None。
 - fp4_recipe: 若设置此参数，则通过 Transformer Engine 启用 FP4 精度。目前仅支持 'nvfp4'，该选项使用适用于 Blackwell+ 架构的 NVFP4BlockScaling 方案。
 - fp4_param_gather: 若设置此参数，则将参数保持为 FP4 精度以节省内存。注意并非所有参数都会被转换为 FP4，例如偏置项将保持不变。
 

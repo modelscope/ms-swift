@@ -187,12 +187,11 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
 - fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
 
-**fp4 Parameters**:
+**FP4 Parameters**:
 
-- `fp4_format`: The FP4 format scheme for FP8 tensors in forward and backward passes, optionally set to `'e2m1'`. Defaults to `None`.
-- `fp4_recipe`: If set, enables FP4 precision through Transformer Engine. Currently only `'nvfp4'` is supported, which uses the NVFP4BlockScaling recipe for Blackwell+ architecture.
-- `fp4_param_gather`: If set, keeps the parameters in FP4 precision to save memory. Note that not all parameters will be converted to FP4; for example, biases will remain unchanged.
-
+- fp4_format: The FP4 format scheme for FP4 tensors in forward and backward passes, optionally set to 'e2m1'. Defaults to None.
+- fp4_recipe: If set, enables FP4 precision through Transformer Engine. Currently only 'nvfp4' is supported, which uses the NVFP4BlockScaling recipe for Blackwell+ architecture.
+- fp4_param_gather: If set, keeps the parameters in FP4 precision to save memory. Note that not all parameters will be converted to FP4; for example, biases will remain unchanged.
 
 **Mixed Precision Parameters**:
 
