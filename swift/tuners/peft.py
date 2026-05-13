@@ -167,11 +167,14 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
     return param_groups
 
 
-def load_adapter(self, *args, **kwargs):
-    load_result = self.load_adapter_origin(*args, **kwargs)
+def load_adapter(self, model_id, *args, **kwargs):
+    load_result = self.load_adapter_origin(model_id, *args, **kwargs)
+    if load_result is None:
+        return load_result
+    # Avoid silent loading errors for LoRA trained with megatron-swift
     unexpected_keys = [key for key in load_result.unexpected_keys if 'lora_' in key]
     if unexpected_keys:
-        logger.warning_once(f'Unexpected keys found in checkpoint, '
+        logger.warning_once(f'Unexpected keys found in checkpoint `{model_id}`, '
                             f'len(unexpected_keys): {len(unexpected_keys)}, '
                             f'unexpected_keys[:10]: {unexpected_keys[:10]}.')
     return load_result
