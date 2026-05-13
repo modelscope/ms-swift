@@ -1300,7 +1300,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 ",'sequence' and 'sequence_token'.")
 
         coef_1 = torch.exp(log_importance_weights)
-        fipo_metrics = None
 
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
@@ -1431,17 +1430,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # Compute clipping metrics
         completion_token_count = completion_mask.sum().clamp(min=1.0)
-
-        if fipo_metrics is not None:
-            future_kl = fipo_metrics['future_kl']
-            influence_weight = fipo_metrics['influence_weight']
-            safety_mask = fipo_metrics['safety_mask']
-            self._metrics[mode]['fipo/future_kl_mean'].append(
-                ((future_kl * completion_mask).sum() / completion_token_count).item())
-            self._metrics[mode]['fipo/weight_mean'].append(
-                ((influence_weight * completion_mask).sum() / completion_token_count).item())
-            self._metrics[mode]['fipo/safety_mask_ratio'].append(
-                ((safety_mask.float() * completion_mask).sum() / completion_token_count).item())
 
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
@@ -2067,12 +2055,4 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'enable' if self.args.rollout_importance_sampling_mode is not None else 'disable',
             'loss_type': str(self.args.loss_type)
         }
-        if self.args.loss_type == 'fipo':
-            config.update({
-                'fipo_decay_rate': str(self.args.fipo_decay_rate),
-                'fipo_clip_range': str(self.args.fipo_clip_range),
-                'fipo_clip_high_only': str(self.args.fipo_clip_high_only),
-                'fipo_detach_weight': str(self.args.fipo_detach_weight),
-                'fipo_safety_threshold': str(self.args.fipo_safety_threshold),
-            })
         return config

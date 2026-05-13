@@ -1169,7 +1169,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 "and 'sequence'.")
 
         coef_1 = torch.exp(log_importance_weights)
-        fipo_metrics = None
 
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
@@ -1299,19 +1298,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if rollout_correction_metrics:
             metrics_data['rollout_correction'] = rollout_correction_metrics
 
-        if fipo_metrics is not None:
-            future_kl = fipo_metrics['future_kl']
-            influence_weight = fipo_metrics['influence_weight']
-            safety_mask = fipo_metrics['safety_mask']
-            metrics_data['fipo'] = {
-                'future_kl_mean':
-                self.accelerator.gather_for_metrics(masked_batch_mean(future_kl)).nanmean().item(),
-                'weight_mean':
-                self.accelerator.gather_for_metrics(masked_batch_mean(influence_weight)).nanmean().item(),
-                'safety_mask_ratio':
-                self.accelerator.gather_for_metrics(masked_batch_mean(safety_mask.float())).nanmean().item(),
-            }
-
         # Compute the clipped probability ratios
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
@@ -1370,11 +1356,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rollout_metrics = metrics_data['rollout_correction']
             for key, value in rollout_metrics.items():
                 self._metrics[mode][f'rollout_correction/{key}'].append(value)
-
-        # Update FIPO metrics
-        if 'fipo' in metrics_data:
-            for key, value in metrics_data['fipo'].items():
-                self._metrics[mode][f'fipo/{key}'].append(value)
 
         # Update clipping metrics
         if 'clipping' in metrics_data:
@@ -1456,12 +1437,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         entropy_logs, entropy_stats, kl_values = [], [], []
         clip_values = {'low': [], 'high': [], 'region': [], 'low_min': [], 'high_max': []}
         cispo_clip_values = []
-        fipo_values = defaultdict(list)
         entropy_thresholds = []
 
         for chunk_metrics, chunk_weight in all_metrics_data:
             chunk_tokens = chunk_metrics['completion_token_count']
-            weight = chunk_tokens.item() if hasattr(chunk_tokens, 'item') else chunk_tokens
 
             # Collect entropy metrics
             if chunk_metrics['entropy']:
@@ -1480,14 +1459,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if 'kl' in chunk_metrics:
                 kl_values.append(chunk_metrics['kl'])
 
-            # Collect FIPO metrics (weighted by tokens)
-            if 'fipo' in chunk_metrics:
-                for key, value in chunk_metrics['fipo'].items():
-                    fipo_values[key].append((value, weight))
-
             # Collect clipping metrics (weighted by tokens)
             if 'clipping' in chunk_metrics:
                 clipping = chunk_metrics['clipping']
+                weight = chunk_tokens.item() if hasattr(chunk_tokens, 'item') else chunk_tokens
                 if 'cispo_clip_ratio' in clipping:
                     cispo_clip_values.append((clipping['cispo_clip_ratio'], weight))
                 else:
@@ -1519,9 +1494,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Aggregate clipping (token-weighted averages)
         def weighted_avg(values):
             return sum(v * w for v, w in values) / sum(w for _, w in values)
-
-        if fipo_values:
-            aggregated_metrics['fipo'] = {key: weighted_avg(values) for key, values in fipo_values.items()}
 
         if cispo_clip_values:
             # CISPO specific metric
