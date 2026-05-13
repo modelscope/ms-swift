@@ -172,7 +172,7 @@ def load_adapter(self, model_id, *args, **kwargs):
     # Avoid silent loading errors for LoRA trained with megatron-swift
     unexpected_keys = [key for key in load_result.unexpected_keys if 'lora_' in key]
     if unexpected_keys:
-        logger.warning_once(f'Unexpected keys found in checkpoint `{model_id}`, '
+        logger.warning_once(f'Unexpected LoRA keys found in checkpoint `{model_id}`, '
                             f'len(unexpected_keys): {len(unexpected_keys)}, '
                             f'unexpected_keys[:10]: {unexpected_keys[:10]}.')
     return load_result
