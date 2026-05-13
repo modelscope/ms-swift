@@ -613,10 +613,10 @@ class MiniCPMV4_6Template(Template):
     def init_env_args(self):
         super().init_env_args()
         self.downsample_mode = get_env_args('downsample_mode', str, '16x')
-        self.stack_frames = get_env_args('stack_frames', int, 1)
-        self.max_num_frames = get_env_args('max_num_frames', int, 128)
         self.max_slice_nums = get_env_args('max_slice_nums', int, 9)
         self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)
+        self.max_num_frames = get_env_args('max_num_frames', int, 128)
+        self.stack_frames = get_env_args('stack_frames', int, 1)
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
