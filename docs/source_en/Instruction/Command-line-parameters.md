@@ -904,7 +904,6 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 
 
-
 ### minicpmv4_6
 - DOWNSAMPLE_MODE: Default is `'16x'`. Visual token downsampling mode. `'16x'` merges tokens for efficiency; `'4x'` retains 4x more tokens for finer detail.
 - MAX_SLICE_NUMS: Default is 9. Maximum number of slices when splitting a high-resolution image. A larger value preserves more detail for large images. It is recommended to set this to 36 for images.
