@@ -222,6 +222,5 @@ megatron export \
     --to_hf true \
     --merge_lora true \
     --torch_dtype bfloat16 \
-    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-merged \
-    --test_convert_precision true
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-merged
 ```
