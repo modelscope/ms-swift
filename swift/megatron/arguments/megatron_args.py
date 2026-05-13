@@ -524,9 +524,14 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # fp8
     fp8_format: Literal['e4m3', 'hybrid'] = None
     fp8_recipe: Literal['tensorwise', 'delayed', 'mxfp8', 'blockwise'] = 'delayed'
+    fp8_param_gather: bool = False
     fp8_amax_history_len: int = 1024
     fp8_amax_compute_algo: Literal['most_recent', 'max'] = 'max'
-    fp8_param_gather: bool = False
+
+    # fp4
+    fp4_format: Literal['e2m1'] = None
+    fp4_recipe: Literal['nvfp4'] = 'nvfp4'
+    fp4_param_gather: bool = False
 
     # mixed precision
     fp16: Optional[bool] = None
