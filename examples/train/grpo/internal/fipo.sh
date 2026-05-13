@@ -2,7 +2,7 @@ CUDA_VISIBLE_DEVICES=2 \
 swift rollout \
     --model Qwen/Qwen2.5-1.5B-Instruct
 
-
+# 2 GPUS for sequence parallel
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift rlhf \
@@ -22,8 +22,8 @@ swift rlhf \
     --per_device_train_batch_size 8 \
     --learning_rate 1e-6 \
     --gradient_accumulation_steps 2 \
-    --save_total_limit 20 \
-    --save_steps 100 \
+    --save_total_limit 3 \
+    --save_steps 500 \
     --logging_steps 1 \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 8 \
