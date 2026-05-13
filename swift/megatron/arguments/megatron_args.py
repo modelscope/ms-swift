@@ -697,7 +697,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
                              'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
-        self.fp8 = self.fp8_format  # compat megatron-lm
+        # compat megatron-lm
+        self.fp8 = self.fp8_format
+        self.fp4 = self.fp4_format
+
         if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True
         if self.vit_gradient_checkpointing_kwargs is not None:
