@@ -290,9 +290,9 @@ def hot_patch_peft_module():
         BoneModel._create_and_replace = _create_and_replace_hook
 
     # Support type conversion
-    def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name: str):
+    def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], *args, **kwargs):
 
-        self.__init_origin__(model, config, adapter_name)
+        self.__init_origin__(model, config, *args, **kwargs)
         active_adapters = self.active_adapter
         if isinstance(active_adapters, str):
             active_adapters = [active_adapters]
