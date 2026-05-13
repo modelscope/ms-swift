@@ -608,6 +608,7 @@ register_template(
 
 class MiniCPMV4_6Template(Template):
     support_padding_free = True
+    placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
 
     def init_env_args(self):
         super().init_env_args()
