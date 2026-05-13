@@ -173,7 +173,7 @@ def load_adapter(self, *args, **kwargs):
     if unexpected_keys:
         logger.warning_once(
             f'Unexpected keys found in checkpoint, '
-            f'len(unexpected_keys): {len(lunexpected_keys)}, '
+            f'len(unexpected_keys): {len(unexpected_keys)}, '
             f'unexpected_keys[:10]: {unexpected_keys[:10]}.'
         )
     return load_result
