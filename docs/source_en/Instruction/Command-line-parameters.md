@@ -903,6 +903,15 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 
+
+### minicpmv4_6
+- DOWNSAMPLE_MODE: Default is `'16x'`. Visual token downsampling mode. `'16x'` merges tokens for efficiency; `'4x'` retains 4x more tokens for finer detail.
+- MAX_SLICE_NUMS: Default is 9. Maximum number of slices when splitting a high-resolution image. A larger value preserves more detail for large images. It is recommended to set this to 36 for images.
+- VIDEO_MAX_SLICE_NUMS: Default is 1. `MAX_SLICE_NUMS` for videos.
+- MAX_NUM_FRAMES: Default is 128. Maximum number of main frames sampled from a video.
+- STACK_FRAMES: Default is 1. Total number of samples per second. `1` means only the main frame is used (no stacking). `N` (N>1) means 1 main frame plus N−1 sub-frames per second; sub-frames are composed into a grid image and interleaved with the main frame. It is recommended to set this to 1 for short videos and 3 or 5 for long videos.
+
+
 ### minicpmo
 - INIT_TTS: Defaults to False. Whether to initialize and load the TTS model.
 - INIT_AUDIO: Defaults to True. Whether to initialize and load the Audio model.
