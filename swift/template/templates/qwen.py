@@ -305,8 +305,9 @@ class Qwen2VLTemplate(Template):
         super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
-        self.get_rope_index = self._get_get_rope_index()
-        self.requires_mm_token_type_ids = 'mm_token_type_ids' in inspect.signature(self.get_rope_index).parameters
+        get_rope_index = self._get_get_rope_index()
+        self.dummy_model = None
+        self.requires_mm_token_type_ids = 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -466,7 +467,7 @@ class Qwen2VLTemplate(Template):
         mm_token_type_ids = inputs.get('mm_token_type_ids')
         if mm_token_type_ids is not None:
             kwargs['mm_token_type_ids'] = mm_token_type_ids
-        position_ids, _ = self.get_rope_index(
+        position_ids, _ = self._get_get_rope_index()(
             input_ids,
             image_grid_thw=inputs.get('image_grid_thw'),
             video_grid_thw=inputs.get('video_grid_thw'),
@@ -930,7 +931,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             attention_mask = inputs.get('attention_mask')
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
-        position_ids, _ = self.get_rope_index(
+        position_ids, _ = self._get_get_rope_index()(
             input_ids,
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
