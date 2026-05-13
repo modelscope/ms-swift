@@ -192,6 +192,25 @@ megatron sft \
 # 如果是全量权重，请将`--adapters`替换为`--model
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
+    --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true
+```
+
+
+### Merge-LoRA
+
+由于训练的时候设置了`--merge_lora false`，后续如果想将lora权重合并成全量safetensors权重，可以使用以下脚本：
+```shell
+# 由于lora权重是safetensors格式，你需要使用`--adapters`而不是`--mcore_adapter`
+# megatron export
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron export \
+    --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --tensor_model_parallel_size 2 \
+    --to_hf true \
+    --merge_lora true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-merged \
+    --test_convert_precision true
 ```

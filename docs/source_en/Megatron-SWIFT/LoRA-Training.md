@@ -202,6 +202,26 @@ megatron sft \
 # If using full weights, replace `--adapters` with `--model`
 CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-hf \
+    --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
     --stream true
+```
+
+
+### Merge-LoRA
+
+Since `--merge_lora false` was set during training, if you want to merge the LoRA weights into full safetensors weights afterwards, you can use the following script:
+
+```shell
+# Since the LoRA weights are in safetensors format, you need to use `--adapters` instead of `--mcore_adapter`
+# megatron export
+NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1 \
+megatron export \
+    --adapters megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx \
+    --tensor_model_parallel_size 2 \
+    --to_hf true \
+    --merge_lora true \
+    --torch_dtype bfloat16 \
+    --output_dir megatron_output/Qwen2.5-7B-Instruct/vx-xxx/checkpoint-xxx-merged \
+    --test_convert_precision true
 ```
