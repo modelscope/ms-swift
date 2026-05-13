@@ -1,0 +1,178 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ms_swift"
+dynamic = ["version", "readme"]
+description = "Swift: Scalable lightWeight Infrastructure for Fine-Tuning"
+requires-python = ">=3.8"
+license = { text = "Apache License 2.0" }
+authors = [
+  { name = "DAMO ModelScope teams", email = "contact@modelscope.cn" },
+]
+keywords = ["transformers", "LLM", "lora", "megatron", "grpo", "sft"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "accelerate",
+  "addict",
+  "aiohttp",
+  "attrdict",
+  "binpacking",
+  "charset_normalizer",
+  "cpm_kernels",
+  "dacite",
+  "datasets>=3.0,<4.8.5",
+  "einops",
+  "fastapi",
+  "gradio>=3.40.0,<6.0",
+  "importlib_metadata",
+  "json_repair",
+  "matplotlib",
+  "modelscope>=1.23",
+  "nltk",
+  "numpy",
+  "openai",
+  "oss2",
+  "pandas",
+  "peft>=0.11,<0.20",
+  "pillow",
+  "PyYAML>=5.4",
+  "requests",
+  "rouge",
+  "safetensors",
+  "scipy",
+  "sentencepiece",
+  "simplejson>=3.3.0",
+  "sortedcontainers>=1.5.9",
+  "tensorboard",
+  "tiktoken",
+  "tqdm",
+  "transformers>=4.33,<5.9.0",
+  "transformers_stream_generator",
+  "trl>=0.15,<1.0",
+  "uvicorn",
+  "zstandard",
+]
+
+[project.optional-dependencies]
+megatron = [
+  "mcore-bridge>=1.2.0",
+  "megatron-core>=0.15",
+  "peft>=0.15",
+]
+eval = [
+  "evalscope>=1.0.0",
+  "evalscope[opencompass]",
+  "evalscope[vlmeval]",
+]
+swanlab = [
+  "swanlab",
+]
+ray = [
+  "ray",
+]
+tests = [
+  "expecttest",
+  "flake8",
+  "isort>=4.3.21",
+  "modelscope",
+  "pre-commit",
+  "yapf==0.30.0",
+]
+docs = [
+  "docutils>=0.16.0",
+  "myst_parser",
+  "recommonmark",
+  "sphinx>=5.3.0",
+  "sphinx-book-theme",
+  "sphinx-copybutton",
+  "sphinx-rtd-theme",
+  "sphinx_markdown_tables",
+  "sphinxcontrib-mermaid",
+]
+all = [
+  "accelerate",
+  "addict",
+  "aiohttp",
+  "attrdict",
+  "binpacking",
+  "charset_normalizer",
+  "cpm_kernels",
+  "dacite",
+  "datasets>=3.0,<4.8.5",
+  "einops",
+  "fastapi",
+  "gradio>=3.40.0,<6.0",
+  "importlib_metadata",
+  "json_repair",
+  "matplotlib",
+  "modelscope>=1.23",
+  "nltk",
+  "numpy",
+  "openai",
+  "oss2",
+  "pandas",
+  "peft>=0.11,<0.20",
+  "pillow",
+  "PyYAML>=5.4",
+  "requests",
+  "rouge",
+  "safetensors",
+  "scipy",
+  "sentencepiece",
+  "simplejson>=3.3.0",
+  "sortedcontainers>=1.5.9",
+  "tensorboard",
+  "tiktoken",
+  "tqdm",
+  "transformers>=4.33,<5.9.0",
+  "transformers_stream_generator",
+  "trl>=0.15,<1.0",
+  "uvicorn",
+  "zstandard",
+  "evalscope>=1.0.0",
+  "evalscope[opencompass]",
+  "evalscope[vlmeval]",
+  "swanlab",
+  "ray",
+]
+
+[project.urls]
+Homepage = "https://github.com/modelscope/ms-swift"
+
+[project.scripts]
+swift = "swift.cli.main:cli_main"
+megatron = "swift.cli._megatron.main:cli_main"
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+exclude = ["tests", "tests.*"]
+
+[tool.setuptools.package-data]
+"*" = [
+  "utils/*",
+  "dataset/data/*.*",
+  "config/*.json",
+  "loss_scale/config/*.json",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "swift.version.__version__" }
+readme = { file = ["README.md"], content-type = "text/markdown" }
+
+[tool.uv]
+package = true
