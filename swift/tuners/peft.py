@@ -171,11 +171,9 @@ def load_adapter(self, *args, **kwargs):
     load_result = self.load_adapter_origin(*args, **kwargs)
     unexpected_keys = [key for key in load_result.unexpected_keys if 'lora_' in key]
     if unexpected_keys:
-        logger.warning_once(
-            f'Unexpected keys found in checkpoint, '
-            f'len(unexpected_keys): {len(unexpected_keys)}, '
-            f'unexpected_keys[:10]: {unexpected_keys[:10]}.'
-        )
+        logger.warning_once(f'Unexpected keys found in checkpoint, '
+                            f'len(unexpected_keys): {len(unexpected_keys)}, '
+                            f'unexpected_keys[:10]: {unexpected_keys[:10]}.')
     return load_result
 
 
