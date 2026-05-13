@@ -167,6 +167,18 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
     return param_groups
 
 
+def load_adapter(self, *args, **kwargs):
+    load_result = self.load_adapter_origin(*args, **kwargs)
+    unexpected_keys = [key for key in load_result.unexpected_keys if 'lora_' in key]
+    if unexpected_keys:
+        logger.warning_once(
+            f'Unexpected keys found in checkpoint, '
+            f'len(unexpected_keys): {len(lunexpected_keys)}, '
+            f'unexpected_keys[:10]: {unexpected_keys[:10]}.'
+        )
+    return load_result
+
+
 def adalora_forward(self, *args, **kwargs):
     from peft.utils.integrations import gather_params_ctx
     outputs = self.model.forward(*args, **kwargs)
@@ -312,6 +324,8 @@ def hot_patch_peft_module():
 
     # Support LoRA+
     PeftModel.create_optimizer_param_groups = create_optimizer_param_groups
+    PeftModel.load_adapter_origin = PeftModel.load_adapter
+    PeftModel.load_adapter = load_adapter
 
     PeftConfigMixin.from_pretrained_origin = PeftConfigMixin.from_pretrained
     PeftConfigMixin.from_pretrained = LoraConfig.from_pretrained
