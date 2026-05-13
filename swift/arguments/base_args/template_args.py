@@ -95,11 +95,15 @@ class TemplateArguments:
             model adds the prefix `'<think>\n\n</think>\n\n'`, while Qwen3-8B-Thinking does not add a prefix.
             If enable_thinking is True, a thinking prefix is added, for example `'<think>\n'`.
             Note: The priority of this parameter is lower than the response_prefix parameter.
-            - Note: For thinking models (thinking/hybrid thinking) or when enable_thinking is explicitly enabled,
-            we will remove historical thinking content during both inference and training (the thinking content
-            of the last round is retained, i.e., the content after the last user message).
-            If the basic strategy of loss_scale during training is not last_round, for example 'default',
-            then historical thinking content will not be removed.
+        preserve_thinking (Optional[bool]): Whether to preserve historical thinking content during inference and
+            training. When set to `True`, thinking content from all rounds is retained. When set to `False`,
+            only the thinking content from the last round is retained (i.e., the content following the last
+            user message). Defaults to `None`.
+            Default behavior: For thinking models (thinking/hybrid-thinking) or when `enable_thinking` is
+            explicitly enabled, this is set to `False` by default during inference and training, retaining
+            only the last round of thinking content. If the `loss_scale` base strategy during training is
+            not `'last_round'` (e.g., `'default'`), it defaults to `True`, and historical thinking content will
+            not be removed.
         add_non_thinking_prefix (bool): This parameter only takes effect during training, indicating whether to
             add a non-thinking prefix to data samples whose assistant part does not start with the thinking
             marker `'<think>'` (typically hybrid thinking models contain a non-thinking prefix).
@@ -132,6 +136,7 @@ class TemplateArguments:
     # thinking
     response_prefix: Optional[str] = None
     enable_thinking: Optional[bool] = None
+    preserve_thinking: Optional[bool] = None
     add_non_thinking_prefix: bool = True
 
     def __post_init__(self):
@@ -176,5 +181,6 @@ class TemplateArguments:
             # thinking
             'response_prefix': self.response_prefix,
             'enable_thinking': self.enable_thinking,
+            'preserve_thinking': self.preserve_thinking,
             'add_non_thinking_prefix': self.add_non_thinking_prefix,
         }

@@ -75,6 +75,7 @@ def get_template(
     # thinking
     response_prefix: Optional[str] = None,
     enable_thinking: Optional[bool] = None,
+    preserve_thinking: Optional[bool] = None,
     add_non_thinking_prefix: bool = True,
 ) -> 'Template':
     """Get or create a template instance for model input/output formatting.
@@ -154,6 +155,8 @@ def get_template(
             uses template's default prefix based on thinking mode. Defaults to None.
         enable_thinking (Optional[bool], optional): Controls whether thinking mode is enabled
             during inference.
+        preserve_thinking (Optional[bool]): Whether to preserve historical thinking content
+            during inference and training.
         add_non_thinking_prefix (bool, optional): This parameter only takes effect during
             training and indicates whether to add a non-thinking prefix to data samples
             whose assistant part does not start with the thinking tag '<think>'
@@ -207,5 +210,6 @@ def get_template(
         # thinking
         response_prefix=response_prefix,
         enable_thinking=enable_thinking,
+        preserve_thinking=preserve_thinking,
         add_non_thinking_prefix=add_non_thinking_prefix,
     )

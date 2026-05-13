@@ -66,9 +66,9 @@ def _model_cpu_forward_context(modules,
         origin_torch_dtype = next(modules[0].parameters()).dtype
     except StopIteration:
         origin_torch_dtype = next(modules[-1].parameters()).dtype
-    embedding = None
+    embeddings = None
     if share_embedding:
-        embedding = [module for module in modules if isinstance(module, (nn.Embedding, VocabParallelEmbedding))][-1]
+        embeddings = [module for module in modules if isinstance(module, (nn.Embedding, VocabParallelEmbedding))]
 
     def _to_cuda_hook(module, args):
         if compute_device is not None or torch_dtype is not None:
@@ -77,7 +77,7 @@ def _model_cpu_forward_context(modules,
         return args
 
     def _to_cpu_hook(module, args, output):
-        if share_embedding and module is embedding:
+        if share_embedding and module in embeddings:
             return
         module.to(device=target_device, dtype=origin_torch_dtype)
 

@@ -128,9 +128,41 @@ def test_deepseek_v3_1():
     assert res['input_ids'] == res2['input_ids']
 
 
+def test_preserve_thinking():
+    tokenizer = get_processor('Qwen/Qwen3.6-35B-A3B')
+    template = get_template(tokenizer, preserve_thinking=True)
+    template.set_mode('train')
+    inputs = {
+        'messages': [{
+            'role': 'system',
+            'content': '000'
+        }, {
+            'role': 'user',
+            'content': 'aaa'
+        }, {
+            'role': 'assistant',
+            'content': '<think>\nbbb\n</think>\n\nbbb'
+        }, {
+            'role': 'user',
+            'content': 'ccc'
+        }, {
+            'role': 'assistant',
+            'content': '<think>\nddd\n</think>\n\nddd'
+        }]
+    }
+    template.template_backend = 'swift'
+    res = template.encode(inputs)
+    template.print_inputs(res)
+    template.template_backend = 'jinja'
+    res2 = template.encode(inputs)
+    template.print_inputs(res2)
+    assert res['input_ids'] == res2['input_ids']
+
+
 if __name__ == '__main__':
     # test_deepseek_v2_5()
     # test_qwen2_5_math_reward()
     # test_minimax()
     # test_minimax_vl()
-    test_deepseek_v3_1()
+    # test_deepseek_v3_1()
+    test_preserve_thinking()
