@@ -266,9 +266,9 @@ register_model(
         MiniCPMV4_6Loader,
         template=TemplateType.minicpmv4_6,
         architectures=['MiniCPMV4_6ForConditionalGeneration'],
-        model_arch=ModelArch.minicpmv,
-        requires=['timm', 'transformers>=5.2.0'],
-        tags=['vision'],
+        model_arch=ModelArch.minicpmv4_6,
+        requires=['transformers>=5.7.0'],
+        tags=['vision', 'video'],
     ))
 
 register_model(
