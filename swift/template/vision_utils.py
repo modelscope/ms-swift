@@ -298,14 +298,14 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
 
 def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
     import librosa
-    try:
-        audio_io = load_file(audio)
-        res = librosa.load(audio_io, sr=sampling_rate)
-    except Exception:
-        if isinstance(audio, str) and (audio.startswith('http://') or audio.startswith('https://')):
-            import audioread
-            audio = audioread.ffdec.FFmpegAudioFile(audio)
-        res = librosa.load(audio, sr=sampling_rate)
+    if isinstance(audio, bytes):
+        audio_io = BytesIO(audio)
+    elif isinstance(audio, str) and (audio.startswith('http://') or audio.startswith('https://')):
+        import audioread
+        audio_io = audioread.ffdec.FFmpegAudioFile(audio)
+    else:
+        audio_io = audio
+    res = librosa.load(audio_io, sr=sampling_rate)
     return res if return_sr else res[0]
 
 
