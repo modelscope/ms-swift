@@ -299,16 +299,16 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
 def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
     import librosa
     try:
-        audio = load_file(audio)
-        res = librosa.load(audio, sr=sampling_rate)
+        audio_io = load_file(audio)
+        res = librosa.load(audio_io, sr=sampling_rate)
     except Exception:
         if isinstance(audio, str):
             if audio.startswith(('http://', 'https://')):
                 import audioread
-                audio = audioread.ffdec.FFmpegAudioFile(audio)
+                audio_io = audioread.ffdec.FFmpegAudioFile(audio)
             else:
-                audio = _check_path(audio) or audio
-            res = librosa.load(audio, sr=sampling_rate)
+                audio_io = _check_path(audio) or audio
+            res = librosa.load(audio_io, sr=sampling_rate)
         else:
             raise ValueError(f'Unsupported audio type: {type(audio)} for {audio}')
     return res if return_sr else res[0]
