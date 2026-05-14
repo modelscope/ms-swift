@@ -427,8 +427,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         elif self.rlhf_type == 'grpo':
             if self.metric_for_best_model is None:
                 self.metric_for_best_model = 'reward'
-            if self.greater_is_better is None and self.metric_for_best_model is not None:
-                self.greater_is_better = 'loss' not in self.metric_for_best_model
+                if self.metric_for_best_model is not None:
+                    self.greater_is_better = True
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
