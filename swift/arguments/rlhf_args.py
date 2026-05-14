@@ -424,8 +424,11 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     def _init_metric_for_best_model(self):
         if self.rlhf_type not in {'ppo', 'grpo'}:
             super()._init_metric_for_best_model()
-        elif self.rlhf_type == 'grpo' and self.metric_for_best_model is None:
-            self.metric_for_best_model = 'reward'
+        elif self.rlhf_type == 'grpo':
+            if self.metric_for_best_model is None:
+                self.metric_for_best_model = 'reward'
+            if self.greater_is_better is None and self.metric_for_best_model is not None:
+                self.greater_is_better = 'loss' not in self.metric_for_best_model
 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
