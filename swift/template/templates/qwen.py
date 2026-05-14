@@ -300,14 +300,17 @@ class Qwen2VLTemplate(Template):
     version = 'v2'
     use_model = True
     support_padding_free = True
+    _requires_mm_token_type_ids = True
 
     def init_env_args(self):
         super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
-        get_rope_index = self._get_get_rope_index()
-        self.dummy_model = None
-        self.requires_mm_token_type_ids = 'mm_token_type_ids' in inspect.signature(get_rope_index).parameters
+        self.transformers_5_3 = self.transformers_version >= version.parse('5.3.0')
+
+    @property
+    def requires_mm_token_type_ids(self):
+        return self.transformers_5_3 and self._requires_mm_token_type_ids
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -667,6 +670,7 @@ register_template(
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     version = 'omni_v2_5'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
+    _requires_mm_token_type_ids = False
 
     def init_processor(self, processor) -> None:
         if processor is None:
