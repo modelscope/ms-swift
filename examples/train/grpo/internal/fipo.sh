@@ -38,6 +38,7 @@ swift rlhf \
     --beta 0 \
     --dynamic_sample true \
     --loss_type fipo \
+    --delta 10.0 \
     --epsilon_high 0.28 \
     --fipo_decay_rate 32 \
     --fipo_clip_range 0.2 \

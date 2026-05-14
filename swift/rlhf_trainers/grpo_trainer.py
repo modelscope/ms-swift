@@ -1170,6 +1170,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         coef_1 = torch.exp(log_importance_weights)
 
+        fipo_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
@@ -1183,8 +1184,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_token_loss = -soft_gate * advantages_expanded
         elif self.loss_type == 'real':
             per_token_loss = torch.zeros_like(per_token_logps)
-        elif self.loss_type == 'fipo':
-            fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
+        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
+            if self.loss_type == 'fipo':
+                fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
 
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
@@ -1193,16 +1195,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             per_token_loss1 = coef_1 * advantages.unsqueeze(1)
             per_token_loss2 = coef_2 * advantages.unsqueeze(1)
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
-
-            per_token_loss = per_token_loss * fipo_weight
-        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
-            coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-            if self.args.delta is not None:
-                coef_1 = torch.clamp(coef_1, max=self.args.delta)
-
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+            if self.loss_type == 'fipo':
+                per_token_loss = per_token_loss * fipo_weight
         if entropy_mask is not None:
             per_token_loss = per_token_loss * entropy_mask
         if per_token_kl is not None:
@@ -1290,6 +1284,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             'completion_token_count': completion_token_count,
         }
 
+        if fipo_metrics is not None:
+            fipo_future_kl = masked_batch_mean(fipo_metrics['future_kl'])
+            fipo_influence_weight = masked_batch_mean(fipo_metrics['influence_weight'])
+            fipo_safety_keep = masked_batch_mean(fipo_metrics['safety_mask'].float())
+            metrics_data['fipo'] = {
+                'future_kl_mean': self.accelerator.gather_for_metrics(fipo_future_kl).nanmean().item(),
+                'influence_weight_mean': self.accelerator.gather_for_metrics(fipo_influence_weight).nanmean().item(),
+                'safety_keep_ratio': self.accelerator.gather_for_metrics(fipo_safety_keep).nanmean().item(),
+            }
+
         if per_token_kl is not None:
             mean_kl = masked_batch_mean(per_token_kl)
             metrics_data['kl'] = self.accelerator.gather_for_metrics(mean_kl).nanmean().item()
@@ -1356,6 +1360,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rollout_metrics = metrics_data['rollout_correction']
             for key, value in rollout_metrics.items():
                 self._metrics[mode][f'rollout_correction/{key}'].append(value)
+
+        # Update FIPO metrics
+        if 'fipo' in metrics_data:
+            for key, value in metrics_data['fipo'].items():
+                self._metrics[mode][f'fipo/{key}'].append(value)
 
         # Update clipping metrics
         if 'clipping' in metrics_data:
@@ -1438,6 +1447,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         clip_values = {'low': [], 'high': [], 'region': [], 'low_min': [], 'high_max': []}
         cispo_clip_values = []
         entropy_thresholds = []
+        fipo_values = {}
 
         for chunk_metrics, chunk_weight in all_metrics_data:
             chunk_tokens = chunk_metrics['completion_token_count']
@@ -1458,6 +1468,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Collect KL metrics
             if 'kl' in chunk_metrics:
                 kl_values.append(chunk_metrics['kl'])
+
+            # Collect FIPO metrics (weighted by tokens)
+            if 'fipo' in chunk_metrics:
+                weight = chunk_tokens.item() if hasattr(chunk_tokens, 'item') else chunk_tokens
+                for key, value in chunk_metrics['fipo'].items():
+                    fipo_values.setdefault(key, []).append((value, weight))
 
             # Collect clipping metrics (weighted by tokens)
             if 'clipping' in chunk_metrics:
@@ -1507,6 +1523,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'high_clip_max': max(clip_values['high_max']),
                 'region_clip_mean': weighted_avg(clip_values['region'])
             }
+
+        if fipo_values:
+            aggregated_metrics['fipo'] = {key: weighted_avg(values) for key, values in fipo_values.items()}
 
         # Update metrics
         self._update_metrics(aggregated_metrics)

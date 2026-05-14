@@ -1304,6 +1304,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         coef_1 = torch.exp(log_importance_weights)
 
+        fipo_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
@@ -1313,8 +1314,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             is_positive = advantages.unsqueeze(1) > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
             per_token_loss = -soft_gate * advantages.unsqueeze(1)
-        elif self.loss_type == 'fipo':
-            fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
+        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
+            if self.loss_type == 'fipo':
+                fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
 
             coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
             if self.args.delta is not None:
@@ -1323,15 +1325,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_loss1 = coef_1 * advantages.unsqueeze(1)
             per_token_loss2 = coef_2 * advantages.unsqueeze(1)
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
-            per_token_loss = per_token_loss * fipo_weight
-        elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo']:
-            coef_2 = torch.clamp(coef_1, 1 - self.epsilon_low, 1 + self.epsilon_high)
-            if self.args.delta is not None:
-                coef_1 = torch.clamp(coef_1, max=self.args.delta)
-
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
-            per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
+            if self.loss_type == 'fipo':
+                per_token_loss = per_token_loss * fipo_weight
         elif self.loss_type == 'real':
             per_token_loss = torch.zeros_like(per_token_logps)
         else:
@@ -1468,6 +1463,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # Compute clipping metrics
         completion_token_count = completion_mask.sum().clamp(min=1.0)
+        if fipo_metrics is not None:
+            avg_metric['fipo/future_kl_mean'] = ((fipo_metrics['future_kl'] * completion_mask).sum()
+                                                 / completion_token_count).clone().detach()
+            avg_metric['fipo/influence_weight_mean'] = ((fipo_metrics['influence_weight'] * completion_mask).sum()
+                                                        / completion_token_count).clone().detach()
+            avg_metric['fipo/safety_keep_ratio'] = ((fipo_metrics['safety_mask'].float() * completion_mask).sum()
+                                                    / completion_token_count).clone().detach()
+
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
             # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level

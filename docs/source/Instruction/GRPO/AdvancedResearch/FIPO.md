@@ -38,15 +38,15 @@ $$
 
 ## 参数
 
-
-| 参数                      | 类型    | 默认值 | 说明                                                                            |
-| ------------------------- | ------- | ------ | ------------------------------------------------------------------------------- |
-| `--loss_type`             | `str`   | `grpo` | 设置为`fipo` 启用 FIPO loss                                                     |
-| `--fipo_decay_rate`       | `float` | `32.0` | Future-KL 折扣半衰参数，实际折扣为`2 ** (-1 / fipo_decay_rate)`                 |
-| `--fipo_clip_range`       | `float` | `0.2`  | influence weight 裁剪范围；`0.2` 表示默认裁剪到 `[0.8, 1.2]`                    |
-| `--fipo_clip_high_only`   | `bool`  | `true` | 若为`true`，权重只裁剪到 `[1.0, 1.0 + fipo_clip_range]`，更偏向放大正 Future-KL |
-| `--fipo_detach_weight`    | `bool`  | `true` | 是否对 influence weight 截断梯度                                                |
-| `--fipo_safety_threshold` | `float` | `4.0`  | 负 advantage 且 IS ratio 超过该阈值时屏蔽该 token 的策略损失                    |
+| 参数                        | 类型      | 默认值    | 说明                                                                                                             |
+|---------------------------|---------|--------|----------------------------------------------------------------------------------------------------------------|
+| `--loss_type`             | `str`   | `grpo` | 设置为`fipo` 启用 FIPO loss                                                                                         |
+| `--delta`                 | `float` | `None` | 启用后会同时用于 Future-KL 高 IS ratio token 过滤和主 loss 的 dual-clip 上限，应大于 `1 + epsilon_high`，对齐FIPO 32B训练脚本建议设置为 `10.0` |
+| `--fipo_decay_rate`       | `float` | `32.0` | Future-KL 折扣半衰参数，实际折扣为`2 ** (-1 / fipo_decay_rate)`                                                            |
+| `--fipo_clip_range`       | `float` | `0.2`  | influence weight 裁剪范围；`0.2` 表示默认裁剪到 `[0.8, 1.2]`                                                               |
+| `--fipo_clip_high_only`   | `bool`  | `true` | 若为`true`，权重只裁剪到 `[1.0, 1.0 + fipo_clip_range]`，更偏向放大正 Future-KL                                                |
+| `--fipo_detach_weight`    | `bool`  | `true` | 是否对 influence weight 截断梯度                                                                                      |
+| `--fipo_safety_threshold` | `float` | `4.0`  | 负 advantage 且 IS ratio 超过该阈值时，将 FIPO 权重限制到 `[0.8, 1.0]` 以避免过度惩罚                                                |
 
 ## 训练示例
 

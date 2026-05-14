@@ -39,14 +39,15 @@ $$
 ## Parameters
 
 
-| Parameter                 | Type    | Default | Description                                                                            |
-| ------------------------- | ------- | ------- | -------------------------------------------------------------------------------------- |
-| `--loss_type`             | `str`   | `grpo`  | Set to`fipo` to enable FIPO loss                                                       |
-| `--fipo_decay_rate`       | `float` | `32.0`  | Half-life parameter for Future-KL; the actual discount is`2 ** (-1 / fipo_decay_rate)` |
-| `--fipo_clip_range`       | `float` | `0.2`   | Influence weight clipping range;`0.2` clips to `[0.8, 1.2]`                            |
-| `--fipo_clip_high_only`   | `bool`  | `true`  | If`true`, clips the weight to `[1.0, 1.0 + fipo_clip_range]`                           |
-| `--fipo_detach_weight`    | `bool`  | `true`  | Whether to stop gradients through the influence weight                                 |
-| `--fipo_safety_threshold` | `float` | `4.0`   | Masks policy loss for negative-advantage tokens whose IS ratio exceeds this threshold  |
+| Parameter                 | Type    | Default | Description                                                                                                                                                                                                         |
+| ------------------------- | ------- | ------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--loss_type`             | `str`   | `grpo`  | Set to`fipo` to enable FIPO loss                                                                                                                                                                                    |
+| `--delta`                 | `float` | `None`  | When enabled, it is used for both Future-KL high-IS-ratio token filtering and the main-loss dual-clip upper bound, and should be greater than `1 + epsilon_high`. Set it to `10.0` to match the official 32B script |
+| `--fipo_decay_rate`       | `float` | `32.0`  | Half-life parameter for Future-KL; the actual discount is`2 ** (-1 / fipo_decay_rate)`                                                                                                                              |
+| `--fipo_clip_range`       | `float` | `0.2`   | Influence weight clipping range;`0.2` clips to `[0.8, 1.2]`                                                                                                                                                         |
+| `--fipo_clip_high_only`   | `bool`  | `true`  | If`true`, clips the weight to `[1.0, 1.0 + fipo_clip_range]`                                                                                                                                                        |
+| `--fipo_detach_weight`    | `bool`  | `true`  | Whether to stop gradients through the influence weight                                                                                                                                                              |
+| `--fipo_safety_threshold` | `float` | `4.0`   | Caps the FIPO weight to `[0.8, 1.0]` for negative-advantage tokens whose IS ratio exceeds this threshold                                                                                                            |
 
 ## Training Example
 

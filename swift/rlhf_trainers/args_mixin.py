@@ -329,7 +329,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             Defaults to True.
         fipo_detach_weight (bool): If `True`, stops gradients through the Future-KL influence weight. Defaults to True.
         fipo_safety_threshold (Optional[float]): Safety threshold for negative advantages. Tokens with
-            `advantage < 0` and importance ratio above this value contribute zero policy loss. Defaults to 4.0.
+            `advantage < 0` and importance ratio above this value have their FIPO influence weight capped to
+            `[0.8, 1.0]` to avoid over-penalization. Defaults to 4.0.
         advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
