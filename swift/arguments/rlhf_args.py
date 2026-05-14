@@ -422,14 +422,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self.max_completion_length = self.max_new_tokens = self.response_length = max_completion_length
 
     def _init_metric_for_best_model(self):
-        if self.rlhf_type not in {'ppo', 'grpo'}:
-            super()._init_metric_for_best_model()
-        elif self.rlhf_type == 'grpo':
-            if self.metric_for_best_model is None:
-                self.metric_for_best_model = 'reward'
-                if self.metric_for_best_model is not None:
-                    self.greater_is_better = True
-
+        if self.rlhf_type == 'grpo' and self.metric_for_best_model is None:
+            self.metric_for_best_model = 'reward'
+        super()._init_metric_for_best_model()
+ 
     def _init_simpo(self):
         if self.rlhf_type != 'simpo':
             return
