@@ -1448,6 +1448,8 @@ class Template(ProcessorMixin):
                 encoded['loss_scale'] += [0] * padding_len
             if encoded.get('length') is not None:
                 encoded['length'] += padding_len
+            if encoded.get('mm_token_type_ids') is not None:
+                encoded['mm_token_type_ids'] = F.pad(encoded['mm_token_type_ids'], (0, padding_len), value=0)
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):
