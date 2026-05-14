@@ -314,7 +314,7 @@ Tips for training Qwen3.5 with Megatron-SWIFT:
 - CP support: "mcore-bridge>=1.1.0" supports CP training for GDN. Additionally, the megatron-core [main branch](https://github.com/NVIDIA/Megatron-LM) needs to be installed.
 - By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set the environment variable `USE_MCORE_GDN=0` to switch to the transformers implementation. **Note that the transformers implementation does not support packing and GDN's TP/CP**.
 - Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
-  - Qwen3-Next GDN support refers to [this PR](https://github.com/modelscope/mcore-bridge/pull/76), requiring `mcore-bridge>=1.4.0`.
+  - Qwen3-Next Megatron GatedDeltaNet support refers to [this PR](https://github.com/modelscope/mcore-bridge/pull/76), requiring `mcore-bridge>=1.4.0`.
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
 - Regarding FP8 training: refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh). You need to install "mcore-bridge>=1.2.0", and set the parameter `--linear_decoupled_in_proj true` to decouple `in_proj` into `in_proj_qkvz` and `in_proj_ba`, where `in_proj_ba` is still trained in original precision.
 
