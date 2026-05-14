@@ -309,7 +309,7 @@ class Qwen2VLTemplate(Template):
         super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
-        self.transformers_5_3 = version.parse(transformers.__version__) >= version.parse('5.3.0')
+        self.transformers_5_3 = self.transformers_version >= version.parse('5.3.0')
 
     @property
     def requires_mm_token_type_ids(self):
