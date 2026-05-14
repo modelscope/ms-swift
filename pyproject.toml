@@ -131,5 +131,38 @@ exclude = ["tests", "tests.*"]
 version = { attr = "swift.version.__version__" }
 readme = { file = ["README.md"], content-type = "text/markdown" }
 
+[tool.isort]
+line_length = 120
+multi_line_output = 0
+known_standard_library = ["setuptools"]
+known_first_party = ["swift"]
+known_third_party = ["json", "yaml"]
+no_lines_before = ["STDLIB", "LOCALFOLDER"]
+default_section = "THIRDPARTY"
+
+[tool.yapf]
+based_on_style = "pep8"
+column_limit = 120
+blank_line_before_nested_class_or_def = true
+split_before_expression_after_opening_paren = true
+split_before_arithmetic_operator = true
+
+[tool.codespell]
+skip = "*.ipynb"
+quiet-level = 3
+ignore-words-list = "patten,nd,ty,mot,hist,formating,winn,gool,datas,wan,confids"
+
+[tool.flake8]
+max-line-length = 120
+select = ["B", "C", "E", "F", "P", "T4", "W", "B9"]
+ignore = ["F401", "F403", "F405", "F821", "W503", "E251", "W504", "E126"]
+exclude = ["docs/src", "*.pyi", ".git", "peft.py"]
+
+[tool.darglint]
+ignore = ["DAR101"]
+
+[tool.easy_install]
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
 [tool.uv]
 package = true
