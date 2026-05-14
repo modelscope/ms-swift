@@ -1,12 +1,6 @@
 # 8 * 60GiB, 8s/it
-
-# Note: linear-attention does not support padding_free.
-# Therefore, if you enable padding_free (the default),
-# padding_free will be toggled off/on around the linear-attention sections.
-
-# Note: In Qwen3-Next's mcore implementation, enabling --packing disables the removal of padding_free during the linear-attention stage.
-# This can improve training efficiency and memory usage, but it makes different sequences visible to each other.
-
+# padding_free/packing support requires "mcore-bridge>=1.4.0":
+# https://github.com/modelscope/mcore-bridge/pull/76
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
