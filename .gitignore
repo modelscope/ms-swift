@@ -146,6 +146,7 @@ megatron_output/
 /*-hf/
 /*_cached_dataset/
 /sample_output/
+.qoder/
 
 # Pytorch
 *.pth

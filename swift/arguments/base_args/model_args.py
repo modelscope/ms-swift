@@ -32,8 +32,9 @@ class ModelArguments:
         torch_dtype (Optional[str]): The data type of the model weights. Supports 'float16', 'bfloat16', 'float32'.
             Defaults to None, in which case it's read from the 'config.json' file.
         attn_impl (Optional[str]): The attention implementation to use. Options include 'sdpa', 'eager', 'flash_attn',
-            'flash_attention_2', 'flash_attention_3', etc. Defaults to None, which means it will be read from
-            'config.json'. Note: Support for these implementations depends on the model's transformers implementation.
+            'flash_attention_2', 'flash_attention_3', 'flash_attention_4', etc.
+            Defaults to None, which means it will be read from 'config.json'.
+            Note: Support for these implementations depends on the model's transformers implementation.
             If set to 'flash_attn' (for backward compatibility), 'flash_attention_2' will be used.
         experts_impl (Optional[str]): Expert implementation type, options are 'grouped_mm', 'batched_mm', 'eager'.
             Defaults to None. This feature requires "transformers>=5.0.0".
@@ -73,7 +74,8 @@ class ModelArguments:
     torch_dtype: Literal['bfloat16', 'float16', 'float32', None] = None
     # flash_attn: It will automatically convert names based on the model.
     # None: It will be automatically selected between sdpa and eager.
-    # 'flash_attn', 'sdpa', 'eager', 'flex_attention', 'flash_attention_2', 'flash_attention_3'
+    # 'flash_attn', 'sdpa', 'eager', 'flex_attention',
+    # 'flash_attention_2', 'flash_attention_3', 'flash_attention_4'
     attn_impl: Optional[str] = None
     experts_impl: Optional[str] = None
     new_special_tokens: List[str] = field(default_factory=list)

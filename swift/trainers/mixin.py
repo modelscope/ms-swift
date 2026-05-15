@@ -56,6 +56,8 @@ from .utils import (can_return_loss, dynamic_gradient_checkpointing, find_labels
 
 logger = get_logger()
 
+transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0')
+
 
 class SwiftMixin:
     FLASH_CKPT_WAIT_TIMEOUT = 1800
@@ -77,6 +79,7 @@ class SwiftMixin:
         self.padding_free = self.template.padding_free
         self.task_type = self.template.task_type
         self.problem_type = getattr(model.config, 'problem_type', None)
+        self.optimizer_callback = optimizers_map[args.optimizer or 'default'](args, self)
         if args.check_model and hasattr(model, 'model_dir'):
             with ms_logger_context(logging.CRITICAL), patch_modelscope_hub_timeout():
                 config_info = self._collect_config_info()
@@ -120,7 +123,7 @@ class SwiftMixin:
                 eval_dataset=eval_dataset,
                 **kwargs)
         # fix https://github.com/huggingface/transformers/pull/43919
-        if version.parse(transformers.__version__) >= version.parse('5.0.0'):
+        if transformers_5:
             self.accelerator.gradient_state.plugin_kwargs['num_steps'] = 1
         self._add_callbacks()
         if get_function(model.__class__.forward) is not get_function(model.forward):
@@ -199,10 +202,14 @@ class SwiftMixin:
         use_logits_to_keep = self.args.use_logits_to_keep
         if use_logits_to_keep is None:
             base_model = self.template.get_base_model(self.model)
-            use_logits_to_keep = (not self.model.model_meta.is_multimodal
-                                  and 'logits_to_keep' in inspect.signature(base_model.forward).parameters
-                                  and default_value)
-        logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
+            if self.model.model_meta.is_multimodal and not transformers_5:
+                use_logits_to_keep = False
+            elif 'logits_to_keep' not in inspect.signature(base_model.forward).parameters:
+                use_logits_to_keep = False
+            else:
+                use_logits_to_keep = default_value
+            self.args.use_logits_to_keep = use_logits_to_keep
+            logger.info_once(f'use_logits_to_keep: {use_logits_to_keep}')
         return use_logits_to_keep
 
     def _save_initial_model(self, output_dir):
@@ -983,8 +990,20 @@ class SwiftMixin:
         return res
 
     def create_optimizer_and_scheduler(self, num_training_steps: int):
-        optimizer_callback: OptimizerCallback = optimizers_map[self.args.optimizer or 'default'](self.args, self)
-        optimizer_callback.create_optimizer_and_scheduler(num_training_steps)
+        self.optimizer_callback.create_optimizer_and_scheduler(num_training_steps)
+
+    def create_optimizer(self, model=None):
+        self._optimizer_ori = self.optimizer = self.optimizer_callback.create_optimizer(model=model)
+        if self.optimizer is not None:
+            self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
+        return self.optimizer
+
+    def create_scheduler(self, num_training_steps: int, optimizer=None):
+        if optimizer is None:
+            # fix deepspeed & cosine_with_min_lr (transformers 5.8.0)
+            optimizer = getattr(self, '_optimizer_ori', None)
+        self.lr_scheduler = self.optimizer_callback.create_scheduler(num_training_steps, optimizer)
+        return self.lr_scheduler
 
     @staticmethod
     def _get_listwise_reranker_preds(logits, labels):

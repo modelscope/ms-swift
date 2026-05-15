@@ -64,20 +64,12 @@ class MegatronTrainer(BaseMegatronTrainer):
             losses = losses * loss_scale
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
-        if args.context_parallel_size > 1 and not self.mcore_013:
-            loss = all_reduce(loss, group=mpu.get_context_parallel_group())
-
         # Reduce loss for logging.
         reporting_loss = loss.detach().clone()
         torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group())
 
         lm_loss = loss[0]
-        if not self.mcore_013:
-            # fix megatron-lm bug
-            # https://github.com/NVIDIA/Megatron-LM/blob/core_r0.12.0/megatron/core/pipeline_parallel/schedules.py#L291
-            lm_loss = lm_loss / mpu.get_context_parallel_world_size()
-        else:
-            lm_loss = lm_loss.clone()
+        lm_loss = lm_loss.clone()
         local_num_tokens = loss[1].detach().clone().to(torch.int)
         metrics = {'loss': reporting_loss}
         if args.enable_channel_loss:

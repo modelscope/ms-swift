@@ -160,7 +160,7 @@ AMD GPUs often have large VRAM, so you can tune several knobs together to improv
 - **Optimizer CPU offload**: If VRAM allows, disable with `--optimizer_cpu_offload false`.
 - **Activation / gradient checkpointing**: If VRAM allows, use `--recompute_granularity none`, or `--recompute_granularity selective` with `--recompute_modules` for finer control.
 - **MoE models**: Set `export NVTE_USE_CUTLASS_GROUPED_GEMM=1` for the optimized grouped GEMM kernel.
-- **Models with GatedDeltaNet**: Set `SWIFT_USE_MCORE_GDN=1` to use the Megatron-Core implementation.
+- **Models with GatedDeltaNet**: Set `USE_MCORE_GDN=1` to use the Megatron-Core implementation.
 - **Stability on some AMD GPUs**: Set `export HSA_NO_SCRATCH_RECLAIM=1` to avoid known issues and stabilize performance.
 
 Single-node training:
@@ -180,7 +180,7 @@ MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 SKIP_MULTIMODAL_MTP_VALIDATION=1 \
-SWIFT_USE_MCORE_GDN=1 \
+USE_MCORE_GDN=1 \
 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \

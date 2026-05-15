@@ -188,9 +188,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.padding_free = True
             else:
                 feature = 'padding_free'
-            if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:
+            supported_impls = ['flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4']
+            if self.attn_impl not in supported_impls:
+                supported_impls_str = ', '.join([f'"{impl}"' for impl in supported_impls])
                 raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
-                                 'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
+                                 f'Please use one of: {supported_impls_str}.')
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
@@ -411,6 +413,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.eval_metric = 'reranker'
         if self.eval_metric == 'nlg':
             require_version('jieba', 'Setting `--eval_metric nlg` requires installing the jieba dependency.')
+        self._init_metric_for_best_model()
+
+    def _init_metric_for_best_model(self):
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None and self.metric_for_best_model is not None:

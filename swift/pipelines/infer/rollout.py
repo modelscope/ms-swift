@@ -32,6 +32,7 @@ from fastapi import FastAPI
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
+from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, List, Optional, Union
 
 from swift.arguments import RolloutArguments
@@ -127,10 +128,17 @@ class WeightSyncWorkerExtension:
                 Total number of participating processes in the update group.
         """
         if self.communicator is not None:
-            raise RuntimeError('Weight update group already initialized. Call close_communicator first.')
+            return
 
-        # Get the rank of the current worker in the global world group.
-        rank = get_world_group().rank
+        parallel_config = getattr(getattr(self, 'vllm_config', None), 'parallel_config', None)
+        dp_index = int(getattr(parallel_config, 'data_parallel_index', 0)) if parallel_config is not None else 0
+        if dp_index > 0:
+            dp_rank = dp_index
+            tp_size = int(parallel_config.tensor_parallel_size)
+        else:
+            dp_rank = int(os.environ.get('SWIFT_ROLLOUT_DP_RANK', '0'))
+            tp_size = int(os.environ.get('SWIFT_ROLLOUT_TP_RANK', '1'))
+        rank = get_world_group().rank + dp_rank * tp_size
 
         # Create a stateless process group to manage communication between training processes and vLLM workers.
         # Initialize the NCCL-based communicator for weight synchronization.
@@ -584,17 +592,40 @@ def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
     return rollout_engine
 
 
+def _set_visible_devices_for_dp_rank(data_parallel_rank: int, tensor_parallel_size: int):
+
+    def _get_device_env_var():
+        if is_torch_npu_available():
+            return 'ASCEND_RT_VISIBLE_DEVICES'
+        return 'CUDA_VISIBLE_DEVICES'
+
+    env_var = _get_device_env_var()
+    current = os.environ.get(env_var)
+    if current:
+        all_devices = current.split(',')
+    else:
+        from swift.utils import get_device_count
+        all_devices = [str(i) for i in range(get_device_count())]
+
+    start = data_parallel_rank * tensor_parallel_size
+    end = start + tensor_parallel_size
+    selected = all_devices[start:end]
+    os.environ[env_var] = ','.join(selected)
+
+
 def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int, connection: Connection) -> None:
-    # Set required environment variables for DP to work with vLLM
-    args._import_external_plugins()
-    os.environ['VLLM_DP_RANK'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_RANK_LOCAL'] = str(data_parallel_rank)
-    os.environ['VLLM_DP_SIZE'] = str(args.vllm_data_parallel_size)
-    os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
-    worker_seed = get_seed()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
-    rollout_engine = get_rollout_engine_type(args, engine)
-    # Send ready signal to parent process
+    try:
+        args._import_external_plugins()
+        _set_visible_devices_for_dp_rank(data_parallel_rank, args.vllm_tensor_parallel_size)
+        os.environ['VLLM_DP_MASTER_PORT'] = str(master_port)
+        os.environ['SWIFT_ROLLOUT_DP_RANK'] = str(data_parallel_rank)
+        os.environ['SWIFT_ROLLOUT_TP_RANK'] = str(args.vllm_tensor_parallel_size)
+        worker_seed = get_seed()
+        engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
+        rollout_engine = get_rollout_engine_type(args, engine)
+    except Exception:
+        connection.send({'status': 'error', 'error': traceback.format_exc()})
+        return
     connection.send({'status': 'ready'})
 
     while True:
@@ -623,13 +654,16 @@ def llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int
 
 async def async_llm_worker(args: RolloutArguments, data_parallel_rank: int, master_port: int,
                            connection: Connection) -> None:
-    # Set required environment variables for DP to work with vLLM
-    args._import_external_plugins()
-    worker_seed = get_seed()
-    engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
-    rollout_engine = get_rollout_engine_type(args, engine)
-
-    # Send ready signal to parent process
+    try:
+        args._import_external_plugins()
+        os.environ['SWIFT_ROLLOUT_DP_RANK'] = str(data_parallel_rank)
+        os.environ['SWIFT_ROLLOUT_TP_RANK'] = str(args.vllm_tensor_parallel_size)
+        worker_seed = get_seed()
+        engine = SwiftRolloutDeploy.get_infer_engine(args, template=args.get_template(), seed=worker_seed)
+        rollout_engine = get_rollout_engine_type(args, engine)
+    except Exception:
+        connection.send({'status': 'error', 'error': traceback.format_exc()})
+        return
     connection.send({'status': 'ready'})
 
     loop = asyncio.get_running_loop()
@@ -675,6 +709,8 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/update_adapter_param/')(self.update_adapter_param)
         self.app.post('/update_flattened_params/')(self.update_flattened_params)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
+        self.app.post('/reset_encoder_cache/')(self.reset_encoder_cache)
+        self.app.post('/reset_mm_cache/')(self.reset_mm_cache)
         self.app.post('/close_communicator/')(self.close_communicator)
         self.app.post('/infer/', response_model=None)(self.infer)
         self.app.post('/get_engine_type/')(self.get_engine_type)
@@ -703,24 +739,32 @@ class SwiftRolloutDeploy(SwiftPipeline):
 
     @asynccontextmanager
     async def lifespan(self, app: FastAPI):
-        # Wait for all workers to send "ready"
-        ready_connections = set()
+        pending_connections = set(range(self.num_connections))
 
-        while len(ready_connections) < self.num_connections:
-            for connection in self.connections:
+        while pending_connections:
+            for idx in list(pending_connections):
+                connection = self.connections[idx]
+                if not connection.poll(timeout=0.1):
+                    if not self.processes[idx].is_alive():
+                        raise RuntimeError(f'Worker process {idx} exited unexpectedly during initialization. '
+                                           'Check worker logs for details.')
+                    continue
                 msg = connection.recv()
+                if isinstance(msg, dict) and msg.get('status') == 'error':
+                    error_msg = msg.get('error', 'Unknown error')
+                    raise RuntimeError(f'Worker process {idx} failed during initialization:\n{error_msg}')
                 if isinstance(msg, dict) and msg.get('status') == 'ready':
-                    ready_connections.add(connection)
+                    pending_connections.discard(idx)
 
         yield
 
         # Wait for processes to terminate
         for process in self.processes:
-            process.join(timeout=10)  # Wait for 10 seconds for the process to terminate
+            process.join(timeout=10)
             if process.is_alive():
                 logger.warning(f'Process {process} is still alive after 10 seconds, attempting to terminate...')
                 process.terminate()
-                process.join()  # ensure process termination after calling terminate()
+                process.join()
 
     @staticmethod
     def get_infer_engine(args: RolloutArguments, template=None, **kwargs):
@@ -902,6 +946,22 @@ class SwiftRolloutDeploy(SwiftPipeline):
         all_outputs = [connection.recv() for connection in self.connections]
         success = all(output for output in all_outputs)
         return {'message': 'Request received, resetting prefix cache status: ' + str(success)}
+
+    async def reset_encoder_cache(self):
+        """Resets the encoder cache (vision encoder embeddings) for the model."""
+        for connection in self.connections:
+            connection.send({'type': 'call', 'method': 'reset_encoder_cache'})
+        all_outputs = [connection.recv() for connection in self.connections]
+        success = all(output for output in all_outputs)
+        return {'message': 'Request received, resetting encoder cache status: ' + str(success)}
+
+    async def reset_mm_cache(self):
+        """Resets the multimodal processor cache for the model."""
+        for connection in self.connections:
+            connection.send({'type': 'call', 'method': 'reset_mm_cache'})
+        all_outputs = [connection.recv() for connection in self.connections]
+        success = all(output for output in all_outputs)
+        return {'message': 'Request received, resetting mm cache status: ' + str(success)}
 
     async def get_engine_type(self):
         """

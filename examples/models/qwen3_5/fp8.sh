@@ -1,5 +1,6 @@
 # 2 * 50GiB
-# Save FP8 weights directly.
+# `--model` can directly accept a model with FP8 weights,
+# and the FP8 weight model will be saved directly upon training completion.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
@@ -52,7 +53,7 @@ megatron sft \
     --attention_backend flash
 
 # PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-# CUDA_VISIBLE_DEVICES=0,1,2,3 \
+# CUDA_VISIBLE_DEVICES=0 \
 # IMAGE_MAX_TOKEN_NUM=1024 \
 # VIDEO_MAX_TOKEN_NUM=128 \
 # FPS_MAX_FRAMES=12 \
@@ -61,3 +62,19 @@ megatron sft \
 #     --stream true \
 #     --enable_thinking false \
 #     --load_data_args true
+
+# vllm
+# PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
+# CUDA_VISIBLE_DEVICES=0 \
+# IMAGE_MAX_TOKEN_NUM=1024 \
+# VIDEO_MAX_TOKEN_NUM=128 \
+# FPS_MAX_FRAMES=12 \
+# swift infer \
+#     --model megatron_output/Qwen3.5-4B-FP8/vx-xxx/checkpoint-xxx \
+#     --stream true \
+#     --enable_thinking false \
+#     --load_data_args true \
+#     --infer_backend vllm \
+#     --vllm_tensor_parallel_size 1 \
+#     --vllm_max_model_len 8192 \
+#     --vllm_speculative_config '{"method":"qwen3_next_mtp","num_speculative_tokens":2}'

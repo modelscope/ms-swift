@@ -7,6 +7,7 @@ import os
 import re
 import time
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import uuid
 from accelerate.utils import broadcast_object_list, gather_object, is_peft_model, set_seed
@@ -32,7 +33,8 @@ from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response
+from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
+                         to_device)
 from .arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
@@ -64,6 +66,19 @@ class AsyncGenerateCallback(TrainerCallback):
         self.trainer._prefetch(train_dataloader)
 
 
+class SyncRefModelCallback(TrainerCallback):
+
+    def __init__(self, trainer: 'RolloutTrainerMixin'):
+        self.trainer = trainer
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if self.trainer.ref_model is None:
+            return
+        if state.global_step % args.ref_model_sync_steps != 0:
+            return
+        self.trainer._sync_ref_model_weights(args.ref_model_mixup_alpha)
+
+
 class RolloutTrainerMixin(RLHFTrainerMixin):
     """
     Mixin for RLHF trainers that use rollout-based methods (e.g., GRPO, GKD).
@@ -93,6 +108,55 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self._prepare_scheduler()
         self._prepare_vllm()
         self._prepare_async_generate()
+        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
+
+    @staticmethod
+    def _split_data_by_steps(inputs: DataType, steps: int) -> List[DataType]:
+        """Split a list of inputs into `steps` chunks with balanced sizes."""
+        if steps <= 1:
+            return [inputs]
+
+        chunk_size = len(inputs) // steps
+        remainder = len(inputs) % steps
+        chunks: List[DataType] = []
+        start_idx = 0
+        for i in range(steps):
+            current_chunk_size = chunk_size + (1 if i < remainder else 0)
+            end_idx = start_idx + current_chunk_size
+            chunks.append(inputs[start_idx:end_idx])
+            start_idx = end_idx
+        return chunks
+
+    def split_by_mini_batches(self, inputs: DataType) -> List[DataType]:
+        """Split inputs into mini-batches based on steps_per_generation.
+
+        For sequence_parallel_size > 1, gathers inputs across SP/RP groups first,
+        then splits with an adjusted spg that accounts for the parallel world size.
+        Used by both GRPO and GKD trainers.
+        """
+        if self.template.sequence_parallel_size == 1:
+            mode: str = 'train' if self.model.training else 'eval'
+            spg: int = self.args.steps_per_generation if mode == 'train' else 1
+            return self._split_data_by_steps(inputs, spg)
+        else:
+            output = [None] * sequence_parallel.sp_world_size
+            dist.all_gather_object(output, inputs, group=sequence_parallel.sp_group)
+            if sequence_parallel.rp_world_size > 1:
+                output_rp = [None] * sequence_parallel.rp_world_size
+                output = [p for sublist in output for p in sublist]
+                dist.all_gather_object(output_rp, output, group=sequence_parallel.rp_group)
+                output = output_rp
+            inputs = [p for sublist in output for p in sublist]
+
+            mode = 'train' if self.model.training else 'eval'
+            if mode == 'eval':
+                inputs = inputs[:self.args.per_device_eval_batch_size]
+                spg = 1
+            else:
+                spg = self.args.steps_per_generation * sequence_parallel.world_size
+
+            spg_chunks = self._split_data_by_steps(inputs, spg)
+            return to_device(spg_chunks, device=self.accelerator.device)
 
     def _prepare_rollout_params(self):
         """Initialize rollout generation parameters"""
@@ -138,6 +202,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self.vllm_use_async_engine = False
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        # split model parameters into batches for synchronized weight transfer / ref sync
         if not args.use_vllm:
             return
 
@@ -149,12 +214,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
                              'please update vLLM to 0.10.2 or later.')
 
-        # split model parameters into batches for synchronized weight transfer
-        self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
-
         if self.vllm_mode == 'server':
             if self.accelerator.is_main_process:
                 self.vllm_client.get_engine_type()
+                self.vllm_client.reset_mm_cache()
                 vllm_use_async_engine = [self.vllm_client.use_async_engine]
                 use_gym_env = [self.vllm_client.use_gym_env]
                 enable_multi_turn = [self.vllm_client.enable_multi_turn]
@@ -184,6 +247,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
             with context():
                 self.engine = self._prepare_vllm_engine()
+                self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
         self.dynamic_num_samples = False  # grpo multi-turn
@@ -389,11 +453,19 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         else:
             self._move_adapter_to_vllm()
 
-        # Reset prefix cache
+        self._reset_vllm_cache()
+
+    def _reset_vllm_cache(self):
+        # Reset prefix cache and encoder cache after weight update
+        vllm_ge_16 = check_vllm_version_ge('0.16')
         if self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.reset_prefix_cache()
+            if vllm_ge_16:
+                self.vllm_client.reset_encoder_cache()
         elif self.vllm_mode == 'colocate':
             self.engine.engine.reset_prefix_cache()
+            if vllm_ge_16:
+                self.engine.engine.reset_encoder_cache()
 
     def _move_adapter_to_vllm(self):
         """Transfer LoRA adapter weights to vLLM engine"""
@@ -545,7 +617,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             # Convert DTensor to regular Tensor if needed (FSDP2)
             if hasattr(param, 'full_tensor'):
                 if param.is_cpu:
-                    param = param.to(torch.device('cuda'))
+                    param = param.to(get_current_device())
                 param = param.full_tensor()
 
             processed[clean_name] = param
@@ -646,7 +718,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     continue
                 if hasattr(param, 'full_tensor'):
                     if param.is_cpu:
-                        param = param.to(torch.device('cuda'))
+                        param = param.to(get_current_device())
                     param = param.full_tensor()
                 raw_state_dict[name] = param
         else:
@@ -716,6 +788,46 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             self.base_sync_done = True
             if self.rollout_enable_lora:
                 self._move_adapter_to_vllm()
+
+    @torch.no_grad()
+    def _sync_ref_model_weights(self, alpha: float) -> None:
+        policy = self.accelerator.unwrap_model(self.model)
+        ref = self.accelerator.unwrap_model(self.ref_model)
+        policy_named = dict(policy.named_parameters())
+        ref_named = dict(ref.named_parameters())
+
+        deepspeed_plugin = self.accelerator.state.deepspeed_plugin
+        zero3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
+
+        def _mix_inplace(ref_p: torch.Tensor, pol_p: torch.Tensor) -> None:
+            ref_p.data.mul_(1.0 - alpha).add_(pol_p.data, alpha=alpha)
+
+        if zero3:
+            import deepspeed
+
+        for parameter_group in self.parameter_groups:
+            names = [n for n in (parameter_group or []) if n in policy_named]
+            if not names:
+                continue
+
+            params_to_update = []
+            for n in names:
+                if n not in ref_named:
+                    raise KeyError(f'sync_ref: ref has no parameter {n!r}; policy and ref must align.')
+                params_to_update.append((ref_named[n], policy_named[n]))
+
+            if zero3:
+                ref_params = [p[0] for p in params_to_update]
+                policy_params = [p[1] for p in params_to_update]
+                to_gather = policy_params + ref_params
+                # modifier_rank=0 matches TRL; only rank 0 applies the mix inside GatheredParameters.
+                with deepspeed.zero.GatheredParameters(to_gather, modifier_rank=0):
+                    if deepspeed.comm.get_rank() == 0:
+                        for rp, pp in params_to_update:
+                            _mix_inplace(rp, pp)
+            else:
+                for rp, pp in params_to_update:
+                    _mix_inplace(rp, pp)
 
     def _rollout(self,
                  inputs: Optional[DataType],
@@ -923,10 +1035,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                         rollout_logprobs[index][-1].extend(current_logprobs)
                     else:
                         rollout_logprobs[index].append(current_logprobs)
-
-                if current_request.messages[-1]['role'] == 'assistant':
-                    # for continuation, we add dummy response, add here
-                    current_request.messages.append({'role': 'assistant', 'content': None})
 
                 requests[index] = current_request
                 next_turn_index_to_infer.append(index)

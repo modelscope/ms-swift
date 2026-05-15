@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from swift.utils import get_env_args
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -336,6 +337,57 @@ register_template(
         agent_template='hunyuan_hermes'))
 
 
+class HyV3Template(Template):
+
+    def init_env_args(self):
+        super().init_env_args()
+        # reasoning_effort: "no_think", "low", "high" (deep chain-of-thought)
+        # TODO: sample level
+        self.reasoning_effort = get_env_args('reasoning_effort', str, None)
+        if self.reasoning_effort is None:
+            self.reasoning_effort = 'high' if self.enable_thinking else 'no_think'
+        self.enable_thinking = self.reasoning_effort != 'no_think'
+        self.chat_template_kwargs = {'reasoning_effort': self.reasoning_effort}
+
+    def _get_enable_thinking(self, inputs=None):
+        reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is not None:
+            return reasoning_effort != 'no_think'
+        return super()._get_enable_thinking(inputs)
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is None:
+            reasoning_effort = self.reasoning_effort
+        if inputs.tools:
+            # For tool calls, append reasoning_mode after </tool_calls> in the tool instruction
+            system = system.replace(
+                'you should print </tool_calls>',
+                f'you should print </tool_calls><｜reasoning_mode｜>reasoning_effort:{reasoning_effort}')
+        else:
+            # For non-tool calls, append reasoning_mode to the system/prefix area
+            mode_str = f'<｜reasoning_mode｜>reasoning_effort:{reasoning_effort}'
+            system = (system or '') + mode_str
+        return system
+
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hy_v3,
+        prefix=['<｜hy_begin▁of▁sentence｜>'],
+        system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}'],
+        prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
+        chat_sep=['<｜hy_eos｜>'],
+        suffix=['<｜hy_eos｜>'],
+        template_cls=HyV3Template,
+        is_thinking=True,
+        thinking_prefix='<think>',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+        agent_template='hy_v3'))
+
+
 class GptTemplate(Template):
     support_padding_free = False
 
@@ -404,6 +456,17 @@ register_template(
     ))
 
 register_template(
+    TemplateMeta(
+        LLMTemplateType.ring2_5,
+        prefix=[],
+        system_prefix=['<role>SYSTEM</role>\n{{SYSTEM}}\n\n'],
+        prompt=['<role>HUMAN</role>\n{{QUERY}}<|role_end|>\n\n<role>ASSISTANT</role>\n'],
+        chat_sep=['<|role_end|>\n\n'],
+        suffix=['<|role_end|>\n\n'],
+        is_thinking=True,
+    ))
+
+register_template(
     QwenTemplateMeta(
         LLMTemplateType.iquestcoder,
         default_system='You are LoopCoder, a helpful assistant developed by IQuest.',
@@ -430,8 +493,6 @@ class YoutuLLMTemplate(Template):
                     break
 
     def _remove_history_thinking(self, inputs) -> None:
-        if self.is_training and self.loss_scale.base_strategy != 'last_round':
-            return
         messages = inputs.messages
         first_tool_index = len(messages)
         for i, message in enumerate(messages):

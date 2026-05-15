@@ -106,8 +106,8 @@ class SeedAgentTemplate(BaseAgentTemplate):
             return system or ''
 
         tool_defs = [
-            tool_def for tool in tools if (wrapped_tool := self.wrap_tool(tool)).get('type') == 'function' and
-            (tool_def := self._build_tool_def_string(wrapped_tool)) != ''
+            tool_def for tool in tools if (wrapped_tool := self.wrap_tool(tool)).get('type') == 'function' and (
+                tool_def := self._build_tool_def_string(wrapped_tool)) != ''
         ]
         tool_defs_joined = '\n\n'.join(tool_defs)
 

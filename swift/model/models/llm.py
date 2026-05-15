@@ -312,6 +312,20 @@ register_model(
 
 register_model(
     ModelMeta(
+        LLMModelType.hy_v3,
+        [
+            ModelGroup([
+                Model('Tencent-Hunyuan/Hy3-preview', 'tencent/Hy3-preview'),
+                Model('Tencent-Hunyuan/Hy3-preview-Base', 'tencent/Hy3-preview-Base'),
+            ])
+        ],
+        template=TemplateType.hy_v3,
+        requires=['transformers>=5.6.0'],
+        architectures=['HYV3ForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
         LLMModelType.gpt_oss, [
             ModelGroup([
                 Model('openai-mirror/gpt-oss-20b', 'openai/gpt-oss-20b'),
@@ -339,25 +353,38 @@ register_model(
 
 register_model(
     ModelMeta(
-        LLMModelType.ling2,
+        LLMModelType.bailing_moe,
         [
             ModelGroup([
                 Model('inclusionAI/Ling-mini-2.0', 'inclusionAI/Ling-mini-2.0'),
                 Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
-            ])
+                Model('inclusionAI/Ling-1T', 'inclusionAI/Ling-1T'),
+            ],
+                       template=TemplateType.ling2),
+            ModelGroup([
+                Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
+            ], template=TemplateType.ring2)
         ],
-        template=TemplateType.ling2,
         architectures=['BailingMoeV2ForCausalLM'],
     ))
 
 register_model(
     ModelMeta(
-        LLMModelType.ring2,
-        [ModelGroup([
-            Model('inclusionAI/Ring-mini-2.0', 'inclusionAI/Ring-mini-2.0'),
-        ])],
-        template=TemplateType.ring2,
-        architectures=['BailingMoeV2ForCausalLM'],
+        LLMModelType.bailing_hybrid,
+        [
+            ModelGroup([
+                Model('inclusionAI/Ling-2.5-1T', 'inclusionAI/Ling-2.5-1T'),
+                Model('inclusionAI/Ling-2.6-1T', 'inclusionAI/Ling-2.6-1T'),
+                Model('inclusionAI/Ling-2.6-flash', 'inclusionAI/Ling-2.6-flash'),
+            ],
+                       template=TemplateType.ling2),
+            ModelGroup([
+                Model('inclusionAI/Ring-2.5-1T', 'inclusionAI/Ring-2.5-1T'),
+                Model('inclusionAI/Ring-2.6-1T', 'inclusionAI/Ring-2.6-1T'),
+            ],
+                       template=TemplateType.ring2_5),
+        ],
+        architectures=['BailingMoeV2_5ForCausalLM'],
     ))
 
 register_model(

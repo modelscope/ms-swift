@@ -156,7 +156,7 @@ AMD GPU 显存相对较大，因此可以通过同时对以下参数进行联合
 - 显存允许的情况下关闭 optimizer cpu offload：设置 `--optimizer_cpu_offload false`
 - 显存允许的情况下调整 activation/gradient checkpointing：设置 `--recompute_granularity none`，或者 `--recompute_granularity selective` 配合 `--recompute_modules` 进行细粒度的控制
 - 对于 MoE 模型，建议设置 `export NVTE_USE_CUTLASS_GROUPED_GEMM=1` 以使用优化的 grouped gemm kernel
-- 对于带有 GatedDeltaNet 结构的模型，建议设置 `SWIFT_USE_MCORE_GDN=1` 使用 mcore 的实现版本
+- 对于带有 GatedDeltaNet 结构的模型，建议设置 `USE_MCORE_GDN=1` 使用 mcore 的实现版本
 - 为避免在某些 AMD GPU 上可能出现的问题，保证性能更稳定，建议设置 `export HSA_NO_SCRATCH_RECLAIM=1`
 
 单机训练：
@@ -176,7 +176,7 @@ MAX_PIXELS=1003520 \
 VIDEO_MAX_PIXELS=50176 \
 FPS_MAX_FRAMES=12 \
 SKIP_MULTIMODAL_MTP_VALIDATION=1 \
-SWIFT_USE_MCORE_GDN=1 \
+USE_MCORE_GDN=1 \
 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
     --dataset 'AI-ModelScope/LongAlpaca-12k' \

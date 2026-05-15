@@ -46,7 +46,7 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
     infer_batch(engine, infer_requests)
 
     messages = [{'role': 'user', 'content': 'who are you?'}]
-    infer_stream(engine, InferRequest(messages=messages))
+    infer_stream(engine, InferRequest(messages=messages, chat_template_kwargs={'enable_thinking': False}))
 
 
 if __name__ == '__main__':
@@ -54,7 +54,6 @@ if __name__ == '__main__':
                        run_deploy)
 
     # NOTE: In a real deployment scenario, please comment out the context of run_deploy.
-    with run_deploy(
-            DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1,
-                            infer_backend='vllm')) as port:
+    with run_deploy(DeployArguments(model='Qwen/Qwen3.5-4B', verbose=False, log_interval=-1,
+                                    infer_backend='vllm')) as port:
         run_client(port=port)

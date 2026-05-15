@@ -7,9 +7,10 @@ from .base import OptimizerCallback
 
 class MuonOptimizerCallback(OptimizerCallback):
 
-    def create_optimizer(self):
+    def create_optimizer(self, model=None):
         args = self.args
-        model = self.trainer.model
+        if model is None:
+            model = self.trainer.model
         if not args.local_repo_path:
             args.local_repo_path = git_clone_github('https://github.com/MoonshotAI/Moonlight.git')
         sys.path.append(os.path.join(args.local_repo_path, 'examples'))

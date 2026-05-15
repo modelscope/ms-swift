@@ -91,33 +91,47 @@ class LossScale:
         last_user_round = get_last_user_round(messages)
         for context, context_type in zip(context_list, context_types):
             is_last_round = 2 * i >= last_user_round
-            query, loss = None, None
+            query, loss, loss_scale = None, None, None
             if context_type == ContextType.RESPONSE:
                 query = messages[2 * i]['content']
                 # Currently, we only support applying loss/mask to the response part.
                 loss = messages[2 * i + 1].get('loss')
+                loss_scale = messages[2 * i + 1].get('loss_scale')
                 assert context == messages[2 * i + 1]['content']
                 i += 1
-            if isinstance(context, dict) and 'loss_scale' in context:
-                new_context = [[token] for token in context['token_ids']]
-                loss_scale = context['loss_scale']
-            else:
-                if isinstance(context, dict) and 'token_ids' in context:
-                    context = context['token_ids']
-                is_assistant = context_type in {ContextType.RESPONSE, ContextType.SUFFIX}
-                if loss or loss is None and (self.base_strategy == 'all' or
-                                             (self.base_strategy == 'default' and is_assistant) or
-                                             (self.base_strategy == 'last_round' and is_assistant and is_last_round)):
-                    new_context, loss_scale = self.get_loss_scale(context, query=query)
-                else:
-                    new_context, loss_scale = [context], [0.]
-            res_context_list += new_context
-            res_loss_scale += loss_scale
+            if not isinstance(context, list) or (len(context) > 0 and isinstance(context[0], int)):
+                context = [context]
+            for j in range(len(context)):
+                new_context, new_loss_scale = self._inner_call(
+                    context[j], context_type, query, loss[j] if isinstance(loss, list) else loss,
+                    loss_scale[j] if isinstance(loss_scale, list) else loss_scale, is_last_round)
+                res_context_list += new_context
+                res_loss_scale += new_loss_scale
+
         # The values in loss_scale_list correspond one-to-one with the values in context_list.
         return res_context_list, res_loss_scale
 
+    def _inner_call(self, context, context_type, query, loss, loss_scale, is_last_round):
+        if isinstance(context, dict) and 'loss_scale' in context:
+            new_context = [[token] for token in context['token_ids']]
+            loss_scale = context['loss_scale']
+        else:
+            if isinstance(context, dict) and 'token_ids' in context:
+                context = context['token_ids']
+            is_assistant = context_type in {ContextType.RESPONSE, ContextType.SUFFIX}
+            if loss or loss is None and (self.base_strategy == 'all' or
+                                         (self.base_strategy == 'default' and is_assistant) or
+                                         (self.base_strategy == 'last_round' and is_assistant and is_last_round)):
+                if loss_scale is None:
+                    new_context, loss_scale = self.get_loss_scale(context, query=query)
+                else:
+                    new_context, loss_scale = [context], [loss_scale]
+            else:
+                new_context, loss_scale = [context], [0.]
+        return new_context, loss_scale
+
     @property
-    def is_loss_scale_binary(self):
+    def is_binary_loss_scale(self):
         """Check if loss scale values are binary (only 0 and 1)."""
         return self.is_binary
 
@@ -157,7 +171,7 @@ class ConfigLossScale(LossScale):
                 self.loss_scale_map = json.load(json_file)
 
     @property
-    def is_loss_scale_binary(self):
+    def is_binary_loss_scale(self):
         if self.is_binary is not None:
             return self.is_binary
         if self.loss_scale_map is None:
