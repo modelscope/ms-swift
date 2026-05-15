@@ -3,7 +3,7 @@
 # hyperparameter
 # - epsilon = 3e-4 from paper serction 5.1
 # - epsilon_high = 4e-4 from paper serction 5.1
-# - steps_per_generation = 4 from paper serction 5.1 (each batch of rollout data is partitioned into four minibatches for gradient updates)
+# - steps_per_generation = 32 (= 4 * gradient_accumulation_steps): paper section 5.1 partitions each batch of rollout data into four minibatches for gradient updates; in swift HF GRPO, steps_per_generation counts micro-batches, so it must be multiplied by gradient_accumulation_steps
 # - beta = 0: zero kl regularization https://github.com/volcengine/verl/pull/2775#issuecomment-3131807306
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
