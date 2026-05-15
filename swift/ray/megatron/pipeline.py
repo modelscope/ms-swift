@@ -1,266 +1,107 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import json
+import importlib
+import os
 import ray
-import yaml
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from swift.utils import get_logger
-from .ray_trainer import RayTrainer
+from .driver_utils import (build_dataset_from_dict, compute_iter_params, estimate_dp_size, merge_group_dict,
+                           parse_ray_yaml)
 
 logger = get_logger()
 
-# ======================================================================
-# Trainer registry
-# ======================================================================
-
 _TRAINER_REGISTRY: Dict[str, Dict[str, Any]] = {
-    'dpo': {
-        'trainer': 'swift.ray.megatron.ray_trainer.DPORayTrainer',
-        'groups': {
-            'train': {
-                'trainable': True
-            },
-            'ref': {
-                'trainable': False
-            },
-        },
-    },
     'grpo': {
-        'trainer': 'swift.ray.megatron.ray_trainer.GRPORayTrainer',
-        'groups': {
-            'train': {
-                'trainable': True
-            },
-            'rollout': {
-                'trainable': False,
-                'worker_cls': 'swift.ray.megatron.vllm_worker.VllmWorker'
-            },
-        },
+        'trainer': 'swift.ray.megatron.grpo_trainer.GRPOTrainer',
+        'loss': 'swift.ray.megatron.loss.grpo.GRPOLoss',
     },
 }
 
-
-def register_ray_trainer(rlhf_type: str, trainer_cls_path: str, groups: Dict[str, bool]):
-    _TRAINER_REGISTRY[rlhf_type] = {
-        'trainer': trainer_cls_path,
-        'groups': groups,
-    }
+_KNOWN_GROUPS = frozenset(('train', 'rollout'))
 
 
-def _build_group_argv(shared: Dict[str, Any], group: Dict[str, Any]) -> List[str]:
-    """Merge shared + group-specific config into a CLI argv list."""
-    merged = {**shared, **group}
-    skip = {'gpus', 'colocate_groups', 'rlhf_type'}
-    argv: List[str] = []
-    for key, val in merged.items():
-        if key in skip or val is None:
-            continue
-        argv.append('--%s' % key)
-        if isinstance(val, bool):
-            argv.append('true' if val else 'false')
-        elif isinstance(val, (list, tuple)):
-            argv.extend(str(v) for v in val)
-        elif isinstance(val, dict):
-            argv.append(json.dumps(val))
-        else:
-            argv.append(str(val))
-    return argv
+def register_ray_trainer(
+    rlhf_type: str,
+    trainer: str,
+    loss: Optional[str] = None,
+):
+    """Register a custom algorithm for the Ray pipeline.
 
-
-def parse_ray_config(config_path: str) -> Dict[str, Any]:
-    """Parse a Ray YAML config file.
-
-    Returns a dict with ``rlhf_type``, ``group_argv``, ``group_gpus``,
-    ``colocate_groups``.
+    Args:
+        rlhf_type: Algorithm identifier (e.g. ``'grpo'``).
+        trainer: Dotted path to the driver-side trainer class.
+            The class must accept ``(worker_groups, rollout_replicas)``
+            and expose ``set_data_info()`` / ``train()`` methods.
+            Example: ``'swift.ray.megatron.grpo_trainer.GRPOTrainer'``
+        loss: Dotted path to a ``Loss`` subclass that defines
+            ``forward_step`` + ``loss_func``.
+            Pass ``None`` to use the internal trainer's forward_step.
     """
-    with open(config_path) as f:
-        raw = yaml.safe_load(f) or {}
-
-    rlhf_type = raw.pop('rlhf_type', 'dpo')
-    entry = _TRAINER_REGISTRY.get(rlhf_type)
-    if entry is None:
-        raise ValueError('Unknown rlhf_type %r. Available: %s' % (rlhf_type, list(_TRAINER_REGISTRY)))
-
-    colocate_groups = raw.pop('colocate_groups', [])
-    groups_def = entry['groups']
-    group_names = list(groups_def.keys())
-
-    group_sections: Dict[str, dict] = {}
-    for g in group_names:
-        group_sections[g] = raw.pop(g, {})
-    shared = dict(raw)
-
-    group_argv: Dict[str, List[str]] = {}
-    group_gpus: Dict[str, int] = {}
-    for g, cfg in group_sections.items():
-        group_gpus[g] = cfg.pop('gpus', 0)
-        group_argv[g] = _build_group_argv(shared, cfg)
-
-    shared_argv = _build_group_argv({}, shared)
-
-    return {
-        'rlhf_type': rlhf_type,
-        'group_argv': group_argv,
-        'group_gpus': group_gpus,
-        'colocate_groups': colocate_groups,
-        'shared_argv': shared_argv,
-    }
-
-
-_GROUP_TO_ROLE = {
-    'train': 'model',
-    'rollout': 'rollout',
-    'ref': 'ref',
-    'teacher': 'teacher',
-}
-
-
-def _compute_hybrid_role(group_names: List[str]) -> str:
-    """Build the HybridWorker role string from group names.
-
-    E.g. ['train', 'rollout'] → 'model_rollout'
-    """
-    roles = []
-    for g in sorted(group_names, key=lambda x: list(_GROUP_TO_ROLE.keys()).index(x) if x in _GROUP_TO_ROLE else 99):
-        role = _GROUP_TO_ROLE.get(g)
-        if role:
-            roles.append(role)
-    return '_'.join(roles)
-
-
-# ======================================================================
-# Pipeline
-# ======================================================================
+    _TRAINER_REGISTRY[rlhf_type] = {'trainer': trainer, 'loss': loss}
 
 
 class MegatronRayPipeline:
-    """Algorithm-agnostic Ray Megatron training pipeline.
-
-    Supports two deployment modes:
-      - **Co-located (hybrid)**: Multiple roles share the same GPU via
-        HybridWorker. Configured via ``colocate_groups``.
-      - **Separated**: Each role runs as an independent worker
-        (MegatronWorker or VllmWorker) on dedicated GPUs.
-    """
 
     def __init__(self, config_path: str):
-        parsed = parse_ray_config(config_path)
-        self.rlhf_type = parsed['rlhf_type']
-        self.group_argv = parsed['group_argv']
-        self.group_gpus = parsed['group_gpus']
-        self.colocate_groups = parsed['colocate_groups']
+        self.ray_config, group_configs, shared_config = parse_ray_yaml(config_path)
+        shared_config['use_ray'] = True
 
-        self.shared_argv = parsed['shared_argv']
+        self.rlhf_type = self.ray_config.rlhf_type
+        if self.rlhf_type not in _TRAINER_REGISTRY:
+            raise ValueError('Unknown rlhf_type %r. Available: %s' % (self.rlhf_type, list(_TRAINER_REGISTRY)))
+
+        self.group_cfgs: Dict[str,
+                              Dict[str,
+                                   Any]] = {g: merge_group_dict(shared_config, gd)
+                                            for g, gd in group_configs.items()}
+        self.shared_cfg = {k: v for k, v in shared_config.items() if v is not None}
+
         self._entry = _TRAINER_REGISTRY[self.rlhf_type]
         self.resource_pool_manager = None
         self.worker_groups: Dict[str, Any] = {}
+        self.rollout_replicas: List[Any] = []
+
+    def init(self) -> None:
+        # Initialize Ray, create resource pools, spawn workers and replicas.
+        self._data_info = self._build_dataset()
+        self._compute_train_iters()
+        ray.init(ignore_reinit_error=True)
+        self._create_pools()
+        self._init_worker_groups()
+        with self._colocate_offload_ctx():
+            self._init_rollout_replicas()
+        self._driver_trainer = self._create_trainer()
+        self._driver_trainer.set_data_info(self._data_info)
+
+    def train(self) -> Any:
+        """Run the training loop.  Requires ``init()`` to have been called."""
+        if not hasattr(self, '_driver_trainer'):
+            raise RuntimeError('MegatronRayPipeline.train(): call init() first')
+        return self._driver_trainer.train()
 
     def run(self) -> Any:
-        """Full lifecycle: build dataset → ray init → train → shutdown."""
-        self._data_info = self._build_dataset()
-        self._inject_train_iters()
-        ray.init(ignore_reinit_error=True)
+        """Convenience: ``init()`` + ``train()`` + ``shutdown()``."""
+        self.init()
         try:
-            self._create_pools()
-            self._init_worker_groups()
-            ray_trainer = self._create_trainer()
-            ray_trainer.set_data_info(self._data_info)
-            return ray_trainer.fit()
+            return self.train()
         finally:
             self._shutdown()
 
-    def _inject_train_iters(self):
-        """Pre-compute train_iters on driver and inject into train group argv.
+    def _build_dataset(self) -> Dict[str, Any]:
+        cfg = dict(self.shared_cfg)
+        return build_dataset_from_dict(cfg)
 
-        This ensures workers build their lr schedulers with the correct total
-        steps instead of the placeholder value ``1``.
-        """
-        from .ray_trainer import compute_iter_params
-
-        train_argv = self.group_argv.get('train')
-        if train_argv is None:
-            return
-
-        dp_size = self._estimate_dp_size('train')
-        if dp_size <= 0:
-            return
-
+    def _compute_train_iters(self):
+        train_cfg = self.group_cfgs.get('train')
+        gpus = self.group_gpus.get('train', 0)
+        assert train_cfg is not None and gpus > 0
+        dp_size = estimate_dp_size(train_cfg, gpus)
         iter_params = compute_iter_params(self._data_info, dp_size)
         train_iters = iter_params.get('train_iters')
-        if train_iters is None or train_iters <= 0:
-            return
+        assert train_iters is not None and train_iters > 0
 
-        self._set_argv_value(train_argv, 'train_iters', str(train_iters))
-        logger.info('Injected --train_iters=%d into train argv (dp_size=%d)', train_iters, dp_size)
-
-    def _estimate_dp_size(self, group_name: str) -> int:
-        """Estimate DP size from GPU count and parallel config in argv."""
-        gpus = self.group_gpus.get(group_name, 0)
-        if gpus <= 0:
-            return 0
-        argv = self.group_argv.get(group_name, [])
-        tp = 1
-        pp = 1
-        cp = 1
-        for i, arg in enumerate(argv):
-            if arg == '--tensor_model_parallel_size' and i + 1 < len(argv):
-                tp = int(argv[i + 1])
-            elif arg == '--pipeline_model_parallel_size' and i + 1 < len(argv):
-                pp = int(argv[i + 1])
-            elif arg == '--context_parallel_size' and i + 1 < len(argv):
-                cp = int(argv[i + 1])
-        model_parallel = tp * pp * cp
-        return max(gpus // model_parallel, 1)
-
-    @staticmethod
-    def _set_argv_value(argv: List[str], key: str, value: str):
-        """Set --key value in argv list, replacing if exists."""
-        flag = f'--{key}'
-        for i, arg in enumerate(argv):
-            if arg == flag and i + 1 < len(argv):
-                argv[i + 1] = value
-                return
-        argv.extend([flag, value])
-
-    # ------------------------------------------------------------------
-    # Infrastructure
-    # ------------------------------------------------------------------
-
-    def _build_dataset(self) -> Dict[str, Any]:
-        from functools import partial
-
-        from .ray_trainer import build_dataset_from_argv
-
-        data_info = build_dataset_from_argv(self.shared_argv, rlhf_type=self.rlhf_type)
-
-        padding_to = self._compute_max_padding_to()
-        if padding_to is not None:
-            collator_fn = data_info['_collator_fn']
-            data_info['data_collator'] = partial(collator_fn, padding_to=padding_to)
-
-        return data_info
-
-    def _compute_max_padding_to(self) -> Optional[int]:
-        max_val = None
-        for _name, argv in self.group_argv.items():
-            tp = 1
-            sp = False
-            cp = 1
-            for i, arg in enumerate(argv):
-                if arg == '--tensor_model_parallel_size' and i + 1 < len(argv):
-                    tp = int(argv[i + 1])
-                elif arg == '--sequence_parallel' and i + 1 < len(argv):
-                    sp = argv[i + 1].lower() == 'true'
-                elif arg == '--context_parallel_size' and i + 1 < len(argv):
-                    cp = int(argv[i + 1])
-            val = None
-            if tp > 1 and sp:
-                val = tp
-            if cp > 1:
-                val = (val or 1) * cp
-            if val is not None:
-                max_val = max(max_val or 1, val)
-        return max_val
+        self.group_cfgs['train']['train_iters'] = train_iters
 
     def _create_pools(self):
         from .resource_pool import ResourcePool, ResourcePoolManager
@@ -270,10 +111,11 @@ class MegatronRayPipeline:
         assigned: set = set()
 
         for colocated in colocated_sets:
-            max_gpus = max(self.group_gpus.get(g, 0) for g in colocated)
-            if max_gpus <= 0:
+            gpus = self.group_gpus.get(next(iter(colocated)), 0)
+            if gpus <= 0:
                 continue
-            shared = ResourcePool([max_gpus], max_colocate_count=1)
+            pon = self.ray_config.gpus_as_process_on_nodes(gpus)
+            shared = ResourcePool(pon, max_colocate_count=len(colocated))
             for g in colocated:
                 pool_mapping[g] = shared
                 assigned.add(g)
@@ -281,147 +123,217 @@ class MegatronRayPipeline:
         for name, gpus in self.group_gpus.items():
             if name in assigned or gpus <= 0:
                 continue
-            pool_mapping[name] = ResourcePool([gpus])
+            pon = self.ray_config.gpus_as_process_on_nodes(gpus)
+            pool_mapping[name] = ResourcePool(pon)
 
         self.resource_pool_manager = ResourcePoolManager(pool_mapping)
         self.resource_pool_manager.create_all()
 
-    def _get_extra_train_kwargs(self, group_names) -> dict:
-        """Compute extra init kwargs for training workers."""
-        rlhf_type = self.rlhf_type
-        has_ref = 'ref' in group_names
-        if rlhf_type == 'dpo' and has_ref:
-            colocate_set = self._get_colocate_set('ref')
-            is_ref_colocated = colocate_set is not None and 'train' in colocate_set
-            if not is_ref_colocated:
-                return {'trainer_cls_path': 'swift.ray.megatron.ray_megatron_trainer.RayMegatronDPOTrainer'}
-        return {}
-
-    def _get_colocate_set(self, group_name: str) -> Optional[frozenset]:
-        """Return the colocate set containing group_name, or None."""
-        for cg in self.colocate_groups:
-            if group_name in cg:
-                return frozenset(cg)
-        return None
+    def _is_rollout_hybrid(self) -> bool:
+        """True if rollout shares its pool with train (HYBRID mode)."""
+        return any('rollout' in cg and 'train' in cg for cg in self.colocate_groups)
 
     def _init_worker_groups(self):
-        """Initialize worker groups for all roles.
+        self._validate_grpo_train_batch_params()
 
-        Co-located groups use HybridWorker (single process, multiple roles).
-        Separated groups use MegatronWorker or VllmWorker (independent processes).
+        self._spawn_train_group('train')
+
+        train_wg = self.worker_groups['train']
+        padding_vals = train_wg.broadcast('get_padding_to')
+        self._data_info['_padding_to'] = next((v for v in padding_vals if v is not None), None)
+        logger.debug('padding_to from worker: %s', self._data_info.get('_padding_to'))
+
+    # TODO: reuse
+    def _validate_grpo_train_batch_params(self) -> None:
+        if self.rlhf_type != 'grpo':
+            return
+        train_cfg = self.group_cfgs.get('train')
+        train_gpus = self.group_gpus.get('train', 0)
+        if not train_cfg or train_gpus <= 0:
+            return
+
+        cfg = dict(train_cfg)
+        global_batch_size = int(cfg.get('global_batch_size', 0) or 0)
+        micro_batch_size = int(cfg.get('micro_batch_size', 1) or 1)
+        num_generations = int(cfg.get('num_generations', 8) or 8)
+        generation_batch_size = cfg.get('generation_batch_size')
+        steps_per_generation = cfg.get('steps_per_generation')
+
+        if global_batch_size <= 0:
+            return
+        if generation_batch_size is not None and steps_per_generation is not None:
+            raise ValueError("'generation_batch_size' and 'steps_per_generation' cannot be both configured")
+
+        if generation_batch_size is None:
+            if steps_per_generation is None:
+                generation_batch_size = global_batch_size
+            else:
+                generation_batch_size = global_batch_size * int(steps_per_generation)
+        else:
+            generation_batch_size = int(generation_batch_size)
+            if generation_batch_size % global_batch_size != 0:
+                raise ValueError(f'generation_batch_size ({generation_batch_size}) must be divisible by '
+                                 f'global_batch_size ({global_batch_size})')
+
+        dp_size = estimate_dp_size(cfg, train_gpus)
+        num_rollout_prompt = generation_batch_size // num_generations
+        if num_rollout_prompt % dp_size != 0:
+            raise ValueError(f'Invalid GRPO batch config: '
+                             f'(generation_batch_size={generation_batch_size} // num_generations={num_generations}) '
+                             f'= {num_rollout_prompt} must be divisible by dp_size={dp_size}.')
+
+        per_device_num_rollout_prompt = num_rollout_prompt // dp_size
+        if per_device_num_rollout_prompt < 1:
+            raise ValueError(f'Invalid GRPO batch config: per_device_num_rollout_prompt='
+                             f'((generation_batch_size={generation_batch_size} // num_generations={num_generations}) '
+                             f'// dp_size={dp_size}) = {per_device_num_rollout_prompt} < 1. '
+                             f'Increase generation_batch_size/steps_per_generation, or reduce num_generations.')
+        if per_device_num_rollout_prompt % micro_batch_size != 0:
+            raise ValueError(
+                f'Invalid GRPO batch config: per_device_num_rollout_prompt='
+                f'{per_device_num_rollout_prompt} must be divisible by micro_batch_size={micro_batch_size}.')
+
+    def _spawn_train_group(self, role: str) -> None:
+        from .megatron_worker import MegatronWorker
+        from .worker_group import WorkerGroup
+
+        pool = self.resource_pool_manager.get_pool(role)
+        cfg = dict(self.group_cfgs.get(role, {}))
+        cfg.setdefault('rlhf_type', self.ray_config.rlhf_type)
+        worker_cls = ray.remote(num_gpus=1.0)(MegatronWorker)
+        wg = WorkerGroup.from_pool(role, pool, worker_cls=worker_cls)
+
+        loss_cls = self._entry.get('loss')
+        rollout_config = self._build_rollout_config_for_workers()
+        wg.broadcast('init_model', cfg, loss_cls_path=loss_cls, rollout_config=rollout_config)
+        wg.build_dispatch_info(worker_cls=MegatronWorker)
+
+        self.worker_groups[role] = wg
+        logger.info('MegatronWorker group [%s] on %d GPUs', role, pool.world_size)
+
+    @contextmanager
+    def _colocate_offload_ctx(self):
+        """Offload colocated train workers while vLLM replicas initialize.
+
+        In colocate mode the training model must free GPU memory so that
+        vLLM can allocate KV cache.  After initialization the model is
+        reloaded.  In separate mode this is a no-op.
         """
-        from .worker_group import WorkerGroup
+        need = self._is_rollout_hybrid() and bool(self.shared_cfg.get('offload_model', True))
+        colocated_wgs = [
+            wg for role, wg in self.worker_groups.items() if need and any(role in g for g in self.colocate_groups)
+        ]
+        for wg in colocated_wgs:
+            wg.broadcast('offload_to_cpu')
+        try:
+            yield
+        finally:
+            for wg in colocated_wgs:
+                wg.broadcast('reload_to_gpu')
 
-        group_defs = self._entry['groups']
-        group_names = set(g for g, gpus in self.group_gpus.items() if gpus > 0)
-        extra_train_kwargs = self._get_extra_train_kwargs(group_names)
+    def _init_rollout_replicas(self) -> None:
+        rollout_gpus = self.group_gpus.get('rollout', 0)
+        if rollout_gpus <= 0:
+            self.rollout_replicas = []
+            return
 
-        colocated_done: set = set()
+        from .rollout.replica import RolloutReplica
 
-        for group_name in self.group_argv:
-            gpus = self.group_gpus.get(group_name, 0)
-            if gpus <= 0 or group_name in colocated_done:
-                continue
+        rollout_cfg = self.group_cfgs.get('rollout', {})
+        is_hybrid = self._is_rollout_hybrid()
+        pool = self.resource_pool_manager.get_pool('train' if is_hybrid else 'rollout')
 
-            colocate_set = self._get_colocate_set(group_name)
+        self.rollout_replicas = RolloutReplica.create_replicas(
+            rollout_cfg=rollout_cfg,
+            rollout_gpus=rollout_gpus,
+            pool=pool,
+            is_hybrid=is_hybrid,
+            sleep_level=self.ray_config.sleep_level,
+        )
 
-            if colocate_set is not None:
-                active_members = [g for g in colocate_set if g in group_names]
-                if len(active_members) > 1:
-                    self._init_colocated_group(active_members, group_defs, extra_train_kwargs)
-                    colocated_done.update(active_members)
-                    continue
+    def _build_rollout_config_for_workers(self) -> Optional[Dict[str, Any]]:
+        """Build rollout config dict for MegatronWorker._init_rollout_adapter.
 
-            self._init_separated_group(group_name, group_defs, extra_train_kwargs)
-
-    def _init_colocated_group(
-        self,
-        members: List[str],
-        group_defs: Dict[str, Any],
-        extra_train_kwargs: Dict,
-    ):
-        """Create a single HybridWorker group for co-located roles."""
-        from .hybrid_worker import HybridWorker
-        from .worker_group import WorkerGroup
-
-        primary = members[0]
-        pool = self.resource_pool_manager.get_pool(primary)
-        argv = self.group_argv[primary]
-        role = _compute_hybrid_role(members)
-
-        worker_cls = ray.remote(num_gpus=1.0)(HybridWorker)
-        wg = WorkerGroup.from_pool(primary, pool, worker_cls=worker_cls)
-
-        init_kwargs = dict(role=role)
-        init_kwargs.update(extra_train_kwargs)
-        wg.broadcast('init_model', argv, **init_kwargs)
-        wg.build_dispatch_info(worker_cls=HybridWorker)
-
-        for g in members:
-            self.worker_groups[g] = wg
-
-        logger.info('Co-located group [%s] as HybridWorker(role=%s) on %d GPUs', ', '.join(members), role,
-                    pool.world_size)
-
-    def _init_separated_group(
-        self,
-        group_name: str,
-        group_defs: Dict[str, Any],
-        extra_train_kwargs: Dict,
-    ):
-        """Create an independent worker group for a separated role."""
-        from .worker_group import WorkerGroup
-
-        pool = self.resource_pool_manager.get_pool(group_name)
-        argv = self.group_argv[group_name]
-        gdef = group_defs.get(group_name, {})
-        if isinstance(gdef, bool):
-            gdef = {'trainable': gdef}
-        trainable = gdef.get('trainable', False)
-        custom_worker_cls = gdef.get('worker_cls')
-
-        worker_cls_obj = None
-        build_cls = None
-
-        if custom_worker_cls:
-            import importlib
-            mod_path, cls_name = custom_worker_cls.rsplit('.', 1)
-            mod = importlib.import_module(mod_path)
-            raw_cls = getattr(mod, cls_name)
-            worker_cls_obj = ray.remote(num_gpus=1.0)(raw_cls)
-            build_cls = raw_cls
-
-        wg = WorkerGroup.from_pool(group_name, pool, worker_cls=worker_cls_obj)
-
-        init_kwargs = dict(trainable=trainable)
-        if trainable:
-            init_kwargs.update(extra_train_kwargs)
-        if custom_worker_cls and 'vllm' in custom_worker_cls.lower():
-            init_kwargs.pop('trainable', None)
-            init_kwargs.pop('trainer_cls_path', None)
-        wg.broadcast('init_model', argv, **init_kwargs)
-
-        if build_cls is None:
-            from .megatron_worker import MegatronWorker
-            build_cls = MegatronWorker
-        wg.build_dispatch_info(worker_cls=build_cls)
-
-        self.worker_groups[group_name] = wg
-
-        logger.info('Separated group [%s] (%s) on %d GPUs', group_name, custom_worker_cls or 'MegatronWorker',
-                    pool.world_size)
+        Returns None if no rollout GPUs are configured.
+        """
+        rollout_gpus = self.group_gpus.get('rollout', 0)
+        if rollout_gpus <= 0:
+            return None
+        rollout_cfg = self.group_cfgs.get('rollout', {})
+        bucket_mb = int(os.environ.get('SWIFT_RAY_WEIGHT_BUCKET_MB', '2048'))
+        return {
+            'rollout_tp_size': rollout_cfg.get('vllm_tensor_parallel_size', 1),
+            'rollout_dp_size': rollout_cfg.get('vllm_data_parallel_size', 1),
+            'bucket_size_mb': bucket_mb,
+        }
 
     def _create_trainer(self):
         cls_path = self._entry['trainer']
         mod_path, cls_name = cls_path.rsplit('.', 1)
-        import importlib
         mod = importlib.import_module(mod_path)
         trainer_cls = getattr(mod, cls_name)
-        return trainer_cls(self.worker_groups)
+        weight_sync_mode = self._get_weight_sync_mode()
+        sleep_level = self._resolve_sleep_level()
+        return trainer_cls(
+            self.worker_groups, self.rollout_replicas, weight_sync_mode=weight_sync_mode, sleep_level=sleep_level)
+
+    def _resolve_sleep_level(self) -> int:
+        """Determine sleep_level based on deployment mode.
+
+        - colocate: honor user config (1 or 2), default 1.
+        - separate: always 0 (vLLM stays resident), warn if user set otherwise.
+        """
+        user_level = self.ray_config.sleep_level
+        if self._is_rollout_hybrid():
+            return user_level
+        if user_level != 0:
+            logger.warning('sleep_level=%d ignored in separate mode (vLLM stays resident). '
+                           'Overriding to 0.', user_level)
+        return 0
+
+    def _get_weight_sync_mode(self) -> str:
+        """Determine weight sync mode based on deployment topology.
+
+        - colocate: naive (IPC/ZMQ) — vLLM shares the node with trainer
+        - separate: nccl (broadcast) — vLLM on dedicated GPUs
+        """
+        if self._is_rollout_hybrid():
+            return 'naive'
+        return 'nccl'
+
+    @property
+    def group_gpus(self) -> Dict[str, int]:
+        return self.ray_config.group_gpus
+
+    @property
+    def colocate_groups(self) -> List[List[str]]:
+        return self.ray_config.colocate_groups
 
     def _shutdown(self):
+        """Best-effort teardown — each step swallows exceptions so a
+        failure in one stage does not skip the remaining cleanup."""
+        for replica in self.rollout_replicas:
+            try:
+                replica.shutdown()
+            except Exception as e:  # noqa: BLE001
+                logger.warning('RolloutReplica shutdown failed: %s', e)
+        self.rollout_replicas = []
+
+        seen: set = set()
+        for wg in self.worker_groups.values():
+            if id(wg) not in seen:
+                seen.add(id(wg))
+                try:
+                    wg.shutdown()
+                except Exception as e:  # noqa: BLE001
+                    logger.warning('WorkerGroup shutdown failed: %s', e)
+        self.worker_groups.clear()
+
         if self.resource_pool_manager is not None:
-            self.resource_pool_manager.destroy_all()
+            try:
+                self.resource_pool_manager.destroy_all()
+            except Exception as e:  # noqa: BLE001
+                logger.warning('destroy_all placement groups failed: %s', e)
         ray.shutdown()
 
 

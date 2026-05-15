@@ -129,6 +129,7 @@ class BaseMegatronTrainer(ABC):
         self._log_callback(logs, n_steps)
         if prefix:
             logs = {f'{prefix}{k}': v for k, v in logs.items()}
+        self._last_logged_metrics = dict(logs)
         self.call_event('on_log', logs=logs)
 
     def _log_callback(self, logs, n_steps):

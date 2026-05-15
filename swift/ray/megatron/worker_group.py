@@ -1,56 +1,48 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""WorkerGroup — manages a set of MegatronWorker Ray actors.
-
-Dispatch/collect patterns (inspired by verl's ``@register`` and
-twinkle's ``@remote_function``):
-
-Dispatch modes:
-  - broadcast: same data to every worker
-  - dp: data keyed by dp_rank → each worker gets its slice
-  - dp_split: single global batch → chunk(dp_size) → dispatch by dp
-
-Collect modes:
-  - all: return list of all results
-  - dp: return {dp_rank: result} from collector ranks only
-  - first: return first collector's result (scalar metrics, etc.)
-
-Use ``@dispatch_collect`` on ``MegatronWorker`` methods to declare
-default dispatch/collect semantics.  ``WorkerGroup.build_dispatch_info``
-scans the worker class and auto-binds decorated methods as direct
-callables on the group: ``wg.train_step(batch)`` instead of
-``wg.execute('train_step', batch, dispatch=..., collect=...)``.
-"""
 import ray
 import torch
-from typing import Any, Dict, List, Optional
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Dict, List, Union
 
-from swift.utils import get_logger
+from swift.utils.logger import get_logger
+
+if TYPE_CHECKING:
+    from .resource_pool import ResourcePool
 
 logger = get_logger()
 
-DispatchMode = str  # 'broadcast' | 'dp' | 'dp_split'
-CollectMode = str  # 'all' | 'dp' | 'first'
+
+class DispatchMode(str, Enum):
+    BROADCAST = 'broadcast'
+    DP = 'dp'
+    DP_SPLIT = 'dp_split'
+
+
+class CollectMode(str, Enum):
+    ALL = 'all'
+    DP = 'dp'
+    DP_FLAT = 'dp_flat'
+    FIRST = 'first'
+
 
 _DC_ATTR = '_dispatch_collect_meta'
-
-_DP_DISPATCHED = object()
 
 
 class DPDispatchedDict(dict):
     """Marker dict for dp-dispatched data, keyed by dp_rank."""
-    _dp_dispatched = _DP_DISPATCHED
+
+
+def _is_dp_dispatched(value) -> bool:
+    return isinstance(value, DPDispatchedDict)
 
 
 def dispatch_collect(
-    dispatch: DispatchMode = 'broadcast',
-    collect: CollectMode = 'all',
+    dispatch: Union[DispatchMode, str] = DispatchMode.BROADCAST,
+    collect: Union[CollectMode, str] = CollectMode.ALL,
 ):
-    """Decorator declaring default dispatch/collect for a worker method.
-
-    ``WorkerGroup.build_dispatch_info`` reads this metadata and
-    creates a bound method ``wg.<method_name>(*args, **kwargs)``
-    that automatically dispatches, invokes remote, and collects.
-    """
+    """Decorator declaring default dispatch/collect for a worker method."""
+    dispatch = DispatchMode(dispatch) if isinstance(dispatch, str) else dispatch
+    collect = CollectMode(collect) if isinstance(collect, str) else collect
 
     def decorator(fn):
         setattr(fn, _DC_ATTR, {'dispatch': dispatch, 'collect': collect})
@@ -59,33 +51,42 @@ def dispatch_collect(
     return decorator
 
 
-def _is_dp_dispatched(value) -> bool:
-    """Check if a value is a dp-dispatched dict."""
-    return isinstance(value, DPDispatchedDict) or getattr(value, '_dp_dispatched', None) is _DP_DISPATCHED
-
-
 def _slice_dp(value: Any, dp_size: int) -> Any:
-    """Recursively split *value* into DPDispatchedDict {dp_rank: chunk}.
+    """Split *value* into ``DPDispatchedDict``{dp_rank: chunk}.
 
-    Handles tensors, lists, and dicts (recursed into).
-    Scalars and unsplittable values are broadcast as-is.
+    Handles tensors, lists, and dicts (recursed into); scalars and
+    un-sliceable values are broadcast as-is.  Raises on empty or
+    sub-dp_size inputs rather than silently collapsing to broadcast —
+    callers must pad upstream.
     """
     if isinstance(value, torch.Tensor):
-        if value.shape[0] >= dp_size:
-            parts = value.chunk(dp_size)
-            return DPDispatchedDict({i: p for i, p in enumerate(parts)})
-        return value
+        n = value.shape[0]
+        if n == 0:
+            raise ValueError(f'_slice_dp got empty tensor (shape={tuple(value.shape)})')
+        if n < dp_size:
+            raise ValueError(f'_slice_dp: tensor first dim {n} < dp_size {dp_size}.  '
+                             f'Pad the batch upstream or use dispatch="broadcast".')
+        if n % dp_size != 0:
+            # TODO: should we raise ValueError here?
+            logger.warning(f'_slice_dp: tensor first dim {n} not divisible by dp_size {dp_size}; '
+                           f'using non-equal chunking.')
+        parts = value.chunk(dp_size)
+        return DPDispatchedDict({i: p for i, p in enumerate(parts)})
     if isinstance(value, list):
-        if len(value) >= dp_size:
-            k, m = divmod(len(value), dp_size)
-            result = DPDispatchedDict()
-            offset = 0
-            for i in range(dp_size):
-                size = k + (1 if i < m else 0)
-                result[i] = value[offset:offset + size]
-                offset += size
-            return result
-        return value
+        n = len(value)
+        if n == 0:
+            raise ValueError('_slice_dp got empty list')
+        if n < dp_size:
+            raise ValueError(f'_slice_dp: list length {n} < dp_size {dp_size}.  '
+                             f'Pad the batch upstream or use dispatch="broadcast".')
+        k, m = divmod(n, dp_size)
+        result = DPDispatchedDict()
+        offset = 0
+        for i in range(dp_size):
+            size = k + (1 if i < m else 0)
+            result[i] = value[offset:offset + size]
+            offset += size
+        return result
     if isinstance(value, dict):
         if _is_dp_dispatched(value):
             return value
@@ -105,138 +106,151 @@ def _slice_dp(value: Any, dp_size: int) -> Any:
     return value
 
 
-class WorkerGroup:
-    """A group of ``MegatronWorker`` Ray actors.
+# ── Dispatch / collect registries ──────────────────────────────────────
 
-    After ``init_model`` on all workers, call ``build_dispatch_info()``
-    to populate the DP-rank map and collector mask.
+_DISPATCH_FNS: Dict[str, Any] = {}
+_COLLECT_FNS: Dict[str, Any] = {}
+
+
+def _register_builtin_modes():
+    _DISPATCH_FNS[DispatchMode.BROADCAST] = WorkerGroup._dispatch_broadcast
+    _DISPATCH_FNS[DispatchMode.DP] = WorkerGroup._dispatch_dp
+    _DISPATCH_FNS[DispatchMode.DP_SPLIT] = WorkerGroup._dispatch_dp_split
+    _COLLECT_FNS[CollectMode.ALL] = WorkerGroup._collect_all
+    _COLLECT_FNS[CollectMode.DP] = WorkerGroup._collect_dp
+    _COLLECT_FNS[CollectMode.DP_FLAT] = WorkerGroup._collect_dp_flat
+    _COLLECT_FNS[CollectMode.FIRST] = WorkerGroup._collect_first
+
+
+class WorkerGroup:
+    """A group of Ray actors with dispatch / collect helpers.
+
+    After workers are up, call :meth:`build_dispatch_info` to query
+    ``get_parallel_info`` on every actor, cache the dp layout, and
+    bind decorated methods on the group instance.  Subsequent calls
+    like ``wg.train_step(batch)`` dispatch + collect automatically
+    using the metadata attached by :func:`dispatch_collect`.
     """
 
     def __init__(self, name: str, worker_handles: List[Any]):
         self.name = name
         self._workers = list(worker_handles)
-        self._dp_rank_map: Optional[List[int]] = None
-        self._collect_mask: Optional[List[bool]] = None
-        self._dp_size: Optional[int] = None
+        self._dp_rank_map: List[int] = []
+        self._collect_mask: List[bool] = []
+        self._dp_size: int = 0
 
     @property
     def world_size(self) -> int:
         return len(self._workers)
 
     @property
+    def workers(self) -> List[Any]:
+        return list(self._workers)
+
+    @property
     def dp_size(self) -> int:
-        if self._dp_size is None:
-            raise RuntimeError('Call build_dispatch_info() first.')
+        if self._dp_size == 0:
+            raise RuntimeError(f'WorkerGroup[{self.name}]: build_dispatch_info() has '
+                               'not been called yet (dp_size is unknown).')
         return self._dp_size
 
     def __len__(self) -> int:
         return len(self._workers)
 
-    def build_dispatch_info(self, worker_cls=None):
-        """Query workers for DP rank / collector info, then bind decorated methods."""
-        infos = ray.get([w.get_parallel_info.remote() for w in self._workers])
-        self._dp_rank_map = [i['dp_rank'] for i in infos]
-        self._collect_mask = [i['is_collector'] for i in infos]
-        self._dp_size = infos[0]['dp_size']
-
-        if worker_cls is None:
-            from .megatron_worker import MegatronWorker
-            worker_cls = MegatronWorker
+    def build_dispatch_info(self, worker_cls, rpc: str = 'get_parallel_info'):
+        """Query workers' parallel info and bind decorated methods."""
+        infos = ray.get([getattr(w, rpc).remote() for w in self._workers])
+        if len(infos) != self.world_size:
+            raise RuntimeError(f'WorkerGroup[{self.name}]: expected {self.world_size} info entries, got {len(infos)}')
+        self._dp_rank_map = [int(i['dp_rank']) for i in infos]
+        self._collect_mask = [bool(i['is_collector']) for i in infos]
+        sizes = {int(i['dp_size']) for i in infos}
+        if len(sizes) != 1:
+            raise ValueError(f'WorkerGroup[{self.name}]: inconsistent dp_size across workers: {sizes}')
+        self._dp_size = sizes.pop()
         self._bind_decorated_methods(worker_cls)
 
-    def _bind_decorated_methods(self, worker_cls):
-        """Scan *worker_cls* and bind methods with ``@dispatch_collect``."""
-        for name in dir(worker_cls):
-            if name.startswith('_'):
+        logger.info('WorkerGroup[%s]: dp_size=%d, world_size=%d, collectors=%d', self.name, self._dp_size,
+                    self.world_size, sum(self._collect_mask))
+
+    def _bind_decorated_methods(self, worker_cls) -> List[str]:
+        """Bind methods carrying ``_dispatch_collect_meta`` onto the group.
+
+        We only bind methods that explicitly opt in via
+        :func:`dispatch_collect`; other helpers on the worker class
+        stay private to the actor so callers can't accidentally talk
+        to them through the group.  Any name already defined on the
+        group (methods like ``execute`` / ``broadcast``, properties
+        like ``dp_size``) is skipped with a warning — the caller can
+        still reach it via ``wg.execute(name, ...)``.
+        """
+        bound = []
+        for attr_name in dir(worker_cls):
+            if attr_name.startswith('_'):
                 continue
-            method = getattr(worker_cls, name, None)
+            method = getattr(worker_cls, attr_name, None)
             if method is None or not callable(method):
                 continue
             meta = getattr(method, _DC_ATTR, None)
             if meta is None:
                 continue
-            bound = self._make_bound_method(name, meta['dispatch'], meta['collect'])
-            setattr(self, name, bound)
+            if hasattr(type(self), attr_name) or attr_name in self.__dict__:
+                logger.warning(
+                    'WorkerGroup[%s]: worker method %r collides with an existing '
+                    'attribute on WorkerGroup; call wg.execute(%r, ...) instead.', self.name, attr_name, attr_name)
+                continue
+            setattr(self, attr_name, self._make_bound(attr_name, meta['dispatch'], meta['collect']))
+            bound.append(attr_name)
+        return bound
 
-    def _make_bound_method(self, method_name: str, default_dispatch: str, default_collect: str):
-        """Create a callable that dispatches/collects when invoked."""
+    def _make_bound(self, method_name: str, default_dispatch: str, default_collect: str):
         wg = self
 
-        class _BoundMethod:
-            """Callable wrapping a remote method with dispatch/collect."""
+        def _bound(*args, dispatch=None, collect=None, **kwargs):
+            return wg.execute(
+                method_name,
+                *args,
+                dispatch=dispatch if dispatch is not None else default_dispatch,
+                collect=collect if collect is not None else default_collect,
+                **kwargs,
+            )
 
-            def __call__(self_, *args, dispatch=None, collect=None, blocking=True, **kwargs):
-                d = dispatch if dispatch is not None else default_dispatch
-                c = collect if collect is not None else default_collect
-                return wg.execute(method_name, *args, dispatch=d, collect=c, blocking=blocking, **kwargs)
-
-            def __repr__(self_):
-                return f'<BoundMethod {wg.name}.{method_name} dispatch={default_dispatch} collect={default_collect}>'
-
-        return _BoundMethod()
-
-    # ------------------------------------------------------------------
-    # Core: execute with dispatch + collect
-    # ------------------------------------------------------------------
+        _bound.__name__ = method_name
+        _bound.__qualname__ = f'{wg.name}.{method_name}'
+        _bound.__doc__ = (f'Bound remote method {method_name} '
+                          f'(dispatch={default_dispatch}, collect={default_collect})')
+        return _bound
 
     def execute(
         self,
         method_name: str,
         *args,
-        dispatch: DispatchMode = 'broadcast',
-        collect: CollectMode = 'all',
-        blocking: bool = True,
+        dispatch: Union[DispatchMode, str] = DispatchMode.BROADCAST,
+        collect: Union[CollectMode, str] = CollectMode.ALL,
         **kwargs,
     ) -> Any:
-        """Call a remote method with configurable dispatch/collect.
+        """Call a remote method with configurable dispatch/collect."""
+        dispatch = DispatchMode(dispatch) if isinstance(dispatch, str) else dispatch
+        collect = CollectMode(collect) if isinstance(collect, str) else collect
+        per_worker = self._dispatch(dispatch, args, kwargs)
+        futures = [getattr(w, method_name).remote(*a, **kw) for w, (a, kw) in zip(self._workers, per_worker)]
+        return self._collect(collect, ray.get(futures))
 
-        Args:
-            method_name: Remote method on each worker.
-            dispatch: How to distribute arguments to workers.
-            collect: How to aggregate results.
-            blocking: If False, return raw Ray futures without waiting.
-            *args, **kwargs: Arguments (interpretation depends on dispatch mode).
+    def broadcast(self, method_name: str, *args, **kwargs) -> List[Any]:
+        """Same args to every worker, block, return list."""
+        return self.execute(method_name, *args, dispatch=DispatchMode.BROADCAST, collect=CollectMode.ALL, **kwargs)
 
-        Returns:
-            Aggregated results (type depends on collect mode), or
-            futures list if blocking=False.
-        """
-        per_worker_args = self._dispatch(dispatch, args, kwargs)
-        futures = [getattr(w, method_name).remote(*a, **kw) for w, (a, kw) in zip(self._workers, per_worker_args)]
-        if not blocking:
-            return futures
-        results = ray.get(futures)
-        return self._collect(collect, results)
+    def _dispatch(self, mode: Union[DispatchMode, str], args: tuple, kwargs: dict) -> List[tuple]:
+        mode = DispatchMode(mode) if isinstance(mode, str) else mode
+        fn = _DISPATCH_FNS.get(mode)
+        if fn is None:
+            raise ValueError(f'Unknown dispatch mode: {mode!r}; registered: {list(_DISPATCH_FNS)}')
+        return fn(self, args, kwargs)
 
-    # ------------------------------------------------------------------
-    # Dispatch logic
-    # ------------------------------------------------------------------
-
-    def _dispatch(
-        self,
-        mode: DispatchMode,
-        args: tuple,
-        kwargs: dict,
-    ) -> List[tuple]:
-        """Return [(args_i, kwargs_i)] for each worker."""
-        if mode == 'broadcast':
-            return [(args, kwargs)] * self.world_size
-
-        if mode == 'dp':
-            return self._dispatch_dp(args, kwargs)
-
-        if mode == 'dp_split':
-            return self._dispatch_dp_split(args, kwargs)
-
-        raise ValueError(f'Unknown dispatch mode: {mode!r}')
+    def _dispatch_broadcast(self, args: tuple, kwargs: dict) -> List[tuple]:
+        return [(args, kwargs)] * self.world_size
 
     def _dispatch_dp(self, args: tuple, kwargs: dict) -> List[tuple]:
-        """Dispatch by DP rank.
-
-        Each positional arg and kwarg value should be a DPDispatchedDict
-        ``{dp_rank: value}``. Each worker receives the entry
-        matching its DP rank.
-        """
         result = []
         for dp_r in self._dp_rank_map:
             worker_args = tuple(a[dp_r] if _is_dp_dispatched(a) else a for a in args)
@@ -245,101 +259,172 @@ class WorkerGroup:
         return result
 
     def _dispatch_dp_split(self, args: tuple, kwargs: dict) -> List[tuple]:
-        """Split a global batch by dp_size, then dispatch by DP rank."""
-        dp_size = self._dp_size
-        split_args = tuple(_slice_dp(a, dp_size) for a in args)
-        split_kwargs = {k: _slice_dp(v, dp_size) for k, v in kwargs.items()}
+        dp = self.dp_size
+        split_args = tuple(_slice_dp(a, dp) for a in args)
+        split_kwargs = {k: _slice_dp(v, dp) for k, v in kwargs.items()}
         return self._dispatch_dp(split_args, split_kwargs)
 
-    # ------------------------------------------------------------------
-    # Collect logic
-    # ------------------------------------------------------------------
+    def _collect(self, mode: Union[CollectMode, str], results: List[Any]) -> Any:
+        mode = CollectMode(mode) if isinstance(mode, str) else mode
+        fn = _COLLECT_FNS.get(mode)
+        if fn is None:
+            raise ValueError(f'Unknown collect mode: {mode!r}; registered: {list(_COLLECT_FNS)}')
+        return fn(self, results)
 
-    def _collect(self, mode: CollectMode, results: List[Any]) -> Any:
-        if mode == 'all':
-            return results
-
-        if mode == 'dp':
-            return self._collect_dp(results)
-
-        if mode == 'first':
-            return self._collect_first(results)
-
-        raise ValueError(f'Unknown collect mode: {mode!r}')
+    def _collect_all(self, results: List[Any]) -> List[Any]:
+        return results
 
     def _collect_dp(self, results: List[Any]) -> Dict[int, Any]:
-        """Return {dp_rank: result} from collector ranks only."""
-        collected = {}
-        for r, dp_r, is_coll in zip(
-                results,
-                self._dp_rank_map,
-                self._collect_mask,
-        ):
+        collected: Dict[int, Any] = {}
+        for r, dp_r, is_coll in zip(results, self._dp_rank_map, self._collect_mask):
             if is_coll and r is not None:
                 collected[dp_r] = r
         return collected
 
+    def _collect_dp_flat(self, results: List[Any]) -> List[Any]:
+        """Collect from DP collectors and flatten into a single ordered list.
+
+        Equivalent to ``_collect_dp`` followed by sorting by rank and
+        concatenating lists, which is the most common access pattern on
+        the driver side.
+        """
+        per_rank = self._collect_dp(results)
+        flat: List[Any] = []
+        for rk in sorted(per_rank.keys()):
+            part = per_rank[rk]
+            if isinstance(part, list):
+                flat.extend(part)
+            elif part is not None:
+                flat.append(part)
+        return flat
+
     def _collect_first(self, results: List[Any]) -> Any:
-        """Return the result from the first collector rank."""
         for r, is_coll in zip(results, self._collect_mask):
             if is_coll and r is not None:
                 return r
         return None
 
-    # ------------------------------------------------------------------
-    # Convenience shortcuts
-    # ------------------------------------------------------------------
+    def shutdown(self, timeout: float = 30.0) -> None:
+        """Best-effort shutdown of every worker and kill the Ray actors."""
+        if not self._workers:
+            return
+        pending = []
+        for w in self._workers:
+            fn = getattr(w, 'shutdown', None)
+            if fn is None:
+                continue
+            try:
+                pending.append(fn.remote())
+            except Exception as e:  # noqa: BLE001
+                logger.warning('WorkerGroup[%s] shutdown dispatch failed: %s', self.name, e)
+        if pending:
+            try:
+                ray.get(pending, timeout=timeout)
+            except Exception as e:  # noqa: BLE001
+                logger.warning('WorkerGroup[%s] shutdown timed out / raised: %s', self.name, e)
+        for w in self._workers:
+            try:
+                ray.kill(w, no_restart=True)
+            except Exception as e:  # noqa: BLE001
+                logger.warning('WorkerGroup[%s] ray.kill failed: %s', self.name, e)
+        self._workers = []
 
-    def broadcast(self, method_name: str, *args, **kwargs) -> List[Any]:
-        """Call same method with same args on all workers, block."""
-        return self.execute(method_name, *args, dispatch='broadcast', collect='all', **kwargs)
+    @staticmethod
+    def _get_device_env_config() -> Dict[str, str]:
+        """Return platform-specific environment variable names.
 
-    # ------------------------------------------------------------------
-    # Factory
-    # ------------------------------------------------------------------
+        Supports CUDA (GPU) and Ascend (NPU).
+        """
+        from transformers.utils import is_torch_npu_available
+        if is_torch_npu_available():
+            return {
+                'visible_devices_key': 'ASCEND_RT_VISIBLE_DEVICES',
+                'device_max_connections_key': 'HCCL_DEVICE_MAX_CONNECTIONS',
+            }
+        return {
+            'visible_devices_key': 'CUDA_VISIBLE_DEVICES',
+            'device_max_connections_key': 'CUDA_DEVICE_MAX_CONNECTIONS',
+        }
 
     @classmethod
     def from_pool(
         cls,
         name: str,
         resource_pool: 'ResourcePool',
-        worker_cls: Any = None,
-        num_gpus: float = 1.0,
-        master_port: Optional[int] = None,
+        worker_cls: str,
     ) -> 'WorkerGroup':
-        """Spawn actors on a ``ResourcePool``."""
+        """Spawn actors on a :class:`ResourcePool`.
+
+        Iterates PGs, discovers master on PG[0], creates workers with
+        env vars for distributed init.
+
+        Swift uses ``num_gpus=0`` + ``NOSET_CVD`` + explicit CVD
+        (torchrun style for Megatron TP/PP visibility).
+        """
         from ray.runtime_env import RuntimeEnv
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-        if worker_cls is None:
-            from .megatron_worker import MegatronWorker
-            worker_cls = ray.remote(num_gpus=num_gpus)(MegatronWorker)
-
-        placements = resource_pool.get_placements(master_port=master_port)
+        master_addr, master_port = cls._discover_master(resource_pool)
+        dev_cfg = cls._get_device_env_config()
+        vis = resource_pool.visible_devices
+        world_size = resource_pool.world_size
         workers = []
 
-        node_local_ranks: Dict[str, int] = {}
-        for p in placements:
-            node_key = '%s:%s' % (p['master_addr'], p['master_port'])
-            local_rank = node_local_ranks.get(node_key, 0)
-            node_local_ranks[node_key] = local_rank + 1
+        rank = 0
+        for pg_idx, pg in enumerate(resource_pool.pgs):
+            local_ws = resource_pool.process_on_nodes[pg_idx]
+            node_gpu_ids = [str(vis[rank + j]) for j in range(local_ws)]
+            node_cvd = ','.join(node_gpu_ids)
 
-            env_vars = {
-                'RANK': str(p['rank']),
-                'LOCAL_RANK': str(local_rank),
-                'WORLD_SIZE': str(p['world_size']),
-                'MASTER_ADDR': str(p['master_addr']),
-                'MASTER_PORT': str(p['master_port']),
-                'CUDA_DEVICE_MAX_CONNECTIONS': '1',
-                'RAY_SWIFT_GROUP': 'default,%s' % name,
-            }
-            w = worker_cls.options(
-                scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=p['pg'], placement_group_bundle_index=p['bundle_idx']),
-                runtime_env=RuntimeEnv(env_vars=env_vars),
-            ).remote()
-            workers.append(w)
+            for local_rank in range(local_ws):
+                env_vars = {
+                    'RANK': str(rank),
+                    'LOCAL_RANK': str(local_rank),
+                    'WORLD_SIZE': str(world_size),
+                    'LOCAL_WORLD_SIZE': str(local_ws),
+                    'MASTER_ADDR': master_addr,
+                    'MASTER_PORT': str(master_port),
+                    dev_cfg['device_max_connections_key']: '1',
+                    dev_cfg['visible_devices_key']: node_cvd,
+                    'RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES': '1',
+                    'NCCL_CUMEM_ENABLE': '0',
+                    'RAY_SWIFT_GROUP': f'default,{name}',
+                }
+                w = worker_cls.options(
+                    num_gpus=0,
+                    scheduling_strategy=PlacementGroupSchedulingStrategy(
+                        placement_group=pg, placement_group_bundle_index=local_rank),
+                    runtime_env=RuntimeEnv(env_vars=env_vars),
+                ).remote()
+                workers.append(w)
+                rank += 1
         return cls(name, workers)
 
-    def ping(self) -> List[str]:
-        return self.broadcast('ping')
+    @staticmethod
+    def _discover_master(resource_pool: 'ResourcePool'):
+        """Find master IP + free port on PG[0] bundle[0].
+
+        Discovers a free port on the first bundle of the first PG.
+        """
+        import ray
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+        @ray.remote(num_gpus=0, num_cpus=0.01)
+        def _probe():
+            import socket
+            addr = ray.util.get_node_ip_address()
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(('', 0))
+            port = sock.getsockname()[1]
+            sock.close()
+            return addr, port
+
+        pg = resource_pool.pgs[0]
+        return ray.get(
+            _probe.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg, placement_group_bundle_index=0), ).remote())
+
+
+_register_builtin_modes()

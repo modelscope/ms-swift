@@ -85,6 +85,7 @@ class RLHFMegatronArgumentsMixin:
     repetition_penalty: float = 1.
 
     use_vllm: bool = True
+    use_ray: bool = False
     vllm_mode: Optional[Literal['server', 'colocate']] = None
 
     vllm_enable_prefix_caching: bool = True
@@ -202,7 +203,6 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type == 'kto':
             self._init_kto()
         if self.rlhf_type == 'grpo':
-            assert self.vllm_mode is not None, 'vllm_mode is required for Megatron GRPO'
             self._init_grpo()
             if self.cosine_max_len is None:
                 self.cosine_max_len = self.max_completion_length
@@ -323,7 +323,8 @@ class RLHFMegatronArgumentsMixin:
             if self.soft_max_length is None:
                 self.soft_max_length = self.max_completion_length
                 logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
-        assert self.use_vllm, 'use_vllm must be True for Megatron GRPO'
+        if not self.use_ray:
+            assert self.use_vllm, 'use_vllm must be True for Megatron GRPO'
 
 
 @dataclass
@@ -712,6 +713,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             raise ValueError('Tensor parallel communication/GEMM overlap can happen only when '
                              'sequence parallelism is enabled')
 
+        self._init_distributed()
+
+    def _init_distributed(self):
         initialize_megatron(self)
         total_model_size = (
             self.tensor_model_parallel_size * self.pipeline_model_parallel_size * self.context_parallel_size)

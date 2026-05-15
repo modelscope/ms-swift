@@ -2,35 +2,44 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .hybrid_worker import HybridWorker
+    from .driver_utils import (RayConfig, build_dataset_from_dict, compute_iter_params, estimate_dp_size,
+                               extract_iteration, merge_group_dict, parse_args_from_dict, parse_ray_yaml)
+    from .grpo_trainer import GRPOTrainer
+    from .loss import GRPOLoss, Loss
     from .megatron_worker import MegatronWorker
-    from .pipeline import MegatronRayPipeline, parse_ray_config, register_ray_trainer
-    from .ray_megatron_trainer import RayMegatronDPOTrainer
-    from .ray_trainer import DPORayTrainer, GRPORayTrainer, RayTrainer
+    from .pipeline import MegatronRayPipeline, register_ray_trainer
     from .resource_pool import ResourcePool, ResourcePoolManager
-    from .rollout import RolloutMode, RolloutReplica, VllmServer
-    from .vllm_worker import VllmWorker
-    from .worker_group import WorkerGroup
+    from .rollout import RolloutAdapter, RolloutMode, RolloutReplica, VllmEngineConfig, VllmServer
+    from .worker_group import CollectMode, DispatchMode, WorkerGroup, dispatch_collect
 
 
 def __getattr__(name):
     _imports = {
-        'HybridWorker': '.hybrid_worker',
-        'MegatronWorker': '.megatron_worker',
+        'RayConfig': '.driver_utils',
+        'build_dataset_from_dict': '.driver_utils',
+        'compute_iter_params': '.driver_utils',
+        'estimate_dp_size': '.driver_utils',
+        'extract_iteration': '.driver_utils',
+        'merge_group_dict': '.driver_utils',
+        'parse_args_from_dict': '.driver_utils',
+        'parse_ray_yaml': '.driver_utils',
+        'GRPOTrainer': '.grpo_trainer',
         'MegatronRayPipeline': '.pipeline',
-        'parse_ray_config': '.pipeline',
         'register_ray_trainer': '.pipeline',
-        'RayMegatronDPOTrainer': '.ray_megatron_trainer',
-        'RayTrainer': '.ray_trainer',
-        'DPORayTrainer': '.ray_trainer',
-        'GRPORayTrainer': '.ray_trainer',
+        'Loss': '.loss',
+        'GRPOLoss': '.loss',
         'ResourcePool': '.resource_pool',
         'ResourcePoolManager': '.resource_pool',
         'RolloutMode': '.rollout',
         'RolloutReplica': '.rollout',
+        'VllmEngineConfig': '.rollout',
         'VllmServer': '.rollout',
-        'VllmWorker': '.vllm_worker',
+        'RolloutAdapter': '.rollout',
+        'MegatronWorker': '.megatron_worker',
+        'CollectMode': '.worker_group',
+        'DispatchMode': '.worker_group',
         'WorkerGroup': '.worker_group',
+        'dispatch_collect': '.worker_group',
     }
     if name in _imports:
         import importlib

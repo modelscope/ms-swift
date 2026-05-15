@@ -1,16 +1,20 @@
 # Ray GRPO training — co-located mode (train + vLLM rollout on same GPUs)
 #
+# Train and rollout share the same GPU group. The training model is offloaded
+# to CPU during generation, and vLLM is put to sleep during training.
+#
 # Usage:
-#   CUDA_VISIBLE_DEVICES=0,1,2,3 python -m swift.ray.megatron.pipeline \
+#   CUDA_VISIBLE_DEVICES=0,1,2,3 megatron rlhf --use_ray \
 #       --config examples/yaml/megatron_ray/ray_grpo_colocate.yaml
 
 rlhf_type: grpo
 
-# --- Shared config ---
 model: Qwen/Qwen2.5-0.5B
 dataset: AI-ModelScope/alpaca-gpt4-data-en#200
 micro_batch_size: 2
-global_batch_size: 4
+global_batch_size: 8
+num_generations: 4
+steps_per_generation: 2
 num_train_epochs: 1
 logging_steps: 1
 seed: 42
@@ -22,21 +26,25 @@ cross_entropy_loss_fusion: true
 lr: 1e-5
 lr_warmup_fraction: 0.05
 min_lr: 1e-6
-attention_backend: flash
+attention_backend: unfused
 temperature: 0.7
 use_vllm: true
+reward_funcs: [format]
 
-# --- Co-located ---
+# Co-located: train and rollout share the same GPUs
 colocate_groups: [[train, rollout]]
+offload_model: true
+offload_optimizer: true
 
-# --- Group configs ---
 train:
   gpus: 4
   tuner_type: full
   tensor_model_parallel_size: 2
   sequence_parallel: true
-  output_dir: megatron_output/ray_grpo_colocate_test
+  output_dir: megatron_output/ray_grpo_colocate
 
 rollout:
   gpus: 4
   vllm_tensor_parallel_size: 2
+  vllm_gpu_memory_utilization: 0.05
+  vllm_enforce_eager: false
