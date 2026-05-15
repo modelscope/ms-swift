@@ -623,7 +623,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                     'mcore-bridge>=1.3.0.dev',
                     'Please install mcore-bridge>=1.3.0.dev to use mlp_padding_free with sequence parallel.')
             if self.context_parallel_size > 1:
-                raise ValueError('mlp_padding_free is not compatible with context parallel.')
+                require_version(
+                    'mcore-bridge>=1.4.0.dev',
+                    'Please install mcore-bridge>=1.4.0.dev to use mlp_padding_free with context parallel.')
         if self.local_rank is None:
             self.local_rank = get_dist_setting()[1]
         if self.lr is None:
