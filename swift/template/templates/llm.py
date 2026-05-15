@@ -466,7 +466,6 @@ register_template(
         is_thinking=True,
     ))
 
-
 register_template(
     QwenTemplateMeta(
         LLMTemplateType.iquestcoder,

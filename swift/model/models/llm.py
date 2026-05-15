@@ -381,7 +381,8 @@ register_model(
             ModelGroup([
                 Model('inclusionAI/Ring-2.5-1T', 'inclusionAI/Ring-2.5-1T'),
                 Model('inclusionAI/Ring-2.6-1T', 'inclusionAI/Ring-2.6-1T'),
-            ], template=TemplateType.ring2_5),
+            ],
+                       template=TemplateType.ring2_5),
         ],
         architectures=['BailingMoeV2_5ForCausalLM'],
     ))
