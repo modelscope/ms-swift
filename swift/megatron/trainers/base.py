@@ -39,7 +39,7 @@ from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
-                         is_master, ms_logger_context)
+                         is_master, ms_logger_context, to_device)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_packed_seq_params
 
