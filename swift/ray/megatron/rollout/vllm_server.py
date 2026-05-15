@@ -15,7 +15,6 @@ Multi-node topology::
     ├── MegatronWorker actors
     └── VllmServer actor (headless)  — participates in TP, no API
 
-Weight sync sender (``BucketedWeightSender``) is in ``weight_transfer.py``.
 """
 import asyncio
 import os
