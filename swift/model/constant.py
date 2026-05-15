@@ -90,6 +90,7 @@ class LLMModelType:
 
     ling = 'ling'
     bailing_moe = 'bailing_moe'
+    bailing_hybrid = 'bailing_hybrid'
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'

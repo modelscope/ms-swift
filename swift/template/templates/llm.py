@@ -456,6 +456,18 @@ register_template(
     ))
 
 register_template(
+    TemplateMeta(
+        LLMTemplateType.ring2_5,
+        prefix=[],
+        system_prefix=['<role>SYSTEM</role>\n{{SYSTEM}}\n\n'],
+        prompt=['<role>HUMAN</role>\n{{QUERY}}<|role_end|>\n\n<role>ASSISTANT</role>\n'],
+        chat_sep=['<|role_end|>\n\n'],
+        suffix=['<|role_end|>\n\n'],
+        is_thinking=True,
+    ))
+
+
+register_template(
     QwenTemplateMeta(
         LLMTemplateType.iquestcoder,
         default_system='You are LoopCoder, a helpful assistant developed by IQuest.',

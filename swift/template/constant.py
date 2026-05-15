@@ -98,6 +98,7 @@ class LLMTemplateType:
     ling = 'ling'
     ling2 = 'ling2'
     ring2 = 'ring2'
+    ring2_5 = 'ring2_5'
     yuan = 'yuan'
     xverse = 'xverse'
     bluelm = 'bluelm'

@@ -608,6 +608,11 @@
 |[inclusionAI/Ling-mini-base-2.0](https://modelscope.cn/models/inclusionAI/Ling-mini-base-2.0)|bailing_moe|ling2|-|&#x2714;|-|[inclusionAI/Ling-mini-base-2.0](https://huggingface.co/inclusionAI/Ling-mini-base-2.0)|
 |[inclusionAI/Ling-1T](https://modelscope.cn/models/inclusionAI/Ling-1T)|bailing_moe|ling2|-|&#x2714;|-|[inclusionAI/Ling-1T](https://huggingface.co/inclusionAI/Ling-1T)|
 |[inclusionAI/Ring-mini-2.0](https://modelscope.cn/models/inclusionAI/Ring-mini-2.0)|bailing_moe|ring2|-|&#x2714;|-|[inclusionAI/Ring-mini-2.0](https://huggingface.co/inclusionAI/Ring-mini-2.0)|
+|[inclusionAI/Ling-2.5-1T](https://modelscope.cn/models/inclusionAI/Ling-2.5-1T)|bailing_hybrid|ling2|-|&#x2718;|-|[inclusionAI/Ling-2.5-1T](https://huggingface.co/inclusionAI/Ling-2.5-1T)|
+|[inclusionAI/Ling-2.6-1T](https://modelscope.cn/models/inclusionAI/Ling-2.6-1T)|bailing_hybrid|ling2|-|&#x2718;|-|[inclusionAI/Ling-2.6-1T](https://huggingface.co/inclusionAI/Ling-2.6-1T)|
+|[inclusionAI/Ling-2.6-flash](https://modelscope.cn/models/inclusionAI/Ling-2.6-flash)|bailing_hybrid|ling2|-|&#x2718;|-|[inclusionAI/Ling-2.6-flash](https://huggingface.co/inclusionAI/Ling-2.6-flash)|
+|[inclusionAI/Ring-2.5-1T](https://modelscope.cn/models/inclusionAI/Ring-2.5-1T)|bailing_hybrid|ring2_5|-|&#x2718;|-|[inclusionAI/Ring-2.5-1T](https://huggingface.co/inclusionAI/Ring-2.5-1T)|
+|[inclusionAI/Ring-2.6-1T](https://modelscope.cn/models/inclusionAI/Ring-2.6-1T)|bailing_hybrid|ring2_5|-|&#x2718;|-|[inclusionAI/Ring-2.6-1T](https://huggingface.co/inclusionAI/Ring-2.6-1T)|
 |[IEITYuan/Yuan2.0-2B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-2B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-2B-hf](https://huggingface.co/IEITYuan/Yuan2-2B-hf)|
 |[IEITYuan/Yuan2.0-51B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-51B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-51B-hf](https://huggingface.co/IEITYuan/Yuan2-51B-hf)|
 |[IEITYuan/Yuan2.0-102B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-102B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-102B-hf](https://huggingface.co/IEITYuan/Yuan2-102B-hf)|
