@@ -2,22 +2,23 @@
 import inspect
 import os
 import random
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import trl
-from accelerate.utils import gather_object, is_peft_model
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
-from packaging import version
-from transformers import PreTrainedModel
-from trl import SFTTrainer as HFSFTTrainer
 from typing import Dict, Optional, Union
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import trl
+from accelerate.utils import gather_object, is_peft_model
+from packaging import version
 from transformers import AutoTokenizer
+from transformers import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import pad
 
 from swift.template import TemplateInputs
@@ -30,6 +31,7 @@ from .utils import (get_gather_if_zero3_context, identity_data_collator, prepare
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
+
     _liger_kernel_available = True
 except ImportError:
     _liger_kernel_available = False
@@ -561,7 +563,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     )
 
                     loss = loss + loss_item / num_teacher_models
-# ... existing code ...
+        # ... existing code ...
 
         # Separate teacher model provided
         else:
@@ -979,16 +981,16 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return student_logits, teacher_logits
 
     def generalized_jsd_loss(
-        self,
-        student_logits,
-        teacher_logits=None,
-        labels=None,
-        beta=0.5,
-        temperature=1.0,
-        chunk_size=512,
-        topk=None,
-        teacher_topk_logprobs=None,
-        teacher_topk_indices=None,
+            self,
+            student_logits,
+            teacher_logits=None,
+            labels=None,
+            beta=0.5,
+            temperature=1.0,
+            chunk_size=512,
+            topk=None,
+            teacher_topk_logprobs=None,
+            teacher_topk_indices=None,
     ):
         # Align vocab sizes when student and teacher have different vocabulary dimensions
         if teacher_logits is not None:

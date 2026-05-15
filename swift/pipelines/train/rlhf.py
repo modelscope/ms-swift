@@ -142,7 +142,7 @@ class SwiftRLHF(SwiftSft):
                 # Use teacher_model_type and teacher_model_revision if available, otherwise infer
                 model_type = getattr(args, 'teacher_model_type', None)
                 model_revision = getattr(args, 'teacher_model_revision', None)
-                
+
                 result = self._prepare_single_model_for_teacher_group(teacher_model_path, model_type, model_revision)
                 if result is not None:
                     model, _ = result
@@ -187,7 +187,7 @@ class SwiftRLHF(SwiftSft):
     def _prepare_single_model_for_teacher_group(self, model_id_or_path, model_type, model_revision):
         """Prepare a single model for teacher_model_group."""
         args = self.args
-        
+
         if model_type is None:
             model_info, _ = get_model_info_meta(model_id_or_path)
             model_type = model_info.model_type
@@ -200,7 +200,7 @@ class SwiftRLHF(SwiftSft):
             hub_token=args.hub_token,
         )
         task_type, num_labels = self._get_model_task_type(model_dir)
-        
+
         context = nullcontext()
         if args.teacher_deepspeed:
             if args.teacher_deepspeed.get('zero_optimization', {}).get('stage') != 3:
@@ -302,7 +302,7 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['teacher_use_disable_adapter'] = getattr(self.args, '_teacher_use_disable_adapter', False)
             if self.args.use_mopd:
                 trainer_kwargs['use_mopd'] = self.args.use_mopd
-                #todo
+                # todo
                 # trainer_kwargs['mopd_config'] = self.args.mopd_config
         return trainer_kwargs
 

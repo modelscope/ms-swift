@@ -66,7 +66,7 @@ class TeacherModelArguments:
     """
     teacher_model: Optional[str] = None
     teacher_model_group: List[str] = field(default_factory=list)
-    #todo 还需要增加mopd_config
+    # todo 还需要增加mopd_config
     use_mopd: bool = False
     teacher_adapters: List[str] = field(default_factory=list)
     teacher_model_type: Optional[str] = field(
@@ -76,15 +76,15 @@ class TeacherModelArguments:
         default=None,
         metadata={
             'help':
-            'DeepSpeed configuration for teacher model. '
-            'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
+                'DeepSpeed configuration for teacher model. '
+                'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
         })
     teacher_model_server: Optional[str] = field(
         default=None,
         metadata={
             'help':
-            'URL of the teacher model server (e.g., http://localhost:8000). '
-            'When set, teacher logprobs are fetched via API instead of loading a local model.'
+                'URL of the teacher model server (e.g., http://localhost:8000). '
+                'When set, teacher logprobs are fetched via API instead of loading a local model.'
         })
 
 

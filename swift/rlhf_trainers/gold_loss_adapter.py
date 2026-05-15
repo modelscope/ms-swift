@@ -1,7 +1,8 @@
+from typing import Optional, Tuple, List
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple, List
 from transformers import PreTrainedTokenizerBase
 
 
@@ -226,6 +227,7 @@ class GOLDLossAdapter(nn.Module):
                     pieces.append(cur[len(prev):])
                     prev = cur
                 return pieces
+
             student_token_ids = student_input_ids[i, s_start:s_start + s_size].tolist()
             teacher_token_ids = teacher_input_ids[i, t_start:t_start + t_size].tolist()
 
