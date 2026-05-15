@@ -192,7 +192,8 @@
 - moe_enable_deepep: 启用 DeepEP 以实现 MoE 模型中的高效 token 调度和合并。仅在通过设置 `--moe_token_dispatcher_type flex` 使用弹性 token 调度器时有效。
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为True。
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
-- 🔥moe_aux_loss_coeff: 默认为0，不使用aux_loss。**通常情况下，该值设置的越大，训练效果越差，但MoE负载越均衡**，请根据实验效果，选择合适的值。
+- 🔥moe_aux_loss_coeff: 默认为0，不使用aux_loss。通常情况下，该值设置的越大，训练效果越差，但MoE负载越均衡，请根据实验效果，选择合适的值。
+  - 注意：moe_aux_loss在`padding_free`为 False 的情况下，"megatron-core<0.16"存在对padding token计算routing loss的情况，参考[这个PR](https://github.com/NVIDIA/Megatron-LM/pull/2142)。此外请使用"mcore-bridge>=1.4.0.dev"，参考[这个PR](https://github.com/modelscope/mcore-bridge/pull/79)。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
 - 🔥moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
 - 🔥moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。通过设置 `--moe_expert_capacity_factor`，超出专家容量的 token 会基于其被选中的概率被丢弃。可以**令训练负载均匀，提升训练速度**（例如设置为1或2）。
