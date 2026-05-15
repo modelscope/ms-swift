@@ -380,8 +380,6 @@ register_model(
                        template=TemplateType.ling2),
             ModelGroup([
                 Model('inclusionAI/Ring-2.5-1T', 'inclusionAI/Ring-2.5-1T'),
-            ], template=TemplateType.ring2_5),
-            ModelGroup([
                 Model('inclusionAI/Ring-2.6-1T', 'inclusionAI/Ring-2.6-1T'),
             ], template=TemplateType.ring2_5),
         ],
