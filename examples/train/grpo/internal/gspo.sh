@@ -17,7 +17,7 @@ swift rlhf \
     --beta 0.0 \
     --epsilon 3e-4 \
     --epsilon_high 4e-4 \
-    --steps_per_generation 4 \
+    --steps_per_generation 32 \
     --importance_sampling_level sequence \
     --num_train_epochs 1 \
     --per_device_train_batch_size 2 \
