@@ -22,25 +22,6 @@ from swift.utils import to_device
 logger = get_logger()
 
 
-def get_batch_on_this_pp_rank(args, data, vp_stage=None):
-    if args.task_type == 'causal_lm':
-        data['labels'] = torch.roll(data['labels'], -1, dims=-1)
-        if 'loss_scale' in data:
-            data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
-    batch = to_device(data, get_current_device(), non_blocking=True)
-    if args.pipeline_model_parallel_size == 1:
-        return batch
-    is_pp_first_stage = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage)
-    is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
-    if not args.mtp_num_layers and not is_pp_first_stage:
-        batch['input_ids'] = None
-    if not is_pp_last_stage:
-        batch['labels'] = None
-        batch['loss_scale'] = None
-
-    return batch
-
-
 def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     params = _get_packed_seq_params(position_ids)
     packed = PackedSeqParams(

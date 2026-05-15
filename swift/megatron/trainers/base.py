@@ -41,8 +41,7 @@ from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
                          is_master, ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_pp_rank,
-                    get_packed_seq_params)
+from .utils import TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_packed_seq_params
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -970,10 +969,14 @@ class BaseMegatronTrainer(ABC):
                 and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
 
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
-        batch = get_batch_on_this_pp_rank(self.args, data, vp_stage=vp_stage)
+        args = self.args
+        if args.task_type == 'causal_lm':
+            data['labels'] = torch.roll(data['labels'], -1, dims=-1)
+            if 'loss_scale' in data:
+                data['loss_scale'] = torch.roll(data['loss_scale'], -1, dims=-1)
+        batch = to_device(data, get_current_device(), non_blocking=True)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
-        args = self.args
         text_position_ids = batch.pop('text_position_ids', None)
         if text_position_ids is None:
             text_position_ids = batch.get('position_ids')
