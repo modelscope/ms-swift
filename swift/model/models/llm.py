@@ -358,6 +358,7 @@ register_model(
             ModelGroup([
                 Model('inclusionAI/Ling-mini-2.0', 'inclusionAI/Ling-mini-2.0'),
                 Model('inclusionAI/Ling-mini-base-2.0', 'inclusionAI/Ling-mini-base-2.0'),
+                Model('inclusionAI/Ling-1T', 'inclusionAI/Ling-1T'),
             ],
                        template=TemplateType.ling2),
             ModelGroup([
@@ -365,6 +366,25 @@ register_model(
             ], template=TemplateType.ring2)
         ],
         architectures=['BailingMoeV2ForCausalLM'],
+    ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.bailing_hybrid,
+        [
+            ModelGroup([
+                Model('inclusionAI/Ling-2.5-1T', 'inclusionAI/Ling-2.5-1T'),
+                Model('inclusionAI/Ling-2.6-1T', 'inclusionAI/Ling-2.6-1T'),
+                Model('inclusionAI/Ling-2.6-flash', 'inclusionAI/Ling-2.6-flash'),
+            ],
+                       template=TemplateType.ling2),
+            ModelGroup([
+                Model('inclusionAI/Ring-2.5-1T', 'inclusionAI/Ring-2.5-1T'),
+                Model('inclusionAI/Ring-2.6-1T', 'inclusionAI/Ring-2.6-1T'),
+            ],
+                       template=TemplateType.ring2_5),
+        ],
+        architectures=['BailingMoeV2_5ForCausalLM'],
     ))
 
 register_model(

@@ -68,6 +68,7 @@ class LLMTemplateType:
     deepseek_v2_5 = 'deepseek_v2_5'
     deepseek_r1 = 'deepseek_r1'
     deepseek_v3_1 = 'deepseek_v3_1'
+    deepseek_v4 = 'deepseek_v4'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -97,6 +98,7 @@ class LLMTemplateType:
     ling = 'ling'
     ling2 = 'ling2'
     ring2 = 'ring2'
+    ring2_5 = 'ring2_5'
     yuan = 'yuan'
     xverse = 'xverse'
     bluelm = 'bluelm'
@@ -210,6 +212,7 @@ class MLLMTemplateType:
     minicpmv2_6 = 'minicpmv2_6'
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
+    minicpmv4_6 = 'minicpmv4_6'
     minicpmo = 'minicpmo'
     minicpmo4_5 = 'minicpmo4_5'
 

@@ -96,8 +96,6 @@ class BaseMegatronTrainer(ABC):
                 })
                 check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
-        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        self.mcore_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         self.callbacks = []
         for callback in args.callbacks:
             self.callbacks.append(megatron_callbacks_map[callback](self))
@@ -142,15 +140,11 @@ class BaseMegatronTrainer(ABC):
             if config.moe_router_load_balancing_type == 'aux_loss':
                 track_names.append('load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'seq_aux_loss':
-                if self.mcore_014:
-                    track_names.append('seq_load_balancing_loss')
-                else:
-                    track_names.append('load_balancing_loss')
+                track_names.append('seq_load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'global_aux_loss':
                 track_names.append('global_load_balancing_loss')
             if config.moe_z_loss_coeff is not None:
                 track_names.append('z_loss')
-            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
             track_moe_metrics(
                 loss_scale=moe_loss_scale,
                 iteration=self.state.iteration,
@@ -160,7 +154,7 @@ class BaseMegatronTrainer(ABC):
                 track_names=track_names,
                 num_layers=config.num_layers,
                 moe_layer_freq=config.moe_layer_freq,
-                **track_moe_kwargs)
+                mtp_num_layers=args.mtp_num_layers)
         if args.mtp_num_layers is not None:
             mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
@@ -733,7 +727,6 @@ class BaseMegatronTrainer(ABC):
         os.makedirs(output_dir, exist_ok=True)
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
-        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
         else:
@@ -754,6 +747,17 @@ class BaseMegatronTrainer(ABC):
                 state.best_model_checkpoint = best_model_checkpoint
         # safetensors
         if args.save_safetensors:
+            skip_saving_adapter = args.tuner_type == 'lora_llm' or (
+                args.tuner_type == 'lora' and args.merge_lora and not hasattr(self.bridge, '_support_hf_grouped_lora'))
+
+            if not skip_saving_adapter:
+                self.bridge.save_weights(
+                    self.unwrapped_models,
+                    output_dir,
+                    peft_format=args.tuner_type == 'lora',
+                    args=args,
+                    processor=self.template.processor,
+                )
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.tuner_type != 'full' and args.merge_lora:
                 self.merge_lora_adapters()
@@ -768,14 +772,13 @@ class BaseMegatronTrainer(ABC):
                 tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
                 os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
                 self.copy_path(common_path, tgt_common_path)
-            self.bridge.save_weights(
-                self.unwrapped_models,
-                output_dir,
-                peft_format=save_peft_format,
-                args=args,
-                processor=self.template.processor,
-            )
-            if args.tuner_type != 'full' and args.merge_lora:
+                self.bridge.save_weights(
+                    self.unwrapped_models,
+                    output_dir,
+                    peft_format=False,
+                    args=args,
+                    processor=self.template.processor,
+                )
                 self.unmerge_lora_adapters()
 
         if is_master():

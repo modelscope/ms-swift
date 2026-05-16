@@ -11,7 +11,9 @@ The command-line arguments will be introduced in four categories: basic argument
 ## Base Arguments
 
 - 🔥tuner_backend: Optional values are `'peft'` and `'unsloth'`. Default is `'peft'`.
-- 🔥tuner_type: Optional values are 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'. Default is 'lora'.
+- 🔥tuner_type: Optional values are 'lora', 'full', 'lora_llm', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'. Default is 'lora'.
+  - Note: Defaults to 'full' in Megatron-SWIFT.
+  - 'lora_llm' means applying LoRA to the LLM part while using 'full' fine-tuning for the ViT/aligner parts. You can set their respective learning rates using `vit_lr/aligner_lr`.
 - 🔥adapters: A list specifying adapter IDs or paths. Default is `[]`. This parameter is typically used in inference/deployment commands, for example: `swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`. It can occasionally be used for resuming training from a checkpoint. The difference between this parameter and `resume_from_checkpoint` is that **this parameter only loads adapter weights**, without restoring the optimizer state or random seed, and does not skip already-trained portions of the dataset.
   - The difference between `--model` and `--adapters`: `--model` is followed by the directory path of the complete weights, which contains full weight information such as model/tokenizer/config, for example `model.safetensors`. `--adapters` is followed by a list of incremental adapter weight directory paths, which contain incremental weight information of the adapters, for example `adapter_model.safetensors`.
 - 🔥external_plugins: A list of external `plugin.py` files that will be additionally loaded (i.e., the modules will be imported). Defaults to `[]`. You can pass in `.py` file paths for custom model, template, and dataset registration, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh); or for custom GRPO components, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
@@ -131,7 +133,8 @@ The command-line arguments will be introduced in four categories: basic argument
   - Note: The `'jinja'` backend only supports inference and does not support training (as it cannot determine the token ranges for loss computation).
 - response_prefix: The prefix string for responses, this parameter only takes effect during inference. Default is None, determined by the enable_thinking parameter and template type.
 - enable_thinking: This parameter takes effect during inference, indicating whether to enable thinking mode. Default is None, the default value is determined by the template (model) type (True for thinking/hybrid thinking templates, False for non-thinking templates). If enable_thinking is False, a non-thinking prefix is added, for example the Qwen3-8B hybrid thinking model adds the prefix `'<think>\n\n</think>\n\n'`, while Qwen3-8B-Thinking does not add a prefix. If enable_thinking is True, a thinking prefix is added, for example `'<think>\n'`. Note: The priority of this parameter is lower than the response_prefix parameter.
-  - Note: For thinking models (thinking/hybrid thinking) or when enable_thinking is explicitly enabled, we will remove historical thinking content during both inference and training (the thinking content of the last round is retained, i.e., the content after the last user message). If the basic strategy of loss_scale during training is not last_round, for example 'default', then historical thinking content will not be removed.
+- preserve_thinking: Whether to preserve historical thinking content during inference and training. When set to `True`, thinking content from all rounds is retained. When set to `False`, only the thinking content from the last round is retained (i.e., the content following the last user message). Defaults to `None`.
+  - Default behavior: For thinking models (thinking/hybrid-thinking) or when `enable_thinking` is explicitly enabled, this is set to `False` by default during inference and training, retaining only the last round of thinking content. If the `loss_scale` base strategy during training is not `'last_round'` (e.g., `'default'`), it defaults to `True`, and historical thinking content will not be removed.
 - add_non_thinking_prefix: This parameter only takes effect during training, indicating whether to add a non-thinking prefix to data samples whose assistant part **does not start with the thinking marker `'<think>'`** (typically hybrid thinking models contain a non-thinking prefix). This feature allows swift's built-in datasets to train hybrid thinking models. Default value is True. For example: the non-thinking prefix for the Qwen3-8B hybrid thinking model is `'<think>\n\n</think>\n\n'`, while the non-thinking prefix for Qwen3-8B-Thinking/Instruct is `''`. Note: During training, if the basic strategy of loss_scale is last_round, this modification is only applied to the last round; otherwise, for example 'default' or 'all', this modification is applied to every round of data. If set to False, no non-thinking prefix is added to data samples.
 
 
@@ -512,6 +515,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. **If in an offline environment, please set to False.**
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Uses the `padding_free` approach to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures complete sequences are not split), achieving load balancing across nodes and processes during training (avoiding long texts slowing down short text training speed), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples are independent and invisible to each other. This parameter defaults to `False` and currently supports packing for CPT/SFT/DPO/KTO/GKD as well as embedding/reranker/seq_cls tasks. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation and learning rate accordingly**.
+  - Note: For Qwen3-Next/Qwen3.5 packing, please use Megatron-SWIFT. Refer to [Qwen3.5 Best Practice](../BestPractices/Qwen3_5-Best-Practice.md) for details.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
 - lazy_tokenize: Whether to use lazy tokenization. If set to `False`, all dataset samples will be tokenized (and for multimodal models, images will be loaded from disk) before training begins. Default is `None`: in LLM training, it defaults to `False`; in MLLM training, it defaults to `True` to save memory.
@@ -901,6 +905,15 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+
+
+### minicpmv4_6
+- DOWNSAMPLE_MODE: Default is `'16x'`. Visual token downsampling mode. `'16x'` merges tokens for efficiency; `'4x'` retains 4x more tokens for finer detail.
+- MAX_SLICE_NUMS: Default is 9. Maximum number of slices when splitting a high-resolution image. A larger value preserves more detail for large images. It is recommended to set this to 36 for images.
+- VIDEO_MAX_SLICE_NUMS: Default is 1. `MAX_SLICE_NUMS` for videos.
+- MAX_NUM_FRAMES: Default is 128. Maximum number of main frames sampled from a video.
+- STACK_FRAMES: Default is 1. Total number of samples per second. `1` means only the main frame is used (no stacking). `N` (N>1) means 1 main frame plus N−1 sub-frames per second; sub-frames are composed into a grid image and interleaved with the main frame. It is recommended to set this to 1 for short videos and 3 or 5 for long videos.
+
 
 ### minicpmo
 - INIT_TTS: Defaults to False. Whether to initialize and load the TTS model.

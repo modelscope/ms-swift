@@ -604,3 +604,80 @@ register_template(
         template_cls=MiniCPMO4_5Template,
         is_thinking=True,
     ))
+
+
+class MiniCPMV4_6Template(Template):
+    support_padding_free = True
+    placeholder_tokens = ['<|image_pad|>', '<|video_pad|>']
+
+    def init_env_args(self):
+        super().init_env_args()
+        self.downsample_mode = get_env_args('downsample_mode', str, '16x')
+        self.max_slice_nums = get_env_args('max_slice_nums', int, 9)
+        self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)
+        self.max_num_frames = get_env_args('max_num_frames', int, 128)
+        self.stack_frames = get_env_args('stack_frames', int, 1)
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return ['<|image_pad|>\n']
+        else:
+            return ['<|video_pad|>\n']
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        split_token = self._tokenize('\n')
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        for media_type in ['image', 'video']:
+            mm_data = getattr(inputs, f'{media_type}s')
+            media_token = f'<|{media_type}_pad|>'
+            media_token_id = self._tokenize(media_token)[0]
+            max_slice_nums = self.max_slice_nums if media_type == 'image' else self.video_max_slice_nums
+            if mm_data:
+                media_inputs = self.processor(
+                    text='\n'.join([media_token] * len(mm_data)),
+                    images=inputs.images or None,
+                    videos=inputs.videos or None,
+                    return_tensors='pt',
+                    add_special_tokens=False,
+                    downsample_mode=self.downsample_mode,
+                    stack_frames=self.stack_frames,
+                    max_num_frames=self.max_num_frames,
+                    max_slice_nums=max_slice_nums,
+                )
+                splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
+                idx_list = findall(input_ids, media_token_id)
+
+                def _get_new_tokens(i):
+                    return splited_tokens[i]
+
+                input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                    _get_new_tokens)
+                encoded.update(media_inputs)
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        for key in ['target_sizes', 'target_sizes_videos']:
+            res[key] = self.concat_tensor(batch, key, dim=0)
+        return res
+
+    def generate(self, model, *args, **kwargs):
+        kwargs['downsample_mode'] = self.downsample_mode
+        return super().generate(model, *args, **kwargs)
+
+
+register_template(
+    ChatmlTemplateMeta(
+        MLLMTemplateType.minicpmv4_6,
+        template_cls=MiniCPMV4_6Template,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+    ))

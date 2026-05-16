@@ -45,6 +45,7 @@ class LLMModelType:
     deepseek_v2 = 'deepseek_v2'
     deepseek_v3 = 'deepseek_v3'
     deepseek_v32 = 'deepseek_v32'
+    deepseek_v4 = 'deepseek_v4'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_mistral = 'openbuddy_mistral'
@@ -89,6 +90,7 @@ class LLMModelType:
 
     ling = 'ling'
     bailing_moe = 'bailing_moe'
+    bailing_hybrid = 'bailing_hybrid'
     yuan2 = 'yuan2'
     orion = 'orion'
     xverse = 'xverse'
@@ -211,6 +213,7 @@ class MLLMModelType:
     minicpmv2_6 = 'minicpmv2_6'
     minicpmv4 = 'minicpmv4'
     minicpmv4_5 = 'minicpmv4_5'
+    minicpmv4_6 = 'minicpmv4_6'
     minicpmo = 'minicpmo'
 
     minimax_vl = 'minimax_vl'

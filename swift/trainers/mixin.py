@@ -992,13 +992,16 @@ class SwiftMixin:
     def create_optimizer_and_scheduler(self, num_training_steps: int):
         self.optimizer_callback.create_optimizer_and_scheduler(num_training_steps)
 
-    def create_optimizer(self):
-        self.optimizer = self.optimizer_callback.create_optimizer()
+    def create_optimizer(self, model=None):
+        self._optimizer_ori = self.optimizer = self.optimizer_callback.create_optimizer(model=model)
         if self.optimizer is not None:
             self.optimizer.param_groups = [pg for pg in self.optimizer.param_groups if len(pg['params']) > 0]
         return self.optimizer
 
     def create_scheduler(self, num_training_steps: int, optimizer=None):
+        if optimizer is None:
+            # fix deepspeed & cosine_with_min_lr (transformers 5.8.0)
+            optimizer = getattr(self, '_optimizer_ori', None)
         self.lr_scheduler = self.optimizer_callback.create_scheduler(num_training_steps, optimizer)
         return self.lr_scheduler
 

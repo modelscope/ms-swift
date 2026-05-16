@@ -56,6 +56,7 @@ class MLLMModelArch:
     interns1 = 'interns1'
     minicpmv = 'minicpmv'
     minicpmo = 'minicpmo'
+    minicpmv4_6 = 'minicpmv4_6'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
@@ -484,6 +485,14 @@ register_model_arch(
         language_model='llm',
         aligner='resampler',
         vision_tower='vpm',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.minicpmv4_6,
+        language_model='model.language_model',
+        aligner='model.merger',
+        vision_tower='model.vision_tower',
     ))
 
 register_model_arch(

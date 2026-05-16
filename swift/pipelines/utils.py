@@ -59,11 +59,7 @@ def _select_dataset(args, dataset):
         ]
         new_dataset = dataset.select(idxs)
     else:
-        new_dataset = dataset.map(
-            lambda rows: {'lengths': [[min(length, max_length) for length in lengths] for lengths in rows['lengths']]},
-            num_proc=args.dataset_num_proc,
-            load_from_cache_file=args.load_from_cache_file,
-            batched=True)
+        new_dataset = dataset
     if len(new_dataset) < len(dataset):
         logger.info(f'Dataset filtered, origin length: {len(dataset)}, filtered dataset length: {len(new_dataset)}')
     return new_dataset

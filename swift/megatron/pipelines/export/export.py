@@ -73,7 +73,7 @@ class MegatronExport(SwiftPipeline):
                 if save_peft_format:
                     kwargs = {'adapters': [args.output_dir]}
                 else:
-                    kwargs = {'model': args.output_dir, 'torch_dtype': None}
+                    kwargs = {'model': args.output_dir, 'torch_dtype': None, 'adapters': []}
                 device_map = args.device_map or 'auto'
                 hf_model, template = prepare_model_template(
                     args, device_map=device_map, **kwargs) if is_master() else (None, template)

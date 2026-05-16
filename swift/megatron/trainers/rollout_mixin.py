@@ -221,6 +221,7 @@ class MegatronRolloutMixin:
             # Server mode uses external vLLM server
             if self.is_main_process:
                 self.vllm_client.get_engine_type()
+                self.vllm_client.reset_mm_cache()
                 enable_lora = [self.vllm_client.enable_lora]
             else:
                 enable_lora = [False]
@@ -236,6 +237,7 @@ class MegatronRolloutMixin:
             with context():
                 set_expandable_segments(False)
                 self.engine = self._prepare_vllm_engine()
+                self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
                 set_expandable_segments(True)
@@ -322,11 +324,19 @@ class MegatronRolloutMixin:
         else:
             self._move_adapter_to_vllm()
 
-        # Reset prefix cache
+        self._reset_vllm_cache()
+
+    def _reset_vllm_cache(self):
+        # Reset prefix cache and encoder cache
+        vllm_ge_16 = check_vllm_version_ge('0.16')
         if self.vllm_mode == 'server' and self.is_main_process:
             self.vllm_client.reset_prefix_cache()
+            if vllm_ge_16:
+                self.vllm_client.reset_encoder_cache()
         elif self.vllm_mode == 'colocate':
             self.engine.engine.reset_prefix_cache()
+            if vllm_ge_16:
+                self.engine.engine.reset_encoder_cache()
 
     def _move_full_model_to_vllm(self):
         """Transfer full model weights to vLLM engine.
