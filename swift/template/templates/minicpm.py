@@ -725,7 +725,7 @@ class MiniCPMV4_6Template(Template):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos, dim=-1)
-            
+
         image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
         if len(image_sizes) > 0:
             res['image_sizes'] = torch.concat(image_sizes, dim=0)
@@ -739,7 +739,7 @@ class MiniCPMV4_6Template(Template):
             value = self.concat_tensor(batch, key, dim=0)
             if value is not None:
                 res[key] = value
-                
+
         # Inject downsample_mode so the model forward uses the same mode
         # as data preprocessing, keeping image token/feature counts aligned.
         res['downsample_mode'] = self.downsample_mode
