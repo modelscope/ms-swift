@@ -654,18 +654,8 @@ class MiniCPMV4_6Template(Template):
                     max_num_frames=self.max_num_frames,
                     max_slice_nums=max_slice_nums,
                 )
-                output_ids = media_inputs['input_ids'][0].tolist()
+                splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
                 idx_list = findall(input_ids, media_token_id)
-                idxs = findall(output_ids, split_token)
-                idxs.append(len(output_ids))
-                splited_tokens = []
-                lo = 0
-                split_len = len(split_token)
-                for idx in idxs:
-                    seg = output_ids[lo:idx]
-                    if seg:
-                        splited_tokens.append(seg)
-                    lo = idx + split_len
 
                 def _get_new_tokens(i):
                     return splited_tokens[i]
