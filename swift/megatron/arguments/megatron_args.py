@@ -822,7 +822,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         adapter_config_path = os.path.join(adapter_path, 'adapter_config.json')
         adapter_config = {}
         if os.path.exists(adapter_config_path):
-            with open(adapter_config_path, 'r') as f:
+            with open(adapter_config_path, 'r', encoding='utf-8') as f:
                 adapter_config = json.load(f)
         mapping = {'r': 'lora_rank', 'bias': 'lora_bias'}
         for k in ['lora_alpha', 'lora_dropout', 'use_rslora']:

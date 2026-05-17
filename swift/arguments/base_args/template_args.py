@@ -143,7 +143,7 @@ class TemplateArguments:
         if self.system is not None:
             if self.system.endswith('.txt'):
                 assert os.path.isfile(self.system), f'self.system: {self.system}'
-                with open(self.system, 'r') as f:
+                with open(self.system, 'r', encoding='utf-8') as f:
                     self.system = f.read()
             else:
                 self.system = self.system.replace('\\n', '\n')
