@@ -1290,7 +1290,9 @@ class Template(ProcessorMixin):
                 # The GLM-4.5 assistant part (tool call) may end with <|observation|>,
                 # and here we avoid adding <|user|>.
                 response_content = response
-                if not isinstance(response_content, str):
+                if isinstance(response_content, list) and response_content and isinstance(response_content[0], str):
+                    response_content = ''.join(response_content)
+                elif not isinstance(response_content, str):
                     if isinstance(response, list):
                         token_ids = response
                     else:
