@@ -200,16 +200,6 @@ class MiniCPMV4_6Loader(MiniCPMV2Loader):
         self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
         with patch_device_map():
             model = ModelLoader.get_model(self, model_dir, *args, **kwargs)
-        # _materialize_tied_lm_head(model)
-        # _ensure_hf_device_map_for_meta(model)
-        # v4.6 uses 'merger' under 'model' instead of top-level 'resampler'
-        # if hasattr(model, 'model') and hasattr(model.model, 'merger'):
-        #     model.model.merger.to(self.torch_dtype)
-        # # Apply device map patching for v4.6 (merger instead of resampler)
-        # if hasattr(model, 'hf_device_map') and len(model.hf_device_map.values()) > 1:
-        #     device = list(model.hf_device_map.values())[0]
-        #     if hasattr(model, 'model') and hasattr(model.model, 'merger'):
-        #         patch_fixed_device(model.model.merger, device)
         embedding = model.get_input_embeddings()
         patch_output_clone(embedding)
         return model
