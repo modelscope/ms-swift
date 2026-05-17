@@ -84,8 +84,8 @@ def is_mp_ddp() -> bool:
     return False
 
 
-def configure_vllm_allreduce_env(tensor_parallel_size: int) -> None:
-    if tensor_parallel_size <= 1 or 'VLLM_ALLREDUCE_USE_SYMM_MEM' in os.environ:
+def configure_vllm_allreduce_env(tensor_parallel_size: Optional[int]) -> None:
+    if not tensor_parallel_size or tensor_parallel_size <= 1 or 'VLLM_ALLREDUCE_USE_SYMM_MEM' in os.environ:
         return
 
     os.environ['VLLM_ALLREDUCE_USE_SYMM_MEM'] = '0'

@@ -25,3 +25,11 @@ def test_configure_vllm_allreduce_env_skips_single_tensor_parallel(monkeypatch):
     configure_vllm_allreduce_env(1)
 
     assert 'VLLM_ALLREDUCE_USE_SYMM_MEM' not in os.environ
+
+
+def test_configure_vllm_allreduce_env_skips_missing_tensor_parallel(monkeypatch):
+    monkeypatch.delenv('VLLM_ALLREDUCE_USE_SYMM_MEM', raising=False)
+
+    configure_vllm_allreduce_env(None)
+
+    assert 'VLLM_ALLREDUCE_USE_SYMM_MEM' not in os.environ
