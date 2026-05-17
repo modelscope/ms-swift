@@ -663,9 +663,17 @@ class MiniCPMV4_6Template(Template):
         return encoded
 
     def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        res = super()._data_collator_mm_data(batch)
+        res = {}
+        pixel_values = [b['pixel_values'] for b in batch if b.get('pixel_values') is not None]
+        if len(pixel_values) > 0:
+            res['pixel_values'] = torch.concat(pixel_values, dim=-1)
+        pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
+        if len(pixel_values_videos) > 0:
+            res['pixel_values_videos'] = torch.concat(pixel_values_videos, dim=-1)
         for key in ['target_sizes', 'target_sizes_videos']:
-            res[key] = self.concat_tensor(batch, key, dim=0)
+            value = self.concat_tensor(batch, key, dim=0)
+            if value is not None:
+                res[key] = value
         return res
 
     def generate(self, model, *args, **kwargs):
