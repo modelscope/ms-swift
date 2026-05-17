@@ -631,63 +631,9 @@ class MiniCPMV4_6Template(Template):
         else:
             return ['<|video_pad|>\n']
 
-    def _split_mm_tokens(self, media_type: str, output_ids: List[int], split_token: List[int]) -> List[List[int]]:
-        if media_type == 'image':
-            image_id_start = getattr(self.processor, 'image_id_start_token', None)
-            if image_id_start is None and getattr(self, 'tokenizer', None) is not None:
-                image_id_start = getattr(self.tokenizer, 'image_id_start_token', None)
-
-            boundary_ids = None
-            if image_id_start is not None:
-                boundary_ids = self._tokenize(image_id_start)
-            if not boundary_ids:
-                boundary_ids = self._tokenize('<image>')
-
-            boundaries = findall(output_ids, boundary_ids)
-            per_image_groups = []
-            for i in range(len(boundaries)):
-                start = boundaries[i]
-                end = boundaries[i + 1] if i + 1 < len(boundaries) else len(output_ids)
-                per_image_groups.append(output_ids[start:end])
-
-            splited_tokens = []
-            split_len = len(split_token)
-            for group in per_image_groups:
-                idxs = findall(group, split_token)
-                idxs.append(len(group))
-                sub_groups = []
-                lo = 0
-                for idx in idxs:
-                    sub_groups.append(group[lo:idx])
-                    lo = idx + split_len
-                if len(sub_groups) > 1:
-                    merged = []
-                    for st in sub_groups:
-                        if not st:
-                            continue
-                        if merged:
-                            merged.extend(split_token)
-                        merged.extend(st)
-                    splited_tokens.append(merged)
-                else:
-                    splited_tokens.append(sub_groups[0])
-            return splited_tokens
-
-        idxs = findall(output_ids, split_token)
-        idxs.append(len(output_ids))
-        splited_tokens = []
-        lo = 0
-        split_len = len(split_token)
-        for idx in idxs:
-            seg = output_ids[lo:idx]
-            if seg:
-                splited_tokens.append(seg)
-            lo = idx + split_len
-        return splited_tokens
-
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        split_token = self._tokenize('\n')
+        split_token = self._tokenize(self.tokenizer.eos_token)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
@@ -698,7 +644,7 @@ class MiniCPMV4_6Template(Template):
             max_slice_nums = self.max_slice_nums if media_type == 'image' else self.video_max_slice_nums
             if mm_data:
                 media_inputs = self.processor(
-                    text='\n'.join([media_token] * len(mm_data)),
+                    text=self.tokenizer.eos_token.join([media_token] * len(mm_data)),
                     images=inputs.images or None,
                     videos=inputs.videos or None,
                     return_tensors='pt',
@@ -710,7 +656,16 @@ class MiniCPMV4_6Template(Template):
                 )
                 output_ids = media_inputs['input_ids'][0].tolist()
                 idx_list = findall(input_ids, media_token_id)
-                splited_tokens = self._split_mm_tokens(media_type, output_ids, split_token)
+                idxs = findall(output_ids, split_token)
+                idxs.append(len(output_ids))
+                splited_tokens = []
+                lo = 0
+                split_len = len(split_token)
+                for idx in idxs:
+                    seg = output_ids[lo:idx]
+                    if seg:
+                        splited_tokens.append(seg)
+                    lo = idx + split_len
 
                 def _get_new_tokens(i):
                     return splited_tokens[i]
