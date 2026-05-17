@@ -618,6 +618,12 @@ class MiniCPMV4_6Template(Template):
         self.max_num_frames = get_env_args('max_num_frames', int, 128)
         self.stack_frames = get_env_args('stack_frames', int, 1)
 
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        # Inject downsample_mode into mm_processor_kwargs so that vLLM rollout
+        # receives the correct mode via _encode_truncated -> _add_request.
+        inputs.mm_processor_kwargs['downsample_mode'] = self.downsample_mode
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
@@ -627,7 +633,7 @@ class MiniCPMV4_6Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        split_token = self._tokenize('\n')
+        split_token = self._tokenize(self.tokenizer.eos_token)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
@@ -638,7 +644,7 @@ class MiniCPMV4_6Template(Template):
             max_slice_nums = self.max_slice_nums if media_type == 'image' else self.video_max_slice_nums
             if mm_data:
                 media_inputs = self.processor(
-                    text='\n'.join([media_token] * len(mm_data)),
+                    text=self.tokenizer.eos_token.join([media_token] * len(mm_data)),
                     images=inputs.images or None,
                     videos=inputs.videos or None,
                     return_tensors='pt',
@@ -670,10 +676,15 @@ class MiniCPMV4_6Template(Template):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos, dim=-1)
+
         for key in ['target_sizes', 'target_sizes_videos']:
             value = self.concat_tensor(batch, key, dim=0)
             if value is not None:
                 res[key] = value
+
+        # Inject downsample_mode so the model forward uses the same mode
+        # as data preprocessing, keeping image token/feature counts aligned.
+        res['downsample_mode'] = self.downsample_mode
         return res
 
     def generate(self, model, *args, **kwargs):
