@@ -618,12 +618,66 @@ class MiniCPMV4_6Template(Template):
         self.max_num_frames = get_env_args('max_num_frames', int, 128)
         self.stack_frames = get_env_args('stack_frames', int, 1)
 
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        # Inject downsample_mode into mm_processor_kwargs so that vLLM rollout
+        # receives the correct mode via _encode_truncated -> _add_request.
+        inputs.mm_processor_kwargs['downsample_mode'] = self.downsample_mode
+
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             return ['<|image_pad|>\n']
         else:
             return ['<|video_pad|>\n']
+
+    def _split_mm_tokens(self, media_type: str, output_ids: List[int], split_token: List[int]) -> List[List[int]]:
+        if media_type == 'image':
+            # For images, use <image> start token to identify per-image
+            # boundaries. This correctly handles sliced images where \n
+            # appears both within a single image (between slice rows)
+            # and between images (as separator).
+            image_id_start = getattr(self.processor, 'image_id_start_token', None)
+            if image_id_start is None and getattr(self, 'tokenizer', None) is not None:
+                image_id_start = getattr(self.tokenizer, 'image_id_start_token', None)
+
+            boundary_token_id = None
+            if image_id_start is not None:
+                boundary_ids = self._tokenize(image_id_start)
+                if len(boundary_ids) == 1:
+                    boundary_token_id = boundary_ids[0]
+
+            if boundary_token_id is None:
+                boundary_token_id = self._tokenize('<image>')[0]
+
+            boundaries = findall(output_ids, boundary_token_id)
+            per_image_groups = []
+            for i in range(len(boundaries)):
+                start = boundaries[i]
+                end = boundaries[i + 1] if i + 1 < len(boundaries) else len(output_ids)
+                per_image_groups.append(output_ids[start:end])
+
+            splited_tokens = []
+            for group in per_image_groups:
+                sub_groups = self._split_list(group, split_token)
+                if len(sub_groups) > 1:
+                    # Sliced image: merge \n-separated sub-groups
+                    merged = []
+                    for st in sub_groups:
+                        if not st:
+                            continue
+                        if merged:
+                            merged.extend(split_token)
+                        merged.extend(st)
+                    splited_tokens.append(merged)
+                else:
+                    splited_tokens.append(sub_groups[0])
+            return splited_tokens
+
+        # Videos: simple \n splitting (videos don't have multi-slice
+        # issues with video_max_slice_nums=1)
+        splited_tokens = self._split_list(output_ids, split_token)
+        return [st for st in splited_tokens if st]
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
@@ -648,8 +702,9 @@ class MiniCPMV4_6Template(Template):
                     max_num_frames=self.max_num_frames,
                     max_slice_nums=max_slice_nums,
                 )
-                splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
+                output_ids = media_inputs['input_ids'][0].tolist()
                 idx_list = findall(input_ids, media_token_id)
+                splited_tokens = self._split_mm_tokens(media_type, output_ids, split_token)
 
                 def _get_new_tokens(i):
                     return splited_tokens[i]
@@ -670,10 +725,24 @@ class MiniCPMV4_6Template(Template):
         pixel_values_videos = [b['pixel_values_videos'] for b in batch if b.get('pixel_values_videos') is not None]
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos, dim=-1)
+            
+        image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
+        if len(image_sizes) > 0:
+            res['image_sizes'] = torch.concat(image_sizes, dim=0)
+
+        for media_type in ['image', 'video']:
+            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', dim=0)
+            if grid_thw is not None:
+                res[f'{media_type}_grid_thw'] = grid_thw
+
         for key in ['target_sizes', 'target_sizes_videos']:
             value = self.concat_tensor(batch, key, dim=0)
             if value is not None:
                 res[key] = value
+                
+        # Inject downsample_mode so the model forward uses the same mode
+        # as data preprocessing, keeping image token/feature counts aligned.
+        res['downsample_mode'] = self.downsample_mode
         return res
 
     def generate(self, model, *args, **kwargs):
