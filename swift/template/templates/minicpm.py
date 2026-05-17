@@ -732,15 +732,6 @@ class MiniCPMV4_6Template(Template):
         if len(pixel_values_videos) > 0:
             res['pixel_values_videos'] = torch.concat(pixel_values_videos, dim=-1)
 
-        image_sizes = [b['image_sizes'] for b in batch if b.get('image_sizes') is not None]
-        if len(image_sizes) > 0:
-            res['image_sizes'] = torch.concat(image_sizes, dim=0)
-
-        for media_type in ['image', 'video']:
-            grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', dim=0)
-            if grid_thw is not None:
-                res[f'{media_type}_grid_thw'] = grid_thw
-
         for key in ['target_sizes', 'target_sizes_videos']:
             value = self.concat_tensor(batch, key, dim=0)
             if value is not None:
