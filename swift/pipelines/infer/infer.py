@@ -8,7 +8,8 @@ from swift.arguments import InferArguments
 from swift.dataset import DatasetLoader, load_dataset, sample_dataset
 from swift.infer_engine import AdapterRequest, InferRequest, RequestConfig, TransformersEngine
 from swift.metrics import InferStats, MeanMetric, compute_rouge_bleu
-from swift.utils import JsonlWriter, get_dist_setting, get_logger, is_dist, is_master, read_from_jsonl
+from swift.utils import (JsonlWriter, configure_vllm_allreduce_env, get_dist_setting, get_logger, is_dist, is_master,
+                         read_from_jsonl)
 from ..base import SwiftPipeline
 from ..export import merge_lora
 from ..utils import get_cached_dataset, prepare_model_template
@@ -65,6 +66,7 @@ class SwiftInfer(SwiftPipeline):
             if hasattr(args, 'max_batch_size'):
                 kwargs.update({'max_batch_size': args.max_batch_size})
         elif infer_backend == 'vllm':
+            configure_vllm_allreduce_env(args.vllm_tensor_parallel_size)
             from swift.infer_engine import VllmEngine
             infer_engine_cls = VllmEngine
             kwargs.update(args.get_vllm_engine_kwargs())

@@ -89,7 +89,7 @@ def configure_vllm_allreduce_env(tensor_parallel_size: Optional[int]) -> None:
         return
 
     os.environ['VLLM_ALLREDUCE_USE_SYMM_MEM'] = '0'
-    logger.info_once('Setting VLLM_ALLREDUCE_USE_SYMM_MEM=0 for vLLM tensor-parallel rollout. '
+    logger.info_once('Setting VLLM_ALLREDUCE_USE_SYMM_MEM=0 for vLLM tensor-parallel execution. '
                      'Set the environment variable explicitly to override this stability default.')
 
 
