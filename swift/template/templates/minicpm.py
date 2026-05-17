@@ -633,24 +633,17 @@ class MiniCPMV4_6Template(Template):
 
     def _split_mm_tokens(self, media_type: str, output_ids: List[int], split_token: List[int]) -> List[List[int]]:
         if media_type == 'image':
-            # For images, use <image> start token to identify per-image
-            # boundaries. This correctly handles sliced images where \n
-            # appears both within a single image (between slice rows)
-            # and between images (as separator).
             image_id_start = getattr(self.processor, 'image_id_start_token', None)
             if image_id_start is None and getattr(self, 'tokenizer', None) is not None:
                 image_id_start = getattr(self.tokenizer, 'image_id_start_token', None)
 
-            boundary_token_id = None
+            boundary_ids = None
             if image_id_start is not None:
                 boundary_ids = self._tokenize(image_id_start)
-                if len(boundary_ids) == 1:
-                    boundary_token_id = boundary_ids[0]
+            if not boundary_ids:
+                boundary_ids = self._tokenize('<image>')
 
-            if boundary_token_id is None:
-                boundary_token_id = self._tokenize('<image>')[0]
-
-            boundaries = findall(output_ids, boundary_token_id)
+            boundaries = findall(output_ids, boundary_ids)
             per_image_groups = []
             for i in range(len(boundaries)):
                 start = boundaries[i]
@@ -658,10 +651,16 @@ class MiniCPMV4_6Template(Template):
                 per_image_groups.append(output_ids[start:end])
 
             splited_tokens = []
+            split_len = len(split_token)
             for group in per_image_groups:
-                sub_groups = self._split_list(group, split_token)
+                idxs = findall(group, split_token)
+                idxs.append(len(group))
+                sub_groups = []
+                lo = 0
+                for idx in idxs:
+                    sub_groups.append(group[lo:idx])
+                    lo = idx + split_len
                 if len(sub_groups) > 1:
-                    # Sliced image: merge \n-separated sub-groups
                     merged = []
                     for st in sub_groups:
                         if not st:
@@ -674,10 +673,17 @@ class MiniCPMV4_6Template(Template):
                     splited_tokens.append(sub_groups[0])
             return splited_tokens
 
-        # Videos: simple \n splitting (videos don't have multi-slice
-        # issues with video_max_slice_nums=1)
-        splited_tokens = self._split_list(output_ids, split_token)
-        return [st for st in splited_tokens if st]
+        idxs = findall(output_ids, split_token)
+        idxs.append(len(output_ids))
+        splited_tokens = []
+        lo = 0
+        split_len = len(split_token)
+        for idx in idxs:
+            seg = output_ids[lo:idx]
+            if seg:
+                splited_tokens.append(seg)
+            lo = idx + split_len
+        return splited_tokens
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
