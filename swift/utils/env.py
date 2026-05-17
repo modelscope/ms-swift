@@ -84,6 +84,15 @@ def is_mp_ddp() -> bool:
     return False
 
 
+def configure_vllm_allreduce_env(tensor_parallel_size: int) -> None:
+    if tensor_parallel_size <= 1 or 'VLLM_ALLREDUCE_USE_SYMM_MEM' in os.environ:
+        return
+
+    os.environ['VLLM_ALLREDUCE_USE_SYMM_MEM'] = '0'
+    logger.info_once('Setting VLLM_ALLREDUCE_USE_SYMM_MEM=0 for vLLM tensor-parallel rollout. '
+                     'Set the environment variable explicitly to override this stability default.')
+
+
 def is_pai_training_job() -> bool:
     return 'PAI_TRAINING_JOB_ID' in os.environ
 

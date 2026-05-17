@@ -33,8 +33,8 @@ from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
-                         to_device)
+from swift.utils import (configure_vllm_allreduce_env, get_current_device, get_logger, is_deepspeed_enabled,
+                         is_vllm_available, remove_response, to_device)
 from .arguments import RolloutTrainerArgumentsMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
@@ -257,6 +257,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode"""
+        configure_vllm_allreduce_env(self.vllm_tensor_parallel_size)
         from swift.infer_engine import GRPOVllmEngine
         args = self.args
         model = self.model

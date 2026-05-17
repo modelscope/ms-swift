@@ -1,7 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
-from .env import (get_dist_setting, get_hf_endpoint, get_node_setting, get_pai_tensorboard_dir, is_deepspeed_enabled,
-                  is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp, is_pai_training_job, use_hf_hub)
+from .env import (configure_vllm_allreduce_env, get_dist_setting, get_hf_endpoint, get_node_setting,
+                  get_pai_tensorboard_dir, is_deepspeed_enabled, is_dist, is_last_rank, is_local_master, is_master,
+                  is_mp, is_mp_ddp, is_pai_training_job, use_hf_hub)
 from .hf_config import HfConfigFactory
 from .hub_utils import download_ms_file, git_clone_github, safe_snapshot_download
 from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
