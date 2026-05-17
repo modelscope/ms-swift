@@ -687,10 +687,6 @@ class MiniCPMV4_6Template(Template):
         res['downsample_mode'] = self.downsample_mode
         return res
 
-    def generate(self, model, *args, **kwargs):
-        kwargs['downsample_mode'] = self.downsample_mode
-        return super().generate(model, *args, **kwargs)
-
 
 register_template(
     ChatmlTemplateMeta(
