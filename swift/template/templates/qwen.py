@@ -344,7 +344,8 @@ class Qwen2VLTemplate(Template):
             video, video_kwargs = fetch_video(video_inputs, return_video_sample_fps=True, **kwargs)
             tokens = ['<|vision_start|><|video_pad|><|vision_end|>']
             if self.version == 'v2_5':
-                inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
+                if self.mode != 'vllm':
+                    inputs.mm_processor_kwargs.setdefault('fps', []).append(video_kwargs)
             elif self.version == 'v3':
                 if self.mode != 'vllm':
                     video, video_metadata = video
