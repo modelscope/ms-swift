@@ -151,7 +151,7 @@ class Mistral2506Template(Mistral2503Template):
         model_dir = self.model_info.model_dir
         model_name = get_model_name(model_dir)
         file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             system_prompt = file.read()
         today = datetime.today().strftime('%Y-%m-%d')
         yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -173,7 +173,7 @@ class Mistral2512Template(Mistral2506Template):
     def _get_mistral_system(self):
         model_dir = self.model_info.model_dir
         file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             system_prompt = file.read()
         today = datetime.today().strftime('%Y-%m-%d')
         yesterday = (datetime.today() - timedelta(days=1)).strftime('%Y-%m-%d')
@@ -190,7 +190,7 @@ class Mistral2512ThinkingTemplate(Mistral2506Template):
     def _get_mistral_system(self):
         model_dir = self.model_info.model_dir
         file_path = os.path.join(model_dir, 'SYSTEM_PROMPT.txt')
-        with open(file_path, 'r') as file:
+        with open(file_path, 'r', encoding='utf-8') as file:
             system_prompt = file.read()
         return system_prompt
 
