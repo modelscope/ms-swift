@@ -627,7 +627,7 @@ class MiniCPMV4_6Template(Template):
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
-        split_token = self._tokenize('\n')
+        split_token = self._tokenize('\n\n')
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
@@ -638,7 +638,7 @@ class MiniCPMV4_6Template(Template):
             max_slice_nums = self.max_slice_nums if media_type == 'image' else self.video_max_slice_nums
             if mm_data:
                 media_inputs = self.processor(
-                    text='\n'.join([media_token] * len(mm_data)),
+                    text='\n\n'.join([media_token] * len(mm_data)),
                     images=inputs.images or None,
                     videos=inputs.videos or None,
                     return_tensors='pt',
