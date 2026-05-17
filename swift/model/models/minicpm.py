@@ -193,16 +193,12 @@ register_model(
     ))
 
 
-class MiniCPMV4_6Loader(MiniCPMV2Loader):
+class MiniCPMV4_6Loader(ModelLoader):
 
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+    def get_model(self, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
         self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
-        with patch_device_map():
-            model = ModelLoader.get_model(self, model_dir, *args, **kwargs)
-        embedding = model.get_input_embeddings()
-        patch_output_clone(embedding)
-        return model
+        return super().get_model(*args, **kwargs)
 
 
 register_model(
