@@ -16,8 +16,7 @@ import torch.nn.functional as F
 import trl
 from accelerate.utils import gather_object, is_peft_model
 from packaging import version
-from transformers import AutoTokenizer
-from transformers import PreTrainedModel
+from transformers import AutoTokenizer, PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler, pad
@@ -524,6 +523,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                         self.teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_model_path)
 
                     from .gold_loss_adapter import GOLDLossAdapter
+
                     # Initialize adapter only once
                     if not hasattr(self, 'gold_adapter'):
                         self.gold_adapter = GOLDLossAdapter(
