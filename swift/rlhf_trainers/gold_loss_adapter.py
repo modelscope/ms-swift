@@ -219,15 +219,6 @@ class GOLDLossAdapter(nn.Module):
             student_probs = F.softmax(student_ans_logits / self.student_temperature, dim=-1)
             teacher_probs = F.softmax(teacher_ans_logits / self.teacher_temperature, dim=-1)
 
-            def decode_tokens(tokenizer, token_ids):
-                pieces = []
-                prev = ""
-                for k in range(len(token_ids)):
-                    cur = tokenizer.decode(token_ids[:k + 1], skip_special_tokens=False)
-                    pieces.append(cur[len(prev):])
-                    prev = cur
-                return pieces
-
             student_token_ids = student_input_ids[i, s_start:s_start + s_size].tolist()
             teacher_token_ids = teacher_input_ids[i, t_start:t_start + t_size].tolist()
 

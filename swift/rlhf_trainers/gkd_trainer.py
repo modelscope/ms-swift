@@ -3,11 +3,6 @@ import inspect
 import os
 import random
 import re
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import trl
-from accelerate.utils import gather_object, is_peft_model
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
@@ -26,7 +21,6 @@ from transformers import PreTrainedModel
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler, pad
-from typing import Dict, Optional, Union
 
 from swift.infer_engine.protocol import MultiModalRequestMixin
 from swift.template import TemplateInputs
