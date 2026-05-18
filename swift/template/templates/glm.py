@@ -324,17 +324,28 @@ class GLM4_5Template(GLM4Template):
 
 register_template(GLM4_5TemplateMeta(LLMTemplateType.glm4_5, template_cls=GLM4_5Template))
 
-register_template(
-    GLM4_5TemplateMeta(
-        LLMTemplateType.glm4_7,
-        template_cls=GLM4_5Template,
-        prompt=['<|user|>{{QUERY}}<|assistant|>'],
-        system_prefix=['[gMASK]<sop><|system|>{{SYSTEM}}'],
-        thinking_prefix='<think>',
-        non_thinking_prefix='</think>',
-        history_thinking_prefix='</think>',
-        agent_template='glm4_7',
-    ))
+
+@dataclass
+class GLM4_7TemplateMeta(GLM4_5TemplateMeta):
+    prompt: Prompt = field(default_factory=lambda: ['<|user|>{{QUERY}}<|assistant|>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['[gMASK]<sop><|system|>{{SYSTEM}}'])
+
+    thinking_prefix: str = '<think>'
+    non_thinking_prefix: str = '</think>'
+    history_thinking_prefix: str = '</think>'
+
+
+register_template(GLM4_7TemplateMeta(
+    LLMTemplateType.glm4_7,
+    template_cls=GLM4_5Template,
+    agent_template='glm4_7',
+))
+
+register_template(GLM4_7TemplateMeta(
+    LLMTemplateType.glm5_1,
+    template_cls=GLM4_5Template,
+    agent_template='glm5_1',
+))
 
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):

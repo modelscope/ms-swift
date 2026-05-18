@@ -40,10 +40,10 @@ def parse_yaml_args(argv):
         return
     config = None
     if argv[0].endswith('.json'):
-        with open(argv[0], 'r') as f:
+        with open(argv[0], 'r', encoding='utf-8') as f:
             config = json.load(f)
     elif argv[0].endswith('.yaml') or argv[0].endswith('.yml'):
-        with open(argv[0], 'r') as f:
+        with open(argv[0], 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
     if config is None:
         return

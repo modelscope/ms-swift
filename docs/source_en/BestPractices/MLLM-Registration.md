@@ -657,3 +657,12 @@ swift export \
     --hub_model_id '<your-model-id>' \
     --hub_token '<your-sdk-token>'
 ```
+
+## Submitting a PR
+
+If you want to submit a PR to ms-swift, you need to run the following additional commands to lint and format the code:
+
+```shell
+pip install pre-commit
+pre-commit run --all-files
+```

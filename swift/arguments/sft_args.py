@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from transformers.utils.versions import require_version
 from typing import Literal, Optional
 
-from swift.trainers import Seq2SeqTrainingArguments, TrainArgumentsMixin, TrainerFactory
+from swift.trainers import Seq2SeqTrainingArguments, TrainerFactory
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_mp,
                          is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
 from .base_args import BaseArguments
@@ -124,7 +124,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
     """Arguments pertaining to the training process.
 
     SftArguments is a dataclass that inherits from multiple argument classes: SwanlabArguments, TunerArguments,
-    BaseArguments, TrainArgumentsMixin, Seq2SeqTrainingArguments.
+    BaseArguments, Seq2SeqTrainingArguments.
 
     Args:
         add_version (bool): Whether to add a versioned subdirectory like '<version>-<timestamp>' to the `output_dir` to
@@ -188,9 +188,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.padding_free = True
             else:
                 feature = 'padding_free'
-            if self.attn_impl not in {'flash_attn', 'flash_attention_2', 'flash_attention_3'}:
+            supported_impls = ['flash_attn', 'flash_attention_2', 'flash_attention_3', 'flash_attention_4']
+            if self.attn_impl not in supported_impls:
+                supported_impls_str = ', '.join([f'"{impl}"' for impl in supported_impls])
                 raise ValueError(f'The "{feature}" feature requires a flash attention implementation. '
-                                 'Please use one of: "flash_attn", "flash_attention_2", "flash_attention_3".')
+                                 f'Please use one of: {supported_impls_str}.')
 
     def __post_init__(self) -> None:
         if self.resume_from_checkpoint:
@@ -205,6 +207,8 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         self._init_override()
         TunerArguments.__post_init__(self)
         self._check_padding_free()
+        if self.vit_gradient_checkpointing is None:
+            self.vit_gradient_checkpointing = not self.freeze_vit
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'
@@ -409,6 +413,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.eval_metric = 'reranker'
         if self.eval_metric == 'nlg':
             require_version('jieba', 'Setting `--eval_metric nlg` requires installing the jieba dependency.')
+        self._init_metric_for_best_model()
+
+    def _init_metric_for_best_model(self):
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None and self.metric_for_best_model is not None:

@@ -115,6 +115,11 @@ def patch_output_to_input_device(module: torch.nn.Module):
 
 @contextmanager
 def patch_device_map():
+
+    if not hasattr(PreTrainedModel, '_get_no_split_modules'):
+        yield
+        return
+
     _get_no_split_modules = PreTrainedModel._get_no_split_modules
 
     def _new_get_no_split_modules(self, device_map: str):

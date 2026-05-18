@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from transformers import PreTrainedModel
 from transformers.utils import strtobool
 from types import MethodType
-from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import get_env_args
@@ -40,11 +40,11 @@ def _patch_minicpmv_device_map(model) -> None:
         _old_get_vision_embedding = model.__class__.get_vision_embedding
 
         def _get_vision_embedding(self, pixel_values):
-            if len(pixel_values) == 0:
-                return _old_get_vision_embedding(self, pixel_values)
             output = _old_get_vision_embedding(self, pixel_values)
+            if len(pixel_values) == 0:
+                return output
             if isinstance(output, list):
-                return [x.to(device=device) for x in output]
+                return [x.to(device=device) if isinstance(x, torch.Tensor) else x for x in output]
             else:
                 return output.to(device=device)
 
@@ -134,7 +134,7 @@ class MiniCPMO2Loader(MiniCPMV2Loader):
 
     def get_model(self, model_dir: str, config, *args, **kwargs) -> PreTrainedModel:
         config.init_tts = strtobool(get_env_args('init_tts', str, 'false'))
-        config.init_audio = strtobool(get_env_args('init_audio', str, 'false'))
+        config.init_audio = strtobool(get_env_args('init_audio', str, 'true'))
         return super().get_model(model_dir, config, *args, **kwargs)
 
 
@@ -150,12 +150,12 @@ register_model(
                     Model('OpenBMB/MiniCPM-o-4_5', 'openbmb/MiniCPM-o-4_5'),
                 ],
                 template=TemplateType.minicpmo4_5,
-                requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile'],
+                requires=['timm', 'transformers==4.51.3', 'decord', 'soundfile', 'minicpmo-utils==1.0.6'],
             ),
         ],
         MiniCPMO2Loader,
         architectures=['MiniCPMO'],
-        model_arch=ModelArch.minicpmv,
+        model_arch=ModelArch.minicpmo,
         requires=['timm', 'transformers>=4.36', 'decord', 'soundfile'],
         tags=['vision', 'video', 'omni', 'audio'],
     ))
@@ -189,6 +189,31 @@ register_model(
         architectures=['MiniCPMV'],
         model_arch=ModelArch.minicpmv,
         requires=['timm', 'transformers>=4.36', 'decord'],
+        tags=['vision', 'video'],
+    ))
+
+
+class MiniCPMV4_6Loader(ModelLoader):
+
+    def get_model(self, *args, **kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForImageTextToText
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        return super().get_model(*args, **kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.minicpmv4_6,
+        [
+            ModelGroup([
+                Model('OpenBMB/MiniCPM-V-4.6', 'openbmb/MiniCPM-V-4.6'),
+            ], ),
+        ],
+        MiniCPMV4_6Loader,
+        template=TemplateType.minicpmv4_6,
+        architectures=['MiniCPMV4_6ForConditionalGeneration'],
+        model_arch=ModelArch.minicpmv4_6,
+        requires=['transformers>=5.7.0'],
         tags=['vision', 'video'],
     ))
 

@@ -45,7 +45,6 @@ from transformers.trainer import Trainer as HfTrainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
-from trl.trainer.callbacks import SyncRefModelCallback
 from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin
 from trl.trainer.utils import selective_log_softmax
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -60,7 +59,7 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
                          is_wandb_available, remove_response, seed_worker, shutdown_event_loop_in_daemon,
                          start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
 from .arguments import GRPOConfig
-from .rollout_mixin import DataType, RolloutTrainerMixin
+from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
                     profiling_context, profiling_decorator, replace_assistant_response_with_ids)
@@ -133,6 +132,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_template = copy(self.template)
             infer_template.padding_free = False
             infer_template.sequence_parallel_size = 1
+            infer_template.remove_unused_columns = True
             self.engine = TransformersEngine(self.model, template=infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
@@ -141,7 +141,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.model_accepts_loss_kwargs = False
 
         if args.sync_ref_model:
-            self.add_callback(SyncRefModelCallback(ref_model=self.ref_model, accelerator=self.accelerator))
+            self.add_callback(SyncRefModelCallback(self))
 
         if self.args.dynamic_sample or self.template.truncation_strategy == 'raise':
             self._prepare_resample_data_iterator()
@@ -162,6 +162,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # `_get_train_sampler` and `_prepare_inputs`.
         self._buffered_inputs = None
         self._current_train_step_time = 0.0
+        self._filtered_keys = [
+            'prompt_id', 'request_id', 'response_token_ids', 'finish_reason', 'is_truncated', 'add_eos'
+        ]
 
     def _get_data_collator(self, args, template):
         return identity_data_collator
@@ -203,7 +206,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 generation_batch = self._generate_and_score_completions(generation_batch)
                 self._buffered_inputs = generation_batch  # < this is the change
             inputs = self._buffered_inputs[self._step % num_rollout_samples]
-            self._step += 1
         else:
             inputs = self._generate_and_score_completions(generation_batch)
         return inputs
@@ -772,78 +774,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return rewards_std
 
-    def split_by_mini_batches(self, inputs: DataType) -> List[DataType]:
-        """
-        Split inputs into mini-batches, handling variable generation counts.
-
-        When rollout count differs from expected (bs * spg * num_generations),
-        we need to adjust the splitting logic to maintain proper batch sizes.
-
-        This method divides the input data into chunks based on the steps per generation (spg).
-        If the total number of inputs is not evenly divisible by spg, the remainder is
-        distributed across the first few chunks to ensure all data is included.
-
-        Args:
-            inputs (DataType): List of input data samples to be split into mini-batches.
-
-        Returns:
-            List[DataType]: A list of data chunks, where each chunk represents one step
-                           in the generation process. The number of chunks equals spg.
-        """
-        # Slice to keep only the local part of the data
-        if self.template.sequence_parallel_size == 1:
-            mode: str = 'train' if self.model.training else 'eval'
-            spg: int = self.args.steps_per_generation if mode == 'train' else 1
-
-            chunk_size: int = len(inputs) // spg
-            remainder: int = len(inputs) % spg
-            spg_chunks: List[DataType] = []
-
-            start_idx: int = 0
-            for i in range(spg):
-                current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
-                end_idx: int = start_idx + current_chunk_size
-                spg_chunks.append(inputs[start_idx:end_idx])
-                start_idx = end_idx
-
-            return spg_chunks
-        else:
-            """Split by mini batches for GRPO sequence parallel training"""
-            output = [None] * sequence_parallel.sp_world_size
-            # gather inputs within a sp group
-            dist.all_gather_object(output, inputs, group=sequence_parallel.sp_group)
-            if sequence_parallel.rp_world_size > 1:
-                output_rp = [None] * sequence_parallel.rp_world_size
-                output = [p for sublist in output for p in sublist]
-                dist.all_gather_object(output_rp, output, group=sequence_parallel.rp_group)
-                output = output_rp
-            output = [p for sublist in output for p in sublist]
-            inputs = output
-
-            mode = 'train' if self.model.training else 'eval'
-            spg = self.args.steps_per_generation * sequence_parallel.world_size if mode == 'train' else 1
-
-            if mode == 'eval':
-                # TODO only take the first bs rows, because eval does not support loop
-                bs = self.args.per_device_eval_batch_size
-                inputs = inputs[:bs]
-                spg = 1
-
-            # Use the new dynamic splitting logic
-            chunk_size: int = len(inputs) // spg
-            remainder: int = len(inputs) % spg
-            spg_chunks: List[DataType] = []
-
-            start_idx: int = 0
-            for i in range(spg):
-                current_chunk_size: int = chunk_size + (1 if i < remainder else 0)
-                end_idx: int = start_idx + current_chunk_size
-                spg_chunks.append(inputs[start_idx:end_idx])
-                start_idx = end_idx
-
-            spg_chunks = to_device(spg_chunks, device=self.accelerator.device)
-            return spg_chunks
-
     @contextmanager
     def null_ref_context(self):
         """Context manager for handling null reference model (that is, peft adapter manipulation)."""
@@ -880,6 +810,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         data['messages'] = replace_assistant_response_with_ids(data['messages'],
                                                                                data['response_token_ids'], loss_mask)
                 batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
+                for encoded_inputs in batch_encoded_inputs:
+                    extra_kwargs = encoded_inputs.get('_extra_kwargs') or {}
+                    for k in list(extra_kwargs.keys()):
+                        if k not in self._filtered_keys:
+                            extra_kwargs.pop(k)
                 batch_encoded_inputs = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
                 if self.dynamic_num_samples and self.is_multimodal:
                     batch_encoded_inputs['_origin_data'] = batch
@@ -1659,8 +1594,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Forward pass
         logits = model(**model_inputs).logits
 
-        # Extract relevant portion and apply temperature
-        logits = logits[:, -(logits_to_keep + 1):-1, :] / self.temperature
+        logits = logits[:, -(logits_to_keep + 1):-1, :]
+        logits.div_(self.temperature)
+
         input_ids_for_logps = input_ids[:, -logits_to_keep:]
 
         is_padding_free = self.template.padding_free
@@ -1970,8 +1906,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'step': [str(self.state.global_step)] * seen_nums,
                 'prompt': list(self._logs['prompt'])[:seen_nums],
                 'completion': list(self._logs['completion'])[:seen_nums],
-                **{k: list(v)[:seen_nums]
-                   for k, v in self._logs['rewards'].items()},
+                **{
+                    k: list(v)[:seen_nums]
+                    for k, v in self._logs['rewards'].items()
+                },
                 'advantages': list(self._logs['advantages'])[:seen_nums],
             }
             for key, value in self._logs.items():
@@ -2127,20 +2065,35 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def get_chunked_inputs(self, inputs, start_idx, end_idx):
         chunk_inputs = {}
+        batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
         # for LLM, slice the inputs
         for key, val in inputs.items():
             if isinstance(val, torch.Tensor):
-                chunk_inputs[key] = val if val.ndim == 0 else val[start_idx:end_idx]
+                if val.ndim == 0:
+                    chunk_inputs[key] = val
+                elif self.is_multimodal and val.shape[0] != batch_size:
+                    continue
+                else:
+                    chunk_inputs[key] = val[start_idx:end_idx]
+            elif isinstance(val, list) and len(val) == batch_size:
+                chunk_inputs[key] = val[start_idx:end_idx]
             else:
                 chunk_inputs[key] = val
         if self.is_multimodal:
             # for MLLM, re-encode to get mm-related inputs
             origin_data = inputs['_origin_data'][start_idx:end_idx]
             template = self.template
+            # prevent to be overwritten by data_collator
+            _preserved_chunk_keys = ('advantages', 'completion_mask', 'ref_per_token_logps', 'old_per_token_logps',
+                                     'rollout_per_token_logps', 'truncated_mask', 'rollout_is_weights', 'seq_lengths')
+            _preserved_dicts = {k: chunk_inputs.pop(k) for k in _preserved_chunk_keys if k in chunk_inputs}
+            current_length = inputs['input_ids'].shape[1]
             with self._template_context(template):
                 encoded_data = [template.encode(data) for data in origin_data]
-                chunk_inputs.update(to_device(template.data_collator(encoded_data), self.model.device))
+                chunk_inputs.update(
+                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.model.device))
                 chunk_inputs.pop('labels', None)
+            chunk_inputs.update(_preserved_dicts)
         return chunk_inputs
 
     def _prepare_liger_loss(self):
@@ -2666,9 +2619,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             for k, v in inputs.items() if k not in [
                 'logits_to_keep', 'completion_mask', 'ref_per_token_logps', 'advantages', 'old_per_token_logps',
                 'truncated_mask', 'seq_lengths', 'num_items_in_batch', 'rollout_per_token_logps', 'rollout_logprobs',
-                'is_truncated', 'add_eos', 'response_token_ids', 'prompt_id', 'rollout_is_weights', 'finish_reason',
-                'request_id'
-            ]
+                'rollout_is_weights'
+            ] + self._filtered_keys
         }
 
     def _get_eval_sampler(self, eval_dataset):

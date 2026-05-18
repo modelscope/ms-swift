@@ -349,10 +349,6 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 else:
                     total_rollout_logprobs.append(current_logprobs)
 
-            if current_request.messages[-1]['role'] == 'assistant':
-                # Add a dummy response to allow engine to continue generating
-                current_request.messages.append({'role': 'assistant', 'content': None})
-
             current_turn += 1
 
     def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',

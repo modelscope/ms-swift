@@ -128,7 +128,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         data_for_forward = {k: v for k, v in data.items() if k != 'labels'}
         context = torch.no_grad() if no_grad else nullcontext()
         with context:
-            output_tensor = forward_step_helper(self.args, model, data_for_forward)
+            output_tensor = forward_step_helper(model, data_for_forward)
 
         if self.enable_routing_replay and RouterReplayHelper.is_r2_record_action(model.config):
             routing_topk_idx = get_router_replay_data(model.config)

@@ -115,8 +115,8 @@ class DistributedAttention(torch.nn.Module):
         self.scatter_idx = scatter_idx
         self.gather_idx = gather_idx
 
-    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor,
-                *args: Any, **kwargs) -> torch.Tensor:
+    def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, attention_mask: torch.Tensor, *args:
+                Any, **kwargs) -> torch.Tensor:
         if self.sequence_parallel.world_size == 1:
             return self.local_attn(query, key, value, attention_mask, *args, **kwargs)
 
@@ -140,13 +140,8 @@ class DistributedAttention(torch.nn.Module):
             # only ulysses
             position_ids = kwargs.pop('position_ids')
             if position_ids is not None:
-                shape0 = position_ids.shape[0]
-                position_ids_output = torch.empty(
-                    (shape0 * self.sequence_parallel.sp_world_size, position_ids.shape[1]),
-                    dtype=position_ids.dtype,
-                    device=position_ids.device)
-                dist.all_gather_into_tensor(position_ids_output, position_ids, group=self.sequence_parallel.sp_group)
-                position_ids = torch.cat(position_ids_output.split(shape0, dim=0), dim=1)
+                # Reuse the generic gather path so 2D and 3D position_ids share the same SP behavior.
+                position_ids = self.sequence_parallel.gather(position_ids.contiguous(), dim=-1, position_ids=None)
 
         context_layer = self.local_attn(
             query_layer, key_layer, value_layer, attention_mask, *args, position_ids=position_ids, **kwargs)
@@ -187,16 +182,10 @@ class SequenceParallel:
 
             _origin_flash_attention_mask = masking_utils.flash_attention_mask
 
-            def flash_attention_mask(batch_size,
-                                     cache_position,
-                                     kv_length,
-                                     kv_offset=0,
-                                     mask_function=masking_utils.causal_mask_function,
-                                     attention_mask=None,
-                                     **kwargs):
+            def flash_attention_mask(*args, **kwargs):
                 if self.world_size == 1:
-                    return _origin_flash_attention_mask(batch_size, cache_position, kv_length, kv_offset, mask_function,
-                                                        attention_mask, **kwargs)
+                    return _origin_flash_attention_mask(*args, **kwargs)
+                attention_mask = kwargs.get('attention_mask')
                 if attention_mask is not None:
                     if attention_mask.all():
                         attention_mask = None
@@ -206,21 +195,23 @@ class SequenceParallel:
             masking_utils.flash_attention_mask = flash_attention_mask
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['flash_attention_2'] = flash_attention_mask
 
-            def sdpa_mask(batch_size, cache_position, kv_length, *args, **kwargs):
+            def sdpa_mask(*args, **kwargs):
                 if self.world_size == 1:
-                    return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
-                                                                                                     cache_position,
-                                                                                                     kv_length, *args,
-                                                                                                     **kwargs)
-                device = cache_position.device
+                    return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](*args, **kwargs)
+                if 'cache_position' in kwargs:
+                    device = kwargs['cache_position'].device
+                else:
+                    # transformers>=5.4.0
+                    device = kwargs['device']
                 cache_position = self.real_position_ids[0]
                 cache_position = self.pad(cache_position, padding_value=-1, position_ids=self.real_position_ids, dim=0)
                 cache_position = torch.arange(0, cache_position.shape[0], device=device)
-                kv_length = cache_position.shape[0]
-                return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](batch_size,
-                                                                                                 cache_position,
-                                                                                                 kv_length, *args,
-                                                                                                 **kwargs)
+                kwargs['kv_length'] = cache_position.shape[0]
+                if 'cache_position' in kwargs:
+                    kwargs['cache_position'] = cache_position
+                else:
+                    kwargs['q_length'] = kwargs['kv_length']
+                return masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa_origin'](*args, **kwargs)
 
             masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping[
                 'sdpa_origin'] = masking_utils.ALL_MASK_ATTENTION_FUNCTIONS._global_mapping['sdpa']
@@ -315,7 +306,7 @@ class SequenceParallel:
                     else:
                         if 'cu_seq_lens_q' in kwargs:
                             position_ids = kwargs.get('position_ids')
-                            if position_ids is None:
+                            if self.real_position_ids is not None:
                                 position_ids = self.real_position_ids
                             position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
                             cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)

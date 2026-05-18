@@ -15,7 +15,8 @@ from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
 
 from swift.model import get_model_processor, save_checkpoint
-from swift.utils import get_logger, get_modules_to_not_convert, get_multimodal_target_regex, is_master, split_list
+from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
+                         get_multimodal_target_regex, is_master, split_list)
 
 logger = get_logger()
 
@@ -93,25 +94,6 @@ def _patch_validate_non_overlapping_shards_metadata():
     default_planner._validate_global_plan = _validate_global_plan
 
 
-def _patch__write_item():
-    import megatron.core
-    if version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0'):
-        return
-    # mcore 0.12
-    from megatron.core.dist_checkpointing.strategies import filesystem_async
-
-    _origin__write_item = filesystem_async._write_item
-    if 'serialization_format' in inspect.signature(_origin__write_item).parameters:
-        from torch.distributed.checkpoint.filesystem import SerializationFormat
-
-        def _write_item(self, *args, **kwargs):
-            if 'serialization_format' not in kwargs:
-                kwargs['serialization_format'] = SerializationFormat.TORCH_SAVE
-            return _origin__write_item(self, *args, **kwargs)
-
-        filesystem_async._write_item = _write_item
-
-
 def _patch_unified_memory():
     if is_torch_npu_available():
         return
@@ -139,7 +121,7 @@ def _patch_unified_memory():
 
 
 def _patch_mcore_bridge():
-    require_version('mcore-bridge>=1.0.2', 'please install mcore-bridge via `pip install mcore-bridge -U`')
+    require_version('mcore-bridge>=1.2.0', 'please install mcore-bridge via `pip install mcore-bridge -U`')
     import mcore_bridge
     from mcore_bridge import GPTBridge
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')
@@ -165,7 +147,7 @@ def _patch_mcore_bridge():
                 self.hf_model.model_meta = processor.model_meta
                 self.hf_model.model_info = processor.model_info
             else:
-                with torch.device('meta'):
+                with torch.device('meta'), disable_safe_ddp_context_use_barrier():
                     self.hf_model = get_model_processor(
                         args.model_dir, model_type=args.model_type, return_dummy_model=True)[0]
 
@@ -190,12 +172,20 @@ def _patch_mcore_bridge():
                 peft_config.save_pretrained(output_dir)
             else:
                 config = self.config
+                llm_config = HfConfigFactory.get_text_config(hf_config)
                 if config.mtp_num_layers:
-                    hf_config.num_nextn_predict_layers = config.mtp_num_layers
+                    for key in ['num_nextn_predict_layers', 'mtp_num_hidden_layers']:
+                        if hasattr(llm_config, key):
+                            setattr(llm_config, key, config.mtp_num_layers)
+                            break
+                    else:
+                        llm_config.num_nextn_predict_layers = config.mtp_num_layers
                 if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param:
                     if getattr(hf_config, 'quantization_config', None) is None:
                         from transformers.utils.quantization_config import FineGrainedFP8Config
                         modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
+                        if hasattr(self, '_fp8_skip_modules'):
+                            modules_to_not_convert = (modules_to_not_convert or []) + list(self._fp8_skip_modules)
                         hf_config.quantization_config = FineGrainedFP8Config(
                             modules_to_not_convert=modules_to_not_convert)
                 elif hasattr(hf_config, 'quantization_config'):
@@ -224,7 +214,6 @@ def init_megatron_env():
     _patch_unified_memory()
     _patch_mcore_bridge()
     _patch__batched_p2p_ops()
-    _patch__write_item()
     logging.root.setLevel(logging_level)  # revert logger level
     try:
         _patch_torch_FileSystemReader()

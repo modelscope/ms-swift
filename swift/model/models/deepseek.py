@@ -165,6 +165,23 @@ register_model(
         architectures=['DeepseekV32ForCausalLM'],
     ))
 
+register_model(
+    ModelMeta(
+        LLMModelType.deepseek_v4,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4-Flash', 'deepseek-ai/DeepSeek-V4-Flash'),
+                Model('deepseek-ai/DeepSeek-V4-Flash-Base', 'deepseek-ai/DeepSeek-V4-Flash-Base'),
+            ]),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4-Pro', 'deepseek-ai/DeepSeek-V4-Pro'),
+                Model('deepseek-ai/DeepSeek-V4-Pro-Base', 'deepseek-ai/DeepSeek-V4-Pro-Base'),
+            ]),
+        ],
+        template=TemplateType.deepseek_v4,
+        architectures=['DeepseekV4ForCausalLM'],
+    ))
+
 
 class DeepseekVLLoader(ModelLoader):
 

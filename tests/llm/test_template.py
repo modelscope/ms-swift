@@ -85,8 +85,8 @@ class TestTemplate(unittest.TestCase):
         tokenizer = get_processor('Qwen/Qwen2.5-7B-Instruct')
         template = get_template(tokenizer)
         for agent_template_type in ('react_zh', 'qwen_zh'):
-            agent_template = agent_template_map[agent_template_type]()
-            template.agent_template = agent_template
+            template._agent_template = agent_template_type
+            agent_template = template.agent_template
             observation = agent_template.keyword.observation
             test_messages = deepcopy(messages)
             test_messages[2]['content'] = 'assistant2' + observation

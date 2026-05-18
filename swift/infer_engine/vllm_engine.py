@@ -1,27 +1,30 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import asyncio
 import inspect
+import multiprocessing
 import os
+import time
 import torch
-from contextlib import nullcontext
-from copy import deepcopy
+from contextlib import contextmanager, nullcontext
+from copy import copy, deepcopy
 from packaging import version
 from PIL import Image
 from tqdm import tqdm
-from transformers import GenerationConfig
+from transformers import AutoConfig, GenerationConfig
 from transformers.utils import is_torch_npu_available
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_processor
 from swift.template import Template
-from swift.utils import get_device, get_dist_setting, get_logger, is_dist, safe_snapshot_download
+from swift.utils import (disable_deepspeed_zero3, get_device, get_dist_setting, get_logger, is_dist,
+                         safe_snapshot_download)
 from .infer_engine import InferEngine
-from .patch import patch_auto_config, patch_auto_tokenizer
+from .patch import patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                        EmbeddingResponseData, InferRequest, RequestConfig, random_uuid)
-from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak
+from .utils import AdapterRequest, InferStreamer, patch_npu_vllm, patch_vllm_memory_leak, patch_vllm_triton_device_guard
 
 logger = get_logger()
 try:
@@ -46,6 +49,43 @@ except ImportError:
     ReasoningParserManager = None
 
 dtype_mapping = {torch.float16: 'float16', torch.bfloat16: 'bfloat16', torch.float32: 'float32'}
+
+
+def _patch_vllm_dp_coordinator_timeout():
+    # https://github.com/vllm-project/vllm/pull/37452 introduced a 30-second default timeout,
+    # which is prone to timing out in spawn scenarios. Patch it to 180 seconds here.
+    try:
+        from vllm.v1.engine import coordinator as coordinator_module
+    except ImportError:
+        return
+
+    coordinator_cls = coordinator_module.DPCoordinator
+    if not hasattr(coordinator_cls, '_wait_for_zmq_addrs'):
+        return
+
+    if getattr(coordinator_cls, '_swift_timeout_patched', False):
+        return
+
+    def _wait_for_zmq_addrs(self, zmq_addr_pipe):
+        t0 = time.monotonic()
+        try:
+            ready = multiprocessing.connection.wait([zmq_addr_pipe, self.proc.sentinel], timeout=180)
+            elapsed = time.monotonic() - t0
+            if not ready:
+                raise RuntimeError(f'DP Coordinator process failed to report ZMQ addresses '
+                                   f'within 180s (elapsed={elapsed:.1f}s).')
+            try:
+                return zmq_addr_pipe.recv()
+            except EOFError:
+                raise RuntimeError('DP Coordinator process failed during startup.') from None
+        finally:
+            zmq_addr_pipe.close()
+
+    coordinator_cls._wait_for_zmq_addrs = _wait_for_zmq_addrs
+    coordinator_cls._swift_timeout_patched = True
+
+
+_patch_vllm_dp_coordinator_timeout()
 
 
 class VllmEngine(InferEngine):
@@ -135,8 +175,10 @@ class VllmEngine(InferEngine):
         self.quantization = quantization
         self.num_labels = num_labels
         self.reranker_use_activation = reranker_use_activation
+        self._config_cls = None
 
         patch_vllm_memory_leak()
+        patch_vllm_triton_device_guard()
         self._adapters_pool = {}
         if template is None:
             processor = self._get_processor()
@@ -178,10 +220,31 @@ class VllmEngine(InferEngine):
             task_type=self.task_type)
 
     def _prepare_engine(self) -> None:
-        with patch_auto_tokenizer(self.tokenizer), patch_auto_config(self.config):
+        with patch_auto_tokenizer(self.tokenizer), self._patch_auto_config(), \
+                disable_deepspeed_zero3():
             llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine
+
+    @contextmanager
+    def _patch_auto_config(self):
+        _old_from_pretrained = AutoConfig.from_pretrained
+
+        def _from_pretrained(*args, **kwargs):
+            config = deepcopy(self.config)
+            if self._version_ge('0.19'):
+                if self._config_cls is None:
+                    hf_config = _old_from_pretrained(*args, **kwargs)
+                    self._config_cls = hf_config.__class__
+                if not isinstance(config, self._config_cls):
+                    config.__class__ = self._config_cls
+            return config
+
+        AutoConfig.from_pretrained = _from_pretrained
+        try:
+            yield
+        finally:
+            AutoConfig.from_pretrained = _old_from_pretrained
 
     def _prepare_engine_kwargs(self, max_model_len, engine_kwargs) -> None:
         if engine_kwargs is None:
@@ -472,7 +535,9 @@ class VllmEngine(InferEngine):
     ) -> AsyncIterator[ChatCompletionStreamResponse]:
         request_id = random_uuid()
         result_generator = self._add_request(inputs, generation_config, request_id, adapter_request=adapter_request)
-        infer_streamers = [InferStreamer(self.template) for _ in range(generation_config.n)]
+        infer_streamers = [
+            InferStreamer(self.template, template_inputs=inputs['template_inputs']) for _ in range(generation_config.n)
+        ]
         token_idxs = [0 for _ in range(generation_config.n)]
         async for result in result_generator:
             res = self._create_chat_completion_stream_response(result, request_config, request_id, infer_streamers,
@@ -537,7 +602,8 @@ class VllmEngine(InferEngine):
 
             toolcall = None
             if output.is_finished:
-                toolcall = self._get_toolcall(self.template.decode(output.token_ids))
+                toolcall = self._get_toolcall(
+                    self.template.decode(output.token_ids, **infer_streamers[i].decode_kwargs))
 
             choice = ChatCompletionResponseStreamChoice(
                 index=i,
@@ -571,7 +637,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = self.template.decode(output.token_ids)
+            response = self.template.decode(output.token_ids, template_inputs=inputs['template_inputs'])
 
             # Extract reasoning content if reasoning_parser is enabled
             reasoning_content = None
@@ -721,7 +787,10 @@ class VllmEngine(InferEngine):
             if request_config.stream:
 
                 def _gen_wrapper():
-                    infer_streamers = [InferStreamer(self.template) for _ in range(generation_config.n)]
+                    infer_streamers = [
+                        InferStreamer(self.template, template_inputs=inputs['template_inputs'])
+                        for _ in range(generation_config.n)
+                    ]
                     token_idxs = [0 for _ in range(generation_config.n)]
                     while self.engine.has_unfinished_requests():
                         result = self.engine.step()

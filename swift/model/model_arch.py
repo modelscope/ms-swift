@@ -32,6 +32,7 @@ class MLLMModelArch:
     qwen2_5_omni = 'qwen2_5_omni'
     qwen3_vl = 'qwen3_vl'
     qwen3_omni = 'qwen3_omni'
+    qwen3_asr = 'qwen3_asr'
 
     cogvlm = 'cogvlm'
     chatglm4v = 'chatglm4v'
@@ -54,11 +55,14 @@ class MLLMModelArch:
     internvl = 'internvl'
     interns1 = 'interns1'
     minicpmv = 'minicpmv'
+    minicpmo = 'minicpmo'
+    minicpmv4_6 = 'minicpmv4_6'
     deepseek_vl = 'deepseek_vl'
     deepseek_vl2 = 'deepseek_vl2'
     deepseek_janus = 'deepseek_janus'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
+    kimi_k25 = 'kimi_k25'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
@@ -389,6 +393,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.kimi_k25,
+        language_model='language_model',
+        aligner='mm_projector',
+        vision_tower='vision_tower',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.xcomposer,
         language_model='model',
         aligner='vision_proj',
@@ -473,6 +485,22 @@ register_model_arch(
         language_model='llm',
         aligner='resampler',
         vision_tower='vpm',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.minicpmv4_6,
+        language_model='model.language_model',
+        aligner='model.merger',
+        vision_tower='model.vision_tower',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.minicpmo,
+        language_model='llm',
+        aligner='resampler',
+        vision_tower=['vpm', 'apm'],
     ))
 
 register_model_arch(
@@ -575,6 +603,14 @@ register_model_arch(
             'thinker.visual.merger_list'
         ],
         generator=['talker', 'code2wav'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.qwen3_asr,
+        language_model=['thinker.model', 'thinker.lm_head'],
+        vision_tower='thinker.audio_tower',
+        aligner=['thinker.audio_tower.proj1', 'thinker.audio_tower.proj2'],
     ))
 
 register_model_arch(
