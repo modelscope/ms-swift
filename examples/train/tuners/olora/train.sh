@@ -9,7 +9,7 @@ swift sft \
     --learning_rate 1e-4 \
     --lora_rank 8 \
     --lora_alpha 32 \
-    --init_lora_weights olora \
+    --init_weights olora \
     --gradient_accumulation_steps 16 \
     --eval_steps 100 \
     --save_steps 100 \

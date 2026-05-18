@@ -22,6 +22,7 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 from modelscope import check_local_model_is_latest
 from packaging import version
 from pathlib import Path
+from transformers.utils import is_torch_npu_available
 from typing import Callable, Dict, List, Optional
 
 from swift.dataset import RowPreprocessor
@@ -37,7 +38,8 @@ from swift.megatron.utils import (apply_router_replay_patch, disable_forward_pre
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
-from swift.utils import deep_getattr, get_last_valid_indices, get_logger, is_last_rank, is_master, ms_logger_context
+from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
+                         is_master, ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
 from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_pp_rank,
                     get_packed_seq_params)
@@ -66,6 +68,12 @@ class BaseMegatronTrainer(ABC):
         self.args = args
         self.template = template
         self.prepare_model()
+        # Sync template.padding_free after prepare_model(), because _check_padding_free
+        # may override args.padding_free for certain models (e.g. DSA attention).
+        if template.padding_free != args.padding_free:
+            logger.warning(f'template.padding_free({template.padding_free}) != args.padding_free({args.padding_free}), '
+                           f'syncing template.padding_free to {args.padding_free}.')
+            template.padding_free = args.padding_free
         self.optimizer, self.opt_param_scheduler = self.get_optimizer_and_scheduler()
         self.data_collator = self._get_data_collator()
 
@@ -88,8 +96,6 @@ class BaseMegatronTrainer(ABC):
                 })
                 check_local_model_is_latest(args.model_info.model_dir, user_agent=config_info)
 
-        self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
-        self.mcore_014 = version.parse(megatron.core.__version__) >= version.parse('0.14.0rc0')
         self.callbacks = []
         for callback in args.callbacks:
             self.callbacks.append(megatron_callbacks_map[callback](self))
@@ -134,15 +140,11 @@ class BaseMegatronTrainer(ABC):
             if config.moe_router_load_balancing_type == 'aux_loss':
                 track_names.append('load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'seq_aux_loss':
-                if self.mcore_014:
-                    track_names.append('seq_load_balancing_loss')
-                else:
-                    track_names.append('load_balancing_loss')
+                track_names.append('seq_load_balancing_loss')
             elif config.moe_router_load_balancing_type == 'global_aux_loss':
                 track_names.append('global_load_balancing_loss')
             if config.moe_z_loss_coeff is not None:
                 track_names.append('z_loss')
-            track_moe_kwargs = {'mtp_num_layers': args.mtp_num_layers} if self.mcore_013 else {}
             track_moe_metrics(
                 loss_scale=moe_loss_scale,
                 iteration=self.state.iteration,
@@ -152,7 +154,7 @@ class BaseMegatronTrainer(ABC):
                 track_names=track_names,
                 num_layers=config.num_layers,
                 moe_layer_freq=config.moe_layer_freq,
-                **track_moe_kwargs)
+                mtp_num_layers=args.mtp_num_layers)
         if args.mtp_num_layers is not None:
             mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
@@ -183,6 +185,7 @@ class BaseMegatronTrainer(ABC):
         args = self.args
         self.unwrapped_models = get_mcore_model(args, self.template.config)
         self.config = self.unwrapped_models[0].config
+        logger.info(f'model_config: {self.config}')
         self.bridge = self.config.bridge
         self.peft_models = self._prepare_peft_model(self.unwrapped_models)
         self.wrapped_models = wrap_model(args, self.unwrapped_models)
@@ -690,7 +693,15 @@ class BaseMegatronTrainer(ABC):
         state = self.state
         if (args.metric_for_best_model is None or metrics is None or not is_last_rank()
                 or args.metric_for_best_model not in metrics):
-            return False
+            if args.metric_for_best_model is None:
+                return False
+            tensor = torch.zeros((3, ), device=get_current_device(), dtype=torch.float64)
+            torch.distributed.all_reduce(tensor)
+            is_new_best_metric = bool(tensor[2].item())
+            if is_new_best_metric:
+                state.best_metric = tensor[0].item()
+                state.best_global_step = int(tensor[1].item())
+            return is_new_best_metric
         metric_value = metrics[args.metric_for_best_model]
         op = operator.ge if args.greater_is_better else operator.le
         if state.best_metric is None:
@@ -701,6 +712,10 @@ class BaseMegatronTrainer(ABC):
             state.best_metric = metric_value
             state.best_global_step = state.global_step
             is_new_best_metric = True
+        tensor = torch.tensor([state.best_metric, state.best_global_step, is_new_best_metric],
+                              device=get_current_device(),
+                              dtype=torch.float64)
+        torch.distributed.all_reduce(tensor)
         return is_new_best_metric
 
     def save_checkpoint(self):
@@ -712,11 +727,11 @@ class BaseMegatronTrainer(ABC):
         os.makedirs(output_dir, exist_ok=True)
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
-        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
         else:
             model = self.wrapped_models
+        gc_collect()
         save_mcore_checkpoint(
             args,
             model,
@@ -726,12 +741,23 @@ class BaseMegatronTrainer(ABC):
             peft_format=args.tuner_type == 'lora',
             output_dir=output_dir)
         state.last_model_checkpoint = output_dir
-        if state.best_global_step:
+        if state.best_global_step is not None:
             best_model_checkpoint = os.path.join(args.output_dir, f'checkpoint-{state.best_global_step}')
             if os.path.exists(best_model_checkpoint):
                 state.best_model_checkpoint = best_model_checkpoint
         # safetensors
         if args.save_safetensors:
+            skip_saving_adapter = args.tuner_type == 'lora_llm' or (
+                args.tuner_type == 'lora' and args.merge_lora and not hasattr(self.bridge, '_support_hf_grouped_lora'))
+
+            if not skip_saving_adapter:
+                self.bridge.save_weights(
+                    self.unwrapped_models,
+                    output_dir,
+                    peft_format=args.tuner_type == 'lora',
+                    args=args,
+                    processor=self.template.processor,
+                )
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.tuner_type != 'full' and args.merge_lora:
                 self.merge_lora_adapters()
@@ -746,14 +772,13 @@ class BaseMegatronTrainer(ABC):
                 tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
                 os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
                 self.copy_path(common_path, tgt_common_path)
-            self.bridge.save_weights(
-                self.unwrapped_models,
-                output_dir,
-                peft_format=save_peft_format,
-                args=args,
-                processor=self.template.processor,
-            )
-            if args.tuner_type != 'full' and args.merge_lora:
+                self.bridge.save_weights(
+                    self.unwrapped_models,
+                    output_dir,
+                    peft_format=False,
+                    args=args,
+                    processor=self.template.processor,
+                )
                 self.unmerge_lora_adapters()
 
         if is_master():
@@ -940,15 +965,24 @@ class BaseMegatronTrainer(ABC):
     def forward_step(self, data_iterator, model):
         pass
 
+    def _should_use_npu_generated_attention_mask(self, args) -> bool:
+        return (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
+                and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
+
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
         batch = get_batch_on_this_pp_rank(self.args, data, vp_stage=vp_stage)
         if num_samples is None:
             num_samples = batch.pop('num_samples')
         args = self.args
         text_position_ids = batch.pop('text_position_ids', None)
-        batch.pop('attention_mask_2d', None)
         if text_position_ids is None:
             text_position_ids = batch.get('position_ids')
+        if self._should_use_npu_generated_attention_mask(args):
+            if 'attention_mask_2d' not in batch and batch.get('attention_mask') is not None:
+                batch['attention_mask_2d'] = (~batch['attention_mask']).sum(dim=(1, 2)) > 0
+            batch['attention_mask'] = None
+        else:
+            batch.pop('attention_mask_2d', None)
         if args.padding_free and text_position_ids is not None:
             batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
             batch['packed_seq_params'].num_samples = num_samples

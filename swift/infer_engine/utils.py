@@ -155,6 +155,9 @@ def prepare_generation_config(model_generation_config: Optional[GenerationConfig
         else:
             kwargs[key] = new_value
 
+    if kwargs.get('top_k') is not None and kwargs['top_k'] <= 0:
+        kwargs['top_k'] = None
+
     if not model_generation_config.do_sample and request_config.temperature in {0, None}:
         kwargs['temperature'] = 0
     if kwargs['temperature'] == 0:
@@ -372,6 +375,32 @@ def patch_npu_vllm(vllm_device: str):
             torch.distributed.new_group = original_new_group
 
     return new_group_context() if device_type == 'npu' else nullcontext()
+
+
+def patch_vllm_triton_device_guard():
+    import functools
+    try:
+        from vllm.v1.worker import gpu_worker as _gw
+        _orig_fn = _gw.init_worker_distributed_environment
+    except (ImportError, AttributeError):
+        return
+
+    if getattr(_gw, '_swift_dist_env_patched', False):
+        return
+
+    @functools.wraps(_orig_fn)
+    def _patched_init_worker_distributed_environment(*args, **kwargs):
+        if not torch.cuda.is_available():
+            return _orig_fn(*args, **kwargs)
+        expected_device = torch.cuda.current_device()
+        result = _orig_fn(*args, **kwargs)
+        actual_device = torch.cuda.current_device()
+        if actual_device != expected_device:
+            torch.cuda.set_device(expected_device)
+        return result
+
+    _gw.init_worker_distributed_environment = _patched_init_worker_distributed_environment
+    _gw._swift_dist_env_patched = True
 
 
 def patch_vllm_memory_leak():

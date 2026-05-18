@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-<img src="https://img.shields.io/badge/python-3.11-5be.svg">
+<img src="https://img.shields.io/badge/python-3.12-5be.svg">
 <img src="https://img.shields.io/badge/pytorch-%E2%89%A52.0-orange.svg">
 <a href="https://github.com/modelscope/modelscope/"><img src="https://img.shields.io/badge/modelscope-%E2%89%A51.23-5D91D4.svg"></a>
 <a href="https://pypi.org/project/ms-swift/"><img src="https://badge.fury.io/py/ms-swift.svg"></a>
@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-<a href="https://trendshift.io/repositories/6427" target="_blank"><img src="https://trendshift.io/api/badge/repositories/6427" alt="modelscope%2Fswift | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+<a href="https://trendshift.io/repositories/11937" target="_blank"><img src="https://trendshift.io/api/badge/repositories/11937" alt="modelscope/ms-swift | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
 <p align="center">
@@ -45,7 +45,7 @@
 You can contact us and communicate with us by adding our group:
 
 
-[Discord Group](https://discord.com/invite/D27yfEFVz5)              |  WeChat Group
+[Discord Group](https://discord.gg/yeN59wxjwe)              |  WeChat Group
 :-------------------------:|:-------------------------:
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
@@ -138,18 +138,18 @@ Running Environment:
 
 |              | Range        | Recommended         | Notes                                     |
 |--------------|--------------|---------------------|-------------------------------------------|
-| python       | >=3.9        | 3.11/3.12                |                                           |
-| cuda         |              | cuda12              | No need to install if using CPU, NPU, MPS |
-| torch        | >=2.0        | 2.8.0/2.10.0         |                            |
-| transformers | >=4.33       | 4.57.6/5.2.0              |                          |
+| python       | >=3.10        | 3.12                |                                           |
+| cuda         |              | cuda12.8/13.0    | No need to install if using CPU, NPU, MPS |
+| torch        | >=2.0        | 2.8.0/2.11.0         |                            |
+| transformers | >=4.33       | 4.57.6/5.8.1              |                          |
 | modelscope   | >=1.23       |                     |                                           |
-| peft         | >=0.11,<0.19 |                     |                                           |
-| flash_attn   |              | 2.8.3/3.0.0b1 |                                           |
-| trl          | >=0.15,<0.30 | 0.28.0              | RLHF                                      |
-| deepspeed    | >=0.14       | 0.18.8              | Training                                  |
-| vllm         | >=0.5.1      | 0.11.0/0.17.1       | Inference/Deployment                      |
+| datasets     | >=3.0,<4.8.5 | 3.6.0/4.8.4         |                    |
+| peft         | >=0.11,<0.20 |                     |                                           |
+| flash_attn   |              | 2.8.3/4.0.0b12 |                                           |
+| trl          | >=0.15,<1.0 | 0.29.1              | RLHF                                      |
+| deepspeed    | >=0.14       | 0.18.9              | Training                                  |
+| vllm         | >=0.5.1      | 0.11.0/0.20.2       | Inference/Deployment                      |
 | sglang       | >=0.4.6      |          | Inference/Deployment                      |
-| lmdeploy     | >=0.5   | 0.10.1                 | Inference/Deployment                      |
 | evalscope    | >=1.0       |                     | Evaluation                                |
 | gradio       |              | 5.32.1              | Web-UI/App                                |
 
@@ -334,7 +334,7 @@ Pre-training:
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 swift pt \
-    --model Qwen/Qwen2.5-7B \
+    --model Qwen/Qwen3-4B-Base \
     --dataset swift/chinese-c4 \
     --streaming true \
     --tuner_type full \
@@ -347,7 +347,7 @@ swift pt \
 Fine-tuning:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --dataset AI-ModelScope/alpaca-gpt4-data-en \
     --tuner_type lora \
     --output_dir output \
@@ -358,7 +358,7 @@ RLHF:
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift rlhf \
     --rlhf_type dpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --dataset hjh0119/shareAI-Llama3-DPO-zh-en-emoji \
     --tuner_type lora \
     --output_dir output \
@@ -386,7 +386,7 @@ ms-swift supports using Megatron parallelism techniques to accelerate training, 
 
 ```shell
 NPROC_PER_NODE=2 CUDA_VISIBLE_DEVICES=0,1 megatron sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --save_safetensors true \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
     --tuner_type lora \
@@ -413,7 +413,7 @@ ms-swift supports a rich set of GRPO family algorithms:
 CUDA_VISIBLE_DEVICES=0,1,2,3 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --tuner_type lora \
     --use_vllm true \
     --vllm_mode colocate \
@@ -426,25 +426,16 @@ swift rlhf \
 ### Inference
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --stream true \
     --infer_backend transformers \
-    --max_new_tokens 2048
-
-# LoRA
-CUDA_VISIBLE_DEVICES=0 swift infer \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --adapters swift/test_lora \
-    --stream true \
-    --infer_backend transformers \
-    --temperature 0 \
     --max_new_tokens 2048
 ```
 
 ### Interface Inference
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift app \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --stream true \
     --infer_backend transformers \
     --max_new_tokens 2048
@@ -453,14 +444,14 @@ CUDA_VISIBLE_DEVICES=0 swift app \
 ### Deployment
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift deploy \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --infer_backend vllm
 ```
 
 ### Sampling
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift sample \
-    --model LLM-Research/Meta-Llama-3.1-8B-Instruct \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
     --sampler_engine transformers \
     --num_return_sequences 5 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh#5
@@ -469,8 +460,8 @@ CUDA_VISIBLE_DEVICES=0 swift sample \
 ### Evaluation
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift eval \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --infer_backend lmdeploy \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --infer_backend sglang \
     --eval_backend OpenCompass \
     --eval_dataset ARC_c
 ```
@@ -478,10 +469,10 @@ CUDA_VISIBLE_DEVICES=0 swift eval \
 ### Quantization
 ```shell
 CUDA_VISIBLE_DEVICES=0 swift export \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --quant_bits 4 --quant_method awq \
+    --model Qwen/Qwen3-4B-Instruct-2507 \
+    --quant_method fp8 \
     --dataset AI-ModelScope/alpaca-gpt4-data-zh \
-    --output_dir Qwen2.5-7B-Instruct-AWQ
+    --output_dir Qwen3-4B-Instruct-2507-FP8
 ```
 
 ### Push Model

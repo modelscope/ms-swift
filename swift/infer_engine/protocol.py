@@ -91,6 +91,7 @@ class InferRequest:
 
     tools: Optional[List[Tool]] = None
     objects: Dict[str, Any] = field(default_factory=dict)
+    chat_template_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         for key in ['images', 'audios', 'videos']:
@@ -233,6 +234,7 @@ class ChatCompletionRequestMixin:
     messages: Messages
     tools: Optional[List[Tool]] = None
     tool_choice: Optional[Union[str, Dict]] = None
+    chat_template_kwargs: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self):
         if self.tool_choice is None:

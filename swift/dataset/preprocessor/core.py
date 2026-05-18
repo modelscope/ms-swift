@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
+import datasets
 import numpy as np
 import os
 from collections import Counter
@@ -10,6 +11,7 @@ from datasets import IterableDataset as HfIterableDataset
 from datasets import Sequence, Value
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
+from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from swift.template import history_to_messages
@@ -31,6 +33,7 @@ class RowPreprocessor:
                                 'channel',
                                 'margin',
                                 'teacher_prompt',
+                                'chat_template_kwargs',
                             ]
 
     def __init__(self,
@@ -41,7 +44,6 @@ class RowPreprocessor:
                  traceback_limit: int = 10) -> None:
         self.columns = columns or {}
         self.origin_columns = self.columns.copy()  # Higher priority and raise Error
-        self._version = 'v1'
         images_keys = ['images', 'image']
         audios_keys = ['audios', 'audio']
         videos_keys = ['videos', 'video']
@@ -53,6 +55,7 @@ class RowPreprocessor:
         self.traceback_limit = traceback_limit
         self._traceback_counter = 0
         self.dataset_sample = dataset_sample
+        self.datasets_4 = version.parse(datasets.__version__) >= version.parse('4.0')
         if not isinstance(random_state, np.random.RandomState):
             random_state = np.random.RandomState(random_state)
         self.random_state = random_state
@@ -63,9 +66,9 @@ class RowPreprocessor:
             return
         messages = row['messages']
         assert len(messages) > 0, f'messages: {messages}'
-        # fix swift/SlimOrca
+        # fix swift/SlimOrca (concat)
         for message in messages:
-            keys = set(message.keys()) - {'role', 'content', 'loss'}
+            keys = set(message.keys()) - {'role', 'content', 'loss', 'loss_scale'}
             for key in keys:
                 message.pop(key)
 
@@ -242,36 +245,46 @@ class RowPreprocessor:
             dataset = dataset.select_columns(k_list)
         return dataset
 
-    @staticmethod
     @contextmanager
-    def _patch_arrow_writer():
+    def _patch_arrow_writer(self):
         # fix AI-ModelScope/ms_agent_for_agentfabric:all
         from datasets.arrow_writer import ArrowWriter
 
-        def _new_init(self, schema=None, features=None, *args, **kwargs):
+        def _new_init(_self, schema=None, features=None, *args, **kwargs):
 
             if features is not None:
-                messages_feature = [{
-                    'role': Value(dtype='string'),
-                    'content': Value(dtype='string'),
-                }]
-                messages_feature_with_loss = [{
-                    'role': Value(dtype='string'),
-                    'content': Value(dtype='string'),
-                    'loss': Value(dtype='float64'),
-                }]
-                features['messages'] = messages_feature_with_loss
-                features['rejected_messages'] = messages_feature_with_loss
-                features['positive_messages'] = [messages_feature]
-                features['negative_messages'] = [messages_feature]
-                features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
-                features['objects'] = {
-                    'ref': Sequence(feature=Value(dtype='string'), length=-1),
-                    'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
-                    'bbox_type': Value(dtype='string'),
-                    'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
-                }
-            ArrowWriter.__origin_init__(self, schema, features, *args, **kwargs)
+
+                if self.datasets_4:
+                    from datasets.features import Json, List
+                    messages_feature = List(Json())
+                    for key in ['messages', 'rejected_messages', 'positive_messages', 'negative_messages']:
+                        features[key] = messages_feature
+                    features['images'] = List({'bytes': Value(dtype='binary'), 'path': Value(dtype='string')})
+                    features['objects'] = Json()
+                    features['chat_template_kwargs'] = Json()
+                else:
+                    messages_feature = [{
+                        'role': Value(dtype='string'),
+                        'content': Value(dtype='string'),
+                    }]
+                    messages_feature_with_loss = [{
+                        'role': Value(dtype='string'),
+                        'content': Value(dtype='string'),
+                        'loss': Value(dtype='bool'),
+                        'loss_scale': Value(dtype='float64'),
+                    }]
+                    features['messages'] = messages_feature_with_loss
+                    features['rejected_messages'] = messages_feature_with_loss
+                    features['positive_messages'] = messages_feature
+                    features['negative_messages'] = messages_feature
+                    features['images'] = [{'bytes': Value(dtype='binary'), 'path': Value(dtype='string')}]
+                    features['objects'] = {
+                        'ref': Sequence(feature=Value(dtype='string'), length=-1),
+                        'bbox': Sequence(feature=Sequence(feature=Value(dtype='float64'), length=-1), length=-1),
+                        'bbox_type': Value(dtype='string'),
+                        'image_id': Sequence(feature=Value(dtype='int64'), length=-1),
+                    }
+            ArrowWriter.__origin_init__(_self, schema, features, *args, **kwargs)
 
         ArrowWriter.__origin_init__ = ArrowWriter.__init__
         ArrowWriter.__init__ = _new_init
@@ -296,6 +309,7 @@ class RowPreprocessor:
         load_from_cache_file: bool = True,
         strict: bool = False,
         batch_size: Optional[int] = None,
+        enable_auto_mapping: bool = False,
     ) -> DATASET_TYPE:
         from ..utils import sample_dataset
         if batch_size is None:
@@ -321,7 +335,8 @@ class RowPreprocessor:
                 dataset = dataset.map(lambda x: {'__#solution': x['solution']}, **map_kwargs)
                 map_kwargs.pop('cache_file_name', None)
         dataset = self.safe_rename_columns(dataset, self.origin_columns)
-        dataset = self.safe_rename_columns(dataset, self.columns)
+        if enable_auto_mapping:
+            dataset = self.safe_rename_columns(dataset, self.columns)
         dataset = self.prepare_dataset(dataset)
         dataset = self._cast_pil_image(dataset)
         if isinstance(dataset, HfIterableDataset):
@@ -549,8 +564,8 @@ class AutoPreprocessor:
         *,
         num_proc: int = 1,
         load_from_cache_file: bool = True,
-        strict: bool = False,
+        **kwargs,
     ) -> DATASET_TYPE:
         dataset = RowPreprocessor.safe_rename_columns(dataset, self.columns)
         preprocessor = self._get_preprocessor(dataset)
-        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, strict=strict)
+        return preprocessor(dataset, num_proc=num_proc, load_from_cache_file=load_from_cache_file, **kwargs)

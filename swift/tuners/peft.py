@@ -5,7 +5,6 @@ import os.path
 import peft
 import torch
 import torch.nn
-import transformers
 from dataclasses import asdict, dataclass, field
 from functools import partial, reduce
 from modelscope import snapshot_download
@@ -15,7 +14,6 @@ from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig,
                   PromptEncoderConfig, PromptLearningConfig, PromptTuningConfig, VeraConfig, VeraModel, get_peft_config,
                   get_peft_model, get_peft_model_state_dict)
 from peft.config import PeftConfigMixin
-from peft.tuners import lora
 from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
 from transformers import Trainer as HfTrainer
@@ -167,6 +165,19 @@ def create_optimizer_param_groups(self: PeftModel, **defaults):
     return param_groups
 
 
+def load_adapter(self, model_id, *args, **kwargs):
+    load_result = self.load_adapter_origin(model_id, *args, **kwargs)
+    if load_result is None:
+        return load_result
+    # Avoid silent loading errors for LoRA trained with megatron-swift
+    unexpected_keys = [key for key in load_result.unexpected_keys if 'lora_' in key]
+    if unexpected_keys:
+        logger.warning_once(f'Unexpected LoRA keys found in checkpoint `{model_id}`, '
+                            f'len(unexpected_keys): {len(unexpected_keys)}, '
+                            f'unexpected_keys[:10]: {unexpected_keys[:10]}.')
+    return load_result
+
+
 def adalora_forward(self, *args, **kwargs):
     from peft.utils.integrations import gather_params_ctx
     outputs = self.model.forward(*args, **kwargs)
@@ -290,9 +301,9 @@ def hot_patch_peft_module():
         BoneModel._create_and_replace = _create_and_replace_hook
 
     # Support type conversion
-    def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], adapter_name: str):
+    def __new_init__(self, model: torch.nn.Module, config: Dict[str, LoraConfig], *args, **kwargs):
 
-        self.__init_origin__(model, config, adapter_name)
+        self.__init_origin__(model, config, *args, **kwargs)
         active_adapters = self.active_adapter
         if isinstance(active_adapters, str):
             active_adapters = [active_adapters]
@@ -312,6 +323,8 @@ def hot_patch_peft_module():
 
     # Support LoRA+
     PeftModel.create_optimizer_param_groups = create_optimizer_param_groups
+    PeftModel.load_adapter_origin = PeftModel.load_adapter
+    PeftModel.load_adapter = load_adapter
 
     PeftConfigMixin.from_pretrained_origin = PeftConfigMixin.from_pretrained
     PeftConfigMixin.from_pretrained = LoraConfig.from_pretrained

@@ -61,6 +61,8 @@ class DataArguments:
         remove_unused_columns (bool): Whether to remove columns not used by the model. If `False`, extra columns are
             passed to the trainer's `compute_loss` function, which is useful for custom loss calculations.
             Defaults to True. Note: The default is `False` for GPRO.
+        disable_auto_column_mapping (bool): By default, column names in the dataset are automatically mapped.
+            This parameter disables that behavior (the `columns` parameter remains effective), defaulting to `False`.
         model_name (Optional[List[str]]): For self-cognition tasks, replaces the `{{NAME}}` placeholder in the
             `swift/self-cognition` dataset. Pass Chinese and English names.
             Example: `--model_name 小黄 'Xiao Huang'`. Defaults to None.
@@ -90,6 +92,7 @@ class DataArguments:
     columns: Optional[Union[dict, str]] = None
     strict: bool = False
     remove_unused_columns: bool = True
+    disable_auto_column_mapping: bool = False
     # Chinese name and English name
     model_name: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['小黄', 'Xiao Huang']"})
     model_author: Optional[List[str]] = field(default=None, metadata={'help': "e.g. ['魔搭', 'ModelScope']"})
@@ -138,4 +141,5 @@ class DataArguments:
             'model_name': self.model_name,
             'model_author': self.model_author,
             'remove_unused_columns': self.remove_unused_columns,
+            'disable_auto_column_mapping': self.disable_auto_column_mapping,
         }

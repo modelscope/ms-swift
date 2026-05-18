@@ -31,6 +31,7 @@ pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
+- 如果你在昇腾 NPU 上使用 Qwen3.5，并且需要了解 FLA / MindSpeed 的替换关系、补丁生效路径以及版本验证信息，请参考 [NPU支持文档中的 Qwen3.5 FLA补丁说明](./NPU-support.md#qwen35-fla补丁说明)。
 
 
 ## 推理
@@ -109,6 +110,8 @@ Qwen3.5的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swif
 
 以下提供对Qwen3.5-4B模型的微调脚本，该示例脚本仅作为演示用途。训练显存为 4 * 20GiB，训练时间为12分钟。由于transformers的GatedDeltaNet不支持packing/padding_free（megatron支持，见下文），因此我们使用group_by_length参数来加速训练，保证DP的负载均衡并减少micro batch中的零填充，但这会导致loss曲线跳动（因数据随机不充分），当然你也可以去掉此参数。
 - 关于数据预处理：若使用packing/group_by_length参数，则需要对所有数据做提前预处理，获取数据input_ids长度，这需要消耗一定时间。若你希望在训练时处理数据，你可以去除这个两个参数。
+- 降低显存消耗：可以通过`--deepspeed zero2/zero3`, 开启序列并行`--sequence_parallel_size`，或者使用`--use_liger_kernel true`。
+- 训练加速：可以开启`--attn_impl flash_attention_2`，MoE模型建议开启`--experts_impl grouped_mm`。
 
 ```shell
 # 4 * 20GiB
@@ -308,13 +311,15 @@ swift infer \
 ```
 
 Megatron-SWIFT训练Qwen3.5的提示：
-- 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh)。
-- 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/14)），请安装对应版本。
+- 全参数训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh)。
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
-- CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练（暂时需安装[main分支](https://github.com/modelscope/mcore-bridge/pull/16)），此外需安装megatron-core dev分支。
-- 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0`可切换至 transformers 实现，transformers实现不支持packing和GDN的TP。
+- 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练。请安装对应版本。
+- CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练，需安装megatron-core [main分支](https://github.com/NVIDIA/Megatron-LM)。
+- 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0`可切换至 transformers 实现，**transformers实现不支持packing和GDN的TP/CP**。
 - padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
-- apply_wd_to_qk_layernorm：对 qk layernorm 应用权重衰减。默认为False。
+  - Qwen3-Next的Megatron GatedDeltaNet支持参考[这个PR](https://github.com/modelscope/mcore-bridge/pull/76)，需要"mcore-bridge>=1.4.0"。
+- apply_wd_to_qk_layernorm: 对 qk layernorm 应用权重衰减。默认为False。
+- 关于FP8训练：参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh)。你需要安装"mcore-bridge>=1.2.0"，并设置参数`--linear_decoupled_in_proj true`，将`in_proj`解耦为`in_proj_qkvz`, `in_proj_ba`，其中`in_proj_ba`仍使用原始精度训练。
 
 
 ## 强化学习（RL）

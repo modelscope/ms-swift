@@ -6,7 +6,16 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def infer(client, model: str, messages):
-    resp = client.chat.completions.create(model=model, messages=messages, max_tokens=512, temperature=0)
+    resp = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        max_tokens=512,
+        temperature=0,
+        extra_body={
+            'chat_template_kwargs': {
+                'enable_thinking': False
+            },
+        })
     query = messages[0]['content']
     response = resp.choices[0].message.content
     print(f'query: {query}')
@@ -16,7 +25,16 @@ def infer(client, model: str, messages):
 
 # streaming
 def infer_stream(client, model: str, messages):
-    gen = client.chat.completions.create(model=model, messages=messages, stream=True, temperature=0)
+    gen = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        stream=True,
+        temperature=0,
+        extra_body={
+            'chat_template_kwargs': {
+                'enable_thinking': False
+            },
+        })
     print(f'messages: {messages}\nresponse: ', end='')
     for chunk in gen:
         if chunk is None:
@@ -43,5 +61,5 @@ def run_client(host: str = '127.0.0.1', port: int = 8000):
 
 if __name__ == '__main__':
     from swift import DeployArguments, run_deploy
-    with run_deploy(DeployArguments(model='Qwen/Qwen2.5-1.5B-Instruct', verbose=False, log_interval=-1)) as port:
+    with run_deploy(DeployArguments(model='Qwen/Qwen3.5-4B', verbose=False, log_interval=-1)) as port:
         run_client(port=port)

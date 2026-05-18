@@ -31,6 +31,7 @@ pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
+- If you are using Qwen3.5 on Ascend NPU and want details about the FLA / MindSpeed replacement, effective patch path, and verified version combinations, please refer to [Qwen3.5 FLA Patch Notes in the NPU Support document](./NPU-support.md#qwen35-fla-patch-notes).
 
 ## Inference
 
@@ -106,6 +107,8 @@ Qwen3.5's bbox output uses normalized relative coordinates with a scale of 1000.
 
 Below is a fine-tuning script for the Qwen3.5-4B model. This example script is for demonstration purposes only. Training memory usage is 4 × 20GiB, with a training time of 12 minutes. Since transformers' GatedDeltaNet does not support packing/padding_free (Megatron does support it, see below), we use the `group_by_length` parameter to accelerate training, ensuring load balancing across data parallelism (DP) and reducing zero-padding in micro batches. However, this may cause fluctuations in the loss curve due to insufficient data shuffling. You can also remove this parameter if preferred.
 - Regarding data preprocessing: When using the packing / group_by_length parameters, all data must be preprocessed in advance to obtain the input_ids length of each sample, which takes additional time. If you prefer to process data on-the-fly during training, you can remove these two parameters.
+- Reduce memory consumption: You can enable `--deepspeed zero2/zero3`, turn on sequence parallelism via `--sequence_parallel_size`, or use `--use_liger_kernel true`.
+- Training acceleration: You can enable `--attn_impl flash_attention_2`, and for MoE models, it is recommended to enable `--experts_impl grouped_mm`.
 
 ```shell
 # 4 * 20GiB
@@ -305,14 +308,15 @@ swift infer \
 ```
 
 Tips for training Qwen3.5 with Megatron-SWIFT:
-
-- Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/mcore_full.sh).
-- Regarding MTP training: `mcore-bridge>=1.1.0` supports multimodal MTP training (currently requires installing the [main branch](https://github.com/modelscope/mcore-bridge/pull/14)). Please install the corresponding version.
+- Full parameter training: Refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/packing.sh).
 - TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
-- CP support: "mcore-bridge>=1.1.0" supports CP training for GDN (currently requires installing the [main branch](https://github.com/modelscope/mcore-bridge/pull/16)). Additionally, the megatron-core dev branch needs to be installed.
-- By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set the environment variable `USE_MCORE_GDN=0` to switch to the transformers implementation. Note that the transformers implementation does not support packing and GDN's TP.
+- Regarding MTP training: `mcore-bridge>=1.1.0` supports multimodal MTP training. Please install the corresponding version.
+- CP support: "mcore-bridge>=1.1.0" supports CP training for GDN. Additionally, the megatron-core [main branch](https://github.com/NVIDIA/Megatron-LM) needs to be installed.
+- By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set the environment variable `USE_MCORE_GDN=0` to switch to the transformers implementation. **Note that the transformers implementation does not support packing and GDN's TP/CP**.
 - Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
+  - Qwen3-Next Megatron GatedDeltaNet support refers to [this PR](https://github.com/modelscope/mcore-bridge/pull/76), requiring `mcore-bridge>=1.4.0`.
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
+- Regarding FP8 training: refer to [this example](https://github.com/modelscope/ms-swift/blob/main/examples/models/qwen3_5/fp8.sh). You need to install "mcore-bridge>=1.2.0", and set the parameter `--linear_decoupled_in_proj true` to decouple `in_proj` into `in_proj_qkvz` and `in_proj_ba`, where `in_proj_ba` is still trained in original precision.
 
 
 ## Reinforcement Learning (RL)

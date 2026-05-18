@@ -6,9 +6,10 @@ from .base import OptimizerCallback
 
 class LorapOptimizerCallback(OptimizerCallback):
 
-    def create_optimizer(self) -> Optimizer:
+    def create_optimizer(self, model=None) -> Optimizer:
         args = self.args
-        model = self.trainer.model
+        if model is None:
+            model = self.trainer.model
         optimizer_grouped_parameters = None
         if hasattr(model, 'create_optimizer_param_groups'):
             # Lora+ parameter groups
