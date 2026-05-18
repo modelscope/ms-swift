@@ -543,7 +543,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     completion_texts = inputs['completion_texts']
 
                     # Add teacher model memory management like in liger branch
-                    load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+                    load_context = self.load_teacher_model_context() if self.args.offload_teacher_model \
+                        else nullcontext()
                     with load_context:
                         with torch.no_grad(), disable_gradient_checkpointing(teacher_model,
                                                                              self.args.gradient_checkpointing_kwargs):
