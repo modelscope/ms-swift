@@ -49,7 +49,7 @@ class VanillaSampler(Sampler):
             if not os.path.exists(file):
                 logger.warning(f'Cache file does not exist: {file}')
                 continue
-            with open(file, 'r') as f:
+            with open(file, 'r', encoding='utf-8') as f:
                 for line in f.readlines():
                     line = line.strip()
                     if not line:

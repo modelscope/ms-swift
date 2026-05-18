@@ -413,6 +413,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.eval_metric = 'reranker'
         if self.eval_metric == 'nlg':
             require_version('jieba', 'Setting `--eval_metric nlg` requires installing the jieba dependency.')
+        self._init_metric_for_best_model()
+
+    def _init_metric_for_best_model(self):
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None and self.metric_for_best_model is not None:

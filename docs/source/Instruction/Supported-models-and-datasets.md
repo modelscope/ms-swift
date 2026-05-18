@@ -608,6 +608,11 @@
 |[inclusionAI/Ling-mini-base-2.0](https://modelscope.cn/models/inclusionAI/Ling-mini-base-2.0)|bailing_moe|ling2|-|&#x2714;|-|[inclusionAI/Ling-mini-base-2.0](https://huggingface.co/inclusionAI/Ling-mini-base-2.0)|
 |[inclusionAI/Ling-1T](https://modelscope.cn/models/inclusionAI/Ling-1T)|bailing_moe|ling2|-|&#x2714;|-|[inclusionAI/Ling-1T](https://huggingface.co/inclusionAI/Ling-1T)|
 |[inclusionAI/Ring-mini-2.0](https://modelscope.cn/models/inclusionAI/Ring-mini-2.0)|bailing_moe|ring2|-|&#x2714;|-|[inclusionAI/Ring-mini-2.0](https://huggingface.co/inclusionAI/Ring-mini-2.0)|
+|[inclusionAI/Ling-2.5-1T](https://modelscope.cn/models/inclusionAI/Ling-2.5-1T)|bailing_hybrid|ling2|-|&#x2718;|-|[inclusionAI/Ling-2.5-1T](https://huggingface.co/inclusionAI/Ling-2.5-1T)|
+|[inclusionAI/Ling-2.6-1T](https://modelscope.cn/models/inclusionAI/Ling-2.6-1T)|bailing_hybrid|ling2|-|&#x2718;|-|[inclusionAI/Ling-2.6-1T](https://huggingface.co/inclusionAI/Ling-2.6-1T)|
+|[inclusionAI/Ling-2.6-flash](https://modelscope.cn/models/inclusionAI/Ling-2.6-flash)|bailing_hybrid|ling2|-|&#x2718;|-|[inclusionAI/Ling-2.6-flash](https://huggingface.co/inclusionAI/Ling-2.6-flash)|
+|[inclusionAI/Ring-2.5-1T](https://modelscope.cn/models/inclusionAI/Ring-2.5-1T)|bailing_hybrid|ring2_5|-|&#x2718;|-|[inclusionAI/Ring-2.5-1T](https://huggingface.co/inclusionAI/Ring-2.5-1T)|
+|[inclusionAI/Ring-2.6-1T](https://modelscope.cn/models/inclusionAI/Ring-2.6-1T)|bailing_hybrid|ring2_5|-|&#x2718;|-|[inclusionAI/Ring-2.6-1T](https://huggingface.co/inclusionAI/Ring-2.6-1T)|
 |[IEITYuan/Yuan2.0-2B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-2B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-2B-hf](https://huggingface.co/IEITYuan/Yuan2-2B-hf)|
 |[IEITYuan/Yuan2.0-51B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-51B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-51B-hf](https://huggingface.co/IEITYuan/Yuan2-51B-hf)|
 |[IEITYuan/Yuan2.0-102B-hf](https://modelscope.cn/models/IEITYuan/Yuan2.0-102B-hf)|yuan2|yuan|-|&#x2718;|-|[IEITYuan/Yuan2-102B-hf](https://huggingface.co/IEITYuan/Yuan2-102B-hf)|
@@ -765,8 +770,8 @@
 |[Qwen/Qwen3-Omni-30B-A3B-Captioner](https://modelscope.cn/models/Qwen/Qwen3-Omni-30B-A3B-Captioner)|qwen3_omni_moe|qwen3_omni|transformers>=4.57.dev0, soundfile, decord, qwen_omni_utils>=0.0.9|&#x2714;|vision, video, audio|[Qwen/Qwen3-Omni-30B-A3B-Captioner](https://huggingface.co/Qwen/Qwen3-Omni-30B-A3B-Captioner)|
 |[Qwen/Qwen2-Audio-7B-Instruct](https://modelscope.cn/models/Qwen/Qwen2-Audio-7B-Instruct)|qwen2_audio|qwen2_audio|transformers>=4.45,<4.49, librosa|&#x2718;|audio|[Qwen/Qwen2-Audio-7B-Instruct](https://huggingface.co/Qwen/Qwen2-Audio-7B-Instruct)|
 |[Qwen/Qwen2-Audio-7B](https://modelscope.cn/models/Qwen/Qwen2-Audio-7B)|qwen2_audio|qwen2_audio|transformers>=4.45,<4.49, librosa|&#x2718;|audio|[Qwen/Qwen2-Audio-7B](https://huggingface.co/Qwen/Qwen2-Audio-7B)|
-|[Qwen/Qwen3-ASR-1.7B](https://modelscope.cn/models/Qwen/Qwen3-ASR-1.7B)|qwen3_asr|qwen3_asr|qwen-asr, transformers==4.57.6|&#x2718;|audio|[Qwen/Qwen3-ASR-1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B)|
-|[Qwen/Qwen3-ASR-0.6B](https://modelscope.cn/models/Qwen/Qwen3-ASR-0.6B)|qwen3_asr|qwen3_asr|qwen-asr, transformers==4.57.6|&#x2718;|audio|[Qwen/Qwen3-ASR-0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B)|
+|[Qwen/Qwen3-ASR-1.7B](https://modelscope.cn/models/Qwen/Qwen3-ASR-1.7B)|qwen3_asr|qwen3_asr|qwen-asr, transformers==4.57.6|&#x2714;|audio|[Qwen/Qwen3-ASR-1.7B](https://huggingface.co/Qwen/Qwen3-ASR-1.7B)|
+|[Qwen/Qwen3-ASR-0.6B](https://modelscope.cn/models/Qwen/Qwen3-ASR-0.6B)|qwen3_asr|qwen3_asr|qwen-asr, transformers==4.57.6|&#x2714;|audio|[Qwen/Qwen3-ASR-0.6B](https://huggingface.co/Qwen/Qwen3-ASR-0.6B)|
 |[Qwen/Qwen3-VL-2B-Instruct](https://modelscope.cn/models/Qwen/Qwen3-VL-2B-Instruct)|qwen3_vl|qwen3_vl|transformers>=4.57, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3-VL-2B-Instruct](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct)|
 |[Qwen/Qwen3-VL-2B-Thinking](https://modelscope.cn/models/Qwen/Qwen3-VL-2B-Thinking)|qwen3_vl|qwen3_vl|transformers>=4.57, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3-VL-2B-Thinking](https://huggingface.co/Qwen/Qwen3-VL-2B-Thinking)|
 |[Qwen/Qwen3-VL-2B-Instruct-FP8](https://modelscope.cn/models/Qwen/Qwen3-VL-2B-Instruct-FP8)|qwen3_vl|qwen3_vl|transformers>=4.57, qwen_vl_utils>=0.0.14, decord|&#x2714;|vision, video|[Qwen/Qwen3-VL-2B-Instruct-FP8](https://huggingface.co/Qwen/Qwen3-VL-2B-Instruct-FP8)|
@@ -1044,6 +1049,7 @@
 |[OpenBMB/MiniCPM-V-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)|minicpmv2_6|minicpmv2_6|timm, transformers>=4.36, decord|&#x2718;|vision, video|[openbmb/MiniCPM-V-2_6](https://huggingface.co/openbmb/MiniCPM-V-2_6)|
 |[OpenBMB/MiniCPM-V-4](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4)|minicpmv4|minicpmv4|timm, transformers>=4.36, decord|&#x2718;|vision, video|[openbmb/MiniCPM-V-4](https://huggingface.co/openbmb/MiniCPM-V-4)|
 |[OpenBMB/MiniCPM-V-4_5](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4_5)|minicpmv4_5|minicpmv4_5|timm, transformers>=4.36, decord|&#x2718;|vision, video|[openbmb/MiniCPM-V-4_5](https://huggingface.co/openbmb/MiniCPM-V-4_5)|
+|[OpenBMB/MiniCPM-V-4.6](https://modelscope.cn/models/OpenBMB/MiniCPM-V-4.6)|minicpmv4_6|minicpmv4_6|transformers>=5.7.0|&#x2718;|vision, video|[openbmb/MiniCPM-V-4.6](https://huggingface.co/openbmb/MiniCPM-V-4.6)|
 |[OpenBMB/MiniCPM-o-2_6](https://modelscope.cn/models/OpenBMB/MiniCPM-o-2_6)|minicpmo|minicpmo|timm, transformers>=4.36, decord, soundfile|&#x2718;|vision, video, omni, audio|[openbmb/MiniCPM-o-2_6](https://huggingface.co/openbmb/MiniCPM-o-2_6)|
 |[OpenBMB/MiniCPM-o-4_5](https://modelscope.cn/models/OpenBMB/MiniCPM-o-4_5)|minicpmo|minicpmo4_5|timm, transformers==4.51.3, decord, soundfile, minicpmo-utils==1.0.6|&#x2718;|vision, video, omni, audio|[openbmb/MiniCPM-o-4_5](https://huggingface.co/openbmb/MiniCPM-o-4_5)|
 |[MiniMax/MiniMax-VL-01](https://modelscope.cn/models/MiniMax/MiniMax-VL-01)|minimax_vl|minimax_vl|-|&#x2718;|vision|[MiniMaxAI/MiniMax-VL-01](https://huggingface.co/MiniMaxAI/MiniMax-VL-01)|

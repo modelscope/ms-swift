@@ -303,13 +303,17 @@ class Qwen2VLTemplate(Template):
     version = 'v2'
     use_model = True
     support_padding_free = True
+    _requires_mm_token_type_ids = True
 
     def init_env_args(self):
         super().init_env_args()
         self.transformers_version = version.parse(transformers.__version__)
         self.bbox_format = get_env_args('QWENVL_BBOX_FORMAT', str, 'legacy')
-        self.get_rope_index = self._get_get_rope_index()
-        self.requires_mm_token_type_ids = 'mm_token_type_ids' in inspect.signature(self.get_rope_index).parameters
+        self.transformers_5_3 = self.transformers_version >= version.parse('5.3.0')
+
+    @property
+    def requires_mm_token_type_ids(self):
+        return self.transformers_5_3 and self._requires_mm_token_type_ids
 
     def _get_max_pixels(self, inputs=None):
         return self.max_pixels
@@ -472,7 +476,7 @@ class Qwen2VLTemplate(Template):
         mm_token_type_ids = inputs.get('mm_token_type_ids')
         if mm_token_type_ids is not None:
             kwargs['mm_token_type_ids'] = mm_token_type_ids
-        position_ids, _ = self.get_rope_index(
+        position_ids, _ = self._get_get_rope_index()(
             input_ids,
             image_grid_thw=inputs.get('image_grid_thw'),
             video_grid_thw=inputs.get('video_grid_thw'),
@@ -672,6 +676,7 @@ register_template(
 class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
     version = 'omni_v2_5'
     placeholder_tokens = ['<|IMAGE|>', '<|AUDIO|>', '<|VIDEO|>']
+    _requires_mm_token_type_ids = False
 
     def init_processor(self, processor) -> None:
         if processor is None:
@@ -727,15 +732,13 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
             if self.use_audio_in_video:
-                import librosa
-                if video.startswith('http://') or video.startswith('https://'):
-                    import audioread
-                    video = audioread.ffdec.FFmpegAudioFile(video)
-                video = librosa.load(video, sr=sampling_rate)[0]
+                if isinstance(video, list):  # image list
+                    raise ValueError('image list as video input does not support use_audio_in_video')
+                audio = load_audio(video, sampling_rate)
                 if self.mode != 'vllm':
-                    inputs.audios.insert(inputs.audio_idx, (video, 'video'))
+                    inputs.audios.insert(inputs.audio_idx, (audio, 'video'))
                 else:
-                    inputs.audios.insert(inputs.audio_idx, video)
+                    inputs.audios.insert(inputs.audio_idx, audio)
                     inputs.mm_processor_kwargs['use_audio_in_video'] = True
                 inputs.audio_idx += 1
                 if self.version == 'omni_v2_5':
@@ -941,7 +944,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             attention_mask = inputs.get('attention_mask')
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
-        position_ids, _ = self.get_rope_index(
+        position_ids, _ = self._get_get_rope_index()(
             input_ids,
             inputs.get('image_grid_thw'),
             inputs.get('video_grid_thw'),
