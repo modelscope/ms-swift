@@ -4,6 +4,7 @@ import inspect
 import os
 import torch
 import torch.nn.functional as F
+from contextlib import nullcontext
 from packaging import version
 from PIL import Image
 from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
@@ -1191,6 +1192,21 @@ def _ensure_linear_attention_kernels(mod: torch.nn.Module) -> None:
         raise ImportError(_SP_LINEAR_KERNEL_IMPORT_ERROR)
 
 
+def _gather_qwen3_5_conv1d_params_if_zero3(mod: torch.nn.Module):
+    conv1d = getattr(mod, 'conv1d', None)
+    if conv1d is None or not is_deepspeed_enabled():
+        return nullcontext()
+
+    # Qwen3.5 passes conv1d.weight directly to causal-conv kernels, bypassing
+    # DeepSpeed's submodule forward hooks that normally gather ZeRO-3 params.
+    params = [p for p in conv1d.parameters(recurse=False) if p is not None]
+    if not params or not any(hasattr(p, 'ds_tensor') or hasattr(p, 'ds_id') for p in params):
+        return nullcontext()
+
+    import deepspeed
+    return deepspeed.zero.GatheredParameters(params)
+
+
 def _get_local_conv_weights(mod: torch.nn.Module, *, sp_rank: int, local_num_k_heads: int, local_num_v_heads: int):
     conv_weight = mod.conv1d.weight.squeeze(1)
     conv_bias = getattr(mod.conv1d, 'bias', None)
@@ -1378,31 +1394,32 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     ):
         from swift.sequence_parallel import sequence_parallel as sequence_parallel_context
 
-        if not _sp_is_enabled(sequence_parallel_context):
-            kwargs = {}
-            if 'cache_position' in parameters:
-                kwargs['cache_position'] = cache_position
-            return origin_forward(
-                mod, hidden_states, cache_params=cache_params, attention_mask=attention_mask, **kwargs)
+        with _gather_qwen3_5_conv1d_params_if_zero3(mod):
+            if not _sp_is_enabled(sequence_parallel_context):
+                kwargs = {}
+                if 'cache_position' in parameters:
+                    kwargs['cache_position'] = cache_position
+                return origin_forward(
+                    mod, hidden_states, cache_params=cache_params, attention_mask=attention_mask, **kwargs)
 
-        if int(getattr(sequence_parallel_context, 'rp_world_size', 1) or 1) > 1:
-            requested_sp_size = int(getattr(sequence_parallel_context, 'world_size', 1) or 1)
-            suggested_sp_size = int(getattr(sequence_parallel_context, 'sp_world_size', 1) or 1)
-            raise NotImplementedError(
-                'Qwen3.5 linear attention sequence parallel does not support derived ring attention '
-                f'(sequence_parallel_size={requested_sp_size}, '
-                f'sp_world_size={getattr(sequence_parallel_context, "sp_world_size", None)}, '
-                f'rp_world_size={getattr(sequence_parallel_context, "rp_world_size", None)}). '
-                f'Please reduce --sequence_parallel_size to {suggested_sp_size} so that rp_world_size becomes 1.')
+            if int(getattr(sequence_parallel_context, 'rp_world_size', 1) or 1) > 1:
+                requested_sp_size = int(getattr(sequence_parallel_context, 'world_size', 1) or 1)
+                suggested_sp_size = int(getattr(sequence_parallel_context, 'sp_world_size', 1) or 1)
+                raise NotImplementedError(
+                    'Qwen3.5 linear attention sequence parallel does not support derived ring attention '
+                    f'(sequence_parallel_size={requested_sp_size}, '
+                    f'sp_world_size={getattr(sequence_parallel_context, "sp_world_size", None)}, '
+                    f'rp_world_size={getattr(sequence_parallel_context, "rp_world_size", None)}). '
+                    f'Please reduce --sequence_parallel_size to {suggested_sp_size} so that rp_world_size becomes 1.')
 
-        return _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
-            mod,
-            hidden_states,
-            cache_params=cache_params,
-            cache_position=cache_position,
-            attention_mask=attention_mask,
-            sequence_parallel_context=sequence_parallel_context,
-        )
+            return _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
+                mod,
+                hidden_states,
+                cache_params=cache_params,
+                cache_position=cache_position,
+                attention_mask=attention_mask,
+                sequence_parallel_context=sequence_parallel_context,
+            )
 
     Qwen3_5GatedDeltaNet.forward = sp_linear_forward
     Qwen3_5GatedDeltaNet._ms_swift_sp_linear_patched = True
