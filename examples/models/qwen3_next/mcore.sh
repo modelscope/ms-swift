@@ -1,12 +1,6 @@
-# 8 * 60GiB, 8s/it
-
-# Note: linear-attention does not support padding_free.
-# Therefore, if you enable padding_free (the default),
-# padding_free will be toggled off/on around the linear-attention sections.
-
-# Note: In Qwen3-Next's mcore implementation, enabling --packing disables the removal of padding_free during the linear-attention stage.
-# This can improve training efficiency and memory usage, but it makes different sequences visible to each other.
-
+# 8 * 56GiB
+# padding_free/packing support requires "mcore-bridge>=1.4.0":
+# https://github.com/modelscope/mcore-bridge/pull/76
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
@@ -20,14 +14,16 @@ megatron sft \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
+    --packing true \
     --target_modules all-linear \
+    --tensor_model_parallel_size 2 \
     --expert_model_parallel_size 4 \
     --moe_permute_fusion true \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-6 \
-    --micro_batch_size 2 \
-    --global_batch_size 16 \
+    --micro_batch_size 1 \
+    --global_batch_size 4 \
     --recompute_granularity full \
     --recompute_method uniform \
     --recompute_num_layers 1 \
@@ -40,7 +36,7 @@ megatron sft \
     --output_dir megatron_output/Qwen3-Next-80B-A3B-Instruct \
     --eval_steps 200 \
     --save_steps 200 \
-    --max_length 2048 \
+    --max_length 4096 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
     --no_save_optim true \
@@ -54,4 +50,9 @@ megatron sft \
 # CUDA_VISIBLE_DEVICES=0,1,2,3 \
 # swift infer \
 #     --adapters megatron_output/Qwen3-Next-80B-A3B-Instruct/vx-xxx/checkpoint-xxx \
-#     --stream true
+#     --vllm_tensor_parallel_size 4 \
+#     --infer_backend vllm \
+#     --vllm_max_model_len 8192 \
+#     --vllm_gpu_memory_utilization 0.9 \
+#     --stream true \
+#     --max_new_tokens 2048

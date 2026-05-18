@@ -11,13 +11,14 @@ from argparse import Namespace
 from contextlib import contextmanager
 from datetime import timedelta
 from mcore_bridge import set_random_seed, unwrap_model
-from megatron.core import dist_checkpointing, mpu, tensor_parallel
+from megatron.core import dist_checkpointing, mpu, parallel_state, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedObject
 from megatron.core.dist_checkpointing.serialization import (get_default_load_sharded_strategy,
                                                             get_default_save_sharded_strategy)
 from megatron.core.dist_checkpointing.strategies.async_utils import AsyncCallsQueue, AsyncRequest
 from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyParallelLoadStrategyWrapper,
                                                                         FullyParallelSaveStrategyWrapper)
+from megatron.core.dist_checkpointing.strategies.torch import TorchDistLoadShardedStrategy, TorchDistSaveShardedStrategy
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
 from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
@@ -34,11 +35,11 @@ from .patcher import patch_merge_fn
 
 logger = get_logger()
 
+mcore_017 = version.parse(megatron.core.__version__) >= version.parse('0.17.0rc0')
+
 
 @contextmanager
 def _patch_megatron_timeout(distributed_timeout_minutes):
-    from megatron.core import parallel_state
-
     origin_create_group = parallel_state.create_group
 
     def create_group(ranks=None, timeout=None, *_args, **kwargs):
@@ -246,8 +247,10 @@ def save_mcore_checkpoint(
         optim_sd_kwargs={'metadata': sharded_sd_metadata},
     )
     _filter_adapter_state_dict(state_dict, peft_format)
-
-    save_strategy = get_default_save_sharded_strategy()
+    if mcore_017:
+        save_strategy = TorchDistSaveShardedStrategy()
+    else:
+        save_strategy = get_default_save_sharded_strategy()
     save_strategy = FullyParallelSaveStrategyWrapper(
         save_strategy,
         mpu.get_data_parallel_group(with_context_parallel=True),
@@ -433,7 +436,11 @@ def load_mcore_checkpoint(args,
     model_keys = [k for k in sharded_state_dict.keys() if k.startswith('model')]  # compat vpp
     for k in model_keys:
         patch_merge_fn(sharded_state_dict[k])
-    load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
+    if mcore_017:
+        load_strategy = TorchDistLoadShardedStrategy()
+    else:
+        load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
+
     load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
                                                      mpu.get_data_parallel_group(with_context_parallel=True))
     state_dict = dist_checkpointing.load(sharded_state_dict, checkpoint_dir, load_strategy)
