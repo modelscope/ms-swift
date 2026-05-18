@@ -92,6 +92,7 @@ class RLHFMegatronArgumentsMixin:
     vllm_enable_prefix_caching: bool = True
     vllm_gpu_memory_utilization: float = 0.9
     vllm_tensor_parallel_size: int = 1
+    vllm_enable_expert_parallel: bool = False
     vllm_max_model_len: Optional[int] = None
     vllm_enforce_eager: bool = False
     vllm_limit_mm_per_prompt: Optional[Union[dict, str]] = None  # '{"image": 5, "video": 2}'

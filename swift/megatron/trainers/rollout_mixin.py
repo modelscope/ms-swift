@@ -260,6 +260,10 @@ class MegatronRolloutMixin:
 
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
+        if args.vllm_enable_expert_parallel and args.sleep_level > 1:
+            logger.warning('Expert parallelism with sleep_level > 1 may cause memory issues. '
+                           'Consider setting sleep_level to 1.')
+
         vllm_engine_kwargs = args.vllm_engine_kwargs or {}
         load_format = vllm_engine_kwargs.pop('load_format', 'auto')
 
@@ -283,6 +287,7 @@ class MegatronRolloutMixin:
             model_type=args.model_type,
             use_async_engine=False,
             tensor_parallel_size=self.vllm_tensor_parallel_size,
+            enable_expert_parallel=args.vllm_enable_expert_parallel,
             gpu_memory_utilization=self.vllm_gpu_memory_utilization,
             enable_prefix_caching=args.vllm_enable_prefix_caching,
             max_num_seqs=max_num_seqs,
