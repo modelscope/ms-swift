@@ -945,17 +945,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             mask = labels != -100
             student_logits = student_logits[mask]
             teacher_logits = teacher_logits[mask]
+            num_valid = mask.sum()
         else:
             student_logits = student_logits.view(-1, student_logits.size(-1))
             teacher_logits = teacher_logits.view(-1, teacher_logits.size(-1))
-
-        # Exclude positions where teacher logprobs are all -inf (no valid teacher data)
-        finite_mask = (teacher_logits > float('-inf')).any(-1)
-        if not finite_mask.all():
-            student_logits = student_logits[finite_mask]
-            teacher_logits = teacher_logits[finite_mask]
-        num_valid = student_logits.size(0)
-
+            num_valid = student_logits.size(0)
         student_logits.div_(temperature)
         teacher_logits.div_(temperature)
 
