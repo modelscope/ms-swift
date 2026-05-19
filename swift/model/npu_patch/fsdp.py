@@ -33,9 +33,10 @@ def _cast_module_to_fp32_for_npu_if_needed(module: torch.nn.Module, accelerator:
     # would temporarily duplicate the full model (bf16 + fp32), causing OOM.
     # We move the model back to CPU first to free NPU memory, then cast.
     try:
-        module = module.cpu()
-        torch_npu.npu.synchronize()
-        torch_npu.npu.empty_cache()
+        if param.device.type == 'npu':
+            module = module.cpu()
+            torch_npu.npu.synchronize()
+            torch_npu.npu.empty_cache()
         return module.to(torch.float32)
     except Exception as exc:
         raise NPUCastError(f'Failed to cast {module.__class__.__name__} to fp32.') from exc
