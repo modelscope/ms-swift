@@ -1,4 +1,6 @@
 # 8 * 80GiB
+# Due to the use of group_by_length, the data is not sufficiently shuffled,
+# which may cause fluctuations in the loss curve. Please adjust the parameters accordingly.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=8 \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
