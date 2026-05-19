@@ -159,6 +159,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 prepared_models.append(prepared_model)
             self.teacher_model_group = prepared_models
             from .gold_loss_adapter import GOLDLossAdapter
+
             # Initialize student tokenizer (only once)
             if not hasattr(self, 'student_tokenizer'):
                 student_model_path = self.get_model_path(model)
@@ -535,7 +536,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         elif self.use_mopd:
             num_teacher_models = len(self.teacher_model_group)
             if num_teacher_models == 0:
-                raise ValueError("teacher_model_group cannot be empty")
+                raise ValueError('teacher_model_group cannot be empty')
             loss = torch.tensor(0.0, device=model.device)
             prompt_texts = inputs['prompt_text']
             completion_texts = inputs['completion_texts']
@@ -544,11 +545,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 student_labels,
                 student_attention_mask,
                 student_prompt_length,
-            ) = self.build_inputs_from_texts(
-                self.student_tokenizer,
-                prompt_texts,
-                completion_texts
-            )
+            ) = self.build_inputs_from_texts(self.student_tokenizer, prompt_texts, completion_texts)
             # Student model forward pass (WITH gradients for student parameters)
             outputs_student = model(
                 input_ids=student_input_ids,
@@ -570,11 +567,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                             teacher_labels,
                             teacher_attention_mask,
                             teacher_prompt_length,
-                        ) = self.build_inputs_from_texts(
-                            teacher_tokenizer,
-                            prompt_texts,
-                            completion_texts
-                        )
+                        ) = self.build_inputs_from_texts(teacher_tokenizer, prompt_texts, completion_texts)
 
                         # Teacher model forward pass (NO gradients)
                         outputs_teacher = teacher_model(
@@ -638,8 +631,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         pad_token_id = tokenizer.pad_token_id
         eos_token_id = tokenizer.eos_token_id
 
-        prompt_token_ids = tokenizer(prompt_texts, add_special_tokens=True)["input_ids"]
-        completion_token_ids = tokenizer(completion_texts, add_special_tokens=False)["input_ids"]
+        prompt_token_ids = tokenizer(prompt_texts, add_special_tokens=True)['input_ids']
+        completion_token_ids = tokenizer(completion_texts, add_special_tokens=False)['input_ids']
 
         sequences: list[torch.Tensor] = []
         attention_masks: list[torch.Tensor] = []
@@ -674,26 +667,24 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             sequences.append(seq_tensor)
             attention_masks.append(torch.ones_like(seq_tensor))
             labels = seq_tensor.clone()
-            labels[: len(prompt_ids)] = -100
+            labels[:len(prompt_ids)] = -100
             if pad_token_id is not None:
                 labels[labels == pad_token_id] = -100
             labels_list.append(labels)
 
         teacher_input_ids = pad(
             sequences,
-            padding_side="right",
+            padding_side='right',
             padding_value=pad_token_id if pad_token_id is not None else 0,
         )
-        teacher_attention_mask = pad(attention_masks, padding_side="right", padding_value=0).bool()
-        teacher_labels = pad(labels_list, padding_side="right", padding_value=-100)
+        teacher_attention_mask = pad(attention_masks, padding_side='right', padding_value=0).bool()
+        teacher_labels = pad(labels_list, padding_side='right', padding_value=-100)
 
         if eos_token_id is not None:
             for row in range(teacher_attention_mask.size(0)):
                 valid = (
                     teacher_input_ids[row] != pad_token_id
-                    if pad_token_id is not None
-                    else teacher_attention_mask[row].bool()
-                )
+                    if pad_token_id is not None else teacher_attention_mask[row].bool())
                 if valid.any():
                     last_idx = valid.nonzero(as_tuple=True)[0][-1]
                     teacher_attention_mask[row, last_idx + 1:] = False

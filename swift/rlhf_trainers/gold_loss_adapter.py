@@ -120,9 +120,7 @@ class GOLDLossAdapter(nn.Module):
 
         if self._vocab_mapping:
             max_matched_teacher_id = max(self._vocab_mapping.keys())
-            self.mapping_tensor = torch.full(
-                (max_matched_teacher_id + 1,), -1, dtype=torch.long
-            )
+            self.mapping_tensor = torch.full((max_matched_teacher_id + 1,), -1, dtype=torch.long)
             for k, v in self._vocab_mapping.items():
                 self.mapping_tensor[k] = v
             if self.device:
@@ -159,18 +157,11 @@ class GOLDLossAdapter(nn.Module):
         crossentropy_loss = self._compute_cross_entropy(student_logits, student_labels)
 
         # 2. Distillation loss (ULD)
-        distillation_loss = self._compute_distillation_loss(
-            student_logits, teacher_logits,
-            student_labels, teacher_labels,
-            student_input_ids, teacher_input_ids
-        )
+        distillation_loss = self._compute_distillation_loss(student_logits, teacher_logits, student_labels,
+                                                            teacher_labels, student_input_ids, teacher_input_ids)
         return crossentropy_loss + distillation_loss
 
-    def _compute_cross_entropy(
-            self,
-            student_logits: torch.Tensor,
-            student_labels: torch.Tensor
-    ) -> torch.Tensor:
+    def _compute_cross_entropy(self, student_logits: torch.Tensor, student_labels: torch.Tensor) -> torch.Tensor:
         """计算cross-entropy loss"""
         if self.crossentropy_weight <= 0:
             return torch.tensor(0.0, device=student_logits.device, requires_grad=True)
@@ -179,10 +170,7 @@ class GOLDLossAdapter(nn.Module):
         shift_labels = student_labels[..., 1:].contiguous()
 
         loss_fct = nn.CrossEntropyLoss(ignore_index=self.ignore_index)
-        ce_loss = loss_fct(
-            shift_logits.view(-1, shift_logits.size(-1)),
-            shift_labels.view(-1)
-        )
+        ce_loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
         return self.crossentropy_weight * ce_loss
 
     def _compute_distillation_loss(
@@ -238,15 +226,12 @@ class GOLDLossAdapter(nn.Module):
             # Token对齐
             if self.use_extended_uld:
                 student_groups, teacher_groups = self._build_alignment_groups_from_ids(
-                    student_token_ids, teacher_token_ids
-                )
+                    student_token_ids, teacher_token_ids)
 
-                student_aligned = self._merge_probabilities_with_groups(
-                    student_probs, student_groups, student_token_ids
-                )
-                teacher_aligned = self._merge_probabilities_with_groups(
-                    teacher_probs, teacher_groups, teacher_token_ids
-                )
+                student_aligned = self._merge_probabilities_with_groups(student_probs, student_groups,
+                                                                        student_token_ids)
+                teacher_aligned = self._merge_probabilities_with_groups(teacher_probs, teacher_groups,
+                                                                        teacher_token_ids)
 
             else:
                 min_len = min(len(student_token_ids), len(teacher_token_ids))
@@ -281,11 +266,8 @@ class GOLDLossAdapter(nn.Module):
 
         return indices, sizes
 
-    def _build_alignment_groups_from_ids(
-            self,
-            student_token_ids: List[int],
-            teacher_token_ids: List[int]
-    ) -> Tuple[List[List[int]], List[List[int]]]:
+    def _build_alignment_groups_from_ids(self, student_token_ids: List[int],
+                                         teacher_token_ids: List[int]) -> Tuple[List[List[int]], List[List[int]]]:
         """
         基于文本内容构建对齐组
         使用贪心子串匹配算法
@@ -293,7 +275,7 @@ class GOLDLossAdapter(nn.Module):
 
         def decode_tokens(tokenizer, token_ids):
             pieces = []
-            prev = ""
+            prev = ''
             for k in range(len(token_ids)):
                 cur = tokenizer.decode(token_ids[:k + 1], skip_special_tokens=False)
                 pieces.append(cur[len(prev):])
@@ -310,8 +292,8 @@ class GOLDLossAdapter(nn.Module):
         t_idx = 0
 
         while s_idx < len(student_pieces) and t_idx < len(teacher_pieces):
-            student_text = ""
-            teacher_text = ""
+            student_text = ''
+            teacher_text = ''
             student_group = []
             teacher_group = []
 
@@ -408,7 +390,7 @@ class GOLDLossAdapter(nn.Module):
         if t_vocab < max_vocab:
             teacher_sorted = F.pad(teacher_sorted, (0, max_vocab - t_vocab))
 
-        loss = F.l1_loss(student_sorted, teacher_sorted, reduction="sum")
+        loss = F.l1_loss(student_sorted, teacher_sorted, reduction='sum')
         loss /= student_aligned.size(0)
 
         return loss
@@ -425,9 +407,7 @@ class GOLDLossAdapter(nn.Module):
 
         # 创建matched/unmatched masks
         if self._teacher_matched_ids:
-            teacher_matched_idx = torch.tensor(
-                sorted(self._teacher_matched_ids), dtype=torch.long, device=device
-            )
+            teacher_matched_idx = torch.tensor(sorted(self._teacher_matched_ids), dtype=torch.long, device=device)
             student_matched_idx = self.mapping_tensor[teacher_matched_idx]
         else:
             teacher_matched_idx = torch.tensor([], dtype=torch.long, device=device)
@@ -449,9 +429,7 @@ class GOLDLossAdapter(nn.Module):
             student_matched_probs = student_aligned[:, student_matched_idx]
             matched_count = teacher_matched_probs.size(-1)
 
-            matched_loss = self._compute_jsd_for_matched(
-                student_matched_probs, teacher_matched_probs
-            )
+            matched_loss = self._compute_jsd_for_matched(student_matched_probs, teacher_matched_probs)
         # 2. Unmatched tokens的排序L1损失
         teacher_unmatched = teacher_aligned[:, ~teacher_matched_mask]
         student_unmatched = student_aligned[:, ~student_matched_mask]
@@ -470,7 +448,7 @@ class GOLDLossAdapter(nn.Module):
             if s_size < max_size:
                 student_sorted = F.pad(student_sorted, (0, max_size - s_size))
 
-            unmatched_loss = F.l1_loss(student_sorted, teacher_sorted, reduction="sum")
+            unmatched_loss = F.l1_loss(student_sorted, teacher_sorted, reduction='sum')
             unmatched_loss /= student_aligned.size(0)
 
         # 3. 加权组合
@@ -489,12 +467,10 @@ class GOLDLossAdapter(nn.Module):
 
         return total_loss
 
-    def _compute_jsd_for_matched(
-            self,
-            student_probs: torch.Tensor,
-            teacher_probs: torch.Tensor,
-            epsilon: float = 1e-8
-    ) -> torch.Tensor:
+    def _compute_jsd_for_matched(self,
+                                 student_probs: torch.Tensor,
+                                 teacher_probs: torch.Tensor,
+                                 epsilon: float = 1e-8) -> torch.Tensor:
         """计算matched tokens的JSD损失，添加数值稳定性处理"""
         batch_seq_len, num_matched = student_probs.shape
 
