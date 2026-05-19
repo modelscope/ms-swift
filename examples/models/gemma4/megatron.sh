@@ -20,7 +20,7 @@ megatron sft \
     --moe_grouped_gemm true \
     --moe_shared_expert_overlap true \
     --moe_aux_loss_coeff 1e-6 \
-    --micro_batch_size 4 \
+    --micro_batch_size 8 \
     --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
