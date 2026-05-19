@@ -62,10 +62,13 @@ def _model_cpu_forward_context(modules,
                                compute_device=None,
                                share_embedding: bool = False,
                                target_device='cpu'):
-    try:
-        origin_torch_dtype = next(modules[0].parameters()).dtype
-    except StopIteration:
-        origin_torch_dtype = next(modules[-1].parameters()).dtype
+    for module in modules:
+        try:
+            origin_torch_dtype = next(module.parameters()).dtype
+        except StopIteration:
+            pass
+        else:
+            break
     embeddings = None
     if share_embedding:
         embeddings = [module for module in modules if isinstance(module, (nn.Embedding, VocabParallelEmbedding))]
@@ -77,7 +80,7 @@ def _model_cpu_forward_context(modules,
         return args
 
     def _to_cpu_hook(module, args, output):
-        if share_embedding and module in embeddings:
+        if share_embedding and module in embeddings or 'rotaryemb' in module.__class__.__name__.lower():
             return
         module.to(device=target_device, dtype=origin_torch_dtype)
 
