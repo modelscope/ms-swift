@@ -554,8 +554,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 input_ids=student_input_ids,
                 attention_mask=student_attention_mask,
             )
-            for teacher_model in teacher_model_group:
-                print('-------self.use_generalized_jsd_loss')
+            for teacher_model in self.teacher_model_group:
                 teacher_tokenizer = self.teacher_tokenizer_group[id(teacher_model)]
                 # Add teacher model memory management like in liger branch
                 load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
@@ -587,6 +586,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
                 # Release intermediate tensors to free memory
                 del teacher_attention_mask
+
+                # trl/experimental/gold/gold_trainer.py
                 loss_total = gold_adapter(
                     student_logits=outputs_student.logits,
                     teacher_logits=teacher_logits,
@@ -595,7 +596,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     student_input_ids=student_input_ids,
                     teacher_input_ids=teacher_input_ids,
                 )
-                loss += loss_total / len(teacher_model_group)
+                loss += loss_total / len(self.teacher_model_group)
         # Separate teacher model provided
         else:
             assert self.teacher_model is not None
