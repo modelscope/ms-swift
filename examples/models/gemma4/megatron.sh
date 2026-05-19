@@ -37,8 +37,8 @@ megatron sft \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
     --output_dir megatron_output/gemma-4-26B-A4B-it \
-    --eval_steps 200 \
-    --save_steps 200 \
+    --eval_steps 500 \
+    --save_steps 500 \
     --max_length 4096 \
     --dataloader_num_workers 8 \
     --dataset_num_proc 8 \
@@ -50,3 +50,10 @@ megatron sft \
     --padding_free false \
     --model_author swift \
     --model_name swift-robot
+
+# CUDA_VISIBLE_DEVICES=0 swift infer \
+#     --model megatron_output/gemma-4-26B-A4B-it/vx-xxx/checkpoint-xxx \
+#     --stream true \
+#     --enable_thinking false \
+#     --load_data_args true \
+#     --max_new_tokens 2048
