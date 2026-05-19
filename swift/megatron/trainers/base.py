@@ -727,7 +727,6 @@ class BaseMegatronTrainer(ABC):
         os.makedirs(output_dir, exist_ok=True)
         args_path = os.path.join(os.path.dirname(output_dir), 'args.json')
         self.copy_path(args_path, os.path.join(output_dir, 'args.json'))
-        save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
         if args.save_safetensors and args.no_save_optim:
             model = []
         else:
@@ -748,6 +747,17 @@ class BaseMegatronTrainer(ABC):
                 state.best_model_checkpoint = best_model_checkpoint
         # safetensors
         if args.save_safetensors:
+            skip_saving_adapter = args.tuner_type == 'lora_llm' or (
+                args.tuner_type == 'lora' and args.merge_lora and not hasattr(self.bridge, '_support_hf_grouped_lora'))
+
+            if not skip_saving_adapter:
+                self.bridge.save_weights(
+                    self.unwrapped_models,
+                    output_dir,
+                    peft_format=args.tuner_type == 'lora',
+                    args=args,
+                    processor=self.template.processor,
+                )
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.tuner_type != 'full' and args.merge_lora:
                 self.merge_lora_adapters()
@@ -762,14 +772,13 @@ class BaseMegatronTrainer(ABC):
                 tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
                 os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
                 self.copy_path(common_path, tgt_common_path)
-            self.bridge.save_weights(
-                self.unwrapped_models,
-                output_dir,
-                peft_format=save_peft_format,
-                args=args,
-                processor=self.template.processor,
-            )
-            if args.tuner_type != 'full' and args.merge_lora:
+                self.bridge.save_weights(
+                    self.unwrapped_models,
+                    output_dir,
+                    peft_format=False,
+                    args=args,
+                    processor=self.template.processor,
+                )
                 self.unmerge_lora_adapters()
 
         if is_master():
