@@ -1,9 +1,9 @@
 ### model
-model: /nas_train/app.e0016372/models/lmms-lab/LLaVA-OneVision-1.5-4B
+model: /nas_train/app.e0016372/models/lmms-lab/LLaVA-OneVision-1.5-14B
 model_type: llava_onevision1_5
 
 ### method
-debug: true
+# debug: true
 stage: sft
 tuner_type: full
 lora_rank: 16
@@ -29,7 +29,7 @@ dataloader_persistent_workers: true
 # load_from_cache_file: true
 
 ### output
-output_dir: /nas_train/app.e0016372/train/sft/full/LLaVA-OneVision-1.5-4B
+output_dir: /nas_train/app.e0016372/train/sft/full/LLaVA-OneVision-1.5-14B
 logging_steps: 10
 save_strategy: steps
 save_steps: 200
@@ -38,8 +38,8 @@ report_to: tensorboard
 create_checkpoint_symlink: true
 
 ### train
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 1
+per_device_train_batch_size: 8
+gradient_accumulation_steps: 4
 weight_decay: 0.0
 warmup_ratio: 0.03
 learning_rate: 1e-4

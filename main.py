@@ -1,7 +1,7 @@
 import shutil
 from pathlib import Path
 from omegaconf import OmegaConf
-from swift import sft_main, SftArguments
+from swift import sft_main, SftArguments, export_main, ExportArguments
 
 
 def parse_config(path):
@@ -20,5 +20,8 @@ def parse_config(path):
 
 
 if __name__ == '__main__':
-    conf = parse_config('randy/demo.yaml')
-    sft_main(SftArguments(**conf))
+    # conf = parse_config('randy/demo.yaml')
+    # sft_main(SftArguments(**conf))
+
+    conf = parse_config('randy/cache_data.yaml')
+    export_main(ExportArguments(**conf))

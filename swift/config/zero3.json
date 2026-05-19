@@ -22,7 +22,7 @@
             "device": "none",
             "pin_memory": true
         },
-        "overlap_comm": false,
+        "overlap_comm": true,
         "contiguous_gradients": true,
         "sub_group_size": 1e9,
         "reduce_bucket_size": "auto",

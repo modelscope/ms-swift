@@ -57,13 +57,16 @@ def process_subset(args):
 
 def main():
     parent_dir = Path('/nas_train/app.e0016372/datasets/LLaVA-OneVision-1.5-Mid-Training-85M')
+    parent_dir = Path('/nas_train/app.e0016372/datasets/OmniScience')
 
     subsets = [
-        'coyo',
-        'datacomp1b',
-        'imagenet',
-        'laioncn',
-        'mint',
+        # 'coyo',
+        # 'datacomp1b',
+        # 'imagenet',
+        # 'laioncn',
+        # 'mint',
+        # 'obelics',
+        'images',
     ]
 
     num_workers = min(len(subsets), cpu_count())
