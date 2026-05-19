@@ -780,6 +780,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                              'sequence parallelism is enabled')
 
         self._init_distributed()
+        self._check_muon()
 
     def _init_distributed(self):
         initialize_megatron(self)
@@ -798,7 +799,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                              f'to have at least one micro-batch. global_batch_size: {self.global_batch_size}, '
                              f'data_parallel_size: {self.data_parallel_size}, '
                              f'micro_batch_size: {self.micro_batch_size}.')
-        self._check_muon()
 
     def _get_mcore_model_type(self, model_meta):
         model_type = model_meta.model_type

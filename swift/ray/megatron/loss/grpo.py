@@ -13,7 +13,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
-from swift.megatron.trainers.grpo_trainer import MegatronGRPOTrainer
 from .base import Loss
 
 
@@ -40,7 +39,9 @@ class GRPOLoss(Loss):
         by using __new__ and manually initialising only the fields that
         ``forward_step`` / ``loss_func`` actually read.
         """
-        dummy = MegatronGRPOTrainer.__new__(MegatronGRPOTrainer)
+        from swift.megatron.trainers.grpo_trainer import MegatronGRPOTrainer
+        cls = MegatronGRPOTrainer
+        dummy = cls.__new__(cls)
         dummy.args = args
         dummy._init_grpo_params()
         dummy._prepare_metrics()
@@ -57,7 +58,9 @@ class GRPOLoss(Loss):
         return dummy
 
     def forward_step(self, data_iterator, model):
-        return MegatronGRPOTrainer.forward_step(self._dummy, data_iterator, model)
+        from swift.megatron.trainers.grpo_trainer import MegatronGRPOTrainer
+        cls = MegatronGRPOTrainer
+        return cls.forward_step(self._dummy, data_iterator, model)
 
     def loss_func(self, output_tensor, *, data: Dict[str, Any]):
         return self._dummy.loss_func(output_tensor, data=data)

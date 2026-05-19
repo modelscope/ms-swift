@@ -59,6 +59,15 @@ GRPO_NON_MODEL_KEYS = frozenset({
     'rollout_per_token_logps',
 })
 
+FILTERED_KEYS = frozenset({
+    'prompt_id',
+    'request_id',
+    'response_token_ids',
+    'finish_reason',
+    'is_truncated',
+    'add_eos',
+})
+
 
 class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
@@ -249,7 +258,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             batched_inputs = []
             for i, future in enumerate(futures):
                 try:
-                    batched_inputs.append(future.result())
+                    encoded = future.result()
+                    extra_kwargs = encoded.get('_extra_kwargs') or {}
+                    for k in list(extra_kwargs.keys()):
+                        if k not in FILTERED_KEYS:
+                            extra_kwargs.pop(k)
+                    batched_inputs.append(encoded)
                 except Exception as e:
                     if strict:
                         raise
@@ -1038,6 +1052,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
         output_tensor = model(**inputs_for_logits)
         if is_pp_last_stage and output_tensor is not None:
+            logger.info(
+                f'[DEBUG training forward_step] output_tensor shape={output_tensor.shape}, '
+                f'mean={output_tensor.float().mean().item():.4f}, std={output_tensor.float().std().item():.4f}, '
+                f'max={output_tensor.float().max().item():.4f}, min={output_tensor.float().min().item():.4f}, '
+                f'has_nan={output_tensor.isnan().any().item()}, has_inf={output_tensor.isinf().any().item()}')
             logits_packed = output_tensor
             if self.temperature != 1.0:
                 logits_packed.div_(self.temperature)
@@ -1931,8 +1950,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return metrics
 
     def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
-        """Filters inputs to create model_inputs, removing GRPO-specific keys."""
-        return {k: v for k, v in inputs.items() if k not in GRPO_NON_MODEL_KEYS}
+        """Filters inputs to create model_inputs, removing GRPO-specific and template extra keys."""
+        excluded = GRPO_NON_MODEL_KEYS | FILTERED_KEYS
+        return {k: v for k, v in inputs.items() if k not in excluded}
 
     def _collect_config_info(self) -> Dict[str, str]:
         config = {

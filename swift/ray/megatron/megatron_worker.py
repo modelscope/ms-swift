@@ -184,7 +184,12 @@ class MegatronWorker(CheckpointEngineMixin):
         if isinstance(batch, list):
             return self._compute_logps_from_samples(batch, model, 'per_token_logps', with_completion_mask=True)
         result = self._compute_logps_batched(batch, model, 'per_token_logps')
-        return self._split_logps_rows(result.get('per_token_logps'), batch.get('completion_mask'), 'per_token_logps')
+        return self._split_logps_rows(
+            result.get('per_token_logps'),
+            batch.get('completion_mask'),
+            'per_token_logps',
+            routed_experts=result.get('routed_experts'),
+            seq_lengths=batch.get('seq_lengths'))
 
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_ref_logps(self, batch) -> Any:
@@ -195,22 +200,32 @@ class MegatronWorker(CheckpointEngineMixin):
                 return self._compute_logps_from_samples(
                     batch, ref_models[0], 'ref_per_token_logps', with_completion_mask=False)
             result = self._compute_logps_batched(batch, ref_models[0], 'ref_per_token_logps')
-        return self._split_logps_rows(result.get('ref_per_token_logps'), None, 'ref_per_token_logps')
+        return self._split_logps_rows(
+            result.get('ref_per_token_logps'), None, 'ref_per_token_logps', seq_lengths=batch.get('seq_lengths'))
 
     def _compute_logps_batched(self, batch, model, output_key: str) -> Dict[str, Any]:
         """Split a DP shard into micro-batches, compute logps, concatenate."""
         micro_batches = split_micro_batches(batch, getattr(self._args, 'micro_batch_size', 1))
         parts = []
+        routed_parts = []
         for mb in micro_batches:
             mb_gpu = to_device(mb, get_current_device())
             result = self._compute_logps(mb_gpu, model, output_key)
             del mb_gpu
             if output_key in result:
                 parts.append(result[output_key])
+            if result.get('routed_experts') is not None:
+                routed_parts.append(result['routed_experts'])
         if not parts:
             return {}
         out = {output_key: torch.cat(parts, dim=0) if len(parts) > 1 else parts[0]}
+        if routed_parts:
+            if all(r.dim() > 0 and r.shape[0] == 1 for r in routed_parts):
+                out['routed_experts'] = torch.cat(routed_parts, dim=1)
+            else:
+                out['routed_experts'] = torch.cat(routed_parts, dim=0) if len(routed_parts) > 1 else routed_parts[0]
         del parts
+        del routed_parts
         gc_collect()
         return out
 
@@ -229,25 +244,53 @@ class MegatronWorker(CheckpointEngineMixin):
             if output_key not in out:
                 continue
             completion_mask = mb.get('completion_mask') if with_completion_mask else None
-            rows.extend(self._split_logps_rows(out[output_key], completion_mask, output_key))
+            rows.extend(
+                self._split_logps_rows(
+                    out[output_key],
+                    completion_mask,
+                    output_key,
+                    routed_experts=out.get('routed_experts'),
+                    seq_lengths=mb.get('seq_lengths')))
         return rows
 
     @staticmethod
-    def _split_logps_rows(logps: Optional[torch.Tensor], completion_mask: Optional[torch.Tensor],
-                          key: str) -> List[Dict[str, torch.Tensor]]:
+    def _split_logps_rows(
+        logps: Optional[torch.Tensor],
+        completion_mask: Optional[torch.Tensor],
+        key: str,
+        *,
+        routed_experts: Optional[torch.Tensor] = None,
+        seq_lengths: Optional[torch.Tensor] = None,
+    ) -> List[Dict[str, torch.Tensor]]:
         if logps is None:
             return []
+        routed_rows: List[Optional[torch.Tensor]] = [None] * int(logps.shape[0])
+        if routed_experts is not None:
+            routed = routed_experts.detach().cpu() if isinstance(routed_experts, torch.Tensor) \
+                else torch.as_tensor(routed_experts)
+            if routed.dim() > 0 and routed.shape[0] == logps.shape[0]:
+                routed_rows = [routed[i] for i in range(logps.shape[0])]
+            elif routed.dim() > 1 and routed.shape[0] == 1 and seq_lengths is not None:
+                seq_cpu = seq_lengths.detach().cpu().tolist()
+                start = 0
+                for i in range(logps.shape[0]):
+                    seq_len = int(seq_cpu[i])
+                    end = start + seq_len
+                    routed_rows[i] = routed[0, start:end]
+                    start = end
         rows = []
         for i in range(logps.shape[0]):
             item: Dict[str, torch.Tensor] = {key: logps[i].detach().cpu()}
             if completion_mask is not None:
                 item['completion_mask'] = completion_mask[i].detach().cpu()
+            if routed_rows[i] is not None:
+                item['routed_experts'] = routed_rows[i].detach().cpu()
             rows.append(item)
         return rows
 
     def _compute_logps(self, batch: Dict[str, Any], model, output_key: str) -> Dict[str, Any]:
         """Compute per-token logps for a single micro-batch."""
-        from swift.megatron.trainers.grpo_trainer import GRPO_NON_MODEL_KEYS
+        from swift.megatron.trainers.grpo_trainer import FILTERED_KEYS, GRPO_NON_MODEL_KEYS
         from swift.rlhf_trainers.utils import pad_logps_back_to_batch
         megatron = self._megatron
         args = self._args
@@ -256,8 +299,33 @@ class MegatronWorker(CheckpointEngineMixin):
         batch_size = batch['num_samples']
         max_seq_len = batch['completion_mask'].shape[1]
 
-        model_inputs = {k: v for k, v in batch.items() if k not in GRPO_NON_MODEL_KEYS}
-        logps_packed, _ = megatron.compute_per_token_logps(model, iter([model_inputs]), temperature=temperature)
+        excluded = GRPO_NON_MODEL_KEYS | FILTERED_KEYS
+        model_inputs = {k: v for k, v in batch.items() if k not in excluded}
+        enable_routing_replay = bool(getattr(megatron, 'enable_routing_replay', False))
+        router_mode = getattr(args, 'router_replay_mode', 'disabled')
+
+        RouterReplay = None
+        RouterReplayAction = None
+        if enable_routing_replay:
+            try:
+                from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+            except ImportError:
+                enable_routing_replay = False
+
+        if enable_routing_replay and RouterReplay is not None:
+            if router_mode == 'R2':
+                RouterReplay.set_global_router_replay_action(RouterReplayAction.RECORD)
+            elif router_mode == 'R3':
+                RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
+
+        routing_topk_idx = None
+        try:
+            logps_packed, routing_topk_idx = megatron.compute_per_token_logps(
+                model, iter([model_inputs]), temperature=temperature)
+        finally:
+            if enable_routing_replay and RouterReplay is not None:
+                RouterReplay.clear_global_indices()
+                RouterReplay.clear_global_router_replay_action()
 
         out = {}
         if logps_packed is not None:
@@ -270,6 +338,8 @@ class MegatronWorker(CheckpointEngineMixin):
             else:
                 logps = logps_packed
             out[output_key] = logps.detach().cpu()
+        if routing_topk_idx is not None:
+            out['routed_experts'] = routing_topk_idx.detach().cpu()
         return out
 
     @dispatch_collect(dispatch='broadcast', collect='first')
@@ -413,6 +483,80 @@ class MegatronWorker(CheckpointEngineMixin):
     def _build_local_micro_batches(self, samples: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [self._collate_local_grpo_samples(chunk) for chunk in self._split_sample_chunks(samples)]
 
+    @staticmethod
+    def _normalize_routed_experts_tensor(value: Any) -> torch.Tensor:
+        routed = value.detach().cpu() if isinstance(value, torch.Tensor) else torch.as_tensor(value)
+        if routed.dim() >= 4 and routed.shape[0] == 1:
+            routed = routed.squeeze(0)
+        if routed.dim() < 2:
+            raise ValueError(f'Invalid routed_experts shape: {tuple(routed.shape)}')
+        return routed.to(dtype=torch.int64)
+
+    @staticmethod
+    def _pad_or_trim_routed_experts(routed: torch.Tensor, target_len: int, *, padding_right: bool) -> torch.Tensor:
+        current_len = int(routed.shape[0])
+        if current_len == target_len:
+            return routed
+        if current_len > target_len:
+            return routed[:target_len] if padding_right else routed[-target_len:]
+
+        pad_len = target_len - current_len
+        pad = [0] * (2 * routed.dim())
+        if padding_right:
+            pad[2 * (routed.dim() - 1) + 1] = pad_len
+        else:
+            pad[2 * (routed.dim() - 1)] = pad_len
+        return torch.nn.functional.pad(routed, tuple(pad), 'constant', 0)
+
+    def _build_routed_experts_batch(
+        self,
+        samples: Sequence[Dict[str, Any]],
+        *,
+        seq_lengths: torch.Tensor,
+        max_seq_len: int,
+        template,
+        device: torch.device,
+    ) -> Optional[torch.Tensor]:
+        if not samples:
+            return None
+        if all(sample.get('routed_experts') is None for sample in samples):
+            return None
+
+        router_mode = getattr(self._args, 'router_replay_mode', 'disabled')
+        padding_right = template.padding_side == 'right'
+        n_samples = len(samples)
+
+        current_seq_lengths = seq_lengths
+        if seq_lengths.size(0) > n_samples:
+            current_seq_lengths = seq_lengths[:n_samples].clone()
+            current_seq_lengths[n_samples - 1] = seq_lengths[n_samples - 1:].sum()
+
+        routed_tensors: List[torch.Tensor] = []
+        for sample, cur_seq_len in zip(samples, current_seq_lengths):
+            routed_value = sample.get('routed_experts')
+            if routed_value is None:
+                if router_mode == 'R3':
+                    raise AssertionError('When router_replay_mode = R3, routed_experts must be in rollout data')
+                return None
+
+            routed = self._normalize_routed_experts_tensor(routed_value)
+
+            expected_len = sample.get('encoded', {}).get('length')
+            experts_seq_len = int(routed.shape[0])
+            if router_mode == 'R3' and expected_len is not None:
+                if experts_seq_len not in (expected_len, expected_len - 1):
+                    raise AssertionError(
+                        f'The seq_len of routed_experts({experts_seq_len}) does not match encoded length '
+                        f'({expected_len}); expected same length or one less.')
+
+            target_len = int(cur_seq_len.item()) if template.padding_free else max_seq_len
+            routed = self._pad_or_trim_routed_experts(routed, target_len, padding_right=padding_right)
+            routed_tensors.append(routed)
+
+        if template.padding_free:
+            return torch.cat(routed_tensors, dim=0).unsqueeze(0).to(device=device)
+        return torch.stack(routed_tensors).to(device=device)
+
     def _collate_local_grpo_samples(self, samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         from swift.megatron.utils import get_padding_to
         from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
@@ -425,7 +569,7 @@ class MegatronWorker(CheckpointEngineMixin):
 
         labels = encoded_batch['labels']
         batch_size = len(samples)
-        completion_mask, seq_lengths, _ = build_completion_mask_and_seq_lengths(
+        completion_mask, seq_lengths, max_seq_len = build_completion_mask_and_seq_lengths(
             labels,
             batch_size,
             padding_free=template.padding_free,
@@ -433,6 +577,8 @@ class MegatronWorker(CheckpointEngineMixin):
             device=device,
         )
         rollout_logps = build_rollout_logps(samples, completion_mask, device)
+        routed_experts = self._build_routed_experts_batch(
+            samples, seq_lengths=seq_lengths, max_seq_len=max_seq_len, template=template, device=device)
         encoded_batch.update({
             'completion_mask':
             completion_mask,
@@ -445,6 +591,8 @@ class MegatronWorker(CheckpointEngineMixin):
             'rollout_per_token_logps':
             rollout_logps,
         })
+        if routed_experts is not None:
+            encoded_batch['routed_experts'] = routed_experts
 
         if samples and samples[0].get('old_per_token_logps') is not None:
             encoded_batch['old_per_token_logps'] = torch.stack([s['old_per_token_logps'].to(device) for s in samples],

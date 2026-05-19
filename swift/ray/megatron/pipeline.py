@@ -212,7 +212,7 @@ class MegatronRayPipeline:
 
         from .rollout.replica import RolloutReplica
 
-        rollout_cfg = self.group_cfgs.get('rollout', {})
+        rollout_cfg = self._with_router_replay_rollout_config(self.group_cfgs.get('rollout', {}))
         is_hybrid = self._is_rollout_hybrid()
         pool = self.resource_pool_manager.get_pool('train' if is_hybrid else 'rollout')
 
@@ -225,6 +225,22 @@ class MegatronRayPipeline:
             sleep_level=self.ray_config.sleep_level,
             template_kwargs=template_kwargs,
         )
+
+    def _with_router_replay_rollout_config(self, rollout_cfg: Dict[str, Any]) -> Dict[str, Any]:
+        cfg = dict(rollout_cfg or {})
+        args = self._data_info.get('_driver_args')
+        router_mode = getattr(args, 'router_replay_mode', 'disabled') if args is not None else 'disabled'
+        if router_mode != 'R3':
+            return cfg
+
+        from swift.rlhf_trainers.utils import check_vllm_version_ge
+        if not check_vllm_version_ge('0.14.0'):
+            raise ValueError('router_replay_mode=R3 requires vLLM>=0.14.0 to return routed_experts.')
+
+        engine_kwargs = dict(cfg.get('vllm_engine_kwargs') or {})
+        engine_kwargs.setdefault('enable_return_routed_experts', True)
+        cfg['vllm_engine_kwargs'] = engine_kwargs
+        return cfg
 
     def _get_template_kwargs_for_rollout(self) -> Dict[str, Any]:
         """Extract template config for vLLM alignment (padding_free=False, sp=1)."""

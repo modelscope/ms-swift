@@ -213,6 +213,8 @@ class GRPOTrainer:
                 for sample, result in zip(chunk_samples, logps_results):
                     sample['old_per_token_logps'] = result['per_token_logps']
                     sample['completion_mask'] = result['completion_mask']
+                    if result.get('routed_experts') is not None:
+                        sample['routed_experts'] = result['routed_experts']
 
                 if self.beta != 0.0:
                     ref_results = tg.compute_ref_logps(chunk_samples)
@@ -318,6 +320,8 @@ class GRPOTrainer:
             item['add_eos'] = False
             if choice.logprobs and 'content' in choice.logprobs:
                 item['rollout_logprobs'] = [[lp['logprob'] for lp in choice.logprobs['content']]]
+            if getattr(choice, 'routed_experts', None) is not None:
+                item['routed_experts'] = choice.routed_experts
             merged.append(item)
         return merged
 
@@ -445,6 +449,8 @@ class GRPOTrainer:
                 'is_truncated': bool(rollout.get('is_truncated', False)),
                 'rollout_logprobs': rollout.get('rollout_logprobs'),
             })
+            if rollout.get('routed_experts') is not None:
+                samples[-1]['routed_experts'] = rollout.get('routed_experts')
         return samples
 
     def _compute_kl_from_samples(self, samples: Sequence[Dict[str, Any]]) -> Optional[torch.Tensor]:

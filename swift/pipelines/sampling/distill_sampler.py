@@ -4,7 +4,7 @@ from openai import OpenAI
 from typing import List, Optional
 
 from swift.infer_engine import InferRequest, RequestConfig
-from swift.ray import RayHelper
+from swift.utils.ray_utils import RayHelper
 from .utils import get_messages_md5
 from .vanilla_sampler import VanillaSampler
 
