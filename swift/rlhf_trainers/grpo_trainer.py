@@ -1594,7 +1594,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Forward pass
         logits = model(**model_inputs).logits
 
-        # Extract relevant portion and apply temperature
         logits = logits[:, -(logits_to_keep + 1):-1, :]
         logits.div_(self.temperature)
 
@@ -1622,7 +1621,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 entropies = entropy_from_logits(logits)
             else:
                 entropies = None
-        del logits
+
         return logps, entropies
 
     @profiling_decorator

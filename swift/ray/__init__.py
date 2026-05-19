@@ -7,9 +7,8 @@ are the only Ray entry point supported for the ``transformers`` /
 ``trainer_pytorch`` training path; ``device_groups`` + single-driver
 ``WorkerGroup`` plumbing lives there.
 
-For Megatron-based RLHF (GRPO / GKD / DPO) use
-``swift.ray.megatron.pipeline`` instead — that module is free-standing
-and does NOT import from here.
+For Megatron-based RLHF use ``swift.ray.megatron.pipeline`` instead
+— that module is free-standing and does NOT import from here.
 """
 
 

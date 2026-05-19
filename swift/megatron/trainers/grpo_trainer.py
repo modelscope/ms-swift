@@ -164,6 +164,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.reward_funcs, self.reward_func_names = resolve_reward_funcs(reward_funcs_cfg, args=self.args)
         self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_funcs), self.device)
 
+        self.reward_model_plugins = [None] * len(self.reward_funcs)
+
         assert self.reward_funcs, 'reward_funcs is not set'
 
         self._async_reward_func_indices = detect_async_reward_indices(self.reward_funcs)

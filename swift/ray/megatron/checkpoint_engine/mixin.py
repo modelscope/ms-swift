@@ -44,7 +44,6 @@ class CheckpointEngineMixin:
         world_size: int,
         master_metadata: MasterMetadata,
     ) -> None:
-        """Initialize NCCL process group for weight sync."""
         engine = self._get_or_create_checkpoint_engine()
         engine.init_process_group(
             rank=rank,

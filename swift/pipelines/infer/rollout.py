@@ -286,25 +286,6 @@ class WeightSyncWorkerExtension:
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
         self.model_runner.model.load_weights(weights=list(named_params.items()))
 
-    # TEMP FOR DEBUG, remove later
-    def compute_weight_fingerprint(self, param_names: Optional[list] = None) -> dict:
-        """Compute a lightweight fingerprint of model weights for diagnostic verification."""
-        import torch as _t
-        model = self.model_runner.model
-        result = {}
-        total = _t.tensor(0.0, device='cpu')
-        params = dict(model.named_parameters(remove_duplicate=False))
-        names = param_names if param_names else list(params.keys())[:10]
-        for name in names:
-            if name in params:
-                p = params[name]
-                s = p.float().sum().item()
-                result[name] = s
-                total += s
-        result['_total'] = total.item()
-        result['_num_params'] = len(params)
-        return result
-
     def close_communicator(self) -> None:
         """
         Closes the communicator when weight synchronization is no longer needed.

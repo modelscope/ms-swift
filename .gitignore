@@ -154,7 +154,3 @@ megatron_output/
 
 # ast template
 ast_index_file.py
-
-# Dev-only test tmp
-/test_grpo_e2e/
-/tests/ray/
