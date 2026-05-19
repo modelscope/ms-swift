@@ -42,6 +42,5 @@ swift rlhf \
     --epsilon_high 0.28 \
     --fipo_decay_rate 32 \
     --fipo_clip_range 0.2 \
-    --fipo_clip_high_only true \
-    --fipo_detach_weight true \
-    --fipo_safety_threshold 10.0
+    --fipo_clip_high_only false \
+    --fipo_safety_threshold 3.0
