@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import copy
 import os
 import ray
 import torch
@@ -10,8 +11,9 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dataset import RowPreprocessor
-from swift.rlhf_trainers.utils import compute_grpo_advantages, make_reward_weights, resolve_reward_funcs
-from swift.utils import get_logger, to_device
+from swift.rlhf_trainers.utils import (compute_grpo_advantages, create_cyclic_iterator, make_reward_weights,
+                                       resolve_reward_funcs)
+from swift.utils import get_logger
 from .driver_utils import compute_iter_params, extract_iteration, extract_train_metrics
 
 logger = get_logger()
@@ -152,7 +154,7 @@ class GRPOTrainer:
 
             self._ckpt_manager = CheckpointEngineManager(
                 train_actors=tg.workers,
-                rollout_actors=[r.primary for r in self.rollout_replicas],
+                rollout_replicas=self.rollout_replicas,
                 weight_sync_mode=self._weight_sync_mode,
                 is_colocated=self.is_colocated_rollout,
                 sleep_level=self._sleep_level,
@@ -197,35 +199,48 @@ class GRPOTrainer:
 
             rewards_per_func = self.score_completions(rollout_with_outputs)
 
-            if self.beta == 0.0:
-                advantages, rewards = self.compute_advantages(rewards_per_func, kl_values=None)
-
             n_samples = len(rollout_with_outputs)
             chunk_size = n_samples // spg
+
+            all_chunk_samples = []
             for step_idx in range(spg):
-                if iteration >= train_iters:
-                    break
                 chunk_start = step_idx * chunk_size
                 chunk_end = chunk_start + chunk_size
                 chunk_rollout = rollout_with_outputs[chunk_start:chunk_end]
-                chunk_rewards_pf = rewards_per_func[chunk_start:chunk_end]
+                chunk_samples = self.encode_rollout_batch(chunk_rollout)
 
-                batch = self.encode_rollout_batch(chunk_rollout)
-
-                logps_results = tg.compute_logps(batch)
-                self._merge_logps(batch, logps_results, 'per_token_logps', 'old_per_token_logps')
+                logps_results = tg.compute_logps(chunk_samples)
+                for sample, result in zip(chunk_samples, logps_results):
+                    sample['old_per_token_logps'] = result['per_token_logps']
+                    sample['completion_mask'] = result['completion_mask']
 
                 if self.beta != 0.0:
-                    ref_results = tg.compute_ref_logps(batch)
-                    self._merge_logps(batch, ref_results, 'ref_per_token_logps', 'ref_per_token_logps')
-                    kl_values = self._compute_kl(batch)
-                    chunk_advantages, rewards = self.compute_advantages(chunk_rewards_pf, kl_values=kl_values)
+                    ref_results = tg.compute_ref_logps(chunk_samples)
+                    for sample, result in zip(chunk_samples, ref_results):
+                        sample['ref_per_token_logps'] = result['ref_per_token_logps']
+
+                all_chunk_samples.append(chunk_samples)
+
+            for step_idx in range(spg):
+                if iteration >= train_iters:
+                    break
+                chunk_samples = all_chunk_samples[step_idx]
+                chunk_start = step_idx * chunk_size
+                chunk_end = chunk_start + chunk_size
+                chunk_rewards_pf = rewards_per_func[chunk_start:chunk_end]
+
+                if self.beta != 0.0:
+                    kl_values = self._compute_kl_from_samples(chunk_samples)
                 else:
-                    chunk_advantages = advantages[chunk_start:chunk_end]
+                    kl_values = None
 
-                batch['advantages'] = chunk_advantages.to(self.device)
+                chunk_advantages, rewards = self.compute_advantages(chunk_rewards_pf, kl_values=kl_values)
+                for i, sample in enumerate(chunk_samples):
+                    sample['advantage'] = float(chunk_advantages[i].item())
+                for sample in chunk_samples:
+                    sample.pop('completion_mask', None)
 
-                results = tg.train_step(batch)
+                results = tg.train_step(chunk_samples)
                 iteration = extract_iteration(results)
                 train_m = extract_train_metrics(results)
 
@@ -250,9 +265,6 @@ class GRPOTrainer:
         train_str = '  '.join(core_parts + extra_parts)
         logger.info('iter %d/%d  reward=%.4f  group_std=%.4f  adv_nonzero=%.1f%%  %s  %s', iteration, train_iters,
                     mean_reward, group_std, nonzero_adv * 100, per_func_str, train_str)
-        if group_std < 1e-6 and iteration <= 5:
-            for pi in range(min(grouped.shape[0], 4)):
-                logger.info('  prompt[%d] rewards=%s', pi, grouped[pi].tolist())
 
     def _build_dataloader(self, tg):
         info = self._data_info
@@ -267,15 +279,9 @@ class GRPOTrainer:
             collate_fn=info['data_collator'],
             drop_last=True,
         )
-        self._data_iter = self._cyclic_iter(self._dataloader)
+        self._data_iter = create_cyclic_iterator(self._dataloader)
         logger.info('GRPO driver dataloader: dataset=%d, prompts_per_generation=%d, num_gen=%d, spg=%d', len(dataset),
                     prompts_per_generation, num_gen, spg)
-
-    @staticmethod
-    def _cyclic_iter(dataloader):
-        while True:
-            for batch in dataloader:
-                yield batch
 
     def _generate(self, expanded_batch):
         """Run a prompt batch through rollout replicas."""
@@ -292,8 +298,6 @@ class GRPOTrainer:
         if len(outputs) != len(rollout_batch):
             raise RuntimeError(f'GRPOTrainer: rollout produced {len(outputs)} completions '
                                f'for {len(rollout_batch)} samples; shapes mismatch.')
-
-        import copy
 
         from swift.utils import remove_response
 
@@ -331,15 +335,12 @@ class GRPOTrainer:
         num_gen = self.num_generations
         expanded = []
         for item in prompt_batch:
-            copy0 = {k: v for k, v in item.items()}
+            copy0 = copy.deepcopy(item)
             if 'messages' in copy0:
-                copy0['messages'] = [m.copy() for m in copy0['messages']]
                 remove_response(copy0['messages'])
             expanded.append(copy0)
             for _ in range(num_gen - 1):
-                dup = {k: v for k, v in copy0.items()}
-                if 'messages' in dup:
-                    dup['messages'] = [m.copy() for m in dup['messages']]
+                dup = copy.deepcopy(copy0)
                 expanded.append(dup)
         return expanded
 
@@ -416,63 +417,51 @@ class GRPOTrainer:
     def encode_rollout_batch(
         self,
         rollout_batch: Sequence[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Encode all rollout samples into a single global batch dict.
+    ) -> List[Dict[str, Any]]:
+        """Encode rollout samples and keep them as per-sample payloads."""
+        from swift.rlhf_trainers.utils import replace_assistant_response_with_ids
 
-        The driver passes one dict to each WorkerGroup RPC; DP sharding
-        is handled by the dispatch layer and micro-batch splitting is
-        done inside each worker (``_split_micro_batches``).
-        """
-        from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
+        rollout_for_encode: List[Dict[str, Any]] = []
+        for data in rollout_batch:
+            item = dict(data)
+            if 'messages' in item and item['messages'] is not None:
+                item['messages'] = [m.copy() for m in item['messages']]
+            if 'response_token_ids' in item and item['response_token_ids']:
+                loss_mask = None
+                if 'response_loss_mask' in item and item['response_loss_mask']:
+                    loss_mask = item['response_loss_mask']
+                item['messages'] = replace_assistant_response_with_ids(item['messages'], item['response_token_ids'],
+                                                                       loss_mask)
+            rollout_for_encode.append(item)
 
-        encoded_list, error_list = self._batch_encode_parallel(rollout_batch, strict=True)
+        encoded_list, error_list = self._batch_encode_parallel(rollout_for_encode, strict=True)
         if error_list:
             raise RuntimeError(f'GRPOTrainer: batch encode failed with errors={error_list}')
-        for item in encoded_list:
-            item.pop('_extra_kwargs', None)
+        samples: List[Dict[str, Any]] = []
+        for encoded, rollout in zip(encoded_list, rollout_batch):
+            encoded.pop('_extra_kwargs', None)
+            samples.append({
+                'encoded': encoded,
+                'is_truncated': bool(rollout.get('is_truncated', False)),
+                'rollout_logprobs': rollout.get('rollout_logprobs'),
+            })
+        return samples
 
-        template = self.template
-        encoded_batch = to_device(template.data_collator(encoded_list, padding_to=self._padding_to), self.device)
-
-        labels = encoded_batch['labels']
-        batch_size = len(rollout_batch)
-
-        completion_mask, seq_lengths, _ = build_completion_mask_and_seq_lengths(
-            labels,
-            batch_size,
-            padding_free=template.padding_free,
-            encoded_batch=encoded_batch,
-            device=self.device,
-        )
-
-        encoded_batch.update({
-            'completion_mask':
-            completion_mask,
-            'truncated_mask':
-            torch.tensor([b.get('is_truncated', False) for b in rollout_batch], dtype=torch.bool, device=self.device),
-            'num_samples':
-            batch_size,
-            'seq_lengths':
-            seq_lengths,
-            'rollout_per_token_logps':
-            build_rollout_logps(rollout_batch, completion_mask, self.device),
-        })
-        return encoded_batch
-
-    @staticmethod
-    def _merge_logps(batch: Dict[str, Any], results: List, src_key: str, dst_key: str) -> None:
-        """Concatenate dp_flat logps results and store in batch."""
-        parts = [r[src_key] for r in results if r and isinstance(r, dict) and src_key in r]
-        if parts:
-            batch[dst_key] = torch.cat(parts, dim=0) if len(parts) > 1 else parts[0]
-
-    def _compute_kl(self, batch: Dict[str, Any]) -> Optional[torch.Tensor]:
-        """Compute per-sample KL divergence between old and ref logps."""
+    def _compute_kl_from_samples(self, samples: Sequence[Dict[str, Any]]) -> Optional[torch.Tensor]:
         if not (self.kl_in_reward and self.beta != 0.0):
             return None
-        old_lp = batch.get('old_per_token_logps')
-        ref_lp = batch.get('ref_per_token_logps')
-        mask = batch.get('completion_mask')
-        if old_lp is None or ref_lp is None or mask is None:
+        kl_values = []
+        for sample in samples:
+            old_lp = sample.get('old_per_token_logps')
+            ref_lp = sample.get('ref_per_token_logps')
+            mask = sample.get('completion_mask')
+            if old_lp is None or ref_lp is None or mask is None:
+                return None
+            old_lp = old_lp.to(self.device)
+            ref_lp = ref_lp.to(self.device)
+            mask = mask.to(self.device)
+            width = min(old_lp.shape[-1], ref_lp.shape[-1], mask.shape[-1])
+            kl_values.append(((old_lp[:width] - ref_lp[:width]) * mask[:width].to(old_lp.dtype)).sum())
+        if not kl_values:
             return None
-        return ((old_lp - ref_lp) * mask).sum(-1)
+        return torch.stack(kl_values)

@@ -15,7 +15,7 @@ class CheckpointEngineManager:
     def __init__(
         self,
         train_actors: List[Any],
-        rollout_actors: List[Any],
+        rollout_replicas: List[Any],
         *,
         weight_sync_mode: str = 'nccl',
         is_colocated: bool = False,
@@ -23,7 +23,8 @@ class CheckpointEngineManager:
         train_group: Any,
     ):
         self.train_actors = train_actors
-        self.rollout_actors = rollout_actors
+        self._rollout_replicas = rollout_replicas
+        self.rollout_actors = [r.primary for r in rollout_replicas]
         self._weight_sync_mode = weight_sync_mode
         self.is_colocated = is_colocated
         self._train_group = train_group
@@ -40,20 +41,7 @@ class CheckpointEngineManager:
         self._sleeping_tags: set = set()
 
     def sync_weights(self, merge_and_sync: bool = True) -> None:
-        """Synchronize weights from training model to rollout replicas.
-
-        Both modes follow a two-phase wake pattern when colocated:
-          sleep → push weights (vLLM stays asleep) → caller wakes kv_cache later.
-
-        Naive (IPC) mode:
-          vLLM collective_rpc works even in sleep state (ZMQ/process
-          channels are independent of GPU memory).  Keeping vLLM asleep
-          during export_weights avoids OOM from simultaneous training
-          model + vLLM KV cache GPU residency.
-
-        NCCL mode:
-          sleep → wake_up(weights) → NCCL broadcast → (kv_cache deferred).
-        """
+        """Synchronize weights from training model to rollout replicas."""
         if self.is_colocated:
             self.sleep_rollout()
             self.wake_up_rollout(tags=['weights'])
@@ -63,29 +51,18 @@ class CheckpointEngineManager:
             self._sync_weights_nccl(merge_and_sync)
 
     def sleep_rollout(self) -> None:
-        """Put all rollout replicas to sleep, freeing GPU memory for training."""
         if self._sleeping_tags:
             return
-        refs = [actor.sleep.remote(level=self.sleep_level) for actor in self.rollout_actors]
-        ray.get(refs)
+        for replica in self._rollout_replicas:
+            replica.sleep(level=self.sleep_level)
         self._sleeping_tags = {'weights', 'kv_cache'}
         logger.debug('CheckpointEngineManager: rollout replicas sleeping (level=%d)', self.sleep_level)
 
     def wake_up_rollout(self, tags: Optional[List[str]] = None) -> None:
-        """Wake up rollout replicas with specific tags.
-
-        Two-phase wake pattern:
-          - ``wake_up(['weights'])`` first to receive weight sync
-          - ``wake_up(['kv_cache'])`` after training model offloaded
-
-        Args:
-            tags: ``['weights']`` or ``['kv_cache']``.
-                  ``None`` wakes everything still sleeping.
-        """
         if not self._sleeping_tags:
             return
-        refs = [actor.wake_up.remote(tags=tags) for actor in self.rollout_actors]
-        ray.get(refs)
+        for replica in self._rollout_replicas:
+            replica.wake_up(tags=tags)
         if tags is None:
             self._sleeping_tags.clear()
         else:
@@ -95,6 +72,9 @@ class CheckpointEngineManager:
     def _sync_weights_naive(self, merge_and_sync: bool) -> None:
         tg = self._train_group
         adapter_only = self.base_sync_done and not merge_and_sync
+        need_merge = not adapter_only and merge_and_sync
+        if need_merge:
+            tg.merge_lora()
         if self.is_colocated:
             tg.offload_to_cpu()
         try:
@@ -102,9 +82,11 @@ class CheckpointEngineManager:
         finally:
             if self.is_colocated:
                 tg.reload_to_gpu()
+            if need_merge:
+                tg.unmerge_lora()
         if not self.base_sync_done:
             self.base_sync_done = True
-            logger.info('CheckpointEngineManager[naive]: initial weight sync done')
+            logger.debug('CheckpointEngineManager[naive]: initial weight sync done')
 
     def _sync_weights_nccl(self, merge_and_sync: bool) -> None:
         """NCCL broadcast weight sync path.
@@ -154,9 +136,14 @@ class CheckpointEngineManager:
 
         # 4. Send/receive weights (concurrent)
         adapter_only = self.base_sync_done and not merge_and_sync
+        need_merge = not adapter_only and merge_and_sync
         peft_config = None
         if adapter_only:
             peft_config = ray.get(self.train_actors[0].get_peft_config_dict.remote())
+
+        if need_merge:
+            merge_refs = [actor.merge_lora.remote() for actor in self.train_actors]
+            ray.get(merge_refs)
 
         train_send_refs = [
             actor.send_checkpoint_weights.remote(adapter_only=adapter_only) for actor in self.train_actors
@@ -168,6 +155,10 @@ class CheckpointEngineManager:
             ) for actor in self.rollout_actors
         ]
         ray.get(train_send_refs + rollout_recv_refs)
+
+        if need_merge:
+            unmerge_refs = [actor.unmerge_lora.remote() for actor in self.train_actors]
+            ray.get(unmerge_refs)
 
         # 5. Finalize
         train_fin_refs = [actor.finalize_checkpoint_engine.remote() for actor in self.train_actors]

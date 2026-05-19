@@ -1,7 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ray
+import socket
 import torch
 from enum import Enum
+from ray.runtime_env import RuntimeEnv
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from transformers.utils import is_torch_npu_available
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
 from swift.utils.logger import get_logger
@@ -67,9 +71,8 @@ def _slice_dp(value: Any, dp_size: int) -> Any:
             raise ValueError(f'_slice_dp: tensor first dim {n} < dp_size {dp_size}.  '
                              f'Pad the batch upstream or use dispatch="broadcast".')
         if n % dp_size != 0:
-            # TODO: should we raise ValueError here?
-            logger.warning(f'_slice_dp: tensor first dim {n} not divisible by dp_size {dp_size}; '
-                           f'using non-equal chunking.')
+            raise ValueError(f'_slice_dp: tensor first dim {n} not divisible by dp_size {dp_size}. '
+                             f'Pad the batch upstream or use dispatch="broadcast".')
         parts = value.chunk(dp_size)
         return DPDispatchedDict({i: p for i, p in enumerate(parts)})
     if isinstance(value, list):
@@ -77,15 +80,30 @@ def _slice_dp(value: Any, dp_size: int) -> Any:
         if n == 0:
             raise ValueError('_slice_dp got empty list')
         if n < dp_size:
-            raise ValueError(f'_slice_dp: list length {n} < dp_size {dp_size}.  '
+            raise ValueError(f'_slice_dp: list length {n} < dp_size {dp_size}. '
                              f'Pad the batch upstream or use dispatch="broadcast".')
-        k, m = divmod(n, dp_size)
+        if n % dp_size != 0:
+            raise ValueError(f'_slice_dp: list length {n} not divisible by dp_size {dp_size}. '
+                             f'Pad the batch upstream or use dispatch="broadcast".')
+        chunk_size = n // dp_size
         result = DPDispatchedDict()
-        offset = 0
         for i in range(dp_size):
-            size = k + (1 if i < m else 0)
-            result[i] = value[offset:offset + size]
-            offset += size
+            result[i] = value[i * chunk_size:(i + 1) * chunk_size]
+        return result
+    if isinstance(value, tuple):
+        n = len(value)
+        if n == 0:
+            raise ValueError('_slice_dp got empty tuple')
+        if n < dp_size:
+            raise ValueError(f'_slice_dp: tuple length {n} < dp_size {dp_size}. '
+                             f'Pad the batch upstream or use dispatch="broadcast".')
+        if n % dp_size != 0:
+            raise ValueError(f'_slice_dp: tuple length {n} not divisible by dp_size {dp_size}. '
+                             f'Pad the batch upstream or use dispatch="broadcast".')
+        chunk_size = n // dp_size
+        result = DPDispatchedDict()
+        for i in range(dp_size):
+            result[i] = value[i * chunk_size:(i + 1) * chunk_size]
         return result
     if isinstance(value, dict):
         if _is_dp_dispatched(value):
@@ -105,8 +123,6 @@ def _slice_dp(value: Any, dp_size: int) -> Any:
         return result
     return value
 
-
-# ── Dispatch / collect registries ──────────────────────────────────────
 
 _DISPATCH_FNS: Dict[str, Any] = {}
 _COLLECT_FNS: Dict[str, Any] = {}
@@ -335,7 +351,6 @@ class WorkerGroup:
 
         Supports CUDA (GPU) and Ascend (NPU).
         """
-        from transformers.utils import is_torch_npu_available
         if is_torch_npu_available():
             return {
                 'visible_devices_key': 'ASCEND_RT_VISIBLE_DEVICES',
@@ -361,9 +376,6 @@ class WorkerGroup:
         Swift uses ``num_gpus=0`` + ``NOSET_CVD`` + explicit CVD
         (torchrun style for Megatron TP/PP visibility).
         """
-        from ray.runtime_env import RuntimeEnv
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
         master_addr, master_port = cls._discover_master(resource_pool)
         dev_cfg = cls._get_device_env_config()
         vis = resource_pool.visible_devices
@@ -406,12 +418,9 @@ class WorkerGroup:
 
         Discovers a free port on the first bundle of the first PG.
         """
-        import ray
-        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
         @ray.remote(num_gpus=0, num_cpus=0.01)
         def _probe():
-            import socket
             addr = ray.util.get_node_ip_address()
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

@@ -20,12 +20,20 @@ import asyncio
 import os
 import socket
 import torch
+from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.utils import gc_collect, get_logger
 from ..checkpoint_engine import CheckpointEngineMixin
 
 logger = get_logger()
+
+
+def _parse_bool_env(name: str, default: bool) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.lower() in ('1', 'true')
 
 
 def _get_free_port(address: str = '') -> int:
@@ -52,7 +60,6 @@ class VllmServer(CheckpointEngineMixin):
         self._gpus_per_node = gpus_per_node
 
         if cuda_visible_devices:
-            from transformers.utils import is_torch_npu_available
             key = 'ASCEND_RT_VISIBLE_DEVICES' if is_torch_npu_available() else 'CUDA_VISIBLE_DEVICES'
             os.environ[key] = cuda_visible_devices
 
@@ -93,6 +100,7 @@ class VllmServer(CheckpointEngineMixin):
         master_port: Optional[int] = None,
         dp_rpc_port: Optional[int] = None,
         data_parallel_size: int = 1,
+        template_kwargs: Optional[Dict[str, Any]] = None,
         **engine_kwargs,
     ) -> Dict[str, Any]:
         if self._node_rank != 0:
@@ -136,6 +144,7 @@ class VllmServer(CheckpointEngineMixin):
             trust_remote_code=trust_remote_code,
             dtype=dtype,
             load_format=load_format,
+            template_kwargs=template_kwargs,
             **extra_engine_kwargs,
         )
         logger.info(
@@ -178,8 +187,8 @@ class VllmServer(CheckpointEngineMixin):
         timeout_s: int = 600,
         peft_config: Optional[dict] = None,
         base_sync_done: bool = False,
-    ) -> Dict[str, Any]:
-        return self._engine.update_weights_ipc(
+    ) -> None:
+        self._engine.update_weights_ipc(
             zmq_handle, use_shm=use_shm, timeout_s=timeout_s, peft_config=peft_config, base_sync_done=base_sync_done)
 
     def receive_checkpoint_weights(
@@ -189,6 +198,9 @@ class VllmServer(CheckpointEngineMixin):
     ) -> None:
         """Receive weights via NCCL broadcast and stream into vLLM."""
         engine = self._get_or_create_checkpoint_engine()
+        # CUDA defaults to IPC (SHM disabled) to avoid frequent SharedMemory
+        # warnings and long-run instability. NPU keeps SHM as default.
+        use_shm = _parse_bool_env('SWIFT_RAY_NCCL_RECV_USE_SHM', default=is_torch_npu_available())
 
         async def _receive_and_load():
             from .weight_transfer import BucketedWeightSender
@@ -197,17 +209,19 @@ class VllmServer(CheckpointEngineMixin):
             sender = BucketedWeightSender(
                 zmq_handle=zmq_handle,
                 bucket_size_mb=bucket_mb,
-                use_shm=True,
+                use_shm=use_shm,
             )
 
             async def _weight_stream():
                 async for name, tensor in engine.receive_weights():
-                    yield name, tensor.cpu()
+                    if use_shm and tensor.device.type != 'cpu':
+                        tensor = tensor.cpu()
+                    yield name, tensor
 
             try:
                 async with sender:
                     rpc_kwargs = {
-                        'use_shm': True,
+                        'use_shm': use_shm,
                         'zmq_handle': zmq_handle,
                         'timeout_s': 600,
                     }
@@ -219,7 +233,8 @@ class VllmServer(CheckpointEngineMixin):
                             'update_weights_from_ipc',
                             kwargs=rpc_kwargs,
                         ))
-                    await asyncio.sleep(0.5)
+                    # Allow collective_rpc to schedule and bind its ZMQ socket
+                    await asyncio.sleep(0)
                     await sender.handshake()
                     await sender.send_weights_async(_weight_stream())
                     await rpc_task

@@ -15,9 +15,9 @@ import threading
 import torch
 from typing import Any, Dict, List, Optional
 
+from swift.rlhf_trainers.utils import set_expandable_segments
 from swift.utils import gc_collect
 from swift.utils.logger import get_logger
-from .process_utils import set_expandable_segments
 
 logger = get_logger()
 
@@ -40,8 +40,9 @@ class RayVllmEngine:
         trust_remote_code: bool = True,
         dtype: str = 'auto',
         load_format: str = 'auto',
+        template_kwargs: Optional[Dict[str, Any]] = None,
         **engine_kwargs,
-    ) -> None:
+    ):
         os.environ.setdefault('VLLM_USE_V1', '1')
         os.environ.setdefault('VLLM_WORKER_MULTIPROC_METHOD', 'spawn')
         os.environ.setdefault('VLLM_ENGINE_ITERATION_TIMEOUT_S', '86400')
@@ -59,7 +60,7 @@ class RayVllmEngine:
         from swift.model import get_processor
         from swift.template import get_template
         processor = get_processor(model_id_or_path=model_id, download_model=True)
-        template = get_template(processor)
+        template = get_template(processor, **(template_kwargs or {}))
         self.template = template
         self.tokenizer = template.tokenizer
 
@@ -90,6 +91,7 @@ class RayVllmEngine:
                 enforce_eager=enforce_eager,
                 load_format=load_format,
                 distributed_executor_backend=distributed_executor_backend,
+                logprobs_mode='processed_logprobs',
                 engine_kwargs=extra_engine_kwargs,
             ))
         self.engine = self._vllm_engine.engine
@@ -135,7 +137,7 @@ class RayVllmEngine:
     # Sleep / Wake-up
     # ------------------------------------------------------------------
 
-    def sleep(self, level: int = 2) -> None:
+    def sleep(self, level: int = 2):
         if not self.enable_sleep_mode:
             return
         self._run_in_loop(self.engine.sleep(level=level))
@@ -143,7 +145,7 @@ class RayVllmEngine:
         set_expandable_segments(True)
         logger.debug('RayVllmEngine: sleeping at level %d', level)
 
-    def wake_up(self, tags: Optional[List[str]] = None) -> None:
+    def wake_up(self, tags: Optional[List[str]] = None):
         if not self.enable_sleep_mode:
             return
         if tags is None or 'kv_cache' in tags:
@@ -178,7 +180,7 @@ class RayVllmEngine:
 
         return self._run_in_loop(_get())
 
-    def reset_prefix_cache(self) -> None:
+    def reset_prefix_cache(self):
         self._run_in_loop(self.engine.reset_prefix_cache())
 
     def update_weights_ipc(
@@ -188,7 +190,7 @@ class RayVllmEngine:
         timeout_s: int = 600,
         peft_config: Optional[dict] = None,
         base_sync_done: bool = False,
-    ) -> Dict[str, Any]:
+    ):
         """Trigger the vLLM worker extension's ``update_weights_from_ipc``."""
 
         async def _rpc():
@@ -206,9 +208,8 @@ class RayVllmEngine:
             )
 
         self._run_in_loop(_rpc())
-        return {'status': 'ok'}
 
-    def shutdown(self) -> None:
+    def shutdown(self):
         if self.engine is not None:
             try:
                 self.engine.shutdown()

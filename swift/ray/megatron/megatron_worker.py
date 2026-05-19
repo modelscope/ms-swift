@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import torch
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from swift.utils import gc_collect, get_current_device, get_logger, to_device
 from .checkpoint_engine import CheckpointEngineMixin
@@ -122,10 +122,30 @@ class MegatronWorker(CheckpointEngineMixin):
 
     @dispatch_collect(dispatch='dp_split', collect='all')
     def train_step(self, batch) -> Dict[str, Any]:
-        data_iterator = self._batch_to_iterator(batch)
         megatron = self._megatron
+        args = megatron.args
+        # Megatron Core reads args.num_microbatches for gradient accumulation
+        # scheduling. In Ray, the actual batch per worker is determined by DP
+        # dispatch and may differ from the initial config. Temporarily override
+        # to match the actual micro-batch count, then restore.
+        orig_num_microbatches = args.num_microbatches
+        orig_micro_batch_size = args.micro_batch_size
+        if isinstance(batch, list):
+            micro_batches = self._build_local_micro_batches(batch)
+            data_iterator = iter(micro_batches)
+        else:
+            data_iterator, micro_batches = self._batch_to_iterator(batch)
+        args.num_microbatches = len(micro_batches)
+        if micro_batches:
+            mb0 = micro_batches[0].get('input_ids')
+            if isinstance(mb0, torch.Tensor) and mb0.dim() > 0:
+                args.micro_batch_size = int(mb0.shape[0])
 
-        megatron.run_train_step(data_iterator, None)
+        try:
+            megatron.run_train_step(data_iterator, None)
+        finally:
+            args.num_microbatches = orig_num_microbatches
+            args.micro_batch_size = orig_micro_batch_size
         del data_iterator
         gc_collect()
         return self._extract_step_metrics(megatron)
@@ -157,18 +177,25 @@ class MegatronWorker(CheckpointEngineMixin):
     def compute_logps(self, batch) -> Any:
         """Compute per-token logps under the current policy model.
 
-        Receives a DP shard (single dict) from dispatch; splits into
-        micro-batches internally using ``micro_batch_size``.
+        Receives a local sample shard from DP dispatch and performs
+        collate locally before logp computation.
         """
         model = self._megatron.unwrapped_models[0]
-        return self._compute_logps_batched(batch, model, 'per_token_logps')
+        if isinstance(batch, list):
+            return self._compute_logps_from_samples(batch, model, 'per_token_logps', with_completion_mask=True)
+        result = self._compute_logps_batched(batch, model, 'per_token_logps')
+        return self._split_logps_rows(result.get('per_token_logps'), batch.get('completion_mask'), 'per_token_logps')
 
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_ref_logps(self, batch) -> Any:
         """Compute per-token logps under the frozen reference model."""
         megatron = self._megatron
         with megatron.null_ref_context() as ref_models:
-            return self._compute_logps_batched(batch, ref_models[0], 'ref_per_token_logps')
+            if isinstance(batch, list):
+                return self._compute_logps_from_samples(
+                    batch, ref_models[0], 'ref_per_token_logps', with_completion_mask=False)
+            result = self._compute_logps_batched(batch, ref_models[0], 'ref_per_token_logps')
+        return self._split_logps_rows(result.get('ref_per_token_logps'), None, 'ref_per_token_logps')
 
     def _compute_logps_batched(self, batch, model, output_key: str) -> Dict[str, Any]:
         """Split a DP shard into micro-batches, compute logps, concatenate."""
@@ -187,6 +214,37 @@ class MegatronWorker(CheckpointEngineMixin):
         gc_collect()
         return out
 
+    def _compute_logps_from_samples(
+        self,
+        samples: Sequence[Dict[str, Any]],
+        model,
+        output_key: str,
+        *,
+        with_completion_mask: bool,
+    ) -> List[Dict[str, torch.Tensor]]:
+        rows: List[Dict[str, torch.Tensor]] = []
+        for sample_chunk in self._split_sample_chunks(samples):
+            mb = self._collate_local_grpo_samples(sample_chunk)
+            out = self._compute_logps(mb, model, output_key)
+            if output_key not in out:
+                continue
+            completion_mask = mb.get('completion_mask') if with_completion_mask else None
+            rows.extend(self._split_logps_rows(out[output_key], completion_mask, output_key))
+        return rows
+
+    @staticmethod
+    def _split_logps_rows(logps: Optional[torch.Tensor], completion_mask: Optional[torch.Tensor],
+                          key: str) -> List[Dict[str, torch.Tensor]]:
+        if logps is None:
+            return []
+        rows = []
+        for i in range(logps.shape[0]):
+            item: Dict[str, torch.Tensor] = {key: logps[i].detach().cpu()}
+            if completion_mask is not None:
+                item['completion_mask'] = completion_mask[i].detach().cpu()
+            rows.append(item)
+        return rows
+
     def _compute_logps(self, batch: Dict[str, Any], model, output_key: str) -> Dict[str, Any]:
         """Compute per-token logps for a single micro-batch."""
         from swift.megatron.trainers.grpo_trainer import GRPO_NON_MODEL_KEYS
@@ -199,7 +257,6 @@ class MegatronWorker(CheckpointEngineMixin):
         max_seq_len = batch['completion_mask'].shape[1]
 
         model_inputs = {k: v for k, v in batch.items() if k not in GRPO_NON_MODEL_KEYS}
-
         logps_packed, _ = megatron.compute_per_token_logps(model, iter([model_inputs]), temperature=temperature)
 
         out = {}
@@ -253,11 +310,28 @@ class MegatronWorker(CheckpointEngineMixin):
                     replica_rank, rollout_rank)
 
     @dispatch_collect(dispatch='broadcast', collect='first')
+    def merge_lora(self):
+        """Merge LoRA adapters into base weights (must be called before offload)."""
+        megatron = self._megatron
+        if megatron.args.tuner_type in ('lora', 'lora_llm'):
+            megatron.merge_lora_adapters()
+
+    @dispatch_collect(dispatch='broadcast', collect='first')
+    def unmerge_lora(self):
+        """Unmerge LoRA adapters to restore training state (call after reload)."""
+        megatron = self._megatron
+        if megatron.args.tuner_type in ('lora', 'lora_llm'):
+            megatron.unmerge_lora_adapters()
+
+    @dispatch_collect(dispatch='broadcast', collect='first')
     def update_weights(self, adapter_only: bool = False):
         """Push training weights to rollout via IPC (streaming).
 
         All TP ranks must call export_weights (contains TP collectives).
         Only the primary rank sends; others drain the iterator.
+
+        For full-weight sync with LoRA, the caller must ensure merge_lora()
+        was called beforehand and unmerge_lora() is called after reload.
 
         Args:
             adapter_only: When True, export only LoRA adapter weights
@@ -329,7 +403,60 @@ class MegatronWorker(CheckpointEngineMixin):
 
     def _batch_to_iterator(self, batch):
         micro_batches = split_micro_batches(batch, getattr(self._args, 'micro_batch_size', 1))
-        return iter([to_device(mb, get_current_device()) for mb in micro_batches])
+        micro_batches = [to_device(mb, get_current_device()) for mb in micro_batches]
+        return iter(micro_batches), micro_batches
+
+    def _split_sample_chunks(self, samples: Sequence[Dict[str, Any]]) -> List[Sequence[Dict[str, Any]]]:
+        micro_batch_size = max(int(getattr(self._args, 'micro_batch_size', 1) or 1), 1)
+        return [samples[i:i + micro_batch_size] for i in range(0, len(samples), micro_batch_size)]
+
+    def _build_local_micro_batches(self, samples: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return [self._collate_local_grpo_samples(chunk) for chunk in self._split_sample_chunks(samples)]
+
+    def _collate_local_grpo_samples(self, samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+        from swift.megatron.utils import get_padding_to
+        from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
+
+        template = self._pipeline.template
+        device = get_current_device()
+        encoded_list = [sample['encoded'] for sample in samples]
+        encoded_batch = template.data_collator(encoded_list, padding_to=get_padding_to(self._args))
+        encoded_batch = to_device(encoded_batch, device)
+
+        labels = encoded_batch['labels']
+        batch_size = len(samples)
+        completion_mask, seq_lengths, _ = build_completion_mask_and_seq_lengths(
+            labels,
+            batch_size,
+            padding_free=template.padding_free,
+            encoded_batch=encoded_batch,
+            device=device,
+        )
+        rollout_logps = build_rollout_logps(samples, completion_mask, device)
+        encoded_batch.update({
+            'completion_mask':
+            completion_mask,
+            'truncated_mask':
+            torch.tensor([bool(s.get('is_truncated', False)) for s in samples], dtype=torch.bool, device=device),
+            'num_samples':
+            batch_size,
+            'seq_lengths':
+            seq_lengths,
+            'rollout_per_token_logps':
+            rollout_logps,
+        })
+
+        if samples and samples[0].get('old_per_token_logps') is not None:
+            encoded_batch['old_per_token_logps'] = torch.stack([s['old_per_token_logps'].to(device) for s in samples],
+                                                               dim=0)
+        if samples and samples[0].get('ref_per_token_logps') is not None:
+            encoded_batch['ref_per_token_logps'] = torch.stack([s['ref_per_token_logps'].to(device) for s in samples],
+                                                               dim=0)
+        if samples and samples[0].get('advantage') is not None:
+            encoded_batch['advantages'] = torch.tensor([float(s.get('advantage', 0.0)) for s in samples],
+                                                       dtype=torch.float32,
+                                                       device=device)
+        return encoded_batch
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:
         """Export and send model weights via NCCL checkpoint engine."""

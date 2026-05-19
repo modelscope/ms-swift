@@ -51,10 +51,10 @@ class MegatronRayPipeline:
         if self.rlhf_type not in _TRAINER_REGISTRY:
             raise ValueError('Unknown rlhf_type %r. Available: %s' % (self.rlhf_type, list(_TRAINER_REGISTRY)))
 
-        self.group_cfgs: Dict[str,
-                              Dict[str,
-                                   Any]] = {g: merge_group_dict(shared_config, gd)
-                                            for g, gd in group_configs.items()}
+        self.group_cfgs: Dict[str, Dict[str, Any]] = {
+            g: merge_group_dict(shared_config, gd)
+            for g, gd in group_configs.items()
+        }
         self.shared_cfg = {k: v for k, v in shared_config.items() if v is not None}
 
         self._entry = _TRAINER_REGISTRY[self.rlhf_type]
@@ -141,10 +141,13 @@ class MegatronRayPipeline:
         train_wg = self.worker_groups['train']
         padding_vals = train_wg.broadcast('get_padding_to')
         self._data_info['_padding_to'] = next((v for v in padding_vals if v is not None), None)
-        logger.debug('padding_to from worker: %s', self._data_info.get('_padding_to'))
 
-    # TODO: reuse
     def _validate_grpo_train_batch_params(self) -> None:
+        """Early validation of GRPO batch params before spawning workers.
+
+        Resolves generation_batch_size / steps_per_generation, then validates
+        DP alignment — all via static helpers in RLHFMegatronArgumentsMixin.
+        """
         if self.rlhf_type != 'grpo':
             return
         train_cfg = self.group_cfgs.get('train')
@@ -153,45 +156,20 @@ class MegatronRayPipeline:
             return
 
         cfg = dict(train_cfg)
-        global_batch_size = int(cfg.get('global_batch_size', 0) or 0)
-        micro_batch_size = int(cfg.get('micro_batch_size', 1) or 1)
-        num_generations = int(cfg.get('num_generations', 8) or 8)
-        generation_batch_size = cfg.get('generation_batch_size')
-        steps_per_generation = cfg.get('steps_per_generation')
-
+        global_batch_size = cfg.get('global_batch_size')
         if global_batch_size <= 0:
             return
-        if generation_batch_size is not None and steps_per_generation is not None:
-            raise ValueError("'generation_batch_size' and 'steps_per_generation' cannot be both configured")
 
-        if generation_batch_size is None:
-            if steps_per_generation is None:
-                generation_batch_size = global_batch_size
-            else:
-                generation_batch_size = global_batch_size * int(steps_per_generation)
-        else:
-            generation_batch_size = int(generation_batch_size)
-            if generation_batch_size % global_batch_size != 0:
-                raise ValueError(f'generation_batch_size ({generation_batch_size}) must be divisible by '
-                                 f'global_batch_size ({global_batch_size})')
+        micro_batch_size = cfg.get('micro_batch_size', 1)
+        num_generations = cfg.get('num_generations', 8)
+
+        from swift.megatron.arguments.megatron_args import RLHFMegatronArgumentsMixin
+        generation_batch_size, _ = RLHFMegatronArgumentsMixin.resolve_generation_batch_size(
+            cfg.get('generation_batch_size'), cfg.get('steps_per_generation'), global_batch_size, num_generations)
 
         dp_size = estimate_dp_size(cfg, train_gpus)
-        num_rollout_prompt = generation_batch_size // num_generations
-        if num_rollout_prompt % dp_size != 0:
-            raise ValueError(f'Invalid GRPO batch config: '
-                             f'(generation_batch_size={generation_batch_size} // num_generations={num_generations}) '
-                             f'= {num_rollout_prompt} must be divisible by dp_size={dp_size}.')
-
-        per_device_num_rollout_prompt = num_rollout_prompt // dp_size
-        if per_device_num_rollout_prompt < 1:
-            raise ValueError(f'Invalid GRPO batch config: per_device_num_rollout_prompt='
-                             f'((generation_batch_size={generation_batch_size} // num_generations={num_generations}) '
-                             f'// dp_size={dp_size}) = {per_device_num_rollout_prompt} < 1. '
-                             f'Increase generation_batch_size/steps_per_generation, or reduce num_generations.')
-        if per_device_num_rollout_prompt % micro_batch_size != 0:
-            raise ValueError(
-                f'Invalid GRPO batch config: per_device_num_rollout_prompt='
-                f'{per_device_num_rollout_prompt} must be divisible by micro_batch_size={micro_batch_size}.')
+        RLHFMegatronArgumentsMixin.validate_batch_dp_alignment(generation_batch_size, num_generations, dp_size,
+                                                               micro_batch_size, train_gpus)
 
     def _spawn_train_group(self, role: str) -> None:
         from .megatron_worker import MegatronWorker
@@ -200,11 +178,11 @@ class MegatronRayPipeline:
         pool = self.resource_pool_manager.get_pool(role)
         cfg = dict(self.group_cfgs.get(role, {}))
         cfg.setdefault('rlhf_type', self.ray_config.rlhf_type)
-        worker_cls = ray.remote(num_gpus=1.0)(MegatronWorker)
+        worker_cls = ray.remote(num_gpus=0)(MegatronWorker)
         wg = WorkerGroup.from_pool(role, pool, worker_cls=worker_cls)
 
         loss_cls = self._entry.get('loss')
-        rollout_config = self._build_rollout_config_for_workers()
+        rollout_config = self._build_rollout_config_for_workers() if self._is_rollout_hybrid() else None
         wg.broadcast('init_model', cfg, loss_cls_path=loss_cls, rollout_config=rollout_config)
         wg.build_dispatch_info(worker_cls=MegatronWorker)
 
@@ -213,12 +191,7 @@ class MegatronRayPipeline:
 
     @contextmanager
     def _colocate_offload_ctx(self):
-        """Offload colocated train workers while vLLM replicas initialize.
-
-        In colocate mode the training model must free GPU memory so that
-        vLLM can allocate KV cache.  After initialization the model is
-        reloaded.  In separate mode this is a no-op.
-        """
+        """Offload train workers during vLLM init (colocate only)."""
         need = self._is_rollout_hybrid() and bool(self.shared_cfg.get('offload_model', True))
         colocated_wgs = [
             wg for role, wg in self.worker_groups.items() if need and any(role in g for g in self.colocate_groups)
@@ -243,13 +216,25 @@ class MegatronRayPipeline:
         is_hybrid = self._is_rollout_hybrid()
         pool = self.resource_pool_manager.get_pool('train' if is_hybrid else 'rollout')
 
+        template_kwargs = self._get_template_kwargs_for_rollout()
         self.rollout_replicas = RolloutReplica.create_replicas(
             rollout_cfg=rollout_cfg,
             rollout_gpus=rollout_gpus,
             pool=pool,
             is_hybrid=is_hybrid,
             sleep_level=self.ray_config.sleep_level,
+            template_kwargs=template_kwargs,
         )
+
+    def _get_template_kwargs_for_rollout(self) -> Dict[str, Any]:
+        """Extract template config for vLLM alignment (padding_free=False, sp=1)."""
+        args = self._data_info.get('_driver_args')
+        if args is None:
+            return {}
+        kwargs = args.get_template_kwargs()
+        kwargs['padding_free'] = False
+        kwargs['sequence_parallel_size'] = 1
+        return kwargs
 
     def _build_rollout_config_for_workers(self) -> Optional[Dict[str, Any]]:
         """Build rollout config dict for MegatronWorker._init_rollout_adapter.
@@ -278,11 +263,7 @@ class MegatronRayPipeline:
             self.worker_groups, self.rollout_replicas, weight_sync_mode=weight_sync_mode, sleep_level=sleep_level)
 
     def _resolve_sleep_level(self) -> int:
-        """Determine sleep_level based on deployment mode.
-
-        - colocate: honor user config (1 or 2), default 1.
-        - separate: always 0 (vLLM stays resident), warn if user set otherwise.
-        """
+        """Colocate: honor user config; separate: force 0."""
         user_level = self.ray_config.sleep_level
         if self._is_rollout_hybrid():
             return user_level
@@ -292,11 +273,7 @@ class MegatronRayPipeline:
         return 0
 
     def _get_weight_sync_mode(self) -> str:
-        """Determine weight sync mode based on deployment topology.
-
-        - colocate: naive (IPC/ZMQ) — vLLM shares the node with trainer
-        - separate: nccl (broadcast) — vLLM on dedicated GPUs
-        """
+        """Colocate: naive (IPC); separate: nccl (broadcast)."""
         if self._is_rollout_hybrid():
             return 'naive'
         return 'nccl'

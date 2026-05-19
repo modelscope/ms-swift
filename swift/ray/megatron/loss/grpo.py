@@ -45,7 +45,7 @@ class GRPOLoss(Loss):
         dummy._init_grpo_params()
         dummy._prepare_metrics()
         dummy.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics
-        dummy.disable_rollout_importance_sampling = args.rollout_importance_sampling_mode is None
+        dummy.disable_rollout_importance_sampling = False
         dummy.enable_routing_replay = args.router_replay_mode != 'disabled'
         dummy.micro_batch_size = args.micro_batch_size
         dummy.temperature = args.temperature

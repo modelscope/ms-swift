@@ -28,16 +28,7 @@ _PARALLEL_DEFAULTS: Dict[str, Any] = {
 
 
 def parse_args_from_dict(class_type, cfg: Dict[str, Any]):
-    """Construct a dataclass from a config dict via ``swift.utils.parse_args``.
-
-    Converts the dict to an argv list then delegates to ``parse_args``,
-    which uses ``HfArgumentParser.parse_args_into_dataclasses`` internally.
-    This ensures argparse handles all type coercion (e.g. YAML ``1e-6``
-    parsed as str -> float).
-
-    Extra keys not recognized by *class_type* are silently tolerated
-    (``parse_args`` returns them as ``remaining_args``).
-    """
+    """Construct a dataclass from a config dict via HfArgumentParser."""
     from swift.utils import parse_args
 
     argv = _dict_to_argv(cfg)
@@ -93,14 +84,7 @@ class RayConfig:
 
 
 def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, Any]], Dict[str, Any]]':
-    """Parse a Ray YAML config into structured objects.
-
-    Returns:
-        (ray_config, group_dicts, shared_dict) where:
-        - ray_config: orchestration parameters
-        - group_dicts: per-group config dicts (train/ref/teacher/rollout)
-        - shared_dict: parameters shared across all groups
-    """
+    """Parse a Ray YAML config into (ray_config, group_dicts, shared_dict)."""
     import yaml
     with open(config_path) as f:
         raw = yaml.safe_load(f)
@@ -141,14 +125,7 @@ def _validate_colocate_groups(
     colocate_groups: List[List[str]],
     gpu_counts: Dict[str, int],
 ) -> None:
-    """Validate colocate_groups structure and role references.
-
-    Rules:
-    * Each group must contain at least 2 roles.
-    * Roles must be known (train/ref/teacher/rollout).
-    * A role may appear in at most one colocate group.
-    * Every role in a colocate group must have ``gpus > 0``.
-    """
+    """Validate colocate_groups: ≥2 roles, known, non-overlapping, each with gpus > 0."""
     if not colocate_groups:
         return
     seen: set = set()
@@ -176,12 +153,7 @@ def _validate_colocate_groups(
 
 
 def merge_group_dict(shared: Dict[str, Any], group: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge shared config with group-specific overrides into one dict.
-
-    Ray-only keys (``gpus``, ``colocate_groups``) are stripped.
-    ``None`` values are dropped so that the dataclass default is used
-    (HfArgumentParser.parse_dict does not accept ``None`` for typed fields).
-    """
+    """Merge shared + group config, stripping Ray-only keys and None values."""
     merged = {**shared, **group}
     for k in _RAY_ONLY_KEYS:
         merged.pop(k, None)

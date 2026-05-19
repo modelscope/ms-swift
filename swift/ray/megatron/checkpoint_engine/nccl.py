@@ -8,6 +8,7 @@ import torch
 import torch.distributed as dist
 from typing import Any, AsyncGenerator, Dict, Generator, List, Optional, Tuple
 
+from swift.utils import get_current_device, synchronize
 from swift.utils.logger import get_logger
 from .base import CheckpointEngine, MasterMetadata, TensorMeta, _find_free_port, _is_valid_ipv6_address
 
@@ -15,13 +16,7 @@ logger = get_logger()
 
 
 def _pg_broadcast(pg, tensor, src: int = 0):
-    """Broadcast *tensor* using a raw (unregistered) ProcessGroupNCCL.
-
-    ``dist.broadcast()`` requires a *registered* process group.  Since we
-    create the PG directly via ``ProcessGroupNCCL(store, rank, world_size)``
-    (which is NOT registered with the default ``_World``), we fall back to
-    the low-level C++ ``pg.broadcast([tensor], opts)`` API.
-    """
+    """Broadcast tensor via raw ProcessGroupNCCL (unregistered PG)."""
     opts = dist.BroadcastOptions()
     opts.rootRank = src
     work = pg.broadcast([tensor], opts)
@@ -29,12 +24,7 @@ def _pg_broadcast(pg, tensor, src: int = 0):
 
 
 class BroadcastOperation:
-    """Async broadcast operation with NCCL in separate thread.
-
-    Wraps ``ProcessGroupNCCL.broadcast`` to run asynchronously so the main
-    thread can continue processing (e.g. filling the next bucket) while the
-    current bucket is being broadcast.
-    """
+    """Async NCCL broadcast in a thread pool executor."""
 
     def __init__(self, rank, pg, bucket, metadata, zmq_socket, topic):
         self.rank = rank
@@ -116,11 +106,7 @@ class NCCLCheckpointEngine(CheckpointEngine):
         self.socket.setsockopt_string(zmq.SUBSCRIBE, self.topic)
 
     def prepare(self) -> Optional[MasterMetadata]:
-        """Allocate double buffers and start ZMQ server (master only).
-
-        Idempotent: if buffers and ZMQ are already set up, returns cached
-        metadata without re-allocating.
-        """
+        """Allocate buffers and start ZMQ server (master only). Idempotent."""
         if self._prepared:
             if self.is_master:
                 return MasterMetadata(
@@ -131,8 +117,9 @@ class NCCLCheckpointEngine(CheckpointEngine):
                 )
             return None
 
-        self.send_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device='cuda')
-        self.recv_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device='cuda')
+        device = get_current_device()
+        self.send_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device=device)
+        self.recv_buf = torch.zeros(self.bucket_size, dtype=torch.uint8, device=device)
 
         if self.is_master:
             self._start_zmq_server()
@@ -150,12 +137,7 @@ class NCCLCheckpointEngine(CheckpointEngine):
             return None
 
     def finalize(self):
-        """Clean up resources after a sync.
-
-        When ``rebuild_group=False`` (default): keeps NCCL group, ZMQ sockets,
-        and buffers alive for the next sync.
-        When ``rebuild_group=True``: full teardown.
-        """
+        """Clean up resources. Full teardown only when rebuild_group=True."""
         if self.rebuild_group:
             if self.socket is not None:
                 try:
@@ -182,13 +164,7 @@ class NCCLCheckpointEngine(CheckpointEngine):
         rollout_world_size: int,
         metadata: List[Dict],
     ) -> Tuple[Dict[str, List[Any]], Dict[str, List[Any]]]:
-        """Build communication topology for NCCL broadcast.
-
-        Topology assigns:
-        - Trainer rank 0 -> NCCL rank 0 (broadcast source)
-        - Other trainer ranks -> rank -1 (non-participating)
-        - Rollout workers -> ranks 1, 2, 3, ... (receivers)
-        """
+        """Build NCCL broadcast topology: trainer rank0 as source, rollout as receivers."""
         master_metadata = metadata[0]
 
         trainer_kwargs = {
@@ -249,9 +225,15 @@ class NCCLCheckpointEngine(CheckpointEngine):
         if self.rank > 0 and self.socket is None:
             self._connect_zmq_client(master_metadata)
 
-        barrier_tensor = torch.zeros(1, dtype=torch.int32, device='cuda')
+        barrier_tensor = torch.zeros(1, dtype=torch.int32, device=get_current_device())
         _pg_broadcast(self._pg, barrier_tensor, src=0)
-        torch.cuda.synchronize()
+        synchronize()
+
+        # ZMQ PUB/SUB "slow joiner" mitigation: after NCCL barrier confirms
+        # all participants are connected, give SUB sockets time to fully
+        # establish the subscription before PUB sends metadata.
+        if self.rank == 0 and self.socket is not None:
+            time.sleep(0.1)
 
         self._group_initialized = True
 
@@ -282,7 +264,7 @@ class NCCLCheckpointEngine(CheckpointEngine):
 
         for name, weight in weights:
             if offset + weight.nbytes > self.bucket_size:
-                torch.cuda.synchronize()
+                synchronize()
                 if broadcast_op is not None:
                     await broadcast_op.wait_for_complete()
 
@@ -314,7 +296,7 @@ class NCCLCheckpointEngine(CheckpointEngine):
             send_buf[offset:offset + weight.nbytes].copy_(weight.view(-1).view(torch.uint8), non_blocking=True)
             offset += weight.nbytes
 
-        torch.cuda.synchronize()
+        synchronize()
         if broadcast_op is not None:
             await broadcast_op.wait_for_complete()
 
@@ -381,7 +363,7 @@ class NCCLCheckpointEngine(CheckpointEngine):
             metadata = await broadcast_op.wait_for_complete()
             total_bytes += self.bucket_size
             total_params += len(metadata['bucket_meta'])
-            torch.cuda.synchronize()
+            synchronize()
             send_buf, recv_buf = recv_buf, send_buf
 
         for name, meta in metadata['bucket_meta'].items():

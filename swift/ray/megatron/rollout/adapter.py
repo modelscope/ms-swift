@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import asyncio
 import logging
 import ray
 import time
@@ -68,8 +69,6 @@ class RolloutAdapter:
 
         if not self.is_primary:
             return
-
-        import asyncio
 
         from ..rollout.weight_transfer import BucketedWeightSender
 

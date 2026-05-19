@@ -14,34 +14,14 @@ import torch
 import uuid
 from typing import Any, Dict
 
+from swift.utils import get_current_device, synchronize
 from swift.utils.logger import get_logger
 
 logger = get_logger()
 
 
 class BucketedWeightSender:
-    """Streams model weights into the vLLM worker extension via ZMQ IPC.
-
-    Shape of a single ``update_weights_ipc`` round-trip::
-
-        async with BucketedWeightSender(zmq_handle, device_uuid) as sender:
-            # The caller typically launches the collective_rpc on the
-            # vLLM side FIRST so the worker subprocess has time to
-            # connect back before the handshake.
-            worker_rpc_task = ...
-            await sender.handshake()          # ship IPC handle
-            await sender.send_weights(iter)   # stream buckets
-            await worker_rpc_task
-
-    The sender is intentionally device-aware: it allocates its CUDA IPC
-    bucket on the GPU identified by ``device_uuid``.  Process A's
-    "current device" must already be that physical GPU — Ray + the
-    ``RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES`` env var in
-    ``RolloutReplica`` arrange for MegatronWorker actor and VllmServer
-    actor to see the same physical GPU with different ordinals, so we
-    pass the UUID explicitly to guarantee the two ends address the
-    same physical device.
-    """
+    """Streams model weights to vLLM worker via ZMQ IPC with bucketed transfer."""
 
     def __init__(
         self,
@@ -67,16 +47,7 @@ class BucketedWeightSender:
         self.cleanup()
 
     def _init_socket_and_buffer(self):
-        """Bind the REQ socket and allocate the bucket buffer.
-
-        The first REQ/REP exchange is deliberately deferred to
-        :meth:`handshake`.  The caller drives this from the asyncio
-        loop that also pumps ``AsyncLLM.collective_rpc``; a blocking
-        socket op here would pin the loop before the vLLM worker has
-        a chance to schedule its receiver, causing a handshake
-        deadlock.  :meth:`handshake` runs the blocking call on an
-        executor thread instead.
-        """
+        """Bind the REQ socket and allocate the bucket buffer."""
         import zmq
 
         ctx = zmq.Context.instance()
@@ -89,7 +60,7 @@ class BucketedWeightSender:
         from torch.multiprocessing.reductions import reduce_tensor
 
         if not self.use_shm:
-            self.buffer = torch.empty(self.bucket_size, dtype=torch.uint8, device='cuda')
+            self.buffer = torch.empty(self.bucket_size, dtype=torch.uint8, device=get_current_device())
             self._pending_handshake = reduce_tensor(self.buffer)
         else:
             from multiprocessing import shared_memory
@@ -129,7 +100,6 @@ class BucketedWeightSender:
             if not bucket_meta and not is_last:
                 return
             if self.buffer.device.type != 'cpu':
-                from swift.utils import synchronize
                 synchronize()
             await loop.run_in_executor(None, _zmq_send_recv, {'bucket_meta': bucket_meta, 'is_last': is_last})
             offset = 0

@@ -10,7 +10,7 @@ from megatron.core.transformer.enums import AttnBackend
 from packaging import version
 from transformers.utils import is_torch_npu_available
 from transformers.utils.versions import require_version
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.arguments import ModelArguments
 from swift.megatron.utils import initialize_megatron
@@ -245,56 +245,88 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type in ['grpo', 'gkd']:
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
 
-    def _init_generation_batch_params(self):
-        if self.generation_batch_size is None and self.steps_per_generation is None:
-            self.steps_per_generation = 1
-            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
-        elif self.generation_batch_size is not None and self.steps_per_generation is not None:
-            expected = self.global_batch_size * self.steps_per_generation
-            if self.generation_batch_size != expected:
-                raise ValueError(f'generation_batch_size ({self.generation_batch_size}) must equal '
-                                 f'global_batch_size ({self.global_batch_size}) * steps_per_generation '
-                                 f'({self.steps_per_generation}) = {expected}.')
-        elif self.generation_batch_size is not None:
-            if self.generation_batch_size % self.global_batch_size != 0:
-                raise ValueError(f'generation_batch_size ({self.generation_batch_size}) '
-                                 f'must be divisible by global_batch_size ({self.global_batch_size})')
-            self.steps_per_generation = self.generation_batch_size // self.global_batch_size
+    @staticmethod
+    def resolve_generation_batch_size(
+        generation_batch_size: Optional[int],
+        steps_per_generation: Optional[int],
+        global_batch_size: int,
+        num_generations: int,
+    ) -> Tuple[int, int]:
+        """Resolve generation_batch_size and steps_per_generation from user inputs.
+
+        Returns (generation_batch_size, steps_per_generation).
+        """
+        if generation_batch_size is None and steps_per_generation is None:
+            steps_per_generation = 1
+            generation_batch_size = global_batch_size * steps_per_generation
+        elif generation_batch_size is not None and steps_per_generation is not None:
+            expected = global_batch_size * steps_per_generation
+            if generation_batch_size != expected:
+                raise ValueError(f'generation_batch_size ({generation_batch_size}) must equal '
+                                 f'global_batch_size ({global_batch_size}) * steps_per_generation '
+                                 f'({steps_per_generation}) = {expected}.')
+        elif generation_batch_size is not None:
+            if generation_batch_size % global_batch_size != 0:
+                raise ValueError(f'generation_batch_size ({generation_batch_size}) '
+                                 f'must be divisible by global_batch_size ({global_batch_size})')
+            steps_per_generation = generation_batch_size // global_batch_size
         else:
-            self.generation_batch_size = self.global_batch_size * self.steps_per_generation
+            generation_batch_size = global_batch_size * steps_per_generation
 
-        if self.steps_per_generation <= 0:
-            raise ValueError(f'steps_per_generation must be > 0, got {self.steps_per_generation}.')
+        if steps_per_generation <= 0:
+            raise ValueError(f'steps_per_generation must be > 0, got {steps_per_generation}.')
 
-        if self.num_generations > 1 and self.generation_batch_size % self.num_generations != 0:
-            raise ValueError(f'generation_batch_size ({self.generation_batch_size}) must be divisible by '
-                             f'num_generations ({self.num_generations}).')
+        if num_generations > 1 and generation_batch_size % num_generations != 0:
+            raise ValueError(f'generation_batch_size ({generation_batch_size}) must be divisible by '
+                             f'num_generations ({num_generations}).')
+
+        return generation_batch_size, steps_per_generation
+
+    @staticmethod
+    def validate_batch_dp_alignment(
+        generation_batch_size: int,
+        num_generations: int,
+        dp_size: int,
+        micro_batch_size: int,
+        world_size: int,
+    ) -> None:
+        """Validate that batch parameters are correctly aligned with DP parallelism.
+
+        Reusable across both worker-side (torch.distributed) and pipeline-side
+        (Ray config-based dp estimation) contexts.
+        """
+        num_rollout_prompt = generation_batch_size // num_generations
+        if num_rollout_prompt % dp_size != 0:
+            raise ValueError(f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
+                             f'({generation_batch_size}) // num_generations ({num_generations}) '
+                             f'must be divisible by dp_size ({dp_size}).')
+
+        per_device_num_rollout_prompt = num_rollout_prompt // dp_size
+        if per_device_num_rollout_prompt < 1:
+            raise ValueError(f'per_device_num_rollout_prompt ({per_device_num_rollout_prompt}) must be >= 1, '
+                             f'please adjust generation_batch_size/steps_per_generation/num_generations.')
+
+        if per_device_num_rollout_prompt % micro_batch_size != 0:
+            raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
+                             f'(generation_batch_size ({generation_batch_size}) // '
+                             f'num_generations ({num_generations})) // dp_size ({dp_size}) '
+                             f'must be divisible by micro_batch_size ({micro_batch_size}).')
+
+        per_device_generation_batch_size = generation_batch_size // world_size
+        if per_device_generation_batch_size < 1:
+            raise ValueError(f'per_device_generation_batch_size ({per_device_generation_batch_size}) must be >= 1.')
+
+    def _init_generation_batch_params(self):
+        self.generation_batch_size, self.steps_per_generation = self.resolve_generation_batch_size(
+            self.generation_batch_size, self.steps_per_generation, self.global_batch_size, self.num_generations)
 
         if torch.distributed.is_initialized():
             world_size = torch.distributed.get_world_size()
             dp_size = world_size // (
                 self.pipeline_model_parallel_size * self.tensor_model_parallel_size * self.context_parallel_size)
-            num_rollout_prompt = self.generation_batch_size // self.num_generations
-            if num_rollout_prompt % dp_size != 0:
-                raise ValueError(f'num_rollout_prompt ({num_rollout_prompt}) = generation_batch_size '
-                                 f'({self.generation_batch_size}) // num_generations ({self.num_generations}) '
-                                 f'must be divisible by dp_size ({dp_size}).')
-
-            per_device_num_rollout_prompt = num_rollout_prompt // dp_size
-            if per_device_num_rollout_prompt < 1:
-                raise ValueError(f'per_device_num_rollout_prompt ({per_device_num_rollout_prompt}) must be >= 1, '
-                                 f'please adjust generation_batch_size/steps_per_generation/num_generations.')
-
-            if per_device_num_rollout_prompt % self.micro_batch_size != 0:
-                raise ValueError(f'Per-device rollout prompt count ({per_device_num_rollout_prompt}) = '
-                                 f'(generation_batch_size ({self.generation_batch_size}) // '
-                                 f'num_generations ({self.num_generations})) // dp_size ({dp_size}) '
-                                 f'must be divisible by micro_batch_size ({self.micro_batch_size}).')
-
+            self.validate_batch_dp_alignment(self.generation_batch_size, self.num_generations, dp_size,
+                                             self.micro_batch_size, world_size)
             self.per_device_generation_batch_size = self.generation_batch_size // world_size
-            if self.per_device_generation_batch_size < 1:
-                raise ValueError(
-                    f'per_device_generation_batch_size ({self.per_device_generation_batch_size}) must be >= 1.')
 
     def _init_grpo(self):
 

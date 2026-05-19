@@ -14,6 +14,7 @@ import zmq
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Generator, List, Optional, Tuple
 
+from swift.utils import get_current_device, synchronize
 from swift.utils.logger import get_logger
 from .base import CheckpointEngine, TensorMeta, _find_free_port, _is_valid_ipv6_address
 
@@ -103,10 +104,7 @@ class HCCLCheckpointEngine(CheckpointEngine):
         self.meta_timeout_s = int(os.environ.get('SWIFT_CKPT_HCCL_META_TIMEOUT_S', '300'))
         self.meta_timeout_ms = self.meta_timeout_s * 1000
 
-        try:
-            self.device = torch.npu.current_device()
-        except Exception:
-            self.device = 0
+        self.device = get_current_device()
 
         self.is_master = False
         self.rank: Optional[int] = None
@@ -269,7 +267,7 @@ class HCCLCheckpointEngine(CheckpointEngine):
         if self.rank > 0 and self.socket is None:
             self._connect_zmq_client(master_metadata)
 
-        signal = torch.tensor([1], dtype=torch.int8, device=torch.npu.current_device())
+        signal = torch.tensor([1], dtype=torch.int8, device=get_current_device())
         self.pyhccl.all_reduce(signal)
 
         self._group_initialized = True
@@ -342,7 +340,7 @@ class HCCLCheckpointEngine(CheckpointEngine):
             }
             self._serve_bucket_requests(bucket_id, metadata)
             self.pyhccl.broadcast(send_buf, src=0)
-            torch.npu.synchronize()
+            synchronize()
             total_bytes += offset
             bucket_id += 1
             bucket_meta = []
@@ -350,8 +348,8 @@ class HCCLCheckpointEngine(CheckpointEngine):
 
         for name, weight in weights:
             total_params += 1
-            if weight.device.type != 'npu':
-                weight = weight.to('npu')
+            if weight.device.type == 'cpu':
+                weight = weight.to(get_current_device())
             if not weight.is_contiguous():
                 weight = weight.contiguous()
 
@@ -393,8 +391,8 @@ class HCCLCheckpointEngine(CheckpointEngine):
 
         elapsed = time.time() - start_time
         bandwidth = total_bytes / elapsed / (1024**3) if elapsed > 0 else 0.0
-        logger.info('HCCL send_weights done: rank=%d, params=%d, time=%.2fs, bw=%.2f GB/s', self.rank, total_params,
-                    elapsed, bandwidth)
+        logger.debug('HCCL send_weights done: rank=%d, params=%d, time=%.2fs, bw=%.2f GB/s', self.rank, total_params,
+                     elapsed, bandwidth)
 
     @torch.no_grad()
     async def receive_weights(self) -> AsyncGenerator[Tuple[str, torch.Tensor], None]:
@@ -410,7 +408,7 @@ class HCCLCheckpointEngine(CheckpointEngine):
         while True:
             metadata = self._request_bucket(bucket_id)
             self.pyhccl.broadcast(recv_buf, src=0)
-            torch.npu.synchronize()
+            synchronize()
 
             bucket_meta = metadata['bucket_meta']
             entries = bucket_meta.values() if isinstance(bucket_meta, dict) else bucket_meta
@@ -464,5 +462,5 @@ class HCCLCheckpointEngine(CheckpointEngine):
 
         elapsed = time.time() - start_time
         bandwidth = total_bytes / elapsed / (1024**3) if elapsed > 0 else 0.0
-        logger.info('HCCL receive_weights done: rank=%d, params=%d, time=%.2fs, bw=%.2f GB/s', self.rank, total_params,
-                    elapsed, bandwidth)
+        logger.debug('HCCL receive_weights done: rank=%d, params=%d, time=%.2fs, bw=%.2f GB/s', self.rank, total_params,
+                     elapsed, bandwidth)
