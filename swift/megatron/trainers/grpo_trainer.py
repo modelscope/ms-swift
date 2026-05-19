@@ -97,7 +97,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.fipo_gamma = 2**(-1 / args.fipo_decay_rate)
         self.fipo_clip_range = args.fipo_clip_range
         self.fipo_clip_high_only = args.fipo_clip_high_only
-        self.fipo_detach_weight = args.fipo_detach_weight
         self.fipo_safety_threshold = args.fipo_safety_threshold
 
         # DAPO, https://arxiv.org/abs/2503.14476
@@ -507,21 +506,27 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             high_ratio_mask = coef_1 > delta
             future_kl_delta = torch.where(high_ratio_mask, torch.zeros_like(future_kl_delta), future_kl_delta)
 
+        seq_len = future_kl_delta.shape[1]
         future_kl = torch.zeros_like(future_kl_delta)
-        running = torch.zeros_like(future_kl_delta[:, 0])
+        positions = torch.arange(seq_len, device=log_ratio.device).unsqueeze(1)
         gamma = torch.as_tensor(self.fipo_gamma, dtype=log_ratio.dtype, device=log_ratio.device)
-        for token_idx in range(future_kl_delta.shape[1] - 1, -1, -1):
-            valid_token = completion_mask[:, token_idx]
-            running = torch.where(valid_token, future_kl_delta[:, token_idx] + gamma * running, running)
-            future_kl[:, token_idx] = torch.where(valid_token, running, 0.0)
+        chunk_size = 128
+        for chunk_start in range(0, seq_len, chunk_size):
+            chunk_end = min(seq_len, chunk_start + chunk_size)
+            chunk_positions = torch.arange(chunk_start, chunk_end, device=log_ratio.device).unsqueeze(0)
+            distance = chunk_positions - positions
+            future_mask = distance >= 0
+            decay_block = torch.pow(gamma, distance.clamp(min=0)) * future_mask.to(log_ratio.dtype)
+            future_kl += torch.matmul(future_kl_delta[:, chunk_start:chunk_end], decay_block.t())
+        future_kl = future_kl.masked_fill(~completion_mask, 0.0)
 
-        influence_source = future_kl.detach() if self.fipo_detach_weight else future_kl
-        influence_weight = torch.exp(influence_source)
+        influence_weight = torch.exp(future_kl)
 
         if self.fipo_clip_range:
             high = 1 + self.fipo_clip_range
             low = 1.0 if self.fipo_clip_high_only else 1 - self.fipo_clip_range
             influence_weight = torch.clamp(influence_weight, min=low, max=high)
+        influence_weight = influence_weight.detach()
 
         safety_mask = torch.ones_like(completion_mask, dtype=torch.bool)
         if self.fipo_safety_threshold is not None:

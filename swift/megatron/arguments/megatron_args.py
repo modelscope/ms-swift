@@ -83,7 +83,6 @@ class RLHFMegatronArgumentsMixin:
     fipo_decay_rate: float = 32.0
     fipo_clip_range: Optional[float] = 0.2
     fipo_clip_high_only: bool = True
-    fipo_detach_weight: bool = True
     fipo_safety_threshold: Optional[float] = 4.0
 
     epsilon: float = 0.2

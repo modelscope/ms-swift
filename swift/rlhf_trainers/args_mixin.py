@@ -327,7 +327,6 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             `[0.8, 1.2]`; `None` or `0` disables clipping. Defaults to 0.2.
         fipo_clip_high_only (bool): If `True`, clips the FIPO influence weight to `[1, 1 + fipo_clip_range]`.
             Defaults to True.
-        fipo_detach_weight (bool): If `True`, stops gradients through the Future-KL influence weight. Defaults to True.
         fipo_safety_threshold (Optional[float]): Safety threshold for negative advantages. Tokens with
             `advantage < 0` and importance ratio above this value have their FIPO influence weight capped to
             `[0.8, 1.0]` to avoid over-penalization. Defaults to 4.0.
@@ -427,7 +426,6 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     fipo_decay_rate: float = 32.0
     fipo_clip_range: Optional[float] = 0.2
     fipo_clip_high_only: bool = True
-    fipo_detach_weight: bool = True
     fipo_safety_threshold: Optional[float] = 4.0
 
     num_generations_eval: Optional[int] = None
