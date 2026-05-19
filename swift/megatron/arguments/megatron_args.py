@@ -705,7 +705,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                                                        or self.decoder_last_pipeline_num_layers is not None):
             raise ValueError('pipeline_model_parallel_size must be greater than 1 if you want to set '
                              'decoder_first_pipeline_num_layers or decoder_last_pipeline_num_layers.')
-        # compat megatron-lm
+        # compat megatron-core
         self.fp8 = self.fp8_format
         self.fp4 = self.fp4_format
 
