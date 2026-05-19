@@ -181,8 +181,8 @@
 
 **fp4参数**:
 - fp4_format: 用于前向和反向传播中FP4张量的FP4格式方案，可选为'e2m1'。默认为None。
-- fp4_recipe: 若设置此参数，则通过 Transformer Engine 启用 FP4 精度。目前仅支持 'nvfp4'，该选项使用适用于 Blackwell+ 架构的 NVFP4BlockScaling 方案。
-- fp4_param_gather: 若设置此参数，则将参数保持为 FP4 精度以节省内存。注意并非所有参数都会被转换为 FP4，例如偏置项将保持不变。
+- fp4_recipe: 若设置此参数，则通过 Transformer Engine 启用 FP4 精度。目前仅支持 'nvfp4'，该选项使用适用于 Blackwell+ 架构的 NVFP4BlockScaling 方案。默认为'nvfp4'。
+- fp4_param_gather: 若设置此参数，则将参数保持为 FP4 精度以节省内存。注意并非所有参数都会被转换为 FP4，例如偏置项将保持不变。默认为False。
 
 
 **混合精度参数**:

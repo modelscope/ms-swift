@@ -191,8 +191,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 **FP4 Parameters**:
 
 - fp4_format: The FP4 format scheme for FP4 tensors in forward and backward passes, optionally set to 'e2m1'. Defaults to None.
-- fp4_recipe: If set, enables FP4 precision through Transformer Engine. Currently only 'nvfp4' is supported, which uses the NVFP4BlockScaling recipe for Blackwell+ architecture.
-- fp4_param_gather: If set, keeps the parameters in FP4 precision to save memory. Note that not all parameters will be converted to FP4; for example, biases will remain unchanged.
+- fp4_recipe: If set, enables FP4 precision through Transformer Engine. Currently only 'nvfp4' is supported, which uses the NVFP4BlockScaling recipe for Blackwell+ architecture. Default is 'nvfp4'.
+- fp4_param_gather: If set, keeps the parameters in FP4 precision to save memory. Note that not all parameters will be converted to FP4; for example, biases will remain unchanged. Default is False.
 
 **Mixed Precision Parameters**:
 
