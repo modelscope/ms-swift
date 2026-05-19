@@ -108,6 +108,20 @@ $$\mathcal{L}_{\text{DAPO}} = \frac{\sum_{i=1}^{N} \sum_{t=1}^{T_i} \mathcal{L}_
 
 **归一化维度：** 全局token维度（跨所有进程的completion token总数）
 
+## FIPO
+
+`--loss_type fipo`
+
+FIPO 在 DAPO/GRPO 的 clipped policy loss 上引入 Future-KL influence weight。每个 token 的序列级 advantage 会乘以从当前位置到后续 token 的折扣累积 KL 位移得到的权重：
+
+$$f_{i,t} = \text{clip}\left(\exp\left(\sum_{k=t}^{T_i} \gamma^{k-t} M_{i,k} \Delta \log p_{i,k}\right), 1-\epsilon_f, 1+\epsilon_f\right)$$
+
+$$\mathcal{L}_{i,t}^{\text{FIPO}} = f_{i,t} \cdot \mathcal{L}_{i,t}$$
+
+FIPO 的 influence weight 默认不参与梯度计算，并使用与 DAPO 相同的全局 token 归一化。
+
+**归一化维度:** 全局 token 维度（所有进程的 completion token 总数）
+
 ## SAPO
 
 `--loss_type sapo`

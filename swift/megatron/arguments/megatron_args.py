@@ -79,6 +79,12 @@ class RLHFMegatronArgumentsMixin:
     # REAL https://arxiv.org/abs/2602.05630
     real_tau: float = 0.5
 
+    # FIPO https://arxiv.org/abs/2603.19835
+    fipo_decay_rate: float = 32.0
+    fipo_clip_range: Optional[float] = 0.2
+    fipo_clip_high_only: bool = True
+    fipo_safety_threshold: Optional[float] = 4.0
+
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
