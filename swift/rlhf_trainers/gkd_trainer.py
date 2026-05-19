@@ -139,7 +139,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         else:
             self.teacher_model = None
             # Initialize teacher model group (for MOPD)
-        if self.teacher_model_group is not None and len(self.teacher_model_group) > 0:
+        if self.use_mopd and self.teacher_model_group is not None and len(self.teacher_model_group) > 0:
             prepared_models = []
             for model_name in self.teacher_model_group:
                 if self.is_deepspeed_enabled:
@@ -158,6 +158,38 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     self.offload_model(self.accelerator.unwrap_model(prepared_model))
                 prepared_models.append(prepared_model)
             self.teacher_model_group = prepared_models
+            from .gold_loss_adapter import GOLDLossAdapter
+            # Initialize student tokenizer (only once)
+            if not hasattr(self, 'student_tokenizer'):
+                student_model_path = self.get_model_path(model)
+                self.student_tokenizer = AutoTokenizer.from_pretrained(student_model_path)
+            # Initialize teacher tokenizer (only once)
+            if not hasattr(self, 'teacher_tokenizer_group'):
+                self.teacher_tokenizer_group = {}
+                for teacher_model in self.teacher_model_group:
+                    adapter_key = id(teacher_model)
+                    if adapter_key not in self.teacher_tokenizer_group:
+                        teacher_model_path = self.get_model_path(teacher_model)
+                        self.teacher_tokenizer_group[adapter_key] = AutoTokenizer.from_pretrained(teacher_model_path)
+            # Initialize adapter only once
+            if not hasattr(self, 'gold_adapter_group'):
+                self.gold_adapter_group = {}
+                for teacher_tokenizer in self.teacher_tokenizer_group.values():
+                    adapter_key = id(teacher_tokenizer)
+                    if adapter_key not in self.gold_adapter_group:
+                        self.gold_adapter_group[adapter_key] = GOLDLossAdapter(
+                            config={
+                                'use_uld_loss': True,
+                                'use_extended_uld': True,
+                                'uld_use_hybrid_loss': True,
+                                'uld_crossentropy_weight': 0.0,
+                                'uld_distillation_weight': 1.0,
+                                'uld_student_temperature': 1.0,
+                                'uld_teacher_temperature': 1.0,
+                            },
+                            student_tokenizer=self.student_tokenizer,
+                            teacher_tokenizer=teacher_tokenizer,
+                        )
         else:
             self.teacher_model_group = None
 
@@ -501,103 +533,69 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 loss = loss + self.args.sft_alpha * outputs_student.loss
         # Separate teacher model provided
         elif self.use_mopd:
-            if self.teacher_model_group is None:
-                # Use single teacher model
-                teacher_model_group = [self.teacher_model]
-            else:
-                teacher_model_group = self.teacher_model_group
-            # 预先计算教师模型数量，避免除零错误和重复计算
-            num_teacher_models = len(teacher_model_group)
+            num_teacher_models = len(self.teacher_model_group)
             if num_teacher_models == 0:
                 raise ValueError("teacher_model_group cannot be empty")
             loss = torch.tensor(0.0, device=model.device)
+            prompt_texts = inputs['prompt_text']
+            completion_texts = inputs['completion_texts']
+            (
+                student_input_ids,
+                student_labels,
+                student_attention_mask,
+                student_prompt_length,
+            ) = self.build_inputs_from_texts(
+                self.student_tokenizer,
+                prompt_texts,
+                completion_texts
+            )
+            # Student model forward pass (WITH gradients for student parameters)
+            outputs_student = model(
+                input_ids=student_input_ids,
+                attention_mask=student_attention_mask,
+            )
             for teacher_model in teacher_model_group:
-                if not hasattr(self, 'student_tokenizer'):
-                    student_model = model
-                    student_model_path = self.get_model_path(student_model)
-                    self.student_tokenizer = AutoTokenizer.from_pretrained(student_model_path)
-                    # Initialize teacher tokenizer (only once)
-                    if not hasattr(self, 'teacher_tokenizer'):
-                        teacher_model_path = self.get_model_path(teacher_model)
+                print('-------self.use_generalized_jsd_loss')
+                teacher_tokenizer = self.teacher_tokenizer_group[id(teacher_model)]
+                # Add teacher model memory management like in liger branch
+                load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
 
-                        self.teacher_tokenizer = AutoTokenizer.from_pretrained(teacher_model_path)
-
-                    from .gold_loss_adapter import GOLDLossAdapter
-
-                    # Initialize adapter only once
-                    if not hasattr(self, 'gold_adapter'):
-                        self.gold_adapter = GOLDLossAdapter(
-                            config={
-                                'use_uld_loss': True,
-                                'use_extended_uld': True,
-                                'uld_use_hybrid_loss': True,
-                                'uld_crossentropy_weight': 0.0,
-                                'uld_distillation_weight': 1.0,
-                                'uld_student_temperature': 1.0,
-                                'uld_teacher_temperature': 1.0,
-                            },
-                            student_tokenizer=self.student_tokenizer,
-                            teacher_tokenizer=self.teacher_tokenizer,
+                # Get adapter for current teacher tokenizer
+                adapter_key = id(teacher_tokenizer)
+                gold_adapter = self.gold_adapter_group[adapter_key]
+                with load_context:
+                    with torch.no_grad(), disable_gradient_checkpointing(teacher_model,
+                                                                         self.args.gradient_checkpointing_kwargs):
+                        (
+                            teacher_input_ids,
+                            teacher_labels,
+                            teacher_attention_mask,
+                            teacher_prompt_length,
+                        ) = self.build_inputs_from_texts(
+                            teacher_tokenizer,
+                            prompt_texts,
+                            completion_texts
                         )
-                    prompt_texts = inputs['prompt_text']
-                    completion_texts = inputs['completion_texts']
 
-                    # Add teacher model memory management like in liger branch
-                    load_context = self.load_teacher_model_context() if self.args.offload_teacher_model \
-                        else nullcontext()
-                    with load_context:
-                        with torch.no_grad(), disable_gradient_checkpointing(teacher_model,
-                                                                             self.args.gradient_checkpointing_kwargs):
-                            (
-                                teacher_input_ids,
-                                teacher_labels,
-                                teacher_attention_mask,
-                                teacher_prompt_length,
-                            ) = self.build_inputs_from_texts(
-                                self.teacher_tokenizer,
-                                prompt_texts,
-                                completion_texts
-                            )
-                            (
-                                student_input_ids,
-                                student_labels,
-                                student_attention_mask,
-                                student_prompt_length,
-                            ) = self.build_inputs_from_texts(
-                                self.student_tokenizer,
-                                prompt_texts,
-                                completion_texts
-                            )
+                        # Teacher model forward pass (NO gradients)
+                        outputs_teacher = teacher_model(
+                            input_ids=teacher_input_ids,
+                            attention_mask=teacher_attention_mask,
+                        )
+                # Ensure teacher_logits has gradient info but teacher model params don't participate
+                teacher_logits = outputs_teacher.logits.detach().requires_grad_(True)
 
-                            # Teacher model forward pass (NO gradients)
-                            outputs_teacher = teacher_model(
-                                input_ids=teacher_input_ids,
-                                attention_mask=teacher_attention_mask,
-                            )
-                    # Student model forward pass (WITH gradients for student parameters)
-                    outputs_student = model(
-                        input_ids=student_input_ids,
-                        attention_mask=student_attention_mask,
-                    )
-
-                    # Ensure teacher_logits has gradient info but teacher model params don't participate
-                    teacher_logits = outputs_teacher.logits.detach().requires_grad_(True)
-
-                    # Release intermediate tensors to free memory
-                    del teacher_attention_mask, student_attention_mask
-
-                    loss_item = self.gold_adapter(
-                        student_logits=outputs_student.logits,
-                        teacher_logits=teacher_logits,
-                        student_labels=student_labels,
-                        teacher_labels=teacher_labels,
-                        student_input_ids=student_input_ids,
-                        teacher_input_ids=teacher_input_ids,
-                    )
-
-                    loss = loss + loss_item / num_teacher_models
-        # ... existing code ...
-
+                # Release intermediate tensors to free memory
+                del teacher_attention_mask
+                loss_total = gold_adapter(
+                    student_logits=outputs_student.logits,
+                    teacher_logits=teacher_logits,
+                    student_labels=student_labels,
+                    teacher_labels=teacher_labels,
+                    student_input_ids=student_input_ids,
+                    teacher_input_ids=teacher_input_ids,
+                )
+                loss += loss_total / len(teacher_model_group)
         # Separate teacher model provided
         else:
             assert self.teacher_model is not None

@@ -4,7 +4,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 swift rlhf \
     --rlhf_type gkd \
     --model Qwen/Qwen3-8B-Base \
-    --teacher_model_group Qwen/Qwen3-32B,AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2  \
+    --teacher_model_group Qwen/Qwen3-32B AI-ModelScope/Skywork-Reward-Llama-3.1-8B-v0.2  \
     --use_mopd true \
     --tuner_type full \
     --dataset open-thoughts/OpenThoughts3-1.2M#10000 \
@@ -27,5 +27,4 @@ swift rlhf \
     --dataloader_num_workers 64 \
     --dataset_num_proc 4 \
     --deepspeed zero3 \
-    --teacher_deepspeed zero3 \
-
+    --teacher_deepspeed zero3
