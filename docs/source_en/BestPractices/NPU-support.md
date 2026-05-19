@@ -222,6 +222,9 @@ cd ..
 # 4. Set environment variables
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
+
+# 5. Disable Megatron GDN if you need to fall back to the transformers GatedDeltaNet implementation
+export USE_MCORE_GDN=0
 ```
 
 Run the following command to verify that MindSpeed(Megatron-LM) is configured correctly:
@@ -260,6 +263,14 @@ Therefore:
 - It is not equivalent to “fully replacing the entire fla package with MindSpeed”.
 - To make this path effective, ensure that MindSpeed can be imported correctly in the current environment.
 - Verified versions for accuracy alignment: torch 2.7.1 + MindSpeed 0.12.1 + flash-linear-attention 4.1.0 + triton-ascend 3.2.0 + transformers 5.2.0
+
+When running Qwen3.5 with Megatron-SWIFT on NPU, note the following version and feature constraints:
+
+1. The NPU documentation currently pins the MindSpeed training stack to `Megatron-LM v0.15.3 + MindSpeed core_r0.15.3`. This version of `megatron-core` does not yet include the native `core.ssm.gated_delta_net` GDN kernel introduced in `0.16`.
+2. `ms-swift>=4.1.0` uses Megatron native GDN by default (`USE_MCORE_GDN=1`), but that path requires `megatron-core>=0.16`. Therefore, on the current NPU stack you must explicitly set `USE_MCORE_GDN=0` to switch GDN back to the transformers-native implementation wrapped by `mcore-bridge`, and then rely on the built-in ms-swift Qwen3.5 FLA NPU patch to redirect `chunk_gated_delta_rule` to MindSpeed Triton kernels.
+3. The known cost of this fallback path is that the transformers GDN implementation does not support packing or GDN TP/CP.
+4. In addition, the transformers GDN path has a known mask-path issue under the NPU + flash-attn combination: when `padding_free=False`, GDN reads the trainer-processed `attention_mask` instead of the required `attention_mask_2d`, which can trigger an asynchronous `aclnnFlashAttentionScore` error. This issue has been fixed on the `qwen3_5_npu` branch of `mcore-bridge`, so NPU users should use a version that includes that fix.
+5. Once MindSpeed provides a `core_r0.16.x` compatible branch, both constraints can be lifted together: the explicit `USE_MCORE_GDN=0` override and the current transformers GDN feature limitations.
 
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
