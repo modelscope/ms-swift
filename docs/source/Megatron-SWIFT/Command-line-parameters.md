@@ -174,10 +174,16 @@
 **fp8参数**:
 - fp8_format: 用于前向和反向传播中FP8张量的FP8格式方案。可选为'e4m3'，'hybrid'。默认为None。
 - fp8_recipe: 用于前向和反向传播中 FP8 张量的 FP8 算法方案。可选为'tensorwise', 'delayed', 'mxfp8', 'blockwise'。默认为'delayed'。其中blockwise fp8需要 cuda129 以上版本。
-- fp8_amax_history_len: 每个张量记录 amax 历史的步数。默认为1024。
-- fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent', 'max'。默认为'max'。
 - fp8_param_gather: 保持计算参数为 fp8（不使用任何其他中间数据类型），并在 fp8 格式下执行参数的 all-gather 操作。默认为False。
   - 提示：若想导出FP8权重格式，设置为True；否则设置为False。
+- fp8_amax_history_len: 每个张量记录 amax 历史的步数。默认为1024。
+- fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent', 'max'。默认为'max'。
+
+**fp4参数**:
+- fp4_format: 用于前向和反向传播中FP4张量的FP4格式方案，可选为'e2m1'。默认为None。
+- fp4_recipe: 若设置此参数，则通过 Transformer Engine 启用 FP4 精度。目前仅支持 'nvfp4'，该选项使用适用于 Blackwell+ 架构的 NVFP4BlockScaling 方案。默认为'nvfp4'。
+- fp4_param_gather: 若设置此参数，则将参数保持为 FP4 精度以节省内存。注意并非所有参数都会被转换为 FP4，例如偏置项将保持不变。默认为False。
+
 
 **混合精度参数**:
 - fp16: fp16模式。默认为None，会根据模型的torch_dtype进行设置，即torch_dtype为float16或者float32则fp16设置为True。torch_dtype默认读取config.json。

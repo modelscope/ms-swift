@@ -183,11 +183,16 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 **FP8 Parameters**:
 - fp8_format: The FP8 format scheme used for FP8 tensors in the forward and backward pass. Options are 'e4m3' and 'hybrid'. Default is None.
 - fp8_recipe: The FP8 recipe (algorithm scheme) used for FP8 tensors in the forward and backward pass. Options are 'tensorwise', 'delayed', 'mxfp8', and 'blockwise'. Default is 'delayed'. Note that blockwise fp8 requires CUDA version 12.9 or higher.
-- fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
-- fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
 - fp8_param_gather: Keep the compute parameter in FP8 (do not use any other intermediate dtype) and perform the parameter all-gather in FP8 format. Default is False.
   - Tips: Set this to True if you want to export weights in FP8 format; otherwise, set it to False.
+- fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
+- fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
 
+**FP4 Parameters**:
+
+- fp4_format: The FP4 format scheme for FP4 tensors in forward and backward passes, optionally set to 'e2m1'. Defaults to None.
+- fp4_recipe: If set, enables FP4 precision through Transformer Engine. Currently only 'nvfp4' is supported, which uses the NVFP4BlockScaling recipe for Blackwell+ architecture. Default is 'nvfp4'.
+- fp4_param_gather: If set, keeps the parameters in FP4 precision to save memory. Note that not all parameters will be converted to FP4; for example, biases will remain unchanged. Default is False.
 
 **Mixed Precision Parameters**:
 
