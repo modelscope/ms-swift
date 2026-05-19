@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import accelerate.utils.fsdp_utils as fsdp_utils
 import torch
-import torch_npu
 from accelerate.accelerator import Accelerator
 from functools import wraps
 
@@ -34,6 +33,7 @@ def _cast_module_to_fp32_for_npu_if_needed(module: torch.nn.Module, accelerator:
     # We move the model back to CPU first to free NPU memory, then cast.
     try:
         if param.device.type == 'npu':
+            import torch_npu
             module = module.cpu()
             torch_npu.npu.synchronize()
             torch_npu.npu.empty_cache()
