@@ -209,7 +209,7 @@ class ModelArguments:
         for token in self.new_special_tokens:
             if token.endswith('.txt'):
                 assert os.path.isfile(token), f'special_tokens_path: {token}'
-                with open(token, 'r') as f:
+                with open(token, 'r', encoding='utf-8') as f:
                     text = f.read()
                 new_special_tokens += text.split()
             else:

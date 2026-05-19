@@ -54,7 +54,8 @@
 - 🔥dataloader_num_workers: dataloader的workers数量，默认为4。
   - 注意：若设置`--streaming true`，则设置为1。
 - dataloader_pin_memory: 默认为True。
-- dataloader_persistent_workers: 默认为True。
+- dataloader_persistent_workers: 默认为False。
+  - 注意：该参数在"ms-swift<4.3"默认为True，为避免内存泄漏问题修改为False。
 - dataloader_prefetch_factor: 默认为2。
 - data_sharding: 当`--train_dataloader_shuffle true`时对 train_dataloader 生效，默认为False。该参数控制数据集随机的范围。若设置为True，则先对数据集进行分片，然后对每个分片进行随机处理（略节约内存）；若设置为False，则先对数据集进行随机，再进行分片（更好的随机效果）。
 - 🔥group_by_length: 是否在训练数据集中将长度大致相同的样本分组在一起（有随机因素），以最小化填充并确保各节点与进程的负载均衡以提高效率。默认为False。具体算法参考`transformers.trainer_pt_utils.get_length_grouped_indices`。
@@ -198,7 +199,8 @@
 - moe_enable_deepep: 启用 DeepEP 以实现 MoE 模型中的高效 token 调度和合并。仅在通过设置 `--moe_token_dispatcher_type flex` 使用弹性 token 调度器时有效。
 - 🔥moe_grouped_gemm: 当每个rank包含多个专家时，通过在多个流中启动多个本地 GEMM 内核，利用 TransformerEngine中的GroupedLinear提高利用率和性能。默认为True。
 - 🔥moe_permute_fusion: 在令牌分发过程中融合令牌重排操作。默认为False。
-- 🔥moe_aux_loss_coeff: 默认为0，不使用aux_loss。**通常情况下，该值设置的越大，训练效果越差，但MoE负载越均衡**，请根据实验效果，选择合适的值。
+- 🔥moe_aux_loss_coeff: 默认为0，不使用aux_loss。通常情况下，该值设置的越大，训练效果越差，但MoE负载越均衡，请根据实验效果，选择合适的值。
+  - 注意：moe_aux_loss在`padding_free`为 False 的情况下，"megatron-core<0.16"存在对padding token计算routing loss的情况，参考[这个PR](https://github.com/NVIDIA/Megatron-LM/pull/2142)。此外请使用"mcore-bridge>=1.4.0.dev"，参考[这个PR](https://github.com/modelscope/mcore-bridge/pull/79)。
 - moe_z_loss_coeff: z-loss 的缩放系数。默认为None。
 - 🔥moe_shared_expert_overlap: 启用共享专家计算与调度器通信之间的重叠。如果不启用此选项，共享专家将在路由专家之后执行。仅在设置了`moe_shared_expert_intermediate_size`时有效。默认为False。
 - 🔥moe_expert_capacity_factor: 每个专家的容量因子，None表示不会丢弃任何token。默认为None。通过设置 `--moe_expert_capacity_factor`，超出专家容量的 token 会基于其被选中的概率被丢弃。可以**令训练负载均匀，提升训练速度**（例如设置为1或2）。
@@ -290,7 +292,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 
 - add_version: 在`output_dir`上额外增加目录`'<版本号>-<时间戳>'`防止权重覆盖，默认为True。
 - 🔥create_checkpoint_symlink: 额外创建checkpoint软链接，方便书写自动化训练脚本。best_model和last_model的软链接路径分别为f'{output_dir}/best'和f'{output_dir}/last'。
-- 🔥packing: 使用`padding_free`的方式将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见（除Qwen3-Next，因为含有linear-attention，但Qwen3.5支持。）。该参数默认为`False`。Megatron-SWIFT的所有训练任务都支持该参数。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
+- 🔥packing: 使用`padding_free`的方式将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attention_backend flash` 时，可确保packed样本内的不同序列之间相互独立，互不可见。该参数默认为`False`。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
+  - linear-attention的场景：Qwen3.5, Qwen3-Next也支持padding_free/packing，参考[Qwen3.5最佳实践](../BestPractices/Qwen3_5-Best-Practice.md)。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
 - streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）

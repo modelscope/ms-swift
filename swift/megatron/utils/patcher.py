@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
-from contextlib import contextmanager
 from megatron.core.dist_checkpointing.mapping import ShardedTensorFactory
 from megatron.core.dist_checkpointing.strategies.torch import TorchDistSaveShardedStrategy
 

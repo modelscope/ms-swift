@@ -11,7 +11,9 @@ The command-line arguments will be introduced in four categories: basic argument
 ## Base Arguments
 
 - 🔥tuner_backend: Optional values are `'peft'` and `'unsloth'`. Default is `'peft'`.
-- 🔥tuner_type: Optional values are 'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'. Default is 'lora'.
+- 🔥tuner_type: Optional values are 'lora', 'full', 'lora_llm', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'. Default is 'lora'.
+  - Note: Defaults to 'full' in Megatron-SWIFT.
+  - 'lora_llm' means applying LoRA to the LLM part while using 'full' fine-tuning for the ViT/aligner parts. You can set their respective learning rates using `vit_lr/aligner_lr`.
 - 🔥adapters: A list specifying adapter IDs or paths. Default is `[]`. This parameter is typically used in inference/deployment commands, for example: `swift infer --model '<model_id_or_path>' --adapters '<adapter_id_or_path>'`. It can occasionally be used for resuming training from a checkpoint. The difference between this parameter and `resume_from_checkpoint` is that **this parameter only loads adapter weights**, without restoring the optimizer state or random seed, and does not skip already-trained portions of the dataset.
   - The difference between `--model` and `--adapters`: `--model` is followed by the directory path of the complete weights, which contains full weight information such as model/tokenizer/config, for example `model.safetensors`. `--adapters` is followed by a list of incremental adapter weight directory paths, which contain incremental weight information of the adapters, for example `adapter_model.safetensors`.
 - 🔥external_plugins: A list of external `plugin.py` files that will be additionally loaded (i.e., the modules will be imported). Defaults to `[]`. You can pass in `.py` file paths for custom model, template, and dataset registration, see [here](https://github.com/modelscope/ms-swift/blob/main/examples/custom/sft.sh); or for custom GRPO components, see [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/plugin/run_external_reward_func.sh).
@@ -513,6 +515,7 @@ Training arguments include the [base arguments](#base-arguments), [Seq2SeqTraine
 - check_model: Check local model files for corruption or modification and give a prompt, default is True. **If in an offline environment, please set to False.**
 - 🔥create_checkpoint_symlink: Creates additional checkpoint symlinks to facilitate writing automated training scripts. The symlink paths for `best_model` and `last_model` are `f'{output_dir}/best'` and `f'{output_dir}/last'` respectively.
 - 🔥packing: Uses the `padding_free` approach to pack data samples of different lengths into samples of **approximately** uniform length (packing ensures complete sequences are not split), achieving load balancing across nodes and processes during training (avoiding long texts slowing down short text training speed), thereby improving GPU utilization and maintaining stable memory usage. When using `--attn_impl flash_attn`, it ensures that different sequences within packed samples are independent and invisible to each other. This parameter defaults to `False` and currently supports packing for CPT/SFT/DPO/KTO/GKD as well as embedding/reranker/seq_cls tasks. Note: **packing will reduce the number of dataset samples, please adjust gradient accumulation and learning rate accordingly**.
+  - Note: For Qwen3-Next/Qwen3.5 packing, please use Megatron-SWIFT. Refer to [Qwen3.5 Best Practice](../BestPractices/Qwen3_5-Best-Practice.md) for details.
 - packing_length: the length to use for packing. Defaults to None, in which case it is set to max_length.
 - packing_num_proc: Number of processes for packing, default is 1. Note that different values of `packing_num_proc` will result in different packed datasets. (This parameter does not take effect during streaming packing). Usually there is no need to modify this value, as packing speed is much faster than tokenization speed.
 - lazy_tokenize: Whether to use lazy tokenization. If set to `False`, all dataset samples will be tokenized (and for multimodal models, images will be loaded from disk) before training begins. Default is `None`: in LLM training, it defaults to `False`; in MLLM training, it defaults to `True` to save memory.
@@ -635,7 +638,11 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
-- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
+- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real', 'fipo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
+- fipo_decay_rate: Half-life parameter for FIPO Future-KL. The actual discount is `2 ** (-1 / fipo_decay_rate)`. Default is 32.0.
+- fipo_clip_range: Clipping range for the FIPO influence weight. Default is 0.2; set to None or 0 to disable clipping.
+- fipo_clip_high_only: Whether to clip the FIPO influence weight to `[1.0, 1.0 + fipo_clip_range]` only. Default is True.
+- fipo_safety_threshold: Caps the FIPO influence weight to `[0.8, 1.0]` for negative-advantage tokens whose IS ratio exceeds this threshold. Default is 4.0.
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
@@ -902,6 +909,15 @@ For the meaning of the arguments, please refer to [here](https://modelscope.cn/m
 - MAX_SLICE_NUMS: Default is 9, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6/file/view/master?fileName=config.json&status=1)
 - VIDEO_MAX_SLICE_NUMS: Default is 1, which is the MAX_SLICE_NUMS for videos, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
 - MAX_NUM_FRAMES: Default is 64, refer to [here](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2_6)
+
+
+### minicpmv4_6
+- DOWNSAMPLE_MODE: Default is `'16x'`. Visual token downsampling mode. `'16x'` merges tokens for efficiency; `'4x'` retains 4x more tokens for finer detail.
+- MAX_SLICE_NUMS: Default is 9. Maximum number of slices when splitting a high-resolution image. A larger value preserves more detail for large images. It is recommended to set this to 36 for images.
+- VIDEO_MAX_SLICE_NUMS: Default is 1. `MAX_SLICE_NUMS` for videos.
+- MAX_NUM_FRAMES: Default is 128. Maximum number of main frames sampled from a video.
+- STACK_FRAMES: Default is 1. Total number of samples per second. `1` means only the main frame is used (no stacking). `N` (N>1) means 1 main frame plus N−1 sub-frames per second; sub-frames are composed into a grid image and interleaved with the main frame. It is recommended to set this to 1 for short videos and 3 or 5 for long videos.
+
 
 ### minicpmo
 - INIT_TTS: Defaults to False. Whether to initialize and load the TTS model.
