@@ -220,6 +220,9 @@ cd ..
 # 4. 设置环境变量
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
+
+# 5. 如需回退到 transformers 的 GatedDeltaNet 实现，可关闭 Megatron GDN
+export USE_MCORE_GDN=0
 ```
 
 执行如下命令验证 MindSpeed(Megatron-LM) 是否配置成功：
