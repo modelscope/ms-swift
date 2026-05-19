@@ -35,7 +35,6 @@ log_rollout_offpolicy_metrics: true
 system: examples/train/grpo/prompt.txt
 
 use_vllm: true
-vllm_mode: colocate
 
 colocate_groups: [[train, rollout]]
 offload_model: true
