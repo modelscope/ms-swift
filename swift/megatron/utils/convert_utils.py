@@ -171,6 +171,7 @@ def broadcast_mg_logits(mg_logits=None, src_rank=None):
 
 
 def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=None):
+    from swift.megatron.trainers import get_batch_on_this_cp_rank
     if test_convert_dtype is None:
         test_convert_dtype = getattr(args, 'test_convert_dtype', torch.float32)
     template.set_mode('train')
@@ -219,6 +220,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
     for key in ['labels', 'num_samples', 'attention_mask_2d', 'text_position_ids']:
         mg_inputs.pop(key, None)
     mg_inputs.update({'packed_seq_params': packed_seq_params})
+    mg_inputs = get_batch_on_this_cp_rank(args, mg_inputs)
     _param = next(mg_language_model.parameters())
     mg_dtype = _param.dtype
     mg_device = _param.device
