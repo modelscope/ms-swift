@@ -641,7 +641,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     callbacks: List[str] = field(default_factory=list)
     nsys_profile_start: int = 0  # 1-based; 0 = disabled
     nsys_profile_end: int = 5
-    profiler_type: str = 'nsys'  # nsys or torch
+    profiler_type: str = 'none'  # nsys or torch
     profile_rank: int = 0  # local rank to profile; -1 = all ranks
 
     @staticmethod
@@ -758,7 +758,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.gradient_accumulation_fusion = False
         self.callbacks += ['print', 'default_flow']
         self.callbacks += self.report_to
-        if self.nsys_profile_start > 0:
+        if self.profiler_type != 'none':
             cb = 'torch_profiler' if self.profiler_type == 'torch' else 'nsys'
             self.callbacks.append(cb)
         if self.save_total_limit is not None:
