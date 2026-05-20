@@ -108,6 +108,20 @@ where:
 
 **Normalization Dimension:** Global token dimension (total completion tokens across all processes)
 
+## FIPO
+
+`--loss_type fipo`
+
+FIPO adds a Future-KL influence weight on top of the DAPO/GRPO clipped policy loss. The sequence-level advantage for each token is weighted by the discounted accumulated KL shift from the current token to future tokens:
+
+$$f_{i,t} = \text{clip}\left(\exp\left(\sum_{k=t}^{T_i} \gamma^{k-t} M_{i,k} \Delta \log p_{i,k}\right), 1-\epsilon_f, 1+\epsilon_f\right)$$
+
+$$\mathcal{L}_{i,t}^{\text{FIPO}} = f_{i,t} \cdot \mathcal{L}_{i,t}$$
+
+The FIPO influence weight is detached by default and uses the same global token normalization as DAPO.
+
+**Normalization Dimension:** Global token dimension (total completion tokens across all processes)
+
 ## SAPO
 
 `--loss_type sapo`

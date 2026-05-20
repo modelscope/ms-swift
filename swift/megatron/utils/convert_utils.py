@@ -62,10 +62,13 @@ def _model_cpu_forward_context(modules,
                                compute_device=None,
                                share_embedding: bool = False,
                                target_device='cpu'):
-    try:
-        origin_torch_dtype = next(modules[0].parameters()).dtype
-    except StopIteration:
-        origin_torch_dtype = next(modules[-1].parameters()).dtype
+    for module in modules:
+        try:
+            origin_torch_dtype = next(module.parameters()).dtype
+        except StopIteration:
+            pass
+        else:
+            break
     embeddings = None
     if share_embedding:
         embeddings = [module for module in modules if isinstance(module, (nn.Embedding, VocabParallelEmbedding))]
@@ -77,7 +80,7 @@ def _model_cpu_forward_context(modules,
         return args
 
     def _to_cpu_hook(module, args, output):
-        if share_embedding and module in embeddings:
+        if share_embedding and module in embeddings or 'rotaryemb' in module.__class__.__name__.lower():
             return
         module.to(device=target_device, dtype=origin_torch_dtype)
 
@@ -92,42 +95,40 @@ def _model_cpu_forward_context(modules,
             hook.remove()
 
 
-def get_examples(is_multimodal: bool) -> Dict[str, Any]:
-    mm_type = 'image'
-    if is_multimodal:
-        if mm_type == 'image':
-            data = {
-                'messages': [{
-                    'role': 'user',
-                    'content': '<image>describe the image.'
-                }, {
-                    'role':
-                    'assistant',
-                    'content':
-                    'The image depicts a close-up of a kitten with striking features. '
-                    'The kitten has a white and gray coat with distinct black stripes, '
-                    'particularly noticeable on its face and ears. Its eyes are large '
-                    'and expressive, with a captivating blue hue that stands out against '
-                    "the darker fur around them. The kitten's nose is small and pink, "
-                    'and it has long, delicate whiskers extending from either side of its mouth. '
-                    "The background is blurred, drawing attention to the kitten's face and "
-                    'making it the focal point of the image. The overall impression is '
-                    'one of cuteness and charm.'
-                }],
-                'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
-            }
-        elif mm_type == 'audio':
-            data = {
-                'messages': [{
-                    'role': 'user',
-                    'content': '<audio>Caption the audio.'
-                }, {
-                    'role': 'assistant',
-                    'content': "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
-                }],
-                'audios': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
-            }
-    else:
+def get_examples(mm_type: str) -> Dict[str, Any]:
+    if mm_type == 'image':
+        data = {
+            'messages': [{
+                'role': 'user',
+                'content': '<image>describe the image.'
+            }, {
+                'role':
+                'assistant',
+                'content':
+                'The image depicts a close-up of a kitten with striking features. '
+                'The kitten has a white and gray coat with distinct black stripes, '
+                'particularly noticeable on its face and ears. Its eyes are large '
+                'and expressive, with a captivating blue hue that stands out against '
+                "the darker fur around them. The kitten's nose is small and pink, "
+                'and it has long, delicate whiskers extending from either side of its mouth. '
+                "The background is blurred, drawing attention to the kitten's face and "
+                'making it the focal point of the image. The overall impression is '
+                'one of cuteness and charm.'
+            }],
+            'images': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png']
+        }
+    elif mm_type == 'audio':
+        data = {
+            'messages': [{
+                'role': 'user',
+                'content': '<audio>Caption the audio.'
+            }, {
+                'role': 'assistant',
+                'content': "The audio contains a male voice speaking the phrase '今天天气真好呀' in Mandarin."
+            }],
+            'audios': ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/weather.wav']
+        }
+    else:  # text
         data = {
             'messages': [
                 {
@@ -177,7 +178,10 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
 
     config = mg_model.config
     is_multimodal = config.is_multimodal
-    support_multimodal = is_multimodal and getattr(config, 'support_multimodal', True)
+    if is_multimodal:
+        test_mm_type = getattr(config, 'test_mm_type', 'image')
+    else:
+        test_mm_type = 'text'
     mg_language_model = mg_model.language_model if is_multimodal else mg_model
     if mg_language_model.config.fp8 is not None:
         raise ValueError('fp8 models currently do not support testing convert_precision. '
@@ -187,7 +191,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.eval()
         if dist.get_world_size() == 1:
             _test_params_sum(hf_model)
-        inputs = template.encode(get_examples(support_multimodal))
+        inputs = template.encode(get_examples(test_mm_type))
         hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
         template.register_post_encode_hook([hf_model])
         HfConfigFactory.set_config_attr(hf_model.config, 'use_cache', False)
@@ -202,7 +206,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.to('cpu')
 
     template.use_megatron = True
-    inputs = template.encode(get_examples(support_multimodal))
+    inputs = template.encode(get_examples(test_mm_type))
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
     packed_seq_params = None
     mg_model.eval()

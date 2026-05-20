@@ -1291,11 +1291,13 @@ class Template(ProcessorMixin):
                 # and here we avoid adding <|user|>.
                 response_content = response
                 if not isinstance(response_content, str):
-                    if isinstance(response, list):
-                        token_ids = response
+                    if isinstance(response_content, list) and response_content and isinstance(
+                            response_content[-1], str):
+                        response_content = response_content[-1]
                     else:
-                        token_ids = response['token_ids']
-                    response_content = self.tokenizer.decode(token_ids[-20:])
+                        token_ids = response_content if isinstance(response_content,
+                                                                   list) else response_content['token_ids']
+                        response_content = self.tokenizer.decode(token_ids[-20:])
                 endswith_stop_words = any(
                     response_content.endswith(stop_word) for stop_word in template_meta.stop_words
                     if isinstance(stop_word, str))
@@ -1487,6 +1489,8 @@ class Template(ProcessorMixin):
                 encoded['loss_scale'] += [0] * padding_len
             if encoded.get('length') is not None:
                 encoded['length'] += padding_len
+            if encoded.get('mm_token_type_ids') is not None:
+                encoded['mm_token_type_ids'] = F.pad(encoded['mm_token_type_ids'], (0, padding_len), value=0)
 
     def debug_logger(self, inputs):
         if not strtobool(os.getenv('SWIFT_DEBUG', 'false')):

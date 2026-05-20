@@ -18,7 +18,7 @@ SWIFT已经支持使用ray来进行多卡或多节点训练。已有功能中对
 因此SWIFT采取了装饰器为主的技术方案，以函数级别定义了不同角色，这些角色可以在参数中被定义如何使用。看下面的例子：
 
 ```python
-from swift.ray import RayHelper
+from swift.ray_utils import RayHelper
 
 @RayHelper.worker(group=['model1', 'model2'])
 class MyTrainer:

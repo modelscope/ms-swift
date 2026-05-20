@@ -5,7 +5,7 @@ import os
 from copy import deepcopy
 
 from swift.infer_engine import RequestConfig, TransformersEngine
-from swift.ray import RayHelper
+from swift.ray_utils import RayHelper
 from swift.utils import get_logger
 from .base import Sampler
 from .utils import get_messages_md5, get_reward
@@ -49,7 +49,7 @@ class VanillaSampler(Sampler):
             if not os.path.exists(file):
                 logger.warning(f'Cache file does not exist: {file}')
                 continue
-            with open(file, 'r') as f:
+            with open(file, 'r', encoding='utf-8') as f:
                 for line in f.readlines():
                     line = line.strip()
                     if not line:

@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+
 from .arguments import RayArguments
 from .base import RayHelper
 
@@ -7,6 +8,7 @@ def try_init_ray():
     import argparse
     import json
     from transformers.utils import strtobool
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--use_ray', type=str, default='0')
     parser.add_argument('--device_groups', type=str, default=None)

@@ -64,7 +64,7 @@ class SwiftSampling(SwiftPipeline):
                 shutil.copyfile(resume_file, tmp_file)
 
             if os.path.exists(ckpt_state_file):
-                with open(ckpt_state_file, 'r') as ckpt_state:
+                with open(ckpt_state_file, 'r', encoding='utf-8') as ckpt_state:
                     data = json.load(ckpt_state)
                     index_resume = data.get('index', -1)
                     logger.info(f'Loaded index_resume: {index_resume}')

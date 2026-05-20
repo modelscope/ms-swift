@@ -19,7 +19,7 @@ Before describing parameter settings, it's necessary to first explain the techni
 Therefore, SWIFT adopts a decorator-based technical approach, defining different roles at the function level. These roles can be defined in parameters to specify how they are used. See the example below:
 
 ```python
-from swift.ray import RayHelper
+from swift.ray_utils import RayHelper
 
 @RayHelper.worker(group=['model1', 'model2'])
 class MyTrainer:
