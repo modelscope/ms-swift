@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .default_flow import DefaultFlowCallback
-from .profiler import NsysCallback, TorchProfilerCallback
 from .print import PrintCallback
+from .profiler import NsysCallback, TorchProfilerCallback
 from .swanlab import SwanlabCallback
 from .tensorboard import TensorboardCallback
 from .wandb import WandbCallback

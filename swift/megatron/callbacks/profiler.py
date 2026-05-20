@@ -2,6 +2,7 @@
 import os
 import torch
 import torch.profiler
+
 from swift.megatron.callbacks.base import MegatronCallback
 
 
@@ -29,8 +30,7 @@ class NsysCallback(MegatronCallback):
             return
         step = self.state.iteration + 1
         if step == self.start_step and not self._profiling:
-            print(f'[nsys] cudaProfilerStart at step {step} (local_rank={self._local_rank})',
-                  flush=True)
+            print(f'[nsys] cudaProfilerStart at step {step} (local_rank={self._local_rank})', flush=True)
             torch.cuda.check_error(torch.cuda.cudart().cudaProfilerStart())
             self._profiling = True
 
@@ -39,8 +39,7 @@ class NsysCallback(MegatronCallback):
             return
         step = self.state.iteration
         if self._profiling and step >= self.end_step:
-            print(f'[nsys] cudaProfilerStop after step {step} (local_rank={self._local_rank})',
-                  flush=True)
+            print(f'[nsys] cudaProfilerStop after step {step} (local_rank={self._local_rank})', flush=True)
             torch.cuda.check_error(torch.cuda.cudart().cudaProfilerStop())
             self._profiling = False
 
@@ -73,9 +72,7 @@ class TorchProfilerCallback(MegatronCallback):
         wait = max(0, self.start_step - 1)
         active = max(1, self.end_step - self.start_step + 1)
         base_dir = self.args.output_dir
-        trace_dir = os.path.join(
-            base_dir, 'torch_profiler',
-            f'rank{self._local_rank}_node{self._node_rank}')
+        trace_dir = os.path.join(base_dir, 'torch_profiler', f'rank{self._local_rank}_node{self._node_rank}')
         os.makedirs(trace_dir, exist_ok=True)
         self._prof = torch.profiler.profile(
             schedule=torch.profiler.schedule(wait=wait, warmup=0, active=active, repeat=1),
@@ -86,8 +83,10 @@ class TorchProfilerCallback(MegatronCallback):
         )
         self._trace_dir = trace_dir
         self._prof.__enter__()
-        print(f'[torch_profiler] started rank={self._local_rank} node={self._node_rank} '
-              f'wait={wait} active={active} trace_dir={trace_dir}', flush=True)
+        print(
+            f'[torch_profiler] started rank={self._local_rank} node={self._node_rank} '
+            f'wait={wait} active={active} trace_dir={trace_dir}',
+            flush=True)
 
     def on_step_end(self):
         if self._prof is not None:
@@ -98,7 +97,9 @@ class TorchProfilerCallback(MegatronCallback):
             self._prof.__exit__(None, None, None)
             chrome_path = os.path.join(self._trace_dir, 'chrome_trace.json')
             self._prof.export_chrome_trace(chrome_path)
-            print(f'[torch_profiler] trace saved rank={self._local_rank} node={self._node_rank} '
-                  f'chrome={chrome_path}', flush=True)
+            print(
+                f'[torch_profiler] trace saved rank={self._local_rank} node={self._node_rank} '
+                f'chrome={chrome_path}',
+                flush=True)
             self._prof = None
             self._trace_dir = None
