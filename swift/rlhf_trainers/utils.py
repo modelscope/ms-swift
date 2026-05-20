@@ -23,7 +23,7 @@ from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 from types import MethodType
-from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
 
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
@@ -1221,7 +1221,7 @@ class FlattenedTensorBucket:
         return reconstructed
 
 
-def identity_data_collator(features):
+def identity_data_collator(features, **kwargs):
     """Identity data collator that returns features as-is without any processing."""
     return features
 
@@ -1635,3 +1635,233 @@ def pad_logps_back_to_batch(logps_rmpad: Optional[torch.Tensor],
             valid_mask[i, pad_len:] = 1.0
 
     return logps_padded, valid_mask
+
+
+def build_completion_mask_and_seq_lengths(
+    labels: torch.Tensor,
+    batch_size: int,
+    *,
+    padding_free: bool = False,
+    encoded_batch: Optional[dict] = None,
+    device: Optional[torch.device] = None,
+) -> Tuple[torch.Tensor, torch.Tensor, int]:
+    """Build completion_mask and seq_lengths from labels, shared by Ray and non-Ray GRPO paths.
+
+    Args:
+        labels: Label tensor from data collator.
+        batch_size: Number of samples in the batch.
+        padding_free: Whether padding-free (rmpad) mode is used.
+        encoded_batch: The full encoded batch dict (needed for cu_seq_lens / attention_mask).
+        device: Target device for output tensors.
+
+    Returns:
+        (completion_mask, seq_lengths, max_seq_len) where:
+        - completion_mask: [batch_size, max_seq_len] bool tensor
+        - seq_lengths: [batch_size] int tensor
+        - max_seq_len: int
+    """
+    if device is None:
+        device = labels.device
+    if encoded_batch is None:
+        encoded_batch = {}
+
+    rolled_labels = torch.roll(labels, shifts=-1, dims=-1)
+
+    if padding_free:
+        if 'cu_seq_lens_q' in encoded_batch:
+            cu = encoded_batch['cu_seq_lens_q']
+        else:
+            from swift.utils import get_packed_seq_params
+            cu = get_packed_seq_params(encoded_batch['position_ids'])['cu_seq_lens_q']
+        seq_lengths = cu[1:] - cu[:-1]
+        max_seq_len = int(seq_lengths.max().item())
+        completion_mask_rmpad = (rolled_labels != -100).float()
+        completion_mask, _ = pad_logps_back_to_batch(
+            logps_rmpad=completion_mask_rmpad,
+            logits_to_keep=max_seq_len,
+            batch_size=batch_size,
+            seq_lengths=seq_lengths,
+            pad_value=0.0)
+        completion_mask = completion_mask.bool()
+    else:
+        attention_mask = encoded_batch.get('attention_mask')
+        if attention_mask is not None:
+            if attention_mask.dim() == 4:
+                attention_mask = attention_mask[:, 0, 0, :]
+            seq_lengths = attention_mask.sum(dim=-1).to(torch.int64)
+        else:
+            seq_lengths = torch.full((batch_size, ), labels.shape[-1], dtype=torch.int64, device=device)
+        max_seq_len = labels.shape[-1]
+        completion_mask = (rolled_labels != -100)
+
+    return completion_mask, seq_lengths, max_seq_len
+
+
+def build_rollout_logps(
+    rollout_batch: 'Sequence[Dict[str, Any]]',
+    completion_mask: torch.Tensor,
+    device: torch.device,
+) -> Optional[torch.Tensor]:
+    """Convert per-sample ``rollout_logprobs`` into a [B, T] tensor aligned with completion_mask.
+
+    Shared by Ray GRPOTrainer and non-Ray MegatronGRPOTrainer to avoid
+    duplicating the rollout logprob alignment logic.
+
+    Returns None if logprobs are missing or counts don't match.
+    """
+    lp_list = [data.get('rollout_logprobs') for data in rollout_batch]
+    if not all(lp is not None and lp for lp in lp_list):
+        return None
+
+    batch_size, seq_len = completion_mask.shape
+    rollout_per_token_logps = torch.zeros(batch_size, seq_len, dtype=torch.float32, device=device)
+    for i, nested_lp in enumerate(lp_list):
+        flat_lps = [lp for turn_lps in nested_lp for lp in turn_lps]
+        if not flat_lps:
+            continue
+        if any(lp is None for lp in flat_lps):
+            return None
+        completion_count = int(completion_mask[i].sum().item())
+        if len(flat_lps) == completion_count + 1:
+            flat_lps = flat_lps[:completion_count]
+        if len(flat_lps) != completion_count:
+            return None
+        completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
+        rollout_per_token_logps[i, completion_indices] = torch.tensor(flat_lps, dtype=torch.float32, device=device)
+    return rollout_per_token_logps
+
+
+def resolve_reward_funcs(
+    reward_funcs_cfg: list,
+    args: Any = None,
+) -> Tuple[List[Any], List[str]]:
+    """Resolve reward function configs into callables and their names.
+
+    Shared between ``MegatronGRPOTrainer._prepare_rewards`` and
+    ``GRPOTrainer._prepare_rewards``.
+
+    Returns:
+        (reward_funcs, reward_func_names)
+    """
+    import asyncio
+    import inspect
+
+    from swift.rewards import orms
+
+    reward_funcs = list(reward_funcs_cfg)
+    for i, reward_func in enumerate(reward_funcs):
+        if isinstance(reward_func, str) and reward_func in orms:
+            reward_funcs[i] = orms[reward_func](args=args) if args is not None else orms[reward_func]()
+        elif not callable(reward_func) and not isinstance(reward_func, str):
+            raise ValueError(f'reward_function {reward_func} is not implemented in swift.rewards')
+
+    names = []
+    for func in reward_funcs:
+        if inspect.isfunction(func):
+            names.append(func.__name__)
+        else:
+            names.append(func.__class__.__name__)
+
+    return reward_funcs, names
+
+
+def make_reward_weights(
+    reward_weights_cfg: Optional[List[float]],
+    num_funcs: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """Build reward weight tensor, validating length against the reward
+    function count."""
+    if reward_weights_cfg is not None:
+        if len(reward_weights_cfg) != num_funcs:
+            raise ValueError(f'Number of reward weights ({len(reward_weights_cfg)}) must '
+                             f'match number of reward functions ({num_funcs})')
+        return torch.tensor(reward_weights_cfg, dtype=torch.float32, device=device)
+    return torch.ones(num_funcs, dtype=torch.float32, device=device)
+
+
+def detect_async_reward_indices(reward_funcs: list) -> List[int]:
+    import asyncio
+    import torch.nn as nn
+    indices = []
+    for i, func in enumerate(reward_funcs):
+        if not isinstance(func, nn.Module):
+            if asyncio.iscoroutinefunction(func) or asyncio.iscoroutinefunction(getattr(func, '__call__', None)):
+                indices.append(i)
+    return indices
+
+
+def compute_grpo_advantages(
+    rewards_per_func: torch.Tensor,
+    reward_weights: torch.Tensor,
+    num_generations: int,
+    advantage_estimator: str = 'grpo',
+    scale_rewards: str = 'group',
+    kl_in_reward: bool = False,
+    beta: float = 0.0,
+    kl_values: Optional[torch.Tensor] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Compute advantages from per-function rewards (pure function).
+
+    This implements GRPO / RLOO / REINFORCE++ advantage estimation and
+    normalization.  Both ``MegatronGRPOTrainer._compute_advantages`` and
+    ``GRPOTrainer.compute_advantages`` should delegate to this.
+
+    Args:
+        rewards_per_func: ``[N, n_funcs]`` per-function reward matrix.
+        reward_weights: ``[n_funcs]`` weighting tensor.
+        num_generations: ``K`` — how many completions per prompt.
+        advantage_estimator: ``'grpo'``, ``'rloo'``, or ``'reinforce_plus_plus'``.
+        scale_rewards: ``'batch'``, ``'group'``, ``'none'``, or ``'gdpo'``.
+        kl_in_reward: Whether to subtract KL penalty.
+        beta: KL penalty coefficient.
+        kl_values: ``[N]`` KL values (required if ``kl_in_reward``).
+
+    Returns:
+        ``(advantages, rewards)`` both ``[N]``.
+    """
+    rewards = (rewards_per_func * reward_weights.unsqueeze(0)).nansum(dim=1)
+
+    if kl_in_reward and beta != 0.0 and kl_values is not None:
+        rewards = rewards - beta * kl_values
+
+    K = num_generations
+    grouped = rewards.view(-1, K)
+    group_mean = grouped.mean(dim=1).repeat_interleave(K)
+
+    if advantage_estimator == 'rloo' and K > 1:
+        advantages = rewards * K / (K - 1) - group_mean * K / (K - 1)
+    else:
+        advantages = rewards - group_mean
+
+    std: Optional[torch.Tensor] = None
+    if advantage_estimator == 'reinforce_plus_plus':
+        if scale_rewards == 'batch':
+            std = advantages.std().expand_as(advantages) if advantages.numel() > 1 \
+                else torch.zeros_like(advantages)
+        elif scale_rewards == 'group':
+            std = advantages.view(-1, K).std(dim=1).repeat_interleave(K) if K > 1 \
+                else torch.zeros_like(advantages)
+    else:
+        if scale_rewards == 'batch':
+            std = rewards.std().expand_as(rewards) if rewards.numel() > 1 \
+                else torch.zeros_like(rewards)
+        elif scale_rewards == 'group':
+            std = grouped.std(dim=1).repeat_interleave(K) if K > 1 \
+                else torch.zeros_like(rewards)
+        elif scale_rewards == 'gdpo':
+            num_reward_funcs = rewards_per_func.shape[1]
+            normalized_list = []
+            for i in range(num_reward_funcs):
+                r_i = rewards_per_func[:, i].view(-1, K)
+                g_mean = r_i.mean(dim=1, keepdim=True)
+                g_std = r_i.std(dim=1, keepdim=True) + 1e-8
+                normalized_list.append(reward_weights[i] * ((r_i - g_mean) / g_std).view(-1))
+            summed = sum(normalized_list)
+            advantages = (summed - summed.mean()) / (summed.std() + 1e-8)
+            std = None
+
+    if std is not None and scale_rewards != 'none':
+        advantages = advantages / (std + 1e-4)
+
+    return advantages, rewards

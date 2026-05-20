@@ -2,9 +2,9 @@ from typing import Any, Dict, List
 
 from swift.arguments import SamplingArguments
 from swift.infer_engine import TransformersEngine
-from swift.ray.base import RayHelper
 from swift.rewards import orms, prms
 from swift.utils import get_logger
+from swift.utils.ray_utils import RayHelper
 
 logger = get_logger()
 

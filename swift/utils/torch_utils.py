@@ -151,6 +151,13 @@ def empty_cache():
         torch.cuda.empty_cache()
 
 
+def ipc_collect():
+    if is_torch_cuda_available():
+        torch.cuda.ipc_collect()
+    elif is_torch_npu_available():
+        torch.npu.ipc_collect()
+
+
 def gc_collect() -> None:
     gc.collect()
     empty_cache()
