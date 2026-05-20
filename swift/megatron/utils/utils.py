@@ -1,23 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import megatron.core
 import re
 import torch
 import torch.distributed as dist
-from contextlib import contextmanager
-from mcore_bridge import LoraParallelLinear
 from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.transformer.moe.router import TopKRouter
-from megatron.core.transformer.transformer_block import get_num_layers_to_build
-from megatron.core.transformer.transformer_layer import get_transformer_layer_offset
-from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint, sharded_state_dict_default
-from packaging import version
-from peft.tuners.lora import Linear as LoraLinear
-from peft.utils.other import ModulesToSaveWrapper
 from torch import nn
-from typing import Optional, Tuple
 
 from swift.tuners import LoraConfig, Swift
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,

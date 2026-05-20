@@ -57,36 +57,6 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
     return packed
 
 
-def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
-    """Slice batch input along sequence dimension into multiple chunks,
-    which are parallelized across GPUs in a context parallel group.
-    """
-
-    # With causal masking, each token only attends to its prior tokens. Simply split
-    # sequence into CP chunks can result in severe load imbalance. That's to say, chunks
-    # at the end of sequence have bigger workload than others. To address this issue,
-    # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
-    # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
-    # that we can get balanced workload among GPUs in a context parallel group.
-    cp_size = mpu.get_context_parallel_world_size()
-    if cp_size > 1:
-        keys = ['labels', 'position_ids', 'loss_scale']
-        if not args.is_multimodal:
-            # Multimodal models will handle CP in input_embeds.
-            keys.append('input_ids')
-
-        packed_seq_params = batch.get('packed_seq_params')
-        for key, val in batch.items():
-            if key not in keys:
-                continue
-            if args.task_type == 'seq_cls' and key == 'labels':
-                continue
-            if val is not None:
-                batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
-
-    return batch
-
-
 def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):
     if group is None:
         return hf_gather(tensor)

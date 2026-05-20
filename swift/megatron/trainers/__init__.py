@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from .reward_trainer import MegatronRewardTrainer
     from .rollout_mixin import MegatronRolloutMixin
     from .trainer import MegatronTrainer
-    from .utils import get_batch_on_this_cp_rank
 else:
     _import_structure = {
         'dpo_trainer': ['MegatronDPOTrainer'],
@@ -27,7 +26,6 @@ else:
         'reranker_trainer': ['MegatronRerankerTrainer'],
         'trainer': ['MegatronTrainer'],
         'base': ['BaseMegatronTrainer'],
-        'utils': ['get_batch_on_this_cp_rank'],
     }
     import sys
 

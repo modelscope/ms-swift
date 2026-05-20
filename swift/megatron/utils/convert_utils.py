@@ -10,6 +10,7 @@ from megatron.core.tensor_parallel import VocabParallelEmbedding
 from typing import Any, Dict
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
+from .megatron_lm_utils import get_batch_on_this_cp_rank
 from .utils import forward_step_helper, get_padding_to
 
 logger = get_logger()
@@ -171,7 +172,6 @@ def broadcast_mg_logits(mg_logits=None, src_rank=None):
 
 
 def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=None):
-    from swift.megatron.trainers import get_batch_on_this_cp_rank
     if test_convert_dtype is None:
         test_convert_dtype = getattr(args, 'test_convert_dtype', torch.float32)
     template.set_mode('train')
