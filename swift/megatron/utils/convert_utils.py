@@ -4,8 +4,9 @@ import math
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from megatron.core import mpu
+from megatron.core.extensions.transformer_engine import TEDotProductAttention
 from megatron.core.tensor_parallel import VocabParallelEmbedding
 from megatron.core.tensor_parallel.mappings import (gather_from_sequence_parallel_region,
                                                     gather_from_tensor_model_parallel_region)
@@ -173,6 +174,26 @@ def broadcast_mg_logits(mg_logits=None, src_rank=None):
     return mg_logits
 
 
+@contextmanager
+def _patch_attention_flash_fp32(compute_dtype):
+    forward = TEDotProductAttention.forward
+
+    def new_forward(self, query_layer, key_layer, value_layer, *args, **kwargs):
+        torch_dtype = query_layer.dtype
+        query_layer = query_layer.to(compute_dtype)
+        key_layer = key_layer.to(compute_dtype)
+        value_layer = value_layer.to(compute_dtype)
+        res = forward(self, query_layer, key_layer, value_layer, *args, **kwargs)
+        res = res.to(dtype=torch_dtype)
+        return res
+
+    TEDotProductAttention.forward = new_forward
+    try:
+        yield
+    finally:
+        TEDotProductAttention.forward = forward
+
+
 def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=None):
     if test_convert_dtype is None:
         test_convert_dtype = getattr(args, 'test_convert_dtype', torch.float32)
@@ -231,10 +252,11 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
                 m.to(mg_dtype)
-    if args.attention_backend.name == 'flash':
-        test_convert_dtype = mg_dtype
+    attention_flash_context = (
+        _patch_attention_flash_fp32(mg_dtype) if args.attention_backend.name == 'flash' else nullcontext())
     with torch.inference_mode(), _model_cpu_forward_context(
-            mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
+            mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding,
+            target_device=mg_device), attention_flash_context:
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=test_convert_dtype)
         if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
             if mg_logits is not None:
