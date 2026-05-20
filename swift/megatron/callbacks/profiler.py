@@ -9,7 +9,7 @@ class NsysCallback(MegatronCallback):
     """Profile steps [nsys_profile_start, nsys_profile_end] via cudaProfilerStart/Stop.
 
     Requires nsys launched with --start-later --capture-range=cudaProfilerApi.
-    profile_rank controls which local rank triggers profiling (default 0).
+    profile_rank: list of global ranks to profile; None = all ranks.
     """
 
     def __init__(self, trainer):
@@ -17,11 +17,12 @@ class NsysCallback(MegatronCallback):
         self.start_step = getattr(self.args, 'nsys_profile_start', -1)
         self.end_step = getattr(self.args, 'nsys_profile_end', -1)
         self._local_rank = int(os.environ.get('LOCAL_RANK', 0))
-        self._profile_rank = getattr(self.args, 'profile_rank', 0)
+        self._global_rank = int(os.environ.get('RANK', 0))
+        self._profile_ranks = getattr(self.args, 'profile_rank', None)
         self._profiling = False
 
     def _should_profile(self):
-        return self._profile_rank == -1 or self._local_rank == self._profile_rank
+        return self._profile_ranks is None or self._global_rank in self._profile_ranks
 
     def on_step_begin(self):
         if not self._should_profile():
@@ -47,7 +48,7 @@ class NsysCallback(MegatronCallback):
 class TorchProfilerCallback(MegatronCallback):
     """Profile steps [nsys_profile_start, nsys_profile_end] via torch.profiler.
 
-    profile_rank controls which local rank profiles (default 0); -1 = all ranks.
+    profile_rank: list of global ranks to profile; None = all ranks.
     Saves TensorBoard traces to {tensorboard_dir}/torch_profiler/rank{R}_node{N}/.
     Step numbers are 1-based.
     """
@@ -56,14 +57,15 @@ class TorchProfilerCallback(MegatronCallback):
         super().__init__(trainer)
         self.start_step = getattr(self.args, 'nsys_profile_start', 5)
         self.end_step = getattr(self.args, 'nsys_profile_end', 5)
-        self._profile_rank = getattr(self.args, 'profile_rank', 0)
         self._local_rank = int(os.environ.get('LOCAL_RANK', 0))
+        self._global_rank = int(os.environ.get('RANK', 0))
         self._node_rank = int(os.environ.get('NODE_RANK', 0))
+        self._profile_ranks = getattr(self.args, 'profile_rank', None)
         self._prof = None
         self._trace_dir = None
 
     def _should_profile(self):
-        return self._profile_rank == -1 or self._local_rank == self._profile_rank
+        return self._profile_ranks is None or self._global_rank in self._profile_ranks
 
     def on_train_begin(self):
         if not self._should_profile():

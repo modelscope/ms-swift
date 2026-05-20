@@ -642,7 +642,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     nsys_profile_start: int = -1  # 1-based; 0 = disabled
     nsys_profile_end: int = -1 
     profiler_type: str = 'none'  # nsys or torch
-    profile_rank: int = 0  # local rank to profile; -1 = all ranks
+    profile_rank: Optional[List[int]] = None  # global ranks to profile; None = all ranks
 
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
