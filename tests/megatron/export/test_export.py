@@ -16,6 +16,18 @@ def test_to_mcore():
             test_convert_precision=True))
 
 
+def test_cp():
+    megatron_export_main(
+        MegatronExportArguments(
+            model='Qwen/Qwen3.5-4B',
+            to_mcore=True,
+            exist_ok=True,
+            context_parallel_size=2,
+            tensor_model_parallel_size=2,
+            pipeline_model_parallel_size=2,
+            test_convert_precision=True))
+
+
 def test_to_hf():
     megatron_export_main(
         MegatronExportArguments(
@@ -56,6 +68,7 @@ def test_peft_to_hf():
 
 if __name__ == '__main__':
     # test_to_mcore()
-    test_to_hf()
+    test_cp()
+    # test_to_hf()
     # test_peft_to_mcore()
     # test_peft_to_hf()

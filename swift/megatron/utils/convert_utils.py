@@ -7,12 +7,13 @@ import torch.nn as nn
 from contextlib import contextmanager
 from megatron.core import mpu
 from megatron.core.tensor_parallel import VocabParallelEmbedding
+from megatron.core.tensor_parallel.mappings import (gather_from_sequence_parallel_region,
+                                                    gather_from_tensor_model_parallel_region)
 from typing import Any, Dict
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
 from .megatron_lm_utils import get_batch_on_this_cp_rank
 from .utils import forward_step_helper, get_padding_to
-from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
 
 logger = get_logger()
 
@@ -239,9 +240,12 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
             if mg_logits is not None:
                 mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
         if args.context_parallel_size > 1:
+            from megatron.core.ssm.mamba_context_parallel import _undo_attention_load_balancing
             if mg_logits is not None:
-                pass
-
+                mg_logits = gather_from_sequence_parallel_region(
+                    mg_logits.transpose(0, 1), group=mpu.get_context_parallel_group())
+                mg_logits = _undo_attention_load_balancing(mg_logits, args.context_parallel_size)
+                mg_logits = mg_logits.transpose(0, 1)
     mg_logits = broadcast_mg_logits(mg_logits)
     if hf_model is None:
         return
