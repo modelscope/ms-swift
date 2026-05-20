@@ -639,8 +639,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
     callbacks: List[str] = field(default_factory=list)
-    nsys_profile_start: int = 0  # 1-based; 0 = disabled
-    nsys_profile_end: int = 5
+    nsys_profile_start: int = -1  # 1-based; 0 = disabled
+    nsys_profile_end: int = -1 
     profiler_type: str = 'none'  # nsys or torch
     profile_rank: int = 0  # local rank to profile; -1 = all ranks
 

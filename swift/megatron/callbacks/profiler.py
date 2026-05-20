@@ -10,22 +10,17 @@ class NsysCallback(MegatronCallback):
 
     Requires nsys launched with --start-later --capture-range=cudaProfilerApi.
     profile_rank controls which local rank triggers profiling (default 0).
-    Set NSYS_PER_RANK=1 to override and profile every rank independently.
-    Step numbers are 1-based.
     """
 
     def __init__(self, trainer):
         super().__init__(trainer)
-        self.start_step = getattr(self.args, 'nsys_profile_start', 5)
-        self.end_step = getattr(self.args, 'nsys_profile_end', 5)
+        self.start_step = getattr(self.args, 'nsys_profile_start', -1)
+        self.end_step = getattr(self.args, 'nsys_profile_end', -1)
         self._local_rank = int(os.environ.get('LOCAL_RANK', 0))
         self._profile_rank = getattr(self.args, 'profile_rank', 0)
-        self._per_rank = os.environ.get('NSYS_PER_RANK', '0') == '1'
         self._profiling = False
 
     def _should_profile(self):
-        if self._per_rank:
-            return True
         return self._profile_rank == -1 or self._local_rank == self._profile_rank
 
     def on_step_begin(self):
@@ -61,9 +56,9 @@ class TorchProfilerCallback(MegatronCallback):
         super().__init__(trainer)
         self.start_step = getattr(self.args, 'nsys_profile_start', 5)
         self.end_step = getattr(self.args, 'nsys_profile_end', 5)
+        self._profile_rank = getattr(self.args, 'profile_rank', 0)
         self._local_rank = int(os.environ.get('LOCAL_RANK', 0))
         self._node_rank = int(os.environ.get('NODE_RANK', 0))
-        self._profile_rank = getattr(self.args, 'profile_rank', 0)
         self._prof = None
 
     def _should_profile(self):
