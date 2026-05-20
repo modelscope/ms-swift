@@ -6,12 +6,15 @@ from megatron.core import mpu
 from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayerNormColumnParallelLinear, TELinear
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
+from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.transformer.moe.router import TopKRouter
 from torch import nn
+from transformers.utils import is_torch_npu_available
 
 from swift.tuners import LoraConfig, Swift
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
                          get_model_parameter_info)
+from swift.utils import get_packed_seq_params as _get_packed_seq_params
 
 logger = get_logger()
 
@@ -218,3 +221,19 @@ def get_padding_to(args):
     if args.attention_backend == 'fused':
         padding_to = max(padding_to or 1, ((origin_padding_to) or 1) * 64)
     return padding_to
+
+
+def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
+    params = _get_packed_seq_params(position_ids)
+    packed = PackedSeqParams(
+        cu_seqlens_q=params['cu_seq_lens_q'],
+        cu_seqlens_kv=params['cu_seq_lens_k'],
+        max_seqlen_q=params['max_length_q'],
+        max_seqlen_kv=params['max_length_k'],
+        qkv_format='thd')
+
+    if is_torch_npu_available():
+        packed.cu_seqlens_q_padded = params['cu_seq_lens_q']
+        packed.cu_seqlens_kv_padded = params['cu_seq_lens_k']
+
+    return packed

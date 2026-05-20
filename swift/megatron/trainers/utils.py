@@ -7,14 +7,10 @@ from dataclasses import dataclass
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
-from megatron.core.packed_seq_params import PackedSeqParams
-from transformers.utils import is_torch_npu_available
 from typing import Any, Optional
 
 from swift.dataloader import DataLoaderDispatcher
-from swift.utils import empty_cache, get_current_device, get_logger
-from swift.utils import get_packed_seq_params as _get_packed_seq_params
-from swift.utils import to_device
+from swift.utils import empty_cache, get_current_device, get_logger, to_device
 
 logger = get_logger()
 
@@ -36,22 +32,6 @@ def get_batch_on_this_pp_rank(args, data, vp_stage=None):
         batch['loss_scale'] = None
 
     return batch
-
-
-def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
-    params = _get_packed_seq_params(position_ids)
-    packed = PackedSeqParams(
-        cu_seqlens_q=params['cu_seq_lens_q'],
-        cu_seqlens_kv=params['cu_seq_lens_k'],
-        max_seqlen_q=params['max_length_q'],
-        max_seqlen_kv=params['max_length_k'],
-        qkv_format='thd')
-
-    if is_torch_npu_available():
-        packed.cu_seqlens_q_padded = params['cu_seq_lens_q']
-        packed.cu_seqlens_kv_padded = params['cu_seq_lens_k']
-
-    return packed
 
 
 def gather(tensor, group: Optional[torch.distributed.ProcessGroup] = None):

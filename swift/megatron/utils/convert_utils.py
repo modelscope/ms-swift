@@ -14,7 +14,7 @@ from typing import Any, Dict
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
 from .megatron_lm_utils import get_batch_on_this_cp_rank
-from .utils import forward_step_helper, get_padding_to
+from .utils import forward_step_helper, get_packed_seq_params, get_padding_to
 
 logger = get_logger()
 
@@ -235,7 +235,6 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
     packed_seq_params = None
     mg_model.eval()
     # thd
-    # from ..trainers.utils import get_packed_seq_params
     # packed_seq_params = get_packed_seq_params(position_ids)
     # attention_mask = None
     mg_language_model.config.fp8 = None  # compat fp8
