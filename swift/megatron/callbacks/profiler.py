@@ -60,6 +60,7 @@ class TorchProfilerCallback(MegatronCallback):
         self._local_rank = int(os.environ.get('LOCAL_RANK', 0))
         self._node_rank = int(os.environ.get('NODE_RANK', 0))
         self._prof = None
+        self._trace_dir = None
 
     def _should_profile(self):
         return self._profile_rank == -1 or self._local_rank == self._profile_rank
@@ -76,12 +77,12 @@ class TorchProfilerCallback(MegatronCallback):
         os.makedirs(trace_dir, exist_ok=True)
         self._prof = torch.profiler.profile(
             schedule=torch.profiler.schedule(wait=wait, warmup=0, active=active, repeat=1),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler(trace_dir),
             record_shapes=True,
             profile_memory=True,
             with_stack=True,
             with_flops=True,
         )
+        self._trace_dir = trace_dir
         self._prof.__enter__()
         print(f'[torch_profiler] started rank={self._local_rank} node={self._node_rank} '
               f'wait={wait} active={active} trace_dir={trace_dir}', flush=True)
@@ -93,6 +94,9 @@ class TorchProfilerCallback(MegatronCallback):
     def on_train_end(self):
         if self._prof is not None:
             self._prof.__exit__(None, None, None)
-            print(f'[torch_profiler] trace saved rank={self._local_rank} node={self._node_rank}',
-                  flush=True)
+            chrome_path = os.path.join(self._trace_dir, 'chrome_trace.json')
+            self._prof.export_chrome_trace(chrome_path)
+            print(f'[torch_profiler] trace saved rank={self._local_rank} node={self._node_rank} '
+                  f'chrome={chrome_path}', flush=True)
             self._prof = None
+            self._trace_dir = None
