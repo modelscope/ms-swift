@@ -1357,7 +1357,7 @@ class Template(ProcessorMixin):
         if labels is not None:
             labels = torch.tensor(labels)[protected].tolist()
             labels[0] = -100
-        loss_scale = encoded.get('encoded')
+        loss_scale = encoded.get('loss_scale')
         if loss_scale is not None:
             loss_scale = torch.tensor(loss_scale)[protected].tolist()
             loss_scale[0] = 0
