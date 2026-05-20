@@ -29,20 +29,19 @@ from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import (apply_router_replay_patch, disable_forward_pre_hook, enable_forward_pre_hook,
-                                  get_optimizer_param_scheduler, get_padding_to, init_persistent_async_worker,
-                                  initialize_tp_communicators, load_mcore_checkpoint,
-                                  logical_and_across_model_parallel_group, maybe_finalize_async_save,
-                                  prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
-                                  save_mcore_checkpoint, should_disable_forward_pre_hook, warmup_jit_function,
-                                  wrap_model)
+                                  get_batch_on_this_cp_rank, get_optimizer_param_scheduler, get_packed_seq_params,
+                                  get_padding_to, init_persistent_async_worker, initialize_tp_communicators,
+                                  load_mcore_checkpoint, logical_and_across_model_parallel_group,
+                                  maybe_finalize_async_save, prepare_mcore_model,
+                                  reduce_max_stat_across_model_parallel_group, save_mcore_checkpoint,
+                                  should_disable_forward_pre_hook, warmup_jit_function, wrap_model)
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
                          is_master, ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_pp_rank,
-                    get_packed_seq_params)
+from .utils import TrainerState, build_streaming_dataloader, get_batch_on_this_pp_rank
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys

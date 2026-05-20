@@ -1,23 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import gc
-import megatron.core
 import torch
 from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
 from dataclasses import dataclass
-from mcore_bridge import split_cp_inputs
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.optimizer import ChainedOptimizer
-from megatron.core.packed_seq_params import PackedSeqParams
-from packaging import version
-from transformers.utils import is_torch_npu_available
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from swift.dataloader import DataLoaderDispatcher
-from swift.utils import empty_cache, get_current_device, get_logger
-from swift.utils import get_packed_seq_params as _get_packed_seq_params
-from swift.utils import to_device
+from swift.utils import empty_cache, get_current_device, get_logger, to_device
 
 logger = get_logger()
 
@@ -37,52 +30,6 @@ def get_batch_on_this_pp_rank(args, data, vp_stage=None):
     if not is_pp_last_stage:
         batch['labels'] = None
         batch['loss_scale'] = None
-
-    return batch
-
-
-def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
-    params = _get_packed_seq_params(position_ids)
-    packed = PackedSeqParams(
-        cu_seqlens_q=params['cu_seq_lens_q'],
-        cu_seqlens_kv=params['cu_seq_lens_k'],
-        max_seqlen_q=params['max_length_q'],
-        max_seqlen_kv=params['max_length_k'],
-        qkv_format='thd')
-
-    if is_torch_npu_available():
-        packed.cu_seqlens_q_padded = params['cu_seq_lens_q']
-        packed.cu_seqlens_kv_padded = params['cu_seq_lens_k']
-
-    return packed
-
-
-def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
-    """Slice batch input along sequence dimension into multiple chunks,
-    which are parallelized across GPUs in a context parallel group.
-    """
-
-    # With causal masking, each token only attends to its prior tokens. Simply split
-    # sequence into CP chunks can result in severe load imbalance. That's to say, chunks
-    # at the end of sequence have bigger workload than others. To address this issue,
-    # we split sequence into 2*CP ranks. Assuming CP=2, we then get 4 chunks, chunk_0
-    # and chunk_3 are assigned to GPU0, chunk_1 and chunk_2 are assigned to GPU1, so
-    # that we can get balanced workload among GPUs in a context parallel group.
-    cp_size = mpu.get_context_parallel_world_size()
-    if cp_size > 1:
-        keys = ['labels', 'position_ids', 'loss_scale']
-        if not args.is_multimodal:
-            # Multimodal models will handle CP in input_embeds.
-            keys.append('input_ids')
-
-        packed_seq_params = batch.get('packed_seq_params')
-        for key, val in batch.items():
-            if key not in keys:
-                continue
-            if args.task_type == 'seq_cls' and key == 'labels':
-                continue
-            if val is not None:
-                batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
 
     return batch
 
