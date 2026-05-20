@@ -4,13 +4,17 @@ import math
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from megatron.core import mpu
+from megatron.core.extensions.transformer_engine import TEDotProductAttention
 from megatron.core.tensor_parallel import VocabParallelEmbedding
+from megatron.core.tensor_parallel.mappings import (gather_from_sequence_parallel_region,
+                                                    gather_from_tensor_model_parallel_region)
 from typing import Any, Dict
 
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
-from .utils import forward_step_helper, get_padding_to
+from .megatron_lm_utils import get_batch_on_this_cp_rank
+from .utils import forward_step_helper, get_packed_seq_params, get_padding_to
 
 logger = get_logger()
 
@@ -170,6 +174,26 @@ def broadcast_mg_logits(mg_logits=None, src_rank=None):
     return mg_logits
 
 
+@contextmanager
+def _patch_attention_flash_fp32(compute_dtype):
+    forward = TEDotProductAttention.forward
+
+    def new_forward(self, query_layer, key_layer, value_layer, *args, **kwargs):
+        torch_dtype = query_layer.dtype
+        query_layer = query_layer.to(compute_dtype)
+        key_layer = key_layer.to(compute_dtype)
+        value_layer = value_layer.to(compute_dtype)
+        res = forward(self, query_layer, key_layer, value_layer, *args, **kwargs)
+        res = res.to(dtype=torch_dtype)
+        return res
+
+    TEDotProductAttention.forward = new_forward
+    try:
+        yield
+    finally:
+        TEDotProductAttention.forward = forward
+
+
 def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtype=None):
     if test_convert_dtype is None:
         test_convert_dtype = getattr(args, 'test_convert_dtype', torch.float32)
@@ -191,7 +215,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.eval()
         if dist.get_world_size() == 1:
             _test_params_sum(hf_model)
-        inputs = template.encode(get_examples(test_mm_type))
+        inputs = template.encode(get_examples(test_mm_type), return_length=True)
         hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
         template.register_post_encode_hook([hf_model])
         HfConfigFactory.set_config_attr(hf_model.config, 'use_cache', False)
@@ -206,19 +230,20 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.to('cpu')
 
     template.use_megatron = True
-    inputs = template.encode(get_examples(test_mm_type))
+    inputs = template.encode(get_examples(test_mm_type), return_length=True)
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
-    packed_seq_params = None
     mg_model.eval()
     # thd
-    # from ..trainers.utils import get_packed_seq_params
-    # packed_seq_params = get_packed_seq_params(position_ids)
-    # attention_mask = None
+    text_position_ids = mg_inputs.pop('text_position_ids', None)
+    if text_position_ids is None:
+        text_position_ids = mg_inputs.get('position_ids')
+    if args.padding_free:
+        mg_inputs['packed_seq_params'] = get_packed_seq_params(text_position_ids)
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
-    for key in ['labels', 'num_samples', 'attention_mask_2d', 'text_position_ids']:
+    for key in ['labels', 'num_samples', 'attention_mask_2d']:
         mg_inputs.pop(key, None)
-    mg_inputs.update({'packed_seq_params': packed_seq_params})
+    mg_inputs = get_batch_on_this_cp_rank(args, mg_inputs)
     _param = next(mg_language_model.parameters())
     mg_dtype = _param.dtype
     mg_device = _param.device
@@ -227,14 +252,22 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
                 m.to(mg_dtype)
+    attention_flash_context = (
+        _patch_attention_flash_fp32(mg_dtype) if args.attention_backend.name == 'flash' else nullcontext())
     with torch.inference_mode(), _model_cpu_forward_context(
-            mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
+            mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding,
+            target_device=mg_device), attention_flash_context:
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=test_convert_dtype)
         if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
-            from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:
                 mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
-
+        if args.context_parallel_size > 1:
+            from megatron.core.ssm.mamba_context_parallel import _undo_attention_load_balancing
+            if mg_logits is not None:
+                mg_logits = gather_from_sequence_parallel_region(
+                    mg_logits.transpose(0, 1), group=mpu.get_context_parallel_group())
+                mg_logits = _undo_attention_load_balancing(mg_logits, args.context_parallel_size)
+                mg_logits = mg_logits.transpose(0, 1)
     mg_logits = broadcast_mg_logits(mg_logits)
     if hf_model is None:
         return
