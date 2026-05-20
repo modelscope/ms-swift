@@ -731,6 +731,7 @@ Rollout参数继承于[部署参数](#部署参数)
 - max_turns: 多轮GRPO训练下的最大轮数，默认为None，即不做约束。
 - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](./GRPO/GetStarted/GRPO.md#权重同步加速)。
 - vllm_max_lora_rank: vLLM Engine LoRA参数，需大于等于训练的lora_rank，建议等于。默认为16。
+- vllm_enable_expert_parallel: 开启MoE模型的专家并行（EP），将experts分布到不同rank，默认为False。
 
 ### Web-UI参数
 - server_name: web-ui的host，默认为'0.0.0.0'。

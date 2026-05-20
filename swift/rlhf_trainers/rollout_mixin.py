@@ -297,10 +297,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         logprobs_mode = 'processed_logprobs' if self.vllm_version_ge_0_10_2 else None
 
-        if args.vllm_enable_expert_parallel and args.sleep_level > 1:
-            logger.warning('Expert parallelism with sleep_level > 1 may cause memory issues. '
-                           'Consider setting sleep_level to 1.')
-
         with Swift.grpo_context(model, self.template.processor):
             set_expandable_segments(False)
             # Use load_format from vllm_engine_kwargs if provided, otherwise default to 'auto'
