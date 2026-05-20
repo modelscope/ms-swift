@@ -624,6 +624,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # dsa
     dsa_indexer_loss_coeff: Optional[float] = None
     dsa_indexer_use_sparse_loss: bool = False
+    # deepseek-v4
+    csa_dense_mode: bool = False
+    use_fused_mhc: bool = False
+    mhc_recompute_layer_num: Optional[int] = None
 
     # other
     check_model: bool = True
