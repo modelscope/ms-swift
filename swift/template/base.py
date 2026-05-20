@@ -204,13 +204,18 @@ class Template(ProcessorMixin):
         logger.info(f'agent_template: {self._agent_template}')
         if self.model_meta.is_multimodal:
             logger.info(f'norm_bbox: {self.norm_bbox}')
-        tokenizer = self.tokenizer
+        self._init_placeholder_tokens()
+        self.template_meta.init(self.tokenizer)
+        self.init_env_args()
 
+    def _init_placeholder_tokens(self):
         for i, token in enumerate(self.placeholder_tokens):
             if isinstance(token, str):
-                self.placeholder_tokens[i] = tokenizer.convert_tokens_to_ids(token)
-        self.template_meta.init(tokenizer)
-        self.init_env_args()
+                self.placeholder_tokens[i] = self.tokenizer.convert_tokens_to_ids(token)
+        for mm_type in ['image', 'video', 'audio']:
+            mm_token_id = getattr(self.processor, f'{mm_type}_token_id')
+            if mm_token_id is not None and mm_token_id not in self.placeholder_tokens:
+                self.placeholder_tokens.append(mm_token_id)
 
     def _get_model(self):
         if self.model is not None:
@@ -1296,7 +1301,7 @@ class Template(ProcessorMixin):
             answer_len = 0
         return res_context_list, loss_scale_list, answer_len
 
-    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], loss_scale: Optional[List[float]],
+    def _truncate(self, input_ids: List[int], labels: Optional[List[int]], encoded,
                   truncation_strategy: Literal['left', 'right']):
         placeholder_tokens = torch.tensor(self.placeholder_tokens)
         input_ids_tensor = torch.tensor(input_ids)
@@ -1313,10 +1318,15 @@ class Template(ProcessorMixin):
         if labels is not None:
             labels = torch.tensor(labels)[protected].tolist()
             labels[0] = -100
+        loss_scale = encoded.get('loss_scale')
         if loss_scale is not None:
             loss_scale = torch.tensor(loss_scale)[protected].tolist()
             loss_scale[0] = 0
-        return input_ids, labels, loss_scale
+            encoded['loss_scale'] = loss_scale
+        mm_token_type_ids = encoded.get('mm_token_type_ids')
+        if mm_token_type_ids is not None:
+            encoded['mm_token_type_ids'] = mm_token_type_ids[protected]
+        return input_ids, labels
 
     @staticmethod
     def _get_length(input_ids, labels):
@@ -1346,12 +1356,11 @@ class Template(ProcessorMixin):
             encoded = self._encode(inputs)
         input_ids = encoded.get('input_ids')
         labels = encoded.get('labels')
-        loss_scale = encoded.get('loss_scale')
         length = self._get_length(input_ids, labels)
         if self.max_length is not None and length > self.max_length:
             if self.truncation_strategy in {'right', 'left'}:
-                input_ids, labels, loss_scale = self._truncate(
-                    input_ids, labels, loss_scale, truncation_strategy=self.truncation_strategy)
+                input_ids, labels = self._truncate(
+                    input_ids, labels, encoded, truncation_strategy=self.truncation_strategy)
                 length = self._get_length(input_ids, labels)
             elif self.truncation_strategy == 'raise':
                 raise MaxLengthError(f'Current length of row({length}) is larger'
@@ -1383,7 +1392,6 @@ class Template(ProcessorMixin):
             encoded.pop('loss_scale', None)
         else:
             encoded['labels'] = labels
-            encoded['loss_scale'] = loss_scale
         return encoded
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
