@@ -2,6 +2,9 @@ import os
 
 from swift.megatron import MegatronExportArguments, megatron_export_main
 
+os.environ['NVTE_DEBUG'] = '1'
+os.environ['NVTE_DEBUG_LEVEL'] = '2'
+
 os.environ['SWIFT_TEST_CONVERT_PRECISION'] = '1'
 
 
@@ -22,6 +25,8 @@ def test_cp():
             model='Qwen/Qwen3.5-4B',
             to_mcore=True,
             exist_ok=True,
+            attention_backend='flash',
+            padding_free=True,
             context_parallel_size=2,
             tensor_model_parallel_size=2,
             pipeline_model_parallel_size=2,

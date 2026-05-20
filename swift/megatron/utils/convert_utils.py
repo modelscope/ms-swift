@@ -215,7 +215,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.eval()
         if dist.get_world_size() == 1:
             _test_params_sum(hf_model)
-        inputs = template.encode(get_examples(test_mm_type))
+        inputs = template.encode(get_examples(test_mm_type), return_length=True)
         hf_inputs = to_device(template.data_collator([inputs]), 'cuda')
         template.register_post_encode_hook([hf_model])
         HfConfigFactory.set_config_attr(hf_model.config, 'use_cache', False)
@@ -230,18 +230,19 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.to('cpu')
 
     template.use_megatron = True
-    inputs = template.encode(get_examples(test_mm_type))
+    inputs = template.encode(get_examples(test_mm_type), return_length=True)
     mg_inputs = to_device(template.data_collator([inputs], padding_to=get_padding_to(args)), 'cuda')
-    packed_seq_params = None
     mg_model.eval()
     # thd
-    # packed_seq_params = get_packed_seq_params(position_ids)
-    # attention_mask = None
+    text_position_ids = mg_inputs.pop('text_position_ids', None)
+    if text_position_ids is None:
+        text_position_ids = mg_inputs.get('position_ids')
+    if args.padding_free:
+        mg_inputs['packed_seq_params'] = get_packed_seq_params(text_position_ids)
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
-    for key in ['labels', 'num_samples', 'attention_mask_2d', 'text_position_ids']:
+    for key in ['labels', 'num_samples', 'attention_mask_2d']:
         mg_inputs.pop(key, None)
-    mg_inputs.update({'packed_seq_params': packed_seq_params})
     mg_inputs = get_batch_on_this_cp_rank(args, mg_inputs)
     _param = next(mg_language_model.parameters())
     mg_dtype = _param.dtype
