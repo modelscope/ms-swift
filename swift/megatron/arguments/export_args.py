@@ -62,6 +62,8 @@ class MegatronExportArguments(MegatronBaseArguments):
             'attention_backend': 'unfused',
             'padding_free': False,
         }
+        if self.context_parallel_size > 1:
+            convert_kwargs.pop('attention_backend', None)
         for k, v in convert_kwargs.items():
             setattr(self, k, v)
         if self.model_info.is_moe_model:

@@ -12,6 +12,7 @@ from typing import Any, Dict
 from swift.utils import HfConfigFactory, get_logger, to_device, to_float_dtype
 from .megatron_lm_utils import get_batch_on_this_cp_rank
 from .utils import forward_step_helper, get_padding_to
+from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
 
 logger = get_logger()
 
@@ -229,13 +230,17 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
                 m.to(mg_dtype)
+    if args.attention_backend.name == 'flash':
+        test_convert_dtype = mg_dtype
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding, target_device=mg_device):
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=test_convert_dtype)
         if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
-            from megatron.core.tensor_parallel.mappings import gather_from_tensor_model_parallel_region
             if mg_logits is not None:
                 mg_logits = gather_from_tensor_model_parallel_region(mg_logits)
+        if args.context_parallel_size > 1:
+            if mg_logits is not None:
+                pass
 
     mg_logits = broadcast_mg_logits(mg_logits)
     if hf_model is None:
