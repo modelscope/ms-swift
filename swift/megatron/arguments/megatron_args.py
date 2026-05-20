@@ -595,6 +595,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     problem_type: Literal['regression', 'single_label_classification', 'multi_label_classification'] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
     callbacks: List[str] = field(default_factory=list)
+    nsys_profile_start: int = 0  # 1-based; 0 = disabled
+    nsys_profile_end: int = 5
+    profiler_type: str = 'nsys'  # nsys or torch
+    profile_rank: int = 0  # local rank to profile; -1 = all ranks
 
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
@@ -705,6 +709,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.gradient_accumulation_fusion = False
         self.callbacks += ['print', 'default_flow']
         self.callbacks += self.report_to
+        if self.nsys_profile_start > 0:
+            cb = 'torch_profiler' if self.profiler_type == 'torch' else 'nsys'
+            self.callbacks.append(cb)
         if self.save_total_limit is not None:
             if self.async_save:
                 raise ValueError('async_save is not supported with save_total_limit.')
