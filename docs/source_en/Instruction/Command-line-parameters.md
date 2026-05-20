@@ -752,7 +752,7 @@ The rollout parameters inherit from the [deployment parameters](#deployment-argu
 - max_turns: Maximum number of turns in multi-turn GRPO training. Default is `None`, meaning no limit.
 - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
 - vllm_max_lora_rank: LoRA parameter for the vLLM engine. Must be greater than or equal to the training lora_rank; it is recommended to set them equal. Defaults to 16.
-- vllm_enable_expert_parallel: Enable Expert Parallel (EP) for MoE models, distributing experts across ranks. Default is False.
+- vllm_enable_expert_parallel: Enable Expert Parallel (EP) for MoE models, distributing experts across ranks. Valid when vllm_use_async_engine is true. Default is False.
 
 ### Web-UI Arguments
 - server_name: Host for the web UI, default is '0.0.0.0'.
