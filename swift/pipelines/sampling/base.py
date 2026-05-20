@@ -4,7 +4,7 @@ from swift.arguments import SamplingArguments
 from swift.infer_engine import TransformersEngine
 from swift.rewards import orms, prms
 from swift.utils import get_logger
-from swift.utils.ray_utils import RayHelper
+from swift.ray_utils import RayHelper
 
 logger = get_logger()
 

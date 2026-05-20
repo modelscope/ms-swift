@@ -13,7 +13,7 @@ from swift.template import Template, get_template
 from swift.tuner_plugin import tuners_map
 from swift.utils import (Processor, check_json_format, get_dist_setting, get_logger, import_external_file, is_dist,
                          is_master, json_parse_to_dict, safe_snapshot_download, set_device, use_hf_hub)
-from swift.utils.ray_utils import RayArguments
+from swift.ray_utils import RayArguments
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments

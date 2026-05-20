@@ -6,7 +6,7 @@ from copy import deepcopy
 
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.utils import get_logger
-from swift.utils.ray_utils import RayHelper
+from swift.ray_utils import RayHelper
 from .base import Sampler
 from .utils import get_messages_md5, get_reward
 
