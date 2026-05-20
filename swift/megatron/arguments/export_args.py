@@ -15,6 +15,8 @@ class MegatronExportArguments(MegatronBaseArguments):
     to_mcore: bool = False
     to_hf: bool = False
     test_convert_precision: bool = False
+    padding_free: bool = False
+    attention_backend: str = 'unfused'
     test_convert_dtype: str = 'float32'
     exist_ok: bool = False
     merge_lora: Optional[bool] = None
@@ -59,11 +61,7 @@ class MegatronExportArguments(MegatronBaseArguments):
             'no_load_optim': True,
             'no_load_rng': True,
             'finetune': True,
-            'attention_backend': 'unfused',
-            'padding_free': False,
         }
-        if self.context_parallel_size > 1:
-            convert_kwargs.pop('attention_backend', None)
         for k, v in convert_kwargs.items():
             setattr(self, k, v)
         if self.model_info.is_moe_model:
