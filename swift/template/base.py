@@ -239,7 +239,7 @@ class Template(ProcessorMixin):
             if isinstance(token, str):
                 self.placeholder_tokens[i] = self.tokenizer.convert_tokens_to_ids(token)
         for mm_type in ['image', 'video', 'audio']:
-            mm_token_id = getattr(self.processor, f'{mm_type}_token_id')
+            mm_token_id = getattr(self.processor, f'{mm_type}_token_id', None)
             if mm_token_id is not None and mm_token_id not in self.placeholder_tokens:
                 self.placeholder_tokens.append(mm_token_id)
 
