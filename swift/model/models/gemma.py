@@ -266,7 +266,6 @@ def _patch_gemma4_forward(model, processor):
             llm_input_ids[multimodal_mask] = self.config.text_config.pad_token_id
             inputs_embeds = self.get_input_embeddings()(llm_input_ids)
 
-        per_layer_inputs = kwargs.pop('per_layer_inputs', None)
         if per_layer_inputs is None and self.config.get_text_config().hidden_size_per_layer_input:
             pad_embedding = self.language_model.embed_tokens.weight[self.config.text_config.pad_token_id, :]
             pad_embedding = pad_embedding.to(device=multimodal_mask.device)
