@@ -308,7 +308,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 model_type=model.model_meta.model_type,
                 use_async_engine=False,
                 tensor_parallel_size=self.vllm_tensor_parallel_size,
-                enable_expert_parallel=args.vllm_enable_expert_parallel,
                 gpu_memory_utilization=self.vllm_gpu_memory_utilization,
                 enable_prefix_caching=args.vllm_enable_prefix_caching,
                 max_num_seqs=max_num_seqs,
