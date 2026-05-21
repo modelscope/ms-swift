@@ -7,6 +7,7 @@ import unittest
 from modelscope import snapshot_download
 
 from swift.tuners import ResTuningConfig, Swift, SwiftModel
+from tests.tuners.utils import get_diffusers_unet_input, get_npu_or_cpu_device
 
 
 class TestSwiftResTuning(unittest.TestCase):
@@ -98,12 +99,11 @@ class TestSwiftResTuning(unittest.TestCase):
         model = UNet2DConditionModel.from_pretrained(model_dir, subfolder='unet')
         model.requires_grad_(False)
         model2 = copy.deepcopy(model)
+        device = get_npu_or_cpu_device()
+        model = model.to(device)
+        model2 = model2.to(device)
         self.set_random_seed()
-        input_data = {
-            'sample': torch.ones((1, 4, 64, 64)),
-            'timestep': 10,
-            'encoder_hidden_states': torch.ones((1, 77, 768))
-        }
+        input_data = get_diffusers_unet_input(device)
         result_origin = model(**input_data).sample
         print(f'test_swift_restuning_diffusers_sd result_origin shape: {result_origin.shape}, '
               f'result_origin sum: {torch.sum(result_origin)}')
@@ -119,7 +119,7 @@ class TestSwiftResTuning(unittest.TestCase):
             upsample_out_channels=[1280, 1280, 640, 320, None],
             zero_init_last=True)
 
-        model = Swift.prepare_model(model, config=restuning_config)
+        model = Swift.prepare_model(model, config=restuning_config).to(device)
         self.assertTrue(isinstance(model, SwiftModel))
         print(model.get_trainable_parameters())
 
@@ -127,7 +127,7 @@ class TestSwiftResTuning(unittest.TestCase):
         print(f'test_swift_restuning_diffusers_sd result shape: {result.shape}, result sum: {torch.sum(result)}')
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
-        model2 = Swift.from_pretrained(model2, self.tmp_dir)
+        model2 = Swift.from_pretrained(model2, self.tmp_dir).to(device)
         self.model_comparison(model, model2)
 
 
