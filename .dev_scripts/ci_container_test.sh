@@ -170,12 +170,11 @@ PY
 }
 
 if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
+    pip install uv -i https://mirrors.aliyun.com/pypi/simple/
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         setup_npu_pip_constraints
     fi
-
-    # pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-    pip install -r requirements/tests.txt -i https://mirrors.aliyun.com/pypi/simple/
+    uv pip install -r requirements/tests.txt
     git config --global --add safe.directory /ms-swift
     git config --global user.email tmp
     git config --global user.name tmp.com
@@ -198,27 +197,29 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
     fi
-    pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
+    uv pip install -r requirements/framework.txt -U "transformers<5.0" "peft<0.19" "modelscope==1.37.0"
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
     fi
-    pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
-    pip uninstall autoawq -y
-    pip install optimum
-    pip install diffusers
+    uv pip install decord einops -U
+    uv pip uninstall autoawq
+    uv pip install optimum
+    uv pip install diffusers
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
-        pip install math-verify -i "$NPU_PIP_INDEX"
+        uv pip install math-verify -i "$NPU_PIP_INDEX"
     fi
-    pip install "transformers<5.0" "peft<0.19"
     # pip install autoawq -U --no-deps
 
     # test with install
-    pip install .
+    uv pip install .
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
-        pip install bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
+        uv pip install bitsandbytes deepspeed -U
     else
-        pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
+        uv pip install auto_gptq bitsandbytes deepspeed -U
+    fi
+    if [ -f requirements/npu.txt ]; then
+        uv pip install -r requirements/npu.txt
     fi
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
@@ -226,6 +227,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     fi
 else
     echo "Running case in release image, run case directly!"
+    pip install -e .
 fi
 # remove torch_extensions folder to avoid ci hang.
 rm -rf ~/.cache/torch_extensions

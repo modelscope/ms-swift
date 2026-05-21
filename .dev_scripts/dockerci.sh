@@ -49,6 +49,13 @@ do
               -e MODEL_TAG_URL=$MODEL_TAG_URL \
               -e MODELSCOPE_API_TOKEN=$MODELSCOPE_API_TOKEN \
 	            -e PR_CHANGED_FILES=$PR_CHANGED_FILES \
+              -e UV_INDEX_URL=${UV_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/} \
+              -e UV_EXTRA_INDEX_URL=$UV_EXTRA_INDEX_URL \
+              -e UV_INDEX_STRATEGY=$UV_INDEX_STRATEGY \
+              -e UV_NO_CACHE=$UV_NO_CACHE \
+              -e UV_INSECURE_HOST=$UV_INSECURE_HOST \
+              -e UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-120} \
+              -e UV_SYSTEM_PYTHON=${UV_SYSTEM_PYTHON:-1} \
               --workdir=$CODE_DIR_IN_CONTAINER \
               ${IMAGE_NAME}:${IMAGE_VERSION} \
               $CI_COMMAND
@@ -73,6 +80,13 @@ do
               -e MODEL_TAG_URL=$MODEL_TAG_URL \
               -e MODELSCOPE_API_TOKEN=$MODELSCOPE_API_TOKEN \
 	            -e PR_CHANGED_FILES=$PR_CHANGED_FILES \
+              -e UV_INDEX_URL=${UV_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/} \
+              -e UV_EXTRA_INDEX_URL=$UV_EXTRA_INDEX_URL \
+              -e UV_INDEX_STRATEGY=$UV_INDEX_STRATEGY \
+              -e UV_NO_CACHE=$UV_NO_CACHE \
+              -e UV_INSECURE_HOST=$UV_INSECURE_HOST \
+              -e UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-120} \
+              -e UV_SYSTEM_PYTHON=${UV_SYSTEM_PYTHON:-1} \
               --workdir=$CODE_DIR_IN_CONTAINER \
               ${IMAGE_NAME}:${IMAGE_VERSION} \
               $CI_COMMAND
