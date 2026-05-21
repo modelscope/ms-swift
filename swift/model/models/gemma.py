@@ -368,7 +368,6 @@ def _patch_gemma4_forward(model, processor):
                     mm_token_type_ids=mm_token_type_ids,
                 )
             else:
-                from transformers.models.gemma4.modeling_gemma4 import get_block_sequence_ids_for_mask
                 mask_kwargs = {
                     'config': self.config,
                     'inputs_embeds': inputs_embeds,
@@ -377,6 +376,7 @@ def _patch_gemma4_forward(model, processor):
                     'position_ids': position_ids,
                 }
                 if bi_vision_attn:
+                    from transformers.models.gemma4.modeling_gemma4 import get_block_sequence_ids_for_mask
                     block_sequence_ids = torch.full([*inputs_embeds.size()[:-1]], -1, device=inputs_embeds.device)
                     if mm_token_type_ids is not None:
                         block_sequence_ids = get_block_sequence_ids_for_mask(mm_token_type_ids)
