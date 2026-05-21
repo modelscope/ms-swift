@@ -369,6 +369,7 @@ def _patch_gemma4_forward(model, processor):
                     mm_token_type_ids=mm_token_type_ids,
                 )
             else:
+                from transformers.models.gemma4.modeling_gemma4 import get_block_sequence_ids_for_mask
                 mask_kwargs = {
                     'config': self.config,
                     'inputs_embeds': inputs_embeds,
