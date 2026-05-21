@@ -349,7 +349,7 @@ class RowPreprocessor:
         with self._patch_arrow_writer(), safe_ddp_context(None, True):
             if isinstance(dataset, HfDataset) and not dataset.cache_files:
                 map_kwargs['cache_file_name'] = os.path.join(get_cache_dir(), 'datasets', 'map_cache',
-                                                                f'{dataset._fingerprint}.arrow')
+                                                             f'{dataset._fingerprint}.arrow')
             dataset_mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={
