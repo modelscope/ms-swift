@@ -55,6 +55,8 @@ def parse_yaml_args(argv):
         for k, v in env.items():
             if k not in os.environ:
                 os.environ[k] = str(v)
+            elif str(v) != os.environ[k]:
+                logger.warning(f'{k} is already set in environment, using `{os.environ[k]}` instead of `{v}`')
     config_argv = []
     for k, v in config.items():
         config_argv.append(f'--{k}')
