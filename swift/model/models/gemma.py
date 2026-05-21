@@ -1,6 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 import torch.distributed as dist
+import transformers
+from packaging import version
 from PIL import Image
 from transformers import PreTrainedModel
 from types import MethodType
@@ -12,6 +14,8 @@ from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_output_to_input_device
 from ..register import ModelLoader, SentenceTransformersLoader, register_model
+
+transformers_5_9 = version.parse(transformers.__version__) >= version.parse('5.9')
 
 
 class PaligemmaVisionLoader(ModelLoader):
@@ -205,8 +209,8 @@ register_model(
 
 
 def _patch_gemma4_forward(model, processor):
-    from transformers.models.gemma4.modeling_gemma4 import (Gemma4ModelOutputWithPast, create_causal_mask_mapping,
-                                                            create_masks_for_generate, torch_compilable_check)
+    from transformers.models.gemma4.modeling_gemma4 import (Gemma4ModelOutputWithPast, create_masks_for_generate,
+                                                            torch_compilable_check)
     if hasattr(model, 'origin_forward'):
         return
 
@@ -236,6 +240,7 @@ def _patch_gemma4_forward(model, processor):
         use_cache: bool | None = None,
         image_position_ids: torch.LongTensor | None = None,
         video_position_ids: torch.LongTensor | None = None,
+        per_layer_inputs: torch.Tensor | None = None,
         **kwargs,
     ) -> Gemma4ModelOutputWithPast:
         r"""
@@ -261,7 +266,8 @@ def _patch_gemma4_forward(model, processor):
             llm_input_ids[multimodal_mask] = self.config.text_config.pad_token_id
             inputs_embeds = self.get_input_embeddings()(llm_input_ids)
 
-        if self.config.get_text_config().hidden_size_per_layer_input:
+        per_layer_inputs = kwargs.pop('per_layer_inputs', None)
+        if per_layer_inputs is None and self.config.get_text_config().hidden_size_per_layer_input:
             pad_embedding = self.language_model.embed_tokens.weight[self.config.text_config.pad_token_id, :]
             pad_embedding = pad_embedding.to(device=multimodal_mask.device)
             llm_inputs_embeds = torch.where(multimodal_mask[..., None], pad_embedding.view(1, 1, -1), inputs_embeds)
@@ -348,8 +354,11 @@ def _patch_gemma4_forward(model, processor):
             position_ids = torch.arange(inputs_embeds.shape[1], device=inputs_embeds.device) + past_seen_tokens
             position_ids = position_ids.unsqueeze(0)
 
+        bi_vision_attn = self.config.get_text_config().use_bidirectional_attention == 'vision'
         if not isinstance(causal_mask_mapping := attention_mask, dict):
-            if self.config.get_text_config().use_bidirectional_attention == 'vision':
+            if bi_vision_attn and not transformers_5_9:
+                from transformers.models.gemma4.modeling_gemma4 import create_causal_mask_mapping
+
                 # Larger Gemma 4 models use Gemma 3's bidirectional attention mask for vision inputs
                 causal_mask_mapping = create_causal_mask_mapping(
                     self.config,
@@ -360,14 +369,21 @@ def _patch_gemma4_forward(model, processor):
                     mm_token_type_ids=mm_token_type_ids,
                 )
             else:
-                # Smaller Gemma models use a conventional casual attention mask
-                causal_mask_mapping = create_masks_for_generate(
-                    self.config,
-                    inputs_embeds,
-                    attention_mask,
-                    past_key_values,
-                    position_ids,
-                )
+                mask_kwargs = {
+                    'config': self.config,
+                    'inputs_embeds': inputs_embeds,
+                    'attention_mask': attention_mask,
+                    'past_key_values': past_key_values,
+                    'position_ids': position_ids,
+                }
+                if bi_vision_attn:
+                    block_sequence_ids = torch.full([*inputs_embeds.size()[:-1]], -1, device=inputs_embeds.device)
+                    if mm_token_type_ids is not None:
+                        block_sequence_ids = get_block_sequence_ids_for_mask(mm_token_type_ids)
+
+                    mask_kwargs['block_sequence_ids'] = block_sequence_ids
+
+                causal_mask_mapping = create_masks_for_generate(**mask_kwargs)
         kwargs.pop('return_dict', None)
         outputs = self.language_model(
             per_layer_inputs=per_layer_inputs,
