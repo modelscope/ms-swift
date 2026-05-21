@@ -18,7 +18,7 @@ class DeepseekLoader(ModelLoader):
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         model = super().get_model(model_dir, *args, **kwargs)
         # fix dtype bug
-        mlp_cls = model.model.layers[1].mlp.__class__
+        mlp_cls = model.model.layers[-1].mlp.__class__
 
         for module in model.modules():
             if isinstance(module, mlp_cls):
