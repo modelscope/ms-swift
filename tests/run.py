@@ -24,6 +24,10 @@ from swift.utils import get_logger
 logger = get_logger()
 
 
+def deduplicate_preserve_order(items):
+    return list(dict.fromkeys(items))
+
+
 def test_cases_result_to_df(result_list):
     table_header = ['Name', 'Result', 'Info', 'Start time', 'Stop time', 'Time cost(seconds)']
     df = pandas.DataFrame(result_list, columns=table_header).sort_values(by=['Start time'], ascending=True)
@@ -76,7 +80,7 @@ def statistics_test_result(df):
 
 def gather_test_suites_in_files(test_dir, case_file_list, list_tests):
     test_suite = unittest.TestSuite()
-    for case in case_file_list:
+    for case in deduplicate_preserve_order(case_file_list):
         test_case = unittest.defaultTestLoader.discover(start_dir=test_dir, pattern=case)
         test_suite.addTest(test_case)
         if hasattr(test_case, '__iter__'):
@@ -96,7 +100,7 @@ def gather_test_suites_files(test_dir, pattern):
             if fnmatch(file, pattern):
                 case_file_list.append(file)
 
-    return case_file_list
+    return deduplicate_preserve_order(case_file_list)
 
 
 def collect_test_results(case_results):
@@ -356,6 +360,7 @@ def run_in_subprocess(args):
             test_suite_files = gather_test_suites_files(os.path.abspath(args.test_dir), args.pattern)
     else:
         test_suite_files = gather_test_suites_files(os.path.abspath(args.test_dir), args.pattern)
+    test_suite_files = deduplicate_preserve_order(test_suite_files)
 
     non_parallelizable_suites = []
     test_suite_files = [x for x in test_suite_files if x not in non_parallelizable_suites]
@@ -454,11 +459,7 @@ class TimeCostTextTestRunner(unittest.runner.TextTestRunner):
 
 
 def gather_test_cases(test_dir, pattern, list_tests):
-    case_list = []
-    for dirpath, dirnames, filenames in os.walk(test_dir):
-        for file in filenames:
-            if fnmatch(file, pattern):
-                case_list.append(file)
+    case_list = gather_test_suites_files(test_dir, pattern)
 
     test_suite = unittest.TestSuite()
 
