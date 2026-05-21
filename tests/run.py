@@ -313,6 +313,8 @@ def run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, result_di
 
 
 def run_non_parallelizable_test_suites(suites, result_dir):
+    if len(suites) == 0:
+        return
     cmd = ['python', 'tests/run.py', '--result_dir', result_dir, '--suites']
     for suite in suites:
         cmd.append(suite)
