@@ -27,8 +27,9 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar
 
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
-from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_torch_device,
-                         is_swanlab_available, is_vllm_available, is_wandb_available, synchronize, to_device)
+from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
+                         get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, synchronize,
+                         to_device)
 
 if is_wandb_available():
     import wandb
@@ -1671,7 +1672,6 @@ def build_completion_mask_and_seq_lengths(
         if 'cu_seq_lens_q' in encoded_batch:
             cu = encoded_batch['cu_seq_lens_q']
         else:
-            from swift.utils import get_packed_seq_params
             cu = get_packed_seq_params(encoded_batch['position_ids'])['cu_seq_lens_q']
         seq_lengths = cu[1:] - cu[:-1]
         max_seq_len = int(seq_lengths.max().item())
