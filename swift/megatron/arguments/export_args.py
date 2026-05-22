@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from swift.utils import HfConfigFactory, get_logger, to_abspath
 from .megatron_args import MegatronArguments
@@ -18,6 +18,8 @@ class MegatronExportArguments(MegatronBaseArguments):
     padding_free: bool = False
     attention_backend: str = 'unfused'
     test_convert_dtype: str = 'float32'
+    recompute_granularity: Literal['selective', 'full', 'none'] = 'none'
+
     exist_ok: bool = False
     merge_lora: Optional[bool] = None
 
