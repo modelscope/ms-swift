@@ -1008,9 +1008,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 'input_ids': inputs['input_ids'],
                 'attention_mask': inputs['attention_mask'],
             }
-            return self._forward_redirection(
-                model, unwrapped_model, lambda *_, **__: self.compute_liger_loss(unwrapped_model, inputs),
-                **forward_kwargs)
+            return self._forward_redirection(model, unwrapped_model,
+                                             lambda *_, **__: self.compute_liger_loss(unwrapped_model, inputs),
+                                             **forward_kwargs)
         else:
             return self._compute_loss(model, inputs)
 
