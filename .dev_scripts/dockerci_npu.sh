@@ -3,7 +3,7 @@ MODELSCOPE_CACHE_DIR=/modelscope_cache
 CODE_DIR=$PWD
 MODELSCOPE_SDK_DEBUG=True
 echo "$USER"
-gpus='0,1 2,3'
+npus='0,1 2,3'
 is_get_file_lock=false
 CI_COMMAND=${CI_COMMAND:-bash .dev_scripts/ci_container_test.sh python tests/run.py --parallel 2 --run_config tests/run_config.yaml}
 echo "ci command: $CI_COMMAND"
@@ -12,16 +12,17 @@ echo "PR modified files: $PR_CHANGED_FILES"
 PR_CHANGED_FILES=${PR_CHANGED_FILES//[ ]/#}
 echo "PR_CHANGED_FILES: $PR_CHANGED_FILES"
 idx=0
-for gpu in $gpus
+for npu in $npus
 do
-  exec {lock_fd}>"/tmp/gpu$gpu" || exit 1
-  flock -n "$lock_fd" || { echo "WARN: gpu $gpu is in use!" >&2; idx=$((idx+1)); continue; }
-  echo "get gpu lock $gpu"
+  exec {lock_fd}>"/tmp/npu$npu" || exit 1
+  flock -n "$lock_fd" || { echo "WARN: npu $npu is in use!" >&2; idx=$((idx+1)); continue; }
+  echo "get npu lock $npu"
 
   let is_get_file_lock=true
 
   # 设置环境变量
   export CI_TEST=True
+  export SWIFT_CI_USE_NPU=True
   export TEST_LEVEL=$TEST_LEVEL
   export MODELSCOPE_CACHE=${MODELSCOPE_CACHE:-$MODELSCOPE_CACHE_DIR}
   export MODELSCOPE_DOMAIN=$MODELSCOPE_DOMAIN
@@ -33,7 +34,7 @@ do
   export MODEL_TAG_URL=$MODEL_TAG_URL
   export MODELSCOPE_API_TOKEN=$MODELSCOPE_API_TOKEN
   export PR_CHANGED_FILES=$PR_CHANGED_FILES
-  export CUDA_VISIBLE_DEVICES=$gpu
+  export ASCEND_RT_VISIBLE_DEVICES=$npu
 
   if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     export MODELSCOPE_SDK_DEBUG=True
@@ -52,6 +53,6 @@ do
 done
 
 if [ "$is_get_file_lock" = false ] ; then
-    echo 'No free GPU!'
+    echo 'No free NPU!'
     exit 1
 fi
