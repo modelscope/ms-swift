@@ -616,30 +616,49 @@ def profiling_decorator(func):
     return wrapper
 
 
-@contextmanager
-def gather_lm_head_for_liger(trainer, unwrapped_model):
-    """Gather sharded lm_head weight/bias so Liger's fused Triton kernel can access them.
-
-    Only handles ZeRO-3 explicitly — the inner `unwrapped_model.model.forward` triggers
-    DeepSpeed's per-submodule pre-forward hooks for everything else.
-
-    Note: FSDP2 is NOT supported. Manually unsharding the wrapper here does not register the
-    matching pre-backward hook, so backward will hit DTensor state errors. Routing through the
-    FSDP-wrapped forward is required, which is out of scope for this helper.
+class _ForwardRedirection:
+    """Implements the `forward-redirection`.
+    Taken from Pytorch-lightning:
+    https://github.com/Lightning-AI/pytorch-lightning/blob/02311d03fb982560246eead7c08104481fac9579/src/lightning/pytorch/strategies/strategy.py#L602
+    A method call to a wrapped module gets rerouted through the wrapper's `forward` method instead.
     """
-    deepspeed_plugin = getattr(trainer.accelerator.state, 'deepspeed_plugin', None)
-    is_zero3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
 
-    if is_zero3:
-        import deepspeed
-        lm_head = unwrapped_model.lm_head
-        params = [lm_head.weight]
-        if lm_head.bias is not None:
-            params.append(lm_head.bias)
-        with deepspeed.zero.GatheredParameters(params, modifier_rank=None):
-            yield
-    else:
-        yield
+    def __call__(self, wrapper_module: nn.Module, original_module: nn.Module, method: callable, *args: Any,
+                 **kwargs: Any):
+        """Reroutes a method call through the `wrapper_module`'s `forward` method.
+        Args:
+            wrapper_module: The module that has `original_module` wrapped.
+            original_module: The module that was wrapped inside `wrapper_module`.
+            method_name: The name of the method that should be called on the `original_module` after inputs get
+                redirected through the `wrapper_module`'s `forward` method.
+            *args: The positional arguments to the method `method_name`. They will get passed to a patched
+                `forward` method instead.
+            **kwargs: The keyword arguments to the method `method_name`. They will get passed to a patched
+                `forward` method instead.
+        """
+        original_forward = original_module.forward
+
+        def wrapped_forward(*_args: Any, **_kwargs: Any) -> Any:
+            # Unpatch ourselves immediately before calling the method `method_name`
+            # because itself may want to call the real `forward`
+            original_module.forward = original_forward  # type: ignore[method-assign]
+            # Call the actual method e.g. `.training_step(...)`
+            out = method(*_args, **_kwargs)
+            self.on_after_inner_forward(wrapper_module, original_module)
+            return out
+
+        # Patch the original_module's forward so we can redirect the arguments back to the real method
+        original_module.forward = wrapped_forward  # type: ignore[method-assign]
+
+        wrapper_output = wrapper_module(*args, **kwargs)
+        self.on_after_outer_forward(wrapper_module, original_module)
+        return wrapper_output
+
+    def on_after_inner_forward(self, wrapper_module: nn.Module, original_module: nn.Module) -> None:
+        pass
+
+    def on_after_outer_forward(self, wrapper_module: nn.Module, original_module: nn.Module) -> None:
+        pass
 
 
 def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
@@ -1763,6 +1782,7 @@ def make_reward_weights(
 
 def detect_async_reward_indices(reward_funcs: list) -> List[int]:
     import asyncio
+    import torch.nn as nn
     indices = []
     for i, func in enumerate(reward_funcs):
         if not isinstance(func, nn.Module):
