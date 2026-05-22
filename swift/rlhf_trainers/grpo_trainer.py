@@ -60,7 +60,7 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
                          start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
-from .utils import (compute_chord_loss, gather_lm_head_for_liger, get_even_process_data, identity_data_collator,
+from .utils import (compute_chord_loss, gather_for_liger_loss, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
                     profiling_context, profiling_decorator, replace_assistant_response_with_ids)
 
@@ -1001,7 +1001,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = inputs[0]
         if self.use_liger_loss:
             unwrapped_model = self.accelerator.unwrap_model(model)
-            return self.compute_liger_loss(unwrapped_model, inputs)
+            return self.compute_liger_loss(model, unwrapped_model, inputs)
         else:
             return self._compute_loss(model, inputs)
 
@@ -1874,7 +1874,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         rollout_is_weights = self._apply_rollout_importance_sampling(rollout_log_ratio, completion_mask)
         return rollout_log_ratio, rollout_is_weights
 
-    def compute_liger_loss(self, unwrapped_model, inputs):
+    def compute_liger_loss(self, model, unwrapped_model, inputs):
         assert not self.template.padding_free
         assert self.advantage_estimator == 'grpo'
         input_ids = inputs['input_ids']
@@ -1882,21 +1882,20 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         completion_ids = input_ids[:, -logits_to_keep:]
         completion_mask = inputs['completion_mask']
 
-        last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
+        with gather_for_liger_loss(self, model, unwrapped_model):
+            last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
 
-        old_per_token_logps = inputs.get('old_per_token_logps')
-        local_has = inputs.get('rollout_per_token_logps') is not None
-        vllm_is_ratio = None
-        if all(gather_object([local_has])):
-            rollout_per_token_logps = inputs['rollout_per_token_logps']
-            _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, rollout_per_token_logps,
-                                                               completion_mask)
+            old_per_token_logps = inputs.get('old_per_token_logps')
+            local_has = inputs.get('rollout_per_token_logps') is not None
+            vllm_is_ratio = None
+            if all(gather_object([local_has])):
+                rollout_per_token_logps = inputs['rollout_per_token_logps']
+                _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, rollout_per_token_logps,
+                                                                   completion_mask)
 
-        with gather_lm_head_for_liger(self, unwrapped_model):
             lm_head = unwrapped_model.lm_head
             lin_weight = lm_head.weight
             bias = lm_head.bias
-            # FSDP2 keeps the parameter as a DTensor — Triton kernels can't dispatch on it, so materialize.
             if hasattr(lin_weight, 'full_tensor'):
                 lin_weight = lin_weight.full_tensor()
             if bias is not None and hasattr(bias, 'full_tensor'):
