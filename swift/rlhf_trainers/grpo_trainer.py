@@ -60,7 +60,7 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
                          start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
-from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
+from .utils import (compute_chord_loss, gather_lm_head_for_liger, get_even_process_data, identity_data_collator,
                     load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
                     profiling_context, profiling_decorator, replace_assistant_response_with_ids)
 
@@ -1001,7 +1001,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = inputs[0]
         if self.use_liger_loss:
             unwrapped_model = self.accelerator.unwrap_model(model)
-            return self._forward_redirection(model, unwrapped_model, self.compute_liger_loss, unwrapped_model, inputs)
+            return self.compute_liger_loss(unwrapped_model, inputs)
         else:
             return self._compute_loss(model, inputs)
 
@@ -1892,17 +1892,26 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, rollout_per_token_logps,
                                                                completion_mask)
 
-        loss, metrics = self.liger_grpo_loss(
-            _input=last_hidden_state,
-            lin_weight=unwrapped_model.lm_head.weight,
-            selected_token_ids=completion_ids,
-            attention_mask=completion_mask,
-            advantages=inputs['advantages'],
-            bias=unwrapped_model.lm_head.bias,
-            old_per_token_logps=old_per_token_logps,
-            ref_per_token_logps=inputs.get('ref_per_token_logps'),
-            vllm_is_ratio=vllm_is_ratio,
-        )
+        with gather_lm_head_for_liger(self, unwrapped_model):
+            lm_head = unwrapped_model.lm_head
+            lin_weight = lm_head.weight
+            bias = lm_head.bias
+            # FSDP2 keeps the parameter as a DTensor — Triton kernels can't dispatch on it, so materialize.
+            if hasattr(lin_weight, 'full_tensor'):
+                lin_weight = lin_weight.full_tensor()
+            if bias is not None and hasattr(bias, 'full_tensor'):
+                bias = bias.full_tensor()
+            loss, metrics = self.liger_grpo_loss(
+                _input=last_hidden_state,
+                lin_weight=lin_weight,
+                selected_token_ids=completion_ids,
+                attention_mask=completion_mask,
+                advantages=inputs['advantages'],
+                bias=bias,
+                old_per_token_logps=old_per_token_logps,
+                ref_per_token_logps=inputs.get('ref_per_token_logps'),
+                vllm_is_ratio=vllm_is_ratio,
+            )
 
         mean_kl = metrics[0] if self.beta != 0.0 else None
         clip_ratio = metrics[-1]
@@ -2193,7 +2202,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 sapo_temperature_pos=self.tau_pos,
                 sapo_temperature_neg=self.tau_neg,
             )
-            self._forward_redirection = _ForwardRedirection()
 
     def _prepare_metrics(self):
         args = self.args
