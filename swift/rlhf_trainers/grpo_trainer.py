@@ -1001,7 +1001,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs = inputs[0]
         if self.use_liger_loss:
             unwrapped_model = self.accelerator.unwrap_model(model)
-            return self._forward_redirection(model, unwrapped_model, self.compute_liger_loss, unwrapped_model, inputs)
+            forward_kwargs = self._prepare_model_inputs(inputs)
+            return self._forward_redirection(model, unwrapped_model,
+                                             lambda *_, **__: self.compute_liger_loss(unwrapped_model, inputs),
+                                             **forward_kwargs)
         else:
             return self._compute_loss(model, inputs)
 
