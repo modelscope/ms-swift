@@ -617,22 +617,18 @@ def profiling_decorator(func):
 
 
 @contextmanager
-def gather_for_liger_loss(trainer, model, unwrapped_model):
-    """Make sharded params accessible for Liger's fused linear+loss kernel.
+def gather_lm_head_for_liger(trainer, unwrapped_model):
+    """Gather sharded lm_head weight/bias so Liger's fused Triton kernel can access them.
 
-    Liger's path is `unwrapped_model.model(...)` to get hidden states, then a direct read of
-    `unwrapped_model.lm_head.{weight,bias}` fed into a Triton kernel — both steps need the params
-    materialized while we're outside the wrapped model's own forward.
+    Only handles ZeRO-3 explicitly — the inner `unwrapped_model.model.forward` triggers
+    DeepSpeed's per-submodule pre-forward hooks for everything else.
 
-    - ZeRO-3: explicitly gather lm_head (the inner `model.forward` will trigger DeepSpeed's
-      per-submodule pre-forward hooks for everything else).
-    - FSDP2: unshard the top-level FSDPModule so the params it owns (embed_tokens, norm, lm_head)
-      become full tensors. Per-layer FSDPModules continue to handle their own unshard/reshard
-      during the inner forward.
+    Note: FSDP2 is NOT supported. Manually unsharding the wrapper here does not register the
+    matching pre-backward hook, so backward will hit DTensor state errors. Routing through the
+    FSDP-wrapped forward is required, which is out of scope for this helper.
     """
     deepspeed_plugin = getattr(trainer.accelerator.state, 'deepspeed_plugin', None)
     is_zero3 = deepspeed_plugin is not None and deepspeed_plugin.zero_stage == 3
-    is_fsdp2 = getattr(trainer.accelerator, 'is_fsdp2', False)
 
     if is_zero3:
         import deepspeed
@@ -642,19 +638,8 @@ def gather_for_liger_loss(trainer, model, unwrapped_model):
             params.append(lm_head.bias)
         with deepspeed.zero.GatheredParameters(params, modifier_rank=None):
             yield
-        return
-
-    if is_fsdp2:
-        from torch.distributed.fsdp import FSDPModule
-        if isinstance(model, FSDPModule):
-            model.unshard()
-            try:
-                yield
-            finally:
-                model.reshard()
-            return
-
-    yield
+    else:
+        yield
 
 
 def entropy_from_logits(logits, chunk_size: int = 1) -> torch.Tensor:
