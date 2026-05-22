@@ -19,6 +19,10 @@ from swift.utils import remove_response
 from .multi_turn import MultiTurnScheduler
 
 RolloutFn = Callable[[List[RolloutInferRequest], RequestConfig], List[RolloutOutput]]
+# gather_fn is expected to follow accelerate's `gather_object` convention:
+# each rank passes a list (its contribution), and the return value is the
+# concatenated flat list across all ranks. Passing a scalar would crash
+# accelerate's implementation (it iterates each rank's contribution).
 GatherFn = Callable[[List[bool]], List[bool]]
 
 
