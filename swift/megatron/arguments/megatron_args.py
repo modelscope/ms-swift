@@ -341,8 +341,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('async_generate is not supported for Megatron GRPO right now')
             if self.sync_ref_model:
                 raise ValueError('sync_ref_model is not supported for Megatron GRPO right now')
-            if self.multi_turn_scheduler:
-                raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 
@@ -384,6 +382,10 @@ class RLHFMegatronArgumentsMixin:
                 logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
         if not self.use_ray:
             assert self.use_vllm, 'use_vllm must be True for Megatron GRPO'
+
+        # Mirror deploy_args: gym_env implies use_gym_env unless the user said otherwise.
+        if self.use_gym_env is None and self.gym_env is not None:
+            self.use_gym_env = True
 
 
 @dataclass

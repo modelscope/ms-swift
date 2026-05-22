@@ -160,8 +160,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # GRPO-specific initialization
         self.async_generate = self.args.async_generate  # TODO
-        self.use_gym_env = False
-        self.enable_server_multi_turn = False  # TODO
+        self.use_gym_env = self._resolve_use_gym_env()
         self._buffered_inputs = None
 
         # Rollout importance sampling requires vLLM >= 0.10.2
@@ -170,6 +169,30 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
                              'please update vLLM to 0.10.2 or later.')
 
+    def _resolve_use_gym_env(self) -> bool:
+        """Resolve `use_gym_env` for the trainer, mirroring the HF rollout_mixin logic.
+
+        Priority:
+          1. Explicit `args.use_gym_env` (works for both server and colocate).
+          2. In server mode, auto-detect from the connected vLLM rollout server.
+          3. Default to False.
+        """
+        args = self.args
+        explicit = getattr(args, 'use_gym_env', None)
+        if explicit is not None:
+            return bool(explicit)
+
+        if not getattr(self, 'use_vllm', False) or self.vllm_mode != 'server':
+            return False
+
+        # super()._init_rollout_engine() has already called vllm_client.get_engine_type()
+        # on the main rank, so vllm_client.use_gym_env is populated there.
+        if self.is_main_process:
+            value = [bool(getattr(self.vllm_client, 'use_gym_env', False))]
+        else:
+            value = [False]
+        return broadcast_object_list(value, from_process=self.world_size - 1)[0]
+
     def _prepare_rewards(self):
         args = self.args
         reward_funcs_cfg = args.reward_funcs.copy()
@@ -177,11 +200,19 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             reward_funcs_cfg = [reward_funcs_cfg]
 
         self.reward_funcs, self.reward_func_names = resolve_reward_funcs(reward_funcs_cfg, args=self.args)
-        self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_funcs), self.device)
+
+        # use_gym_env: gym total_reward is appended as an extra reward column so it can
+        # blend with reward_funcs via reward_weights. When reward_funcs is empty, it becomes
+        # the single reward source.
+        if self.use_gym_env:
+            self.reward_func_names.append('gym_reward')
+
+        self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_func_names), self.device)
 
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
-        assert self.reward_funcs, 'reward_funcs is not set'
+        assert self.reward_funcs or self.use_gym_env, \
+            'reward_funcs is not set (or pass --use_gym_env true to use the env-provided total_reward)'
 
         self._async_reward_func_indices = detect_async_reward_indices(self.reward_funcs)
 
@@ -202,7 +233,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if args.multi_turn_scheduler:
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
-                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](max_turns=args.max_turns)
+                scheduler_kwargs = {'max_turns': args.max_turns}
+                gym_env = getattr(args, 'gym_env', None)
+                if gym_env is not None:
+                    scheduler_kwargs['gym_env'] = gym_env
+                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](**scheduler_kwargs)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
             else:
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
@@ -655,10 +690,19 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Returns:
             rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with local reward values
         """
-        # Compute rewards using reward functions
-        local_rewards_per_func = self._compute_rewards_per_func(inputs)
+        # Gym path: pull `total_reward` from the multi-turn scheduler's rollout_infos and
+        # append it as an extra column so reward_weights can blend it with reward_funcs.
+        if self.use_gym_env:
+            gym_reward = torch.tensor([inp['rollout_infos']['total_reward'] for inp in inputs],
+                                      dtype=torch.float32,
+                                      device=self.device).unsqueeze(1)
+            if not self.reward_funcs:
+                return gym_reward
+            local_rewards_per_func = self._compute_rewards_per_func(inputs)
+            return torch.cat([local_rewards_per_func, gym_reward], dim=1)
 
-        return local_rewards_per_func
+        # Compute rewards using reward functions
+        return self._compute_rewards_per_func(inputs)
 
     def _compute_rewards_per_func(self, batch: DataType) -> torch.Tensor:
         """Compute rewards using all reward functions"""

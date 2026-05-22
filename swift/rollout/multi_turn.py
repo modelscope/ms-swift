@@ -10,7 +10,7 @@ from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionR
                                          RolloutInferRequest, RolloutOutput)
 from swift.template import Messages
 from swift.utils import remove_response
-from .gym_env import ContextManager, Env, context_managers, envs
+from .gym_env import Env, envs
 
 
 class RolloutScheduler(ABC):
@@ -680,7 +680,6 @@ class GYMScheduler(RolloutScheduler):
     def __init__(self, infer_engine: GRPOVllmEngine, max_turns: Optional[int] = None, **kwargs):
         super().__init__(infer_engine, max_turns, **kwargs)
         self.gym_env_name = kwargs.get('gym_env', None)
-        self.context_manager_name = kwargs.get('context_manager', None)
 
     async def _create_env(self, env_config: Dict) -> Env:
         """Create environment instance from configuration."""
@@ -688,18 +687,6 @@ class GYMScheduler(RolloutScheduler):
         if env_name not in envs:
             raise ValueError(f"Environment '{env_name}' not found. Available: {list(envs.keys())}")
         return envs[env_name](env_config)
-
-    async def _create_context_manager(self, ctx_config: Dict) -> ContextManager:
-        """Create context manager from configuration."""
-        ctx_name = ctx_config.get('name', self.context_manager_name)
-
-        if not ctx_name:
-            ctx_name = 'dummyContextManager'
-
-        if ctx_name not in context_managers:
-            raise ValueError(f"Context manager '{ctx_name}' not found. Available: {list(context_managers.keys())}")
-
-        return context_managers[ctx_name](ctx_config)
 
     async def _close_env_async(self, env: Env):
         """Safely close environment with async support."""
@@ -720,20 +707,15 @@ class GYMScheduler(RolloutScheduler):
                   **kwargs) -> 'RolloutOutput':
         """
         Execute the gym environment-based rollout:
-        1. Initialize environment and context manager
+        1. Initialize environment
         2. Run multi-turn interactions between LLM and environment
         3. Collect trajectory information and rewards
         """
-        # Extract configurations from request
         env_config = infer_request.data_dict.get('env_config', {})
-        ctx_config = infer_request.data_dict.get('ctx_config', {})
 
-        # Create environment and context manager
         env = None
-        context_manager = None
         try:
             env = await self._create_env(env_config)
-            context_manager = await self._create_context_manager(ctx_config)
 
             # Initialize environment
             observation, info, system_message = await env.reset(infer_request)
@@ -753,8 +735,6 @@ class GYMScheduler(RolloutScheduler):
             trajectory_info = [info]
 
             while not done and current_turn <= (self.max_turns or float('inf')):
-                # Apply context management (e.g., history compression)
-                messages = context_manager.manage_context(messages, trajectory_id)
                 current_request.messages = messages
                 remove_response(current_request.messages)
 

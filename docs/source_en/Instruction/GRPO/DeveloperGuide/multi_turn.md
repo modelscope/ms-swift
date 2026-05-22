@@ -148,7 +148,13 @@ AsyncEngine reduces compute bubbles in multi-turn inference:
 
 Use the `use_async_engine` argument in the `rollout` command to specify the engine type (async is the default).
 
-> Note: The async engine and the custom multi-turn interaction logic below are currently only supported in server mode. For multi-turn interaction logic in colocate mode, please refer to the _colocate_multi_turn_infer method in RolloutTrainerMixin.
+> Note: The async engine is only available in server mode.
+
+### GYM environment training
+
+If your multi-turn task can be modeled as a standard environment (`reset` / `step` / reward produced by the env directly), use the built-in `gym_scheduler` and implement an `Env` subclass to describe the task — you do not need to write a `MultiTurnScheduler` yourself.
+
+See the [GYM environment training doc](./gym_env.md) for the full interface, the steps to define a custom env, and a minimal end-to-end example with no external dependencies (FrozenLake — runs out of the box on Megatron in colocate mode).
 
 ## Advanced topics
 
@@ -159,6 +165,8 @@ This assumes the model’s history is not modified during interaction.
 
 In some scenarios you may need to dynamically change the history during rollout (e.g., compressing context).
 In that case each turn should be treated as a separate trajectory.
+
+> Note: this "split one trajectory into multiple training samples" mode ill be removed in **swift 4.4**; only the "one rollout = one trajectory sample" form will be retained.
 
 A common scenario is for “thinking” models: during real inference the model keeps only the last reasoning step and discards previous ones.
 

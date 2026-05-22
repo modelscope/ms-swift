@@ -113,6 +113,7 @@ class RolloutArguments(DeployArguments):
         super().__post_init__()
         self._check_args()
         self._check_device_count()
+        self._check_deprecated_args()
 
     def _set_default_engine_type(self):
         if self.vllm_use_async_engine is None:
@@ -155,3 +156,11 @@ class RolloutArguments(DeployArguments):
                 f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
                 f'vllm_data_parallel_size: {self.vllm_data_parallel_size}, '
                 f'required_device_count: {required_device_count}.')
+
+    def _check_deprecated_args(self):
+        if self.context_manager is not None:
+            raise ValueError('The "context_manager" argument has been removed. '
+                             'If you need to dynamically modify the conversation history between rollout turns '
+                             '(e.g. history compression, prompt injection), implement that logic in a custom '
+                             '`MultiTurnScheduler` subclass by overriding `step` / `run`, '
+                             'and pass it via `--multi_turn_scheduler your_scheduler_name`.')

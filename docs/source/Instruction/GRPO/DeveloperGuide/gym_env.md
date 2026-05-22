@@ -1,146 +1,170 @@
 # GYM环境训练
 
-## Gym接口
+GYM 风格的环境训练把"模型 → 环境 → 奖励"这条链路封装成一个抽象接口，让 LLM 像 Agent 一样与环境进行多轮交互，每一步的奖励直接由环境给出，无需再单独写 reward 函数从轨迹里反推。本文先介绍接口，再用一个完整的自定义示例（FrozenLake）说明如何接入训练。
 
-GYM源自于[OpenAI Gym](https://github.com/openai/gym)，是一个抽象的强化学习环境接口，基于现在Model as Agent的趋势，我们在swift中定义了类似的一个接口,为Agent提供端到端的强化学习训练。
+## Gym 接口
+
+GYM 源自 [Gymnasium库](https://github.com/Farama-Foundation/Gymnasium)。在 ms-swift 中我们定义了如下接口：
+
 ```python
 class Env(ABC):
 
     def __init__(self, env_config):
-        """
-
-        Args:
-            env_config: 环境配置，比如可用工具等
-        """
+        """env_config 来自数据集每行的 env_config 列，可承载初始化参数"""
         self.env_config = env_config
 
     @abstractmethod
     async def reset(self, config: RolloutInferRequest) -> Tuple[str, Dict[str, Any], str]:
         """
-
-        Args:
-            config: 环境初始化信息，应该放在
-
         Returns:
-            - observation: 第一个user消息作为初始观察或者环境信息，会作为user message
-            - info: 用于DEBUG和日志的额外信息，会在completions.jsonl中记录
-            - system_message: 用户当前环境采样的系统提示词
+            - observation: 作为首轮 user 消息发送给模型
+            - info: 调试/日志信息，记录到 completions.jsonl
+            - system_message: 本条轨迹的 system prompt
         """
         pass
 
     @abstractmethod
     async def step(self, action: Messages) -> Tuple[str, float, bool, Dict[str, Any]]:
         """
-
         Args:
-            action: 所有对话消息，最后一个消息为当前采样回复
-
+            action: 截止当前的完整对话消息，最后一条即模型最新回复
         Returns:
-            - next_observation: 环境响应，将作为user message返回
-            - reward: 奖励
-            - done: 是否结束
-            - info: 用于DEBUG和日志的额外信息，会在completions.jsonl中记录
+            - next_observation: 下一轮 user 消息
+            - reward: 当前 step 奖励
+            - done: 轨迹是否结束
+            - info: 调试/日志信息
         """
         pass
+
     @abstractmethod
     async def close(self):
-        """Clean up environment resources."""
+        """释放资源"""
         pass
 ```
-除此之外，根据[Kimi-Reseacher的实践](https://moonshotai.github.io/Kimi-Researcher/)，我们还额外提供了一个`ContextMangaer`接口,方便你动态的管理当前的Agent上下文。
 
-**ContextManager指定（非必需）**
-1. 在数据集中提供 [ctx_config](#注意事项) 列中的 name 键指定， 初始化相关的参数放在其他键中
-2. 使用参数 `--context_manager ctx_name` 指定
+`reset` 接收到的 `RolloutInferRequest` 包含数据集行的 `messages`、`data_dict`（额外列，包括 `env_config`）等。完整示例参见 [入参示例](./multi_turn.md#多轮规划器-multiturnscheduler)。
 
+> 如果需要在每轮 rollout 之间额外控制对话历史（例如动态压缩、注入额外提示），推荐直接继承 `MultiTurnScheduler` 并重写 `step` / `run` 方法，详见[多轮训练文档](./multi_turn.md#自定义多轮交互逻辑)。
 
-```python
-class ContextManager(ABC):
-    def __init__(self,ctx_config):
-        self.ctx_config = ctx_config
+## 启动训练
 
-    @abstractmethod
-    def manage_context(self, history: Messages,trajectory_id:str) -> Messages:
-        """动态调整当前agent的上下文
+使用内置的 [gym_scheduler](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py) 把 env 串到多轮 rollout 中。
 
-        Args:
-            history: 当前的消息历史
+用户自定义的 env 通过 `--external_plugins your_plugin.py` 加载，plugin 里执行 `envs['my_env'] = MyEnv` 完成注册（下文 FrozenLake 示例完整演示）。
 
-        Returns:
-            调整后的消息历史
-        """
-        pass
-```
-入参示例
-```python
-infer_request
-"""
-RolloutInferRequest(
-    messages=[
-        {'role': 'system', 'content': 'A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within <think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think><answer> answer here </answer>\n'}, {'role': 'user', 'content': 'What is the value of $\\sqrt{36 \\times \\sqrt{16}}$?'},
-        {'role': 'assistant', 'content': 'To find the value of \\(\\sqrt{36 \\times \\sqrt{16}}\\), we will break down the problem step-by-step.\n\nFirst, we need to evaluate the inner square root:\n\\[\n\\sqrt{16}\n\\]\nWe know that:\n\\[\n4^2 = 16 \\implies \\sqrt{16} = 4\n\\]\n\nNext, we substitute this result back into the original expression:\n\\[\n\\sqrt{36 \\times \\sqrt{16}} = \\sqrt{36 \\times 4}\n\\]\n\nNow, we need to evaluate the product inside the square root:\n\\[\n36 \\times 4 = 144\n\\]\n\nSo, the expression simplifies to:\n\\[\n\\sqrt{144}\n\\]\n\nFinally, we determine the square root of 144:\n\\[\n\\sqrt{144} = 12\n\\]\n\nThus, the value of \\(\\sqrt{36 \\times \\sqrt{16}}\\) is:\n\\[\n\\boxed{12}\n\\]'}
-    ],
-    images=[],
-    audios=[],
-    videos=[],
-    tools=None,
-    objects={},
-    data_dict={
-        'problem': 'What is the value of $\\sqrt{36 \\times \\sqrt{16}}$?',
-        'solution': "To solve the problem, we need to evaluate the expression \\(\\sqrt{36 \\times \\sqrt{16}}\\).\n\nWe can break down the steps as follows:\n\n1. Evaluate the inner square root: \\(\\sqrt{16}\\).\n2. Multiply the result by 36.\n3. Take the square root of the product obtained in step 2.\n\nLet's compute this step by step using Python code for accuracy.\n```python\nimport math\n\n# Step 1: Evaluate the inner square root\ninner_sqrt = math.sqrt(16)\n\n# Step 2: Multiply the result by 36\nproduct = 36 * inner_sqrt\n\n# Step 3: Take the square root of the product\nfinal_result = math.sqrt(product)\nprint(final_result)\n```\n```output\n12.0\n```\nThe value of \\(\\sqrt{36 \\times \\sqrt{16}}\\) is /\\(\\boxed{12}\\)."
-        }
-    )
-"""
-result
-"""
-RolloutResponseChoice(
-    index=0,
-    message=ChatMessage(
-        role='assistant',
-        content='To find the value of \\(\\sqrt{36 \\times \\sqrt{16}}\\), we will break down the problem step-by-step.\n\nFirst, we need to evaluate the inner square root:\n\\[\n\\sqrt{16}\n\\]\nWe know that:\n\\[\n4^2 = 16 \\implies \\sqrt{16} = 4\n\\]\n\nNext, we substitute this result back into the original expression:\n\\[\n\\sqrt{36 \\times \\sqrt{16}} = \\sqrt{36 \\times 4}\n\\]\n\nNow, we need to evaluate the product inside the square root:\n\\[\n36 \\times 4 = 144\n\\]\n\nSo, the expression simplifies to:\n\\[\n\\sqrt{144}\n\\]\n\nFinally, we determine the square root of 144:\n\\[\n\\sqrt{144} = 12\n\\]\n\nThus, the value of \\(\\sqrt{36 \\times \\sqrt{16}}\\) is:\n\\[\n\\boxed{12}\n\\]', tool_calls=None),
-        finish_reason='stop',
-        logprobs=None,
-        messages=None)
-"""
-```
-GYM环境训练可以视作一种特殊的多轮训练，区别在于使用GYM环境训练，奖励信息通过环境直接获取。
-
-在 `rollout` 命令中使用参数 `use_gym_env` 来指定使用gym作为训练的环境接口。我们提供了兼容GYM环境的多轮规划器参考实现，见[内置多轮调度器实现](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py)中的 GymScheduler 类
-
+**Colocate 模式**:
 
 ```bash
-CUDA_VISIBLE_DEVICES=0 \
+megatron rlhf \
+    --rlhf_type grpo \
+    --vllm_mode colocate \
+    --external_plugins examples/megatron/grpo/multi_turn/frozen_lake_plugin.py \
+    --multi_turn_scheduler gym_scheduler \
+    --gym_env frozen_lake \
+    --use_gym_env true \
+    --max_turns 10 \
+    ...
+
+# swift rlhf 同理
+```
+
+
+**Server 模式**
+
+```bash
 swift rollout \
     --model xxx \
     --use_gym_env true \
+    --external_plugins examples/megatron/grpo/multi_turn/frozen_lake_plugin.py \
     --multi_turn_scheduler gym_scheduler \
-    --max_turns xxx
+    --gym_env frozen_lake \
+    --max_turns 10
+
+# trainer 侧需要加 --vllm_server_pass_dataset true，把 env_config 等额外列透传给 rollout 端
+megatron rlhf --vllm_mode server --vllm_server_pass_dataset true ...
+# or swift rlhf --vllm_mode server --vllm_server_pass_dataset true ...
 ```
 
-> 注意
 
-**环境选择**
-1. 在数据集中需要提供 [env_config](#注意事项) 列中的name键指定, 初始化相关的参数放在其他键中
-2. 使用参数 `--gym_env env_name` 指定
+环境选择有两种方式：
+- 通过 `--gym_env env_name` 全局指定（同一脚本里所有 prompt 共用一个 env）；
+- 在每行数据的 `env_config.name` 中指定（适用于多环境混合场景，每条数据可指向不同 env，会覆盖 `--gym_env`）。
 
+## 示例：从零写一个 FrozenLake 环境
 
-## 最佳实践
+<img src="https://gymnasium.farama.org/_images/frozen_lake.gif" width="220" alt="FrozenLake 环境示意图（来源：Gymnasium 官方文档）" />
 
-- [训练脚本](../../../../../examples/train/grpo/external/vllm_gym.sh)
+[FrozenLake](https://gymnasium.farama.org/environments/toy_text/frozen_lake/) 是 OpenAI Gym 中的经典任务：智能体从起点出发，需要穿过一片冰湖到达终点，途中要避开冰窟。原始环境如上图所示。下面以纯文本版本（把上图网格直接渲染成 ASCII 字符）为例。
 
-通过参数`external_plugins`, 我们可以将本地的`Env`和`ContextManager`注册进 ms-swift 中，具体实现参考[代码](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/plugin.py)
+以下完整代码参考完整代码：[frozen_lake_plugin](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/grpo/multi_turn/frozen_lake_plugin.py)。
 
-## 注意事项
+**1. 定义 Env**
 
-1. 参考训练数据格式
+每条数据派生一张随机 4x4 地图（随机洞 + 随机 S/G 位置，BFS 校验保证可解）。单元含义：`S` 起点 / `G` 终点 / `H` 冰窟（踩到=失败）/ `F` 安全冰面 / `P` 玩家当前位置。
+
+```python
+class FrozenLakeEnv(Env):
+    def __init__(self, env_config):
+        super().__init__(env_config)
+        self.size = int(env_config.get('size', 4))
+        self.p = float(env_config.get('p', 0.8))
+        seed = env_config.get('seed')
+        self.seed = int(seed) if seed is not None else None
+
+    async def reset(self, config: RolloutInferRequest):
+        self.grid = generate_random_map(size=self.size, p=self.p, seed=self.seed)
+        ...
+        return observation, {'seed': self.seed}, SYSTEM_PROMPT
+
+    async def step(self, action: Messages):
+        move = _parse_action(action[-1]['content'])  # <action>up|down|left|right</action>
+        # 推进一格、判断 G / H；外层 max_turns 由 scheduler 兜底
+        if cell == 'G': return obs, 1.0, True, {'status': 'goal'}
+        if cell == 'H': return obs, 0.0, True, {'status': 'hole'}
+        ...
+```
+
+**2. 注册**
+
+将 env 类挂到 swift 的 `envs` 注册表里。`--external_plugins` 在训练启动时会 import 该文件，注册随之生效：
+
+```python
+# examples/megatron/grpo/multi_turn/frozen_lake_plugin.py
+from swift.rollout.gym_env import Env, envs
+
+class FrozenLakeEnv(Env):
+    ...
+
+envs['frozen_lake'] = FrozenLakeEnv
+```
+
+**3. 准备数据集**
+
+数据集在这里仅作占位符处理，数据构造由环境生成，和 `env_config.seed`来控制地图生成的随机性：
+
 ```json
-{"messages": [{"role": "system", "content": "你是个有用无害的助手"}, {"role": "user", "content": "告诉我明天的天气"}],"env_config":{"name":"custom_env","other_config":"xxxx"},"ctx_config":{"name":"custom_ctx","other_config":"xxxx"}}
+{"messages":[{"role":"user","content":"<placeholder>"}],"env_config":{"seed":0}}
+{"messages":[{"role":"user","content":"<placeholder>"}],"env_config":{"seed":1}}
+...
+{"messages":[{"role":"user","content":"<placeholder>"}],"env_config":{"seed":127}}
 ```
-2. 默认仅对最后一轮response进行训练，如果gym涉及到多轮response生成，使用参数`--loss_scale default`对所有轮次的response进行训练，具体参考[文档](./multi_turn.md#损失掩码)
 
-3. 数据流程
-整个gym数据流程如下:
-<img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/gym_env.png" width="250" />
+**4. （可选）叠加自定义 reward**
 
-4. 奖励日志
-由于gym的奖励是在step函数内计算完成，所以需要手动通过`info`返回日志，最终的记录会放在completions.jsonl中的`trajectory_infos`字段.
+设置 `--use_gym_env true` 后，env 给出的 `total_reward` 会自动作为一路奖励参与训练，无需再写 reward 函数。如果想在此之外再叠加自定义信号（如格式/长度等），通过 `--reward_funcs` 传入即可，gym 奖励会作为额外一列与 reward_funcs 拼在一起，由 `--reward_weights` 统一加权。例如同时启用一个格式校验 reward：
+
+```bash
+megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 1.0
+# reward_weights 末位对应 gym 的 total_reward
+```
+
+**5. 训练**
+
+运行脚本参考：[`examples/megatron/grpo/multi_turn/frozen_lake.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/grpo/multi_turn/frozen_lake.sh)
+
+训练时可在日志中观察 `rollout_infos.num_turns`（每条轨迹的步数）与奖励均值；`--log_completions true` 会把完整对话写入 `completions.jsonl`，可逐条验证模型是否按 `<action>...</action>` 格式输出。
+
+参考资料:
+
+- https://gymnasium.farama.org/environments/toy_text/frozen_lake/
+- https://github.com/alibaba/ROLL/tree/main/roll/pipeline/agentic/env/frozen_lake

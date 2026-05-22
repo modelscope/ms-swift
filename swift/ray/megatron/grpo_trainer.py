@@ -7,12 +7,15 @@ import copy
 import os
 import ray
 import torch
+import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dataset import RowPreprocessor
+from swift.infer_engine.protocol import RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (compute_grpo_advantages, create_cyclic_iterator, make_reward_weights,
                                        resolve_reward_funcs)
+from swift.rollout import MultiTurnScheduler, multi_turns, run_multi_turn
 from swift.utils import get_logger
 from .driver_utils import compute_iter_params, extract_iteration, extract_train_metrics
 
@@ -99,6 +102,34 @@ class GRPOTrainer:
 
         self._padding_to = info.get('_padding_to')
         self._prepare_rewards()
+        self._prepare_multi_turn()
+
+    def _prepare_multi_turn(self) -> None:
+        """Configure driver-side multi-turn scheduler (Mode A only).
+
+        Mode B (server-side scheduler) is intentionally not enabled here because
+        :class:`VllmServer.launch_server` does not yet wrap the engine via
+        ``get_rollout_engine_type`` — the server-side scheduler plumbing is a
+        separate cross-process change.  When that lands, set
+        ``self._enable_server_multi_turn`` from a new
+        ``RolloutReplica.get_engine_type()`` passthrough.
+        """
+        args = self.args
+        self._multi_turn_scheduler: Optional[MultiTurnScheduler] = None
+        self._max_turns: Optional[int] = getattr(args, 'max_turns', None)
+        self._enable_server_multi_turn = False
+
+        scheduler_cfg = getattr(args, 'multi_turn_scheduler', None)
+        if not scheduler_cfg:
+            return
+        if isinstance(scheduler_cfg, str):
+            if scheduler_cfg not in multi_turns:
+                raise ValueError(f'Unknown multi_turn_scheduler: {scheduler_cfg!r}; '
+                                 f'available: {list(multi_turns)}')
+            self._multi_turn_scheduler = multi_turns[scheduler_cfg](max_turns=self._max_turns)
+        else:
+            assert isinstance(scheduler_cfg, MultiTurnScheduler)
+            self._multi_turn_scheduler = scheduler_cfg
 
     def _prepare_rewards(self):
         args = self.args
@@ -285,14 +316,68 @@ class GRPOTrainer:
         logger.info('GRPO driver dataloader: dataset=%d, prompts_per_generation=%d, num_gen=%d, spg=%d', len(dataset),
                     prompts_per_generation, num_gen, spg)
 
-    def _generate(self, expanded_batch):
-        """Run a prompt batch through rollout replicas."""
-        return self._distribute_to_replicas(list(expanded_batch), self._get_request_config())
+    def _generate(self, expanded_batch) -> List[RolloutOutput]:
+        """Run a prompt batch through rollout replicas.
 
-    def _postprocess_rollout(self, rollout_batch, outputs):
-        """Merge ChatCompletionResponse outputs back into each sample.
+        Returns ``List[RolloutOutput]`` (one per request). For Mode A
+        (driver-side multi-turn) the per-turn ``response_token_ids`` and
+        ``response_loss_mask`` are accumulated inside each ``RolloutOutput``.
+        """
+        request_config = self._get_request_config()
+        prompt_batch = list(expanded_batch)
 
-        Mirrors ``MegatronGRPOTrainer._postprocess_rollout_outputs``.
+        if self._multi_turn_scheduler is not None and not self._enable_server_multi_turn:
+            # Mode A: driver-side trainer loop. Convert dict prompts to
+            # RolloutInferRequest so the loop can mutate `messages` in place.
+            requests = self._inputs_to_requests(prompt_batch)
+            first_turn = [
+                RolloutOutput(response=resp) for resp in self._distribute_to_replicas(requests, request_config)
+            ]
+            return run_multi_turn(
+                requests=requests,
+                first_turn_outputs=first_turn,
+                scheduler=self._multi_turn_scheduler,
+                rollout_fn=lambda reqs, cfg:
+                [RolloutOutput(response=resp) for resp in self._distribute_to_replicas(reqs, cfg)],
+                request_config=request_config,
+                max_turns=self._max_turns,
+            )
+
+        # Mode B (server-side multi-turn, currently disabled) + single-turn share this path.
+        completions = self._distribute_to_replicas(prompt_batch, request_config)
+        if self._enable_server_multi_turn and len(completions) != len(prompt_batch):
+            # Per-turn-split multi-turn (`dynamic_num_samples`) is HF-only; the Megatron-Ray
+            # driver has the same data-flow constraints that motivated the Megatron exclusion
+            # (see swift/megatron/trainers/rollout_mixin.py::_server_rollout).
+            raise NotImplementedError(
+                'Per-turn-split multi-turn (dynamic_num_samples) is not supported on Megatron-Ray — '
+                f'rollout produced {len(completions)} outputs for {len(prompt_batch)} requests. '
+                'Return one RolloutOutput per request from MultiTurnScheduler.run (combine turns '
+                'inside response_token_ids: List[List[int]]), or use the HF trainer.')
+        return [RolloutOutput(response=resp) for resp in completions]
+
+    def _inputs_to_requests(self, inputs: Sequence[Dict[str, Any]]) -> List[RolloutInferRequest]:
+        """Convert driver-side prompt dicts to ``RolloutInferRequest`` objects."""
+        from dacite import from_dict
+
+        REQUEST_METADATA_FIELDS = ('messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid')
+        requests: List[RolloutInferRequest] = []
+        for data in inputs:
+            if isinstance(data, RolloutInferRequest):
+                requests.append(data)
+                continue
+            payload = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
+            if 'uuid' not in payload:
+                payload['uuid'] = data.get('request_id') or uuid.uuid4().hex
+            requests.append(from_dict(RolloutInferRequest, payload))
+        return requests
+
+    def _postprocess_rollout(self, rollout_batch, outputs: List[RolloutOutput]):
+        """Merge ``RolloutOutput`` data back into each sample.
+
+        Mirrors ``MegatronRolloutMixin._postprocess_rollout_outputs`` — including
+        per-turn ``response_token_ids`` / ``response_loss_mask`` handling and the
+        multimodal pass-through from ``rollout_infos``.
         """
         if not outputs:
             return list(rollout_batch)
@@ -304,22 +389,46 @@ class GRPOTrainer:
         from swift.utils import remove_response
 
         merged = []
-        for inp, response in zip(rollout_batch, outputs):
+        for inp, output in zip(rollout_batch, outputs):
             item = dict(inp)
-            if response is None:
+            if output is None:
                 merged.append(item)
                 continue
+            response = output.response
             choice = response.choices[0]
-            messages = copy.deepcopy(item.get('messages') or [])
-            remove_response(messages)
-            messages.append({'role': 'assistant', 'content': choice.message.content or ''})
-            item['messages'] = messages
-            item['response_token_ids'] = choice.token_ids or []
+
+            if output.messages:
+                item['messages'] = output.messages
+            else:
+                messages = copy.deepcopy(item.get('messages') or [])
+                remove_response(messages)
+                messages.append({'role': 'assistant', 'content': choice.message.content or ''})
+                item['messages'] = messages
+
+            if output.response_token_ids:
+                item['response_token_ids'] = output.response_token_ids
+                if output.response_loss_mask:
+                    item['response_loss_mask'] = output.response_loss_mask
+            else:
+                item['response_token_ids'] = choice.token_ids or []
+
+            if output.rollout_infos:
+                item['rollout_infos'] = output.rollout_infos
+                # Multimodal pass-through: schedulers / envs may inject observation
+                # images / videos / audios mid-trajectory.
+                for key in ('images', 'videos', 'audios'):
+                    if key in output.rollout_infos:
+                        item[key] = output.rollout_infos[key]
+
             item['finish_reason'] = choice.finish_reason or 'stop'
             item['is_truncated'] = item['finish_reason'] == 'length'
             item['add_eos'] = False
-            if choice.logprobs and 'content' in choice.logprobs:
+
+            if output.rollout_logprobs:
+                item['rollout_logprobs'] = output.rollout_logprobs
+            elif choice.logprobs and 'content' in choice.logprobs:
                 item['rollout_logprobs'] = [[lp['logprob'] for lp in choice.logprobs['content']]]
+
             if getattr(choice, 'routed_experts', None) is not None:
                 item['routed_experts'] = choice.routed_experts
             merged.append(item)

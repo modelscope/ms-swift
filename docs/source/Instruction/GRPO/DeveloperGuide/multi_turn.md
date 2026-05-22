@@ -144,7 +144,13 @@ swift rollout \
 
 在 `rollout` 命令中使用参数 `use_async_engine` 来指定 engine 的种类（默认使用 async engine）：
 
-> 注意: async engine 以及下面的自定义多轮交互逻辑 目前仅支持 server mode，对于 colocate mode 下的多轮交互逻辑，请参考 RolloutTrainerMixin 的 _colocate_multi_turn_infer 方法
+> 注意: async engine 仅在 server mode 下可用。
+
+### GYM 环境训练
+
+如果你的多轮任务可以建模为标准的 gym environment（`reset` / `step` / 环境直接给奖励），推荐直接复用框架内置的 `gym_scheduler`，并通过实现一个 `Env` 子类来描述任务。
+
+完整接口、自定义 env 的步骤参考 [GYM 环境训练文档](./gym_env.md)。
 
 ## 高级设置
 
@@ -152,6 +158,8 @@ swift rollout \
 在以上默认逻辑中，我们用一条轨迹来计算多轮 rollout 的损失，这里需要假设多轮交互的过程中，模型的历史信息没有收到改变。
 
 而在一些多轮场景中，我们可以需要在多轮 rollout 过程中动态地修改模型的历史信息（比如压缩历史信息），此时，我们需要将每轮的 rollout 单独作为一条轨迹进行训练。
+
+> Note: 这种"一条轨迹拆成多条样本"的训练模式将在 **swift 4.4** 版本中移除，后续仅保留"一次 rollout 对应一条轨迹样本"的形式。
 
 比较常见的一种场景是对于思考类模型，在实际推理过程中，模型通常只会保留最后一轮的思考内容，而忽略历史模型回复中的思考内容。
 

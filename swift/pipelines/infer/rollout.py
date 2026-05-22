@@ -562,7 +562,6 @@ def get_rollout_engine_type(args: RolloutArguments, engine: GRPOVllmEngine):
             kwargs.update({
                 'use_gym_env': args.use_gym_env,
                 'gym_env': args.gym_env,
-                'context_manager': args.context_manager,
             })
 
         rollout_engine: RolloutScheduler = scheduler_cls(infer_engine=engine, max_turns=args.max_turns, **kwargs)
