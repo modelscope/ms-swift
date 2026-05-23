@@ -252,6 +252,9 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
                 m.to(mg_dtype)
+    if getattr(config, 'enable_hyper_connections', False):
+        for param in mg_language_model.decoder.parameters(recurse=False):
+            param.data = param.data.cuda()
     attention_context = (
         _patch_attention_fp32(mg_dtype) if args.attention_backend.name in {'flash', 'fused'} else nullcontext())
     with torch.inference_mode(), _model_cpu_forward_context(
