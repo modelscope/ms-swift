@@ -1,6 +1,6 @@
 if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     # pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-    pip install -r requirements/tests.txt -i https://mirrors.aliyun.com/pypi/simple/
+    pip install -r requirements/tests.txt
     git config --global --add safe.directory /ms-swift
     git config --global user.email tmp
     git config --global user.name tmp.com
@@ -20,8 +20,8 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         fi
     fi
 
-    pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
-    pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
+    pip install -r requirements/framework.txt -U
+    pip install decord einops -U
     pip uninstall autoawq -y
     pip install optimum
     pip install diffusers
@@ -30,7 +30,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
 
     # test with install
     pip install .
-    pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
+    pip install auto_gptq bitsandbytes deepspeed -U
 else
     echo "Running case in release image, run case directly!"
 fi
