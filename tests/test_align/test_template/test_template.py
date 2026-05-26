@@ -102,6 +102,30 @@ def test_minimax_vl():
     assert len(res['input_ids']) == 5877
 
 
+def test_userlm():
+    tokenizer = get_processor('microsoft/UserLM-8b')
+    template = get_template(tokenizer)
+    assert template.template_backend == 'swift'
+    inputs = {
+        'messages': [{
+            'role': 'system',
+            'content': 'You generate the next user turn in a conversation.'
+        }, {
+            'role': 'user',
+            'content': 'The assistant just said: Hello, how can I help you today?'
+        }, {
+            'role': 'assistant',
+            'content': 'I can help with planning, coding, or writing. What would you like to do?'
+        }]
+    }
+    res = template.encode(inputs)
+    template.print_inputs(res)
+    text = tokenizer.decode(res['input_ids'])
+    assert '<|start_header_id|>assistant<|end_header_id|>' in text
+    assert 'I can help with planning, coding, or writing. What would you like to do?' in text
+    assert text.endswith('<|start_header_id|>user<|end_header_id|>\n\n')
+
+
 def test_deepseek_v3_1():
     tokenizer = get_processor('deepseek-ai/DeepSeek-V3.1')
     template = get_template(tokenizer)
