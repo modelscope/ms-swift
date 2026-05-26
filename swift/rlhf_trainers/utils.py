@@ -191,6 +191,7 @@ def patch_stateless_process_group_for_ipv6():
         if _has_listen_socket_param:
             # vLLM >= 0.19.0: pass listen_socket to create(), which handles
             # TCPStore creation and returns StatelessProcessGroup without socket field
+            kwargs.pop('listen_socket', None)
             return _original_create(
                 host=host,
                 port=port,
@@ -199,6 +200,7 @@ def patch_stateless_process_group_for_ipv6():
                 data_expiration_seconds=data_expiration_seconds,
                 store_timeout=store_timeout,
                 listen_socket=listen_socket,
+                **kwargs,
             )
         else:
             # vLLM < 0.19.0: manually create TCPStore and pass socket to constructor
