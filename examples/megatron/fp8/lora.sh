@@ -2,7 +2,7 @@
 # Due to the limited precision of FP8, the LoRA delta will be rounded to 0.
 # However, you can use BF16 weights to perform Merge-LoRA.
 
-# Although the model passed in here is BF16, it will be converted to FP8 
+# Although the model passed in here is BF16, it will be converted to FP8
 # after being loaded as a Megatron model
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=2 \
