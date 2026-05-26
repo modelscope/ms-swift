@@ -2,7 +2,7 @@
 # sh requirements/install_all.sh
 # pip install sglang -U
 pip install "vllm>=0.5.1" -U
-pip install "transformers<5.9" "trl<1.0" "peft<0.20" "datasets<4.8.5" -U
+pip install "transformers<5.10" "trl<1.0" "peft<0.20" "datasets<4.8.5" -U
 pip install optimum bitsandbytes "gradio<5.33" mcore-bridge -U
 pip install "ms-swift[all]@git+https://github.com/modelscope/ms-swift.git"
 pip install timm "deepspeed<0.19" ray -U
