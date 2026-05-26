@@ -128,12 +128,14 @@ def _run_multi_turn_impl(
                 messages.append({'role': 'assistant', 'content': completion})
 
         current_requests = [requests[index] for index in index_to_infer]
-        turn_results = loop.run_until_complete(
-            asyncio.gather(*[
+
+        async def _gather_turn_ends():
+            return list(await asyncio.gather(*[
                 scheduler.on_turn_end(req, output.response.choices[0], current_turn)
                 for req, output in zip(current_requests, outputs)
             ]))
-        turn_results = list(turn_results)
+
+        turn_results = loop.run_until_complete(_gather_turn_ends())
         for tr, index in zip(turn_results, index_to_infer):
             if tr.get('rollout_infos'):
                 rollout_infos[index].update(tr['rollout_infos'])
