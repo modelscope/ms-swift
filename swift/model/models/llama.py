@@ -227,6 +227,14 @@ register_model(
                 Model('deepseek-ai/DeepSeek-R1-Distill-Llama-8B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-8B'),
                 Model('deepseek-ai/DeepSeek-R1-Distill-Llama-70B', 'deepseek-ai/DeepSeek-R1-Distill-Llama-70B'),
             ], TemplateType.deepseek_r1),
+            # MiniCPM5
+            ModelGroup([
+                Model('OpenBMB/MiniCPM5-1B', 'openbmb/MiniCPM5-1B'),
+                Model('OpenBMB/MiniCPM5-1B-Base', 'openbmb/MiniCPM5-1B-Base'),
+                Model('OpenBMB/MiniCPM5-1B-SFT', 'openbmb/MiniCPM5-1B-SFT'),
+            ],
+                       TemplateType.minicpm5,
+                       requires=['transformers>=5.6']),
             ModelGroup([
                 Model('LLM-Research/Reflection-Llama-3.1-70B', 'mattshumer/Reflection-Llama-3.1-70B'),
             ],
