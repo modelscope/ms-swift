@@ -727,21 +727,19 @@ class GYMScheduler(MultiTurnScheduler):
         self._total_rewards: Dict[str, float] = {}
         self._step_rewards: Dict[str, List[float]] = {}
         self._pending_obs: Dict[str, Optional[str]] = {}
-        self._async_loop: Optional[asyncio.AbstractEventLoop] = None
-
-    def _get_async_loop(self) -> asyncio.AbstractEventLoop:
-        if self._async_loop is None or self._async_loop.is_closed():
-            self._async_loop = asyncio.new_event_loop()
-        return self._async_loop
 
     def _run_sync(self, coro):
-        return self._get_async_loop().run_until_complete(coro)
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
     def _clear_trajectory(self, uuid: str) -> None:
         env = self._envs.pop(uuid, None)
         if env is not None:
             try:
-                self._run_sync(self._close_env_async(env))
+                self._close_env(env)
             except Exception:
                 pass
         self._dones.pop(uuid, None)
@@ -760,7 +758,7 @@ class GYMScheduler(MultiTurnScheduler):
         for req in requests:
             uuid = req.uuid
             env_config = (req.data_dict or {}).get('env_config', {}) if hasattr(req, 'data_dict') else {}
-            env = self._run_sync(self._create_env(env_config))
+            env = self._create_env(env_config)
             observation, info, system_message = self._run_sync(env.reset(req))
 
             messages: Messages = []
@@ -783,7 +781,8 @@ class GYMScheduler(MultiTurnScheduler):
         if env is None:
             return {'done': True, 'rollout_infos': {}}
 
-        next_obs, reward, done, info = self._run_sync(env.step(deepcopy(infer_request.messages)))
+        next_obs, reward, done, info = self._run_sync(
+            env.step(deepcopy(infer_request.messages)))
         self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) + float(reward)
         self._step_rewards.setdefault(uuid, []).append(float(reward))
 
@@ -820,20 +819,21 @@ class GYMScheduler(MultiTurnScheduler):
     # ------------------------------------------------------------------
     # Env helpers
     # ------------------------------------------------------------------
-    async def _create_env(self, env_config: Dict) -> Env:
+    def _create_env(self, env_config: Dict) -> Env:
         env_name = env_config.get('name', self.gym_env_name)
         if env_name not in envs:
             raise ValueError(f"Environment '{env_name}' not found. Available: {list(envs.keys())}")
         return envs[env_name](env_config)
 
-    async def _close_env_async(self, env: Env):
+    def _close_env(self, env: Env):
         if env is None:
             return
         try:
-            if hasattr(env, 'close') and asyncio.iscoroutinefunction(env.close):
-                await env.close()
-            elif hasattr(env, 'close'):
-                env.close()
+            if hasattr(env, 'close'):
+                if asyncio.iscoroutinefunction(env.close):
+                    self._run_sync(env.close())
+                else:
+                    env.close()
         except Exception as e:
             import logging
             logging.warning(f'Error closing environment: {e}')
