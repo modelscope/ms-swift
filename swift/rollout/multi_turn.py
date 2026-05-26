@@ -781,8 +781,7 @@ class GYMScheduler(MultiTurnScheduler):
         if env is None:
             return {'done': True, 'rollout_infos': {}}
 
-        next_obs, reward, done, info = self._run_sync(
-            env.step(deepcopy(infer_request.messages)))
+        next_obs, reward, done, info = self._run_sync(env.step(deepcopy(infer_request.messages)))
         self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) + float(reward)
         self._step_rewards.setdefault(uuid, []).append(float(reward))
 
