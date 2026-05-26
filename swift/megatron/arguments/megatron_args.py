@@ -622,8 +622,12 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     aligner_lr: Optional[float] = None
 
     # dsa
-    dsa_indexer_loss_coeff: Optional[float] = None
+    dsa_indexer_loss_coeff: float = 0.
     dsa_indexer_use_sparse_loss: bool = False
+    # deepseek-v4
+    csa_dense_mode: bool = False
+    use_fused_mhc: bool = False
+    mhc_recompute_layer_num: Optional[int] = None
 
     # other
     check_model: bool = True
@@ -662,10 +666,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     def _set_default(self):
         if self.mlp_padding_free:
-            if self.sequence_parallel:
-                require_version(
-                    'mcore-bridge>=1.3.0.dev',
-                    'Please install mcore-bridge>=1.3.0.dev to use mlp_padding_free with sequence parallel.')
             if self.context_parallel_size > 1:
                 require_version(
                     'mcore-bridge>=1.4.0.dev',
