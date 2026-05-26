@@ -47,11 +47,13 @@ def _stateless_init_hccl(
     """Create a stateless HCCL communicator via vLLM's StatelessProcessGroup."""
     import socket as _socket
     from datetime import timedelta
+    from torch.distributed import TCPStore
     from vllm.distributed.utils import StatelessProcessGroup
     from vllm_ascend.distributed.device_communicators.pyhccl import PyHcclCommunicator
 
     launch_server = (rank == 0)
     listen_socket = None
+    listen_fd = None
 
     if launch_server:
         if _is_valid_ipv6_address(master_address):
@@ -61,38 +63,25 @@ def _stateless_init_hccl(
         listen_socket.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
         listen_socket.bind((master_address, master_port))
         listen_socket.listen()
+        listen_fd = listen_socket.fileno()
 
-    # vLLM >= 0.19.0: create() accepts listen_socket param and handles TCPStore internally
-    from swift.rlhf_trainers.utils import check_vllm_version_ge
-    if check_vllm_version_ge('0.19.0'):
-        pg = StatelessProcessGroup.create(
-            host=master_address,
-            port=master_port,
-            rank=rank,
-            world_size=world_size,
-            data_expiration_seconds=3600,
-            store_timeout=300,
-            listen_socket=listen_socket,
-        )
-    else:
-        from torch.distributed import TCPStore
-        listen_fd = listen_socket.fileno() if listen_socket else None
-        store = TCPStore(
-            host_name=master_address,
-            port=master_port,
-            world_size=world_size,
-            is_master=launch_server,
-            timeout=timedelta(seconds=300),
-            use_libuv=False,
-            master_listen_fd=listen_fd,
-        )
-        pg = StatelessProcessGroup(
-            rank=rank,
-            world_size=world_size,
-            store=store,
-            socket=listen_socket,
-            data_expiration_seconds=3600,
-        )
+    store = TCPStore(
+        host_name=master_address,
+        port=master_port,
+        world_size=world_size,
+        is_master=launch_server,
+        timeout=timedelta(seconds=300),
+        use_libuv=False,
+        master_listen_fd=listen_fd,
+    )
+
+    pg = StatelessProcessGroup(
+        rank=rank,
+        world_size=world_size,
+        store=store,
+        socket=listen_socket,
+        data_expiration_seconds=3600,
+    )
 
     return PyHcclCommunicator(pg, device=device)
 
