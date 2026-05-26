@@ -546,9 +546,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
 
             if colocate_multi_turn:
-                from swift.rollout import run_multi_turn
+                from swift.rollout import invoke_async_hook, run_multi_turn
                 requests = self._inputs_to_requests(self._set_inputs_system(batch))
-                multi_turn_scheduler.on_trajectory_start(requests)
+                invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
                 request_config = self._get_request_config()
                 outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
                 outputs = run_multi_turn(

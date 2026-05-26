@@ -28,7 +28,7 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
                                        patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
                                        profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
-from swift.rollout import run_multi_turn
+from swift.rollout import invoke_async_hook, run_multi_turn
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
                          to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
@@ -538,8 +538,7 @@ class MegatronRolloutMixin:
 
             if colocate_multi_turn:
                 requests = self._inputs_to_requests(self._set_inputs_system(batch))
-                # scheduler may need to reset trajectories before the first turn
-                multi_turn_scheduler.on_trajectory_start(requests)
+                invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
                 request_config = self._get_request_config()
                 outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
                 outputs = run_multi_turn(

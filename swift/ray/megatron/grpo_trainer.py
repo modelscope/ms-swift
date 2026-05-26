@@ -15,7 +15,7 @@ from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (compute_grpo_advantages, create_cyclic_iterator, make_reward_weights,
                                        resolve_reward_funcs)
-from swift.rollout import MultiTurnScheduler, multi_turns, run_multi_turn
+from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger
 from .driver_utils import compute_iter_params, extract_iteration, extract_train_metrics
 
@@ -343,7 +343,7 @@ class GRPOTrainer:
             # Mode A: driver-side trainer loop. Convert dict prompts to
             # RolloutInferRequest so the loop can mutate `messages` in place.
             requests = self._inputs_to_requests(prompt_batch)
-            self._multi_turn_scheduler.on_trajectory_start(requests)
+            invoke_async_hook(self._multi_turn_scheduler.on_trajectory_start(requests))
             first_turn = [
                 RolloutOutput(response=resp) for resp in self._distribute_to_replicas(requests, request_config)
             ]

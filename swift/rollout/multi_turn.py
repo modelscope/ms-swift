@@ -26,8 +26,12 @@ class RolloutScheduler(ABC):
     # ``run_multi_turn()`` (colocate mode). Override these to inject
     # environment lifecycle logic (e.g. gym env.reset / env.step) without
     # overriding the full ``run()`` method.
+    #
+    # Hooks are async so that gym environments (whose reset/step are async)
+    # can be awaited directly. In server mode ``run()`` awaits them natively;
+    # in colocate mode ``run_multi_turn()`` drives them via a dedicated loop.
     # ------------------------------------------------------------------
-    def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
+    async def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
         """Called before the first inference turn to initialize per-trajectory state.
 
         Mutate ``requests`` in place (e.g. inject env initial observation).
@@ -35,8 +39,8 @@ class RolloutScheduler(ABC):
         """
         pass
 
-    def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-                    current_turn: int) -> Dict[str, Any]:
+    async def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+                          current_turn: int) -> Dict[str, Any]:
         """Called after assistant message is appended, before ``check_finished``.
 
         Use this to advance environment state (e.g. ``env.step``) and surface
@@ -247,7 +251,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     ...
         """
         current_request = infer_request
-        self.on_trajectory_start([current_request])
+        await self.on_trajectory_start([current_request])
         current_turn = 1
         rollout_infos = {}
         total_response_ids = []
@@ -282,7 +286,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 messages.append({'role': 'assistant', 'content': completion})
 
             # Check stopping conditions
-            turn_result = self.on_turn_end(current_request, response_choice, current_turn)
+            turn_result = await self.on_turn_end(current_request, response_choice, current_turn)
             if turn_result.get('rollout_infos'):
                 rollout_infos.update(turn_result['rollout_infos'])
             should_stop = self.check_finished(current_request, response_choice, current_turn)
@@ -723,43 +727,36 @@ class GYMScheduler(MultiTurnScheduler):
         self.gym_env_name = kwargs.get('gym_env', None)
         # Per-trajectory state (keyed by uuid)
         self._envs: Dict[str, Env] = {}
-        self._dones: Dict[str, bool] = {}
         self._total_rewards: Dict[str, float] = {}
         self._step_rewards: Dict[str, List[float]] = {}
         self._pending_obs: Dict[str, Optional[str]] = {}
 
-    def _run_sync(self, coro):
-        loop = asyncio.new_event_loop()
-        try:
-            return loop.run_until_complete(coro)
-        finally:
-            loop.close()
-
-    def _clear_trajectory(self, uuid: str) -> None:
+    async def _close_and_remove(self, uuid: str) -> None:
+        """Close env for a given uuid and remove all associated state."""
         env = self._envs.pop(uuid, None)
         if env is not None:
             try:
-                self._close_env(env)
+                await env.close()
             except Exception:
                 pass
-        self._dones.pop(uuid, None)
         self._total_rewards.pop(uuid, None)
         self._step_rewards.pop(uuid, None)
         self._pending_obs.pop(uuid, None)
 
     # ------------------------------------------------------------------
-    # Universal hooks (called by both run() and run_multi_turn())
+    # Universal async hooks (called by both run() and run_multi_turn())
     # ------------------------------------------------------------------
-    def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
+    async def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
         """Create one env per request and seed messages with initial observation."""
-        for uuid in list(self._envs):
-            self._clear_trajectory(uuid)
-
         for req in requests:
             uuid = req.uuid
+            # Only clear stale state for this specific uuid (idempotent)
+            if uuid in self._envs:
+                await self._close_and_remove(uuid)
+
             env_config = (req.data_dict or {}).get('env_config', {}) if hasattr(req, 'data_dict') else {}
             env = self._create_env(env_config)
-            observation, info, system_message = self._run_sync(env.reset(req))
+            observation, info, system_message = await env.reset(req)
 
             messages: Messages = []
             if system_message:
@@ -768,29 +765,22 @@ class GYMScheduler(MultiTurnScheduler):
             req.messages = messages
 
             self._envs[uuid] = env
-            self._dones[uuid] = False
             self._total_rewards[uuid] = 0.0
             self._step_rewards[uuid] = []
             self._pending_obs[uuid] = None
 
-    def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-                    current_turn: int) -> Dict[str, Any]:
+    async def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+                          current_turn: int) -> Dict[str, Any]:
         """Advance the gym env, accumulate reward, and return done + rollout_infos."""
         uuid = infer_request.uuid
         env = self._envs.get(uuid)
         if env is None:
             return {'done': True, 'rollout_infos': {}}
 
-        next_obs, reward, done, info = self._run_sync(env.step(deepcopy(infer_request.messages)))
+        next_obs, reward, done, info = await env.step(deepcopy(infer_request.messages))
         self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) + float(reward)
         self._step_rewards.setdefault(uuid, []).append(float(reward))
 
-        if response_choice.finish_reason == 'length':
-            done = True
-        if self.max_turns and current_turn >= self.max_turns:
-            done = True
-
-        self._dones[uuid] = done
         self._pending_obs[uuid] = None if done else next_obs
 
         rollout_infos: Dict[str, Any] = {
@@ -799,7 +789,7 @@ class GYMScheduler(MultiTurnScheduler):
             'gym_done': done,
         }
         if done:
-            self._clear_trajectory(uuid)
+            await self._close_and_remove(uuid)
 
         return {'done': done, 'rollout_infos': rollout_infos}
 
@@ -823,19 +813,6 @@ class GYMScheduler(MultiTurnScheduler):
         if env_name not in envs:
             raise ValueError(f"Environment '{env_name}' not found. Available: {list(envs.keys())}")
         return envs[env_name](env_config)
-
-    def _close_env(self, env: Env):
-        if env is None:
-            return
-        try:
-            if hasattr(env, 'close'):
-                if asyncio.iscoroutinefunction(env.close):
-                    self._run_sync(env.close())
-                else:
-                    env.close()
-        except Exception as e:
-            import logging
-            logging.warning(f'Error closing environment: {e}')
 
 
 multi_turns = {

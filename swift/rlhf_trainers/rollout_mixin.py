@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Union
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.model import MultiModelKeys
-from swift.rollout import MultiTurnScheduler, multi_turns, run_multi_turn
+from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
@@ -897,6 +897,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     def _colocate_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
                                    request_config: RequestConfig) -> List[RolloutOutput]:
         requests = self.inputs2requests(inputs)
+        invoke_async_hook(self.multi_turn_scheduler.on_trajectory_start(requests))
         rollout_outputs = run_multi_turn(
             requests=requests,
             first_turn_outputs=first_turn_rollout_outputs,

@@ -11,6 +11,7 @@ Megatron-Ray driver process:
 * ``gather_fn``   - gather a boolean across the relevant process group, so
                     all ranks can agree on the termination condition.
 """
+import asyncio
 from typing import Callable, List, Optional
 
 from swift.infer_engine import RequestConfig
@@ -28,6 +29,20 @@ GatherFn = Callable[[List[bool]], List[bool]]
 
 def _identity_gather(values: List[bool]) -> List[bool]:
     return list(values)
+
+
+def invoke_async_hook(coro):
+    """Run an async scheduler hook from synchronous context (colocate/Ray mode).
+
+    Creates a temporary event loop to drive the coroutine. This is safe in
+    colocate mode where no event loop is running. For server mode (where an
+    event loop is active), hooks are awaited directly in ``run()``.
+    """
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
 
 
 def extract_logprobs_from_choice(response_choice: ChatCompletionResponseChoice) -> List[float]:
@@ -61,6 +76,24 @@ def run_multi_turn(
     flag across the distributed group; for single-process drivers the
     default identity is correct.
     """
+    loop = asyncio.new_event_loop()
+    try:
+        return _run_multi_turn_impl(loop, requests, first_turn_outputs, scheduler, rollout_fn, request_config,
+                                    max_turns, gather_fn)
+    finally:
+        loop.close()
+
+
+def _run_multi_turn_impl(
+    loop: asyncio.AbstractEventLoop,
+    requests: List[RolloutInferRequest],
+    first_turn_outputs: List[RolloutOutput],
+    scheduler: MultiTurnScheduler,
+    rollout_fn: RolloutFn,
+    request_config: RequestConfig,
+    max_turns: Optional[int] = None,
+    gather_fn: GatherFn = _identity_gather,
+) -> List[RolloutOutput]:
     orig_size = len(requests)
     rollout_outputs: List[Optional[RolloutOutput]] = [None] * orig_size
     rollout_infos: List[dict] = [{} for _ in range(orig_size)]
@@ -95,10 +128,12 @@ def run_multi_turn(
                 messages.append({'role': 'assistant', 'content': completion})
 
         current_requests = [requests[index] for index in index_to_infer]
-        turn_results = [
-            scheduler.on_turn_end(req, output.response.choices[0], current_turn)
-            for req, output in zip(current_requests, outputs)
-        ]
+        turn_results = loop.run_until_complete(
+            asyncio.gather(*[
+                scheduler.on_turn_end(req, output.response.choices[0], current_turn)
+                for req, output in zip(current_requests, outputs)
+            ]))
+        turn_results = list(turn_results)
         for tr, index in zip(turn_results, index_to_infer):
             if tr.get('rollout_infos'):
                 rollout_infos[index].update(tr['rollout_infos'])
