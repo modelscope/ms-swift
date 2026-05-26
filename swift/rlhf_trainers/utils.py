@@ -986,6 +986,35 @@ def patch_vllm_moe_model_weight_loader(model):
     original_model._swift_moe_weight_loader_patched = True
 
 
+def finish_vllm_weight_reload(vllm_model):
+    """Re-run ``process_weights_after_loading`` on every FusedMoE layer after
+    an in-place vLLM weight update.
+
+    Without this, the second ``model.load_weights`` of an RL training step
+    writes raw checkpoint-format data over the kernel-format buffers and
+    silently corrupts forward output (vLLM issue #42821).
+    """
+    if vllm_model is None:
+        return
+    try:
+        from vllm.model_executor.layers.fused_moe.layer import FusedMoE
+    except (ImportError, AttributeError):
+        return  # vLLM is too old to have FusedMoE; nothing to fix.
+    logger = get_logger()
+    for module in vllm_model.modules():
+        if not isinstance(module, FusedMoE):
+            continue
+        quant_method = getattr(module, 'quant_method', None)
+        if quant_method is None or not hasattr(quant_method, 'process_weights_after_loading'):
+            continue
+        try:
+            quant_method.process_weights_after_loading(module)
+        except Exception as e:  # noqa: BLE001
+            logger.warning('finish_vllm_weight_reload: process_weights_after_loading failed '
+                           'on %s: %s',
+                           type(module).__name__, e)
+
+
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     try:

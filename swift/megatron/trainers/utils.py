@@ -55,21 +55,34 @@ def gather_object(object: Any, group: Optional[torch.distributed.ProcessGroup] =
 
 # code borrowed from verl
 @torch.no_grad()
-def load_megatron_model_to_gpu(models, load_grad=True):
+def load_megatron_model_to_gpu(models, load_grad=True, load_frozen_params=True):
     for model_chunk in models:
         if isinstance(model_chunk, DDP):
             model_chunk_all_buffers = [model_chunk.buffers, model_chunk.expert_parallel_buffers]
             for buffers in model_chunk_all_buffers:
                 for buffer in buffers:
                     # sometimes, we don't want to load grad for pure inference
-                    if load_grad:
-                        buffer.grad_data.storage().resize_(buffer.grad_data_size)
-                        buffer.grad_data.zero_()
+                    if load_grad and hasattr(buffer, 'grad_data_size'):
+                        current_storage_size = buffer.grad_data.storage().size()
+                        if current_storage_size == 0 or current_storage_size == buffer.grad_data_size:
+                            buffer.grad_data.storage().resize_(buffer.grad_data_size)
+                            buffer.grad_data.zero_()
+                        else:
+                            # Non-standard layers (e.g. GatedDeltaNet) may have grad
+                            # buffers with mismatched storage size; skip resize and
+                            # zero in-place with current storage.
+                            buffer.grad_data.zero_()
 
                     if buffer.param_data.storage().size() == 0:
                         buffer.param_data.storage().resize_(buffer.param_data_size)
                         # copy data from cpu to cuda
                         buffer.param_data.copy_(buffer.param_data.cpu_data, non_blocking=True)
+
+            if load_frozen_params:
+                device_id = get_current_device()
+                for param in model_chunk.module.parameters():
+                    if not param.requires_grad and param.device.type == 'cpu':
+                        param.data = param.data.to(device_id, non_blocking=True)
         else:
             # we need this for ref module
             device_id = get_current_device()
@@ -89,6 +102,9 @@ def offload_megatron_model_to_cpu(models):
     - fp32 grad chunked in model parallel group
     - fp32 main_parameter chunked in model and dp group
     - fp32 optimizer state chunked in model and dp group
+
+    When using LoRA, frozen base model parameters are NOT managed by DDP buffers.
+    They must be offloaded separately via direct param iteration.
     """
     for model_chunk in models:
         if isinstance(model_chunk, DDP):
@@ -97,8 +113,28 @@ def offload_megatron_model_to_cpu(models):
                 for buffer in buffers:
                     # offload parameters
                     if buffer.param_data.storage().size() > 0:
-                        buffer.param_data.cpu_data = buffer.param_data.data.cpu().pin_memory()
-                        buffer.param_data_size = buffer.param_data.storage().size()
+                        existing = getattr(buffer.param_data, 'cpu_data', None)
+                        if existing is None:
+                            buffer.param_data.cpu_data = torch.empty(
+                                buffer.param_data.size(),
+                                dtype=buffer.param_data.dtype,
+                                device='cpu',
+                                pin_memory=True,
+                            )
+                            buffer.param_data_size = buffer.param_data.storage().size()
+                        else:
+                            assert existing.shape == buffer.param_data.shape, (
+                                f'cpu_data shape {tuple(existing.shape)} != '
+                                f'param_data shape {tuple(buffer.param_data.shape)}; '
+                                'reallocating would reintroduce the 2x peak.')
+                            assert existing.dtype == buffer.param_data.dtype, (
+                                f'cpu_data dtype {existing.dtype} != '
+                                f'param_data dtype {buffer.param_data.dtype}; '
+                                'reallocating would reintroduce the 2x peak.')
+                        # Synchronous D2H copy into the preexisting pinned
+                        # buffer; must complete before resize_(0) frees the
+                        # GPU storage.
+                        buffer.param_data.cpu_data.copy_(buffer.param_data.data, non_blocking=False)
                         buffer.param_data.storage().resize_(0)
 
                     assert buffer.param_data_size == buffer.param_data.cpu_data.storage().size()
@@ -107,6 +143,10 @@ def offload_megatron_model_to_cpu(models):
                         # if the grad_data size is already zero, we assume that it is already offloaded
                         buffer.grad_data_size = buffer.grad_data.storage().size()
                         buffer.grad_data.storage().resize_(0)
+
+            for param in model_chunk.module.parameters():
+                if not param.requires_grad and param.device.type != 'cpu':
+                    param.data = param.data.to('cpu', non_blocking=True)
         else:
             # we need this for ref module
             for _, param in model_chunk.named_parameters():
@@ -209,16 +249,17 @@ def load_megatron_optimizer(optimizers):
 
     for _opt in _iter_opts(optimizers):
         load_megatron_copy_params(_opt)
-        # if we are using HybridDeviceOptimizer, we need to only move gpu optimizer state to gpu
-        if hasattr(_opt.optimizer, '_move_new_state_to_right_device'):
-            _opt.optimizer._move_new_state_to_right_device()
-        else:
-            opt_state_dict_values = _opt.optimizer.state.values()
-            for v in opt_state_dict_values:
-                if 'exp_avg' in v:
-                    v['exp_avg'] = v['exp_avg'].to(get_current_device(), non_blocking=True)
-                if 'exp_avg_sq' in v:
-                    v['exp_avg_sq'] = v['exp_avg_sq'].to(get_current_device(), non_blocking=True)
+        if _opt.optimizer is not None:
+            # if we are using HybridDeviceOptimizer, we need to only move gpu optimizer state to gpu
+            if hasattr(_opt.optimizer, '_move_new_state_to_right_device'):
+                _opt.optimizer._move_new_state_to_right_device()
+            else:
+                opt_state_dict_values = _opt.optimizer.state.values()
+                for v in opt_state_dict_values:
+                    if 'exp_avg' in v:
+                        v['exp_avg'] = v['exp_avg'].to(get_current_device(), non_blocking=True)
+                    if 'exp_avg_sq' in v:
+                        v['exp_avg_sq'] = v['exp_avg_sq'].to(get_current_device(), non_blocking=True)
         gc.collect()
         empty_cache()
 
@@ -233,12 +274,25 @@ def offload_megatron_optimizer(optimizers):
 
     for _opt in _iter_opts(optimizers):
         offload_megatron_copy_params(_opt)
-        opt_state_dict_values = _opt.optimizer.state.values()
-        for v in opt_state_dict_values:
-            if 'exp_avg' in v:
-                v['exp_avg'] = v['exp_avg'].to('cpu', non_blocking=True)
-            if 'exp_avg_sq' in v:
-                v['exp_avg_sq'] = v['exp_avg_sq'].to('cpu', non_blocking=True)
+        # worker may hold zero parameter when enabling custom pipeline layout
+        if _opt.optimizer is not None:
+            # HybridDeviceOptimizer: offload all sub-optimizer states to CPU
+            hdo = _opt.optimizer
+            if all(hasattr(hdo, attr) for attr in ('sub_optimizers', 'inner_param_to_orig_param', 'state')):
+                for optimizer in hdo.sub_optimizers:
+                    for param, state in optimizer.state.items():
+                        for k, v in state.items():
+                            if not isinstance(v, torch.Tensor):
+                                continue
+                            orig_param = hdo.inner_param_to_orig_param.get(param, param)
+                            hdo.state[orig_param][k] = state[k] = v.to('cpu')
+            else:
+                opt_state_dict_values = _opt.optimizer.state.values()
+                for v in opt_state_dict_values:
+                    if 'exp_avg' in v:
+                        v['exp_avg'] = v['exp_avg'].to('cpu', non_blocking=True)
+                    if 'exp_avg_sq' in v:
+                        v['exp_avg_sq'] = v['exp_avg_sq'].to('cpu', non_blocking=True)
         gc.collect()
         empty_cache()
 

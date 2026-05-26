@@ -239,6 +239,15 @@ class MegatronRayPipeline:
 
         engine_kwargs = dict(cfg.get('vllm_engine_kwargs') or {})
         engine_kwargs.setdefault('enable_return_routed_experts', True)
+
+        # https://github.com/vllm-project/vllm/pull/39917
+        import vllm
+        from packaging import version
+        vllm_version = vllm.__version__
+        if vllm_version is not None and version.parse('0.21.0rc1') <= version.parse(vllm_version) <= version.parse(
+                '0.21.0'):
+            engine_kwargs.setdefault('async_scheduling', False)
+
         cfg['vllm_engine_kwargs'] = engine_kwargs
         return cfg
 

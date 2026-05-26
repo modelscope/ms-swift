@@ -1105,11 +1105,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
         output_tensor = model(**inputs_for_logits)
         if is_pp_last_stage and output_tensor is not None:
-            logger.info(
-                f'[DEBUG training forward_step] output_tensor shape={output_tensor.shape}, '
-                f'mean={output_tensor.float().mean().item():.4f}, std={output_tensor.float().std().item():.4f}, '
-                f'max={output_tensor.float().max().item():.4f}, min={output_tensor.float().min().item():.4f}, '
-                f'has_nan={output_tensor.isnan().any().item()}, has_inf={output_tensor.isinf().any().item()}')
             logits_packed = output_tensor
             if self.temperature != 1.0:
                 logits_packed.div_(self.temperature)
