@@ -142,7 +142,7 @@ class GYMScheduler(MultiTurnScheduler):
             observation, info, system_message = env.reset(req)
             req.messages = [system_msg, user_msg(observation)]
             self._envs[req.uuid] = env
-    
+
     def on_turn_end(self, req, response_choice, current_turn):
         # 调用 env.step，累积 reward，返回 done + rollout_infos
         next_obs, reward, done, info = env.step(deepcopy(req.messages))
@@ -154,7 +154,7 @@ class GYMScheduler(MultiTurnScheduler):
                 'step_rewards': [...],
             }
         }
-    
+
     def step(self, req, response_choice, current_turn):
         # 注入下一帧 observation 到 user message
         if self._pending_obs.get(req.uuid):

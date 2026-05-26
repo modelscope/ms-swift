@@ -152,7 +152,7 @@
 - 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
 - virtual_pipeline_model_parallel_size: 每个流水线并行 rank 的虚拟流水线阶段数量。默认为None。vpp并行，用于减少pp并行的计算空泡，提高GPU利用率，但会略微提高通信量。
 - microbatch_group_size_per_vp_stage: 每个虚拟流水线阶段处理的连续微批次数量。默认为None，等于pipeline_model_parallel_size。
-- 🔥pipeline_model_parallel_layout: 一个描述自定义流水线（pp/vpp）模型并行布局的字符串。例如："E|(t|)*3,m|m||L"。其中 E、L、t、m 分别表示嵌入层（embedding）、损失层（loss）、Transformer 解码器层和 MTP 层。阶段之间用 "|" 分隔。重复的阶段或层可以通过乘法表示。逗号仅用于提升可读性（无实际语法作用）。默认值为 None，表示不使用此参数设置布局。
+- 🔥pipeline_model_parallel_layout: 一个描述自定义流水线（pp/vpp）模型并行布局的字符串。例如：`"Et*4|(tttt|)*14tmL"`。其中 E、L、t、m 分别表示嵌入层（embedding）、损失层（loss）、Transformer 解码器层和 MTP 层。阶段之间用 "|" 分隔。重复的阶段或层可以通过乘法表示。逗号仅用于提升可读性（无实际语法作用）。默认值为 None，表示不使用此参数设置布局。
   - 该参数通常在异构GPU集群上使用。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
 - 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为1。
@@ -209,9 +209,14 @@
 - moe_token_drop_policy: 可选为'probs', 'position'。默认为'probs'。
 
 **DSA参数**
-- dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为None。
+- dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为`0.`。
 - dsa_indexer_use_sparse_loss: 是否使用稀疏 DSA 索引器损失。如果为 True，索引器损失将使用 top-k 索引进行计算。默认为False。
 
+**Deepseek-V4**
+- csa_dense_mode: 是否对压缩稀疏注意力使用密集模式。若为 `True`，CSA 索引器将被禁用。默认为False。
+- use_fused_mhc: 对 mHC 操作使用 cuTile 融合内核。若为 True，将尝试用融合的 cuda.tile（cuTile）自动微分函数替换参考
+mHC 模块以在支持的 GPU 上获得更好的性能。需要安装 cuTile；若 cuTile 不可用，该标志将被静默重置为 False 并发出警告。默认为False。
+- mhc_recompute_layer_num: 每个 MHC 重计算块的层数。设置后，每 `mhc_recompute_layer_num` 层构成一个重计算块。若为 None，Transformer 块中的所有层共享单个重计算块。默认为None。
 
 **MTP参数**
 - mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。（需要"megatron-core>=0.14"）

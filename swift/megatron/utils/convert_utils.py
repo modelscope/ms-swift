@@ -175,7 +175,7 @@ def broadcast_mg_logits(mg_logits=None, src_rank=None):
 
 
 @contextmanager
-def _patch_attention_flash_fp32(compute_dtype):
+def _patch_attention_fp32(compute_dtype):
     forward = TEDotProductAttention.forward
 
     def new_forward(self, query_layer, key_layer, value_layer, *args, **kwargs):
@@ -252,11 +252,14 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         for n, m in mg_language_model.named_modules():
             if n.endswith('router'):
                 m.to(mg_dtype)
-    attention_flash_context = (
-        _patch_attention_flash_fp32(mg_dtype) if args.attention_backend.name == 'flash' else nullcontext())
+    if getattr(config, 'enable_hyper_connections', False):
+        for param in mg_language_model.decoder.parameters(recurse=False):
+            param.data = param.data.cuda()
+    attention_context = (
+        _patch_attention_fp32(mg_dtype) if args.attention_backend.name in {'flash', 'fused'} else nullcontext())
     with torch.inference_mode(), _model_cpu_forward_context(
             mg_modules, test_convert_dtype, 'cuda', share_embedding=share_embedding,
-            target_device=mg_device), attention_flash_context:
+            target_device=mg_device), attention_context:
         mg_logits = forward_step_helper(mg_model, mg_inputs, dtype=test_convert_dtype)
         if args.tensor_model_parallel_size > 1 and args.task_type != 'seq_cls':
             if mg_logits is not None:

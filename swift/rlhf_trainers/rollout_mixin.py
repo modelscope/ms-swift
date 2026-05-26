@@ -40,9 +40,10 @@ from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
                     _create_parameter_buckets, _process_bucket_with_flattened_tensor,
                     add_base_layer_suffix_by_param_names, aggressive_empty_cache, check_vllm_version_ge,
-                    expand_vllm_param_name_aliases, get_even_process_data, get_gather_if_zero3_context,
-                    patch_lora_merge, patch_lora_unmerge, patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader,
-                    profiling_context, profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
+                    expand_vllm_param_name_aliases, finish_vllm_weight_reload, get_even_process_data,
+                    get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_vllm_load_adapter,
+                    patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator, set_expandable_segments,
+                    vllm_supports_lora_load_inplace)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -575,7 +576,13 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             llm_model = self.engine.inner_model
             # Patch MoE weight_loader if needed
             patch_vllm_moe_model_weight_loader(llm_model)
-            llm_model.load_weights(state_dict.items())
+            # Re-run process_weights_after_loading on FusedMoE layers so
+            # the kernel-format layout is rebuilt after the in-place reload
+            # (workaround for vLLM issue #42821).
+            try:
+                llm_model.load_weights(state_dict.items())
+            finally:
+                finish_vllm_weight_reload(llm_model)
         del state_dict
 
     def _fix_param_name_to_vllm(self, name: str, extra_prefixes: Optional[List[str]] = None) -> str:

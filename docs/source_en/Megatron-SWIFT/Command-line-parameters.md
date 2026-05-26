@@ -158,7 +158,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
 - virtual_pipeline_model_parallel_size: The number of virtual pipeline stages per pipeline parallel rank. Defaults to None. VPP parallelism is used to reduce computation bubbles in PP parallelism and improve GPU utilization, but will slightly increase communication overhead.
 - microbatch_group_size_per_vp_stage: The number of consecutive microbatches processed by each virtual pipeline stage. Defaults to None, which equals `pipeline_model_parallel_size`.
-- 🔥pipeline_model_parallel_layout: A string describing a custom pipeline (pp/vpp) model parallel layout. For example: "E|(t|)*3,m|m||L". Here, E, L, t, and m denote the embedding layer, loss layer, Transformer decoder layer, and MTP layer, respectively. Stages are separated by "|". Repeated stages or layers can be expressed using multiplication. Commas are only for cosmetic readability and have no syntactic meaning. The default value is None, indicating that this argument is not used to set the layout.
+- 🔥pipeline_model_parallel_layout: A string describing a custom pipeline (pp/vpp) model parallel layout. For example: `"Et*4|(tttt|)*14tmL"`. Here, E, L, t, and m denote the embedding layer, loss layer, Transformer decoder layer, and MTP layer, respectively. Stages are separated by "|". Repeated stages or layers can be expressed using multiplication. Commas are only for cosmetic readability and have no syntactic meaning. The default value is None, indicating that this argument is not used to set the layout.
   - This parameter is typically used on heterogeneous GPU clusters.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
 - 🔥expert_tensor_parallel_size: expert tensor-parallel size. Default is 1.
@@ -220,9 +220,14 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 **DSA Parameters**
 
-- dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is None.
+- dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is `0.`.
 - dsa_indexer_use_sparse_loss: Whether to use sparse DSA indexer loss. If True, the indexer loss will be computed using the top-k indices. Default is False.
 
+**Deepseek-V4**
+
+- csa_dense_mode: Whether to use dense mode for compressed sparse attention. If `True`, the CSA indexer will be disabled. Defaults to `False`.
+- use_fused_mhc: Use cuTile fused kernels for mHC operations. When `True`, attempts to replace the reference mHC modules with fused cuda.tile (cuTile) autograd functions for better performance on supported GPUs. Requires cuTile to be installed; if cuTile is unavailable, the flag is silently reset to `False` and a warning is emitted. Defaults to `False`.
+- mhc_recompute_layer_num: Number of layers per MHC recompute block. When set, every `mhc_recompute_layer_num` layers form a recompute block. If `None`, all layers in the transformer block share a single recompute block. Defaults to `None`.
 
 **MTP Parameters**
 - mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None. (requires "megatron-core>=0.14")

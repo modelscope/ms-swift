@@ -26,7 +26,7 @@ class MultiTurnScheduler(ABC):
 
     def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
         """在首轮推理前调用，用于初始化轨迹级别状态。
-        
+
         可在此方法中直接修改 requests（如注入环境初始 observation）。
         默认实现为空（no-op）。
         """
@@ -36,9 +36,9 @@ class MultiTurnScheduler(ABC):
                     response_choice: 'ChatCompletionResponseChoice',
                     current_turn: int) -> Dict[str, Any]:
         """在 assistant 消息追加后、check_finished 前调用。
-        
+
         用于推进环境状态（如 env.step）并返回每轮元数据。
-        
+
         Returns:
             Dict[str, Any]: 可选包含以下键：
                 - 'done' (bool): 若存在，将覆盖 check_finished 的结果
@@ -199,7 +199,7 @@ class CustomScheduler(MultiTurnScheduler):
         # 首轮推理前初始化（如环境 reset、注入初始状态）
         for req in requests:
             req.messages = [system_msg, user_msg(initial_observation)]
-    
+
     def on_turn_end(self, req, response_choice, current_turn):
         # 每轮推理后推进状态，返回 done 和 rollout_infos
         next_obs, reward, done = self.advance_env(req.messages)
@@ -271,7 +271,7 @@ class Scheduler():
     def on_turn_end(self, infer_request, response_choice, current_turn):
         ...
         return {'done': done, 'rollout_infos': extra_dict}
-    
+
     # 或者在 step 方法中
     def step(self, infer_request, response_choice, current_turn):
         ...

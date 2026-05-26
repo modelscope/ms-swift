@@ -25,9 +25,9 @@ from typing import Any, Dict, List, Tuple, Union
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        TensorLoRARequest, add_base_layer_suffix_by_param_names, aggressive_empty_cache,
-                                       check_vllm_version_ge, expand_vllm_param_name_aliases, patch_vllm_load_adapter,
-                                       patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments, vllm_supports_lora_load_inplace)
+                                       check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
+                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
+                                       profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
 from swift.rollout import run_multi_turn
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
                          to_device)
@@ -273,6 +273,13 @@ class MegatronRolloutMixin:
             assert check_vllm_version_ge('0.14.0'), \
                 'The enable_return_routed_experts attribute is not supported. Please upgrade vllm to 0.14.0 or higher'
             vllm_engine_kwargs['enable_return_routed_experts'] = True
+            # https://github.com/vllm-project/vllm/pull/39917
+            import vllm
+            from packaging import version
+            vllm_version = vllm.__version__
+            if vllm_version is not None and version.parse('0.21.0rc1') <= version.parse(vllm_version) <= version.parse(
+                    '0.21.0'):
+                vllm_engine_kwargs.setdefault('async_scheduling', False)
 
         enable_lora = False
         max_loras = 1
@@ -428,7 +435,13 @@ class MegatronRolloutMixin:
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
             patch_vllm_moe_model_weight_loader(llm_model)
-            llm_model.load_weights(weight_iterator)
+            # Re-run process_weights_after_loading on FusedMoE layers so
+            # the kernel-format layout is rebuilt after the in-place reload
+            # (workaround for vLLM issue #42821).
+            try:
+                llm_model.load_weights(weight_iterator)
+            finally:
+                finish_vllm_weight_reload(llm_model)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
 
@@ -641,6 +654,17 @@ class MegatronRolloutMixin:
             infer_requests=batch, request_config=request_config, use_tqdm=False)
 
         if self.vllm_tensor_parallel_size > 1:
+            # R3 router replay: vLLM's routing capturer host cache only exists on
+            # TP rank 0, so non-primary TP ranks have routed_experts=None in outputs.
+            # Broadcast routed_experts from TP primary to all TP ranks.
+            if getattr(self.args, 'router_replay_mode', None) == 'R3':
+                routed_experts_list = [output.response.choices[0].routed_experts for output in outputs]
+                tp_primary_global_rank = torch.distributed.get_global_rank(self.vllm_tp_group, 0)
+                torch.distributed.broadcast_object_list(
+                    routed_experts_list, src=tp_primary_global_rank, group=self.vllm_tp_group)
+                if local_rank_in_group != 0:
+                    for output, experts in zip(outputs, routed_experts_list):
+                        output.response.choices[0].routed_experts = experts
             outputs = outputs[start_idx:end_idx]
 
         return outputs

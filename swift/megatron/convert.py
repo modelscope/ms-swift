@@ -25,6 +25,7 @@ convert_kwargs = {
     'finetune': True,
     'attention_backend': 'unfused',
     'padding_free': False,
+    'recompute_granularity': 'none',  # deepseek-v4
 }
 
 
