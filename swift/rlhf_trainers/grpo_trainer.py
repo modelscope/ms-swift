@@ -112,7 +112,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('You must specify reward_funcs or reward_model')
 
-        if self.args.eval_strategy != 'no':
+        if self.args.eval_strategy != 'no' and not self.args.eval_use_evalscope:
             total_eval_batch_size = self.args.per_device_eval_batch_size * \
                 self.accelerator.num_processes // self.num_generations_eval
             assert len(self.eval_dataset) >= total_eval_batch_size, (
