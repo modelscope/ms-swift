@@ -21,6 +21,35 @@ class RolloutScheduler(ABC):
         self._tokenizer = kwargs.get('tokenizer', None)
         self.max_turns = max_turns
 
+    # ------------------------------------------------------------------
+    # Universal hooks — called by BOTH ``run()`` (server mode) and
+    # ``run_multi_turn()`` (colocate mode). Override these to inject
+    # environment lifecycle logic (e.g. gym env.reset / env.step) without
+    # overriding the full ``run()`` method.
+    # ------------------------------------------------------------------
+    def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
+        """Called before the first inference turn to initialize per-trajectory state.
+
+        Mutate ``requests`` in place (e.g. inject env initial observation).
+        Default: no-op.
+        """
+        pass
+
+    def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+                    current_turn: int) -> Dict[str, Any]:
+        """Called after assistant message is appended, before ``check_finished``.
+
+        Use this to advance environment state (e.g. ``env.step``) and surface
+        per-turn metadata.
+
+        Returns:
+            Dict with optional keys:
+            - 'done' (bool): if present, overrides ``check_finished`` result
+            - 'rollout_infos' (dict): merged into the trajectory's accumulated infos
+        Default: empty dict (no-op).
+        """
+        return {}
+
     async def async_infer(self,
                           infer_requests: List[Union['RolloutInferRequest', Dict[str, Any]]],
                           request_config: 'RequestConfig',
@@ -218,6 +247,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                     ...
         """
         current_request = infer_request
+        self.on_trajectory_start([current_request])
         current_turn = 1
         rollout_infos = {}
         total_response_ids = []
@@ -252,7 +282,12 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
                 messages.append({'role': 'assistant', 'content': completion})
 
             # Check stopping conditions
+            turn_result = self.on_turn_end(current_request, response_choice, current_turn)
+            if turn_result.get('rollout_infos'):
+                rollout_infos.update(turn_result['rollout_infos'])
             should_stop = self.check_finished(current_request, response_choice, current_turn)
+            if 'done' in turn_result:
+                should_stop = turn_result['done']
 
             # double-check if user forget to judge the max_turns
             if self.max_turns:
@@ -675,104 +710,133 @@ class MathTipsScheduler(MultiTurnScheduler):
         return result
 
 
-class GYMScheduler(RolloutScheduler):
+class GYMScheduler(MultiTurnScheduler):
+    """Gym environment-driven scheduler using universal hooks.
 
-    def __init__(self, infer_engine: GRPOVllmEngine, max_turns: Optional[int] = None, **kwargs):
+    Implements ``on_trajectory_start`` (env.reset) and ``on_turn_end`` (env.step)
+    to integrate gym environments into the multi-turn protocol. Works in both
+    server mode (``run()``) and colocate mode (``run_multi_turn()``).
+    """
+
+    def __init__(self, infer_engine: Optional[GRPOVllmEngine] = None, max_turns: Optional[int] = None, **kwargs):
         super().__init__(infer_engine, max_turns, **kwargs)
         self.gym_env_name = kwargs.get('gym_env', None)
+        # Per-trajectory state (keyed by uuid)
+        self._envs: Dict[str, Env] = {}
+        self._dones: Dict[str, bool] = {}
+        self._total_rewards: Dict[str, float] = {}
+        self._step_rewards: Dict[str, List[float]] = {}
+        self._pending_obs: Dict[str, Optional[str]] = {}
+        self._async_loop: Optional[asyncio.AbstractEventLoop] = None
 
+    def _get_async_loop(self) -> asyncio.AbstractEventLoop:
+        if self._async_loop is None or self._async_loop.is_closed():
+            self._async_loop = asyncio.new_event_loop()
+        return self._async_loop
+
+    def _run_sync(self, coro):
+        return self._get_async_loop().run_until_complete(coro)
+
+    def _clear_trajectory(self, uuid: str) -> None:
+        env = self._envs.pop(uuid, None)
+        if env is not None:
+            try:
+                self._run_sync(self._close_env_async(env))
+            except Exception:
+                pass
+        self._dones.pop(uuid, None)
+        self._total_rewards.pop(uuid, None)
+        self._step_rewards.pop(uuid, None)
+        self._pending_obs.pop(uuid, None)
+
+    # ------------------------------------------------------------------
+    # Universal hooks (called by both run() and run_multi_turn())
+    # ------------------------------------------------------------------
+    def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
+        """Create one env per request and seed messages with initial observation."""
+        for uuid in list(self._envs):
+            self._clear_trajectory(uuid)
+
+        for req in requests:
+            uuid = req.uuid
+            env_config = (req.data_dict or {}).get('env_config', {}) if hasattr(req, 'data_dict') else {}
+            env = self._run_sync(self._create_env(env_config))
+            observation, info, system_message = self._run_sync(env.reset(req))
+
+            messages: Messages = []
+            if system_message:
+                messages.append({'role': 'system', 'content': system_message})
+            messages.append({'role': 'user', 'content': observation})
+            req.messages = messages
+
+            self._envs[uuid] = env
+            self._dones[uuid] = False
+            self._total_rewards[uuid] = 0.0
+            self._step_rewards[uuid] = []
+            self._pending_obs[uuid] = None
+
+    def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+                    current_turn: int) -> Dict[str, Any]:
+        """Advance the gym env, accumulate reward, and return done + rollout_infos."""
+        uuid = infer_request.uuid
+        env = self._envs.get(uuid)
+        if env is None:
+            return {'done': True, 'rollout_infos': {}}
+
+        next_obs, reward, done, info = self._run_sync(env.step(deepcopy(infer_request.messages)))
+        self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) + float(reward)
+        self._step_rewards.setdefault(uuid, []).append(float(reward))
+
+        if response_choice.finish_reason == 'length':
+            done = True
+        if self.max_turns and current_turn >= self.max_turns:
+            done = True
+
+        self._dones[uuid] = done
+        self._pending_obs[uuid] = None if done else next_obs
+
+        rollout_infos: Dict[str, Any] = {
+            'total_reward': self._total_rewards[uuid],
+            'step_rewards': list(self._step_rewards.get(uuid, [])),
+            'gym_done': done,
+        }
+        if done:
+            self._clear_trajectory(uuid)
+
+        return {'done': done, 'rollout_infos': rollout_infos}
+
+    # ------------------------------------------------------------------
+    # Step hook (injects next observation for the next turn)
+    # ------------------------------------------------------------------
+    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
+             current_turn: int) -> Dict[str, Any]:
+        uuid = infer_request.uuid
+        next_obs = self._pending_obs.get(uuid)
+        if next_obs is not None:
+            infer_request.messages.append({'role': 'user', 'content': next_obs})
+            self._pending_obs[uuid] = None
+        return {'infer_request': infer_request}
+
+    # ------------------------------------------------------------------
+    # Env helpers
+    # ------------------------------------------------------------------
     async def _create_env(self, env_config: Dict) -> Env:
-        """Create environment instance from configuration."""
         env_name = env_config.get('name', self.gym_env_name)
         if env_name not in envs:
             raise ValueError(f"Environment '{env_name}' not found. Available: {list(envs.keys())}")
         return envs[env_name](env_config)
 
     async def _close_env_async(self, env: Env):
-        """Safely close environment with async support."""
         if env is None:
             return
-
         try:
             if hasattr(env, 'close') and asyncio.iscoroutinefunction(env.close):
                 await env.close()
             elif hasattr(env, 'close'):
                 env.close()
         except Exception as e:
-            # Log the exception but don't raise it to avoid masking other errors
             import logging
             logging.warning(f'Error closing environment: {e}')
-
-    async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
-                  **kwargs) -> 'RolloutOutput':
-        """
-        Execute the gym environment-based rollout:
-        1. Initialize environment
-        2. Run multi-turn interactions between LLM and environment
-        3. Collect trajectory information and rewards
-        """
-        env_config = infer_request.data_dict.get('env_config', {})
-
-        env = None
-        try:
-            env = await self._create_env(env_config)
-
-            # Initialize environment
-            observation, info, system_message = await env.reset(infer_request)
-
-            # Build initial messages
-            messages: Messages = []
-            if system_message:
-                messages.append({'role': 'system', 'content': system_message})
-            messages.append({'role': 'user', 'content': observation})
-
-            current_request = deepcopy(infer_request)
-            current_turn = 1
-            done = False
-            total_reward = 0.0
-            step_rewards = []
-            trajectory_id = infer_request.uuid
-            trajectory_info = [info]
-
-            while not done and current_turn <= (self.max_turns or float('inf')):
-                current_request.messages = messages
-                remove_response(current_request.messages)
-
-                response: 'ChatCompletionResponse' = await self.infer_engine.infer_async(
-                    current_request, request_config, **kwargs)
-                response_choice: 'ChatCompletionResponseChoice' = response.choices[0]
-                completion = response_choice.message.content
-                messages.append({'role': 'assistant', 'content': completion})
-
-                # Execute environment step
-                next_obs, reward, done, step_info = await env.step(deepcopy(messages))
-
-                # Update trajectory information
-                total_reward += reward
-                step_rewards.append(reward)
-                trajectory_info.append(step_info)
-
-                # Prepare for next turn
-                if not done:
-                    messages.append({'role': 'user', 'content': next_obs})
-                    current_request.messages = messages
-                    current_turn += 1
-
-            return RolloutOutput(
-                response=response,
-                messages=messages,
-                rollout_infos={
-                    'num_turns': current_turn,
-                    'trajectory_id': trajectory_id,
-                    'total_reward': total_reward,
-                    'step_rewards': step_rewards,
-                    'trajectory_info': trajectory_info
-                })
-
-        finally:
-            # Ensure environment is properly closed
-            if env is not None:
-                await self._close_env_async(env)
 
 
 multi_turns = {

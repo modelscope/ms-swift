@@ -95,12 +95,9 @@ SYSTEM_PROMPT = ('You are playing FrozenLake. You see a grid where:\n'
                  'Move one cell per turn. Reach G to win (+1 reward). Stepping into H ends '
                  'the episode with 0 reward. Moves that would go off the grid leave you in '
                  'place.\n\n'
-                 'On every turn, briefly reason inside <think>...</think>, then output your '
-                 'move inside <action>...</action>. The action must be exactly one of: '
-                 'up, down, left, right.\n\n'
-                 'Example:\n'
-                 '<think>The goal is below me and there is a hole to my right, so I should '
-                 'move down.</think><action>down</action>')
+                 'On every turn, output your move inside <action>...</action>. '
+                 'The action must be exactly one of: up, down, left, right.\n\n'
+                 'Example: <action>down</action>')
 
 _ACTION_TAG_RE = re.compile(r'<action>\s*(up|down|left|right)\s*</action>', re.IGNORECASE)
 _BARE_ACTION_RE = re.compile(r'\b(up|down|left|right)\b', re.IGNORECASE)

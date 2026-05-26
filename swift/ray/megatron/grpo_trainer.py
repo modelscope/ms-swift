@@ -126,7 +126,11 @@ class GRPOTrainer:
             if scheduler_cfg not in multi_turns:
                 raise ValueError(f'Unknown multi_turn_scheduler: {scheduler_cfg!r}; '
                                  f'available: {list(multi_turns)}')
-            self._multi_turn_scheduler = multi_turns[scheduler_cfg](max_turns=self._max_turns)
+            scheduler_kwargs = {'max_turns': self._max_turns}
+            gym_env = getattr(args, 'gym_env', None)
+            if gym_env is not None:
+                scheduler_kwargs['gym_env'] = gym_env
+            self._multi_turn_scheduler = multi_turns[scheduler_cfg](**scheduler_kwargs)
         else:
             assert isinstance(scheduler_cfg, MultiTurnScheduler)
             self._multi_turn_scheduler = scheduler_cfg
@@ -138,10 +142,19 @@ class GRPOTrainer:
             reward_funcs_cfg = [reward_funcs_cfg]
 
         self.reward_funcs, self.reward_func_names = resolve_reward_funcs(reward_funcs_cfg, args=args)
-        self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_funcs), self.device)
 
-        if not self.reward_funcs:
-            raise ValueError('GRPOTrainer: no reward functions configured')
+        # use_gym_env: gym total_reward is appended as an extra reward column so it can
+        # blend with reward_funcs via reward_weights.  When reward_funcs is empty, it becomes
+        # the single reward source.
+        self.use_gym_env = bool(getattr(args, 'use_gym_env', False))
+        if self.use_gym_env:
+            self.reward_func_names.append('gym_reward')
+
+        self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_func_names), self.device)
+
+        if not self.reward_funcs and not self.use_gym_env:
+            raise ValueError('GRPOTrainer: no reward functions configured '
+                             '(or pass use_gym_env: true to use the env-provided total_reward)')
 
     def _get_request_config(self):
         """Build a RequestConfig for rollout generation."""
@@ -330,6 +343,7 @@ class GRPOTrainer:
             # Mode A: driver-side trainer loop. Convert dict prompts to
             # RolloutInferRequest so the loop can mutate `messages` in place.
             requests = self._inputs_to_requests(prompt_batch)
+            self._multi_turn_scheduler.on_trajectory_start(requests)
             first_turn = [
                 RolloutOutput(response=resp) for resp in self._distribute_to_replicas(requests, request_config)
             ]
@@ -345,15 +359,7 @@ class GRPOTrainer:
 
         # Mode B (server-side multi-turn, currently disabled) + single-turn share this path.
         completions = self._distribute_to_replicas(prompt_batch, request_config)
-        if self._enable_server_multi_turn and len(completions) != len(prompt_batch):
-            # Per-turn-split multi-turn (`dynamic_num_samples`) is HF-only; the Megatron-Ray
-            # driver has the same data-flow constraints that motivated the Megatron exclusion
-            # (see swift/megatron/trainers/rollout_mixin.py::_server_rollout).
-            raise NotImplementedError(
-                'Per-turn-split multi-turn (dynamic_num_samples) is not supported on Megatron-Ray — '
-                f'rollout produced {len(completions)} outputs for {len(prompt_batch)} requests. '
-                'Return one RolloutOutput per request from MultiTurnScheduler.run (combine turns '
-                'inside response_token_ids: List[List[int]]), or use the HF trainer.')
+        assert len(completions) == len(prompt_batch)
         return [RolloutOutput(response=resp) for resp in completions]
 
     def _inputs_to_requests(self, inputs: Sequence[Dict[str, Any]]) -> List[RolloutInferRequest]:
@@ -458,6 +464,25 @@ class GRPOTrainer:
         return expanded
 
     def score_completions(
+        self,
+        rollout_batch: Sequence[Dict[str, Any]],
+    ) -> torch.Tensor:
+        device = self.device
+
+        # Gym path: pull `total_reward` from the multi-turn scheduler's rollout_infos and
+        # append it as an extra column so reward_weights can blend it with reward_funcs.
+        if self.use_gym_env:
+            gym_reward = torch.tensor([inp['rollout_infos']['total_reward'] for inp in rollout_batch],
+                                      dtype=torch.float32,
+                                      device=device).unsqueeze(1)
+            if not self.reward_funcs:
+                return gym_reward
+            func_rewards = self._compute_reward_funcs(rollout_batch)
+            return torch.cat([func_rewards, gym_reward], dim=1)
+
+        return self._compute_reward_funcs(rollout_batch)
+
+    def _compute_reward_funcs(
         self,
         rollout_batch: Sequence[Dict[str, Any]],
     ) -> torch.Tensor:

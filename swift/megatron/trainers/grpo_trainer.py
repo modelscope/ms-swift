@@ -541,8 +541,33 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 set_expandable_segments(False)
                 self.engine.engine.wake_up(tags=['kv_cache'])
 
-            # Step3: Rollout
-            outputs: List[RolloutOutput] = self._rollout(batch)
+            multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
+            colocate_multi_turn = (
+                multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
+
+            if colocate_multi_turn:
+                from swift.rollout import run_multi_turn
+                requests = self._inputs_to_requests(self._set_inputs_system(batch))
+                multi_turn_scheduler.on_trajectory_start(requests)
+                request_config = self._get_request_config()
+                outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
+                outputs = run_multi_turn(
+                    requests=requests,
+                    first_turn_outputs=outputs,
+                    scheduler=multi_turn_scheduler,
+                    rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
+                    request_config=request_config,
+                    max_turns=self.args.max_turns,
+                    gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
+                )
+                # log prompts/completions to mirror ``_rollout``'s side-effects
+                messages = gather_object([req.messages for req in requests])
+                completions = gather_object([out.response.choices[0].message.content for out in outputs])
+                self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
+                self._logs['completion'].extend(completions)
+            else:
+                # Step3: Rollout
+                outputs: List[RolloutOutput] = self._rollout(batch)
 
             # Step4: Sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
@@ -1149,11 +1174,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
         output_tensor = model(**inputs_for_logits)
         if is_pp_last_stage and output_tensor is not None:
-            logger.info(
-                f'[DEBUG training forward_step] output_tensor shape={output_tensor.shape}, '
-                f'mean={output_tensor.float().mean().item():.4f}, std={output_tensor.float().std().item():.4f}, '
-                f'max={output_tensor.float().max().item():.4f}, min={output_tensor.float().min().item():.4f}, '
-                f'has_nan={output_tensor.isnan().any().item()}, has_inf={output_tensor.isinf().any().item()}')
             logits_packed = output_tensor
             if self.temperature != 1.0:
                 logits_packed.div_(self.temperature)

@@ -186,6 +186,8 @@ class RLHFMegatronArgumentsMixin:
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
+    use_gym_env: Optional[bool] = None
+    gym_env: Optional[str] = None
 
     num_iterations: int = 1
 

@@ -520,22 +520,27 @@ class MegatronRolloutMixin:
                 set_expandable_segments(False)
                 self.engine.engine.wake_up(tags=['kv_cache'])
 
-            # First-turn rollout (or only turn for single-turn / server multi-turn).
-            outputs: List[RolloutOutput] = self._rollout(batch)
-
             multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
-            if multi_turn_scheduler is not None and not self.enable_server_multi_turn:
-                # colocate trainer-side multi-turn loop.
+            colocate_multi_turn = (multi_turn_scheduler is not None and not self.enable_server_multi_turn)
+
+            if colocate_multi_turn:
                 requests = self._inputs_to_requests(self._set_inputs_system(batch))
+                # scheduler may need to reset trajectories before the first turn
+                multi_turn_scheduler.on_trajectory_start(requests)
+                request_config = self._get_request_config()
+                outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
                 outputs = run_multi_turn(
                     requests=requests,
                     first_turn_outputs=outputs,
                     scheduler=multi_turn_scheduler,
                     rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
-                    request_config=self._get_request_config(),
+                    request_config=request_config,
                     max_turns=self.args.max_turns,
                     gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
                 )
+            else:
+                # First-turn rollout (or only turn for single-turn / server multi-turn).
+                outputs: List[RolloutOutput] = self._rollout(batch)
 
             # Sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:

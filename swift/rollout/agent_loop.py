@@ -95,9 +95,17 @@ def run_multi_turn(
                 messages.append({'role': 'assistant', 'content': completion})
 
         current_requests = [requests[index] for index in index_to_infer]
-        should_stops = [
-            scheduler.check_finished(req, output.response.choices[0], current_turn)
+        turn_results = [
+            scheduler.on_turn_end(req, output.response.choices[0], current_turn)
             for req, output in zip(current_requests, outputs)
+        ]
+        for tr, index in zip(turn_results, index_to_infer):
+            if tr.get('rollout_infos'):
+                rollout_infos[index].update(tr['rollout_infos'])
+
+        should_stops = [
+            tr.get('done', scheduler.check_finished(req, output.response.choices[0], current_turn))
+            for tr, req, output in zip(turn_results, current_requests, outputs)
         ]
 
         next_turn_index_to_infer: List[int] = []
@@ -154,7 +162,8 @@ def run_multi_turn(
                     response_token_ids=response_token_ids[index],
                     response_loss_mask=response_loss_mask[index],
                     rollout_infos={
-                        **rollout_infos[index], 'num_turns': current_turn
+                        **rollout_infos[index],
+                        'num_turns': current_turn,
                     },
                     rollout_logprobs=final_rollout_logprobs)
                 continue

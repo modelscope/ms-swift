@@ -39,7 +39,10 @@ class GRPOLoss(Loss):
         by using __new__ and manually initialising only the fields that
         ``forward_step`` / ``loss_func`` actually read.
         """
+        import torch
+
         from swift.megatron.trainers.grpo_trainer import MegatronGRPOTrainer
+        from swift.utils import is_last_rank
         cls = MegatronGRPOTrainer
         dummy = cls.__new__(cls)
         dummy.args = args
@@ -50,6 +53,11 @@ class GRPOLoss(Loss):
         dummy.enable_routing_replay = args.router_replay_mode != 'disabled'
         dummy.micro_batch_size = args.micro_batch_size
         dummy.temperature = args.temperature
+        dummy.is_main_process = is_last_rank()
+        dummy.process_index = torch.distributed.get_rank() if torch.distributed.is_initialized() else 0
+        dummy.world_size = torch.distributed.get_world_size() if torch.distributed.is_initialized() else 1
+        dummy._step = 0
+        dummy.max_completion_length = args.max_completion_length
 
         class _AlwaysTraining:
             training = True
