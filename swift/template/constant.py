@@ -75,6 +75,7 @@ class LLMTemplateType:
     baichuan = 'baichuan'
     baichuan_m1 = 'baichuan_m1'
     minicpm = 'minicpm'
+    minicpm5 = 'minicpm5'
     telechat = 'telechat'
     telechat2 = 'telechat2'
 
