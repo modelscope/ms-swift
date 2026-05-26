@@ -725,6 +725,14 @@ def test_olmoe():
     assert swift_response == jinja_response
 
 
+def test_minicpm5():
+    engine = TransformersEngine('OpenBMB/MiniCPM5-1B')
+    swift_response = _infer_model(engine)
+    engine.template.template_backend = 'jinja'
+    jinja_response = _infer_model(engine)
+    assert swift_response == jinja_response
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -781,4 +789,5 @@ if __name__ == '__main__':
     # test_medgemma3()
     # test_youtu_llm()
     # test_glm4_moe_lite()
-    test_olmoe()
+    # test_olmoe()
+    test_minicpm5()

@@ -701,6 +701,7 @@ register_template(
     ChatmlTemplateMeta(
         LLMTemplateType.minicpm5,
         is_thinking=True,
+        thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='minicpm5',
     ))

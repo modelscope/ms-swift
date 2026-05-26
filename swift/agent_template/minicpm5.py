@@ -79,7 +79,7 @@ class MiniCPM5AgentTemplate(BaseAgentTemplate):
         return assistant_content, res
 
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
-        tool_descs = [json.dumps(self.unwrap_tool(tool), ensure_ascii=False) for tool in tools]
+        tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
         system = system or ''
         if system:
             system = f'{system}\n\n'
