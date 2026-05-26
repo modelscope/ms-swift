@@ -143,8 +143,11 @@ def patch_stateless_process_group_for_ipv6():
     if not is_vllm_available():
         return
 
-    from torch.distributed import TCPStore
+    import inspect
     from vllm.distributed.utils import StatelessProcessGroup
+
+    # vLLM >= 0.19.0: create() accepts listen_socket and handles TCPStore internally
+    _has_listen_socket_param = 'listen_socket' in inspect.signature(StatelessProcessGroup.create).parameters
 
     # Save original method for fallback
     _original_create = StatelessProcessGroup.create
@@ -157,6 +160,7 @@ def patch_stateless_process_group_for_ipv6():
         world_size: int,
         data_expiration_seconds: int = 3600,
         store_timeout: int = 300,
+        **kwargs,
     ) -> StatelessProcessGroup:
         """Patched version of StatelessProcessGroup.create that supports IPv6.
 
@@ -171,37 +175,51 @@ def patch_stateless_process_group_for_ipv6():
                 world_size=world_size,
                 data_expiration_seconds=data_expiration_seconds,
                 store_timeout=store_timeout,
+                **kwargs,
             )
 
-        # IPv6 path
+        # IPv6 path: create an AF_INET6 socket
         launch_server = rank == 0
         if launch_server:
             listen_socket = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
             listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             listen_socket.bind((host, port))
             listen_socket.listen()
-            listen_fd = listen_socket.fileno()
         else:
             listen_socket = None
-            listen_fd = None
 
-        store = TCPStore(
-            host_name=host,
-            port=port,
-            world_size=world_size,
-            is_master=launch_server,
-            timeout=timedelta(seconds=store_timeout),
-            use_libuv=False,
-            master_listen_fd=listen_fd,
-        )
-
-        return StatelessProcessGroup(
-            rank=rank,
-            world_size=world_size,
-            store=store,
-            socket=listen_socket,
-            data_expiration_seconds=data_expiration_seconds,
-        )
+        if _has_listen_socket_param:
+            # vLLM >= 0.19.0: pass listen_socket to create(), which handles
+            # TCPStore creation and returns StatelessProcessGroup without socket field
+            return _original_create(
+                host=host,
+                port=port,
+                rank=rank,
+                world_size=world_size,
+                data_expiration_seconds=data_expiration_seconds,
+                store_timeout=store_timeout,
+                listen_socket=listen_socket,
+            )
+        else:
+            # vLLM < 0.19.0: manually create TCPStore and pass socket to constructor
+            from torch.distributed import TCPStore
+            listen_fd = listen_socket.fileno() if listen_socket else None
+            store = TCPStore(
+                host_name=host,
+                port=port,
+                world_size=world_size,
+                is_master=launch_server,
+                timeout=timedelta(seconds=store_timeout),
+                use_libuv=False,
+                master_listen_fd=listen_fd,
+            )
+            return StatelessProcessGroup(
+                rank=rank,
+                world_size=world_size,
+                store=store,
+                socket=listen_socket,
+                data_expiration_seconds=data_expiration_seconds,
+            )
 
     # Apply the monkey patch to vLLM
     StatelessProcessGroup.create = _patched_stateless_pg_create
