@@ -68,6 +68,8 @@ class RolloutAdapter:
             weight_iter = add_base_layer_suffix_by_param_names(weight_iter, vllm_lora_param_names)
 
         if not self.is_primary:
+            for _ in weight_iter:
+                pass
             return
 
         from ..rollout.weight_transfer import BucketedWeightSender

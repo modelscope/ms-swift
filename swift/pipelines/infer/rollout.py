@@ -42,8 +42,9 @@ from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig,
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        FlattenedTensorMetadata, TensorLoRARequest, UpdateAdapterRequest,
                                        UpdateFlattenedAdapterRequest, UpdateFlattenedParamsRequest,
-                                       check_vllm_version_ge, chunk_list, patch_vllm_load_adapter,
-                                       patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
+                                       check_vllm_version_ge, chunk_list, finish_vllm_weight_reload,
+                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader,
+                                       vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
 from swift.utils import (gc_collect, get_logger, get_seed, get_torch_device, ipc_collect, is_vllm_ascend_available,
                          is_vllm_metax_available, synchronize)
@@ -284,7 +285,13 @@ class WeightSyncWorkerExtension:
         named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
 
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
-        self.model_runner.model.load_weights(weights=list(named_params.items()))
+        # Re-run process_weights_after_loading on FusedMoE layers so the
+        # kernel-format layout is rebuilt after the in-place reload
+        # (workaround for vLLM issue #42821).
+        try:
+            self.model_runner.model.load_weights(weights=list(named_params.items()))
+        finally:
+            finish_vllm_weight_reload(self.model_runner.model)
 
     def close_communicator(self) -> None:
         """
@@ -508,6 +515,13 @@ class WeightSyncWorkerExtension:
             del weights
             if metadata.get('is_last'):
                 break
+
+        # Re-run process_weights_after_loading on FusedMoE layers so the
+        # kernel-format layout is rebuilt after the in-place reload
+        # (workaround for vLLM issue #42821).  Skipped for LoRA sync
+        # because the adapter path doesn't call ``load_weights``.
+        if not is_lora_sync:
+            finish_vllm_weight_reload(self.model_runner.model)
 
         if is_lora_sync and all_lora_weights:
             req_kw = dict(

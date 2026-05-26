@@ -124,28 +124,28 @@ class MegatronWorker(CheckpointEngineMixin):
     def train_step(self, batch) -> Dict[str, Any]:
         megatron = self._megatron
         args = megatron.args
-        # Megatron Core reads args.num_microbatches for gradient accumulation
-        # scheduling. In Ray, the actual batch per worker is determined by DP
-        # dispatch and may differ from the initial config. Temporarily override
-        # to match the actual micro-batch count, then restore.
-        orig_num_microbatches = args.num_microbatches
-        orig_micro_batch_size = args.micro_batch_size
-        if isinstance(batch, list):
-            micro_batches = self._build_local_micro_batches(batch)
-            data_iterator = iter(micro_batches)
-        else:
-            data_iterator, micro_batches = self._batch_to_iterator(batch)
-        args.num_microbatches = len(micro_batches)
-        if micro_batches:
-            mb0 = micro_batches[0].get('input_ids')
-            if isinstance(mb0, torch.Tensor) and mb0.dim() > 0:
-                args.micro_batch_size = int(mb0.shape[0])
+        assert isinstance(batch, list), f'train_step expects List[Dict], got {type(batch).__name__}'
+        micro_batches = self._build_local_micro_batches(batch)
+        data_iterator = iter(micro_batches)
+        assert len(micro_batches) == args.num_microbatches, (
+            f'Worker got {len(micro_batches)} micro-batches but args.num_microbatches='
+            f'{args.num_microbatches}; check per_device_generation_batch_size / micro_batch_size config.')
+        router_replay_mode = getattr(args, 'router_replay_mode', 'disabled')
+        need_routing_replay = router_replay_mode != 'disabled'
+        RouterReplay = None
+        if need_routing_replay:
+            try:
+                from megatron.core.transformer.moe.router_replay import RouterReplay, RouterReplayAction
+                RouterReplay.set_global_router_replay_action(RouterReplayAction.REPLAY_FORWARD)
+            except ImportError:
+                need_routing_replay = False
 
         try:
             megatron.run_train_step(data_iterator, None)
         finally:
-            args.num_microbatches = orig_num_microbatches
-            args.micro_batch_size = orig_micro_batch_size
+            if need_routing_replay and RouterReplay is not None:
+                RouterReplay.clear_global_indices()
+                RouterReplay.clear_global_router_replay_action()
         del data_iterator
         gc_collect()
         return self._extract_step_metrics(megatron)
@@ -205,7 +205,7 @@ class MegatronWorker(CheckpointEngineMixin):
 
     def _compute_logps_batched(self, batch, model, output_key: str) -> Dict[str, Any]:
         """Split a DP shard into micro-batches, compute logps, concatenate."""
-        micro_batches = split_micro_batches(batch, getattr(self._args, 'micro_batch_size', 1))
+        micro_batches = split_micro_batches(batch, self._args.micro_batch_size)
         parts = []
         routed_parts = []
         for mb in micro_batches:
@@ -422,17 +422,20 @@ class MegatronWorker(CheckpointEngineMixin):
             peft_config = None
             lora_names = self._resolve_lora_param_names()
 
-        if self.rollout is not None and self.rollout.is_primary:
-            self.rollout.update_weights(
-                weight_iter,
-                vllm_lora_param_names=lora_names,
-                peft_config=peft_config,
-                base_sync_done=adapter_only,
-            )
-            self.rollout.reset_prefix_cache()
-        else:
+        if self.rollout is None:
+            # No rollout adapter attached just drain the
+            # iterator so all TP ranks finish the collective export.
             for _ in weight_iter:
                 pass
+            return
+
+        self.rollout.update_weights(
+            weight_iter,
+            vllm_lora_param_names=lora_names,
+            peft_config=peft_config,
+            base_sync_done=adapter_only,
+        )
+        self.rollout.reset_prefix_cache()
 
     def _resolve_lora_param_names(self) -> Optional[set]:
         """Get vLLM param names for LoRA mapping, if applicable."""
@@ -471,13 +474,8 @@ class MegatronWorker(CheckpointEngineMixin):
         if getattr(self._megatron, 'optimizer', None) and self._args.offload_optimizer:
             load_megatron_optimizer(self._megatron.optimizer)
 
-    def _batch_to_iterator(self, batch):
-        micro_batches = split_micro_batches(batch, getattr(self._args, 'micro_batch_size', 1))
-        micro_batches = [to_device(mb, get_current_device()) for mb in micro_batches]
-        return iter(micro_batches), micro_batches
-
     def _split_sample_chunks(self, samples: Sequence[Dict[str, Any]]) -> List[Sequence[Dict[str, Any]]]:
-        micro_batch_size = max(int(getattr(self._args, 'micro_batch_size', 1) or 1), 1)
+        micro_batch_size = self._args.micro_batch_size
         return [samples[i:i + micro_batch_size] for i in range(0, len(samples), micro_batch_size)]
 
     def _build_local_micro_batches(self, samples: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
