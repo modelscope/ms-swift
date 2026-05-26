@@ -44,13 +44,49 @@ class Env(ABC):
 
 The `RolloutInferRequest` received by `reset` contains the dataset row's `messages`, `data_dict` (extra columns including `env_config`), etc. See the [input example](./multi_turn.md#multiturnscheduler) for the full structure.
 
-> If you need extra control over the conversation history between turns (e.g. dynamic compression, injecting hints), subclass `MultiTurnScheduler` and override `step` / `run` — see the [multi-turn doc](./multi_turn.md#customising-the-interaction-logic).
+> If you need extra control over the conversation history between turns (e.g. dynamic compression, injecting hints), subclass `MultiTurnScheduler` and implement `on_trajectory_start` / `on_turn_end` hooks, or override `step` / `run` — see the [multi-turn doc](./multi_turn.md#customising-the-interaction-logic).
 
 ## Launching training
 
 Use the built-in [gym_scheduler](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py) to wire the env into multi-turn rollout.
 
+`GYMScheduler` is based on the generic hook protocol:
+- Inherits `MultiTurnScheduler` — no need to override the `run` method
+- Implements `on_trajectory_start` (calls `env.reset`) and `on_turn_end` (calls `env.step`)
+- Works with both server mode (`run()`) and colocate mode (`run_multi_turn()`)
+
 User-defined envs are loaded via `--external_plugins your_plugin.py`; the plugin runs `envs['my_env'] = MyEnv` to register them (the FrozenLake example below demonstrates the full pattern).
+
+The built-in `GYMScheduler` completes the control logic via hooks:
+
+```python
+class GYMScheduler(MultiTurnScheduler):
+    def on_trajectory_start(self, requests):
+        # Create an env for each request, call env.reset, inject initial observation
+        for req in requests:
+            env = self._create_env(req.data_dict.get('env_config', {}))
+            observation, info, system_message = env.reset(req)
+            req.messages = [system_msg, user_msg(observation)]
+            self._envs[req.uuid] = env
+
+    def on_turn_end(self, req, response_choice, current_turn):
+        # Call env.step, accumulate reward, return done + rollout_infos
+        next_obs, reward, done, info = env.step(deepcopy(req.messages))
+        self._total_rewards[req.uuid] += reward
+        return {
+            'done': done,
+            'rollout_infos': {
+                'total_reward': self._total_rewards[req.uuid],
+                'step_rewards': [...],
+            }
+        }
+
+    def step(self, req, response_choice, current_turn):
+        # Inject the next observation into a user message
+        if self._pending_obs.get(req.uuid):
+            req.messages.append({'role': 'user', 'content': next_obs})
+        return {'infer_request': req}
+```
 
 **Colocate mode**:
 

@@ -4,6 +4,7 @@
 # To prevent excessively long generations, max_completion_length is capped at 512 (per turn);
 # since prompts are short, max_length (first 9 turns + prompt) is capped at 6120.
 # vllm_max_model_len = max_length + last-turn length = 6632
+# reward improves from 0.2 → 0.6 within 120 steps: https://github.com/modelscope/ms-swift/pull/9405
 
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
@@ -17,7 +18,7 @@ megatron rlhf \
     --pipeline_model_parallel_size 1 \
     --dataset 'examples/megatron/grpo/multi_turn/frozen_lake.jsonl#1024' \
     --load_from_cache_file false \
-    --num_train_epochs 1 \
+    --train_iters 120 \
     --global_batch_size 64 \
     --micro_batch_size 1 \
     --steps_per_generation 4 \

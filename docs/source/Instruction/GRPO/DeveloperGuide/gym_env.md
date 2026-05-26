@@ -44,11 +44,16 @@ class Env(ABC):
 
 `reset` 接收到的 `RolloutInferRequest` 包含数据集行的 `messages`、`data_dict`（额外列，包括 `env_config`）等。完整示例参见 [入参示例](./multi_turn.md#多轮规划器-multiturnscheduler)。
 
-> 如果需要在每轮 rollout 之间额外控制对话历史（例如动态压缩、注入额外提示），推荐直接继承 `MultiTurnScheduler` 并重写 `step` / `run` 方法，详见[多轮训练文档](./multi_turn.md#自定义多轮交互逻辑)。
+> 如果需要在每轮 rollout 之间额外控制对话历史（例如动态压缩、注入额外提示），推荐直接继承 `MultiTurnScheduler` 并实现 `on_trajectory_start` / `on_turn_end` hook，或重写 `step` / `run` 方法，详见[多轮训练文档](./multi_turn.md#自定义多轮交互逻辑)。
 
 ## 启动训练
 
 使用内置的 [gym_scheduler](https://github.com/modelscope/ms-swift/blob/main/swift/rollout/multi_turn.py) 把 env 串到多轮 rollout 中。
+
+`GYMScheduler` 基于通用 hook 协议实现：
+- 继承 `MultiTurnScheduler`，无需自定义 `run` 方法
+- 实现 `on_trajectory_start`（调用 `env.reset`）和 `on_turn_end`（调用 `env.step`）
+- 同时适用于 server mode（`run()`）和 colocate mode（`run_multi_turn()`）
 
 用户自定义的 env 通过 `--external_plugins your_plugin.py` 加载，plugin 里执行 `envs['my_env'] = MyEnv` 完成注册（下文 FrozenLake 示例完整演示）。
 
@@ -124,7 +129,42 @@ class FrozenLakeEnv(Env):
         ...
 ```
 
-**2. 注册**
+**2. GYMScheduler 的 hook 实现**
+
+框架内置的 `GYMScheduler` 基于多轮 hook 完成了控制逻辑：
+
+```python
+class GYMScheduler(MultiTurnScheduler):
+    def on_trajectory_start(self, requests):
+        # 为每个请求创建 env，调用 env.reset，注入初始 observation
+        for req in requests:
+            env = self._create_env(req.data_dict.get('env_config', {}))
+            observation, info, system_message = env.reset(req)
+            req.messages = [system_msg, user_msg(observation)]
+            self._envs[req.uuid] = env
+    
+    def on_turn_end(self, req, response_choice, current_turn):
+        # 调用 env.step，累积 reward，返回 done + rollout_infos
+        next_obs, reward, done, info = env.step(deepcopy(req.messages))
+        self._total_rewards[req.uuid] += reward
+        return {
+            'done': done,
+            'rollout_infos': {
+                'total_reward': self._total_rewards[req.uuid],
+                'step_rewards': [...],
+            }
+        }
+    
+    def step(self, req, response_choice, current_turn):
+        # 注入下一帧 observation 到 user message
+        if self._pending_obs.get(req.uuid):
+            req.messages.append({'role': 'user', 'content': next_obs})
+        return {'infer_request': req}
+```
+
+用户只需实现 Env 接口，无需关心多轮控制细节。
+
+**3. 注册**
 
 将 env 类挂到 swift 的 `envs` 注册表里。`--external_plugins` 在训练启动时会 import 该文件，注册随之生效：
 
@@ -138,7 +178,7 @@ class FrozenLakeEnv(Env):
 envs['frozen_lake'] = FrozenLakeEnv
 ```
 
-**3. 准备数据集**
+**4. 准备数据集**
 
 数据集在这里仅作占位符处理，数据构造由环境生成，和 `env_config.seed`来控制地图生成的随机性：
 
@@ -149,7 +189,7 @@ envs['frozen_lake'] = FrozenLakeEnv
 {"messages":[{"role":"user","content":"<placeholder>"}],"env_config":{"seed":127}}
 ```
 
-**4. （可选）叠加自定义 reward**
+**5. （可选）叠加自定义 reward**
 
 设置 `--use_gym_env true` 后，env 给出的 `total_reward` 会自动作为一路奖励参与训练，无需再写 reward 函数。如果想在此之外再叠加自定义信号（如格式/长度等），通过 `--reward_funcs` 传入即可，gym 奖励会作为额外一列与 reward_funcs 拼在一起，由 `--reward_weights` 统一加权。例如同时启用一个格式校验 reward：
 
@@ -158,11 +198,10 @@ megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 
 # reward_weights 末位对应 gym 的 total_reward
 ```
 
-**5. 训练**
+**6. 训练**
 
 运行脚本参考：[`examples/megatron/grpo/multi_turn/frozen_lake.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/grpo/multi_turn/frozen_lake.sh)
 
-训练时可在日志中观察 `rollout_infos.num_turns`（每条轨迹的步数）与奖励均值；`--log_completions true` 会把完整对话写入 `completions.jsonl`，可逐条验证模型是否按 `<action>...</action>` 格式输出。
 
 参考资料:
 

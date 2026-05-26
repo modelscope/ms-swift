@@ -28,6 +28,7 @@ megatron rlhf \
     --context_parallel_size 1 \
     --tensor_model_parallel_size 1 \
     --pipeline_model_parallel_size 1 \
+    --train_iters 120 \
     --dataset 'examples/megatron/grpo/multi_turn/frozen_lake.jsonl#1024' \
     --load_from_cache_file false \
     --global_batch_size 32 \
@@ -65,10 +66,6 @@ megatron rlhf \
     --top_k 80 \
     --padding_free true \
     --log_completions true \
-    --report_to swanlab \
-    --swanlab_project ms-swift-grpo-frozen-lake \
-    --swanlab_exp_name nonray-cap8192-thinkingoff \
-    --train_iters ${TRAIN_ITERS:-120} \
+    --report_to tensorboard swanlab \
     --eval_steps 1000 \
     --save_steps 1000 \
-    "$@"
