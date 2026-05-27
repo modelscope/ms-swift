@@ -69,9 +69,12 @@ class ProgressCallbackNewWithMFU(ProgressCallback):
     def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
         add_train_message(logs, state, self.start_time, self.start_step)
         total_flos = getattr(state, 'total_flos', 0)
-        actual_flops = total_flos / self.elapsed
-        theoretical_max_flops = self.device_tflops * 1e12
-        mfu = actual_flops / theoretical_max_flops
+        if self.elapsed > 0 and self.device_tflops:
+            actual_flops = total_flos / self.elapsed
+            theoretical_max_flops = self.device_tflops * 1e12
+            mfu = actual_flops / theoretical_max_flops
+        else:
+            mfu = 0.0
         logger.debug(f'Total_flos[{total_flos}] elapsed_time[{self.elapsed}]sec Average MFU[{mfu}]')
         logs['MFU'] = round(mfu, 6)
         if not is_pai_training_job() and state.is_world_process_zero:
