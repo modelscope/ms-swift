@@ -90,15 +90,22 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
         rank_offset=0,
     )
 
-    # Create rollout groups based on data consistency from data_iterator
-    # Same data_parallel_rank processes same data - group ranks with same DP index
+    # Create rollout groups based on data consistency from data_iterator.
+    # Same data_parallel_rank processes same data - group ranks with same DP index.
     if not trainer._rollout_groups_created:
-        # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation)
+        # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation).
         dp_groups = decoder_rank_generator.get_ranks('tp-cp-ep-pp')
         for dp_group_ranks in dp_groups:
             # Sort for consistency
             dp_group_ranks = sorted(dp_group_ranks)
-            group = torch.distributed.new_group(ranks=dp_group_ranks, group_desc='ROLLOUT_GROUP')
+            try:
+                group = torch.distributed.new_group(ranks=dp_group_ranks, group_desc='ROLLOUT_GROUP')
+            except Exception:
+                logger.exception(
+                    'Failed to create Megatron rollout group. rank=%s ranks=%s backend=%s '
+                    'tp=%s pp=%s cp=%s dp=%s',
+                    global_rank, dp_group_ranks, 'default', tp_size, pp_size, cp_size, dp_size)
+                raise
 
             if global_rank in dp_group_ranks:
                 trainer._rollout_group = group

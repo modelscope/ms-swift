@@ -363,6 +363,9 @@ def patch_npu_vllm(vllm_device: str):
     if isinstance(vllm_device, int):
         vllm_device = get_device(vllm_device)
     device_type = vllm_device.split(':')[0]
+    if device_type == 'npu':
+        from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_runtime
+        patch_vllm_ascend_runtime()
 
     @contextmanager
     def new_group_context():
