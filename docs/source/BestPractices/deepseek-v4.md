@@ -1,9 +1,9 @@
-# DeepSeek-V4 微调支持
+# DeepSeek-V4 训练支持
 
 
-目前Megatron-SWIFT支持了DeepSeek-V4的微调与RL支持，包括MTP、FP8的支持。（FP4暂时不支持，会在加载权重时自动转成FP8/BF16）
+目前Megatron-SWIFT支持了DeepSeek-V4的微调与RL支持，包括MTP、FP8等特性。（FP4 blockwise训练暂时不支持，会在加载权重时自动转成FP8/BF16）
 
-你需要使用Megatron-Core dev分支，mcore-bridge 和 ms-swift main分支。
+你需要使用Megatron-Core dev分支以及mcore-bridge、ms-swift main分支。
 
 ```shell
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@dev
@@ -13,10 +13,10 @@ pip install git+https://github.com/modelscope/ms-swift.git
 
 ## 精度对齐
 
-目前Megatron-Core对DeepSeek-V4的支持有算子实现有误，存在精度误差（后续可能更新），具体查看[这个issue](https://github.com/NVIDIA/Megatron-LM/issues/4957)。你需要修改部分代码：
+目前Megatron-Core对DeepSeek-V4的支持算子实现有误，存在精度误差（后续可能更新），具体查看[这个issue](https://github.com/NVIDIA/Megatron-LM/issues/4957)。你需要修改部分代码：
 - 修改[这行](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/hyper_connection.py#L76)，修改为`mixed = torch.bmm(h_res_batched.transpose(-1, -2), residual_batched).view(s, b, n, C)`
 - 修改[这行](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/hyper_connection.py#L386)，修改为`h_res_batched = h_res.transpose(-1, -2).contiguous().view(s * b, n, n)`
-- 此外为了支持精度对齐测试（FP32），你还注释掉修改[这几行](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/experimental_attention_variant/dsa.py#L41-L43)。
+- 此外为了支持精度对齐测试（FP32），你需注释掉[这几行](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/experimental_attention_variant/dsa.py#L41-L43)。
 
 修改完代码后，测试以下代码，确认无实现错误（测试transformers/megatron forward对齐情况）：
 
@@ -111,7 +111,7 @@ if __name__ == '__main__':
 ```
 
 当出现以下结果时，则表示对齐没有问题，可以进行训练了。
-![精度对齐](./asset/precision.png)
+![精度对齐](../../resources/deepseek_v4/precision.png)
 
 
 ## LoRA训练
@@ -171,11 +171,11 @@ megatron sft \
 ```
 
 显存占用：
-![显存占用](./asset/memory.png)
+![显存占用](../../resources/deepseek_v4/memory.png)
 
 
 训练日志与损失：
-![loss](./asset/loss.png)
+![loss](../../resources/deepseek_v4/loss.png)
 
 提示：
 - 如果你要设置pp并行，你需要额外设置`pipeline_model_parallel_layout`。例如：
@@ -192,7 +192,7 @@ megatron sft \
 --pipeline_model_parallel_size 8 \
 --pipeline_model_parallel_layout Et*5|t*5|t*6|t*6|t*6|t*5|t*5|t*5mL \
 ```
-- 暂时不支持`paddind_free`和`packing`，但可以通过`group_by_length`加速。暂时不支持TP，待Megatron-Core支持。
+- 暂时不支持`padding_free`和`packing`，但可以通过`group_by_length`加速。暂时不支持TP，待Megatron-Core支持。
 - FP8训练：你可以设置以下参数开启FP8训练，并最终将权重保存成FP8权重。推荐使用全参数训练。如果要使用LoRA + FP8，你需要只保存LoRA权重（设置`--merge_lora false`），并使用BF16权重进行Merge-LoRA（FP8 精度有限，LoRA delta 会被舍入为 0）。参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/fp8/lora.sh)。
 ```
 --fp8_recipe blockwise \
@@ -213,4 +213,4 @@ swift infer \
 
 推理结果：
 
-![result](./asset/infer_result.png)
+![result](../../resources/deepseek_v4/infer_result.png)
