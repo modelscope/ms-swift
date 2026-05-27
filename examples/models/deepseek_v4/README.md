@@ -213,4 +213,4 @@ swift infer \
 
 推理结果：
 
-![result](./asset/result.png)
+![result](./asset/infer_result.png)
