@@ -47,7 +47,8 @@ class ProgressCallbackNewWithMFU(ProgressCallback):
         super().on_step_begin(args, state, control, **kwargs)
         
     def on_step_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
-        self.elapsed += time.time() - self.step_start_time
+        if self.step_start_time is not None:
+            self.elapsed += time.time() - self.step_start_time
         super().on_step_end(args, state, control, **kwargs)
 
     def on_train_begin(self, args, state, control, **kwargs):
