@@ -83,6 +83,8 @@ class DataLoaderDispatcher:
         backend = dist.get_backend(self.group)
         if backend == 'nccl':
             return torch.device('cuda', torch.cuda.current_device())
+        elif backend == 'hccl':
+            return torch.device('npu', torch.npu.current_device())
         return None  # keep tensors on their original device
 
     def _scatter_object_list(self, inputs):
@@ -120,12 +122,14 @@ class DataLoaderDispatcher:
 
             # Send tensors to other ranks via async P2P
             handles = []
+            send_bufs = []  # keep tensors alive until sends complete
             for r in range(1, self.world_size):
                 dst_rank = dist.get_global_rank(self.group, r)
                 for t in per_rank_tensors[r]:
                     tensor = t.contiguous()
                     if scatter_device is not None:
                         tensor = tensor.to(scatter_device)
+                    send_bufs.append(tensor)
                     handles.append(dist.isend(tensor, dst=dst_rank, group=self.group))
 
             # Rank 0 keeps its own tensors (move to device if needed)
@@ -136,6 +140,7 @@ class DataLoaderDispatcher:
             # Wait for all sends to complete
             for h in handles:
                 h.wait()
+            del send_bufs  # safe to release after all sends finished
         else:
             # Receive schema (lightweight)
             schema_out = [None]
