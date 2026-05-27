@@ -13,6 +13,7 @@ megatron sft \
               'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
     --load_from_cache_file true \
     --add_non_thinking_prefix true \
+    --loss_scale ignore_empty_think \
     --split_dataset_ratio 0.01 \
     --tuner_type full \
     --tensor_model_parallel_size 2 \
