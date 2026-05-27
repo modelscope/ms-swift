@@ -7,8 +7,11 @@ from transformers import trainer
 from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
-from swift.utils import get_env_args, get_device_count, append_to_jsonl, format_time, get_logger, get_max_reserved_memory, is_pai_training_job
+
+from swift.utils import (append_to_jsonl, format_time, get_device_count, get_env_args, get_logger,
+                         get_max_reserved_memory, is_pai_training_job)
 from .arguments import TrainingArguments
+
 logger = get_logger()
 
 
@@ -29,12 +32,13 @@ def add_train_message(logs, state, start_time, start_step) -> None:
 
 
 class ProgressCallbackNewWithMFU(ProgressCallback):
+
     def __init__(self):
         super().__init__()
         self.device_tflops = None
         self.elapsed = 0.0
         self.step_start_time = None
-        
+
     def on_init_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
 
         # Top priority. Specify by ENV
@@ -42,10 +46,11 @@ class ProgressCallbackNewWithMFU(ProgressCallback):
         device_count = max(get_device_count(), 1)
         self.device_tflops = tflops * device_count
         super().on_init_end(args, state, control, **kwargs)
+
     def on_step_begin(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
         self.step_start_time = time.time()
         super().on_step_begin(args, state, control, **kwargs)
-        
+
     def on_step_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
         if self.step_start_time is not None:
             self.elapsed += time.time() - self.step_start_time
@@ -84,6 +89,7 @@ class ProgressCallbackNewWithMFU(ProgressCallback):
         super().on_log(args, state, control, logs, **kwargs)
         if state.is_world_process_zero and self.training_bar is not None:
             self.training_bar.refresh()
+
 
 class ProgressCallbackNew(ProgressCallback):
 
@@ -155,6 +161,8 @@ class PrinterCallbackNew(PrinterCallback):
         _ = logs.pop('total_flos', None)
         if state.is_world_process_zero:
             print(logs, flush=True)
+
+
 # monkey patching
 tflops = get_env_args('DEVICE_TFLOPS', float, None)
 if tflops is not None:
