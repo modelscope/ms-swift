@@ -174,7 +174,7 @@ megatron sft \
 ![显存占用](./asset/memory.png)
 
 
-损失函数：
+训练日志与损失：
 ![loss](./asset/loss.png)
 
 提示：
