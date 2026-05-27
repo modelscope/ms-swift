@@ -73,7 +73,7 @@ SWIFT多卡训练底层依赖torchrun。`deepspeed` 和 `device_map`不兼容，
 断点续训时，流式只能往前索引，不能随机索引，跳过已经训练的数据耗时特别长，不建议用流式。
 
 ### Q15: packing相关问题
-packing要和flash_attn一起使用，不然是有误差，attention_mask会出问题。packing_cache这个参数，在多机训练时，需要设置为共享的磁盘路径。
+packing要和flash_attn一起使用，不然是有误差，attention_mask会出问题。
 Qwen3.5模型中的linear-attention不支持var_len，不建议开启packing。
 开启packing，多模态数据会有两次map，map完一次后还会进行第二次mapping，一次是数据集的，一次是template的。如果速度非常慢，可以设置`OMP_NUM_THREADS=14`加速，或者可以把packing去掉，就不会有第二次了。
 
