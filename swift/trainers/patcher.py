@@ -38,7 +38,7 @@ class ProgressCallbackNewWithMFU(ProgressCallback):
     def on_init_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
 
         # Top priority. Specify by ENV
-        tflops = get_env_args('DEVICE_TFLOPS', float, None)
+        tflops = get_env_args('DEVICE_TFLOPS', float, 0.0) or 0.0
         device_count = max(get_device_count(), 1)
         self.device_tflops = tflops * device_count
         super().on_init_end(args, state, control, **kwargs)
