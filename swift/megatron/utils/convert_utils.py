@@ -230,9 +230,9 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         hf_model.to('cpu')
 
     template.use_megatron = True
-    inputs = template.encode(get_examples(test_mm_type), return_length=True)
+    inputs = [template.encode(get_examples(test_mm_type), return_length=True) for _ in range(2 if args.padding_free else 1)]
     mg_inputs = to_device(
-        template.data_collator([inputs] * (2 if args.padding_free else 1), padding_to=get_padding_to(args)), 'cuda')
+        template.data_collator(inputs, padding_to=get_padding_to(args)), 'cuda')
     mg_model.eval()
     # thd
     text_position_ids = mg_inputs.pop('text_position_ids', None)
