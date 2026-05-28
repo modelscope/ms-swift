@@ -1375,6 +1375,7 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
         cache_params=None,
         cache_position=None,
         attention_mask: Optional[torch.Tensor] = None,
+        **kwargs,
     ):
         from swift.sequence_parallel import sequence_parallel as sequence_parallel_context
 
