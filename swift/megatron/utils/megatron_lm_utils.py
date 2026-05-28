@@ -54,6 +54,20 @@ def _patch_megatron_timeout(distributed_timeout_minutes):
         parallel_state.create_group = origin_create_group
 
 
+def _prepare_vllm_ascend_dp_groups_before_megatron(args):
+    if not getattr(args, 'use_vllm', False) or getattr(args, 'vllm_mode', None) != 'colocate':
+        return
+    try:
+        from transformers.utils import is_torch_npu_available
+    except ImportError:
+        return
+    if not is_torch_npu_available():
+        return
+
+    from swift.model.npu_patch.vllm_ascend import prepare_vllm_ascend_dp_groups_before_megatron
+    prepare_vllm_ascend_dp_groups_before_megatron(args)
+
+
 def _initialize_mpu(args):
     """Initialize torch.distributed and core model parallel."""
     if not torch.distributed.is_initialized():
@@ -80,6 +94,7 @@ def _initialize_mpu(args):
             logger.info(f'TP: {args.tensor_model_parallel_size}, PP: {args.pipeline_model_parallel_size}, '
                         f'VPP: {args.virtual_pipeline_model_parallel_size}, CP: {args.context_parallel_size}, '
                         f'EP: {args.expert_model_parallel_size}, ETP: {args.expert_tensor_parallel_size}')
+    _prepare_vllm_ascend_dp_groups_before_megatron(args)
 
 
 def initialize_megatron(args):

@@ -146,6 +146,7 @@ class MegatronRolloutMixin:
         self._step = 0
         self._rollout_group = None  # Lazily initialized rollout group (TP×PP×CP)
         self._rollout_groups_created = False  # Flag for group creation (all ranks must create together)
+        self.vllm_tp_control_group = None
         self._bridge = None
 
     def _get_rollout_group(self):
@@ -311,6 +312,8 @@ class MegatronRolloutMixin:
 
         if self.vllm_tensor_parallel_size > 1:
             self.vllm_tp_group = vllm_ps.get_tp_group().device_group
+            from swift.model.npu_patch.vllm_ascend import get_or_create_vllm_tp_gloo_group
+            self.vllm_tp_control_group = get_or_create_vllm_tp_gloo_group(self.vllm_tensor_parallel_size)
 
         return engine
 
@@ -587,16 +590,17 @@ class MegatronRolloutMixin:
 
         # Handle vLLM tensor parallelism
         if self.vllm_tensor_parallel_size > 1:
+            object_group = self.vllm_tp_control_group or self.vllm_tp_group
             local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
             local_input_length = len(batch)
             all_input_lengths = [None] * self.vllm_tensor_parallel_size
-            torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.vllm_tp_group)
+            torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=object_group)
 
             start_idx = sum(all_input_lengths[:local_rank_in_group])
             end_idx = start_idx + all_input_lengths[local_rank_in_group]
 
             gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
-            torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
+            torch.distributed.all_gather_object(gathered_batch, batch, group=object_group)
             batch = [p for sublist in gathered_batch for p in sublist]
 
         outputs: List[RolloutOutput] = self.engine.infer(
