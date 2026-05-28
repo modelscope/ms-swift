@@ -106,9 +106,9 @@ def _get_or_create_bridge_gloo_group(bridge, is_expert):
         marker = torch.ones((), dtype=torch.int32, device=device)
         dist.all_reduce(marker)
         own_groups = {}
-        from swift.model.npu_patch.vllm_ascend import audited_new_group
+        from swift.model.npu_patch.vllm_ascend import create_npu_process_group
         for ranks in group_specs:
-            group = audited_new_group(
+            group = create_npu_process_group(
                 list(ranks),
                 backend='gloo',
                 kind='control',
