@@ -64,7 +64,9 @@ def _prepare_vllm_ascend_dp_groups_before_megatron(args):
     if not is_torch_npu_available():
         return
 
-    from swift.model.npu_patch.vllm_ascend import prepare_vllm_ascend_dp_groups_before_megatron
+    from swift.model.npu_patch.vllm_ascend import (prepare_vllm_ascend_dp_groups_before_megatron,
+                                                   register_megatron_hccl_groups_for_vllm)
+    register_megatron_hccl_groups_for_vllm(args)
     prepare_vllm_ascend_dp_groups_before_megatron(args)
 
 

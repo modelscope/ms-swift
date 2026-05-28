@@ -106,8 +106,15 @@ def _get_or_create_bridge_gloo_group(bridge, is_expert):
         marker = torch.ones((), dtype=torch.int32, device=device)
         dist.all_reduce(marker)
         own_groups = {}
+        from swift.model.npu_patch.vllm_ascend import audited_new_group
         for ranks in group_specs:
-            group = dist.new_group(list(ranks), backend='gloo')
+            group = audited_new_group(
+                list(ranks),
+                backend='gloo',
+                kind='control',
+                group_name='bridge_ep_pp' if is_expert else 'bridge_pp',
+                source='bridge_control',
+                phase='bridge')
             if dist.get_rank() in ranks:
                 own_groups[ranks] = group
         marker = torch.ones((), dtype=torch.int32, device=device)

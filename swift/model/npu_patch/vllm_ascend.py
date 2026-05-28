@@ -6,8 +6,10 @@ import inspect
 import json
 import os
 import sys
+import time
 import torch
 from contextlib import contextmanager
+from dataclasses import dataclass
 from importlib import metadata
 from packaging import version
 from typing import Any, Optional
@@ -20,10 +22,731 @@ _SWIFT_VLLM_DP_GROUP_SPECS: set[tuple[tuple[int, ...], ...]] = set()
 _SWIFT_VLLM_PRECREATED_DP_GROUPS: dict[tuple[int, ...], Any] = {}
 _SWIFT_VLLM_PRECREATED_DP_GROUP_SPECS: set[tuple[tuple[int, ...], ...]] = set()
 _SWIFT_VLLM_TP_GLOO_GROUPS: dict[tuple[tuple[int, ...], ...], Any] = {}
+_SWIFT_GROUP_AUDIT_SEQ = 0
+_SWIFT_MEGATRON_HCCL_GROUPS: dict[tuple[str, str, tuple[int, ...]], list['_MegatronGroupRecord']] = {}
+_SWIFT_VLLM_GROUP_CACHE: dict[tuple[str, str, str, tuple[int, ...]], Any] = {}
+_SWIFT_VLLM_GROUP_FACTORY_SIGNATURES: set[tuple[str, ...]] = set()
+
+
+@dataclass(frozen=True)
+class _MegatronGroupRecord:
+    backend: str
+    kind: str
+    axis: str
+    ranks: tuple[int, ...]
+    group: Any
+    source: str
+
+
+@dataclass(frozen=True)
+class _VLLMGroupSpec:
+    name: str
+    index: int
+    backend: str
+    kind: str
+    ranks: tuple[int, ...]
+    required: bool = True
+
+
+@dataclass(frozen=True)
+class _VLLMGroupExecution:
+    spec: _VLLMGroupSpec
+    action: str
+    reuse_source: Optional[str] = None
 
 
 def _env_enabled(name: str, default: str = '1') -> bool:
     return os.environ.get(name, default) == '1'
+
+
+def _is_group_audit_enabled() -> bool:
+    return _env_enabled('SWIFT_VLLM_ASCEND_GROUP_AUDIT', default='0')
+
+
+def _next_group_audit_seq() -> int:
+    global _SWIFT_GROUP_AUDIT_SEQ
+    _SWIFT_GROUP_AUDIT_SEQ += 1
+    return _SWIFT_GROUP_AUDIT_SEQ
+
+
+def _audit_rank_info():
+    import torch.distributed as dist
+
+    if not dist.is_available() or not dist.is_initialized():
+        return -1, -1
+    return dist.get_rank(), dist.get_world_size()
+
+
+def _audit_backend_name(backend) -> str:
+    return 'default' if backend is None else str(backend)
+
+
+def _audit_ranks(ranks) -> list[int] | None:
+    return None if ranks is None else [int(rank) for rank in ranks]
+
+
+def _emit_group_audit(event: str, **fields) -> None:
+    payload = ' '.join(f'{key}={value}' for key, value in fields.items())
+    msg = f'[swift-group-create-{event}] {payload}\n'
+    try:
+        os.write(sys.stderr.fileno(), msg.encode('utf-8', errors='replace'))
+    except Exception:
+        print(msg, file=sys.stderr, flush=True, end='')
+
+
+def audited_new_group(ranks=None, backend=None, *, kind: str, group_name: str, source: str, phase: str, **kwargs):
+    """Create a torch distributed group with opt-in NPU group lifecycle audit logs.
+
+    This wrapper intentionally does not change ``dist.new_group`` semantics.
+    When ``SWIFT_VLLM_ASCEND_GROUP_AUDIT=1`` is set, each rank logs enter,
+    exit, and exception records with enough metadata to check whether all ranks
+    create groups in the same order.  It is a diagnostic hook for the staged
+    group-factory work; it is not a fallback and does not alter group specs.
+    """
+    import torch.distributed as dist
+
+    if not _is_group_audit_enabled():
+        return dist.new_group(ranks=ranks, backend=backend, **kwargs)
+
+    seq = _next_group_audit_seq()
+    rank, world_size = _audit_rank_info()
+    ranks_list = _audit_ranks(ranks)
+    backend_name = _audit_backend_name(backend)
+    started = time.monotonic()
+    _emit_group_audit(
+        'enter',
+        seq=seq,
+        rank=rank,
+        world_size=world_size,
+        backend=backend_name,
+        kind=kind,
+        group_name=group_name,
+        ranks=ranks_list,
+        source=source,
+        phase=phase)
+    try:
+        group = dist.new_group(ranks=ranks, backend=backend, **kwargs)
+    except Exception as e:
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        _emit_group_audit(
+            'error',
+            seq=seq,
+            rank=rank,
+            world_size=world_size,
+            backend=backend_name,
+            kind=kind,
+            group_name=group_name,
+            ranks=ranks_list,
+            source=source,
+            phase=phase,
+            elapsed_ms=elapsed_ms,
+            error=repr(e))
+        raise
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    _emit_group_audit(
+        'exit',
+        seq=seq,
+        rank=rank,
+        world_size=world_size,
+        backend=backend_name,
+        kind=kind,
+        group_name=group_name,
+        ranks=ranks_list,
+        source=source,
+        phase=phase,
+        elapsed_ms=elapsed_ms)
+    return group
+
+
+def _is_megatron_group_reuse_enabled() -> bool:
+    return _env_enabled('SWIFT_VLLM_ASCEND_REUSE_MEGATRON_GROUPS', default='0')
+
+
+def _is_device_group_factory_enabled() -> bool:
+    return _env_enabled('SWIFT_VLLM_ASCEND_GROUP_FACTORY', default='0')
+
+
+def _is_device_group_cache_only_enabled() -> bool:
+    return _env_enabled('SWIFT_VLLM_ASCEND_GROUP_CACHE_ONLY', default='0')
+
+
+def _is_precreate_gloo_groups_enabled() -> bool:
+    return _env_enabled('SWIFT_VLLM_ASCEND_PRECREATE_GLOO_GROUPS', default='0')
+
+
+def _is_cpu_group_alias_allowed() -> bool:
+    return _env_enabled('SWIFT_VLLM_ASCEND_ALLOW_CPU_GROUP_ALIAS', default='1')
+
+
+def _normalize_backend_name(backend) -> str:
+    backend_name = str(backend or '').lower()
+    if 'hccl' in backend_name:
+        return 'hccl'
+    if 'gloo' in backend_name:
+        return 'gloo'
+    return backend_name or 'default'
+
+
+def _get_process_group_backend(group) -> str:
+    import torch.distributed as dist
+
+    try:
+        return _normalize_backend_name(dist.get_backend(group))
+    except TypeError:
+        try:
+            return _normalize_backend_name(dist.get_backend(group=group))
+        except Exception:
+            return _normalize_backend_name(dist.get_backend())
+    except Exception:
+        return _normalize_backend_name(dist.get_backend())
+
+
+def _get_process_group_ranks(group) -> tuple[int, ...]:
+    import torch.distributed as dist
+
+    try:
+        return tuple(int(rank) for rank in dist.get_process_group_ranks(group))
+    except Exception:
+        if group is getattr(dist.group, 'WORLD', None):
+            return tuple(range(dist.get_world_size()))
+        raise
+
+
+def _register_megatron_hccl_group(axis: str, group, source: str) -> None:
+    if group is None:
+        return
+    import torch.distributed as dist
+
+    if not dist.is_available() or not dist.is_initialized():
+        return
+
+    backend = _get_process_group_backend(group)
+    if backend != 'hccl':
+        return
+    try:
+        ranks = _get_process_group_ranks(group)
+    except Exception as e:
+        logger.warning_once(f'Skipped registering Megatron {axis} HCCL group because ranks cannot be inspected: {e!r}')
+        return
+
+    key = (backend, 'device', ranks)
+    records = _SWIFT_MEGATRON_HCCL_GROUPS.setdefault(key, [])
+    if any(record.axis == axis and record.source == source for record in records):
+        return
+    records.append(
+        _MegatronGroupRecord(backend=backend, kind='device', axis=axis, ranks=ranks, group=group, source=source))
+
+
+def _call_megatron_group_getter(getter, **kwargs):
+    try:
+        return getter(check_initialized=False, **kwargs)
+    except TypeError:
+        try:
+            return getter(**kwargs)
+        except (AssertionError, RuntimeError, ValueError):
+            return None
+    except (AssertionError, RuntimeError, ValueError):
+        return None
+
+
+def _register_megatron_group_from_getter(parallel_state, axis: str, getter_name: str, **kwargs) -> None:
+    getter = getattr(parallel_state, getter_name, None)
+    if getter is None:
+        return
+    group = _call_megatron_group_getter(getter, **kwargs)
+    _register_megatron_hccl_group(axis, group, 'megatron_mpu')
+
+
+def register_megatron_hccl_groups_for_vllm(args) -> None:
+    """Register Megatron HCCL groups that vLLM may safely reuse.
+
+    This is the P1 registry from ``grpo_dp_subgroup_optimize.md``.  It is
+    opt-in and exact-rank-order based.  It registers the current rank's
+    Megatron groups that can be inspected safely.  Reuse is still decided later
+    per vLLM group spec and only succeeds when all member ranks have an exact
+    rank-order match; otherwise the vLLM group factory precreates a fresh group.
+    """
+    if not _is_megatron_group_reuse_enabled():
+        return
+    if not getattr(args, 'use_vllm', False) or getattr(args, 'vllm_mode', None) != 'colocate':
+        return
+
+    import torch.distributed as dist
+
+    if not dist.is_available() or not dist.is_initialized():
+        return
+
+    _register_megatron_hccl_group('world', dist.group.WORLD, 'default_world')
+
+    try:
+        from megatron.core import parallel_state
+    except ImportError:
+        return
+    _register_megatron_group_from_getter(parallel_state, 'tp', 'get_tensor_model_parallel_group')
+    _register_megatron_group_from_getter(parallel_state, 'pp', 'get_pipeline_model_parallel_group')
+    _register_megatron_group_from_getter(parallel_state, 'cp', 'get_context_parallel_group')
+    _register_megatron_group_from_getter(parallel_state, 'dp', 'get_data_parallel_group')
+    _register_megatron_group_from_getter(parallel_state, 'dp_cp', 'get_data_parallel_group', with_context_parallel=True)
+    _register_megatron_group_from_getter(
+        parallel_state, 'partial_dp', 'get_data_parallel_group', partial_data_parallel=True)
+    _register_megatron_group_from_getter(
+        parallel_state,
+        'partial_dp_cp',
+        'get_data_parallel_group',
+        with_context_parallel=True,
+        partial_data_parallel=True)
+    _register_megatron_group_from_getter(parallel_state, 'ep', 'get_expert_model_parallel_group')
+    _register_megatron_group_from_getter(parallel_state, 'etp', 'get_expert_tensor_parallel_group')
+    _register_megatron_group_from_getter(parallel_state, 'edp', 'get_expert_data_parallel_group')
+    _register_megatron_group_from_getter(
+        parallel_state, 'partial_edp', 'get_expert_data_parallel_group', partial_expert_data_parallel=True)
+    _register_megatron_group_from_getter(parallel_state, 'etp_ep', 'get_expert_tensor_and_model_parallel_group')
+
+
+_PREFERRED_MEGATRON_AXES_BY_VLLM_GROUP = {
+    'world': ('world', ),
+    'tp': ('tp', ),
+    'pp': ('pp', ),
+    'pcp': ('cp', ),
+    'dp': ('dp', 'dp_cp', 'partial_dp', 'partial_dp_cp'),
+    'ep': ('ep', 'etp_ep'),
+    'mc2': ('ep', 'etp_ep', 'edp', 'partial_edp'),
+}
+
+
+def _lookup_megatron_hccl_group_record(ranks: tuple[int, ...],
+                                       preferred_axes: tuple[str, ...] | None = None) -> Optional[_MegatronGroupRecord]:
+    records = _SWIFT_MEGATRON_HCCL_GROUPS.get(('hccl', 'device', ranks), [])
+    if not records:
+        return None
+    for axis in preferred_axes or ():
+        for record in records:
+            if record.axis == axis:
+                return record
+    return records[0]
+
+
+def _megatron_group_record_token(record: _MegatronGroupRecord) -> dict[str, str]:
+    return {'axis': record.axis, 'source': record.source}
+
+
+def _validate_reuse_record_consensus(group_name: str, ranks: tuple[int, ...],
+                                     record: Optional[_MegatronGroupRecord]) -> bool:
+    """Ensure all member ranks chose the same Megatron group provenance.
+
+    A single rank tuple can appear in more than one Megatron ProcessGroup.  The
+    collectives are only safe if all member ranks reuse the same communicator
+    provenance, not just any group with the same ranks.  Non-member ranks vote
+    neutral; if member ranks disagree, every rank falls back to precreate.
+    """
+    import torch.distributed as dist
+
+    rank = dist.get_rank()
+    if rank in ranks and record is not None:
+        token_hash = _stable_int64_hash(_megatron_group_record_token(record))
+        min_hash = torch.tensor([token_hash], dtype=torch.int64, device=torch.device('npu', torch.npu.current_device()))
+        max_hash = min_hash.clone()
+    else:
+        min_hash = torch.tensor([2**62 - 1], dtype=torch.int64, device=torch.device('npu', torch.npu.current_device()))
+        max_hash = torch.tensor([-1], dtype=torch.int64, device=torch.device('npu', torch.npu.current_device()))
+
+    dist.all_reduce(min_hash, op=dist.ReduceOp.MIN)
+    dist.all_reduce(max_hash, op=dist.ReduceOp.MAX)
+    if int(min_hash.cpu().item()) == int(max_hash.cpu().item()):
+        return True
+
+    if rank in ranks:
+        logger.warning_once(
+            f'Megatron group reuse provenance differs across member ranks; fall back to vLLM precreate: '
+            f'group_name={group_name}, ranks={ranks}, local_record={record}.')
+    return False
+
+
+def _audit_megatron_group_reuse(group_name: str, ranks: tuple[int, ...], record: _MegatronGroupRecord,
+                                phase: str) -> None:
+    if not _is_group_audit_enabled():
+        return
+    seq = _next_group_audit_seq()
+    rank, world_size = _audit_rank_info()
+    _emit_group_audit(
+        'reuse',
+        seq=seq,
+        rank=rank,
+        world_size=world_size,
+        backend=record.backend,
+        kind=record.kind,
+        group_name=group_name,
+        ranks=list(ranks),
+        source='megatron_reuse',
+        phase=phase,
+        reuse_axis=record.axis,
+        reuse_source=record.source)
+
+
+def _select_megatron_reuse_group(group_name: str,
+                                 ranks,
+                                 backend,
+                                 phase: str = 'vllm_groupcoordinator') -> tuple[bool, Optional[_MegatronGroupRecord]]:
+    """Return a globally consistent Megatron-group reuse decision.
+
+    The decision is intentionally all-rank: non-member ranks vote neutral, and
+    every member rank must have an exact-order Megatron group record.  If any
+    member cannot reuse, all ranks fall back to the normal vLLM group creation
+    path for this spec.  This prevents rank-local registry differences from
+    splitting execution between reuse and ``new_group``.
+    """
+    if not _is_megatron_group_reuse_enabled():
+        return False, None
+    if _normalize_backend_name(backend) != 'hccl':
+        return False, None
+
+    import torch.distributed as dist
+
+    if not dist.is_available() or not dist.is_initialized():
+        return False, None
+
+    ranks_tuple = tuple(int(rank) for rank in ranks)
+    rank = dist.get_rank()
+    record = _lookup_megatron_hccl_group_record(ranks_tuple, _PREFERRED_MEGATRON_AXES_BY_VLLM_GROUP.get(group_name))
+    local_reuse_ok = rank not in ranks_tuple or record is not None
+    device = torch.device('npu', torch.npu.current_device())
+    flag = torch.tensor([1 if local_reuse_ok else 0], dtype=torch.int32, device=device)
+    dist.all_reduce(flag, op=dist.ReduceOp.MIN)
+    can_reuse = bool(int(flag.cpu().item()))
+    if not can_reuse:
+        return False, None
+    if rank in ranks_tuple and record is None:
+        raise RuntimeError(
+            f'Megatron group reuse decision is inconsistent: rank={rank}, group_name={group_name}, '
+            f'ranks={ranks_tuple}.')
+    if not _validate_reuse_record_consensus(group_name, ranks_tuple, record):
+        return False, None
+    if record is not None:
+        _audit_megatron_group_reuse(group_name, ranks_tuple, record, phase)
+    return True, record
+
+
+def _vllm_group_cache_key(spec: _VLLMGroupSpec) -> tuple[str, str, str, tuple[int, ...]]:
+    return (spec.kind, spec.backend, spec.name, spec.ranks)
+
+
+def _put_vllm_group_cache(spec: _VLLMGroupSpec, group) -> None:
+    _SWIFT_VLLM_GROUP_CACHE[_vllm_group_cache_key(spec)] = group
+    if spec.kind == 'device' and spec.name == 'dp':
+        _SWIFT_VLLM_PRECREATED_DP_GROUPS[spec.ranks] = group
+
+
+def _lookup_vllm_group_cache(kind: str, group_name: str, ranks, backend):
+    backend = _normalize_backend_name(backend)
+    ranks_tuple = tuple(int(rank) for rank in ranks)
+    return _SWIFT_VLLM_GROUP_CACHE.get((kind, backend, group_name, ranks_tuple))
+
+
+def _lookup_vllm_device_group_cache(group_name: str, ranks, backend):
+    return _lookup_vllm_group_cache('device', group_name, ranks, backend)
+
+
+def _lookup_vllm_cpu_group_cache(group_name: str, ranks):
+    return _lookup_vllm_group_cache('cpu', group_name, ranks, 'gloo')
+
+
+def _cache_key_summary() -> list[tuple[str, str, str, tuple[int, ...]]]:
+    return sorted(_SWIFT_VLLM_GROUP_CACHE)
+
+
+def _stable_int64_hash(payload) -> int:
+    text = json.dumps(payload, sort_keys=True)
+    return int(hashlib.sha256(text.encode()).hexdigest()[:15], 16)
+
+
+def _validate_global_hash(name: str, payload) -> None:
+    import torch.distributed as dist
+
+    device = torch.device('npu', torch.npu.current_device())
+    local_hash = _stable_int64_hash(payload)
+    local_min = torch.tensor([local_hash], dtype=torch.int64, device=device)
+    local_max = local_min.clone()
+    dist.all_reduce(local_min, op=dist.ReduceOp.MIN)
+    dist.all_reduce(local_max, op=dist.ReduceOp.MAX)
+    if int(local_min.cpu().item()) != int(local_max.cpu().item()):
+        raise RuntimeError(
+            f'vLLM {name} mismatch across ranks before group creation: rank={dist.get_rank()}, '
+            f'local_hash={local_hash}, min_hash={int(local_min.cpu().item())}, '
+            f'max_hash={int(local_max.cpu().item())}, payload={payload}.')
+
+
+def _serialize_specs(specs: list[_VLLMGroupSpec]):
+    return [
+        {
+            'name': spec.name,
+            'index': spec.index,
+            'backend': spec.backend,
+            'kind': spec.kind,
+            'ranks': list(spec.ranks),
+            'required': spec.required,
+        } for spec in specs
+    ]
+
+
+def _serialize_execution_plan(executions: list[_VLLMGroupExecution]):
+    return [
+        {
+            **_serialize_specs([execution.spec])[0],
+            'action': execution.action,
+            'reuse_source': execution.reuse_source,
+        } for execution in executions
+    ]
+
+
+def _sync_default_world_on_npu() -> None:
+    import torch.distributed as dist
+
+    marker = torch.ones((), dtype=torch.int32, device=torch.device('npu', torch.npu.current_device()))
+    dist.all_reduce(marker)
+
+
+def _warmup_vllm_device_group(spec: _VLLMGroupSpec, group) -> None:
+    import torch.distributed as dist
+
+    if dist.get_rank() not in spec.ranks:
+        return
+    device = torch.device('npu', torch.npu.current_device())
+    rank_value = torch.tensor([dist.get_rank()], dtype=torch.int32, device=device)
+    reduced = rank_value.clone()
+    dist.all_reduce(reduced, group=group)
+    expected_sum = sum(spec.ranks)
+    if int(reduced.cpu().item()) != expected_sum:
+        raise RuntimeError(
+            f'vLLM device group warmup all_reduce mismatch: name={spec.name}, rank={dist.get_rank()}, '
+            f'ranks={spec.ranks}, got={int(reduced.cpu().item())}, expected={expected_sum}.')
+
+    gathered = torch.empty((len(spec.ranks), ), dtype=torch.int32, device=device)
+    dist.all_gather_into_tensor(gathered, rank_value, group=group)
+    expected = torch.tensor(list(spec.ranks), dtype=torch.int32)
+    if not torch.equal(gathered.cpu(), expected):
+        raise RuntimeError(
+            f'vLLM device group warmup all_gather mismatch: name={spec.name}, rank={dist.get_rank()}, '
+            f'ranks={spec.ranks}, got={gathered.cpu().tolist()}, expected={expected.tolist()}.')
+
+
+def _warmup_vllm_cpu_group(spec: _VLLMGroupSpec, group) -> None:
+    import torch.distributed as dist
+
+    if dist.get_rank() not in spec.ranks:
+        return
+    rank_value = torch.tensor([dist.get_rank()], dtype=torch.int32, device='cpu')
+    reduced = rank_value.clone()
+    dist.all_reduce(reduced, group=group)
+    expected_sum = sum(spec.ranks)
+    if int(reduced.item()) != expected_sum:
+        raise RuntimeError(
+            f'vLLM CPU group warmup all_reduce mismatch: name={spec.name}, rank={dist.get_rank()}, '
+            f'ranks={spec.ranks}, got={int(reduced.item())}, expected={expected_sum}.')
+
+    gathered = [torch.empty_like(rank_value) for _ in spec.ranks]
+    dist.all_gather(gathered, rank_value, group=group)
+    got = [int(t.item()) for t in gathered]
+    expected = list(spec.ranks)
+    if got != expected:
+        raise RuntimeError(
+            f'vLLM CPU group warmup all_gather mismatch: name={spec.name}, rank={dist.get_rank()}, '
+            f'ranks={spec.ranks}, got={got}, expected={expected}.')
+
+
+def _warmup_vllm_group(spec: _VLLMGroupSpec, group) -> None:
+    if spec.kind == 'device':
+        _warmup_vllm_device_group(spec, group)
+    elif spec.kind == 'cpu':
+        _warmup_vllm_cpu_group(spec, group)
+    else:
+        raise RuntimeError(f'Unsupported vLLM group kind for warmup: spec={spec}.')
+
+
+def _get_vllm_parallel_kwarg(args, name: str, default: int) -> int:
+    engine_kwargs = getattr(args, 'vllm_engine_kwargs', None) or {}
+    if isinstance(engine_kwargs, str):
+        engine_kwargs = json.loads(engine_kwargs)
+    return int(engine_kwargs.get(name, default) or default)
+
+
+def _build_vllm_device_group_specs(args, backend: str) -> list[_VLLMGroupSpec]:
+    import torch.distributed as dist
+
+    world_size = dist.get_world_size()
+    data_parallel_size = _get_vllm_data_parallel_size_from_args(args)
+    tensor_parallel_size = int(getattr(args, 'vllm_tensor_parallel_size', 1) or 1)
+    pipeline_parallel_size = _get_vllm_parallel_kwarg(args, 'pipeline_parallel_size', 1)
+    prefill_context_parallel_size = _get_vllm_parallel_kwarg(args, 'prefill_context_parallel_size', 1)
+    group_unit = data_parallel_size * pipeline_parallel_size * prefill_context_parallel_size * tensor_parallel_size
+    if world_size % group_unit != 0:
+        raise RuntimeError(
+            f'Cannot build vLLM device group specs: world_size={world_size}, dp={data_parallel_size}, '
+            f'pp={pipeline_parallel_size}, pcp={prefill_context_parallel_size}, tp={tensor_parallel_size}.')
+
+    all_ranks = torch.arange(world_size).reshape(
+        -1,
+        data_parallel_size,
+        pipeline_parallel_size,
+        prefill_context_parallel_size,
+        tensor_parallel_size,
+    )
+
+    specs: list[_VLLMGroupSpec] = []
+
+    def add_specs(name: str, group_ranks) -> None:
+        for index, ranks in enumerate(group_ranks):
+            specs.append(
+                _VLLMGroupSpec(
+                    name=name,
+                    index=index,
+                    backend=backend,
+                    kind='device',
+                    ranks=tuple(int(rank) for rank in ranks),
+                ))
+
+    add_specs('world', [list(range(world_size))])
+    add_specs(
+        'pcp',
+        [x.tolist() for x in all_ranks.transpose(3, 4).reshape(-1, prefill_context_parallel_size).unbind(0)])
+    add_specs('pp', [x.tolist() for x in all_ranks.transpose(2, 4).reshape(-1, pipeline_parallel_size).unbind(0)])
+    # vLLM still constructs a DP GroupCoordinator when data_parallel_size == 1.
+    # In cache-only mode those singleton DP groups must be present in the
+    # factory cache; otherwise GroupCoordinator correctly fails with cache miss.
+    add_specs('dp', [x.tolist() for x in all_ranks.transpose(1, 4).reshape(-1, data_parallel_size).unbind(0)])
+
+    ep_group_ranks = [
+        x.tolist() for x in all_ranks.transpose(1, 2).reshape(
+            -1, data_parallel_size * prefill_context_parallel_size * tensor_parallel_size).unbind(0)
+    ]
+    if getattr(getattr(args, 'model_info', None), 'is_moe_model', False):
+        add_specs('ep', ep_group_ranks)
+    add_specs('mc2', ep_group_ranks)
+
+    group_order = {
+        'world': 0,
+        'dp': 2,
+        'pp': 3,
+        'pcp': 4,
+        'ep': 5,
+        'mc2': 6,
+    }
+    return sorted(specs, key=lambda spec: (group_order.get(spec.name, 100), spec.index, spec.ranks))
+
+
+def _build_vllm_cpu_group_specs(args) -> list[_VLLMGroupSpec]:
+    """Build Gloo CPU specs matching the NPU-only vLLM groups covered here.
+
+    TP/DCP message-queue groups still stay on the upstream vLLM path or SWIFT's
+    rollout TP Gloo control helper.  This P4 step only normalizes the CPU group
+    counterpart for groups whose HCCL device group is already handled by this
+    runtime patch.
+    """
+    specs = _build_vllm_device_group_specs(args, 'gloo')
+    return [
+        _VLLMGroupSpec(
+            name=spec.name,
+            index=spec.index,
+            backend='gloo',
+            kind='cpu',
+            ranks=spec.ranks,
+            required=spec.required,
+        ) for spec in specs
+    ]
+
+
+def _build_vllm_group_execution_plan(specs: list[_VLLMGroupSpec]) -> list[_VLLMGroupExecution]:
+    executions: list[_VLLMGroupExecution] = []
+    for spec in specs:
+        reuse_selected, reuse_record = _select_megatron_reuse_group(
+            spec.name, spec.ranks, spec.backend, phase='vllm_preinit') if spec.kind == 'device' else (False, None)
+        if reuse_selected:
+            executions.append(
+                _VLLMGroupExecution(spec=spec, action='reuse', reuse_source='megatron_exact_rank_order'))
+        else:
+            executions.append(_VLLMGroupExecution(spec=spec, action='precreate'))
+    return executions
+
+
+def _get_reused_megatron_group_for_spec(spec: _VLLMGroupSpec):
+    import torch.distributed as dist
+
+    if dist.get_rank() not in spec.ranks:
+        return None
+    record = _lookup_megatron_hccl_group_record(spec.ranks, _PREFERRED_MEGATRON_AXES_BY_VLLM_GROUP.get(spec.name))
+    if record is None:
+        raise RuntimeError(f'vLLM group execution plan selected Megatron reuse but no group was found: spec={spec}.')
+    return record.group
+
+
+def prepare_vllm_ascend_device_groups_before_megatron(args) -> None:
+    """Pre-create/cache vLLM NPU-only groups before LLMEngine init.
+
+    This is the P2/P3/P4 opt-in group factory.  It deliberately covers only
+    the NPU-only groups handled by ``GroupCoordinatorPatch`` in this module.
+    Device groups are handled in P2/P3.  Matching Gloo CPU groups are added by
+    the P4 opt-in path.  TP/DCP message-queue groups still use upstream
+    CPU/control behavior or SWIFT's dedicated rollout control helper.
+    """
+    if (not _is_device_group_factory_enabled() and not _is_device_group_cache_only_enabled()
+            and not _is_precreate_gloo_groups_enabled()):
+        return
+    if not getattr(args, 'use_vllm', False) or getattr(args, 'vllm_mode', None) != 'colocate':
+        return
+
+    import torch.distributed as dist
+
+    if not dist.is_available() or not dist.is_initialized():
+        return
+
+    backend = _normalize_backend_name(dist.get_backend())
+    specs: list[_VLLMGroupSpec] = []
+    if _is_device_group_factory_enabled() or _is_device_group_cache_only_enabled():
+        specs.extend(_build_vllm_device_group_specs(args, backend))
+    if _is_precreate_gloo_groups_enabled():
+        specs.extend(_build_vllm_cpu_group_specs(args))
+    _validate_global_hash('group specs', _serialize_specs(specs))
+    executions = _build_vllm_group_execution_plan(specs)
+    serialized_execution_plan = _serialize_execution_plan(executions)
+    _validate_global_hash('group execution plan', serialized_execution_plan)
+    signature = tuple(json.dumps(item, sort_keys=True) for item in serialized_execution_plan)
+    if signature in _SWIFT_VLLM_GROUP_FACTORY_SIGNATURES:
+        return
+
+    rank = dist.get_rank()
+    for execution in executions:
+        spec = execution.spec
+        if execution.action == 'reuse':
+            if rank in spec.ranks:
+                group = _get_reused_megatron_group_for_spec(spec)
+                _put_vllm_group_cache(spec, group)
+        elif execution.action == 'precreate':
+            if spec.backend == 'gloo':
+                _clear_default_pg_bound_device_id_for_gloo()
+            group = audited_new_group(
+                list(spec.ranks),
+                backend=spec.backend,
+                kind=spec.kind,
+                group_name=spec.name,
+                source='vllm_factory',
+                phase='vllm_preinit')
+            if rank in spec.ranks:
+                _put_vllm_group_cache(spec, group)
+        else:
+            raise RuntimeError(f'Unsupported vLLM group execution action: {execution.action}, spec={spec}.')
+
+        _sync_default_world_on_npu()
+        if rank in spec.ranks:
+            cached_group = _SWIFT_VLLM_GROUP_CACHE.get(_vllm_group_cache_key(spec))
+            if cached_group is None:
+                raise RuntimeError(f'vLLM group was not cached after {execution.action}: spec={spec}.')
+            _warmup_vllm_group(spec, cached_group)
+        _sync_default_world_on_npu()
+
+    dp_specs = tuple(spec.ranks for spec in specs if spec.kind == 'device' and spec.name == 'dp')
+    if dp_specs:
+        _SWIFT_VLLM_PRECREATED_DP_GROUP_SPECS.add(dp_specs)
+    _SWIFT_VLLM_GROUP_FACTORY_SIGNATURES.add(signature)
+    logger.warning_once(f'Prepared vLLM NPU group factory cache before vLLM init: plan={serialized_execution_plan}')
 
 
 def _get_package_version(package_name: str) -> Optional[version.Version]:
@@ -165,7 +888,13 @@ def get_or_create_vllm_tp_gloo_group(tensor_parallel_size: int):
         _clear_default_pg_bound_device_id_for_gloo()
         own_group = None
         for ranks in group_ranks:
-            group = dist.new_group(ranks, backend='gloo')
+            group = audited_new_group(
+                ranks,
+                backend='gloo',
+                kind='control',
+                group_name='tp',
+                source='vllm_tp_control',
+                phase='rollout')
             if rank in ranks:
                 own_group = group
         if own_group is None:
@@ -220,6 +949,10 @@ def prepare_vllm_ascend_dp_groups_before_megatron(args) -> None:
     if not getattr(args, 'use_vllm', False) or getattr(args, 'vllm_mode', None) != 'colocate':
         return
 
+    if _is_device_group_factory_enabled() or _is_device_group_cache_only_enabled() or _is_precreate_gloo_groups_enabled():
+        prepare_vllm_ascend_device_groups_before_megatron(args)
+        return
+
     data_parallel_size = _get_vllm_data_parallel_size_from_args(args)
     if data_parallel_size <= 1:
         return
@@ -241,7 +974,13 @@ def prepare_vllm_ascend_dp_groups_before_megatron(args) -> None:
     own_group = None
     own_ranks = None
     for ranks in group_ranks:
-        group = dist.new_group(ranks, backend=backend)
+        group = audited_new_group(
+            ranks,
+            backend=backend,
+            kind='device',
+            group_name='dp',
+            source='vllm_precreate',
+            phase='vllm_preinit')
         ranks_tuple = tuple(int(r) for r in ranks)
         if rank in ranks:
             own_group = group
@@ -387,9 +1126,45 @@ def _patch_vllm_ascend_external_launcher_groups() -> None:
             self.rank = dist.get_rank()
             self.local_rank = local_rank
             self_device_group = None
+            self_cpu_group = None
             self._swift_dp_group_warmed = False
             own_precreated_group = None
-            if group_name == 'dp':
+            own_reused_record = None
+            own_factory_group = None
+            own_factory_cpu_group = None
+            if _is_device_group_cache_only_enabled():
+                for ranks in group_ranks:
+                    if self.rank not in ranks:
+                        continue
+                    cached_group = _lookup_vllm_device_group_cache(group_name, ranks, torch_distributed_backend)
+                    if cached_group is None:
+                        raise RuntimeError(
+                            f'vLLM device group cache miss in cache-only mode: rank={self.rank}, '
+                            f'group_name={group_name}, backend={torch_distributed_backend}, ranks={ranks}, '
+                            f'cache_keys={_cache_key_summary()}, '
+                            f'factory={_is_device_group_factory_enabled()}, '
+                            f'cache_only={_is_device_group_cache_only_enabled()}, '
+                            f'reuse_megatron={_is_megatron_group_reuse_enabled()}, '
+                            f'precreate_gloo={_is_precreate_gloo_groups_enabled()}.')
+                    self.ranks = ranks
+                    self.world_size = len(ranks)
+                    self.rank_in_group = ranks.index(self.rank)
+                    self_device_group = cached_group
+                    own_factory_group = cached_group
+                    if _is_precreate_gloo_groups_enabled():
+                        self_cpu_group = _lookup_vllm_cpu_group_cache(group_name, ranks)
+                        if self_cpu_group is None and not _is_cpu_group_alias_allowed():
+                            raise RuntimeError(
+                                f'vLLM CPU group cache miss with CPU alias disabled: rank={self.rank}, '
+                                f'group_name={group_name}, ranks={ranks}, cache_keys={_cache_key_summary()}.')
+                        own_factory_cpu_group = self_cpu_group
+                    break
+                if self_device_group is None:
+                    raise RuntimeError(
+                        f'Rank {self.rank} is not included in cached vLLM device group spec: '
+                        f'group_name={group_name}, group_ranks={group_ranks}.')
+                self._swift_dp_group_warmed = True
+            elif group_name == 'dp':
                 for ranks in group_ranks:
                     if self.rank in ranks:
                         own_precreated_group = _SWIFT_VLLM_PRECREATED_DP_GROUPS.get(tuple(int(r) for r in ranks))
@@ -404,7 +1179,25 @@ def _patch_vllm_ascend_external_launcher_groups() -> None:
             if self_device_group is None:
                 hccl_pg_options = create_hccl_pg_options(group_name)
                 for ranks in group_ranks:
-                    device_group = dist.new_group(ranks, backend=torch_distributed_backend, pg_options=hccl_pg_options)
+                    reuse_selected, reuse_record = _select_megatron_reuse_group(group_name, ranks,
+                                                                                torch_distributed_backend)
+                    if reuse_selected:
+                        if self.rank in ranks:
+                            assert reuse_record is not None
+                            self.ranks = ranks
+                            self.world_size = len(ranks)
+                            self.rank_in_group = ranks.index(self.rank)
+                            self_device_group = reuse_record.group
+                            own_reused_record = reuse_record
+                        continue
+                    device_group = audited_new_group(
+                        ranks,
+                        backend=torch_distributed_backend,
+                        kind='device',
+                        group_name=group_name,
+                        source='groupcoordinator_dynamic',
+                        phase='vllm_groupcoordinator',
+                        pg_options=hccl_pg_options)
                     if self.rank in ranks:
                         self.ranks = ranks
                         self.world_size = len(ranks)
@@ -414,9 +1207,17 @@ def _patch_vllm_ascend_external_launcher_groups() -> None:
             assert self_device_group is not None
             if not self._swift_dp_group_warmed:
                 self._swift_dp_group_warmed = _warmup_dp_group(group_name, group_ranks, self.ranks, self_device_group)
-            self._swift_no_cpu_group = True
-            self._swift_cpu_group_uses_device_group = use_device_communicator
-            self.cpu_group = self_device_group if use_device_communicator else None
+            if self_cpu_group is None and use_device_communicator:
+                if _is_cpu_group_alias_allowed():
+                    self_cpu_group = self_device_group
+                else:
+                    raise RuntimeError(
+                        f'vLLM CPU group is unavailable and CPU alias is disabled: rank={self.rank}, '
+                        f'group_name={group_name}, ranks={self.ranks}, cache_keys={_cache_key_summary()}, '
+                        f'precreate_gloo={_is_precreate_gloo_groups_enabled()}.')
+            self._swift_no_cpu_group = self_cpu_group is None or self_cpu_group is self_device_group
+            self._swift_cpu_group_uses_device_group = self_cpu_group is self_device_group
+            self.cpu_group = self_cpu_group
             self.device_group = self_device_group
             self.device = torch.npu.current_device()
             self.use_device_communicator = use_device_communicator
@@ -435,6 +1236,19 @@ def _patch_vllm_ascend_external_launcher_groups() -> None:
                 logger.warning_once(
                     f'Reused pre-created vLLM-Ascend {group_name} HCCL group in colocated Megatron training; '
                     'the Gloo CPU group is skipped for this NPU-only group.')
+            elif own_factory_group is not None:
+                if own_factory_cpu_group is not None:
+                    logger.warning_once(
+                        f'Reused vLLM-Ascend factory-cached {group_name} HCCL device group and Gloo CPU group '
+                        'in colocated Megatron training.')
+                else:
+                    logger.warning_once(
+                        f'Reused vLLM-Ascend factory-cached {group_name} HCCL group in colocated Megatron training; '
+                        'the Gloo CPU group is skipped for this NPU-only group.')
+            elif own_reused_record is not None:
+                logger.warning_once(
+                    f'Reused Megatron {own_reused_record.axis} HCCL group for vLLM-Ascend {group_name} '
+                    f'group in colocated training: ranks={own_reused_record.ranks}.')
             else:
                 logger.warning_once(
                     f'Skipped vLLM-Ascend {group_name} Gloo CPU group in colocated Megatron training; '
@@ -963,8 +1777,11 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
 
 
 __all__ = [
+    'audited_new_group',
     'patch_vllm_ascend_colocate_runtime',
     'patch_vllm_ascend_moe_expert_weight_loader',
     'patch_vllm_ascend_runtime',
+    'prepare_vllm_ascend_device_groups_before_megatron',
     'prepare_vllm_ascend_dp_groups_before_megatron',
+    'register_megatron_hccl_groups_for_vllm',
 ]
