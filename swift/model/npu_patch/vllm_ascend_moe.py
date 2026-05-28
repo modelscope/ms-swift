@@ -109,6 +109,20 @@ def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
         origin_source = ''
     if 'npu_moe_init_routing_v2' in origin_source and 'quant_mode == -1' in origin_source:
         return
+    origin_signature = inspect.signature(origin_routing)
+    routing_defaults = {
+        'scale': None,
+        'active_num': None,
+        'expert_num': None,
+        'expert_tokens_num_type': 1,
+        'expert_tokens_num_flag': True,
+        'active_expert_range': None,
+        'quant_mode': -1,
+    }
+    missing_params = set(routing_defaults).difference(origin_signature.parameters)
+    if missing_params:
+        raise RuntimeError('Unsupported vLLM-Ascend npu_moe_init_routing signature: '
+                           f'signature={origin_signature}, missing={sorted(missing_params)}.')
 
     def is_nonquant_routing(routing_kwargs) -> bool:
         return routing_kwargs['scale'] is None and routing_kwargs['quant_mode'] == -1
@@ -134,20 +148,13 @@ def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
         )
 
     def patched_npu_moe_init_routing(hidden_states, topk_ids, *args, **kwargs):
-        routing_kwargs = {
-            'scale': None,
-            'active_num': None,
-            'expert_num': None,
-            'expert_tokens_num_type': 1,
-            'expert_tokens_num_flag': True,
-            'active_expert_range': None,
-            'quant_mode': -1,
-        }
-        param_names = list(routing_kwargs)
-        for index, value in enumerate(args):
-            if index < len(param_names):
-                routing_kwargs[param_names[index]] = value
-        routing_kwargs.update(kwargs)
+        try:
+            bound = origin_signature.bind(hidden_states, topk_ids, *args, **kwargs)
+        except TypeError as e:
+            raise RuntimeError('Failed to bind vLLM-Ascend npu_moe_init_routing arguments: '
+                               f'signature={origin_signature}, args={args}, kwargs={kwargs}.') from e
+        bound.apply_defaults()
+        routing_kwargs = {key: bound.arguments.get(key, default) for key, default in routing_defaults.items()}
 
         if not is_nonquant_routing(routing_kwargs):
             return origin_routing(hidden_states, topk_ids, *args, **kwargs)
@@ -187,6 +194,7 @@ def _patch_vllm_ascend_unquant_moe_layout() -> None:
     origin_apply_mlp = getattr(moe_mlp, 'unquant_apply_mlp', None)
     if origin_apply_mlp is None or getattr(origin_apply_mlp, '_swift_ascend_moe_layout_patched', False):
         return
+    origin_signature = inspect.signature(origin_apply_mlp)
 
     def _is_expected_gated_unquant_moe_layout(w1, w2, input_k: int) -> bool:
         return (w1.shape[1] == input_k and w2.shape[2] == input_k and w1.shape[2] % 2 == 0
@@ -197,7 +205,13 @@ def _patch_vllm_ascend_unquant_moe_layout() -> None:
                 and w1.shape[1] // 2 == w2.shape[2])
 
     def patched_unquant_apply_mlp(hidden_states, w1, w2, *args, **kwargs):
-        need_trans = kwargs.get('need_trans', args[6] if len(args) > 6 else True)
+        try:
+            bound = origin_signature.bind_partial(hidden_states, w1, w2, *args, **kwargs)
+        except TypeError as e:
+            raise RuntimeError('Failed to bind vLLM-Ascend unquant_apply_mlp arguments: '
+                               f'signature={origin_signature}, args={args}, kwargs={kwargs}.') from e
+        bound.apply_defaults()
+        need_trans = bound.arguments.get('need_trans', True)
         if not need_trans and w1.dim() == 3 and w2.dim() == 3:
             input_k = hidden_states.shape[-1]
             # This compatibility branch is only for gated MoE layouts where

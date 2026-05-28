@@ -51,12 +51,14 @@ def _patch_flash_attn_optional_import() -> None:
             sys.modules.pop(module_name, None)
 
 
-def patch_vllm_ascend_runtime() -> None:
+def patch_vllm_ascend_runtime(*, colocate: bool = False) -> None:
     """Apply SWIFT runtime compatibility patches for vLLM-Ascend on NPU.
 
     The caller is responsible for guarding this function by device type.  This
     module intentionally imports vLLM/vLLM-Ascend modules lazily so CUDA/GPU
-    paths do not enter Ascend-only code.
+    paths do not enter Ascend-only code.  Colocated training memory patches are
+    applied only when the caller marks the runtime as colocated, so standalone
+    NPU inference keeps vLLM-Ascend's native memory accounting behavior.
     """
     # Read versions for diagnostics and future version-gated branches.  The
     # concrete patches below still use symbol checks because local source builds
@@ -66,10 +68,11 @@ def patch_vllm_ascend_runtime() -> None:
     logger.debug('Applying vLLM-Ascend runtime patches: vllm=%s, vllm-ascend=%s', vllm_version, vllm_ascend_version)
 
     _patch_flash_attn_optional_import()
-    patch_vllm_ascend_external_launcher_groups()
     patch_vllm_ascend_moe_runtime()
     patch_vllm_ascend_memory_runtime()
-    patch_vllm_ascend_colocate_runtime()
+    if colocate:
+        patch_vllm_ascend_external_launcher_groups()
+        patch_vllm_ascend_colocate_runtime()
 
 
 __all__ = [

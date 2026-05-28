@@ -1,14 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """Runtime vLLM group patches for NPU external-launcher colocate mode.
 
-The factory module prepares HCCL/Gloo groups before vLLM initialization.  This
-module patches vLLM-Ascend so GroupCoordinator only performs cache lookup and so
-small DP metadata tensors use real NPU/HCCL DP groups without pretending those
-HCCL groups are CPU collectives.
+The factory module prepares HCCL device groups and matching Gloo CPU groups
+before vLLM initialization.  This module patches vLLM-Ascend so
+``GroupCoordinator`` only performs cache lookup instead of creating process
+groups dynamically inside the Megatron process tree.
 """
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
 import torch
 
@@ -50,18 +51,29 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
     """
     try:
         import torch.distributed as dist
-        from vllm.config import parallel as parallel_config_module
         from vllm.distributed import parallel_state
         from vllm_ascend.distributed.device_communicators.npu_communicator import NPUCommunicator
         from vllm_ascend.patch.worker import patch_distributed
-        from vllm_ascend.utils import should_skip_allreduce_across_dp_group
-        from vllm_ascend.worker import model_runner_v1
     except (ImportError, AttributeError, RuntimeError):
         return
 
     group_cls = getattr(patch_distributed, 'GroupCoordinatorPatch', None)
     if group_cls is not None and not getattr(group_cls, '_swift_external_launcher_group_patched', False):
         origin_init = group_cls.__init__
+        origin_signature = inspect.signature(origin_init)
+        expected_params = {
+            'self',
+            'group_ranks',
+            'local_rank',
+            'torch_distributed_backend',
+            'use_device_communicator',
+            'use_message_queue_broadcaster',
+            'group_name',
+        }
+        missing_params = expected_params.difference(origin_signature.parameters)
+        if missing_params:
+            raise RuntimeError('Unsupported vLLM-Ascend GroupCoordinatorPatch.__init__ signature: '
+                               f'signature={origin_signature}, missing={sorted(missing_params)}.')
 
         def _should_use_npu_only_group(use_device_communicator, use_message_queue_broadcaster, group_name) -> bool:
             if use_message_queue_broadcaster:
@@ -88,17 +100,22 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
                                     f'hash={spec_hash}')
                 _SWIFT_VLLM_DP_GROUP_SPECS.add(spec)
 
-        def patched_init(self,
-                         group_ranks,
-                         local_rank,
-                         torch_distributed_backend,
-                         use_device_communicator,
-                         use_message_queue_broadcaster=False,
-                         group_name=None):
+        def patched_init(self, *args, **kwargs):
+            try:
+                bound = origin_signature.bind(self, *args, **kwargs)
+            except TypeError as e:
+                raise RuntimeError('Failed to bind vLLM-Ascend GroupCoordinatorPatch.__init__ arguments: '
+                                   f'signature={origin_signature}, args={args}, kwargs={kwargs}.') from e
+            bound.apply_defaults()
+            group_ranks = bound.arguments['group_ranks']
+            local_rank = bound.arguments['local_rank']
+            torch_distributed_backend = bound.arguments['torch_distributed_backend']
+            use_device_communicator = bound.arguments['use_device_communicator']
+            use_message_queue_broadcaster = bound.arguments['use_message_queue_broadcaster']
+            group_name = bound.arguments['group_name']
             group_name = group_name or 'anonymous'
             if not _should_use_npu_only_group(use_device_communicator, use_message_queue_broadcaster, group_name):
-                return origin_init(self, group_ranks, local_rank, torch_distributed_backend, use_device_communicator,
-                                   use_message_queue_broadcaster, group_name)
+                return origin_init(*bound.args, **bound.kwargs)
 
             _validate_dp_group_spec(group_name, group_ranks)
 
@@ -149,138 +166,6 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
 
         group_cls.__init__ = patched_init
         group_cls._swift_external_launcher_group_patched = True
-
-    _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_runner_v1,
-                                                 should_skip_allreduce_across_dp_group)
-
-
-def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_runner_v1,
-                                                 should_skip_allreduce_across_dp_group) -> None:
-    """Patch small DP metadata collectives to use NPU tensors on HCCL groups.
-
-    vLLM's DP metadata helpers operate on CPU tensors because upstream expects a
-    CPU/Gloo group.  In this NPU colocate path, the cached DP group is a real
-    HCCL group, so the wrapper moves those tiny CPU tensors to the current NPU,
-    runs the collective on the real DP HCCL group, and converts results back to
-    CPU for the original call contract.
-    """
-    import torch.distributed as dist
-    from vllm.distributed.parallel_state import get_dp_group
-
-    def _is_swift_device_group(group) -> bool:
-        if group is None:
-            return False
-        try:
-            return str(dist.get_backend(group)).lower() == 'hccl'
-        except (RuntimeError, ValueError):
-            return False
-
-    def _npu_all_reduce_cpu_tensor(tensor: torch.Tensor, group, op=dist.ReduceOp.SUM) -> torch.Tensor:
-        if not _is_swift_device_group(group):
-            dist.all_reduce(tensor, group=group, op=op)
-            return tensor
-        device_tensor = tensor.to(torch.device('npu', torch.npu.current_device()))
-        dist.all_reduce(device_tensor, group=group, op=op)
-        return device_tensor.cpu()
-
-    parallel_config_cls = getattr(parallel_config_module, 'ParallelConfig', None)
-    if parallel_config_cls is not None:
-        origin_has_unfinished = getattr(parallel_config_cls, 'has_unfinished_dp', None)
-        if origin_has_unfinished is not None and not getattr(origin_has_unfinished, '_swift_npu_dp_sync_patched',
-                                                             False):
-
-            @staticmethod
-            def has_unfinished_dp(dp_group, has_unfinished: bool) -> bool:
-                if not _is_swift_device_group(dp_group):
-                    return origin_has_unfinished(dp_group, has_unfinished)
-                tensor = torch.tensor([has_unfinished], dtype=torch.int32, device='cpu')
-                tensor = _npu_all_reduce_cpu_tensor(tensor, dp_group, op=dist.ReduceOp.MAX)
-                return bool(tensor.item())
-
-            has_unfinished_dp._swift_npu_dp_sync_patched = True
-            has_unfinished_dp._swift_origin = origin_has_unfinished
-            parallel_config_cls.has_unfinished_dp = has_unfinished_dp
-
-        origin_sync_kv = getattr(parallel_config_cls, 'sync_kv_cache_memory_size', None)
-        if origin_sync_kv is not None and not getattr(origin_sync_kv, '_swift_npu_dp_sync_patched', False):
-
-            @staticmethod
-            def sync_kv_cache_memory_size(dp_group, kv_cache_memory: int) -> int:
-                if not _is_swift_device_group(dp_group):
-                    return origin_sync_kv(dp_group, kv_cache_memory)
-                if kv_cache_memory == -1:
-                    kv_cache_memory = torch.iinfo(torch.int64).max
-                tensor = torch.tensor([kv_cache_memory], dtype=torch.int64, device='cpu')
-                tensor = _npu_all_reduce_cpu_tensor(tensor, dp_group, op=dist.ReduceOp.MIN)
-                return int(tensor.item())
-
-            sync_kv_cache_memory_size._swift_npu_dp_sync_patched = True
-            sync_kv_cache_memory_size._swift_origin = origin_sync_kv
-            parallel_config_cls.sync_kv_cache_memory_size = sync_kv_cache_memory_size
-
-    runner_cls = getattr(model_runner_v1, 'NPUModelRunner', None)
-    if runner_cls is None:
-        return
-
-    origin_sync_metadata = getattr(runner_cls, '_sync_metadata_across_dp', None)
-    if origin_sync_metadata is not None and not getattr(origin_sync_metadata, '_swift_npu_dp_sync_patched', False):
-
-        def _sync_metadata_across_dp(self, num_tokens: int, with_prefill: bool = False, is_draft_model: bool = False):
-            if self.dp_size == 1:
-                return num_tokens, None, with_prefill
-            if should_skip_allreduce_across_dp_group(self.vllm_config, is_draft_model):
-                num_tokens_after_padding = torch.tensor([num_tokens] * self.dp_size, device='cpu', dtype=torch.int32)
-                return num_tokens, num_tokens_after_padding, with_prefill
-
-            num_tokens_tensor = torch.tensor([num_tokens if i == self.dp_rank else 0 for i in range(self.dp_size)],
-                                             dtype=torch.int32,
-                                             device='cpu')
-            flags_tensor = torch.tensor([int(with_prefill)], dtype=torch.int32, device='cpu')
-            packed_tensor = torch.cat([num_tokens_tensor, flags_tensor])
-            packed_tensor = _npu_all_reduce_cpu_tensor(packed_tensor, get_dp_group().cpu_group)
-            num_tokens_across_dp = packed_tensor[:-1]
-            synced_flags = packed_tensor[-1:]
-            max_tokens_across_dp = torch.max(num_tokens_across_dp).item()
-            global_with_prefill = bool(synced_flags[0])
-            num_tokens_after_padding = torch.tensor(
-                [max_tokens_across_dp] * self.dp_size, device='cpu', dtype=torch.int32)
-            return max_tokens_across_dp, num_tokens_after_padding, global_with_prefill
-
-        _sync_metadata_across_dp._swift_npu_dp_sync_patched = True
-        _sync_metadata_across_dp._swift_origin = origin_sync_metadata
-        runner_cls._sync_metadata_across_dp = _sync_metadata_across_dp
-
-    origin_sync_batch = getattr(runner_cls, '_sync_batch_across_dp', None)
-    if origin_sync_batch is not None and not getattr(origin_sync_batch, '_swift_npu_dp_sync_patched', False):
-
-        def _sync_batch_across_dp(self,
-                                  num_tokens_padded: int | None = None,
-                                  cudagraph_mode: int = 0,
-                                  allow_dp_padding: bool = False):
-            if self.dp_size == 1:
-                return False, None, cudagraph_mode
-            if should_skip_allreduce_across_dp_group(self.vllm_config):
-                num_tokens_after_padding = torch.tensor(
-                    [num_tokens_padded] * self.dp_size, device='cpu', dtype=torch.int32)
-                return False, num_tokens_after_padding, cudagraph_mode
-
-            tensor = torch.zeros(2, self.dp_size, device='cpu', dtype=torch.int32)
-            tensor[0][self.dp_rank] = num_tokens_padded
-            tensor[1][self.dp_rank] = cudagraph_mode
-            tensor = _npu_all_reduce_cpu_tensor(tensor, get_dp_group().cpu_group)
-            num_tokens_across_dp = tensor[0, :]
-            max_num_tokens = int(num_tokens_across_dp.max().item())
-            if allow_dp_padding:
-                num_tokens_after_padding = torch.tensor(
-                    [max_num_tokens] * len(num_tokens_across_dp), device='cpu', dtype=torch.int32)
-            else:
-                num_tokens_after_padding = num_tokens_across_dp.cpu()
-            synced_cudagraph_mode = int(tensor[1, :].min().item())
-            return False, num_tokens_after_padding, synced_cudagraph_mode
-
-        _sync_batch_across_dp._swift_npu_dp_sync_patched = True
-        _sync_batch_across_dp._swift_origin = origin_sync_batch
-        runner_cls._sync_batch_across_dp = _sync_batch_across_dp
 
 
 __all__ = ['patch_vllm_ascend_external_launcher_groups']

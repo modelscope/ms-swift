@@ -22,6 +22,7 @@ except Exception:
 
 
 class GRPOVllmEngine(VllmEngine):
+    _swift_vllm_colocate_runtime = True
 
     def infer(
         self,

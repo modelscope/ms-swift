@@ -82,7 +82,6 @@ def _patch_vllm_ascend_memory_profiling() -> None:
 def patch_vllm_ascend_memory_runtime() -> None:
     """Apply non-colocate-specific vLLM-Ascend memory runtime patches."""
     _patch_vllm_ascend_mem_get_info()
-    _patch_vllm_ascend_memory_profiling()
 
 
 def _patch_vllm_ascend_colocate_memory_profiling() -> None:
@@ -140,6 +139,7 @@ def _patch_vllm_ascend_colocate_memory_profiling() -> None:
 
 def patch_vllm_ascend_colocate_runtime() -> None:
     """Apply vLLM-Ascend memory patches needed by colocated training."""
+    _patch_vllm_ascend_memory_profiling()
     _patch_vllm_ascend_colocate_memory_profiling()
 
 

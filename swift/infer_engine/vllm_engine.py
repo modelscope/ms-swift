@@ -198,7 +198,10 @@ class VllmEngine(InferEngine):
         self._prepare_engine_kwargs(max_model_len, engine_kwargs)
         context = nullcontext()
         if is_torch_npu_available() and (tensor_parallel_size == 1 or pipeline_parallel_size == 1):
-            context = patch_npu_vllm(get_device())
+            colocate = (
+                getattr(self, '_swift_vllm_colocate_runtime', False)
+                or self.distributed_executor_backend == 'external_launcher')
+            context = patch_npu_vllm(get_device(), colocate=colocate)
         with context:
             self._prepare_engine()
         self._load_generation_config()
