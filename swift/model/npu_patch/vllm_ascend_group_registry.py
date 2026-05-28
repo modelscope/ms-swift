@@ -19,8 +19,16 @@ logger = get_logger()
 
 _SWIFT_MEGATRON_HCCL_GROUPS: dict[tuple[str, str, tuple[int, ...]], list['_MegatronGroupRecord']] = {}
 
+
 @dataclass(frozen=True)
 class _MegatronGroupRecord:
+    """A Megatron HCCL group candidate that vLLM may reuse.
+
+    ``axis`` and ``source`` are provenance labels for diagnostics.  Reuse is
+    keyed by exact ``ranks`` order because collective rank order affects group
+    rank and tensor chunk ordering.
+    """
+
     backend: str
     kind: str
     axis: str
@@ -29,14 +37,27 @@ class _MegatronGroupRecord:
     source: str
 
 
-def create_npu_process_group(ranks=None, backend=None, *, kind: str, group_name: str, source: str, phase: str, **kwargs):
-    """Create a torch distributed group through SWIFT's NPU patch layer."""
+def create_npu_process_group(ranks=None,
+                             backend=None,
+                             *,
+                             kind: str,
+                             group_name: str,
+                             source: str,
+                             phase: str,
+                             **kwargs):
+    """Create a torch distributed group through SWIFT's NPU patch layer.
+
+    The extra keyword-only fields are intentionally informational today.  They
+    keep every NPU group creation call self-describing, which makes later audit
+    logging or error messages possible without changing all call sites again.
+    """
     import torch.distributed as dist
 
     return dist.new_group(ranks=ranks, backend=backend, **kwargs)
 
 
 def _normalize_backend_name(backend) -> str:
+    """Normalize torch backend objects/strings to stable cache key names."""
     backend_name = str(backend or '').lower()
     if 'hccl' in backend_name:
         return 'hccl'
@@ -46,6 +67,7 @@ def _normalize_backend_name(backend) -> str:
 
 
 def _get_process_group_backend(group) -> str:
+    """Inspect a process group's backend across torch API variants."""
     import torch.distributed as dist
 
     try:
@@ -60,6 +82,7 @@ def _get_process_group_backend(group) -> str:
 
 
 def _get_process_group_ranks(group) -> tuple[int, ...]:
+    """Return the global ranks for ``group`` with a WORLD fallback."""
     import torch.distributed as dist
 
     try:
@@ -71,6 +94,7 @@ def _get_process_group_ranks(group) -> tuple[int, ...]:
 
 
 def _register_megatron_hccl_group(axis: str, group, source: str) -> None:
+    """Register one inspectable Megatron HCCL group as a reuse candidate."""
     if group is None:
         return
     import torch.distributed as dist
@@ -96,6 +120,7 @@ def _register_megatron_hccl_group(axis: str, group, source: str) -> None:
 
 
 def _call_megatron_group_getter(getter, **kwargs):
+    """Call Megatron group getters without requiring every version's signature."""
     try:
         return getter(check_initialized=False, **kwargs)
     except TypeError:
@@ -108,6 +133,7 @@ def _call_megatron_group_getter(getter, **kwargs):
 
 
 def _register_megatron_group_from_getter(parallel_state, axis: str, getter_name: str, **kwargs) -> None:
+    """Register a Megatron group if the requested getter exists and succeeds."""
     getter = getattr(parallel_state, getter_name, None)
     if getter is None:
         return
@@ -142,8 +168,12 @@ def register_megatron_hccl_groups_for_vllm(args) -> None:
         ('pp', 'get_pipeline_model_parallel_group', {}),
         ('cp', 'get_context_parallel_group', {}),
         ('dp', 'get_data_parallel_group', {}),
-        ('dp_cp', 'get_data_parallel_group', {'with_context_parallel': True}),
-        ('partial_dp', 'get_data_parallel_group', {'partial_data_parallel': True}),
+        ('dp_cp', 'get_data_parallel_group', {
+            'with_context_parallel': True
+        }),
+        ('partial_dp', 'get_data_parallel_group', {
+            'partial_data_parallel': True
+        }),
         ('partial_dp_cp', 'get_data_parallel_group', {
             'with_context_parallel': True,
             'partial_data_parallel': True,
@@ -151,7 +181,9 @@ def register_megatron_hccl_groups_for_vllm(args) -> None:
         ('ep', 'get_expert_model_parallel_group', {}),
         ('etp', 'get_expert_tensor_parallel_group', {}),
         ('edp', 'get_expert_data_parallel_group', {}),
-        ('partial_edp', 'get_expert_data_parallel_group', {'partial_expert_data_parallel': True}),
+        ('partial_edp', 'get_expert_data_parallel_group', {
+            'partial_expert_data_parallel': True
+        }),
         ('etp_ep', 'get_expert_tensor_and_model_parallel_group', {}),
     ]
     for axis, getter_name, kwargs in group_getters:
@@ -171,6 +203,7 @@ _PREFERRED_MEGATRON_AXES_BY_VLLM_GROUP = {
 
 def _lookup_megatron_hccl_group_record(ranks: tuple[int, ...],
                                        preferred_axes: tuple[str, ...] | None = None) -> Optional[_MegatronGroupRecord]:
+    """Find a reuse candidate with exact rank order, preferring matching axes."""
     records = _SWIFT_MEGATRON_HCCL_GROUPS.get(('hccl', 'device', ranks), [])
     if not records:
         return None
@@ -182,6 +215,7 @@ def _lookup_megatron_hccl_group_record(ranks: tuple[int, ...],
 
 
 def _megatron_group_record_token(record: _MegatronGroupRecord) -> dict[str, str]:
+    """Serialize record provenance for cross-rank reuse consensus checks."""
     return {'axis': record.axis, 'source': record.source}
 
 
@@ -248,15 +282,15 @@ def _select_megatron_reuse_group(group_name: str,
     if not can_reuse:
         return False, None
     if rank in ranks_tuple and record is None:
-        raise RuntimeError(
-            f'Megatron group reuse decision is inconsistent: rank={rank}, group_name={group_name}, '
-            f'ranks={ranks_tuple}.')
+        raise RuntimeError(f'Megatron group reuse decision is inconsistent: rank={rank}, group_name={group_name}, '
+                           f'ranks={ranks_tuple}.')
     if not _validate_reuse_record_consensus(group_name, ranks_tuple, record):
         return False, None
     return True, record
 
 
 def _stable_int64_hash(payload) -> int:
+    """Hash JSON-serializable payloads into signed-int64-safe positive values."""
     text = json.dumps(payload, sort_keys=True)
     return int(hashlib.sha256(text.encode()).hexdigest()[:15], 16)
 

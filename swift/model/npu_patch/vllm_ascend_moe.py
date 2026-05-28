@@ -1,4 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+"""vLLM-Ascend MoE compatibility patches for SWIFT NPU GRPO.
+
+These patches cover three independent MoE issues seen in vLLM-Ascend based
+rollout: lazy initialization of MoE communication helpers, non-quantized routing
+dispatch, and unquantized expert weight layout.  The runtime weight-loader patch
+at the bottom is used by GRPO weight sync when SWIFT sends updated training
+weights into a live vLLM MoE model.
+"""
 from __future__ import annotations
 
 import inspect
@@ -9,7 +17,15 @@ from swift.utils.logger import get_logger
 
 logger = get_logger()
 
+
 def _patch_vllm_ascend_moe_comm_lazy_init() -> None:
+    """Create MoE communication methods lazily after config is available.
+
+    Some vLLM-Ascend releases initialize a global MoE communication map before
+    the colocated Megatron/vLLM topology is fully ready.  Replacing that map with
+    lazy construction avoids stale communicator instances while preserving the
+    upstream ``setup_moe_comm_method``/``get_moe_comm_method`` API.
+    """
     try:
         from vllm_ascend.ascend_forward_context import MoECommType
         from vllm_ascend.ops.fused_moe import moe_comm_method
@@ -54,7 +70,6 @@ def _patch_vllm_ascend_moe_comm_lazy_init() -> None:
     moe_comm_method._swift_lazy_moe_comm_patched = True
 
 
-
 def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
     """Use the stable torch-npu routing op for non-quantized MoE when needed.
 
@@ -94,6 +109,7 @@ def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
         origin_source = ''
     if 'npu_moe_init_routing_v2' in origin_source and 'quant_mode == -1' in origin_source:
         return
+
     def is_nonquant_routing(routing_kwargs) -> bool:
         return routing_kwargs['scale'] is None and routing_kwargs['quant_mode'] == -1
 
@@ -202,8 +218,8 @@ def _patch_vllm_ascend_unquant_moe_layout() -> None:
     moe_mlp.unquant_apply_mlp = patched_unquant_apply_mlp
 
 
-
 def patch_vllm_ascend_moe_runtime() -> None:
+    """Apply MoE runtime patches that are independent of weight sync."""
     _patch_vllm_ascend_moe_comm_lazy_init()
     _patch_vllm_ascend_device_op_nonquant_routing()
     _patch_vllm_ascend_unquant_moe_layout()
@@ -245,8 +261,8 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
             # vLLM-Ascend MoE parameter has already been converted to a 3D
             # per-local-expert layout.  Initial checkpoint load and other
             # layouts continue to use the original vLLM loader.
-            is_runtime_sync_into_processed_param = (param.data.dim() == 3 and loaded_weight.dim() == 2
-                                                    and quant_method_module.startswith('vllm_ascend'))
+            is_runtime_sync_into_processed_param = (
+                param.data.dim() == 3 and loaded_weight.dim() == 2 and quant_method_module.startswith('vllm_ascend'))
             if not is_runtime_sync_into_processed_param:
                 return origin_weight_loader(param, loaded_weight, weight_name, shard_id, expert_id, return_success)
 

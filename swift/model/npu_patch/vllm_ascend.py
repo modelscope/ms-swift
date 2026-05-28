@@ -1,4 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+"""Top-level vLLM-Ascend runtime patch entrypoints for SWIFT NPU support.
+
+This module is intentionally a facade.  The actual compatibility code lives in
+smaller modules grouped by responsibility: process-group lifecycle, memory
+profiling, and MoE execution/layout.  Existing callers keep importing from this
+file, while maintainers can review each patch family independently.
+"""
 from __future__ import annotations
 
 import sys
@@ -6,20 +13,22 @@ from importlib import metadata
 from packaging import version
 from typing import Optional
 
-from swift.model.npu_patch.vllm_ascend_groups import (
-    create_npu_process_group, get_or_create_vllm_tp_gloo_group, patch_vllm_ascend_external_launcher_groups,
-    prepare_vllm_ascend_device_groups_before_megatron, prepare_vllm_ascend_dp_groups_before_megatron,
-    register_megatron_hccl_groups_for_vllm)
+from swift.model.npu_patch.vllm_ascend_groups import (create_npu_process_group, get_or_create_vllm_tp_gloo_group,
+                                                      patch_vllm_ascend_external_launcher_groups,
+                                                      prepare_vllm_ascend_device_groups_before_megatron,
+                                                      prepare_vllm_ascend_dp_groups_before_megatron,
+                                                      register_megatron_hccl_groups_for_vllm)
 from swift.model.npu_patch.vllm_ascend_memory import (patch_vllm_ascend_colocate_runtime,
-                                                       patch_vllm_ascend_memory_runtime)
+                                                      patch_vllm_ascend_memory_runtime)
 from swift.model.npu_patch.vllm_ascend_moe import (patch_vllm_ascend_moe_expert_weight_loader,
-                                                    patch_vllm_ascend_moe_runtime)
+                                                   patch_vllm_ascend_moe_runtime)
 from swift.utils.logger import get_logger
 
 logger = get_logger()
 
 
 def _get_package_version(package_name: str) -> Optional[version.Version]:
+    """Return an installed package version for diagnostics, or ``None``."""
     try:
         return version.parse(metadata.version(package_name))
     except (metadata.PackageNotFoundError, version.InvalidVersion):
@@ -27,6 +36,13 @@ def _get_package_version(package_name: str) -> Optional[version.Version]:
 
 
 def _patch_flash_attn_optional_import() -> None:
+    """Clear a stub ``flash_attn`` module that can block optional imports.
+
+    Some stacks insert a non-package ``flash_attn`` placeholder into
+    ``sys.modules``.  vLLM import paths then treat it as the real package and
+    fail on submodule imports.  Removing the placeholder lets normal optional
+    dependency checks proceed.
+    """
     module = sys.modules.get('flash_attn')
     if module is None or hasattr(module, '__path__'):
         return

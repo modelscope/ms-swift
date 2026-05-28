@@ -1,10 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+"""vLLM-Ascend memory compatibility patches used by NPU GRPO rollout.
+
+The patches here are limited to memory accounting and profiling behavior.  They
+do not change model math.  Their job is to keep vLLM's KV-cache capacity
+estimation stable when vLLM is colocated with a training process that may
+release or reclaim NPU memory during profiling.
+"""
 from __future__ import annotations
 
 import torch
 from contextlib import contextmanager
 
+
 def _patch_vllm_ascend_mem_get_info() -> None:
+    """Make ``NPUPlatform.mem_get_info`` tolerant of torch-npu signatures."""
     try:
         from vllm_ascend.platform import NPUPlatform
     except (ImportError, AttributeError):
@@ -26,6 +35,13 @@ def _patch_vllm_ascend_mem_get_info() -> None:
 
 
 def _patch_vllm_ascend_memory_profiling() -> None:
+    """Normalize vLLM-Ascend profile results when free memory increases.
+
+    In colocated GRPO, another rank or the training side can release memory
+    while vLLM is profiling.  Upstream profiling assumes non-vLLM memory is
+    stable and can assert if free memory goes up.  The wrapper keeps the profile
+    result internally consistent instead of failing the rollout initialization.
+    """
     try:
         from vllm.logger import logger as vllm_logger
         from vllm_ascend.worker import worker as ascend_worker
@@ -33,8 +49,8 @@ def _patch_vllm_ascend_memory_profiling() -> None:
         return
 
     origin_memory_profiling = getattr(ascend_worker, 'memory_profiling', None)
-    if origin_memory_profiling is None or getattr(origin_memory_profiling,
-                                                 '_swift_ascend_memory_profiling_patched', False):
+    if origin_memory_profiling is None or getattr(origin_memory_profiling, '_swift_ascend_memory_profiling_patched',
+                                                  False):
         return
 
     @contextmanager
@@ -55,22 +71,28 @@ def _patch_vllm_ascend_memory_profiling() -> None:
         profile_result.torch_peak_increase = max(profile_result.torch_peak_increase, 0)
         profile_result.non_kv_cache_memory = (
             profile_result.non_torch_increase + profile_result.torch_peak_increase + profile_result.weights_memory)
-        vllm_logger.warning_once(
-            'Patched vLLM-Ascend memory profiling because free memory increased during profiling. '
-            'This is expected in colocated training when another rank releases memory.')
+        vllm_logger.warning_once('Patched vLLM-Ascend memory profiling because free memory increased during profiling. '
+                                 'This is expected in colocated training when another rank releases memory.')
 
     memory_profiling._swift_ascend_memory_profiling_patched = True
     memory_profiling._swift_origin = origin_memory_profiling
     ascend_worker.memory_profiling = memory_profiling
 
 
-
 def patch_vllm_ascend_memory_runtime() -> None:
+    """Apply non-colocate-specific vLLM-Ascend memory runtime patches."""
     _patch_vllm_ascend_mem_get_info()
     _patch_vllm_ascend_memory_profiling()
 
 
 def _patch_vllm_ascend_colocate_memory_profiling() -> None:
+    """Patch ``NPUWorker.determine_available_memory`` for colocated GRPO.
+
+    vLLM-Ascend normally treats increased free memory during profiling as an
+    error.  In colocated training that increase is expected when the training
+    side frees memory.  This wrapper keeps the profiled non-KV memory result and
+    continues with a conservative available KV-cache estimate.
+    """
     try:
         from vllm.utils.mem_constants import GiB_bytes
         from vllm.utils.mem_utils import memory_profiling
@@ -87,7 +109,10 @@ def _patch_vllm_ascend_colocate_memory_profiling() -> None:
 
     @torch.inference_mode()
     def determine_available_memory(self) -> int:
-        GiB = lambda b: b / GiB_bytes
+
+        def GiB(num_bytes):
+            return num_bytes / GiB_bytes
+
         with memory_profiling(
                 self.init_snapshot,
                 weights_memory=int(self.model_runner.model_memory_usage),
@@ -99,8 +124,8 @@ def _patch_vllm_ascend_colocate_memory_profiling() -> None:
             ascend_worker.logger.warning(
                 'vLLM-Ascend memory profiling observed increased free memory '
                 'during colocate initialization: initial %.2f GiB, current %.2f GiB. '
-                'Continuing with profiled non-KV memory instead of failing.',
-                GiB(self.init_snapshot.free_memory), GiB(free_gpu_memory))
+                'Continuing with profiled non-KV memory instead of failing.', GiB(self.init_snapshot.free_memory),
+                GiB(free_gpu_memory))
 
         self.available_kv_cache_memory_bytes = self.requested_memory - profile_result.non_kv_cache_memory
         ascend_worker.logger.debug(profile_result)
@@ -111,7 +136,6 @@ def _patch_vllm_ascend_colocate_memory_profiling() -> None:
     determine_available_memory._swift_colocate_memory_patched = True
     determine_available_memory._swift_origin = origin_determine
     NPUWorker.determine_available_memory = determine_available_memory
-
 
 
 def patch_vllm_ascend_colocate_runtime() -> None:

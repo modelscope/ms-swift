@@ -13,6 +13,7 @@ logger = get_logger()
 
 _SWIFT_VLLM_TP_GLOO_GROUPS: dict[tuple[tuple[int, ...], ...], Any] = {}
 
+
 def get_or_create_vllm_tp_gloo_group(tensor_parallel_size: int):
     """Create a Gloo control-plane group matching vLLM TP ranks.
 
@@ -26,8 +27,8 @@ def get_or_create_vllm_tp_gloo_group(tensor_parallel_size: int):
     Keep the device group unchanged for vLLM tensor work and create a matching
     Gloo group only for SWIFT rollout-side object collectives.
     """
-    from transformers.utils import is_torch_npu_available
     import torch.distributed as dist
+    from transformers.utils import is_torch_npu_available
 
     if not is_torch_npu_available() or tensor_parallel_size <= 1 or not dist.is_initialized():
         return None
@@ -38,19 +39,16 @@ def get_or_create_vllm_tp_gloo_group(tensor_parallel_size: int):
         raise RuntimeError(
             f'Cannot build vLLM TP Gloo control groups: world_size={world_size}, tp={tensor_parallel_size}.')
 
-    group_ranks = [list(range(start, start + tensor_parallel_size)) for start in range(0, world_size, tensor_parallel_size)]
+    group_ranks = [
+        list(range(start, start + tensor_parallel_size)) for start in range(0, world_size, tensor_parallel_size)
+    ]
     spec = _canonical_group_ranks(group_ranks)
     if spec not in _SWIFT_VLLM_TP_GLOO_GROUPS:
         _clear_default_pg_bound_device_id_for_gloo()
         own_group = None
         for ranks in group_ranks:
             group = create_npu_process_group(
-                ranks,
-                backend='gloo',
-                kind='control',
-                group_name='tp',
-                source='vllm_tp_control',
-                phase='rollout')
+                ranks, backend='gloo', kind='control', group_name='tp', source='vllm_tp_control', phase='rollout')
             if rank in ranks:
                 own_group = group
         if own_group is None:

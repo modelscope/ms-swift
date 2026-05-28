@@ -53,9 +53,8 @@ def _get_bridge_group_specs(bridge, is_expert):
     if is_expert:
         group_unit = bridge.etp_size * bridge.ep_size * bridge.pp_size
         if world_size % group_unit != 0:
-            raise RuntimeError(
-                f'Cannot build mcore_bridge EP-PP Gloo groups: world_size={world_size}, '
-                f'etp={bridge.etp_size}, ep={bridge.ep_size}, pp={bridge.pp_size}.')
+            raise RuntimeError(f'Cannot build mcore_bridge EP-PP Gloo groups: world_size={world_size}, '
+                               f'etp={bridge.etp_size}, ep={bridge.ep_size}, pp={bridge.pp_size}.')
         rank_generator = mpu.RankGenerator(
             tp=bridge.etp_size,
             ep=bridge.ep_size,
@@ -70,9 +69,8 @@ def _get_bridge_group_specs(bridge, is_expert):
         cp_size = int(getattr(bridge.config, 'context_parallel_size', 1) or 1)
         group_unit = bridge.tp_size * bridge.pp_size * cp_size
         if world_size % group_unit != 0:
-            raise RuntimeError(
-                f'Cannot build mcore_bridge PP Gloo groups: world_size={world_size}, '
-                f'tp={bridge.tp_size}, pp={bridge.pp_size}, cp={cp_size}.')
+            raise RuntimeError(f'Cannot build mcore_bridge PP Gloo groups: world_size={world_size}, '
+                               f'tp={bridge.tp_size}, pp={bridge.pp_size}, cp={cp_size}.')
         rank_generator = mpu.RankGenerator(
             tp=bridge.tp_size,
             ep=1,
@@ -95,9 +93,8 @@ def _get_or_create_bridge_gloo_group(bridge, is_expert):
 
     group_specs = _get_bridge_group_specs(bridge, is_expert)
     if own_ranks not in group_specs:
-        raise RuntimeError(
-            f'mcore_bridge PP/EP-PP group ranks are inconsistent with reconstructed specs: '
-            f'is_expert={is_expert}, own_ranks={own_ranks}, specs={group_specs}.')
+        raise RuntimeError(f'mcore_bridge PP/EP-PP group ranks are inconsistent with reconstructed specs: '
+                           f'is_expert={is_expert}, own_ranks={own_ranks}, specs={group_specs}.')
 
     cache_key = ('ep_pp' if is_expert else 'pp', tuple(group_specs))
     if cache_key not in _SWIFT_BRIDGE_GLOO_GROUP_CACHE:
@@ -327,13 +324,11 @@ def _patch_mcore_bridge():
             if pp_rank == src_group_rank and has_tensor:
                 dtype_idx = dtype_mapping_r.get(comm_tensor.dtype)
                 if dtype_idx is None:
-                    raise RuntimeError(
-                        f'Unsupported dtype in mcore_bridge PP/EP broadcast: '
-                        f'dtype={comm_tensor.dtype}, is_expert={is_expert}.')
+                    raise RuntimeError(f'Unsupported dtype in mcore_bridge PP/EP broadcast: '
+                                       f'dtype={comm_tensor.dtype}, is_expert={is_expert}.')
                 if comm_tensor.ndim + 2 > meta_data.numel():
-                    raise RuntimeError(
-                        f'Tensor shape has too many dims for mcore_bridge PP/EP broadcast metadata: '
-                        f'shape={list(comm_tensor.shape)}, is_expert={is_expert}.')
+                    raise RuntimeError(f'Tensor shape has too many dims for mcore_bridge PP/EP broadcast metadata: '
+                                       f'shape={list(comm_tensor.shape)}, is_expert={is_expert}.')
                 meta_data[0] = comm_tensor.ndim
                 meta_data[1:1 + comm_tensor.ndim] = torch.tensor(list(comm_tensor.shape), dtype=torch.int64)
                 meta_data[-1] = dtype_idx
@@ -344,9 +339,8 @@ def _patch_mcore_bridge():
                 continue
             dtype_idx = int(meta_data[-1].item())
             if dtype_idx < 0 or dtype_idx >= len(dtype_mapping):
-                raise RuntimeError(
-                    f'Invalid dtype metadata in mcore_bridge PP/EP broadcast: rank={dist.get_rank()}, '
-                    f'src_rank={src_rank}, is_expert={is_expert}, meta_data={meta_data.tolist()}.')
+                raise RuntimeError(f'Invalid dtype metadata in mcore_bridge PP/EP broadcast: rank={dist.get_rank()}, '
+                                   f'src_rank={src_rank}, is_expert={is_expert}, meta_data={meta_data.tolist()}.')
             shape = [int(dim) for dim in meta_data[1:1 + ndim].tolist()]
             dtype = dtype_mapping[dtype_idx]
             if comm_tensor is None or list(comm_tensor.shape) != shape or comm_tensor.dtype != dtype:
@@ -354,9 +348,8 @@ def _patch_mcore_bridge():
             dist.broadcast(comm_tensor, src=src_rank, group=pp_group)
             return comm_tensor
 
-        raise RuntimeError(
-            f'No source tensor found in mcore_bridge PP/EP broadcast: '
-            f'is_expert={is_expert}, group_size={pp_size}, group_ranks={group_ranks}.')
+        raise RuntimeError(f'No source tensor found in mcore_bridge PP/EP broadcast: '
+                           f'is_expert={is_expert}, group_size={pp_size}, group_ranks={group_ranks}.')
 
     if not getattr(origin_broadcast_ep_pp, '_swift_npu_broadcast_ep_pp_patched', False):
         _broadcast_ep_pp._swift_npu_broadcast_ep_pp_patched = True

@@ -12,16 +12,18 @@ import hashlib
 import json
 import torch
 
-from swift.model.npu_patch.vllm_ascend_group_factory import (
-    _cache_key_summary, _canonical_group_ranks, _lookup_vllm_cpu_group_cache,
-    _lookup_vllm_device_group_cache)
+from swift.model.npu_patch.vllm_ascend_group_factory import (_cache_key_summary, _canonical_group_ranks,
+                                                             _lookup_vllm_cpu_group_cache,
+                                                             _lookup_vllm_device_group_cache)
 from swift.utils.logger import get_logger
 
 logger = get_logger()
 
 _SWIFT_VLLM_DP_GROUP_SPECS: set[tuple[tuple[int, ...], ...]] = set()
 
+
 def _group_spec_hash(group_name: str, group_ranks) -> int:
+    """Hash a runtime GroupCoordinator rank spec for cross-rank validation."""
     payload = json.dumps({
         'group_name': group_name,
         'group_ranks': _canonical_group_ranks(group_ranks),
@@ -111,24 +113,21 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
                     continue
                 cached_group = _lookup_vllm_device_group_cache(group_name, ranks, torch_distributed_backend)
                 if cached_group is None:
-                    raise RuntimeError(
-                        f'vLLM device group cache miss in cache-only mode: rank={self.rank}, '
-                        f'group_name={group_name}, backend={torch_distributed_backend}, ranks={ranks}, '
-                        f'cache_keys={_cache_key_summary()}.')
+                    raise RuntimeError(f'vLLM device group cache miss in cache-only mode: rank={self.rank}, '
+                                       f'group_name={group_name}, backend={torch_distributed_backend}, ranks={ranks}, '
+                                       f'cache_keys={_cache_key_summary()}.')
                 self_cpu_group = _lookup_vllm_cpu_group_cache(group_name, ranks)
                 if self_cpu_group is None:
-                    raise RuntimeError(
-                        f'vLLM CPU group cache miss in cache-only mode: rank={self.rank}, '
-                        f'group_name={group_name}, ranks={ranks}, cache_keys={_cache_key_summary()}.')
+                    raise RuntimeError(f'vLLM CPU group cache miss in cache-only mode: rank={self.rank}, '
+                                       f'group_name={group_name}, ranks={ranks}, cache_keys={_cache_key_summary()}.')
                 self.ranks = ranks
                 self.world_size = len(ranks)
                 self.rank_in_group = ranks.index(self.rank)
                 self_device_group = cached_group
                 break
             if self_device_group is None:
-                raise RuntimeError(
-                    f'Rank {self.rank} is not included in cached vLLM device group spec: '
-                    f'group_name={group_name}, group_ranks={group_ranks}.')
+                raise RuntimeError(f'Rank {self.rank} is not included in cached vLLM device group spec: '
+                                   f'group_name={group_name}, group_ranks={group_ranks}.')
 
             self.cpu_group = self_cpu_group
             self.device_group = self_device_group
@@ -145,18 +144,26 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
             self.mq_broadcaster = None
             self.use_custom_op_call = True
             self.use_cpu_custom_send_recv = False
-            logger.warning_once(
-                f'Reused vLLM-Ascend factory-cached {group_name} HCCL device group and Gloo CPU group '
-                'in colocated Megatron training.')
+            logger.warning_once(f'Reused vLLM-Ascend factory-cached {group_name} HCCL device group and Gloo CPU group '
+                                'in colocated Megatron training.')
 
         group_cls.__init__ = patched_init
         group_cls._swift_external_launcher_group_patched = True
 
-    _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_runner_v1, should_skip_allreduce_across_dp_group)
+    _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_runner_v1,
+                                                 should_skip_allreduce_across_dp_group)
 
 
 def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_runner_v1,
                                                  should_skip_allreduce_across_dp_group) -> None:
+    """Patch small DP metadata collectives to use NPU tensors on HCCL groups.
+
+    vLLM's DP metadata helpers operate on CPU tensors because upstream expects a
+    CPU/Gloo group.  In this NPU colocate path, the cached DP group is a real
+    HCCL group, so the wrapper moves those tiny CPU tensors to the current NPU,
+    runs the collective on the real DP HCCL group, and converts results back to
+    CPU for the original call contract.
+    """
     import torch.distributed as dist
     from vllm.distributed.parallel_state import get_dp_group
 
@@ -179,7 +186,8 @@ def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_r
     parallel_config_cls = getattr(parallel_config_module, 'ParallelConfig', None)
     if parallel_config_cls is not None:
         origin_has_unfinished = getattr(parallel_config_cls, 'has_unfinished_dp', None)
-        if origin_has_unfinished is not None and not getattr(origin_has_unfinished, '_swift_npu_dp_sync_patched', False):
+        if origin_has_unfinished is not None and not getattr(origin_has_unfinished, '_swift_npu_dp_sync_patched',
+                                                             False):
 
             @staticmethod
             def has_unfinished_dp(dp_group, has_unfinished: bool) -> bool:
@@ -217,16 +225,16 @@ def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_r
     origin_sync_metadata = getattr(runner_cls, '_sync_metadata_across_dp', None)
     if origin_sync_metadata is not None and not getattr(origin_sync_metadata, '_swift_npu_dp_sync_patched', False):
 
-        def _sync_metadata_across_dp(self, num_tokens: int, with_prefill: bool = False,
-                                     is_draft_model: bool = False):
+        def _sync_metadata_across_dp(self, num_tokens: int, with_prefill: bool = False, is_draft_model: bool = False):
             if self.dp_size == 1:
                 return num_tokens, None, with_prefill
             if should_skip_allreduce_across_dp_group(self.vllm_config, is_draft_model):
                 num_tokens_after_padding = torch.tensor([num_tokens] * self.dp_size, device='cpu', dtype=torch.int32)
                 return num_tokens, num_tokens_after_padding, with_prefill
 
-            num_tokens_tensor = torch.tensor(
-                [num_tokens if i == self.dp_rank else 0 for i in range(self.dp_size)], dtype=torch.int32, device='cpu')
+            num_tokens_tensor = torch.tensor([num_tokens if i == self.dp_rank else 0 for i in range(self.dp_size)],
+                                             dtype=torch.int32,
+                                             device='cpu')
             flags_tensor = torch.tensor([int(with_prefill)], dtype=torch.int32, device='cpu')
             packed_tensor = torch.cat([num_tokens_tensor, flags_tensor])
             packed_tensor = _npu_all_reduce_cpu_tensor(packed_tensor, get_dp_group().cpu_group)
@@ -234,9 +242,8 @@ def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_r
             synced_flags = packed_tensor[-1:]
             max_tokens_across_dp = torch.max(num_tokens_across_dp).item()
             global_with_prefill = bool(synced_flags[0])
-            num_tokens_after_padding = torch.tensor([max_tokens_across_dp] * self.dp_size,
-                                                    device='cpu',
-                                                    dtype=torch.int32)
+            num_tokens_after_padding = torch.tensor(
+                [max_tokens_across_dp] * self.dp_size, device='cpu', dtype=torch.int32)
             return max_tokens_across_dp, num_tokens_after_padding, global_with_prefill
 
         _sync_metadata_across_dp._swift_npu_dp_sync_patched = True
@@ -253,9 +260,8 @@ def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_r
             if self.dp_size == 1:
                 return False, None, cudagraph_mode
             if should_skip_allreduce_across_dp_group(self.vllm_config):
-                num_tokens_after_padding = torch.tensor([num_tokens_padded] * self.dp_size,
-                                                        device='cpu',
-                                                        dtype=torch.int32)
+                num_tokens_after_padding = torch.tensor(
+                    [num_tokens_padded] * self.dp_size, device='cpu', dtype=torch.int32)
                 return False, num_tokens_after_padding, cudagraph_mode
 
             tensor = torch.zeros(2, self.dp_size, device='cpu', dtype=torch.int32)
@@ -265,9 +271,8 @@ def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_r
             num_tokens_across_dp = tensor[0, :]
             max_num_tokens = int(num_tokens_across_dp.max().item())
             if allow_dp_padding:
-                num_tokens_after_padding = torch.tensor([max_num_tokens] * len(num_tokens_across_dp),
-                                                        device='cpu',
-                                                        dtype=torch.int32)
+                num_tokens_after_padding = torch.tensor(
+                    [max_num_tokens] * len(num_tokens_across_dp), device='cpu', dtype=torch.int32)
             else:
                 num_tokens_after_padding = num_tokens_across_dp.cpu()
             synced_cudagraph_mode = int(tensor[1, :].min().item())
@@ -276,8 +281,6 @@ def _patch_vllm_external_launcher_dp_tensor_sync(parallel_config_module, model_r
         _sync_batch_across_dp._swift_npu_dp_sync_patched = True
         _sync_batch_across_dp._swift_origin = origin_sync_batch
         runner_cls._sync_batch_across_dp = _sync_batch_across_dp
-
-
 
 
 __all__ = ['patch_vllm_ascend_external_launcher_groups']

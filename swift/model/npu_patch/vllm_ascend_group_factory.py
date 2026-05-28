@@ -13,9 +13,10 @@ import torch
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from swift.model.npu_patch.vllm_ascend_group_registry import (
-    _PREFERRED_MEGATRON_AXES_BY_VLLM_GROUP, _lookup_megatron_hccl_group_record, _normalize_backend_name,
-    _select_megatron_reuse_group, _stable_int64_hash, create_npu_process_group)
+from swift.model.npu_patch.vllm_ascend_group_registry import (_PREFERRED_MEGATRON_AXES_BY_VLLM_GROUP,
+                                                              _lookup_megatron_hccl_group_record,
+                                                              _normalize_backend_name, _select_megatron_reuse_group,
+                                                              _stable_int64_hash, create_npu_process_group)
 from swift.utils.logger import get_logger
 
 logger = get_logger()
@@ -23,8 +24,16 @@ logger = get_logger()
 _SWIFT_VLLM_GROUP_CACHE: dict[tuple[str, str, str, tuple[int, ...]], Any] = {}
 _SWIFT_VLLM_GROUP_FACTORY_SIGNATURES: set[tuple[str, ...]] = set()
 
+
 @dataclass(frozen=True)
 class _VLLMGroupSpec:
+    """Desired vLLM group identity before deciding how to obtain it.
+
+    A spec describes what vLLM needs: axis name, backend, kind, and exact rank
+    order.  It deliberately does not say whether the group will be reused from
+    Megatron or newly created; that belongs to ``_VLLMGroupExecution``.
+    """
+
     name: str
     index: int
     backend: str
@@ -35,38 +44,52 @@ class _VLLMGroupSpec:
 
 @dataclass(frozen=True)
 class _VLLMGroupExecution:
+    """Concrete factory action for one desired vLLM group spec."""
+
     spec: _VLLMGroupSpec
     action: str
     reuse_source: Optional[str] = None
 
 
 def _vllm_group_cache_key(spec: _VLLMGroupSpec) -> tuple[str, str, str, tuple[int, ...]]:
+    """Build the exact lookup key used by runtime GroupCoordinator patches."""
     return (spec.kind, spec.backend, spec.name, spec.ranks)
 
 
 def _put_vllm_group_cache(spec: _VLLMGroupSpec, group) -> None:
+    """Cache a process group for later cache-only runtime lookup."""
     _SWIFT_VLLM_GROUP_CACHE[_vllm_group_cache_key(spec)] = group
 
 
 def _lookup_vllm_group_cache(kind: str, group_name: str, ranks, backend):
+    """Look up a cached vLLM group by kind/backend/name/exact ranks."""
     backend = _normalize_backend_name(backend)
     ranks_tuple = tuple(int(rank) for rank in ranks)
     return _SWIFT_VLLM_GROUP_CACHE.get((kind, backend, group_name, ranks_tuple))
 
 
 def _lookup_vllm_device_group_cache(group_name: str, ranks, backend):
+    """Look up a cached HCCL/device group for vLLM runtime."""
     return _lookup_vllm_group_cache('device', group_name, ranks, backend)
 
 
 def _lookup_vllm_cpu_group_cache(group_name: str, ranks):
+    """Look up a cached Gloo/CPU group for vLLM runtime."""
     return _lookup_vllm_group_cache('cpu', group_name, ranks, 'gloo')
 
 
 def _cache_key_summary() -> list[tuple[str, str, str, tuple[int, ...]]]:
+    """Return cache keys for fail-loud diagnostics on cache miss."""
     return sorted(_SWIFT_VLLM_GROUP_CACHE)
 
 
 def _validate_global_hash(name: str, payload) -> None:
+    """Verify every rank sees the same specs or execution plan before new_group.
+
+    PyTorch requires all ranks to create process groups in the same global
+    order.  A hash mismatch here means ranks would diverge later and likely hang
+    in ``dist.new_group``; fail before entering that path.
+    """
     import torch.distributed as dist
 
     device = torch.device('npu', torch.npu.current_device())
@@ -76,13 +99,13 @@ def _validate_global_hash(name: str, payload) -> None:
     dist.all_reduce(local_min, op=dist.ReduceOp.MIN)
     dist.all_reduce(local_max, op=dist.ReduceOp.MAX)
     if int(local_min.cpu().item()) != int(local_max.cpu().item()):
-        raise RuntimeError(
-            f'vLLM {name} mismatch across ranks before group creation: rank={dist.get_rank()}, '
-            f'local_hash={local_hash}, min_hash={int(local_min.cpu().item())}, '
-            f'max_hash={int(local_max.cpu().item())}, payload={payload}.')
+        raise RuntimeError(f'vLLM {name} mismatch across ranks before group creation: rank={dist.get_rank()}, '
+                           f'local_hash={local_hash}, min_hash={int(local_min.cpu().item())}, '
+                           f'max_hash={int(local_max.cpu().item())}, payload={payload}.')
 
 
 def _serialize_spec(spec: _VLLMGroupSpec):
+    """Convert a group spec to a deterministic JSON-serializable dict."""
     return {
         'name': spec.name,
         'index': spec.index,
@@ -94,20 +117,21 @@ def _serialize_spec(spec: _VLLMGroupSpec):
 
 
 def _serialize_specs(specs: list[_VLLMGroupSpec]):
+    """Serialize a spec list for cross-rank hash validation."""
     return [_serialize_spec(spec) for spec in specs]
 
 
 def _serialize_execution_plan(executions: list[_VLLMGroupExecution]):
-    return [
-        {
-            **_serialize_spec(execution.spec),
-            'action': execution.action,
-            'reuse_source': execution.reuse_source,
-        } for execution in executions
-    ]
+    """Serialize an execution plan for cross-rank hash validation."""
+    return [{
+        **_serialize_spec(execution.spec),
+        'action': execution.action,
+        'reuse_source': execution.reuse_source,
+    } for execution in executions]
 
 
 def _sync_default_world_on_npu() -> None:
+    """Synchronize the default HCCL world using a tiny NPU all-reduce."""
     import torch.distributed as dist
 
     marker = torch.ones((), dtype=torch.int32, device=torch.device('npu', torch.npu.current_device()))
@@ -115,6 +139,7 @@ def _sync_default_world_on_npu() -> None:
 
 
 def _warmup_vllm_device_group(spec: _VLLMGroupSpec, group) -> None:
+    """Warm up and sanity-check one HCCL/device group on member ranks."""
     import torch.distributed as dist
 
     if dist.get_rank() not in spec.ranks:
@@ -125,20 +150,19 @@ def _warmup_vllm_device_group(spec: _VLLMGroupSpec, group) -> None:
     dist.all_reduce(reduced, group=group)
     expected_sum = sum(spec.ranks)
     if int(reduced.cpu().item()) != expected_sum:
-        raise RuntimeError(
-            f'vLLM device group warmup all_reduce mismatch: name={spec.name}, rank={dist.get_rank()}, '
-            f'ranks={spec.ranks}, got={int(reduced.cpu().item())}, expected={expected_sum}.')
+        raise RuntimeError(f'vLLM device group warmup all_reduce mismatch: name={spec.name}, rank={dist.get_rank()}, '
+                           f'ranks={spec.ranks}, got={int(reduced.cpu().item())}, expected={expected_sum}.')
 
     gathered = torch.empty((len(spec.ranks), ), dtype=torch.int32, device=device)
     dist.all_gather_into_tensor(gathered, rank_value, group=group)
     expected = torch.tensor(list(spec.ranks), dtype=torch.int32)
     if not torch.equal(gathered.cpu(), expected):
-        raise RuntimeError(
-            f'vLLM device group warmup all_gather mismatch: name={spec.name}, rank={dist.get_rank()}, '
-            f'ranks={spec.ranks}, got={gathered.cpu().tolist()}, expected={expected.tolist()}.')
+        raise RuntimeError(f'vLLM device group warmup all_gather mismatch: name={spec.name}, rank={dist.get_rank()}, '
+                           f'ranks={spec.ranks}, got={gathered.cpu().tolist()}, expected={expected.tolist()}.')
 
 
 def _warmup_vllm_cpu_group(spec: _VLLMGroupSpec, group) -> None:
+    """Warm up and sanity-check one Gloo/CPU group on member ranks."""
     import torch.distributed as dist
 
     if dist.get_rank() not in spec.ranks:
@@ -148,21 +172,20 @@ def _warmup_vllm_cpu_group(spec: _VLLMGroupSpec, group) -> None:
     dist.all_reduce(reduced, group=group)
     expected_sum = sum(spec.ranks)
     if int(reduced.item()) != expected_sum:
-        raise RuntimeError(
-            f'vLLM CPU group warmup all_reduce mismatch: name={spec.name}, rank={dist.get_rank()}, '
-            f'ranks={spec.ranks}, got={int(reduced.item())}, expected={expected_sum}.')
+        raise RuntimeError(f'vLLM CPU group warmup all_reduce mismatch: name={spec.name}, rank={dist.get_rank()}, '
+                           f'ranks={spec.ranks}, got={int(reduced.item())}, expected={expected_sum}.')
 
     gathered = [torch.empty_like(rank_value) for _ in spec.ranks]
     dist.all_gather(gathered, rank_value, group=group)
     got = [int(t.item()) for t in gathered]
     expected = list(spec.ranks)
     if got != expected:
-        raise RuntimeError(
-            f'vLLM CPU group warmup all_gather mismatch: name={spec.name}, rank={dist.get_rank()}, '
-            f'ranks={spec.ranks}, got={got}, expected={expected}.')
+        raise RuntimeError(f'vLLM CPU group warmup all_gather mismatch: name={spec.name}, rank={dist.get_rank()}, '
+                           f'ranks={spec.ranks}, got={got}, expected={expected}.')
 
 
 def _warmup_vllm_group(spec: _VLLMGroupSpec, group) -> None:
+    """Dispatch warmup according to group kind."""
     if spec.kind == 'device':
         _warmup_vllm_device_group(spec, group)
     elif spec.kind == 'cpu':
@@ -172,6 +195,7 @@ def _warmup_vllm_group(spec: _VLLMGroupSpec, group) -> None:
 
 
 def _get_vllm_parallel_kwarg(args, name: str, default: int) -> int:
+    """Read integer vLLM parallel kwargs from parsed args."""
     engine_kwargs = getattr(args, 'vllm_engine_kwargs', None) or {}
     if isinstance(engine_kwargs, str):
         engine_kwargs = json.loads(engine_kwargs)
@@ -179,6 +203,14 @@ def _get_vllm_parallel_kwarg(args, name: str, default: int) -> int:
 
 
 def _build_vllm_device_group_specs(args, backend: str) -> list[_VLLMGroupSpec]:
+    """Build the device-group lattice vLLM will request in external launcher.
+
+    The rank layout mirrors vLLM's world reshape:
+    ``[replica, dp, pp, prefill_context_parallel, tp]``.  The generated specs
+    intentionally include singleton DP/PP/PCP groups because vLLM still creates
+    GroupCoordinator objects for them and cache-only runtime lookup should fail
+    loudly if the corresponding cache entry is missing.
+    """
     import torch.distributed as dist
 
     world_size = dist.get_world_size()
@@ -214,9 +246,8 @@ def _build_vllm_device_group_specs(args, backend: str) -> list[_VLLMGroupSpec]:
                 ))
 
     add_specs('world', [list(range(world_size))])
-    add_specs(
-        'pcp',
-        [x.tolist() for x in all_ranks.transpose(3, 4).reshape(-1, prefill_context_parallel_size).unbind(0)])
+    add_specs('pcp',
+              [x.tolist() for x in all_ranks.transpose(3, 4).reshape(-1, prefill_context_parallel_size).unbind(0)])
     add_specs('pp', [x.tolist() for x in all_ranks.transpose(2, 4).reshape(-1, pipeline_parallel_size).unbind(0)])
     # vLLM still constructs a DP GroupCoordinator when data_parallel_size == 1.
     # In cache-only mode those singleton DP groups must be present in the
@@ -264,19 +295,20 @@ def _build_vllm_cpu_group_specs(args) -> list[_VLLMGroupSpec]:
 
 
 def _build_vllm_group_execution_plan(specs: list[_VLLMGroupSpec]) -> list[_VLLMGroupExecution]:
+    """Decide whether each desired group reuses Megatron or is precreated."""
     executions: list[_VLLMGroupExecution] = []
     for spec in specs:
         reuse_selected, reuse_record = _select_megatron_reuse_group(
             spec.name, spec.ranks, spec.backend, phase='vllm_preinit') if spec.kind == 'device' else (False, None)
         if reuse_selected:
-            executions.append(
-                _VLLMGroupExecution(spec=spec, action='reuse', reuse_source='megatron_exact_rank_order'))
+            executions.append(_VLLMGroupExecution(spec=spec, action='reuse', reuse_source='megatron_exact_rank_order'))
         else:
             executions.append(_VLLMGroupExecution(spec=spec, action='precreate'))
     return executions
 
 
 def _get_reused_megatron_group_for_spec(spec: _VLLMGroupSpec):
+    """Return the Megatron ProcessGroup selected by the execution plan."""
     import torch.distributed as dist
 
     if dist.get_rank() not in spec.ranks:
@@ -349,13 +381,13 @@ def prepare_vllm_ascend_device_groups_before_megatron(args) -> None:
     logger.warning_once(f'Prepared vLLM NPU group factory cache before vLLM init: plan={serialized_execution_plan}')
 
 
-
-
 def _canonical_group_ranks(group_ranks) -> tuple[tuple[int, ...], ...]:
+    """Normalize nested rank lists to immutable integer tuples."""
     return tuple(tuple(int(rank) for rank in ranks) for ranks in group_ranks)
 
 
 def _clear_default_pg_bound_device_id_for_gloo() -> None:
+    """Clear the default group's NPU device binding before creating Gloo groups."""
     import torch.distributed as dist
 
     try:
@@ -366,8 +398,8 @@ def _clear_default_pg_bound_device_id_for_gloo() -> None:
         default_pg.bound_device_id = None
 
 
-
 def _get_vllm_data_parallel_size_from_args(args) -> int:
+    """Read vLLM data parallel size from engine kwargs."""
     engine_kwargs = getattr(args, 'vllm_engine_kwargs', None) or {}
     if isinstance(engine_kwargs, str):
         engine_kwargs = json.loads(engine_kwargs)

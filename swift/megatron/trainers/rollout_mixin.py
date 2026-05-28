@@ -103,8 +103,8 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
             except Exception:
                 logger.exception(
                     'Failed to create Megatron rollout group. rank=%s ranks=%s backend=%s '
-                    'tp=%s pp=%s cp=%s dp=%s',
-                    global_rank, dp_group_ranks, 'default', tp_size, pp_size, cp_size, dp_size)
+                    'tp=%s pp=%s cp=%s dp=%s', global_rank, dp_group_ranks, 'default', tp_size, pp_size, cp_size,
+                    dp_size)
                 raise
 
             if global_rank in dp_group_ranks:
