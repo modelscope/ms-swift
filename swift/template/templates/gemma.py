@@ -341,7 +341,7 @@ class Gemma4TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<bos>'])
     prompt: Prompt = field(default_factory=lambda: ['<|turn>user\n{{QUERY}}<turn|>\n<|turn>model\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<turn|>\n'])
-    suffix: Prompt = field(default_factory=lambda: ['<turn|>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<turn|>'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<bos><|turn>system\n{{SYSTEM}}<turn|>\n'])
 
 
