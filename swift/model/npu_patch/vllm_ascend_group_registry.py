@@ -119,25 +119,45 @@ def _register_megatron_hccl_group(axis: str, group, source: str) -> None:
         _MegatronGroupRecord(backend=backend, kind='device', axis=axis, ranks=ranks, group=group, source=source))
 
 
-def _call_megatron_group_getter(getter, **kwargs):
-    """Call Megatron group getters without requiring every version's signature."""
+def _is_uninitialized_group_error(error: Exception) -> bool:
+    """Return whether a Megatron getter reports an optional uninitialized group."""
+    message = str(error).lower()
+    return any(
+        pattern in message
+        for pattern in ('not initialized', 'has not been initialized', 'is not initialized', 'not set', 'is none',
+                        'partial dp for optimizer needs to include cp'))
+
+
+def _call_megatron_group_getter(axis: str, getter_name: str, getter, **kwargs):
+    """Call Megatron group getters while surfacing real registration failures."""
     try:
         return getter(check_initialized=False, **kwargs)
-    except TypeError:
+    except TypeError as first_error:
         try:
             return getter(**kwargs)
-        except (TypeError, AssertionError, RuntimeError, ValueError):
+        except TypeError as second_error:
+            logger.warning_once(f'Skipped registering Megatron {axis} HCCL group because getter signature is '
+                                f'incompatible: getter={getter_name}, kwargs={kwargs}, '
+                                f'first_error={first_error!r}, second_error={second_error!r}')
             return None
-    except (AssertionError, RuntimeError, ValueError):
-        return None
+        except (AssertionError, RuntimeError, ValueError) as e:
+            if _is_uninitialized_group_error(e):
+                return None
+            raise RuntimeError(f'Failed to register Megatron {axis} HCCL group from getter {getter_name} '
+                               f'with kwargs={kwargs}.') from e
+    except (AssertionError, RuntimeError, ValueError) as e:
+        if _is_uninitialized_group_error(e):
+            return None
+        raise RuntimeError(f'Failed to register Megatron {axis} HCCL group from getter {getter_name} '
+                           f'with kwargs={kwargs}.') from e
 
 
 def _register_megatron_group_from_getter(parallel_state, axis: str, getter_name: str, **kwargs) -> None:
     """Register a Megatron group if the requested getter exists and succeeds."""
     getter = getattr(parallel_state, getter_name, None)
     if getter is None:
-        return
-    group = _call_megatron_group_getter(getter, **kwargs)
+        return None
+    group = _call_megatron_group_getter(axis, getter_name, getter, **kwargs)
     _register_megatron_hccl_group(axis, group, 'megatron_mpu')
 
 

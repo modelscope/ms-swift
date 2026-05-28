@@ -203,13 +203,20 @@ def _get_vllm_parallel_kwarg(args, name: str, default: int) -> int:
 
 
 def _build_vllm_device_group_specs(args, backend: str) -> list[_VLLMGroupSpec]:
-    """Build the device-group lattice vLLM will request in external launcher.
+    """Build NPU-only ``GroupCoordinator`` device specs handled by SWIFT.
 
     The rank layout mirrors vLLM's world reshape:
-    ``[replica, dp, pp, prefill_context_parallel, tp]``.  The generated specs
-    intentionally include singleton DP/PP/PCP groups because vLLM still creates
-    GroupCoordinator objects for them and cache-only runtime lookup should fail
-    loudly if the corresponding cache entry is missing.
+    ``[replica, dp, pp, prefill_context_parallel, tp]``.
+
+    This is not a complete vLLM group factory. TP/DCP message-queue groups are
+    intentionally excluded because ``GroupCoordinatorPatch`` keeps
+    ``use_message_queue_broadcaster=True`` groups on the upstream path. SWIFT
+    only precreates groups that the runtime patch later resolves through the
+    NPU-only cache-only branch: world, PCP, PP, DP, EP, and MC2.
+
+    The generated specs intentionally include singleton DP/PP/PCP groups because
+    vLLM still creates GroupCoordinator objects for them and cache-only runtime
+    lookup should fail loudly if the corresponding cache entry is missing.
     """
     import torch.distributed as dist
 
@@ -246,6 +253,9 @@ def _build_vllm_device_group_specs(args, backend: str) -> list[_VLLMGroupSpec]:
                 ))
 
     add_specs('world', [list(range(world_size))])
+    # Do not add TP here. TP/DCP message-queue groups are left on the upstream
+    # vLLM path, and rollout object collectives use a separate TP Gloo control
+    # group in ``vllm_ascend_group_control.py``.
     add_specs('pcp',
               [x.tolist() for x in all_ranks.transpose(3, 4).reshape(-1, prefill_context_parallel_size).unbind(0)])
     add_specs('pp', [x.tolist() for x in all_ranks.transpose(2, 4).reshape(-1, pipeline_parallel_size).unbind(0)])
@@ -320,13 +330,13 @@ def _get_reused_megatron_group_for_spec(spec: _VLLMGroupSpec):
 
 
 def prepare_vllm_ascend_device_groups_before_megatron(args) -> None:
-    """Pre-create/cache vLLM NPU-only groups before LLMEngine init.
+    """Pre-create/cache NPU-only ``GroupCoordinator`` groups before LLMEngine init.
 
-    This group factory deliberately covers only the NPU-only groups handled by
-    ``GroupCoordinatorPatch`` in this module.  Device HCCL groups and matching
-    Gloo CPU groups are prepared together.  TP/DCP message-queue groups still
-    use upstream CPU/control behavior or SWIFT's dedicated rollout control
-    helper.
+    This is deliberately not a complete vLLM process-group factory. It covers
+    only the NPU-only groups handled by ``GroupCoordinatorPatch`` in SWIFT's
+    cache-only branch. Device HCCL groups and matching Gloo CPU groups are
+    prepared together. TP/DCP message-queue groups still use upstream
+    CPU/control behavior or SWIFT's dedicated rollout control helper.
     """
     if not getattr(args, 'use_vllm', False) or getattr(args, 'vllm_mode', None) != 'colocate':
         return
