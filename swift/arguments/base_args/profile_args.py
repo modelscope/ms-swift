@@ -34,6 +34,9 @@ class ProfilerArguments:
             if 'profiler' in self.callbacks:
                 assert self.enable_profiler, \
                     'Profiler callback is included in callbacks but profiler is not enabled.'
+        else:
+            assert not self.enable_profiler, \
+                'Profiler cannot be enabled without callbacks attribute or with profiler callback missing in callbacks.'
         if self.enable_profiler:
             assert self.profiler_save_path is not None, \
                 'Profiler save path must be specified when profiler is enabled.'
