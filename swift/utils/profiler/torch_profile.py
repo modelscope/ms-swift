@@ -30,7 +30,7 @@ def get_torch_profiler(
     save_path = os.path.join(save_path, save_file_name)
 
     def _trace_handler(prof):
-        print(f"[Profiler] Saving trace to {save_path}")
+        logger.info(f"[Profiler] Saving trace to {save_path}")
         prof.export_chrome_trace(save_path)
 
     contents = set(contents) if contents else set()
