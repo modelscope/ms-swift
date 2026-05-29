@@ -29,20 +29,19 @@ from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import (apply_router_replay_patch, disable_forward_pre_hook, enable_forward_pre_hook,
-                                  get_optimizer_param_scheduler, get_padding_to, init_persistent_async_worker,
-                                  initialize_tp_communicators, load_mcore_checkpoint,
-                                  logical_and_across_model_parallel_group, maybe_finalize_async_save,
-                                  prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
-                                  save_mcore_checkpoint, should_disable_forward_pre_hook, warmup_jit_function,
-                                  wrap_model)
+                                  get_batch_on_this_cp_rank, get_optimizer_param_scheduler, get_packed_seq_params,
+                                  get_padding_to, init_persistent_async_worker, initialize_tp_communicators,
+                                  load_mcore_checkpoint, logical_and_across_model_parallel_group,
+                                  maybe_finalize_async_save, prepare_mcore_model,
+                                  reduce_max_stat_across_model_parallel_group, save_mcore_checkpoint,
+                                  should_disable_forward_pre_hook, warmup_jit_function, wrap_model)
 from swift.template import Template
 from swift.trainers import dynamic_gradient_checkpointing
 from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
                          is_master, ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .utils import (TrainerState, build_streaming_dataloader, get_batch_on_this_cp_rank, get_batch_on_this_pp_rank,
-                    get_packed_seq_params)
+from .utils import TrainerState, build_streaming_dataloader, get_batch_on_this_pp_rank
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -129,6 +128,7 @@ class BaseMegatronTrainer(ABC):
         self._log_callback(logs, n_steps)
         if prefix:
             logs = {f'{prefix}{k}': v for k, v in logs.items()}
+        self._last_logged_metrics = dict(logs)
         self.call_event('on_log', logs=logs)
 
     def _log_callback(self, logs, n_steps):
@@ -577,10 +577,10 @@ class BaseMegatronTrainer(ABC):
             val_data_iterator = iter(self.cyclic_iter(val_dataloader, use_origin_cyclic=use_origin_cyclic))
         return train_data_iterator, val_data_iterator
 
-    def train(self, train_dataset, val_dataset):
+    def setup_model_training(self):
         args = self.args
         config = self.config
-        state = self.state
+
         for m in self.wrapped_models:
             m.train()
 
@@ -604,21 +604,20 @@ class BaseMegatronTrainer(ABC):
             if len(self.wrapped_models) == 1:
                 config.param_sync_func = config.param_sync_func[0]
         config.finalize_model_grads_func = finalize_model_grads
-        start_iteration = state.iteration
-        pre_hook_enabled = False
-        # Disable forward pre-hook to start training to ensure that errors in checkpoint loading
-        # or random initialization don't propagate to all ranks in first all-gather (which is a
-        # no-op if things work correctly).
+
+        self._start_iteration = self.state.iteration
+        self._pre_hook_enabled = False
         if should_disable_forward_pre_hook(args):
             disable_forward_pre_hook(self.wrapped_models, param_sync=False)
-            # Also remove param_sync_func temporarily so that sync calls made in
-            # `forward_backward_func` are no-ops.
-            param_sync_func = config.param_sync_func
+            self._saved_param_sync_func = config.param_sync_func
             config.param_sync_func = None
-            pre_hook_enabled = False
 
         self.call_event('on_train_begin')
-        train_metrics = {}
+        self._train_metrics = {}
+
+    def setup_training(self, train_dataset, val_dataset):
+        self.setup_model_training()
+        args = self.args
         if args.virtual_pipeline_model_parallel_size is not None:
             train_data_iterator, val_data_iterator = [], []
             for _ in range(args.virtual_pipeline_model_parallel_size):
@@ -627,66 +626,81 @@ class BaseMegatronTrainer(ABC):
                 val_data_iterator.append(val_it)
         else:
             train_data_iterator, val_data_iterator = self._prepare_data_iterator(train_dataset, val_dataset)
-        while state.iteration < args.train_iters:
-            self.call_event('on_step_begin')
-            maybe_finalize_async_save(args, blocking=False)
-            metrics, grad_norm, update_successful = self.train_step(train_data_iterator)
-            if state.iteration == start_iteration:
-                if update_successful:
-                    # Enable forward pre-hook after training step has successfully run. All subsequent
-                    # forward passes will use the forward pre-hook / `param_sync_func` in
-                    # `forward_backward_func`.
-                    if should_disable_forward_pre_hook(args):
-                        enable_forward_pre_hook(self.wrapped_models)
-                        config.param_sync_func = param_sync_func
-                        pre_hook_enabled = True
-                else:
-                    start_iteration = state.iteration + 1
+        return train_data_iterator, val_data_iterator
 
-            state.iteration += 1
-            self.call_event('on_step_end')
-            self._aggregated_metrics(metrics, train_metrics)
-            train_metrics['grad_norm'] = grad_norm
-            learning_rate = None
-            for param_group in self.optimizer.param_groups:
-                if len(param_group['params']) == 0:
-                    continue
-                learning_rate = param_group['lr']
-            if learning_rate is not None:
-                train_metrics['learning_rate'] = learning_rate
-            if state.should_log:
-                state.should_log = False
-                self.on_log(logs=train_metrics)
-                train_metrics = {}
+    def run_train_step(self, train_data_iterator, val_data_iterator):
+        """Execute one training iteration including logging / eval / save.
 
-            eval_metrics = None
-            if state.should_eval:
-                state.should_eval = False
-                if should_disable_forward_pre_hook(args):
-                    disable_forward_pre_hook(self.wrapped_models)
-                    pre_hook_enabled = False
-                eval_metrics = self.evaluate(val_data_iterator)
-                for m in self.wrapped_models:
-                    m.train()
+        Returns ``True`` if training should continue, ``False`` if done.
+        """
+        args = self.args
+        config = self.config
+        state = self.state
+
+        self.call_event('on_step_begin')
+        maybe_finalize_async_save(args, blocking=False)
+        metrics, grad_norm, update_successful = self.train_step(train_data_iterator)
+
+        if state.iteration == self._start_iteration:
+            if update_successful:
                 if should_disable_forward_pre_hook(args):
                     enable_forward_pre_hook(self.wrapped_models)
-                    pre_hook_enabled = True
+                    config.param_sync_func = self._saved_param_sync_func
+                    self._pre_hook_enabled = True
+            else:
+                self._start_iteration = state.iteration + 1
 
-            if state.should_save:
-                self._determine_best_metric(eval_metrics)
-                if should_disable_forward_pre_hook(args):
-                    disable_forward_pre_hook(self.wrapped_models)
-                state.should_save = False
-                self.save_checkpoint()
-                self.call_event('on_save', output_dir=self.state.last_model_checkpoint)
-                if should_disable_forward_pre_hook(args):
-                    enable_forward_pre_hook(self.wrapped_models)
+        state.iteration += 1
+        self.call_event('on_step_end')
+        self._aggregated_metrics(metrics, self._train_metrics)
+        self._train_metrics['grad_norm'] = grad_norm
+        for param_group in self.optimizer.param_groups:
+            if len(param_group['params']) == 0:
+                continue
+            self._train_metrics['learning_rate'] = param_group['lr']
+            break
+        if state.should_log:
+            state.should_log = False
+            self.on_log(logs=self._train_metrics)
+            self._train_metrics = {}
 
+        eval_metrics = None
+        if state.should_eval:
+            state.should_eval = False
+            if should_disable_forward_pre_hook(args):
+                disable_forward_pre_hook(self.wrapped_models)
+                self._pre_hook_enabled = False
+            eval_metrics = self.evaluate(val_data_iterator)
+            for m in self.wrapped_models:
+                m.train()
+            if should_disable_forward_pre_hook(args):
+                enable_forward_pre_hook(self.wrapped_models)
+                self._pre_hook_enabled = True
+
+        if state.should_save:
+            self._determine_best_metric(eval_metrics)
+            if should_disable_forward_pre_hook(args):
+                disable_forward_pre_hook(self.wrapped_models)
+            state.should_save = False
+            self.save_checkpoint()
+            self.call_event('on_save', output_dir=self.state.last_model_checkpoint)
+            if should_disable_forward_pre_hook(args):
+                enable_forward_pre_hook(self.wrapped_models)
+
+        return state.iteration < args.train_iters
+
+    def finalize_training(self):
+        """Cleanup after training loop completes."""
         self.call_event('on_train_end')
-        # Close out pre-hooks if using distributed optimizer and overlapped param gather.
-        if pre_hook_enabled:
+        if self._pre_hook_enabled:
             disable_forward_pre_hook(self.wrapped_models)
-        maybe_finalize_async_save(args, blocking=True, terminate=True)
+        maybe_finalize_async_save(self.args, blocking=True, terminate=True)
+
+    def train(self, train_dataset, val_dataset):
+        train_data_iterator, val_data_iterator = self.setup_training(train_dataset, val_dataset)
+        while self.state.iteration < self.args.train_iters:
+            self.run_train_step(train_data_iterator, val_data_iterator)
+        self.finalize_training()
 
     def _determine_best_metric(self, metrics) -> bool:
         args = self.args

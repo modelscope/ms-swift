@@ -73,7 +73,7 @@ Note: Streaming does not shuffle the data and does not automatically create a va
 When resuming training with streaming, the data can only be indexed forward, not randomly. Skipping already trained data is very time-consuming, so using streaming for resuming is not recommended.
 
 ### Q15: Issues related to packing
-Packing should be used with FlashAttention; otherwise, there will be discrepancies, and the attention_mask will have issues. The packing_cache parameter needs to be set to a shared disk path for multi-node training.
+Packing should be used with FlashAttention; otherwise, there will be discrepancies, and the attention_mask will have issues.
 The linear-attention in the Qwen3.5 model does not support var_len, so enabling packing is not recommended.
 When packing is enabled, multimodal data will undergo two map operations: one for the dataset and one for the template. If this is very slow, you can set `OMP_NUM_THREADS=14` to accelerate it, or disable packing to avoid the second mapping.
 

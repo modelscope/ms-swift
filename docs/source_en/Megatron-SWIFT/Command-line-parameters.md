@@ -118,7 +118,8 @@
 - 🔥no_save_rng: Do not save RNG, default is False.
 - 🔥mcore_model: The checkpoint directory to load (mcore storage format). Defaults to None. For information about resuming training from checkpoints, please refer to the description of the `--finetune` parameter.
   - megatron-swift recommends directly loading and storing safetensors weights, refer to [mcore-bridge documentation](./Mcore-Bridge.md).
-  - Difference between `--model` and `--mcore_model`: `--model/--adapters/--ref_model/--ref_adapters` are followed by safetensors weight directories, while `--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter` are followed by mcore weight directories. `--model/--adapters` do not support loading checkpoint resumption states. Therefore, if you set `--no_save_optim false`, mcore weight format will be additionally stored for checkpoint resumption, and you need to use `--mcore_model/--mcore_adapter` to load the checkpoint resumption state.
+  - The difference between `--model` and `--mcore_model`: `--model/--adapters/--ref_model/--ref_adapters` accepts a directory containing safetensors weights, while `--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter` accepts a directory containing mcore weights.
+  - `--model/--adapters` does not support loading checkpoint resume states. Therefore, if `--no_save_optim false` is set, additional mcore-format weights will be saved for checkpoint resumption, and you need to use `--mcore_model/--mcore_adapter` to load the resumed checkpoint state. For example: `--model <hf-model> --mcore_adapter <mcore-adapter-ckpt>`. (Using `--model/--adapters` to resume training is also possible, but the optimizer state will not be restored.)
 - 🔥no_load_optim: Do not load optimizer, default is False.
   - Note: When resuming training from a checkpoint, setting `--no_load_optim false` (i.e., loading the optimizer state) typically consumes significantly more GPU memory than setting `--no_load_optim true` (i.e., skipping the optimizer state).
 - 🔥no_load_rng: Do not load RNG, default is False.
@@ -157,7 +158,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
 - virtual_pipeline_model_parallel_size: The number of virtual pipeline stages per pipeline parallel rank. Defaults to None. VPP parallelism is used to reduce computation bubbles in PP parallelism and improve GPU utilization, but will slightly increase communication overhead.
 - microbatch_group_size_per_vp_stage: The number of consecutive microbatches processed by each virtual pipeline stage. Defaults to None, which equals `pipeline_model_parallel_size`.
-- 🔥pipeline_model_parallel_layout: A string describing a custom pipeline (pp/vpp) model parallel layout. For example: "E|(t|)*3,m|m||L". Here, E, L, t, and m denote the embedding layer, loss layer, Transformer decoder layer, and MTP layer, respectively. Stages are separated by "|". Repeated stages or layers can be expressed using multiplication. Commas are only for cosmetic readability and have no syntactic meaning. The default value is None, indicating that this argument is not used to set the layout.
+- 🔥pipeline_model_parallel_layout: A string describing a custom pipeline (pp/vpp) model parallel layout. For example: `"Et*4|(tttt|)*14tmL"`. Here, E, L, t, and m denote the embedding layer, loss layer, Transformer decoder layer, and MTP layer, respectively. Stages are separated by "|". Repeated stages or layers can be expressed using multiplication. Commas are only for cosmetic readability and have no syntactic meaning. The default value is None, indicating that this argument is not used to set the layout.
   - This parameter is typically used on heterogeneous GPU clusters.
 - 🔥expert_model_parallel_size: The degree of expert parallelism, default is 1.
 - 🔥expert_tensor_parallel_size: expert tensor-parallel size. Default is 1.
@@ -183,11 +184,16 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 **FP8 Parameters**:
 - fp8_format: The FP8 format scheme used for FP8 tensors in the forward and backward pass. Options are 'e4m3' and 'hybrid'. Default is None.
 - fp8_recipe: The FP8 recipe (algorithm scheme) used for FP8 tensors in the forward and backward pass. Options are 'tensorwise', 'delayed', 'mxfp8', and 'blockwise'. Default is 'delayed'. Note that blockwise fp8 requires CUDA version 12.9 or higher.
-- fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
-- fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
 - fp8_param_gather: Keep the compute parameter in FP8 (do not use any other intermediate dtype) and perform the parameter all-gather in FP8 format. Default is False.
   - Tips: Set this to True if you want to export weights in FP8 format; otherwise, set it to False.
+- fp8_amax_history_len: Number of steps for which amax history is recorded per tensor. Default is 1024.
+- fp8_amax_compute_algo: Algorithm for computing amax from history. Options are 'most_recent' and 'max'. Default is 'max'.
 
+**FP4 Parameters**:
+
+- fp4_format: The FP4 format scheme for FP4 tensors in forward and backward passes, optionally set to 'e2m1'. Defaults to None.
+- fp4_recipe: If set, enables FP4 precision through Transformer Engine. Currently only 'nvfp4' is supported, which uses the NVFP4BlockScaling recipe for Blackwell+ architecture. Default is 'nvfp4'.
+- fp4_param_gather: If set, keeps the parameters in FP4 precision to save memory. Note that not all parameters will be converted to FP4; for example, biases will remain unchanged. Default is False.
 
 **Mixed Precision Parameters**:
 
@@ -214,9 +220,14 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 **DSA Parameters**
 
-- dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is None.
+- dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is `0.`.
 - dsa_indexer_use_sparse_loss: Whether to use sparse DSA indexer loss. If True, the indexer loss will be computed using the top-k indices. Default is False.
 
+**Deepseek-V4**
+
+- csa_dense_mode: Whether to use dense mode for compressed sparse attention. If `True`, the CSA indexer will be disabled. Defaults to `False`.
+- use_fused_mhc: Use cuTile fused kernels for mHC operations. When `True`, attempts to replace the reference mHC modules with fused cuda.tile (cuTile) autograd functions for better performance on supported GPUs. Requires cuTile to be installed; if cuTile is unavailable, the flag is silently reset to `False` and a warning is emitted. Defaults to `False`.
+- mhc_recompute_layer_num: Number of layers per MHC recompute block. When set, every `mhc_recompute_layer_num` layers form a recompute block. If `None`, all layers in the transformer block share a single recompute block. Defaults to `None`.
 
 **MTP Parameters**
 - mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None. (requires "megatron-core>=0.14")

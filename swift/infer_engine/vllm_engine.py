@@ -238,6 +238,8 @@ class VllmEngine(InferEngine):
                     self._config_cls = hf_config.__class__
                 if not isinstance(config, self._config_cls):
                     config.__class__ = self._config_cls
+                    if self.model_type == 'deepseek_v4':
+                        config.rope_parameters.setdefault('rope_type', 'default')
             return config
 
         AutoConfig.from_pretrained = _from_pretrained

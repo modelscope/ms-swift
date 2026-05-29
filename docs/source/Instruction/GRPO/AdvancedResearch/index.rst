@@ -6,6 +6,7 @@ Advanced Research
    entropy_mask.md
    CISPO.md
    DAPO.md
+   FIPO.md
    deepeyes.md
    GSPO.md
    CHORD.md

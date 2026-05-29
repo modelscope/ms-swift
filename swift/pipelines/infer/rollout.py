@@ -33,7 +33,7 @@ from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
 from transformers.utils import is_torch_npu_available
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from swift.arguments import RolloutArguments
 from swift.infer_engine import GRPOVllmEngine, InferClient
@@ -42,11 +42,12 @@ from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig,
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        FlattenedTensorMetadata, TensorLoRARequest, UpdateAdapterRequest,
                                        UpdateFlattenedAdapterRequest, UpdateFlattenedParamsRequest,
-                                       check_vllm_version_ge, chunk_list, patch_vllm_load_adapter,
-                                       patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
+                                       check_vllm_version_ge, chunk_list, finish_vllm_weight_reload,
+                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader,
+                                       vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
-from swift.utils import (get_logger, get_seed, get_torch_device, is_vllm_ascend_available, is_vllm_metax_available,
-                         synchronize)
+from swift.utils import (gc_collect, get_logger, get_seed, get_torch_device, ipc_collect, is_vllm_ascend_available,
+                         is_vllm_metax_available, synchronize)
 from ..base import SwiftPipeline
 
 try:
@@ -84,11 +85,33 @@ Note:
 patch_vllm_load_adapter()
 
 
+def _set_death_signal():
+    """Ensure this process is killed when its parent exits.
+
+    Prevents orphan vLLM TP worker processes from leaking GPU memory
+    when the parent Ray actor dies unexpectedly.  Adopted from verl's
+    ``set_death_signal`` utility.
+    """
+    import ctypes
+    import platform
+    import signal
+    if platform.system() != 'Linux':
+        return
+    libc = ctypes.CDLL('libc.so.6')
+    libc.prctl(1, signal.SIGKILL)
+    if os.getppid() == 1:
+        os.kill(os.getpid(), signal.SIGKILL)
+
+
 class WeightSyncWorkerExtension:
 
     # The following attributes are initialized when `init_communicator` method is called.
     communicator = None  # Communicator for weight updates
     client_rank = None  # Source rank for broadcasting updated weights
+
+    def __new__(cls, **kwargs):
+        _set_death_signal()
+        return super().__new__(cls)
 
     def init_communicator(self, host: str, port: int, world_size: int) -> None:
         """
@@ -262,7 +285,13 @@ class WeightSyncWorkerExtension:
         named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
 
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
-        self.model_runner.model.load_weights(weights=list(named_params.items()))
+        # Re-run process_weights_after_loading on FusedMoE layers so the
+        # kernel-format layout is rebuilt after the in-place reload
+        # (workaround for vLLM issue #42821).
+        try:
+            self.model_runner.model.load_weights(weights=list(named_params.items()))
+        finally:
+            finish_vllm_weight_reload(self.model_runner.model)
 
     def close_communicator(self) -> None:
         """
@@ -275,6 +304,254 @@ class WeightSyncWorkerExtension:
             del self.communicator
             self.communicator = None  # Ensure attribute is reset to None
             self.client_rank = None  # Ensure attribute is reset to None
+
+    # ------------------------------------------------------------------
+    # ZMQ + CUDA-IPC / shared-memory bucketed weight sync
+    # ------------------------------------------------------------------
+    #
+    # Counterpart of ``VllmServer.update_weights_ipc`` (see
+    # ``swift/ray/megatron/rollout/vllm_server.py``).  Avoids the extra
+    # NCCL broadcast hop of ``update_flattened_params`` and reuses the
+    # sender's bucket buffer via CUDA IPC (same node, same device) or
+    # shared memory (CPU / cross-device fallback).
+    #
+    # Reference: twinkle ``TwinkleWorkerExtension.update_weights_from_ipc``
+    # and verl ``vLLMColocateWorkerExtension.update_weights_from_ipc``.
+    #
+    # TP>1:
+    #   Only the TP driver (rank 0 in the TP group) talks to the ZMQ
+    #   socket; the IPC handle / shm name and every bucket metadata is
+    #   broadcast via vLLM's TP cpu_group so all ranks can rebuild the
+    #   same buffer and load their own TP shard.
+    #
+    # LoRA / chunked tensors / FP8-QAT re-packing:
+    #   Intentionally NOT implemented here.  GRPO / GKD in swift Ray
+    #   uses full-parameter sync; LoRA / QAT paths keep going through
+    #   ``update_flattened_params`` + ``init_communicator``.
+
+    @staticmethod
+    def _ipc_handle_signature(handle) -> tuple | None:
+        """Derive a stable signature for a CUDA IPC handle.
+
+        Two handles map the same CUDA memory region when their inner
+        storage-handle bytes and metadata match.  We hash only the
+        picklable / comparable parts to detect reuse.
+        """
+        try:
+            _, args = handle
+        except Exception:
+            return None
+        sig = []
+        for v in args:
+            if isinstance(v, (bytes, bytearray)):
+                sig.append(('bytes', bytes(v)))
+            elif isinstance(v, (int, float, bool, str)) or v is None:
+                sig.append(('scalar', v))
+            else:
+                try:
+                    sig.append(('repr', repr(v)))
+                except Exception:
+                    return None
+        return tuple(sig)
+
+    def update_weights_from_ipc(
+        self,
+        use_shm: bool = False,
+        zmq_handle: Optional[str] = None,
+        timeout_s: int = 300,
+        peft_config: Optional[Dict] = None,
+        base_sync_done: bool = False,
+    ) -> None:
+        """Receive and load weights via ZMQ + CUDA-IPC / SHM.
+
+        Called via ``collective_rpc('update_weights_from_ipc', kwargs=...)``
+        from ``VllmServer.update_weights_ipc``.  The sender binds a ZMQ
+        REQ socket on ``zmq_handle`` and sends
+          1. a CUDA IPC reduce_tensor handle (or ``{name, size}`` for shm),
+          2. per-bucket ``{bucket_meta, is_last}`` payloads,
+        with a sync ``recv()`` on our side so the sender can safely reuse
+        the shared buffer between buckets.
+
+        IPC buffer reuse: when the sender reuses the same CUDA IPC handle
+        across sync rounds (same ``BucketedWeightSender`` buffer), we skip
+        ``rebuild_cuda_tensor`` and reuse the cached mapping.  This avoids
+        accumulating IPC mappings that the CUDA driver releases lazily,
+        which is the root cause of apparent GPU memory growth under
+        frequent syncs.  (Aligned with twinkle / verl.)
+
+        When ``peft_config`` is provided and ``base_sync_done`` is True,
+        the received weights are loaded as a LoRA adapter via
+        ``TensorLoRARequest`` instead of ``model.load_weights``.
+        """
+        if zmq_handle is None:
+            raise ValueError('update_weights_from_ipc: zmq_handle is required')
+
+        import gc as _gc
+        import torch as _torch
+        import torch.distributed as _dist
+        import zmq
+        from torch.multiprocessing.reductions import rebuild_cuda_tensor
+
+        device = getattr(self, 'device', None)
+        if device is None:
+            local_rank = getattr(self, 'local_rank', 0)
+            device = _torch.device(f'cuda:{local_rank}' if _torch.cuda.is_available() else 'cpu')
+            self.device = device
+
+        tp_rank = getattr(self, 'rank', 0)
+        tp_size = 1
+        try:
+            tp_size = self.model_runner.parallel_config.tensor_parallel_size
+        except Exception:  # noqa: BLE001
+            pass
+        is_driver = (tp_rank == 0)
+
+        cpu_group = None
+        broadcast_src = 0
+        if tp_size > 1:
+            from vllm.distributed import get_tp_group
+            tp_coord = get_tp_group()
+            cpu_group = tp_coord.cpu_group
+            broadcast_src = tp_coord.ranks[0]
+
+        def _broadcast_obj(obj):
+            if cpu_group is None:
+                return obj
+            obj_list = [obj]
+            _dist.broadcast_object_list(obj_list, src=broadcast_src, group=cpu_group)
+            return obj_list[0]
+
+        socket = None
+        if is_driver:
+            ctx = zmq.Context.instance()
+            socket = ctx.socket(zmq.REP)
+            socket.setsockopt(zmq.RCVTIMEO, timeout_s * 1000)
+            socket.setsockopt(zmq.SNDTIMEO, timeout_s * 1000)
+            socket.setsockopt(zmq.LINGER, 0)
+            socket.connect(zmq_handle)
+
+        # ── Step 1: receive + rebuild IPC handle (with reuse) ────────
+        comm_metadata = socket.recv_pyobj() if is_driver else None
+        comm_metadata = _broadcast_obj(comm_metadata)
+
+        buffer = None
+        shm = None
+        if not use_shm:
+            handle = comm_metadata
+            handle_sig = self._ipc_handle_signature(handle)
+            cached_buf = getattr(self, '_swift_ipc_buffer', None)
+            cached_sig = getattr(self, '_swift_ipc_handle_signature', None)
+
+            if cached_buf is not None and cached_sig == handle_sig:
+                buffer = cached_buf
+            else:
+                if cached_buf is not None:
+                    self._swift_ipc_buffer = None
+                    self._swift_ipc_handle_signature = None
+                    del cached_buf
+                    _gc.collect()
+                    ipc_collect()
+
+                func, args = handle
+                list_args = list(args)
+                dev_idx = device.index if device.type == 'cuda' else 0
+                list_args[6] = dev_idx
+                buffer = func(*list_args) if callable(func) else rebuild_cuda_tensor(*list_args)
+                assert buffer.dtype == _torch.uint8
+                self._swift_ipc_buffer = buffer
+                self._swift_ipc_handle_signature = handle_sig
+        else:
+            from multiprocessing import shared_memory
+            shm = shared_memory.SharedMemory(name=comm_metadata['name'])
+            buffer = _torch.frombuffer(shm.buf[:comm_metadata['size']], dtype=_torch.uint8)
+
+        if is_driver:
+            socket.send(b'')  # ready for buckets
+
+        # ── Step 2: stream buckets and load_weights per bucket ──────
+        is_lora_sync = (peft_config is not None and base_sync_done)
+        all_lora_weights: Dict[str, Any] = {} if is_lora_sync else None
+
+        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+
+        while True:
+            metadata = socket.recv_pyobj() if is_driver else None
+            metadata = _broadcast_obj(metadata)
+
+            bucket_meta = metadata['bucket_meta']
+            entries = list(bucket_meta.values()) if isinstance(bucket_meta, dict) else list(bucket_meta)
+
+            weights: List[tuple] = []
+            for meta in entries:
+                name = meta['name']
+                dtype = meta['dtype']
+                shape = meta['shape']
+                shape = shape if isinstance(shape, _torch.Size) else _torch.Size(shape)
+                offset = int(meta['offset'])
+                size = int(dtype.itemsize * shape.numel())
+
+                raw = buffer[offset:offset + size]
+                tensor = raw.view(dtype=dtype).view(shape)
+                if use_shm:
+                    tensor = tensor.to(device)
+                else:
+                    tensor = tensor.clone()
+                weights.append((name, tensor))
+
+            if _torch.cuda.is_available():
+                _torch.cuda.synchronize()
+
+            if is_driver:
+                socket.send(b'')  # bucket received
+
+            if tp_size > 1:
+                _dist.barrier(group=cpu_group)
+
+            if is_lora_sync:
+                for name, tensor in weights:
+                    all_lora_weights[name] = tensor
+            else:
+                self.model_runner.model.load_weights(weights=weights)
+            del weights
+            if metadata.get('is_last'):
+                break
+
+        # Re-run process_weights_after_loading on FusedMoE layers so the
+        # kernel-format layout is rebuilt after the in-place reload
+        # (workaround for vLLM issue #42821).  Skipped for LoRA sync
+        # because the adapter path doesn't call ``load_weights``.
+        if not is_lora_sync:
+            finish_vllm_weight_reload(self.model_runner.model)
+
+        if is_lora_sync and all_lora_weights:
+            req_kw = dict(
+                lora_name=VLLM_LORA_NAME,
+                lora_int_id=VLLM_LORA_INT_ID,
+                lora_path=VLLM_LORA_PATH,
+                peft_config=peft_config,
+                lora_tensors=all_lora_weights,
+            )
+            if vllm_supports_lora_load_inplace():
+                req_kw['load_inplace'] = True
+            else:
+                self.remove_lora(VLLM_LORA_INT_ID)
+            lora_request = TensorLoRARequest(**req_kw)
+            self.add_lora(lora_request)
+            del all_lora_weights
+
+        if is_driver and socket is not None:
+            socket.close()
+        del buffer
+        if shm is not None:
+            try:
+                shm.close()
+            except BufferError:
+                pass
+            shm = None
+        _gc.collect()
+        ipc_collect()
+        if _torch.cuda.is_available():
+            _torch.cuda.empty_cache()
 
 
 logger = get_logger()
