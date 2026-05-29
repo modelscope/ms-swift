@@ -169,6 +169,7 @@ class HfConfigFactory:
         if torch_dtype is None:
             return None
         if isinstance(torch_dtype, str):
+            torch_dtype = torch_dtype.replace('torch.', '')
             torch_dtype = getattr(torch, torch_dtype)
         return torch_dtype
 
