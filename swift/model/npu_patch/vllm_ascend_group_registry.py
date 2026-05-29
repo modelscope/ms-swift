@@ -123,9 +123,8 @@ def _is_uninitialized_group_error(error: Exception) -> bool:
     """Return whether a Megatron getter reports an optional uninitialized group."""
     message = str(error).lower()
     return any(
-        pattern in message
-        for pattern in ('not initialized', 'has not been initialized', 'is not initialized', 'not set', 'is none',
-                        'partial dp for optimizer needs to include cp'))
+        pattern in message for pattern in ('not initialized', 'has not been initialized', 'is not initialized',
+                                           'not set', 'is none', 'partial dp for optimizer needs to include cp'))
 
 
 def _call_megatron_group_getter(axis: str, getter_name: str, getter, **kwargs):
