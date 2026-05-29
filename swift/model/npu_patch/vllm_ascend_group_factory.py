@@ -16,7 +16,7 @@ from typing import Any, Optional
 from swift.model.npu_patch.vllm_ascend_group_registry import (_PREFERRED_MEGATRON_AXES_BY_VLLM_GROUP,
                                                               _lookup_megatron_hccl_group_record,
                                                               _normalize_backend_name, _select_megatron_reuse_group,
-                                                              _stable_int64_hash, create_npu_process_group)
+                                                              _stable_int64_hash)
 from swift.utils.logger import get_logger
 
 logger = get_logger()
@@ -212,11 +212,10 @@ def _build_vllm_device_group_specs(args, backend: str) -> list[_VLLMGroupSpec]:
     intentionally excluded because ``GroupCoordinatorPatch`` keeps
     ``use_message_queue_broadcaster=True`` groups on the upstream path. SWIFT
     only precreates groups that the runtime patch later resolves through the
-    NPU-only cache-only branch: world, PCP, PP, DP, EP, and MC2.
+    NPU-only cache-only branch: world, DP, EP, MC2, and non-singleton PCP/PP.
 
-    The generated specs intentionally include singleton DP/PP/PCP groups because
-    vLLM still creates GroupCoordinator objects for them and cache-only runtime
-    lookup should fail loudly if the corresponding cache entry is missing.
+    The generated specs intentionally include singleton DP groups because vLLM
+    still creates a DP GroupCoordinator for ``data_parallel_size == 1``.
     """
     import torch.distributed as dist
 
@@ -256,9 +255,11 @@ def _build_vllm_device_group_specs(args, backend: str) -> list[_VLLMGroupSpec]:
     # Do not add TP here. TP/DCP message-queue groups are left on the upstream
     # vLLM path, and rollout object collectives use a separate TP Gloo control
     # group in ``vllm_ascend_group_control.py``.
-    add_specs('pcp',
-              [x.tolist() for x in all_ranks.transpose(3, 4).reshape(-1, prefill_context_parallel_size).unbind(0)])
-    add_specs('pp', [x.tolist() for x in all_ranks.transpose(2, 4).reshape(-1, pipeline_parallel_size).unbind(0)])
+    if prefill_context_parallel_size > 1:
+        add_specs('pcp',
+                  [x.tolist() for x in all_ranks.transpose(3, 4).reshape(-1, prefill_context_parallel_size).unbind(0)])
+    if pipeline_parallel_size > 1:
+        add_specs('pp', [x.tolist() for x in all_ranks.transpose(2, 4).reshape(-1, pipeline_parallel_size).unbind(0)])
     # vLLM still constructs a DP GroupCoordinator when data_parallel_size == 1.
     # In cache-only mode those singleton DP groups must be present in the
     # factory cache; otherwise GroupCoordinator correctly fails with cache miss.
@@ -367,13 +368,7 @@ def prepare_vllm_ascend_device_groups_before_megatron(args) -> None:
         elif execution.action == 'precreate':
             if spec.backend == 'gloo':
                 _clear_default_pg_bound_device_id_for_gloo()
-            group = create_npu_process_group(
-                list(spec.ranks),
-                backend=spec.backend,
-                kind=spec.kind,
-                group_name=spec.name,
-                source='vllm_factory',
-                phase='vllm_preinit')
+            group = dist.new_group(ranks=list(spec.ranks), backend=spec.backend)
             if rank in spec.ranks:
                 _put_vllm_group_cache(spec, group)
         else:

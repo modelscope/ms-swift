@@ -8,9 +8,7 @@ groups dynamically inside the Megatron process tree.
 """
 from __future__ import annotations
 
-import hashlib
 import inspect
-import json
 import torch
 
 from swift.model.npu_patch.vllm_ascend_group_factory import (_cache_key_summary, _canonical_group_ranks,
@@ -19,19 +17,6 @@ from swift.model.npu_patch.vllm_ascend_group_factory import (_cache_key_summary,
 from swift.utils.logger import get_logger
 
 logger = get_logger()
-
-_SWIFT_VLLM_DP_GROUP_SPECS: set[tuple[tuple[int, ...], ...]] = set()
-
-
-def _group_spec_hash(group_name: str, group_ranks) -> int:
-    """Hash a runtime GroupCoordinator rank spec for cross-rank validation."""
-    payload = json.dumps({
-        'group_name': group_name,
-        'group_ranks': _canonical_group_ranks(group_ranks),
-    },
-                         sort_keys=True)
-    # Keep the hash inside signed int64 so HCCL can compare it through a tensor.
-    return int(hashlib.sha256(payload.encode()).hexdigest()[:15], 16)
 
 
 def patch_vllm_ascend_external_launcher_groups() -> None:
@@ -75,30 +60,13 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
             raise RuntimeError('Unsupported vLLM-Ascend GroupCoordinatorPatch.__init__ signature: '
                                f'signature={origin_signature}, missing={sorted(missing_params)}.')
 
-        def _should_use_npu_only_group(use_device_communicator, use_message_queue_broadcaster, group_name) -> bool:
+        def _should_use_npu_only_group(group_ranks, use_device_communicator, use_message_queue_broadcaster,
+                                       group_name) -> bool:
             if use_message_queue_broadcaster:
                 return False
+            if group_name in {'pp', 'pcp'} and all(len(ranks) == 1 for ranks in group_ranks):
+                return False
             return group_name == 'world' or use_device_communicator
-
-        def _validate_dp_group_spec(group_name, group_ranks) -> None:
-            if group_name != 'dp':
-                return
-            spec = _canonical_group_ranks(group_ranks)
-            spec_hash = _group_spec_hash(group_name, group_ranks)
-            device = torch.device('npu', torch.npu.current_device())
-            local_min = torch.tensor([spec_hash], dtype=torch.int64, device=device)
-            local_max = local_min.clone()
-            dist.all_reduce(local_min, op=dist.ReduceOp.MIN)
-            dist.all_reduce(local_max, op=dist.ReduceOp.MAX)
-            if int(local_min.cpu().item()) != int(local_max.cpu().item()):
-                raise RuntimeError(
-                    f'vLLM DP group spec mismatch across ranks: rank={dist.get_rank()}, group_ranks={group_ranks}, '
-                    f'local_hash={spec_hash}, min_hash={int(local_min.cpu().item())}, '
-                    f'max_hash={int(local_max.cpu().item())}.')
-            if spec not in _SWIFT_VLLM_DP_GROUP_SPECS:
-                logger.warning_once(f'Validated vLLM DP group spec on Megatron world group: ranks={spec}, '
-                                    f'hash={spec_hash}')
-                _SWIFT_VLLM_DP_GROUP_SPECS.add(spec)
 
         def patched_init(self, *args, **kwargs):
             try:
@@ -114,10 +82,9 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
             use_message_queue_broadcaster = bound.arguments['use_message_queue_broadcaster']
             group_name = bound.arguments['group_name']
             group_name = group_name or 'anonymous'
-            if not _should_use_npu_only_group(use_device_communicator, use_message_queue_broadcaster, group_name):
+            if not _should_use_npu_only_group(group_ranks, use_device_communicator, use_message_queue_broadcaster,
+                                              group_name):
                 return origin_init(*bound.args, **bound.kwargs)
-
-            _validate_dp_group_spec(group_name, group_ranks)
 
             self.unique_name = parallel_state._get_unique_name(group_name)
             parallel_state._register_group(self)

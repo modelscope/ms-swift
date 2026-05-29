@@ -37,25 +37,6 @@ class _MegatronGroupRecord:
     source: str
 
 
-def create_npu_process_group(ranks=None,
-                             backend=None,
-                             *,
-                             kind: str,
-                             group_name: str,
-                             source: str,
-                             phase: str,
-                             **kwargs):
-    """Create a torch distributed group through SWIFT's NPU patch layer.
-
-    The extra keyword-only fields are intentionally informational today.  They
-    keep every NPU group creation call self-describing, which makes later audit
-    logging or error messages possible without changing all call sites again.
-    """
-    import torch.distributed as dist
-
-    return dist.new_group(ranks=ranks, backend=backend, **kwargs)
-
-
 def _normalize_backend_name(backend) -> str:
     """Normalize torch backend objects/strings to stable cache key names."""
     backend_name = str(backend or '').lower()
@@ -315,6 +296,5 @@ def _stable_int64_hash(payload) -> int:
 
 
 __all__ = [
-    'create_npu_process_group',
     'register_megatron_hccl_groups_for_vllm',
 ]

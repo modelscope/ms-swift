@@ -6,7 +6,6 @@ from typing import Any
 
 from swift.model.npu_patch.vllm_ascend_group_factory import (_canonical_group_ranks,
                                                              _clear_default_pg_bound_device_id_for_gloo)
-from swift.model.npu_patch.vllm_ascend_group_registry import create_npu_process_group
 from swift.utils.logger import get_logger
 
 logger = get_logger()
@@ -47,8 +46,7 @@ def get_or_create_vllm_tp_gloo_group(tensor_parallel_size: int):
         _clear_default_pg_bound_device_id_for_gloo()
         own_group = None
         for ranks in group_ranks:
-            group = create_npu_process_group(
-                ranks, backend='gloo', kind='control', group_name='tp', source='vllm_tp_control', phase='rollout')
+            group = dist.new_group(ranks=ranks, backend='gloo')
             if rank in ranks:
                 own_group = group
         if own_group is None:

@@ -1,73 +1,17 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 """vLLM-Ascend MoE compatibility patches for SWIFT NPU GRPO.
 
-These patches cover three independent MoE issues seen in vLLM-Ascend based
-rollout: lazy initialization of MoE communication helpers, non-quantized routing
-dispatch, and unquantized expert weight layout.  The runtime weight-loader patch
-at the bottom is used by GRPO weight sync when SWIFT sends updated training
-weights into a live vLLM MoE model.
+The runtime patch here keeps non-quantized MoE routing on the stable torch-npu
+operator.  The weight-loader patch is used by GRPO weight sync when SWIFT sends
+updated training weights into a live vLLM-Ascend MoE model.
 """
 from __future__ import annotations
 
 import inspect
-import sys
-import torch
 
 from swift.utils.logger import get_logger
 
 logger = get_logger()
-
-
-def _patch_vllm_ascend_moe_comm_lazy_init() -> None:
-    """Create MoE communication methods lazily after config is available.
-
-    Some vLLM-Ascend releases initialize a global MoE communication map before
-    the colocated Megatron/vLLM topology is fully ready.  Replacing that map with
-    lazy construction avoids stale communicator instances while preserving the
-    upstream ``setup_moe_comm_method``/``get_moe_comm_method`` API.
-    """
-    try:
-        from vllm_ascend.ascend_forward_context import MoECommType
-        from vllm_ascend.ops.fused_moe import moe_comm_method
-    except (ImportError, AttributeError):
-        return
-    if getattr(moe_comm_method, '_swift_lazy_moe_comm_patched', False):
-        return
-
-    required_classes = {
-        MoECommType.ALLTOALL: 'AlltoAllCommImpl',
-        MoECommType.ALLGATHER: 'AllGatherCommImpl',
-        MoECommType.MC2: 'MC2CommImpl',
-        MoECommType.FUSED_MC2: 'FusedMC2CommImpl',
-    }
-    if not all(hasattr(moe_comm_method, cls_name) for cls_name in required_classes.values()):
-        return
-
-    moe_comm_method._MoECommMethods = {}
-    moe_comm_method._SwiftMoECommConfig = None
-
-    def get_moe_comm_method(moe_comm_type):
-        if moe_comm_type is None:
-            return None
-        moe_comm = moe_comm_method._MoECommMethods.get(moe_comm_type)
-        if moe_comm is not None:
-            return moe_comm
-        assert moe_comm_method._SwiftMoECommConfig is not None, 'MoE communication method is not set up'
-        moe_comm_cls = getattr(moe_comm_method, required_classes[moe_comm_type])
-        moe_comm = moe_comm_cls(moe_comm_method._SwiftMoECommConfig)
-        moe_comm_method._MoECommMethods[moe_comm_type] = moe_comm
-        return moe_comm
-
-    def setup_moe_comm_method(moe_config):
-        moe_comm_method._SwiftMoECommConfig = moe_config
-        moe_comm_method._MoECommMethods.clear()
-
-    moe_comm_method.get_moe_comm_method = get_moe_comm_method
-    moe_comm_method.setup_moe_comm_method = setup_moe_comm_method
-    fused_moe = sys.modules.get('vllm_ascend.ops.fused_moe.fused_moe')
-    if fused_moe is not None:
-        fused_moe.setup_moe_comm_method = setup_moe_comm_method
-    moe_comm_method._swift_lazy_moe_comm_patched = True
 
 
 def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
@@ -169,74 +113,9 @@ def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
     adaptor_cls.npu_moe_init_routing = staticmethod(patched_npu_moe_init_routing)
 
 
-def _patch_vllm_ascend_unquant_moe_layout() -> None:
-    """Patch vLLM-Ascend unquantized gated-MoE layout before grouped matmul.
-
-    Some vLLM-Ascend versions pass already-processed unquantized MoE weights
-    into ``unquant_apply_mlp`` with ``need_trans=False``.  For Qwen-style gated
-    MoE, ``w1`` is the concatenated gate/up projection:
-
-        expected  w1: [experts, hidden, 2 * intermediate]
-        expected  w2: [experts, intermediate, hidden]
-        reversed  w1: [experts, 2 * intermediate, hidden]
-        reversed  w2: [experts, hidden, intermediate]
-
-    ``torch_npu.npu_grouped_matmul`` needs the K dimension to match the input
-    hidden size.  If the pair is clearly the reversed gated-MoE layout, transpose
-    both weights before calling the original implementation.  If the shapes do
-    not match this gated-MoE pattern, do not guess; leave the original
-    vLLM-Ascend path untouched.
-    """
-    try:
-        from vllm_ascend.ops.fused_moe import moe_mlp
-    except (ImportError, AttributeError, RuntimeError):
-        return
-    origin_apply_mlp = getattr(moe_mlp, 'unquant_apply_mlp', None)
-    if origin_apply_mlp is None or getattr(origin_apply_mlp, '_swift_ascend_moe_layout_patched', False):
-        return
-    origin_signature = inspect.signature(origin_apply_mlp)
-
-    def _is_expected_gated_unquant_moe_layout(w1, w2, input_k: int) -> bool:
-        return (w1.shape[1] == input_k and w2.shape[2] == input_k and w1.shape[2] % 2 == 0
-                and w1.shape[2] // 2 == w2.shape[1])
-
-    def _is_reversed_gated_unquant_moe_layout(w1, w2, input_k: int) -> bool:
-        return (w1.shape[2] == input_k and w2.shape[1] == input_k and w1.shape[1] % 2 == 0
-                and w1.shape[1] // 2 == w2.shape[2])
-
-    def patched_unquant_apply_mlp(hidden_states, w1, w2, *args, **kwargs):
-        try:
-            bound = origin_signature.bind_partial(hidden_states, w1, w2, *args, **kwargs)
-        except TypeError as e:
-            raise RuntimeError('Failed to bind vLLM-Ascend unquant_apply_mlp arguments: '
-                               f'signature={origin_signature}, args={args}, kwargs={kwargs}.') from e
-        bound.apply_defaults()
-        need_trans = bound.arguments.get('need_trans', True)
-        if not need_trans and w1.dim() == 3 and w2.dim() == 3:
-            input_k = hidden_states.shape[-1]
-            # This compatibility branch is only for gated MoE layouts where
-            # w1 stores concatenated gate/up projections:
-            #   w1=[experts, hidden, 2*intermediate],
-            #   w2=[experts, intermediate, hidden].
-            # Other MoE implementations may not have the 2x relation, so leave
-            # them to vLLM-Ascend's original implementation instead of guessing.
-            if _is_expected_gated_unquant_moe_layout(w1, w2, input_k):
-                pass
-            elif _is_reversed_gated_unquant_moe_layout(w1, w2, input_k):
-                w1 = w1.transpose(1, 2)
-                w2 = w2.transpose(1, 2)
-        return origin_apply_mlp(hidden_states, w1, w2, *args, **kwargs)
-
-    patched_unquant_apply_mlp._swift_ascend_moe_layout_patched = True
-    patched_unquant_apply_mlp._swift_origin = origin_apply_mlp
-    moe_mlp.unquant_apply_mlp = patched_unquant_apply_mlp
-
-
 def patch_vllm_ascend_moe_runtime() -> None:
     """Apply MoE runtime patches that are independent of weight sync."""
-    _patch_vllm_ascend_moe_comm_lazy_init()
     _patch_vllm_ascend_device_op_nonquant_routing()
-    _patch_vllm_ascend_unquant_moe_layout()
 
 
 def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> None:

@@ -959,17 +959,8 @@ def patch_vllm_moe_model_weight_loader(model):
                 param.weight_loader = experts.weight_loader
             maybe_patch_vllm_ascend_moe_expert_weight_loader(experts, name, param)
 
-    for layer in inner_model.layers:
-        mlp_attr = mlp_attr_mapping.get(original_model_type, 'mlp')
-        mlp = getattr(layer, mlp_attr, None)
-        if mlp:
-            patch_mlp_experts(mlp)
-
     for module in original_model.modules():
         patch_mlp_experts(module)
-
-    # Mark the model as patched (for idempotency)
-    original_model._swift_moe_weight_loader_patched = True
 
 
 def patch_vllm_load_adapter():
