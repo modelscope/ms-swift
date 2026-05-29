@@ -3,10 +3,11 @@ import os
 import torch
 from datetime import datetime, timezone
 from typing import Callable, Optional
-
+from swift.utils import get_logger
 from .config import ProfilerConfig, TorchProfilerToolConfig
 from .profile import DistProfiler
 
+logger = get_logger()
 
 def get_torch_profiler(
     contents: list[str],
