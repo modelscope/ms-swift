@@ -149,7 +149,10 @@ qwen3_reranker_system = (
 
 register_template(
     Qwen3MixedTemplateMeta(
-        LLMTemplateType.qwen3_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3RerankerTemplate))
+        LLMTemplateType.qwen3_reranker,
+        default_system=qwen3_reranker_system,
+        template_cls=Qwen3RerankerTemplate,
+        agent_template=None))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
