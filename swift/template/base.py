@@ -202,6 +202,11 @@ class Template(ProcessorMixin):
     @property
     def agent_template(self):
         from swift.agent_template import agent_template_map
+        if self._agent_template is None:
+            raise ValueError(
+                f'Failed to automatically match an agent_template for template "{self.template_meta.template_type}". '
+                f'Please specify it manually via `--agent_template`. '
+                f'Available options: {list(agent_template_map.keys())}.')
         if self._agent_template not in self._agent_template_cache:
             self._agent_template_cache[self._agent_template] = agent_template_map[self._agent_template]()
         return self._agent_template_cache[self._agent_template]
@@ -302,9 +307,9 @@ class Template(ProcessorMixin):
                 bbox[2 * i + 1] = int(round(y / height * norm_height))
 
     def _preprocess_function_call(self, inputs: StdTemplateInputs) -> None:
-        agent_template = self.agent_template
-        agent_template.template_meta = self.template_meta  # for hermes
         if inputs.tools:
+            agent_template = self.agent_template
+            agent_template.template_meta = self.template_meta  # for hermes
             if isinstance(inputs.tools, str):
                 inputs.tools = agent_template._parse_json(inputs.tools)
                 if not isinstance(inputs.tools, (list, tuple)):
@@ -319,11 +324,13 @@ class Template(ProcessorMixin):
         messages = inputs.messages
         while i < len(messages):
             if messages[i]['role'] == 'tool_call':
+                agent_template = self.agent_template
+                agent_template.template_meta = self.template_meta  # for hermes
                 i_start = i
                 while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool_call':
                     i += 1
                 tool_call_msgs = messages[i_start:i + 1]
-                tool_content = self.agent_template._format_tool_calls(tool_call_msgs)
+                tool_content = agent_template._format_tool_calls(tool_call_msgs)
                 merged_message = {'role': 'assistant', 'content': tool_content}
                 # Preserve loss/loss_scale fields from the first tool_call message.
                 for msg in tool_call_msgs:
@@ -1107,6 +1114,7 @@ class Template(ProcessorMixin):
     def _jinja_encode(self, inputs: StdTemplateInputs):
         messages = inputs.messages.copy()
         if inputs.system is None:
+            # Fix default_system passed from command line being ignored.
             inputs.system = self.template_meta.default_system
         if inputs.system is not None:
             messages.insert(0, {'role': 'system', 'content': inputs.system})

@@ -42,7 +42,7 @@ class TemplateMeta:
 
     auto_add_bos: bool = False
     stop_words: List[Word] = field(default_factory=list)
-    agent_template: str = 'react_en'
+    agent_template: Optional[str] = None
     # thinking
     is_thinking: bool = False  # Automatically remove think content
     thinking_prefix: str = ''
