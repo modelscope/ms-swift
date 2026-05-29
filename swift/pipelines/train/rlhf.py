@@ -1,9 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-import peft
 from contextlib import nullcontext
-from packaging import version
 from typing import List, Optional, Union
+
+import peft
+from packaging import version
 
 from swift.arguments import BaseArguments, RLHFArguments
 from swift.dataset import DatasetLoader, load_dataset
@@ -13,9 +14,9 @@ from swift.tuner_plugin import Tuner, tuners_map
 from swift.tuners import Swift
 from swift.utils import (HfConfigFactory, disable_deepspeed_zero3, get_logger, get_model_parameter_info,
                          safe_snapshot_download)
-from ..utils import prepare_adapter
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
+from ..utils import prepare_adapter
 
 logger = get_logger()
 
@@ -133,22 +134,23 @@ class SwiftRLHF(SwiftSft):
                 setattr(self, f'{key}_model', model)
 
         # Handle teacher_model_group for GKD
-        self.teacher_model_group_models = None
         if args.rlhf_type == 'gkd' and hasattr(args, 'teacher_model_group') and args.teacher_model_group:
             logger.info(f'Loading teacher_model_group with {len(args.teacher_model_group)} models')
-            self.teacher_model_group_models = []
+            teacher_model_group_models = []
             for idx, teacher_model_path in enumerate(args.teacher_model_group):
                 logger.info(f'Loading teacher model group [{idx}]: {teacher_model_path}')
                 # Use teacher_model_type and teacher_model_revision if available, otherwise infer
                 model_type = getattr(args, 'teacher_model_type', None)
                 model_revision = getattr(args, 'teacher_model_revision', None)
-
-                result = self._prepare_single_model_for_teacher_group(teacher_model_path, model_type, model_revision)
+                args.teacher_group_model = teacher_model_path
+                # setattr(self, 'teacher_group_model',teacher_model_path)
+                result = self._prepare_single_model('teacher_group', None, model_type, model_revision)
                 if result is not None:
                     model, _ = result
-                    self.teacher_model_group_models.append(model)
+                    teacher_model_group_models.append(model)
                     logger.info(f'Successfully loaded teacher model group [{idx}]: {model}')
-            logger.info(f'Total teacher_model_group_models loaded: {len(self.teacher_model_group_models)}')
+            setattr(self, 'teacher_model_group', teacher_model_group_models)
+            logger.info(f'Total teacher_model_group_models loaded: {len(teacher_model_group_models)}')
 
         # Handle reward model(s)
         self.reward_model = None
@@ -183,44 +185,6 @@ class SwiftRLHF(SwiftSft):
                 self.reward_model = self.reward_model[0]
 
         super()._prepare_model_tokenizer()
-
-    def _prepare_single_model_for_teacher_group(self, model_id_or_path, model_type, model_revision):
-        """Prepare a single model for teacher_model_group."""
-        args = self.args
-
-        if model_type is None:
-            model_info, _ = get_model_info_meta(model_id_or_path)
-            model_type = model_info.model_type
-
-        model_dir = safe_snapshot_download(
-            model_id_or_path=model_id_or_path,
-            revision=model_revision,
-            download_model=False,
-            use_hf=args.use_hf,
-            hub_token=args.hub_token,
-        )
-        task_type, num_labels = self._get_model_task_type(model_dir)
-
-        context = nullcontext()
-        if args.teacher_deepspeed:
-            if args.teacher_deepspeed.get('zero_optimization', {}).get('stage') != 3:
-                context = disable_deepspeed_zero3()
-        with context:
-            model, processor = args.get_model_processor(
-                model=model_id_or_path,
-                model_type=model_type,
-                revision=model_revision,
-                task_type=task_type,
-                num_labels=num_labels)
-
-        # For teacher models, set to eval mode and disable gradients
-        if self.args.sequence_parallel_size > 1:
-            sequence_parallel.prepare(
-                self.args.sequence_parallel_size, model, processor, padding_free=args.padding_free)
-        model.requires_grad_(False).eval()
-
-        HfConfigFactory.set_config_attr(model.config, 'use_cache', False)
-        return model, processor
 
     @classmethod
     def prepare_model(cls, args, model, *, template=None, train_dataset=None, task_type=None):
@@ -294,16 +258,9 @@ class SwiftRLHF(SwiftSft):
             trainer_kwargs['gkd_logits_topk'] = self.args.gkd_logits_topk
             if self.args.teacher_model_server:
                 trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
-            # Pass pre-loaded teacher_model_group_models if available, otherwise pass the string list
-            if hasattr(self, 'teacher_model_group_models') and self.teacher_model_group_models:
-                trainer_kwargs['teacher_model_group_models'] = self.teacher_model_group_models
-            else:
-                trainer_kwargs['teacher_model_group'] = self.args.teacher_model_group
             trainer_kwargs['teacher_use_disable_adapter'] = getattr(self.args, '_teacher_use_disable_adapter', False)
-            if self.args.use_mopd:
-                trainer_kwargs['use_mopd'] = self.args.use_mopd
-                # todo
-                # trainer_kwargs['mopd_config'] = self.args.mopd_config
+            if hasattr(self, 'teacher_model_group_models') and self.teacher_model_group_models:
+                trainer_kwargs['teacher_model_group'] = self.teacher_model_group_models
         return trainer_kwargs
 
 

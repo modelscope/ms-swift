@@ -16,10 +16,9 @@ import torch.nn.functional as F
 import trl
 from accelerate.utils import gather_object, is_peft_model
 from packaging import version
-from transformers import AutoTokenizer, PreTrainedModel
-from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers import PreTrainedModel
 from trl import SFTTrainer as HFSFTTrainer
-from trl.trainer.utils import RepeatSampler, pad
+from trl.trainer.utils import RepeatSampler
 
 from swift.infer_engine.protocol import MultiModalRequestMixin
 from swift.template import TemplateInputs
@@ -87,7 +86,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         teacher_model = kwargs.pop('teacher_model', None)
         self.teacher_model_group = kwargs.pop('teacher_model_group', None)
         teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
-        self.use_mopd = kwargs.pop('use_mopd', False)
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.gkd_logits_topk = kwargs.pop('gkd_logits_topk', None)
         teacher_model_server = kwargs.pop('teacher_model_server', None)
@@ -117,82 +115,45 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._teacher_use_disable_adapter = teacher_use_disable_adapter
         self._is_self_distillation = (teacher_model is None and teacher_model_server is None)
 
-        # Initialize teacher model
-        if teacher_model is not None:
+        # Initialize teacher model(s)
+        self.teacher_model_group = None
+
+        # Helper to prepare a single teacher model
+        def _prepare_teacher_model(model, is_first=False):
             if self.is_deepspeed_enabled:
-                if teacher_deepspeed_config is not None:
-                    self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
-                    if not self.is_teacher_ds3:
-                        self.teacher_ds3_gather_for_generation = False
-                    self.teacher_model = prepare_deepspeed(
-                        teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
-                else:
-                    self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
+                ds_config = teacher_deepspeed_config if is_first and teacher_deepspeed_config else None
+                # For group models after the first, we might reuse config or let prepare_deepspeed handle it
+                prepared = prepare_deepspeed(
+                    model, self.accelerator,
+                    deepspeed_config=ds_config if ds_config else teacher_deepspeed_config,
+                    training_args=args
+                )
             elif self.is_fsdp_enabled:
                 from .utils import prepare_fsdp
-                self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
+                prepared = prepare_fsdp(model, self.accelerator)
             else:
-                self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
-            self.teacher_model.eval()
-            if self.args.offload_teacher_model:
-                self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
-        else:
-            self.teacher_model = None
-            # Initialize teacher model group (for MOPD)
-        if self.use_mopd and self.teacher_model_group is not None and len(self.teacher_model_group) > 0:
-            prepared_models = []
-            for model_name in self.teacher_model_group:
-                if self.is_deepspeed_enabled:
-                    if teacher_deepspeed_config is not None:
-                        prepared_model = prepare_deepspeed(
-                            model_name, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
-                    else:
-                        prepared_model = prepare_deepspeed(model_name, self.accelerator)
-                elif self.is_fsdp_enabled:
-                    from .utils import prepare_fsdp
-                    prepared_model = prepare_fsdp(model_name, self.accelerator)
-                else:
-                    prepared_model = self.accelerator.prepare_model(model_name, evaluation_mode=True)
-                prepared_model.eval()
-                if self.args.offload_teacher_model:
-                    self.offload_model(self.accelerator.unwrap_model(prepared_model))
-                prepared_models.append(prepared_model)
-            self.teacher_model_group = prepared_models
-            from .gold_loss_adapter import GOLDLossAdapter
+                prepared = self.accelerator.prepare_model(model, evaluation_mode=True)
 
-            # Initialize student tokenizer (only once)
-            if not hasattr(self, 'student_tokenizer'):
-                student_model_path = self.get_model_path(model)
-                self.student_tokenizer = AutoTokenizer.from_pretrained(student_model_path)
-            # Initialize teacher tokenizer (only once)
-            if not hasattr(self, 'teacher_tokenizer_group'):
-                self.teacher_tokenizer_group = {}
-                for teacher_model in self.teacher_model_group:
-                    adapter_key = id(teacher_model)
-                    if adapter_key not in self.teacher_tokenizer_group:
-                        teacher_model_path = self.get_model_path(teacher_model)
-                        self.teacher_tokenizer_group[adapter_key] = AutoTokenizer.from_pretrained(teacher_model_path)
-            # Initialize adapter only once
-            if not hasattr(self, 'gold_adapter_group'):
-                self.gold_adapter_group = {}
-                for teacher_tokenizer in self.teacher_tokenizer_group.values():
-                    adapter_key = id(teacher_tokenizer)
-                    if adapter_key not in self.gold_adapter_group:
-                        self.gold_adapter_group[adapter_key] = GOLDLossAdapter(
-                            config={
-                                'use_uld_loss': True,
-                                'use_extended_uld': True,
-                                'uld_use_hybrid_loss': True,
-                                'uld_crossentropy_weight': 0.0,
-                                'uld_distillation_weight': 1.0,
-                                'uld_student_temperature': 1.0,
-                                'uld_teacher_temperature': 1.0,
-                            },
-                            student_tokenizer=self.student_tokenizer,
-                            teacher_tokenizer=teacher_tokenizer,
-                        )
-        else:
-            self.teacher_model_group = None
+            prepared.eval()
+            if self.args.offload_teacher_model:
+                self.offload_model(self.accelerator.unwrap_model(prepared))
+            return prepared
+
+        if self.teacher_model_group is not None and len(self.teacher_model_group) > 0:
+            # Multi-Teacher Mode (MOPD)
+            prepared_models = []
+            for idx, model_name in enumerate(self.teacher_model_group):
+                prepared_models.append(_prepare_teacher_model(model_name, is_first=(idx == 0)))
+
+            self.teacher_model_group = prepared_models
+            # Set primary teacher for compatibility with existing paths (e.g., liger loss check)
+            self.teacher_model = prepared_models[0]
+            logger.info(f'Initialized {len(prepared_models)} teacher models for MOPD.')
+
+        elif teacher_model is not None:
+            # Single Teacher Mode
+            self.teacher_model = _prepare_teacher_model(teacher_model, is_first=True)
+            logger.info('Initialized single teacher model.')
 
         # Initialize rollout infrastructure for vLLM support
         self.prepare_rollout()
@@ -229,7 +190,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def _build_opsd_teacher_data(self, inputs):
         """Build teacher data for OPSD by replacing the last user message with teacher_prompt.
 
-        Returns None if teacher_prompt is not av ailable in all examples.
+        Returns None if teacher_prompt is not available in all examples.
         """
         if not all('teacher_prompt' in data and data['teacher_prompt'] for data in inputs):
             return None
@@ -359,33 +320,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         new_position_ids = new_attention_mask.cumsum(dim=1) - 1
         new_position_ids[new_position_ids < 0] = 0
         inputs['position_ids'] = new_position_ids
-        if self.use_mopd:
-            # 返回解码后的文本encoded_inputs
-            batch_size = generated_tokens.shape[0]
-            prompt_length = prompt_input_ids.shape[1]
-
-            completion_texts = []
-            pad_token_id = self.processing_class.pad_token_id
-            eos_token_id = self.processing_class.eos_token_id
-            for i in range(batch_size):
-                # Decode completion
-                completion_ids = generated_tokens[i][prompt_length:].tolist()
-                # 截断到第一个 EOS 或 PAD token
-                cleaned_ids = []
-                for token_id in completion_ids:
-                    if token_id == eos_token_id or token_id == pad_token_id:
-                        break
-                    cleaned_ids.append(token_id)
-
-                # 解码清理后的 token IDs
-                completion_text = self.template.safe_decode(cleaned_ids)
-
-                completion_text = completion_text.strip()
-
-                completion_texts.append(completion_text)
-        else:
-            completion_texts = None
-        return generated_tokens, new_attention_mask, new_labels, completion_texts
+        return generated_tokens, new_attention_mask, new_labels
 
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
@@ -532,64 +467,40 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
-        # Separate teacher model provided
-        elif self.use_mopd:
-            num_teacher_models = len(self.teacher_model_group)
-            if num_teacher_models == 0:
-                raise ValueError('teacher_model_group cannot be empty')
-            loss = torch.tensor(0.0, device=model.device)
-            prompt_texts = inputs['prompt_text']
-            completion_texts = inputs['completion_texts']
-            (
-                student_input_ids,
-                student_labels,
-                student_attention_mask,
-                student_prompt_length,
-            ) = self.build_inputs_from_texts(self.student_tokenizer, prompt_texts, completion_texts)
-            # Student model forward pass (WITH gradients for student parameters)
-            outputs_student = model(
-                input_ids=student_input_ids,
-                attention_mask=student_attention_mask,
-            )
+        elif self.teacher_model_group is not None:
+            if self.args.sft_alpha > 0:
+                model_inputs['labels'] = inputs['labels']
+            outputs_student = model(**model_inputs)
+
+            t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
+                k: v
+                for k, v in model_inputs.items() if k != 'labels'
+            }
+
+            # Collect all teacher logits
+            teacher_logits_list = []
+            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
             for teacher_model in self.teacher_model_group:
-                teacher_tokenizer = self.teacher_tokenizer_group[id(teacher_model)]
-                # Add teacher model memory management like in liger branch
-                load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+                with torch.no_grad(), load_context, \
+                        disable_gradient_checkpointing(teacher_model, self.args.gradient_checkpointing_kwargs):
+                    outputs_teacher = teacher_model(**t_fwd)
+                    teacher_logits_list.append(outputs_teacher.logits)
 
-                # Get adapter for current teacher tokenizer
-                adapter_key = id(teacher_tokenizer)
-                gold_adapter = self.gold_adapter_group[adapter_key]
-                with load_context:
-                    with torch.no_grad(), disable_gradient_checkpointing(teacher_model,
-                                                                         self.args.gradient_checkpointing_kwargs):
-                        (
-                            teacher_input_ids,
-                            teacher_labels,
-                            teacher_attention_mask,
-                            teacher_prompt_length,
-                        ) = self.build_inputs_from_texts(teacher_tokenizer, prompt_texts, completion_texts)
+            # Compute average probability distribution from multiple teachers
+            # Convert logits to probabilities, then average
+            teacher_probs_list = [F.softmax(logits / self.temperature, dim=-1) for logits in teacher_logits_list]
+            avg_teacher_probs = torch.stack(teacher_probs_list).mean(dim=0)
+            # Convert back to logits for JSD loss computation
+            avg_teacher_logits = torch.log(avg_teacher_probs + 1e-8) * self.temperature
 
-                        # Teacher model forward pass (NO gradients)
-                        outputs_teacher = teacher_model(
-                            input_ids=teacher_input_ids,
-                            attention_mask=teacher_attention_mask,
-                        )
-                # Ensure teacher_logits has gradient info but teacher model params don't participate
-                teacher_logits = outputs_teacher.logits.detach().requires_grad_(True)
+            # Create TeacherOutput with averaged logits
+            opsd_labels = opsd_teacher_inputs.get('labels') if opsd_teacher_inputs is not None else None
+            teacher_out = TeacherOutput(full_logits=avg_teacher_logits, opsd_teacher_labels=opsd_labels)
+            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
 
-                # Release intermediate tensors to free memory
-                del teacher_attention_mask
+            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
+                loss = loss + self.args.sft_alpha * outputs_student.loss
 
-                # trl/experimental/gold/gold_trainer.py
-                loss_total = gold_adapter(
-                    student_logits=outputs_student.logits,
-                    teacher_logits=teacher_logits,
-                    student_labels=student_labels,
-                    teacher_labels=teacher_labels,
-                    student_input_ids=student_input_ids,
-                    teacher_input_ids=teacher_input_ids,
-                )
-                loss += loss_total / len(self.teacher_model_group)
         # Separate teacher model provided
         else:
             assert self.teacher_model is not None
@@ -614,112 +525,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
 
-            # Return loss
-            if return_outputs:
-                return (loss, outputs_student)
-            else:
-                return loss
-
-    def build_inputs_from_texts(
-            self,
-            tokenizer: PreTrainedTokenizerBase,
-            prompt_texts: list[str],
-            completion_texts: list[str],
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, int]:
-        """Tokenize teacher prompts/completions and produce tensors ready for GOLD loss."""
-
-        pad_token_id = tokenizer.pad_token_id
-        eos_token_id = tokenizer.eos_token_id
-
-        prompt_token_ids = tokenizer(prompt_texts, add_special_tokens=True)['input_ids']
-        completion_token_ids = tokenizer(completion_texts, add_special_tokens=False)['input_ids']
-
-        sequences: list[torch.Tensor] = []
-        attention_masks: list[torch.Tensor] = []
-        labels_list: list[torch.Tensor] = []
-        prompt_lengths: list[int] = []
-        # Get device using reliable detection method
-        device = None
-        try:
-            # First try to get device from model parameters
-            if hasattr(self, 'model') and self.model is not None:
-                device = next(self.model.parameters()).device
-            elif hasattr(self, 'teacher_model') and self.teacher_model is not None:
-                device = next(self.teacher_model.parameters()).device
-        except (AttributeError, StopIteration):
-            pass
-
-        # Fallback to default device detection
-        if device is None:
-            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        for prompt_ids, completion_ids in zip(prompt_token_ids, completion_token_ids, strict=True):
-            # Remove trailing EOS from prompt so completions can extend cleanly
-            if eos_token_id is not None and prompt_ids and prompt_ids[-1] == eos_token_id:
-                prompt_ids = prompt_ids[:-1]
-
-            prompt_lengths.append(len(prompt_ids))
-            sequence = list(prompt_ids)
-            sequence.extend(completion_ids)
-            if eos_token_id is not None:
-                sequence.append(eos_token_id)
-
-            seq_tensor = torch.tensor(sequence, dtype=torch.long, device=device)
-            sequences.append(seq_tensor)
-            attention_masks.append(torch.ones_like(seq_tensor))
-            labels = seq_tensor.clone()
-            labels[:len(prompt_ids)] = -100
-            if pad_token_id is not None:
-                labels[labels == pad_token_id] = -100
-            labels_list.append(labels)
-
-        teacher_input_ids = pad(
-            sequences,
-            padding_side='right',
-            padding_value=pad_token_id if pad_token_id is not None else 0,
-        )
-        teacher_attention_mask = pad(attention_masks, padding_side='right', padding_value=0).bool()
-        teacher_labels = pad(labels_list, padding_side='right', padding_value=-100)
-
-        if eos_token_id is not None:
-            for row in range(teacher_attention_mask.size(0)):
-                valid = (
-                    teacher_input_ids[row] != pad_token_id
-                    if pad_token_id is not None else teacher_attention_mask[row].bool())
-                if valid.any():
-                    last_idx = valid.nonzero(as_tuple=True)[0][-1]
-                    teacher_attention_mask[row, last_idx + 1:] = False
-
-        teacher_prompt_length = max(prompt_lengths) if prompt_lengths else 0
-
-        return teacher_input_ids, teacher_labels, teacher_attention_mask, teacher_prompt_length
-
-    def get_model_path(self, model):
-        model_path = getattr(model, 'name_or_path', None)
-        if model_path is None:
-            # Try to get path from config
-            if hasattr(model, 'config') and hasattr(model.config, '_name_or_path'):
-                model_path = model.config._name_or_path
-        if model_path is None:
-            # If still None, try to get from model's base model
-            unwrapped_student = self.accelerator.unwrap_model(model)
-            if hasattr(unwrapped_student, 'base_model_prefix'):
-                base_model = getattr(unwrapped_student, unwrapped_student.base_model_prefix, unwrapped_student)
-                if hasattr(base_model, 'config') and hasattr(base_model.config, '_name_or_path'):
-                    model_path = base_model.config._name_or_path
-        # Additional fallback: try to get from model's config name_or_path attribute
-        if model_path is None:
-            if hasattr(model, 'config') and hasattr(model.config, 'name_or_path'):
-                model_path = model.config.name_or_path
-        # Additional fallback: try to get from unwrapped model's name_or_path
-        if model_path is None:
-            unwrapped_student = self.accelerator.unwrap_model(model)
-            model_path = getattr(unwrapped_student, 'name_or_path', None)
-        # Additional fallback: try to get from unwrapped model's config name_or_path
-        if model_path is None:
-            unwrapped_student = self.accelerator.unwrap_model(model)
-            if hasattr(unwrapped_student, 'config') and hasattr(unwrapped_student.config, 'name_or_path'):
-                model_path = unwrapped_student.config.name_or_path
-        return model_path
+        # Return loss
+        if return_outputs:
+            return (loss, outputs_student)
+        else:
+            return loss
 
     def _prepare_batch_inputs(self, inputs: list, encode_prompt_only: bool = False) -> Dict[str, torch.Tensor]:
         """Prepare batch inputs for training.
