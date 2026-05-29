@@ -37,20 +37,24 @@ infer_requests = [
             'assistant',
             'content':
             "What a delightful puzzle! Let's dive into the magical world of logic and figure out "
-            "who's correct and who's not. So, we have three friends, 甲 (Ka), 乙 (Otsu), and 丙 (Chi), working on a tricky "
+            "who's correct and who's not. So, we have three friends, 甲 (Ka), 乙 (Otsu), and 丙 (Chi), "
+            'working on a tricky '
             "math problem together. They each share their solutions, and then they start discussing who's correct. "
             "Here's what they say: * 甲 (Ka) says, \"I did it wrong.\" * 乙 (Otsu) says, \"Ka did it right.\" "
             "* 丙 (Chi) says, \"I did it wrong.\" Now, 丁 (Tei), who's been observing from the side, chimes in and says, "
             "\"Among the three of you, one person got it right, and one person said it correctly.\" "
             "Let's break it down step by step: "
             '1. If 甲 (Ka) did it wrong, then 乙 (Otsu) must be telling the truth, because 乙 says 甲 did it right. '
-            "2. But wait, if 乙 is telling the truth, that means 甲 actually did it right! This contradicts 甲's statement, "
+            '2. But wait, if 乙 is telling the truth, that means 甲 actually did it right! '
+            "This contradicts 甲's statement, "
             'so 甲 must be lying. '
             '3. Now, 丙 (Chi) says they did it wrong. If 丙 did it wrong, then 丙 is telling the truth. '
             'But if 丙 did it right, then 丙 would be lying. '
-            '4. Since 丁 says one person got it right and one person said it correctly, it means 丙 must be the one who did '
+            '4. Since 丁 says one person got it right and one person said it correctly, '
+            'it means 丙 must be the one who did '
             "it right. If 丙 did it right, then 丙's statement \"I did it wrong\" is actually a lie. "
-            '5. So, we have 甲 lying about doing it wrong, 乙 telling the truth about 甲, and 丙 lying about doing it wrong. '
+            '5. So, we have 甲 lying about doing it wrong, 乙 telling the truth about 甲, '
+            'and 丙 lying about doing it wrong. '
             'The magical conclusion is that 丙 (Chi) is the one who actually got the math problem correct!'
         },
     ]),
