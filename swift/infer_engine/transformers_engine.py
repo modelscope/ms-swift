@@ -31,7 +31,7 @@ from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, Cha
 from .utils import AdapterRequest, InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
 
 _TRANSFORMERS_GE_5_2 = version.parse(transformers.__version__) >= version.parse('5.2.0')
-_kernels_patched = True
+_kernels_patched = False
 
 
 class _GenerationConfig(GenerationConfig):
