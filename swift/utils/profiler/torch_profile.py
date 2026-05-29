@@ -100,7 +100,7 @@ class Profiler(DistProfiler):
     def stop(self):
         if not self.discrete and Profiler._define_count == 1:
             self.step()
-            print(f"[Profiler] stopped for rank {self.rank}")
+            logger.info(f"[Profiler] stopped for rank {self.rank}")
             self.prof.stop()
             Profiler._define_count -= 1
 
