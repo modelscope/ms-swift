@@ -181,7 +181,7 @@ def patch_kernels(use_hf: Optional[bool] = None):
         return
     try:
         from kernels import get_local_kernel
-        from transformers.integrations import hub_kernels as _hk
+        from transformers.integrations import hub_kernels
     except ImportError:
         yield
         return
@@ -192,7 +192,7 @@ def patch_kernels(use_hf: Optional[bool] = None):
         yield
         return
 
-    origin_get_kernel = _hk.get_kernel
+    origin_get_kernel = hub_kernels.get_kernel
 
     def patched_get_kernel(repo_id, revision=None, version=None, **kwargs):
         try:
@@ -205,8 +205,8 @@ def patch_kernels(use_hf: Optional[bool] = None):
             logger.warning(f'Failed to load kernel `{repo_id}` from ModelScope ({e}), fallback to HuggingFace.')
             return origin_get_kernel(repo_id, revision=revision, version=version, **kwargs)
 
-    _hk.get_kernel = patched_get_kernel
+    hub_kernels.get_kernel = patched_get_kernel
     try:
         yield
     finally:
-        _hk.get_kernel = origin_get_kernel
+        hub_kernels.get_kernel = origin_get_kernel
