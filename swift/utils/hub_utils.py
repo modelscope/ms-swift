@@ -1,11 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import importlib.util
 import os
 import requests
+from contextlib import contextmanager
+from modelscope import snapshot_download
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.hub.utils.utils import get_cache_dir
+from pathlib import Path
 from tqdm import tqdm
 from typing import List, Optional
 
+from .env import use_hf_hub
 from .logger import get_logger
 from .torch_utils import is_local_master, safe_ddp_context
 from .utils import subprocess_run
@@ -155,3 +160,53 @@ def download_ms_file(url: str, local_path: str, cookies=None) -> None:
     with open(local_path, 'wb') as f:
         for data in tqdm(resp.iter_lines()):
             f.write(data)
+
+
+@contextmanager
+def patch_kernels(use_hf: Optional[bool] = None):
+    """Patch ``transformers.integrations.hub_kernels.get_kernel`` to load kernels
+    via ModelScope + ``kernels.get_local_kernel`` instead of HuggingFace Hub.
+
+    No-op when:
+        - the ``kernels`` package is not installed;
+        - ``transformers.integrations.hub_kernels`` is unavailable;
+        - ``use_hf`` resolves to True (controlled by env ``USE_HF`` when ``use_hf is None``).
+
+    Args:
+        use_hf: If True, fall back to the original HuggingFace-based ``get_kernel``.
+            If None, follow the global ``USE_HF`` env (default False, i.e. ModelScope).
+    """
+    if importlib.util.find_spec('kernels') is None:
+        yield
+        return
+    try:
+        from kernels import get_local_kernel
+        from transformers.integrations import hub_kernels as _hk
+    except ImportError:
+        yield
+        return
+
+    if use_hf is None:
+        use_hf = use_hf_hub()
+    if use_hf:
+        yield
+        return
+
+    origin_get_kernel = _hk.get_kernel
+
+    def patched_get_kernel(repo_id, revision=None, version=None, **kwargs):
+        try:
+            model_dir = snapshot_download(repo_id, revision=revision)
+            package_name = repo_id.split('/')[-1].replace('-', '_')
+            kernel = get_local_kernel(Path(model_dir), package_name)
+            logger.info(f'Loaded kernel `{repo_id}` from ModelScope: {model_dir}')
+            return kernel
+        except Exception as e:
+            logger.warning(f'Failed to load kernel `{repo_id}` from ModelScope ({e}), fallback to HuggingFace.')
+            return origin_get_kernel(repo_id, revision=revision, version=version, **kwargs)
+
+    _hk.get_kernel = patched_get_kernel
+    try:
+        yield
+    finally:
+        _hk.get_kernel = origin_get_kernel
