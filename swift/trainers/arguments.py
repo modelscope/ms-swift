@@ -219,7 +219,7 @@ class TrainArgumentsMixin:
     profiler_ranks: List[int] = field(default_factory=list)
     profiler_contents: List[str] = field(default_factory=list)  # e.g., "cpu", "cuda", "stack", "memory"."shape"
     profiler_discrete: bool = False
-    profiler_tool: Optional[str] = None
+    profiler_tool: Optional[str] = 'torch'
     profiler_steps: Optional[List[int]] = field(default_factory=list)  # Steps to profile
 
     @staticmethod
