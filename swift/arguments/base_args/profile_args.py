@@ -22,10 +22,18 @@ class ProfilerArguments:
     def __post_init__(self):
         assert not self.profiler_discrete, \
             'Profiler discrete mode is not supported yet, please set profiler_discrete to false'
-        if self.enable_profiler and 'profiler' not in self.callbacks:
-            self.callbacks.append('profiler')
-        if 'profiler' in self.callbacks and not self.enable_profiler:
-            self.enable_profiler = True
+
+        if hasattr(self, 'callbacks'):
+            if self.enable_profiler and 'profiler' not in self.callbacks:
+                self.callbacks.append('profiler')
+            if 'profiler' in self.callbacks and not self.enable_profiler:
+                self.enable_profiler = True
+            if self.enable_profiler:
+                assert 'profiler' in self.callbacks, \
+                    'Profiler callback must be included in callbacks when profiler is enabled.'
+            if 'profiler' in self.callbacks:
+                assert self.enable_profiler, \
+                    'Profiler callback is included in callbacks but profiler is not enabled.'
         if self.enable_profiler:
             assert self.profiler_save_path is not None, \
                 'Profiler save path must be specified when profiler is enabled.'
@@ -35,12 +43,6 @@ class ProfilerArguments:
                 'Profiler steps must be specified when profiler is enabled.'
             assert self.profiler_ranks != [] or self.profiler_all_ranks, \
                 'Either profiler_ranks must be specified or profiler_all_ranks must be set to True.'
-        if self.enable_profiler:
-            assert 'profiler' in self.callbacks, \
-                'Profiler callback must be included in callbacks when profiler is enabled.'
-        if 'profiler' in self.callbacks:
-            assert self.enable_profiler, \
-                'Profiler callback is included in callbacks but profiler is not enabled.'
 
     def get_profiler_kwargs(self):
         return {
