@@ -20,7 +20,7 @@ class DistProfiler:
                 rank = torch.distributed.get_rank()
             else:
                 rank = int(os.environ.get('RANK', 0))
-                print(f"Warning: torch.distributed is not initialized, using RANK env var for rank: {rank}")
+                logger.warning(f"Warning: torch.distributed is not initialized, using RANK env var for rank: {rank}")
         if global_config is not None:
             config = ProfilerConfig(
                 tool=global_config.profiler_tool,
