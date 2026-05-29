@@ -71,7 +71,7 @@ class Profiler(DistProfiler):
         self.rank = rank
         self.config = config
         self.tool_config = tool_config
-        self.contents = self.tool_config.contents
+        self.contents = self.tool_config.contents if self.tool_config else []
         self.save_path = self.config.save_path
         # Align with other profilers: read discrete mode, default to False for torch profiler
         self.discrete = getattr(self.tool_config, 'discrete', False)
