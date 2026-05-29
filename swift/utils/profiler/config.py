@@ -100,8 +100,8 @@ class ProfilerConfig(BaseConfig):
             enable=self.enable or other.enable,
             all_ranks=self.all_ranks or other.all_ranks,
             ranks=list(set(self.ranks or []) | set(other.ranks or [])),
-            save_path=self.save_path,
-            tool_config=self.tool_config,
+            save_path=self.save_path or other.save_path,
+            tool_config=self.tool_config or other.tool_config,
             global_tool_config=self.global_tool_config or other.global_tool_config,
         )
 
