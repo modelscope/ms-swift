@@ -1,12 +1,12 @@
 # 22GB
 # qwen3: https://github.com/modelscope/ms-swift/blob/main/examples/train/think_model/qwen3_demo1.sh
+export DEVICE_TFLOPS=280
 CUDA_VISIBLE_DEVICES=0 \
 swift sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model /metax0402/metax0402/m01119/models/Qwen/Qwen2.5-7B \
     --tuner_type lora \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
-              'AI-ModelScope/alpaca-gpt4-data-en#500' \
-              'swift/self-cognition#500' \
+    --dataset '/metax0402/metax0402/m01119/datasets/AI-ModelScope/alpaca-gpt4-data-zh#500' \
+              '/metax0402/metax0402/m01119/datasets/AI-ModelScope/alpaca-gpt4-data-en#500' \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
@@ -27,4 +27,10 @@ swift sft \
     --dataset_num_proc 4 \
     --dataloader_num_workers 4 \
     --model_author swift \
-    --model_name swift-robot
+    --model_name swift-robot \
+    --model_name swift-robot \
+    --enable_profiler true \
+    --profiler_save_path ./profiler_output \
+    --profiler_ranks 0 1 \
+    --profiler_contents "cpu" "cuda" "stack" \
+    --profiler_steps 1  \

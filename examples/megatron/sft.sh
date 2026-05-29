@@ -1,16 +1,14 @@
 # 2 * 80GiB
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-NPROC_PER_NODE=2 \
-CUDA_VISIBLE_DEVICES=0,1 \
+NPROC_PER_NODE=4 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
-    --model Qwen/Qwen2.5-7B-Instruct \
+    --model /metax0402/metax0402/m01119/models/Qwen/Qwen2.5-7B \
     --save_safetensors true \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
-              'AI-ModelScope/alpaca-gpt4-data-en#500' \
-              'swift/self-cognition#500' \
-    --tensor_model_parallel_size 2 \
+    --dataset '/metax0402/metax0402/m01119/datasets/AI-ModelScope/alpaca-gpt4-data-zh#1500' \
+    --tensor_model_parallel_size 4 \
     --sequence_parallel true \
-    --micro_batch_size 16 \
+    --micro_batch_size 1 \
     --global_batch_size 16 \
     --recompute_granularity full \
     --recompute_method uniform \
@@ -30,4 +28,9 @@ megatron sft \
     --no_save_rng true \
     --dataset_num_proc 4 \
     --model_author swift \
-    --model_name swift-robot
+    --model_name swift-robot \
+    --enable_profiler true \
+    --profiler_save_path ./profiler_output \
+    --profiler_ranks 0 1\
+    --profiler_contents "cpu" "cuda" "stack" \
+    --profiler_steps 1  \
