@@ -89,7 +89,7 @@ class Profiler(DistProfiler):
                 save_file_prefix=self.save_file_prefix,
                 rank=self.rank,
             )
-            print(f"[Profiler] started for rank {self.rank}")
+            logger.info(f"[Profiler] started for rank {self.rank}")
             self.prof.start()
             Profiler._define_count += 1
 
