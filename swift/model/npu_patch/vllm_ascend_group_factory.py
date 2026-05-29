@@ -1,10 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""vLLM-Ascend group factory for colocated Megatron GRPO on NPU.
+"""NPU-only vLLM-Ascend group factory for colocated Megatron GRPO.
 
-This module builds vLLM group specs, validates that every rank sees the same
-plan, then either reuses a registry-approved Megatron HCCL group or precreates a
-new vLLM HCCL/Gloo group.  Runtime patches should only look up the cache built
-here; they should not call ``new_group`` themselves.
+The factory runs after Megatron distributed initialization and before vLLM
+LLMEngine initialization.  It centralizes the process-group lifecycle that used
+to be spread across vLLM ``GroupCoordinator`` constructors:
+
+1. build the vLLM group specs handled by SWIFT;
+2. validate that all ranks see the same spec list and execution plan;
+3. reuse matching Megatron HCCL groups when every member rank agrees;
+4. otherwise precreate HCCL/Gloo groups in one global order;
+5. warm up and cache the groups for runtime cache-only lookup.
+
+It is intentionally not a complete vLLM group factory.  TP/DCP message-queue
+groups remain on the upstream vLLM path, and SWIFT rollout object collectives
+use the dedicated TP Gloo helper in ``vllm_ascend_group_control``.
 """
 from __future__ import annotations
 
@@ -44,7 +53,11 @@ class _VLLMGroupSpec:
 
 @dataclass(frozen=True)
 class _VLLMGroupExecution:
-    """Concrete factory action for one desired vLLM group spec."""
+    """Concrete factory action for one desired vLLM group spec.
+
+    ``action`` is either ``reuse`` for an exact-rank-order Megatron HCCL group
+    or ``precreate`` for a new group created by this factory.
+    """
 
     spec: _VLLMGroupSpec
     action: str
@@ -131,7 +144,12 @@ def _serialize_execution_plan(executions: list[_VLLMGroupExecution]):
 
 
 def _sync_default_world_on_npu() -> None:
-    """Synchronize the default HCCL world using a tiny NPU all-reduce."""
+    """Synchronize the default HCCL world around group creation/warmup.
+
+    Non-member ranks still participate in every ``new_group`` call but skip
+    subgroup warmup.  World syncs keep ranks from entering the next group
+    creation while another subgroup is still warming up.
+    """
     import torch.distributed as dist
 
     marker = torch.ones((), dtype=torch.int32, device=torch.device('npu', torch.npu.current_device()))
@@ -306,7 +324,12 @@ def _build_vllm_cpu_group_specs(args) -> list[_VLLMGroupSpec]:
 
 
 def _build_vllm_group_execution_plan(specs: list[_VLLMGroupSpec]) -> list[_VLLMGroupExecution]:
-    """Decide whether each desired group reuses Megatron or is precreated."""
+    """Decide whether each desired group reuses Megatron or is precreated.
+
+    The reuse decision is globally synchronized inside
+    ``_select_megatron_reuse_group``.  That keeps every rank on the same
+    execution path for each spec.
+    """
     executions: list[_VLLMGroupExecution] = []
     for spec in specs:
         reuse_selected, reuse_record = _select_megatron_reuse_group(
@@ -338,6 +361,10 @@ def prepare_vllm_ascend_device_groups_before_megatron(args) -> None:
     cache-only branch. Device HCCL groups and matching Gloo CPU groups are
     prepared together. TP/DCP message-queue groups still use upstream
     CPU/control behavior or SWIFT's dedicated rollout control helper.
+
+    This function must run while Megatron communication is quiescent.  It may
+    reuse Megatron HCCL groups, so rollout initialization and training
+    collectives must not overlap on the same communicator.
     """
     if not getattr(args, 'use_vllm', False) or getattr(args, 'vllm_mode', None) != 'colocate':
         return

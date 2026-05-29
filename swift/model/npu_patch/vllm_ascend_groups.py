@@ -1,5 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Public facade for vLLM-Ascend group helpers used by SWIFT NPU patches."""
+"""Public facade for vLLM-Ascend process-group helpers.
+
+The group implementation is split into smaller files:
+
+* registry: collect reusable Megatron HCCL group candidates;
+* factory: precreate/cache vLLM NPU-only groups before LLMEngine init;
+* runtime: make vLLM-Ascend GroupCoordinator use the cache;
+* control: create TP Gloo groups for SWIFT rollout object collectives.
+
+This facade keeps import sites compact without hiding the ownership boundary.
+"""
 from __future__ import annotations
 
 from swift.model.npu_patch.vllm_ascend_group_control import get_or_create_vllm_tp_gloo_group

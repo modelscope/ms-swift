@@ -1,10 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Runtime vLLM group patches for NPU external-launcher colocate mode.
+"""Runtime cache lookup for vLLM-Ascend NPU-only groups.
 
 The factory module prepares HCCL device groups and matching Gloo CPU groups
-before vLLM initialization.  This module patches vLLM-Ascend so
-``GroupCoordinator`` only performs cache lookup instead of creating process
-groups dynamically inside the Megatron process tree.
+before vLLM initialization.  This module patches vLLM-Ascend
+``GroupCoordinatorPatch.__init__`` so NPU-only groups only read from that cache
+instead of calling ``dist.new_group`` inside the Megatron process tree.
+
+TP/DCP message-queue groups intentionally stay on the upstream path.  They use
+vLLM's broadcaster semantics and are not part of this cache-only branch.
 """
 from __future__ import annotations
 
@@ -20,7 +23,7 @@ logger = get_logger()
 
 
 def patch_vllm_ascend_external_launcher_groups() -> None:
-    """Create NPU-only vLLM groups when Megatron already owns torch.distributed.
+    """Patch GroupCoordinator for NPU external-launcher colocate mode.
 
     In colocated Megatron GRPO, vLLM runs in ``external_launcher`` mode and
     reuses Megatron's already-initialized default HCCL world.  vLLM-Ascend 0.18
@@ -32,7 +35,8 @@ def patch_vllm_ascend_external_launcher_groups() -> None:
     queue, so their upstream Gloo group is left intact.  For the other NPU-only
     groups, the group factory precreates/caches both HCCL device groups and
     matching Gloo CPU groups before vLLM initialization.  GroupCoordinator then
-    only looks up cached groups and fails loudly on cache miss.
+    reconstructs the small amount of vLLM state from cached groups and fails
+    loudly on cache miss.
     """
     try:
         import torch.distributed as dist

@@ -1,5 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Gloo control groups used by SWIFT rollout object collectives on NPU."""
+"""Gloo control groups for SWIFT rollout-side object collectives.
+
+This is separate from the vLLM ``GroupCoordinator`` factory.  vLLM tensor
+payloads continue to use HCCL device groups, while SWIFT-side Python object
+metadata, such as ``all_gather_object`` payload sizes, uses matching Gloo
+groups to avoid HCCL/CPU-object metadata corruption on NPU.
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -14,7 +20,7 @@ _SWIFT_VLLM_TP_GLOO_GROUPS: dict[tuple[tuple[int, ...], ...], Any] = {}
 
 
 def get_or_create_vllm_tp_gloo_group(tensor_parallel_size: int):
-    """Create a Gloo control-plane group matching vLLM TP ranks.
+    """Return the Gloo control group for the current vLLM TP shard.
 
     vLLM-Ascend 0.18 external-launcher TP groups are NPU/HCCL device groups
     in this colocated Megatron path. They are correct for tensor communication,
@@ -23,8 +29,10 @@ def get_or_create_vllm_tp_gloo_group(tensor_parallel_size: int):
     be corrupted, which was observed as ``all_gather_object`` trying to resize a
     tensor to more than 1EB.
 
-    Keep the device group unchanged for vLLM tensor work and create a matching
-    Gloo group only for SWIFT rollout-side object collectives.
+    The function creates every TP subgroup in the same order on every rank, but
+    only caches the current rank's group.  Keep the device group unchanged for
+    vLLM tensor work and use this Gloo group only for rollout object/control
+    collectives.
     """
     import torch.distributed as dist
     from transformers.utils import is_torch_npu_available

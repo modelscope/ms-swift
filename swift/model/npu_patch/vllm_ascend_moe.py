@@ -1,9 +1,16 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""vLLM-Ascend MoE compatibility patches for SWIFT NPU GRPO.
+"""vLLM-Ascend MoE patches used by SWIFT NPU rollout.
 
-The runtime patch here keeps non-quantized MoE routing on the stable torch-npu
-operator.  The weight-loader patch is used by GRPO weight sync when SWIFT sends
-updated training weights into a live vLLM-Ascend MoE model.
+There are two independent responsibilities in this file:
+
+* runtime routing: avoid the unstable custom non-quantized MoE routing op on
+  stacks where vLLM-Ascend still dispatches that branch to
+  ``aclnnMoeInitRoutingCustom``;
+* weight sync: adapt 2D HF/Megatron MoE expert weights to the already-processed
+  3D vLLM-Ascend expert parameter layout during GRPO colocate updates.
+
+Both patches are guarded by vLLM-Ascend implementation checks and only touch the
+specific MoE paths they need.
 """
 from __future__ import annotations
 
@@ -114,12 +121,12 @@ def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
 
 
 def patch_vllm_ascend_moe_runtime() -> None:
-    """Apply MoE runtime patches that are independent of weight sync."""
+    """Apply MoE runtime patches that are independent of GRPO weight sync."""
     _patch_vllm_ascend_device_op_nonquant_routing()
 
 
 def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> None:
-    """Patch one vLLM-Ascend processed MoE expert parameter loader.
+    """Patch one processed vLLM-Ascend MoE expert parameter loader.
 
     vLLM-Ascend transposes unquantized MoE weights after the initial model load
     so grouped matmul can consume them efficiently.  During GRPO colocate weight
@@ -133,9 +140,10 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
         w13_weight: [local_experts, hidden, 2 * intermediate_per_tp]
         w2_weight : [local_experts, intermediate_per_tp, hidden]
 
-    This wrapper keeps the normal vLLM loader for ordinary cases, and only
-    handles the processed 3D vLLM-Ascend layout when a 2D runtime-sync tensor is
-    loaded into w13_weight or w2_weight.
+    This wrapper keeps the normal vLLM loader for initial checkpoint load,
+    quantized experts, and non-Ascend backends.  It only handles the processed
+    3D vLLM-Ascend layout when a 2D runtime-sync tensor is loaded into
+    ``w13_weight`` or ``w2_weight``.
     """
     if 'w13_weight' not in name and 'w2_weight' not in name:
         return

@@ -1,9 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Megatron HCCL group registry for vLLM-Ascend colocated rollout.
+"""Megatron HCCL group candidates for vLLM-Ascend colocated rollout.
 
-This module only answers one question: can a desired vLLM device group safely
-reuse an existing Megatron HCCL ProcessGroup with the exact same rank order?  If
-not, the group factory will precreate a dedicated vLLM group.
+This module does not create groups.  It records Megatron ProcessGroups that are
+already alive after Megatron initialization and lets the vLLM group factory ask:
+
+    can this desired vLLM HCCL group reuse an existing Megatron group with the
+    exact same rank order and consistent provenance across member ranks?
+
+If the answer is no, the factory precreates a dedicated vLLM group.  Registering
+a broad set of Megatron candidates is intentional for a training framework: the
+exact-rank-order lookup and all-member consensus check are the safety boundary.
 """
 from __future__ import annotations
 
@@ -75,7 +81,12 @@ def _get_process_group_ranks(group) -> tuple[int, ...]:
 
 
 def _register_megatron_hccl_group(axis: str, group, source: str) -> None:
-    """Register one inspectable Megatron HCCL group as a reuse candidate."""
+    """Register one inspectable Megatron HCCL group as a reuse candidate.
+
+    ``axis`` is diagnostic provenance, not a hard reuse key.  Reuse is keyed by
+    backend/kind/exact ranks and later prefers axes that match the requested
+    vLLM group name.
+    """
     if group is None:
         return
     import torch.distributed as dist
@@ -109,7 +120,14 @@ def _is_uninitialized_group_error(error: Exception) -> bool:
 
 
 def _call_megatron_group_getter(axis: str, getter_name: str, getter, **kwargs):
-    """Call Megatron group getters while surfacing real registration failures."""
+    """Call one Megatron group getter without hiding real API drift.
+
+    Optional groups may legitimately be uninitialized for a given topology; in
+    that case this returns ``None``.  Signature mismatches are logged and skipped
+    because Megatron/MindSpeed versions differ.  Other runtime failures are
+    raised so the registry does not silently mask incompatible distributed
+    state.
+    """
     try:
         return getter(check_initialized=False, **kwargs)
     except TypeError as first_error:
@@ -142,12 +160,12 @@ def _register_megatron_group_from_getter(parallel_state, axis: str, getter_name:
 
 
 def register_megatron_hccl_groups_for_vllm(args) -> None:
-    """Register Megatron HCCL groups that vLLM may safely reuse.
+    """Collect current-rank Megatron HCCL groups that vLLM may reuse.
 
-    The registry is exact-rank-order based.  It registers the current rank's
-    Megatron groups that can be inspected safely.  Reuse is still decided later
-    per vLLM group spec and only succeeds when all member ranks have an exact
-    rank-order match; otherwise the vLLM group factory precreates a fresh group.
+    This is a candidate registry, not a decision point.  The later factory step
+    decides per vLLM group spec whether reuse is safe.  Reuse succeeds only when
+    all member ranks have a matching exact-rank-order record with consistent
+    provenance; otherwise all ranks use the precreate path.
     """
     if not getattr(args, 'use_vllm', False) or getattr(args, 'vllm_mode', None) != 'colocate':
         return
@@ -262,6 +280,9 @@ def _select_megatron_reuse_group(group_name: str,
     member cannot reuse, all ranks fall back to the normal vLLM group creation
     path for this spec.  This prevents rank-local registry differences from
     splitting execution between reuse and ``new_group``.
+
+    The unused ``phase`` argument is kept for call-site readability and future
+    diagnostics; reuse semantics are independent of the caller phase.
     """
     if _normalize_backend_name(backend) != 'hccl':
         return False, None

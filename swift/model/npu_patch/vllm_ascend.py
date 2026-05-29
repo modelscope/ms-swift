@@ -1,10 +1,15 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Top-level vLLM-Ascend runtime patch entrypoints for SWIFT NPU support.
+"""Facade for SWIFT's vLLM-Ascend NPU compatibility patches.
 
-This module is intentionally a facade.  The actual compatibility code lives in
-smaller modules grouped by responsibility: process-group lifecycle, memory
-compatibility, and MoE execution/weight sync.  Existing callers keep importing from this
-file, while maintainers can review each patch family independently.
+Keep this file thin.  The real patches are split by responsibility:
+
+* ``vllm_ascend_moe``: MoE routing and GRPO weight-sync layout handling.
+* ``vllm_ascend_memory``: small torch-npu/vLLM-Ascend memory API compatibility.
+* ``vllm_ascend_groups``: colocated Megatron + vLLM process-group lifecycle.
+
+Callers should import from this module so the public entrypoints stay stable,
+while reviewers can audit each patch family in its own file.  The caller is
+still responsible for guarding these entrypoints with an NPU/device check.
 """
 from __future__ import annotations
 
@@ -40,12 +45,15 @@ def _patch_flash_attn_optional_import() -> None:
 
 
 def patch_vllm_ascend_runtime(*, colocate: bool = False) -> None:
-    """Apply SWIFT runtime compatibility patches for vLLM-Ascend on NPU.
+    """Apply vLLM-Ascend patches needed by SWIFT NPU rollout.
 
-    The caller is responsible for guarding this function by device type.  This
-    module intentionally imports vLLM/vLLM-Ascend modules lazily so CUDA/GPU
-    paths do not enter Ascend-only code.  Colocated training process-group
-    patches are applied only when the caller marks the runtime as colocated.
+    ``colocate=False`` covers patches that are also safe for standalone
+    vLLM-Ascend server/native inference, such as optional import cleanup, MoE
+    routing, and ``mem_get_info`` binding compatibility.
+
+    ``colocate=True`` additionally patches process-group creation for Megatron
+    GRPO colocate mode, where vLLM runs inside an already-initialized Megatron
+    distributed process tree.
     """
     _patch_flash_attn_optional_import()
     patch_vllm_ascend_moe_runtime()
