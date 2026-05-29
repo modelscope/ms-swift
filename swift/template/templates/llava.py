@@ -171,13 +171,15 @@ register_template(ChatmlTemplateMeta(
     template_cls=LLava1_6YiHfTemplate,
 ))
 
-register_template(Llama3TemplateMeta(
-    MLLMTemplateType.llama3_llava_next_hf,
-    template_cls=Llava1_6HfTemplate,
-    agent_template=None,
-))
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.llama3_llava_next_hf,
+        template_cls=Llava1_6HfTemplate,
+        agent_template=None,
+    ))
 
-register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template_cls=Llava1_6HfTemplate, agent_template=None))
+register_template(
+    QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template_cls=Llava1_6HfTemplate, agent_template=None))
 
 
 class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
@@ -257,11 +259,12 @@ class LLavaLlama3HfTemplate(Template):
         return encoded
 
 
-register_template(Llama3TemplateMeta(
-    MLLMTemplateType.llava_llama3_hf,
-    template_cls=LLavaLlama3HfTemplate,
-    agent_template=None,
-))
+register_template(
+    Llama3TemplateMeta(
+        MLLMTemplateType.llava_llama3_hf,
+        template_cls=LLavaLlama3HfTemplate,
+        agent_template=None,
+    ))
 
 
 class LLavaTemplate(Template):
@@ -409,4 +412,5 @@ class LLavaOneVision1_5Template(Template):
         return {'inputs_embeds': inputs_embeds}
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.llava_onevision1_5, template_cls=LLavaOneVision1_5Template, agent_template=None))
+register_template(
+    QwenTemplateMeta(MLLMTemplateType.llava_onevision1_5, template_cls=LLavaOneVision1_5Template, agent_template=None))

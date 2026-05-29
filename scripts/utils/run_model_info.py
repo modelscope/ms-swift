@@ -100,7 +100,8 @@ def get_model_info_table():
                         mg_count_mllm += 1
                     else:
                         mg_count_llm += 1
-                r = f'|{ms_model_id}|{model_type}|{template}|{agent_template}|{requires}|{support_megatron}|{tags}|{hf_model_id}|\n'
+                r = (f'|{ms_model_id}|{model_type}|{template}|{agent_template}|{requires}|'
+                     f'{support_megatron}|{tags}|{hf_model_id}|\n')
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:
