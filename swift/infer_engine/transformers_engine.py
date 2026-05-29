@@ -8,7 +8,6 @@ import time
 import torch
 import torch.nn.functional as F
 import transformers
-from contextlib import nullcontext
 from copy import deepcopy
 from packaging import version
 from PIL import Image
@@ -89,6 +88,10 @@ class TransformersEngine(InferEngine):
         self.use_hf = use_hf
         self.revision = revision
         self.hub_token = hub_token
+        global _kernels_patched
+        if _TRANSFORMERS_GE_5_2 and not _kernels_patched:
+            patch_kernels()
+            _kernels_patched = True
         if isinstance(model, str):
             self.model, processor = self._get_model_processor(model, **kwargs)
             template = self._get_template(processor, template_type=template_type)
@@ -174,17 +177,6 @@ class TransformersEngine(InferEngine):
     def _add_adapter(self, adapter_path: str, adapter_name: Optional[str] = None) -> None:
         self.model = Swift.from_pretrained(self.model, adapter_path, adapter_name)
 
-    def _patch_kernels_ctx(self):
-        """Context manager that redirects ``transformers`` kernel loading to ModelScope.
-
-        Only enabled for ``transformers >= 5.2.0`` (which introduced the
-        ``transformers.integrations.hub_kernels`` integration used here);
-        otherwise returns a no-op context.
-        """
-        if _TRANSFORMERS_GE_5_2:
-            return patch_kernels(self.use_hf)
-        return nullcontext()
-
     def _prepare_generation_config(self, request_config: RequestConfig) -> _GenerationConfig:
         generation_config = prepare_generation_config(self.generation_config, request_config, self.tokenizer)
         generation_config.return_dict_in_generate = True
@@ -255,8 +247,7 @@ class TransformersEngine(InferEngine):
         def _model_generate(**kwargs):
             if is_torch_npu_available():
                 torch.npu.set_device(self.model.device)
-            with self._patch_kernels_ctx():
-                self.template.generate(self.model, **kwargs)
+            self.template.generate(self.model, **kwargs)
 
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)
@@ -411,8 +402,7 @@ class TransformersEngine(InferEngine):
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
-        with self._patch_kernels_ctx():
-            output = dict(self.template.generate(self.model, **generate_kwargs))
+        output = dict(self.template.generate(self.model, **generate_kwargs))
         output.pop('past_key_values', None)
         batched_generate_ids = output['sequences']
         batched_generate_ids = self.template.get_generate_ids(batched_generate_ids, num_prompt_tokens)

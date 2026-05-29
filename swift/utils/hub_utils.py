@@ -2,7 +2,6 @@
 import importlib.util
 import os
 import requests
-from contextlib import contextmanager
 from modelscope import snapshot_download
 from modelscope.hub.api import ModelScopeConfig
 from modelscope.hub.utils.utils import get_cache_dir
@@ -162,39 +161,34 @@ def download_ms_file(url: str, local_path: str, cookies=None) -> None:
             f.write(data)
 
 
-@contextmanager
-def patch_kernels(use_hf: Optional[bool] = None):
-    """Patch ``transformers.integrations.hub_kernels.get_kernel`` to load kernels
-    via ModelScope + ``kernels.get_local_kernel`` instead of HuggingFace Hub.
+def patch_kernels() -> bool:
+    """Install a process-wide monkey patch on
+    ``transformers.integrations.hub_kernels.get_kernel`` so that kernel
+    repositories are downloaded from ModelScope and loaded via
+    ``kernels.get_local_kernel``.
 
-    No-op when:
-        - the ``kernels`` package is not installed;
-        - ``transformers.integrations.hub_kernels`` is unavailable;
-        - ``use_hf`` resolves to True (controlled by env ``USE_HF`` when ``use_hf is None``).
+    The runtime behavior is controlled by the ``USE_HF`` env (read on each
+    ``get_kernel`` call):
+        - ``USE_HF=1``: fall back to the original HuggingFace-based loading.
+        - otherwise (default): use ModelScope.
 
-    Args:
-        use_hf: If True, fall back to the original HuggingFace-based ``get_kernel``.
-            If None, follow the global ``USE_HF`` env (default False, i.e. ModelScope).
+    Returns True if the patch was installed, False if skipped (``kernels`` not
+    installed, or the ``transformers`` integration is unavailable). Callers are
+    expected to guarantee idempotency (e.g. via a module-level flag).
     """
     if importlib.util.find_spec('kernels') is None:
-        yield
-        return
+        return False
     try:
         from kernels import get_local_kernel
         from transformers.integrations import hub_kernels
     except ImportError:
-        yield
-        return
-
-    if use_hf is None:
-        use_hf = use_hf_hub()
-    if use_hf:
-        yield
-        return
+        return False
 
     origin_get_kernel = hub_kernels.get_kernel
 
     def patched_get_kernel(repo_id, revision=None, version=None, **kwargs):
+        if use_hf_hub():
+            return origin_get_kernel(repo_id, revision=revision, version=version, **kwargs)
         try:
             model_dir = snapshot_download(repo_id, revision=revision)
             package_name = repo_id.split('/')[-1].replace('-', '_')
@@ -206,7 +200,4 @@ def patch_kernels(use_hf: Optional[bool] = None):
             return origin_get_kernel(repo_id, revision=revision, version=version, **kwargs)
 
     hub_kernels.get_kernel = patched_get_kernel
-    try:
-        yield
-    finally:
-        hub_kernels.get_kernel = origin_get_kernel
+    return True
