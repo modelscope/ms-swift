@@ -174,9 +174,10 @@ register_template(ChatmlTemplateMeta(
 register_template(Llama3TemplateMeta(
     MLLMTemplateType.llama3_llava_next_hf,
     template_cls=Llava1_6HfTemplate,
+    agent_template=None,
 ))
 
-register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template_cls=Llava1_6HfTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen_hf, template_cls=Llava1_6HfTemplate, agent_template=None))
 
 
 class LlavaOneVisionHfTemplate(Llava1_6HfTemplate):
@@ -217,6 +218,7 @@ register_template(
         MLLMTemplateType.llava_onevision_hf,
         default_system=None,
         template_cls=LlavaOneVisionHfTemplate,
+        agent_template=None,
     ))
 
 
@@ -238,6 +240,7 @@ register_template(
         MLLMTemplateType.llava_llama3_1_hf,
         default_system=LlavaLlama3_1HfTemplate.system,
         template_cls=LlavaLlama3_1HfTemplate,
+        agent_template=None,
     ))
 
 
@@ -257,6 +260,7 @@ class LLavaLlama3HfTemplate(Template):
 register_template(Llama3TemplateMeta(
     MLLMTemplateType.llava_llama3_hf,
     template_cls=LLavaLlama3HfTemplate,
+    agent_template=None,
 ))
 
 
@@ -304,9 +308,10 @@ register_template(
         default_system=('You are a helpful language and vision assistant. '
                         'You are able to understand the visual content that the user provides, '
                         'and assist the user with a variety of tasks using natural language.'),
+        agent_template=None,
     ))
 
-register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen, template_cls=LLavaTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.llava_next_qwen, template_cls=LLavaTemplate, agent_template=None))
 
 
 class LLavaOneVision1_5Template(Template):
@@ -404,4 +409,4 @@ class LLavaOneVision1_5Template(Template):
         return {'inputs_embeds': inputs_embeds}
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.llava_onevision1_5, template_cls=LLavaOneVision1_5Template))
+register_template(QwenTemplateMeta(MLLMTemplateType.llava_onevision1_5, template_cls=LLavaOneVision1_5Template, agent_template=None))
