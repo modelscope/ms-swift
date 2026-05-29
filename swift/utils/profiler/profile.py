@@ -3,8 +3,9 @@ import os
 import torch
 from typing import Callable, Optional
 
+from swift.utils import get_logger
 from .config import ProfilerConfig, TorchProfilerToolConfig
-
+logger = get_logger()
 
 class DistProfiler:
 
