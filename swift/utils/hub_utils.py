@@ -161,6 +161,31 @@ def download_ms_file(url: str, local_path: str, cookies=None) -> None:
             f.write(data)
 
 
+def _resolve_kernel_variant_str(repo_id: str) -> Optional[str]:
+    """Resolve the kernel build variant matching the current torch/cuda/platform
+    by listing the ``build/`` folder of the ModelScope kernel repository. Returns
+    ``None`` if listing or parsing fails (caller should fall back to downloading
+    the whole repo).
+    """
+    try:
+        from kernels.variants import parse_variant, resolve_variant
+        from modelscope.hub.api import HubApi
+        files = HubApi().get_model_files(repo_id, root='build', recursive=False)
+        variants = []
+        for f in files:
+            name = f.get('Name') or f.get('Path', '').rsplit('/', 1)[-1]
+            if not name:
+                continue
+            try:
+                variants.append(parse_variant(name))
+            except ValueError:
+                continue
+        variant = resolve_variant(variants)
+        return variant.variant_str if variant else None
+    except Exception:
+        return None
+
+
 def patch_kernels() -> bool:
     """Install a process-wide monkey patch on
     ``transformers.integrations.hub_kernels.get_kernel`` so that kernel
@@ -186,18 +211,20 @@ def patch_kernels() -> bool:
 
     origin_get_kernel = hub_kernels.get_kernel
 
-    def patched_get_kernel(repo_id, revision=None, version=None, **kwargs):
+    def patched_get_kernel(repo_id, *args, **kwargs):
         if use_hf_hub():
-            return origin_get_kernel(repo_id, revision=revision, version=version, **kwargs)
+            return origin_get_kernel(repo_id, *args, **kwargs)
         try:
-            model_dir = snapshot_download(repo_id, revision=revision)
+            variant_str = _resolve_kernel_variant_str(repo_id)
+            allow_patterns = [f'build/{variant_str}/*'] if variant_str else None
+            model_dir = snapshot_download(repo_id, allow_patterns=allow_patterns)
             package_name = repo_id.split('/')[-1].replace('-', '_')
             kernel = get_local_kernel(Path(model_dir), package_name)
             logger.info(f'Loaded kernel `{repo_id}` from ModelScope: {model_dir}')
             return kernel
         except Exception as e:
             logger.warning(f'Failed to load kernel `{repo_id}` from ModelScope ({e}), fallback to HuggingFace.')
-            return origin_get_kernel(repo_id, revision=revision, version=version, **kwargs)
+            return origin_get_kernel(repo_id, *args, **kwargs)
 
     hub_kernels.get_kernel = patched_get_kernel
     return True
