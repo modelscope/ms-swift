@@ -2,7 +2,6 @@
 import importlib.util
 import os
 import requests
-from modelscope import snapshot_download
 from modelscope.hub.api import HubApi, ModelScopeConfig
 from modelscope.hub.utils.utils import get_cache_dir
 from pathlib import Path
@@ -216,7 +215,7 @@ def patch_kernels() -> bool:
         try:
             variant_str = _resolve_kernel_variant_str(repo_id)
             allow_patterns = [f'build/{variant_str}/*'] if variant_str else None
-            model_dir = snapshot_download(repo_id, allow_patterns=allow_patterns)
+            model_dir = safe_snapshot_download(repo_id, use_hf=False, allow_patterns=allow_patterns)
             package_name = repo_id.split('/')[-1].replace('-', '_')
             kernel = get_local_kernel(Path(model_dir), package_name)
             logger.info(f'Loaded kernel `{repo_id}` from ModelScope: {model_dir}')
