@@ -246,10 +246,6 @@ class SwiftMixin:
                                     os.path.dirname(output_dir), 'initial_model'),
                             )
                             model.peft_config['default'] = config
-                # Restore requires_grad state after conversion to prevent peft side effects
-                for n, p in model.named_parameters():
-                    if n in requires_grad_state:
-                        p.requires_grad = requires_grad_state[n]
                     except ImportError as e:
                         error_message = """
                         Since 'LoRA-GA' is not implemented by PEFT, you will need to install it directly from GitHub.
@@ -264,6 +260,10 @@ class SwiftMixin:
                             os.path.dirname(output_dir), 'initial_model'),
                     )
                     model.peft_config['default'] = config
+                # Restore requires_grad state after conversion to prevent peft side effects
+                for n, p in model.named_parameters():
+                    if n in requires_grad_state:
+                        p.requires_grad = requires_grad_state[n]
 
     def _load_rng_state(self, *args, **kwargs):
         if self.args.resume_only_model:
