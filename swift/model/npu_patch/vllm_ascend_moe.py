@@ -129,11 +129,16 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
     """Patch one processed vLLM-Ascend MoE expert parameter loader.
 
     vLLM-Ascend transposes unquantized MoE weights after the initial model load
-    so grouped matmul can consume them efficiently.  During GRPO colocate weight
-    sync, however, SWIFT still sends regular 2D HF/Megatron weights, for example:
+    so grouped matmul can consume them efficiently.  During GRPO weight sync,
+    however, SWIFT can send regular HF/Megatron expert weights, for example:
 
         gate_proj/up_proj: [intermediate, hidden] -> w13_weight
         down_proj       : [hidden, intermediate] -> w2_weight
+
+    FSDP2 Qwen MoE may send the same weights as fused 3D tensors:
+
+        gate_proj/up_proj: [experts, intermediate, hidden]
+        down_proj       : [experts, hidden, intermediate]
 
     The target vLLM-Ascend parameters are already processed 3D tensors, e.g.:
 
@@ -142,7 +147,7 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
 
     This wrapper keeps the normal vLLM loader for initial checkpoint load,
     quantized experts, and non-Ascend backends.  It only handles the processed
-    3D vLLM-Ascend layout when a 2D runtime-sync tensor is loaded into
+    3D vLLM-Ascend layout when a 2D or fused 3D runtime-sync tensor is loaded into
     ``w13_weight`` or ``w2_weight``.
     """
     if 'w13_weight' not in name and 'w2_weight' not in name:
@@ -158,12 +163,12 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
             quant_method = getattr(experts, 'quant_method', None)
             quant_method_module = type(quant_method).__module__ if quant_method is not None else ''
             # Only the GRPO runtime-sync path needs special handling here:
-            # SWIFT provides normal 2D HF/Megatron tensors, while the target
-            # vLLM-Ascend MoE parameter has already been converted to a 3D
-            # per-local-expert layout.  Initial checkpoint load and other
-            # layouts continue to use the original vLLM loader.
-            is_runtime_sync_into_processed_param = (
-                param.data.dim() == 3 and loaded_weight.dim() == 2 and quant_method_module.startswith('vllm_ascend'))
+            # SWIFT provides HF/Megatron tensors, while the target vLLM-Ascend
+            # MoE parameter has already been converted to a 3D per-local-expert
+            # layout.  Initial checkpoint load and other layouts continue to use
+            # the original vLLM loader.
+            is_runtime_sync_into_processed_param = (param.data.dim() == 3 and loaded_weight.dim() in {2, 3}
+                                                    and quant_method_module.startswith('vllm_ascend'))
             if not is_runtime_sync_into_processed_param:
                 return origin_weight_loader(param, loaded_weight, weight_name, shard_id, expert_id, return_success)
 
@@ -173,44 +178,62 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
             # Runtime sync may see a Parameter whose data was restored to the
             # pre-processed orientation.  Rebuild the vLLM-Ascend orientation
             # before copying the incoming HF/Megatron 2D shard.
+            loaded_expert_sample = loaded_weight[0] if loaded_weight.dim() == 3 else loaded_weight
             if is_w13_shard:
-                if param.data.shape[-1] == loaded_weight.shape[-1] and param.data.shape[-2] != loaded_weight.shape[-1]:
+                if (param.data.shape[-1] == loaded_expert_sample.shape[-1]
+                        and param.data.shape[-2] != loaded_expert_sample.shape[-1]):
                     param.data = param.data.transpose(1, 2).contiguous()
             elif is_w2_shard:
-                if param.data.shape[-2] == loaded_weight.shape[0] and param.data.shape[-1] != loaded_weight.shape[0]:
+                if (param.data.shape[-2] == loaded_expert_sample.shape[0]
+                        and param.data.shape[-1] != loaded_expert_sample.shape[0]):
                     param.data = param.data.transpose(1, 2).contiguous()
+
+            tp_rank = experts.tp_rank
+
+            def copy_one_expert(local_expert_id: int, loaded_expert_weight) -> bool:
+                param_data = param.data[local_expert_id]
+                if is_w13_shard:
+                    # Example:
+                    #   loaded gate/up shard: [intermediate, hidden]
+                    #   target w13 slot    : [hidden, 2 * intermediate_per_tp]
+                    #
+                    # TP slices the intermediate dimension.  w1 occupies the first
+                    # half of w13_weight and w3 occupies the second half, so copy a
+                    # transposed TP slice into the selected half.
+                    shard_size = param_data.shape[1] // 2
+                    loaded_expert_weight = loaded_expert_weight.narrow(0, shard_size * tp_rank, shard_size)
+                    offset = 0 if shard_id == 'w1' else shard_size
+                    param_data[:, offset:offset + shard_size].copy_(loaded_expert_weight.transpose(0, 1).contiguous())
+                    return True
+
+                if is_w2_shard:
+                    # Example:
+                    #   loaded down shard: [hidden, intermediate]
+                    #   target w2 slot  : [intermediate_per_tp, hidden]
+                    #
+                    # TP slices the intermediate dimension on loaded_weight dim 1;
+                    # vLLM-Ascend stores the processed local shard transposed.
+                    shard_size = param_data.shape[0]
+                    loaded_expert_weight = loaded_expert_weight.narrow(1, shard_size * tp_rank, shard_size)
+                    param_data.copy_(loaded_expert_weight.transpose(0, 1).contiguous())
+                    return True
+
+                return False
+
+            if loaded_weight.dim() == 3:
+                copied = False
+                for global_expert_id, loaded_expert_weight in enumerate(loaded_weight):
+                    local_expert_id = experts._map_global_expert_id_to_local_expert_id(global_expert_id)
+                    if local_expert_id == -1:
+                        continue
+                    copied = copy_one_expert(local_expert_id, loaded_expert_weight) or copied
+                return copied if return_success else None
 
             local_expert_id = experts._map_global_expert_id_to_local_expert_id(expert_id)
             if local_expert_id == -1:
                 return False if return_success else None
 
-            tp_rank = experts.tp_rank
-            param_data = param.data[local_expert_id]
-
-            if is_w13_shard:
-                # Example:
-                #   loaded gate/up shard: [intermediate, hidden]
-                #   target w13 slot    : [hidden, 2 * intermediate_per_tp]
-                #
-                # TP slices the intermediate dimension.  w1 occupies the first
-                # half of w13_weight and w3 occupies the second half, so copy a
-                # transposed TP slice into the selected half.
-                shard_size = param_data.shape[1] // 2
-                loaded_weight = loaded_weight.narrow(0, shard_size * tp_rank, shard_size)
-                offset = 0 if shard_id == 'w1' else shard_size
-                param_data[:, offset:offset + shard_size].copy_(loaded_weight.transpose(0, 1).contiguous())
-                return True if return_success else None
-
-            if is_w2_shard:
-                # Example:
-                #   loaded down shard: [hidden, intermediate]
-                #   target w2 slot  : [intermediate_per_tp, hidden]
-                #
-                # TP slices the intermediate dimension on loaded_weight dim 1;
-                # vLLM-Ascend stores the processed local shard transposed.
-                shard_size = param_data.shape[0]
-                loaded_weight = loaded_weight.narrow(1, shard_size * tp_rank, shard_size)
-                param_data.copy_(loaded_weight.transpose(0, 1).contiguous())
+            if copy_one_expert(local_expert_id, loaded_weight):
                 return True if return_success else None
 
             return origin_weight_loader(param, loaded_weight, weight_name, shard_id, expert_id, return_success)

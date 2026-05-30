@@ -368,16 +368,11 @@ def patch_npu_vllm(vllm_device: str, *, colocate: bool = False):
         patch_vllm_ascend_runtime(colocate=colocate)
 
     @contextmanager
-    def new_group_context():
-        original_new_group = torch.distributed.new_group
-        try:
-            torch.distributed.new_group = partial(original_new_group, use_local_synchronization=True)
-            torch.npu.mem_get_info = partial(torch.npu.mem_get_info, device=vllm_device)
-            yield
-        finally:
-            torch.distributed.new_group = original_new_group
+    def npu_vllm_context():
+        torch.npu.mem_get_info = partial(torch.npu.mem_get_info, device=vllm_device)
+        yield
 
-    return new_group_context() if device_type == 'npu' else nullcontext()
+    return npu_vllm_context() if device_type == 'npu' else nullcontext()
 
 
 def patch_vllm_triton_device_guard():
