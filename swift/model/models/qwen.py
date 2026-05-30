@@ -1816,6 +1816,7 @@ class Qwen2AudioLoader(ModelLoader):
 
     @staticmethod
     def _is_transformers5() -> bool:
+        import transformers
         return version.parse(transformers.__version__) >= version.parse('5.0.0')
 
     def _patch_transformers5_model(self, model: PreTrainedModel) -> PreTrainedModel:

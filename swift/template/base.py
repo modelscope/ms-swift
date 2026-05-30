@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import hashlib
 import inspect
-import librosa
 import math
 import os
 import random
@@ -1080,12 +1079,14 @@ class Template(ProcessorMixin):
 
         audio_ptr = 0
         for context, loss_weight in zip(context_list, loss_scale_list):
-            if isinstance(context, str) and '<|AUDIO|>' in context:
+            if (isinstance(context, str) and '<|AUDIO|>' in context and getattr(self.tokenizer, 'model_meta', None)
+                    and getattr(self.tokenizer.model_meta, 'model_type', None) == 'qwen2_audio'):
                 if audio_path_list is None or audio_ptr >= len(audio_path_list):
                     warnings.warn('Found <|AUDIO|> but no matching audio input; fallback to text tokenization',
                                   RuntimeWarning)
                     token_list = self._tokenize(context)
                 else:
+                    import librosa
                     sample_rate = self.processor.feature_extractor.sampling_rate
                     wav, _ = librosa.load(audio_path_list[audio_ptr], sr=sample_rate, mono=True)
                     encoded = self.processor(
