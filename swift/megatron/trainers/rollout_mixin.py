@@ -271,9 +271,12 @@ class MegatronRolloutMixin:
             import vllm
             from packaging import version
             vllm_version = vllm.__version__
-            if vllm_version is not None and version.parse('0.21.0rc1') <= version.parse(vllm_version) <= version.parse(
-                    '0.21.0'):
-                vllm_engine_kwargs.setdefault('async_scheduling', False)
+            try:
+                parsed_version = version.parse(vllm_version)
+                if version.parse('0.21.0rc1') <= parsed_version <= version.parse('0.21.0'):
+                    vllm_engine_kwargs.setdefault('async_scheduling', False)
+            except Exception:
+                pass
 
         enable_lora = False
         max_loras = 1
