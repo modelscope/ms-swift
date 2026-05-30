@@ -129,13 +129,15 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         context = torch.no_grad() if no_grad else nullcontext()
         is_training = model.training
         if is_training:
+            submodule_states = [(m, m.training) for m in model.modules()]
             model.eval()
         try:
             with context:
                 output_tensor = forward_step_helper(model, data_for_forward)
         finally:
             if is_training:
-                model.train()
+                for m, state in submodule_states:
+                    m.training = state
 
         if self.enable_routing_replay and RouterReplayHelper.is_r2_record_action(model.config):
             routing_topk_idx = get_router_replay_data(model.config)
