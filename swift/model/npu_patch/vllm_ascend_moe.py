@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import inspect
 
+import torch
+
 from swift.utils.logger import get_logger
 
 logger = get_logger()
@@ -123,6 +125,52 @@ def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
 def patch_vllm_ascend_moe_runtime() -> None:
     """Apply MoE runtime patches that are independent of GRPO weight sync."""
     _patch_vllm_ascend_device_op_nonquant_routing()
+
+
+def expand_fused_moe_expert_names_for_vllm_ascend(name: str):
+    """Map Transformers fused Qwen MoE expert names to vLLM checkpoint names.
+
+    FSDP2 can expose Qwen-style MoE expert weights as fused tensors:
+
+        mlp.experts.gate_up_proj: [experts, 2 * intermediate, hidden]
+        mlp.experts.down_proj   : [experts, hidden, intermediate]
+
+    vLLM's Qwen MoE ``load_weights`` path expects checkpoint-style names such as
+    ``mlp.experts.0.gate_proj.weight`` / ``up_proj`` / ``down_proj`` and maps
+    those names onto its internal ``w13_weight`` / ``w2_weight`` parameters.
+    Use expert 0 only as a name anchor; the paired vLLM-Ascend weight-loader
+    patch below copies all local experts from the full 3D tensor.
+    """
+    gate_up_suffix = '.mlp.experts.gate_up_proj'
+    down_suffix = '.mlp.experts.down_proj'
+    if name.endswith(gate_up_suffix):
+        prefix = name[:-len('gate_up_proj')]
+        return [
+            f'{prefix}0.gate_proj.weight',
+            f'{prefix}0.up_proj.weight',
+        ]
+    if name.endswith(down_suffix):
+        prefix = name[:-len('down_proj')]
+        return [f'{prefix}0.down_proj.weight']
+    return None
+
+
+def expand_fused_moe_expert_weight_for_vllm_ascend(name: str, param):
+    """Expand one FSDP2 fused Qwen MoE expert tensor for vLLM-Ascend weight sync."""
+    if not isinstance(param, torch.Tensor) or param.dim() != 3:
+        return None
+    expanded_names = expand_fused_moe_expert_names_for_vllm_ascend(name)
+    if expanded_names is None:
+        return None
+    if name.endswith('.mlp.experts.gate_up_proj'):
+        gate_proj, up_proj = param.chunk(2, dim=1)
+        return [
+            (expanded_names[0], gate_proj.contiguous()),
+            (expanded_names[1], up_proj.contiguous()),
+        ]
+    if name.endswith('.mlp.experts.down_proj'):
+        return [(expanded_names[0], param)]
+    return None
 
 
 def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> None:
@@ -249,6 +297,8 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
 
 
 __all__ = [
+    'expand_fused_moe_expert_names_for_vllm_ascend',
+    'expand_fused_moe_expert_weight_for_vllm_ascend',
     'patch_vllm_ascend_moe_expert_weight_loader',
     'patch_vllm_ascend_moe_runtime',
 ]

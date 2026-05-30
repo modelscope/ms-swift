@@ -23,6 +23,7 @@ from queue import Queue
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel, TrainerCallback
+from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
@@ -579,51 +580,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             name = name.replace(prefix, '')
         return name
 
-    @staticmethod
-    def _expand_fused_moe_expert_names_for_vllm(name: str):
-        """Map Transformers fused Qwen MoE expert names to vLLM checkpoint names.
-
-        Transformers Qwen3 MoE stores training-side expert weights as:
-
-            mlp.experts.gate_up_proj: [experts, 2 * intermediate, hidden]
-            mlp.experts.down_proj   : [experts, hidden, intermediate]
-
-        vLLM Qwen3 MoE load_weights() expects checkpoint-style names such as
-        ``mlp.experts.0.gate_proj.weight`` / ``up_proj`` / ``down_proj`` and
-        maps them onto its fused ``w13_weight`` / ``w2_weight`` parameters.
-        Use expert 0 as a name anchor while keeping the tensor 3D; the patched
-        MoE loader copies all local experts from the full 3D tensor.
-        """
-        gate_up_suffix = '.mlp.experts.gate_up_proj'
-        down_suffix = '.mlp.experts.down_proj'
-        if name.endswith(gate_up_suffix):
-            prefix = name[:-len('gate_up_proj')]
-            return [
-                f'{prefix}0.gate_proj.weight',
-                f'{prefix}0.up_proj.weight',
-            ]
-        if name.endswith(down_suffix):
-            prefix = name[:-len('down_proj')]
-            return [f'{prefix}0.down_proj.weight']
-        return None
-
-    @classmethod
-    def _expand_fused_moe_expert_weight_for_vllm(cls, name: str, param: Any):
-        if not isinstance(param, torch.Tensor) or param.dim() != 3:
-            return None
-        expanded_names = cls._expand_fused_moe_expert_names_for_vllm(name)
-        if expanded_names is None:
-            return None
-        if name.endswith('.mlp.experts.gate_up_proj'):
-            gate_proj, up_proj = param.chunk(2, dim=1)
-            return [
-                (expanded_names[0], gate_proj.contiguous()),
-                (expanded_names[1], up_proj.contiguous()),
-            ]
-        if name.endswith('.mlp.experts.down_proj'):
-            return [(expanded_names[0], param)]
-        return None
-
     def _process_state_dict_for_vllm(self,
                                      state_dict: Dict[str, Any],
                                      is_peft: bool,
@@ -639,6 +595,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             Processed state dict ready for vLLM
         """
         processed = {}
+        expand_fused_moe_expert_weight = None
+        if is_torch_npu_available():
+            from swift.model.npu_patch.vllm_ascend_moe import expand_fused_moe_expert_weight_for_vllm_ascend
+            expand_fused_moe_expert_weight = expand_fused_moe_expert_weight_for_vllm_ascend
         for name, param in state_dict.items():
             # Clean up parameter name for PEFT models
             clean_name = name.removeprefix('base_model.model.')
@@ -665,10 +625,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     param = param.to(get_current_device())
                 param = param.full_tensor()
 
-            expanded_moe_weights = self._expand_fused_moe_expert_weight_for_vllm(clean_name, param)
-            if expanded_moe_weights is not None:
-                processed.update(expanded_moe_weights)
-                continue
+            if expand_fused_moe_expert_weight is not None:
+                expanded_moe_weights = expand_fused_moe_expert_weight(clean_name, param)
+                if expanded_moe_weights is not None:
+                    processed.update(expanded_moe_weights)
+                    continue
 
             processed[clean_name] = param
 
@@ -791,10 +752,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             if is_peft:
                 parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
             parameter_group_no_lora = set(parameter_group_no_lora)
-            for name in tuple(parameter_group_no_lora):
-                expanded_names = self._expand_fused_moe_expert_names_for_vllm(name)
-                if expanded_names is not None:
-                    parameter_group_no_lora.update(expanded_names)
+            if is_torch_npu_available():
+                from swift.model.npu_patch.vllm_ascend_moe import expand_fused_moe_expert_names_for_vllm_ascend
+                for name in tuple(parameter_group_no_lora):
+                    expanded_names = expand_fused_moe_expert_names_for_vllm_ascend(name)
+                    if expanded_names is not None:
+                        parameter_group_no_lora.update(expanded_names)
             state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
 
         if is_peft:

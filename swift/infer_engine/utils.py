@@ -7,7 +7,6 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from functools import partial
 from itertools import repeat
 from packaging import version
 from queue import Queue
@@ -365,14 +364,11 @@ def patch_npu_vllm(vllm_device: str, *, colocate: bool = False):
     device_type = vllm_device.split(':')[0]
     if device_type == 'npu':
         from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_runtime
+        from swift.model.npu_patch.vllm_ascend_memory import vllm_ascend_mem_get_info_context
         patch_vllm_ascend_runtime(colocate=colocate)
+        return vllm_ascend_mem_get_info_context(vllm_device)
 
-    @contextmanager
-    def npu_vllm_context():
-        torch.npu.mem_get_info = partial(torch.npu.mem_get_info, device=vllm_device)
-        yield
-
-    return npu_vllm_context() if device_type == 'npu' else nullcontext()
+    return nullcontext()
 
 
 def patch_vllm_triton_device_guard():
