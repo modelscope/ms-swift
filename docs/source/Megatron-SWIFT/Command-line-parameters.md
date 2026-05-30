@@ -209,7 +209,7 @@
 - moe_token_drop_policy: 可选为'probs', 'position'。默认为'probs'。
 
 **DSA参数**
-- dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为None。
+- dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为`0.`。
 - dsa_indexer_use_sparse_loss: 是否使用稀疏 DSA 索引器损失。如果为 True，索引器损失将使用 top-k 索引进行计算。默认为False。
 
 

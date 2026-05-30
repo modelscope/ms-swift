@@ -589,7 +589,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     aligner_lr: Optional[float] = None
 
     # dsa
-    dsa_indexer_loss_coeff: Optional[float] = None
+    dsa_indexer_loss_coeff: float = 0.
     dsa_indexer_use_sparse_loss: bool = False
 
     # other

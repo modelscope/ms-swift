@@ -220,7 +220,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 **DSA Parameters**
 
-- dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is None.
+- dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is `0.`.
 - dsa_indexer_use_sparse_loss: Whether to use sparse DSA indexer loss. If True, the indexer loss will be computed using the top-k indices. Default is False.
 
 
