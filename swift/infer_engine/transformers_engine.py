@@ -3,6 +3,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import os
 import pickle
 import time
 import torch
@@ -91,6 +92,8 @@ class TransformersEngine(InferEngine):
         self.hub_token = hub_token
         global _kernels_patched
         if _TRANSFORMERS_GE_5_2 and not _kernels_patched:
+            if use_hf is not None and 'USE_HF' not in os.environ:
+                os.environ['USE_HF'] = str(use_hf)
             patch_kernels()
             _kernels_patched = True
         if isinstance(model, str):
