@@ -1814,10 +1814,24 @@ register_model(
 
 class Qwen2AudioLoader(ModelLoader):
 
+    @staticmethod
+    def _is_transformers5() -> bool:
+        return version.parse(transformers.__version__) >= version.parse('5.0.0')
+
+    def _patch_transformers5_model(self, model: PreTrainedModel) -> PreTrainedModel:
+        if not self._is_transformers5():
+            return model
+        generation_config = getattr(model, 'generation_config', None)
+        if generation_config is not None and hasattr(generation_config, 'cache_implementation'):
+            generation_config.cache_implementation = None
+        _patch_hybrid_cache_device_update()
+        return model
+
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import Qwen2AudioForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen2AudioForConditionalGeneration
-        return super().get_model(model_dir, *args, **kwargs)
+        model = super().get_model(model_dir, *args, **kwargs)
+        return self._patch_transformers5_model(model)
 
 
 register_model(
@@ -1832,9 +1846,26 @@ register_model(
         Qwen2AudioLoader,
         model_arch=ModelArch.qwen2_audio,
         architectures=['Qwen2AudioForConditionalGeneration'],
-        requires=['transformers>=4.45,<4.49', 'librosa'],
+        requires=['transformers>=4.48', 'librosa'],
         tags=['audio'],
     ))
+
+
+def _patch_hybrid_cache_device_update() -> None:
+    try:
+        from transformers.cache_utils import HybridCache
+
+        def update(self, key_states: torch.Tensor, value_states: torch.Tensor, layer_idx: int, *args,
+                   **kwargs) -> Tuple[torch.Tensor]:
+            self.key_cache[layer_idx] = self.key_cache[layer_idx].to(key_states.device)
+            self.value_cache[layer_idx] = self.value_cache[layer_idx].to(value_states.device)
+            return self._update_origin(key_states, value_states, layer_idx, *args, **kwargs)
+
+        if not hasattr(HybridCache, '_update_origin'):
+            HybridCache._update_origin = HybridCache.update
+            HybridCache.update = update
+    except ImportError:
+        pass
 
 
 class OvisLoader(ModelLoader):
