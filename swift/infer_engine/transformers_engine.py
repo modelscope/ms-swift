@@ -3,11 +3,14 @@ import asyncio
 import hashlib
 import inspect
 import json
+import os
 import pickle
 import time
 import torch
 import torch.nn.functional as F
+import transformers
 from copy import deepcopy
+from packaging import version
 from PIL import Image
 from queue import Queue
 from threading import Thread
@@ -21,12 +24,15 @@ from swift.metrics import Metric
 from swift.model import get_model_processor
 from swift.template import Template
 from swift.tuners import Swift
-from swift.utils import get_last_valid_indices, safe_snapshot_download, to_device
+from swift.utils import get_last_valid_indices, patch_kernels, safe_snapshot_download, to_device
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,
                        EmbeddingResponseData, InferRequest, RequestConfig, random_uuid)
 from .utils import AdapterRequest, InferStreamer, LogitsStreamer, TokensIteratorStreamer, prepare_generation_config
+
+_TRANSFORMERS_GE_5_2 = version.parse(transformers.__version__) >= version.parse('5.2.0')
+_kernels_patched = False
 
 
 class _GenerationConfig(GenerationConfig):
@@ -84,6 +90,12 @@ class TransformersEngine(InferEngine):
         self.use_hf = use_hf
         self.revision = revision
         self.hub_token = hub_token
+        global _kernels_patched
+        if _TRANSFORMERS_GE_5_2 and not _kernels_patched:
+            if use_hf is not None and 'USE_HF' not in os.environ:
+                os.environ['USE_HF'] = str(use_hf)
+            patch_kernels()
+            _kernels_patched = True
         if isinstance(model, str):
             self.model, processor = self._get_model_processor(model, **kwargs)
             template = self._get_template(processor, template_type=template_type)
