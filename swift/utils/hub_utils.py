@@ -3,7 +3,7 @@ import importlib.util
 import os
 import requests
 from modelscope import snapshot_download
-from modelscope.hub.api import ModelScopeConfig
+from modelscope.hub.api import HubApi, ModelScopeConfig
 from modelscope.hub.utils.utils import get_cache_dir
 from pathlib import Path
 from tqdm import tqdm
@@ -169,7 +169,6 @@ def _resolve_kernel_variant_str(repo_id: str) -> Optional[str]:
     """
     try:
         from kernels.variants import parse_variant, resolve_variant
-        from modelscope.hub.api import HubApi
         files = HubApi().get_model_files(repo_id, root='build', recursive=False)
         variants = []
         for f in files:
