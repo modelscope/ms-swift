@@ -6,6 +6,7 @@ import os
 import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
+from modelscope.hub.api import HubApi
 from peft import PeftModel
 from torch import nn
 from torch.nn import CrossEntropyLoss, Module
@@ -319,7 +320,6 @@ def replace_index_file(output_dir: str):
 
 @contextmanager
 def patch_modelscope_hub_timeout():
-    from modelscope.hub.api import HubApi
     __init__ = HubApi.__init__
 
     def __new_init__(self, *args, **kwargs):

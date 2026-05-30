@@ -958,7 +958,7 @@ The meanings of the following parameters can be found in the example code [here]
 
 
 ## Other Environment Variables
-
+- USE_HF: Use ModelScope/HuggingFace. Defaults to '0'.
 - CUDA_VISIBLE_DEVICES: Controls which GPU to use. By default, all GPUs are used.
 - ASCEND_RT_VISIBLE_DEVICES: Controls which NPU (effective for ASCEND cards) are used. By default, all NPUs are used.
 - MODELSCOPE_CACHE: Controls the cache path. (Recommended to set this value during multi-node training to ensure all nodes use the same dataset cache.)

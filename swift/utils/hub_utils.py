@@ -1,11 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import importlib.util
 import os
 import requests
-from modelscope.hub.api import ModelScopeConfig
+from modelscope.hub.api import HubApi, ModelScopeConfig
 from modelscope.hub.utils.utils import get_cache_dir
+from pathlib import Path
 from tqdm import tqdm
 from typing import List, Optional
 
+from .env import use_hf_hub
 from .logger import get_logger
 from .torch_utils import is_local_master, safe_ddp_context
 from .utils import subprocess_run
@@ -155,3 +158,71 @@ def download_ms_file(url: str, local_path: str, cookies=None) -> None:
     with open(local_path, 'wb') as f:
         for data in tqdm(resp.iter_lines()):
             f.write(data)
+
+
+def _resolve_kernel_variant_str(repo_id: str) -> Optional[str]:
+    """Resolve the kernel build variant matching the current torch/cuda/platform
+    by listing the ``build/`` folder of the ModelScope kernel repository. Returns
+    ``None`` if listing or parsing fails (caller should fall back to downloading
+    the whole repo).
+    """
+    try:
+        from kernels.variants import parse_variant, resolve_variant
+        files = HubApi().get_model_files(repo_id, root='build', recursive=False)
+        variants = []
+        for f in files:
+            name = f.get('Name') or f.get('Path', '').rsplit('/', 1)[-1]
+            if not name:
+                continue
+            try:
+                variants.append(parse_variant(name))
+            except ValueError:
+                continue
+        variant = resolve_variant(variants)
+        return variant.variant_str if variant else None
+    except Exception:
+        return None
+
+
+def patch_kernels() -> bool:
+    """Install a process-wide monkey patch on
+    ``transformers.integrations.hub_kernels.get_kernel`` so that kernel
+    repositories are downloaded from ModelScope and loaded via
+    ``kernels.get_local_kernel``.
+
+    The runtime behavior is controlled by the ``USE_HF`` env (read on each
+    ``get_kernel`` call):
+        - ``USE_HF=1``: fall back to the original HuggingFace-based loading.
+        - otherwise (default): use ModelScope.
+
+    Returns True if the patch was installed, False if skipped (``kernels`` not
+    installed, or the ``transformers`` integration is unavailable). Callers are
+    expected to guarantee idempotency (e.g. via a module-level flag).
+    """
+    if importlib.util.find_spec('kernels') is None:
+        return False
+    try:
+        from kernels import get_local_kernel
+        from transformers.integrations import hub_kernels
+    except ImportError:
+        return False
+
+    origin_get_kernel = hub_kernels.get_kernel
+
+    def patched_get_kernel(repo_id, *args, **kwargs):
+        if use_hf_hub():
+            return origin_get_kernel(repo_id, *args, **kwargs)
+        try:
+            variant_str = _resolve_kernel_variant_str(repo_id)
+            allow_patterns = [f'build/{variant_str}/*'] if variant_str else None
+            model_dir = safe_snapshot_download(repo_id, use_hf=False, allow_patterns=allow_patterns)
+            package_name = repo_id.split('/')[-1].replace('-', '_')
+            kernel = get_local_kernel(Path(model_dir), package_name)
+            logger.info(f'Loaded kernel `{repo_id}` from ModelScope: {model_dir}')
+            return kernel
+        except Exception as e:
+            logger.warning(f'Failed to load kernel `{repo_id}` from ModelScope ({e}), fallback to HuggingFace.')
+            return origin_get_kernel(repo_id, *args, **kwargs)
+
+    hub_kernels.get_kernel = patched_get_kernel
+    return True
