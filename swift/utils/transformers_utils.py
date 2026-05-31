@@ -5,8 +5,6 @@ import torch
 import torch.nn as nn
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
-from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.trainer_utils import set_seed
 from typing import Callable, List, Optional, Tuple
 
 from .logger import get_logger
@@ -16,6 +14,7 @@ logger = get_logger()
 
 
 def get_n_params_grads(model) -> Tuple[List[int], List[int]]:
+    from transformers.integrations import is_deepspeed_zero3_enabled
     n_params, n_grads = [], []
     for p in model.parameters():
         if is_deepspeed_zero3_enabled():
@@ -274,6 +273,7 @@ def seed_worker(worker_id: int, num_workers: int, rank: int):
     """
     Helper function to set worker seed during Dataloader initialization.
     """
+    from transformers.trainer_utils import set_seed
     init_seed = torch.initial_seed() % 2**32
     worker_seed = num_workers * rank + init_seed
     set_seed(worker_seed)

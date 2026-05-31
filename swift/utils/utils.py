@@ -20,8 +20,6 @@ import torch
 import torch.distributed as dist
 from contextlib import contextmanager
 from functools import wraps
-from transformers import HfArgumentParser, enable_full_determinism, set_seed
-from transformers.utils import strtobool
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
 
 from .env import is_dist, is_master
@@ -113,7 +111,7 @@ def deep_getattr(obj, attr: str, default=None):
 
 
 def seed_everything(seed: Optional[int] = None, full_determinism: bool = False) -> int:
-
+    from transformers import enable_full_determinism, set_seed
     if seed is None:
         seed_max = np.iinfo(np.int32).max
         seed = random.randint(0, seed_max)
@@ -172,6 +170,7 @@ def _patch_get_type_hints():
 
 
 def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[_T, List[str]]:
+    from transformers import HfArgumentParser
     with _patch_get_type_hints():
         parser = HfArgumentParser([class_type])
     _ray_args = os.environ.get('RAY_SWIFT_ARGS')
@@ -255,6 +254,7 @@ def subprocess_run(command: List[str], env: Optional[Dict[str, str]] = None, std
 
 
 def get_env_args(args_name: str, type_func: Callable[[str], _T], default_value: Optional[_T]) -> Optional[_T]:
+    from transformers.utils import strtobool
     args_name_upper = args_name.upper()
     value = os.getenv(args_name_upper)
     if value is None:

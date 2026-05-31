@@ -1,7 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from transformers.integrations import deepspeed_config
-from transformers.utils import strtobool
 from typing import Optional, Tuple
 
 from .logger import get_logger
@@ -10,6 +8,7 @@ logger = get_logger()
 
 
 def use_hf_hub():
+    from transformers.utils import strtobool
     return strtobool(os.environ.get('USE_HF', '0'))
 
 
@@ -21,6 +20,7 @@ def get_hf_endpoint():
 
 
 def is_deepspeed_enabled():
+    from transformers.integrations import deepspeed_config
     return deepspeed_config() is not None
 
 
@@ -76,6 +76,7 @@ def is_mp() -> bool:
 
 
 def is_mp_ddp() -> bool:
+    from transformers.utils import strtobool
     _, _, world_size, _ = get_dist_setting()
     disable_mp_ddp = strtobool(os.environ.get('DISABLE_MP_DDP', '0'))
     if not disable_mp_ddp and is_dist() and is_mp() and world_size > 1:

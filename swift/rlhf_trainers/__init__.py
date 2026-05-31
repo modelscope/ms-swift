@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from .reward_trainer import RewardTrainer
     from .rlhf_mixin import RLHFTrainerMixin
     from .utils import _ForwardRedirection, patch_lora_merge, patch_lora_unmerge, round_robin
-    from .vllm_client import VLLMClient
+    from .vllm_client import VLLMClient, VLLMInferClient
 else:
     _import_structure = {
         'cpo_trainer': ['CPOTrainer'],
@@ -30,7 +30,7 @@ else:
         'rlhf_mixin': ['RLHFTrainerMixin'],
         'args_mixin': ['VllmArguments', 'GRPOArgumentsMixin'],
         'utils': ['patch_lora_merge', 'patch_lora_unmerge', 'round_robin', '_ForwardRedirection'],
-        'vllm_client': ['VLLMClient'],
+        'vllm_client': ['VLLMClient', 'VLLMInferClient'],
         'arguments':
         ['DPOConfig', 'CPOConfig', 'KTOConfig', 'ORPOConfig', 'PPOConfig', 'RewardConfig', 'GRPOConfig', 'GKDConfig']
     }

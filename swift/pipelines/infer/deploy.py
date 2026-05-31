@@ -15,9 +15,9 @@ from threading import Thread
 from typing import List, Optional, Union
 
 from swift.arguments import DeployArguments, InferArguments
-from swift.infer_engine import AdapterRequest, InferClient
+from swift.infer_engine import AdapterRequest, InferClient, RequestConfig
 from swift.infer_engine.protocol import (ChatCompletionRequest, CompletionRequest, EmbeddingRequest, Model, ModelList,
-                                         MultiModalRequestMixin)
+                                         MultiModalRequestMixin, RolloutInferRequest)
 from swift.metrics import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
@@ -31,13 +31,20 @@ class SwiftDeploy(SwiftInfer):
 
     @staticmethod
     def get_infer_engine(args: InferArguments, template=None, **kwargs):
-        if isinstance(args, DeployArguments) and args.infer_backend == 'vllm' and args.vllm_data_parallel_size > 1:
-            if not args.vllm_use_async_engine:
-                raise ValueError('vLLM data parallel requires `vllm_use_async_engine=True` in deploy mode.')
+        if isinstance(args, DeployArguments) and args.infer_backend == 'vllm':
             engine_kwargs = (kwargs.get('engine_kwargs') or {}).copy()
-            engine_kwargs.setdefault('data_parallel_size', args.vllm_data_parallel_size)
+            vllm_engine_kwargs = getattr(args, 'vllm_engine_kwargs', None) or {}
+            for k, v in vllm_engine_kwargs.items():
+                engine_kwargs.setdefault(k, v)
+            if args.vllm_data_parallel_size > 1:
+                if not args.vllm_use_async_engine:
+                    raise ValueError('vLLM data parallel requires `vllm_use_async_engine=True` in deploy mode.')
+                engine_kwargs.setdefault('data_parallel_size', args.vllm_data_parallel_size)
+                logger.info(f'Enable vLLM data parallel with size {args.vllm_data_parallel_size}.')
+            if args.max_logprobs is not None:
+                engine_kwargs['max_logprobs'] = args.max_logprobs
+                engine_kwargs['logprobs_mode'] = 'processed_logprobs'
             kwargs['engine_kwargs'] = engine_kwargs
-            logger.info(f'Enable vLLM data parallel with size {args.vllm_data_parallel_size}.')
         return SwiftInfer.get_infer_engine(args, template, **kwargs)
 
     def _register_app(self):
@@ -48,6 +55,7 @@ class SwiftDeploy(SwiftInfer):
         self.app.post('/v1/chat/completions')(self.create_chat_completion)
         self.app.post('/v1/completions')(self.create_completion)
         self.app.post('/v1/embeddings')(self.create_embedding)
+        self.app.post('/infer/')(self.infer_handler)
 
     def __init__(self, args: Optional[Union[List[str], DeployArguments]] = None) -> None:
         super().__init__(args)
@@ -221,6 +229,14 @@ class SwiftDeploy(SwiftInfer):
     async def create_embedding(self, request: EmbeddingRequest, raw_request: Request):
         chat_request = ChatCompletionRequest.from_cmpl_request(request)
         return await self.create_chat_completion(chat_request, raw_request, return_cmpl_response=True)
+
+    async def infer_handler(self, raw_request: Request):
+        body = await raw_request.json()
+        infer_requests = [RolloutInferRequest(**r) for r in body.get('infer_requests', [])]
+        rc_data = body.get('request_config')
+        request_config = RequestConfig(**rc_data) if rc_data else RequestConfig()
+        results = await asyncio.gather(*[self.infer_async(req, request_config) for req in infer_requests])
+        return results
 
     def run(self):
         args = self.args
