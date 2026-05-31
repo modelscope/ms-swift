@@ -141,8 +141,7 @@ def async_run_command_with_popen(cmd, device_id):
         npu_devices = [device.strip() for device in visible_npus.split(',') if device.strip()]
         if npu_devices:
             env['ASCEND_RT_VISIBLE_DEVICES'] = npu_devices[device_id % len(npu_devices)]
-            logger.info('Worker id: %s ASCEND_RT_VISIBLE_DEVICES: %s' %
-                        (device_id, env['ASCEND_RT_VISIBLE_DEVICES']))
+            logger.info('Worker id: %s ASCEND_RT_VISIBLE_DEVICES: %s' % (device_id, env['ASCEND_RT_VISIBLE_DEVICES']))
     else:
         env['CUDA_VISIBLE_DEVICES'] = '%s' % device_id
     sub_process = subprocess.Popen(
