@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
@@ -71,8 +71,25 @@ register_model(
         requires=['transformers>=4.52', 'moviepy'],
     ))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.paddle_ocr,
+        [
+            ModelGroup([
+                Model('PaddlePaddle/PaddleOCR-VL', 'PaddlePaddle/PaddleOCR-VL'),
+            ]),
+        ],
+        template=TemplateType.paddle_ocr,
+        model_arch=ModelArch.keye_vl,
+        architectures=['PaddleOCRVLForConditionalGeneration'],
+        requires=['transformers<5.0'],
+    ))
+
 
 class PaddleOCR1_5Loader(ModelLoader):
+
+    def get_config(self, model_dir: str) -> PretrainedConfig:
+        return AutoConfig.from_pretrained(model_dir)
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
@@ -85,10 +102,6 @@ register_model(
         MLLMModelType.paddleocr_vl,
         [
             ModelGroup([
-                Model('PaddlePaddle/PaddleOCR-VL', 'PaddlePaddle/PaddleOCR-VL'),
-            ],
-                       template=TemplateType.paddle_ocr),
-            ModelGroup([
                 Model('PaddlePaddle/PaddleOCR-VL-1.5', 'PaddlePaddle/PaddleOCR-VL-1.5'),
                 Model('PaddlePaddle/PaddleOCR-VL-1.6', 'PaddlePaddle/PaddleOCR-VL-1.6'),
             ],
@@ -96,5 +109,6 @@ register_model(
         ],
         PaddleOCR1_5Loader,
         model_arch=ModelArch.paddleocr_vl,
+        requires=['transformers>=5.0'],
         architectures=['PaddleOCRVLForConditionalGeneration'],
     ))
