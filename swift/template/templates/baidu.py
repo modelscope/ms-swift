@@ -98,12 +98,10 @@ class PaddleOCRTemplate(Template):
         if images:
             processor_kwargs = {}
             if self.version == 'v1_5' and inputs.chat_template_kwargs:
-                shortest_edge = inputs.chat_template_kwargs.get('shortest_edge', None)
-                if shortest_edge:
-                    processor_kwargs['shortest_edge'] = shortest_edge
-                longest_edge = inputs.chat_template_kwargs.get('longest_edge', None)
-                if longest_edge:
-                    processor_kwargs['longest_edge'] = longest_edge
+                for key in ['shortest_edge', 'longest_edge']:
+                    value = inputs.chat_template_kwargs.get(key, None)
+                    if value:
+                        processor_kwargs[key] = value
                 if processor_kwargs:
                     processor_kwargs = {'size': processor_kwargs}
             image_inputs = processor.image_processor(images=images, return_tensors='pt', **processor_kwargs)
