@@ -743,6 +743,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.fp8 = self.fp8_format
         self.fp4 = self.fp4_format
 
+        if self.megatron_extra_kwargs is not None:
+            self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
         if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True
         if self.vit_gradient_checkpointing_kwargs is not None:

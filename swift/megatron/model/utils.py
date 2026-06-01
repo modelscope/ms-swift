@@ -69,6 +69,8 @@ def get_mcore_model_config(args, hf_config):
 
     if args.router_replay_mode != 'disabled':
         kwargs['moe_enable_routing_replay'] = True
+    if args.megatron_extra_kwargs:
+        kwargs.update(args.megatron_extra_kwargs)
     config = ModelConfig(**kwargs)
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
         setattr(config, 'use_flash_attn', True)
