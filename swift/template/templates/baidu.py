@@ -78,6 +78,7 @@ class PaddleOCRTemplate(Template):
     image_token = '<|IMAGE_PLACEHOLDER|>'
     image_token_id = 100295
     skip_prompt = False
+    version = 'v1'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -95,7 +96,17 @@ class PaddleOCRTemplate(Template):
         processor = self.processor
         images = inputs.images
         if images:
-            image_inputs = processor.image_processor(images=images, return_tensors='pt')
+            processor_kwargs = {}
+            if self.version == 'v1_5' and inputs.chat_template_kwargs:
+                shortest_edge = inputs.chat_template_kwargs.get('shortest_edge', None)
+                if shortest_edge:
+                    processor_kwargs['shortest_edge'] = shortest_edge
+                longest_edge = inputs.chat_template_kwargs.get('longest_edge', None)
+                if longest_edge:
+                    processor_kwargs['longest_edge'] = longest_edge
+                if processor_kwargs:
+                    processor_kwargs = {'size': processor_kwargs}
+            image_inputs = processor.image_processor(images=images, return_tensors='pt', **processor_kwargs)
             image_inputs['pixel_values'] = image_inputs['pixel_values']
             image_grid_thw = image_inputs['image_grid_thw']
             merge_size = processor.image_processor.merge_size**2
@@ -261,7 +272,7 @@ register_template(
 
 
 class PaddleOCR1_5Template(PaddleOCRTemplate):
-    use_model = True
+    version = 'v1_5'
     skip_prompt = True
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:

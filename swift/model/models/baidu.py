@@ -87,9 +87,7 @@ register_model(
 
 
 class PaddleOCR1_5Loader(ModelLoader):
-
-    def get_config(self, model_dir: str) -> PretrainedConfig:
-        return AutoConfig.from_pretrained(model_dir)
+    default_trust_remote_code = False
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
