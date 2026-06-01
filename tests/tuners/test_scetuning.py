@@ -5,9 +5,24 @@ import tempfile
 import torch
 import unittest
 from modelscope import snapshot_download
+from transformers.utils import is_torch_npu_available
 
 from swift.tuners import SCETuningConfig, Swift
 from swift.tuners.part import PartConfig
+
+
+def get_npu_or_cpu_device():
+    if is_torch_npu_available():
+        return torch.device('npu')
+    return torch.device('cpu')
+
+
+def get_diffusers_unet_input(device):
+    return {
+        'sample': torch.ones((1, 4, 64, 64), device=device),
+        'timestep': torch.tensor(10, device=device),
+        'encoder_hidden_states': torch.ones((1, 77, 768), device=device)
+    }
 
 
 class TestSCETuning(unittest.TestCase):
@@ -36,6 +51,7 @@ class TestSCETuning(unittest.TestCase):
         model = UNet2DConditionModel.from_pretrained(model_dir, subfolder='unet')
         model.requires_grad_(False)
         model_check = copy.deepcopy(model)
+        device = get_npu_or_cpu_device()
         # module_keys = [key for key, _ in model.named_modules()]
         scetuning_config = SCETuningConfig(
             dims=[320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280],
@@ -46,18 +62,15 @@ class TestSCETuning(unittest.TestCase):
                 'down_blocks.2.attentions.0', 'down_blocks.2.attentions.1', 'down_blocks.2.downsamplers',
                 'down_blocks.3.resnets.0', 'down_blocks.3.resnets.1'
             ])
-        model = Swift.prepare_model(model, config=scetuning_config)
+        model = Swift.prepare_model(model, config=scetuning_config).to(device)
+        model_check = model_check.to(device)
         print(model.get_trainable_parameters())
-        input_data = {
-            'sample': torch.ones((1, 4, 64, 64)),
-            'timestep': 10,
-            'encoder_hidden_states': torch.ones((1, 77, 768))
-        }
+        input_data = get_diffusers_unet_input(device)
         result = model(**input_data).sample
         print(result.shape)
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
-        model_check = Swift.from_pretrained(model_check, self.tmp_dir)
+        model_check = Swift.from_pretrained(model_check, self.tmp_dir).to(device)
         self.model_comparison(model, model_check)
 
     @unittest.skip('Legacy test cases')
@@ -103,6 +116,7 @@ class TestSCETuning(unittest.TestCase):
         model = UNet2DConditionModel.from_pretrained(model_dir, subfolder='unet')
         model.requires_grad_(False)
         model_check = copy.deepcopy(model)
+        device = get_npu_or_cpu_device()
         # module_keys = [key for key, _ in model.named_modules()]
         scetuning_config = SCETuningConfig(
             dims=[1280, 1280, 1280, 1280, 1280, 640, 640, 640, 320, 320, 320, 320],
@@ -112,18 +126,15 @@ class TestSCETuning(unittest.TestCase):
                 'up_blocks.1.resnets.1', 'up_blocks.1.resnets.2', 'up_blocks.2.resnets.0', 'up_blocks.2.resnets.1',
                 'up_blocks.2.resnets.2', 'up_blocks.3.resnets.0', 'up_blocks.3.resnets.1', 'up_blocks.3.resnets.2'
             ])
-        model = Swift.prepare_model(model, config=scetuning_config)
+        model = Swift.prepare_model(model, config=scetuning_config).to(device)
+        model_check = model_check.to(device)
         print(model.get_trainable_parameters())
-        input_data = {
-            'sample': torch.ones((1, 4, 64, 64)),
-            'timestep': 10,
-            'encoder_hidden_states': torch.ones((1, 77, 768))
-        }
+        input_data = get_diffusers_unet_input(device)
         result = model(**input_data).sample
         print(result.shape)
         model.save_pretrained(self.tmp_dir)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'default')))
-        model_check = Swift.from_pretrained(model_check, self.tmp_dir)
+        model_check = Swift.from_pretrained(model_check, self.tmp_dir).to(device)
         self.model_comparison(model, model_check)
 
 
