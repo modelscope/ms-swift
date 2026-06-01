@@ -90,10 +90,10 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
         rank_offset=0,
     )
 
-    # Create rollout groups based on data consistency from data_iterator.
-    # Same data_parallel_rank processes same data - group ranks with same DP index.
+    # Create rollout groups based on data consistency from data_iterator
+    # Same data_parallel_rank processes same data - group ranks with same DP index
     if not trainer._rollout_groups_created:
-        # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation).
+        # Use 'tp-cp-ep-pp' to get groups with same DP index (DP is excluded from variation)
         dp_groups = decoder_rank_generator.get_ranks('tp-cp-ep-pp')
         for dp_group_ranks in dp_groups:
             # Sort for consistency
