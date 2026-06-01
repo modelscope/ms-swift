@@ -140,9 +140,11 @@ class Profiler(DistProfiler):
                     rank=self.rank,
                 )
                 prof.start()
-                with torch.profiler.record_function(profile_name):
-                    result = func(*args, **kwargs_inner)
-                prof.stop()
+                try:
+                    with torch.profiler.record_function(profile_name):
+                        result = func(*args, **kwargs_inner)
+                finally:
+                    prof.stop()
                 return result
 
             return wrapper
