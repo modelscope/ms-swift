@@ -28,6 +28,7 @@ from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module
 from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_min_version
 from packaging import version
+from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, Optional
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, set_device
@@ -144,13 +145,28 @@ def _generate_state_dict(args,
 
     if not args.no_save_optim:
         if optimizer is not None:
-            state_dict['optimizer'] = optimizer.sharded_state_dict(state_dict, **(optim_sd_kwargs or {}))
+            state_dict['optimizer'] = _optimizer_sharded_state_dict(optimizer, state_dict, optim_sd_kwargs or {})
         if opt_param_scheduler is not None:
             state_dict['opt_param_scheduler'] = opt_param_scheduler.state_dict()
 
     if not args.no_save_rng and rng_state is not None:
         state_dict['rng_state'] = rng_state
     return state_dict
+
+
+def _optimizer_sharded_state_dict(optimizer, state_dict, optim_sd_kwargs):
+    if is_torch_npu_available():
+        from swift.model.npu_patch.megatron_checkpoint import optimizer_sharded_state_dict
+        return optimizer_sharded_state_dict(optimizer, state_dict, **optim_sd_kwargs)
+    return optimizer.sharded_state_dict(state_dict, **optim_sd_kwargs)
+
+
+def _load_optimizer_state_dict(optimizer, state_dict):
+    if is_torch_npu_available():
+        from swift.model.npu_patch.megatron_checkpoint import load_optimizer_state_dict
+        load_optimizer_state_dict(optimizer, state_dict)
+        return
+    optimizer.load_state_dict(state_dict)
 
 
 def _filter_adapter_state_dict(state_dict, peft_format: bool, adapter_name: str = 'default'):
@@ -460,7 +476,7 @@ def load_mcore_checkpoint(args,
 
     if not finetune and not no_load_optim:
         if optimizer is not None:
-            optimizer.load_state_dict(state_dict['optimizer'])
+            _load_optimizer_state_dict(optimizer, state_dict['optimizer'])
         if opt_param_scheduler is not None:
             opt_param_scheduler.load_state_dict(state_dict['opt_param_scheduler'])
     elif (args.fp16 or args.bf16) and optimizer is not None:
