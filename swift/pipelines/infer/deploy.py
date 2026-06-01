@@ -32,15 +32,15 @@ class SwiftDeploy(SwiftInfer):
     @staticmethod
     def get_infer_engine(args: InferArguments, template=None, **kwargs):
         if isinstance(args, DeployArguments) and args.infer_backend == 'vllm':
+            engine_kwargs = (kwargs.get('engine_kwargs') or {}).copy()
             if args.vllm_data_parallel_size > 1:
                 if not args.vllm_use_async_engine:
                     raise ValueError('vLLM data parallel requires `vllm_use_async_engine=True` in deploy mode.')
-                engine_kwargs = (kwargs.get('engine_kwargs') or {}).copy()
                 engine_kwargs.setdefault('data_parallel_size', args.vllm_data_parallel_size)
-                kwargs['engine_kwargs'] = engine_kwargs
                 logger.info(f'Enable vLLM data parallel with size {args.vllm_data_parallel_size}.')
             if args.max_logprobs is not None:
-                kwargs['max_logprobs'] = args.max_logprobs
+                engine_kwargs['max_logprobs'] = args.max_logprobs
+            kwargs['engine_kwargs'] = engine_kwargs
         return SwiftInfer.get_infer_engine(args, template, **kwargs)
 
     def _register_app(self):

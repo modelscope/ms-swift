@@ -13,9 +13,13 @@ from transformers import AutoConfig
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
+from swift.infer_engine.protocol import RequestConfig
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_teacher_infer_request,
+                                       parse_prompt_logprobs, replace_assistant_response_with_ids)
+from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import Template
 from swift.utils import get_logger, is_last_rank, to_device
 from ..utils import forward_step_helper, get_padding_to
@@ -62,7 +66,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         super().__init__(args, template)
 
         if self.use_teacher_api:
-            from swift.rlhf_trainers.vllm_client import VLLMInferClient
             if is_last_rank():
                 self.teacher_client = VLLMInferClient(base_urls=[self.teacher_model_server])
             else:
@@ -176,7 +179,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         template = self.template
         args = self.args
         max_length = template.max_length + self.max_completion_length
-        from swift.rlhf_trainers.utils import replace_assistant_response_with_ids
         for data in batch:
             if 'response_token_ids' in data:
                 data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
@@ -302,9 +304,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return valid_samples[:required_count]
 
     def _fetch_teacher_parsed_logprobs(self, raw_batch: List[Dict]):
-        from swift.infer_engine.protocol import RequestConfig
-        from swift.rlhf_trainers.utils import build_teacher_infer_request, parse_prompt_logprobs
-
         rollout_group = self._get_rollout_group()
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
         contribution = list(raw_batch) if rollout_rank == 0 else []
@@ -342,8 +341,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Simply uses encoded_batch's input_ids shape for the output tensor.
         For OPSD, stores rolled teacher labels for loss masking.
         """
-        from swift.rlhf_trainers.utils import assemble_teacher_topk_logprobs
-
         topk = self.gkd_logits_topk
 
         for encoded_batch in encoded_batches:

@@ -688,12 +688,11 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         prompt_token_ids = None
         images_size = None
-        if request_config.return_details or request_config.prompt_logprobs is not None:
+        if request_config.return_details:
             prompt_token_ids = result.prompt_token_ids
-            if request_config.return_details:
-                images = inputs['template_inputs'].images
-                if all(isinstance(image, Image.Image) for image in images):
-                    images_size = [image.size for image in images]
+            images = inputs['template_inputs'].images
+            if all(isinstance(image, Image.Image) for image in images):
+                images_size = [image.size for image in images]
         formatted_prompt_logprobs = None
         if request_config.prompt_logprobs is not None:
             formatted_prompt_logprobs = self._format_prompt_logprobs(result.prompt_logprobs)

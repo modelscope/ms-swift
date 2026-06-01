@@ -18,6 +18,10 @@ from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler
 from typing import Dict, Optional, Union
 
+from swift.infer_engine.protocol import RequestConfig
+from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_teacher_infer_request,
+                                       parse_prompt_logprobs, prepare_fsdp, replace_assistant_response_with_ids)
+from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
@@ -96,7 +100,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.teacher_model_server = teacher_model_server
         self.use_teacher_api = teacher_model_server is not None
         if self.use_teacher_api:
-            from swift.rlhf_trainers.vllm_client import VLLMInferClient
             if self.accelerator.is_main_process:
                 self.teacher_client = VLLMInferClient(base_urls=[teacher_model_server])
             else:
@@ -124,7 +127,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 else:
                     self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
             elif self.is_fsdp_enabled:
-                from .utils import prepare_fsdp
                 self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
             else:
                 self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
@@ -467,8 +469,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             encode_prompt_only: If True, only encode the prompt part (for on-policy/seq_kd generation).
                                If False, encode the full messages including response (for offline dataset).
         """
-        from .utils import replace_assistant_response_with_ids
-
         template = self.template
         batch_encoded_inputs = []
 
@@ -670,7 +670,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         Derives cu_seqlens from parsed lengths directly (avoids mrope position_ids issues).
         """
-        from .utils import assemble_teacher_topk_logprobs
         input_ids = encoded_chunk['input_ids']
         server_seq_lens = None
         if self.template.padding_free:
@@ -693,9 +692,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         )
 
     def _fetch_and_assemble_teacher_logprobs(self, chunks):
-        from swift.infer_engine.protocol import RequestConfig
-        from .utils import build_teacher_infer_request, parse_prompt_logprobs
-
         local_chunk_sizes = [len(c.get('_teacher_raw', [])) for c in chunks]
         local_raw = []
         for c in chunks:
@@ -736,9 +732,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         Same synchronization pattern as _fetch_and_assemble_teacher_logprobs:
         only main_process has teacher_client, so we gather raw → fetch on rank0 → broadcast.
         """
-        from swift.infer_engine.protocol import RequestConfig
-        from .utils import build_teacher_infer_request, parse_prompt_logprobs
-
         all_raw = gather_object(list(raw_data))
 
         if self.accelerator.is_main_process:

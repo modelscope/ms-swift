@@ -10,7 +10,10 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import uuid
 from contextlib import contextmanager
+from datasets.utils.filelock import FileLock
 from datetime import timedelta
+from modelscope.hub.utils.utils import get_cache_dir
+from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 from typing import Any, Mapping, Optional, Union
 
 from swift.utils import is_mp
@@ -18,22 +21,6 @@ from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, i
 from .logger import get_logger
 
 logger = get_logger()
-
-
-# Device availability checks — lazy wrappers to avoid top-level transformers import
-def is_torch_cuda_available():
-    from transformers.utils import is_torch_cuda_available
-    return is_torch_cuda_available()
-
-
-def is_torch_mps_available():
-    from transformers.utils import is_torch_mps_available
-    return is_torch_mps_available()
-
-
-def is_torch_npu_available():
-    from transformers.utils import is_torch_npu_available
-    return is_torch_npu_available()
 
 
 def _find_local_mac() -> str:
@@ -88,8 +75,6 @@ def safe_ddp_context(hash_id: Optional[str], use_barrier: bool = True):
             if is_local_master():
                 dist.barrier()
     elif hash_id is not None:
-        from datasets.utils.filelock import FileLock
-        from modelscope.hub.utils.utils import get_cache_dir
         lock_dir = os.path.join(get_cache_dir(), 'lockers')
         os.makedirs(lock_dir, exist_ok=True)
         file_path = hashlib.sha256(hash_id.encode('utf-8')).hexdigest() + '.lock'
