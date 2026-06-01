@@ -631,9 +631,8 @@ class VllmEngine(InferEngine):
             else:
                 pos_dict = {}
                 for token_id, lp_obj in pos_lps.items():
-                    lp = max(lp_obj.logprob, -9999.0)
                     pos_dict[str(token_id)] = {
-                        'logprob': lp,
+                        'logprob': lp_obj.logprob,
                         'rank': getattr(lp_obj, 'rank', None),
                         'decoded_token': getattr(lp_obj, 'decoded_token', ''),
                     }

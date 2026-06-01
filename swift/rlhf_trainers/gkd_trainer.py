@@ -675,12 +675,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         server_seq_lens = None
         if self.template.padding_free:
             server_seq_lens = [0]
-            for lps, ixs, _ in parsed_chunk:
+            for lps, ixs in parsed_chunk:
                 server_seq_lens.append(server_seq_lens[-1] + len(lps) + 1)
-            trainer_seq_lens = encoded_chunkbatch.get('cu_seq_lens_q')
+            trainer_seq_lens = encoded_chunk['cu_seq_lens_q']
             if server_seq_lens[-1] != int(trainer_seq_lens[-1]):
                 logger.warning('The number of tokens returned by the teacher server differs from that of the trainer. '
-                               'This may be caused by non-aligned processing, e.g., multimodal input handling.')
+                               'This may be caused by non-aligned processing.')
 
         batch_size, seq_len = input_ids.shape
         return assemble_teacher_topk_logprobs(
@@ -731,14 +731,33 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             c['_teacher_topk_indices'] = topk_ix
 
     def _inline_fetch_teacher_logprobs(self, encoded_inputs: Dict[str, torch.Tensor], raw_data) -> None:
-        """Per-rank teacher logprobs fetch + assemble (used in eval/prediction_step)."""
+        """Fetch teacher logprobs with gather+broadcast (used in eval/prediction_step).
+
+        Same synchronization pattern as _fetch_and_assemble_teacher_logprobs:
+        only main_process has teacher_client, so we gather raw → fetch on rank0 → broadcast.
+        """
         from swift.infer_engine.protocol import RequestConfig
         from .utils import build_teacher_infer_request, parse_prompt_logprobs
 
-        requests = [build_teacher_infer_request(d) for d in raw_data]
-        request_config = RequestConfig(prompt_logprobs=self.gkd_logits_topk, max_tokens=1, temperature=0.0)
-        responses = self.teacher_client.infer(requests, request_config=request_config, use_tqdm=False)
-        parsed = [parse_prompt_logprobs(r, topk=self.gkd_logits_topk) for r in responses]
+        all_raw = gather_object(list(raw_data))
+
+        if self.accelerator.is_main_process:
+            requests = [build_teacher_infer_request(d) for d in all_raw]
+            request_config = RequestConfig(prompt_logprobs=self.gkd_logits_topk, max_tokens=1, temperature=0.0)
+            responses = self.teacher_client.infer(requests, request_config=request_config, use_tqdm=False)
+            parsed_global = [parse_prompt_logprobs(r, topk=self.gkd_logits_topk) for r in responses]
+        else:
+            parsed_global = None
+
+        container = [parsed_global]
+        broadcast_object_list(container, from_process=0)
+        parsed_global = container[0]
+
+        # Slice this rank's portion (gather_object returns rank-ordered list)
+        n_local = len(raw_data)
+        rank = self.accelerator.process_index
+        parsed = parsed_global[rank * n_local:(rank + 1) * n_local]
+
         target = encoded_inputs.get('_opsd_teacher_inputs') or encoded_inputs
         topk_lp, topk_ix = self._assemble_topk_for_chunk(parsed, target)
         encoded_inputs['_teacher_topk_logprobs'] = topk_lp

@@ -364,7 +364,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 if server_seq_lens[-1] != int(trainer_seq_lens[-1]):
                     logger.warning(
                         'The number of tokens returned by the teacher server differs from that of the trainer. '
-                        'This may be caused by non-aligned processing, e.g., multimodal input handling.')
+                        'This may be caused by non-aligned processing')
             topk_logprobs, topk_indices = assemble_teacher_topk_logprobs(
                 parsed,
                 batch_size=batch_size,
@@ -384,7 +384,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             return
         self._compute_teacher_logits_local(encoded_batches, vp_stage)
 
-    def _compute_teacher_logits_local(self, encoded_batches: List[Dict]) -> None:
+    def _compute_teacher_logits_local(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
         topk = self.gkd_logits_topk
 
         if self._is_self_distillation:

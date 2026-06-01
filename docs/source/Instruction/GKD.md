@@ -198,12 +198,17 @@ swift rlhf \
 
 **步骤 1：部署教师模型服务**
 
+使用 `swift deploy` 部署教师模型（指定 `--infer_backend vllm`）：
+
 ```bash
-# 使用 vllm serve 部署教师模型
-CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-14B-Instruct \
+CUDA_VISIBLE_DEVICES=0 \
+swift deploy \
+    --model Qwen/Qwen2.5-14B-Instruct \
+    --infer_backend vllm \
     --port 8000 \
-    --max-logprobs 64 \
-    --gpu-memory-utilization 0.9
+    --max_logprobs 64 \
+    --max_length 4096 \
+    --vllm_max_model_len 4096
 ```
 
 **步骤 2：启动 GKD 训练**
@@ -220,9 +225,7 @@ swift rlhf \
     ...
 ```
 
-> **vLLM max_logprobs 限制**：
-> - vLLM 默认 `max_logprobs=20`，可通过 `--max-logprobs N` 参数调整
-> - `gkd_logits_topk` 不能超过服务端的 `max_logprobs` 设置
+脚本示例参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh)
 
 ## 采样加速
 
@@ -240,8 +243,6 @@ swift rlhf \
 > **注意**：vLLM 加速仅适用于学生模型的 on-policy 采样（`lmbda > 0`）。教师模型的 sequential KD 采样（`seq_kd=True`）目前仍使用 Transformers，建议使用预采样方案。
 
 训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh)
-
-使用 Teacher Server 的训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh)
 
 ### 方案 2：教师模型预采样
 
