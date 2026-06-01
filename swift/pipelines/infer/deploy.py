@@ -15,9 +15,9 @@ from threading import Thread
 from typing import List, Optional, Union
 
 from swift.arguments import DeployArguments, InferArguments
-from swift.infer_engine import AdapterRequest, InferClient
+from swift.infer_engine import AdapterRequest, InferClient, RequestConfig
 from swift.infer_engine.protocol import (ChatCompletionRequest, CompletionRequest, EmbeddingRequest, Model, ModelList,
-                                         MultiModalRequestMixin)
+                                         MultiModalRequestMixin, RolloutInferRequest)
 from swift.metrics import InferStats
 from swift.utils import JsonlWriter, get_logger
 from .infer import SwiftInfer
@@ -51,6 +51,7 @@ class SwiftDeploy(SwiftInfer):
         self.app.post('/v1/chat/completions')(self.create_chat_completion)
         self.app.post('/v1/completions')(self.create_completion)
         self.app.post('/v1/embeddings')(self.create_embedding)
+        self.app.post('/infer/')(self.infer_handler)
 
     def __init__(self, args: Optional[Union[List[str], DeployArguments]] = None) -> None:
         super().__init__(args)

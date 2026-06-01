@@ -1,8 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from __future__ import annotations
 
 import torch
-from transformers import PretrainedConfig
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from transformers import PretrainedConfig
 
 from .utils import deep_getattr
 
@@ -37,6 +40,7 @@ class HfConfigFactory:
                           attr_name: str,
                           include_vit: bool = False,
                           parent_key: Optional[str] = None) -> List[Tuple[PretrainedConfig, Any]]:
+        from transformers import PretrainedConfig
         res = []
         if isinstance(config, dict):
             keys = config.keys()
@@ -70,6 +74,7 @@ class HfConfigFactory:
 
     @staticmethod
     def is_multimodal(config) -> bool:
+        from transformers import PretrainedConfig
         if isinstance(config, dict):
             keys = config.keys()
         elif isinstance(config, PretrainedConfig):
