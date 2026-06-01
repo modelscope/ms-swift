@@ -676,6 +676,8 @@ reward模型参数将在PPO、GRPO中使用。
 - move_model_batches: 在模型向vLLM等快速推理框架移动参数时，将layers分为多少个batch. 默认为None, 代表整个模型不进行拆分，否则拆分为move_model_batches+1(非layer参数)+1(多模态部分参数)个。
 - multi_turn_scheduler: 多轮GRPO参数, 传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。
 - max_turns: 多轮GRPO的轮数上限。默认为None，不做限制。
+- gym_env: 全局指定 gym 环境名称，需先在 plugin 里注册。默认为None，可在数据集每行 `env_config.name` 中覆盖。具体参考[文档](./GRPO/DeveloperGuide/gym_env.md)。
+- use_gym_env: 是否将 env 给出的 `total_reward` 作为奖励，启用后无需配置 reward 函数。默认为None；未显式传入时，若设置了 `gym_env` 则自动设为True，否则server模式下从rollout继承，其它情况为False。
 - top_entropy_quantile: 仅对熵值处于前指定分位的 token 参与损失计算，默认为1.0，即不过滤低熵 token，具体参考[文档](./GRPO/AdvancedResearch/entropy_mask.md)
 - log_entropy: 记录训练中的熵值变化动态，默认为False，具体参考[文档](./GRPO/GetStarted/GRPO.md#logged-metrics)
 - rollout_importance_sampling_mode: 训推不一致校正模式，可选项为 `token_truncate`、`token_mask`、`sequence_truncate`、`sequence_mask`。默认为None，不启用校正。具体参考[文档](./GRPO/AdvancedResearch/training_inference_mismatch.md)
@@ -733,6 +735,8 @@ soft overlong 奖励参数
 Rollout参数继承于[部署参数](#部署参数)
 - multi_turn_scheduler: 多轮GRPO训练规划器，传入对应的plugin名称, 同时在plugin/multi_turn.py中添加好对应的实现。默认为None，具体参考[文档](./GRPO/DeveloperGuide/multi_turn.md)。
 - max_turns: 多轮GRPO训练下的最大轮数，默认为None，即不做约束。
+- gym_env: 全局指定 gym 环境名称，需先在 plugin 里注册。默认为None，可在数据集每行 `env_config.name` 中覆盖。具体参考[文档](./GRPO/DeveloperGuide/gym_env.md)。
+- use_gym_env: 是否启用 gym 环境模式（rollout 输出 `total_reward` 供 trainer 使用）。默认为None，未显式传入时若设置了 `gym_env` 则自动设为True。
 - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](./GRPO/GetStarted/GRPO.md#权重同步加速)。
 - vllm_max_lora_rank: vLLM Engine LoRA参数，需大于等于训练的lora_rank，建议等于。默认为16。
 

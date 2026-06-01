@@ -312,12 +312,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with all reward values
         """
         device = self.accelerator.device
-        # If using gym environment, extract rewards directly from inputs
+        # Gym path: pull `total_reward` from the multi-turn scheduler's rollout_infos and
+        # append it as an extra column so reward_weights can blend it with reward_funcs.
         if self.use_gym_env:
-            reward_from_gym = [inp['rollout_infos']['total_reward'] for inp in inputs]
-            # For gym environment, there's only one total reward, so rewards_per_func is just local_rewards reshaped
-            local_rewards_per_func = torch.tensor(
-                reward_from_gym, dtype=torch.float32, device=device).unsqueeze(1)  # shape: [num_examples, 1]
+            gym_reward = torch.tensor([inp['rollout_infos']['total_reward'] for inp in inputs],
+                                      dtype=torch.float32,
+                                      device=device).unsqueeze(1)
+            if self.reward_funcs:
+                local_rewards_per_func = self._compute_rewards_per_func(inputs)
+                local_rewards_per_func = torch.cat([local_rewards_per_func, gym_reward], dim=1)
+            else:
+                local_rewards_per_func = gym_reward
         else:
             # Compute rewards using reward functions
             local_rewards_per_func = self._compute_rewards_per_func(inputs)
@@ -2329,14 +2334,17 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 self.reward_funcs.append(rm)
                 self.reward_func_names.append(rm.config._name_or_path.split('/')[-1])
 
-        if self.use_gym_env and not self.reward_func_names:
-            self.reward_func_names = ['gym_reward']
+        # use_gym_env: gym total_reward is appended as an extra reward column so it can
+        # blend with reward_funcs via reward_weights. When reward_funcs is empty, it becomes
+        # the single reward source.
+        if self.use_gym_env:
+            self.reward_func_names.append('gym_reward')
 
         # Reward weights
         if args.reward_weights is not None:
-            if len(args.reward_weights) != len(reward_funcs):
+            if len(args.reward_weights) != len(self.reward_func_names):
                 raise ValueError(f'Number of reward weights ({len(args.reward_weights)}) must match number of reward '
-                                 f'functions ({len(reward_funcs)})')
+                                 f'functions ({len(self.reward_func_names)})')
             self.reward_weights = torch.tensor(args.reward_weights, dtype=torch.float32).to(device)
         else:
             self.reward_weights = torch.ones(len(self.reward_func_names), dtype=torch.float32).to(device)

@@ -694,6 +694,8 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
 - multi_turn_scheduler: Multi-turn GRPO parameter; pass the corresponding plugin name, and make sure to implement it in plugin/multi_turn.py.
 - max_turns: Maximum number of rounds for multi-turn GRPO. The default is None, which means there is no limit.
+- gym_env: Globally select the gym environment name (must be registered in the plugin). Defaults to None and can be overridden per row via `env_config.name`. See the [documentation](./GRPO/DeveloperGuide/gym_env.md).
+- use_gym_env: Whether to use the env-provided `total_reward` as the reward (no reward function required). Defaults to None; when not set explicitly, it is auto-enabled if `gym_env` is set, otherwise inherited from the rollout server in server mode, and False in all other cases.
 - top_entropy_quantile: Only tokens whose entropy ranks within the specified top quantile are included in the loss calculation. The default is 1.0, which means low-entropy tokens are not filtered. For details, refer to the [documentation](./GRPO/AdvancedResearch/entropy_mask.md).
 - log_entropy: Logs the entropy values during training. The default is False. For more information, refer to the [documentation](./GRPO/GetStarted/GRPO.md#logged-metrics).
 - rollout_importance_sampling_mode: Training-inference mismatch correction mode. Options are `token_truncate`, `token_mask`, `sequence_truncate`, `sequence_mask`. Default is None (disabled). For details, refer to the [documentation](./GRPO/AdvancedResearch/training_inference_mismatch.md).
@@ -754,6 +756,8 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 The rollout parameters inherit from the [deployment parameters](#deployment-arguments).
 - multi_turn_scheduler: The scheduler for multi-turn GRPO training. Pass the corresponding plugin name, and ensure the implementation is added in `plugin/multi_turn.py`. Default is `None`. See [documentation](./GRPO/DeveloperGuide/multi_turn.md) for details.
 - max_turns: Maximum number of turns in multi-turn GRPO training. Default is `None`, meaning no limit.
+- gym_env: Globally select the gym environment name (must be registered in the plugin). Defaults to None and can be overridden per row via `env_config.name`. See the [documentation](./GRPO/DeveloperGuide/gym_env.md).
+- use_gym_env: Whether to enable gym-environment mode (rollout emits `total_reward` for the trainer to consume). Defaults to None; when not set explicitly, it is auto-enabled if `gym_env` is set.
 - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
 - vllm_max_lora_rank: LoRA parameter for the vLLM engine. Must be greater than or equal to the training lora_rank; it is recommended to set them equal. Defaults to 16.
 

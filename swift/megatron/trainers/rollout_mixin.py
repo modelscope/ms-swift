@@ -28,6 +28,7 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
                                        patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
                                        profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
+from swift.rollout import invoke_async_hook, run_multi_turn
 from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
                          to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
@@ -204,6 +205,7 @@ class MegatronRolloutMixin:
         self.enable_offload = False
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.rollout_enable_lora = False
+        self.enable_server_multi_turn = False
         self.base_sync_done = False
         self._cached_vllm_param_names = None
 
@@ -223,9 +225,13 @@ class MegatronRolloutMixin:
                 self.vllm_client.get_engine_type()
                 self.vllm_client.reset_mm_cache()
                 enable_lora = [self.vllm_client.enable_lora]
+                enable_multi_turn = [self.vllm_client.enable_multi_turn]
             else:
                 enable_lora = [False]
+                enable_multi_turn = [False]
             self.rollout_enable_lora = broadcast_object_list(enable_lora, from_process=self.world_size - 1)[0]
+            self.enable_server_multi_turn = broadcast_object_list(
+                enable_multi_turn, from_process=self.world_size - 1)[0]
         elif self.vllm_mode == 'colocate':
             if self.world_size % self.vllm_tensor_parallel_size != 0:
                 raise ValueError(f'vllm_tensor_parallel_size ({self.vllm_tensor_parallel_size}) must divide world size '
@@ -527,8 +533,26 @@ class MegatronRolloutMixin:
                 set_expandable_segments(False)
                 self.engine.engine.wake_up(tags=['kv_cache'])
 
-            # Rollout
-            outputs: List[RolloutOutput] = self._rollout(batch)
+            multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
+            colocate_multi_turn = (multi_turn_scheduler is not None and not self.enable_server_multi_turn)
+
+            if colocate_multi_turn:
+                requests = self._inputs_to_requests(self._set_inputs_system(batch))
+                invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
+                request_config = self._get_request_config()
+                outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
+                outputs = run_multi_turn(
+                    requests=requests,
+                    first_turn_outputs=outputs,
+                    scheduler=multi_turn_scheduler,
+                    rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
+                    request_config=request_config,
+                    max_turns=self.args.max_turns,
+                    gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
+                )
+            else:
+                # First-turn rollout (or only turn for single-turn / server multi-turn).
+                outputs: List[RolloutOutput] = self._rollout(batch)
 
             # Sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
@@ -540,6 +564,20 @@ class MegatronRolloutMixin:
             batch = self._postprocess_rollout_outputs(batch, outputs)
 
         return batch
+
+    def _rollout_requests(self, requests: List[RolloutInferRequest],
+                          request_config: RequestConfig) -> List[RolloutOutput]:
+        """Continuation rollout taking already-prepared ``RolloutInferRequest`` objects.
+
+        Used by the multi-turn driver (:func:`swift.rollout.run_multi_turn`) on
+        every turn after the first. ``_set_inputs_system`` is skipped because the
+        system prompt is already encoded into ``requests[i].messages``.
+        """
+        if self.vllm_mode == 'server':
+            return self._server_rollout(requests, request_config)
+        elif self.vllm_mode == 'colocate':
+            return self._colocate_rollout(requests, request_config)
+        raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
 
     def _rollout(self, batch: DataType) -> List[RolloutOutput]:
         """Execute rollout using vLLM engine."""
@@ -575,7 +613,13 @@ class MegatronRolloutMixin:
         if self.is_main_process:
             all_outputs: List[RolloutOutput] = self.vllm_client.infer(
                 infer_requests=all_requests, request_config=request_config)
-            assert len(all_outputs) == len(all_requests)
+            if len(all_outputs) != len(all_requests):
+                # Per-turn-split multi-turn (`dynamic_num_samples`) is HF-only
+                raise NotImplementedError(
+                    'Per-turn-split multi-turn (dynamic_num_samples) is not supported on Megatron — '
+                    f'server returned {len(all_outputs)} outputs for {len(all_requests)} requests. '
+                    'Return one RolloutOutput per request from MultiTurnScheduler.run (combine turns '
+                    'inside response_token_ids: List[List[int]]), or use the HF trainer.')
         else:
             all_outputs = [None] * len(all_requests)
 
@@ -711,6 +755,11 @@ class MegatronRolloutMixin:
 
             if output.rollout_infos:
                 input_data['rollout_infos'] = output.rollout_infos
+                # Multimodal pass-through: schedulers / envs may inject observation
+                # images / videos / audios mid-trajectory. override here
+                for key in ('images', 'videos', 'audios'):
+                    if key in output.rollout_infos:
+                        input_data[key] = output.rollout_infos[key]
 
             input_data['finish_reason'] = choice.finish_reason
             input_data['is_truncated'] = choice.finish_reason == 'length'
