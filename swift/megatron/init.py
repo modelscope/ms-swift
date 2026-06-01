@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
 import importlib.metadata
+import inspect
 import logging
 import os
 import torch

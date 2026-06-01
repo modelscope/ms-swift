@@ -80,6 +80,8 @@ def _initialize_mpu(args):
             logger.info(f'TP: {args.tensor_model_parallel_size}, PP: {args.pipeline_model_parallel_size}, '
                         f'VPP: {args.virtual_pipeline_model_parallel_size}, CP: {args.context_parallel_size}, '
                         f'EP: {args.expert_model_parallel_size}, ETP: {args.expert_tensor_parallel_size}')
+
+
 def initialize_megatron(args):
     # Pytorch distributed.
     _initialize_mpu(args)
