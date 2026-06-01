@@ -748,9 +748,9 @@ class GYMScheduler(MultiTurnScheduler):
     # ------------------------------------------------------------------
     async def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
         """Create one env per request and seed messages with initial observation."""
-        for req in requests:
+
+        async def _init_single(req: 'RolloutInferRequest') -> None:
             uuid = req.uuid
-            # Only clear stale state for this specific uuid (idempotent)
             if uuid in self._envs:
                 await self._close_and_remove(uuid)
 
@@ -768,6 +768,8 @@ class GYMScheduler(MultiTurnScheduler):
             self._total_rewards[uuid] = 0.0
             self._step_rewards[uuid] = []
             self._pending_obs[uuid] = None
+
+        await asyncio.gather(*[_init_single(req) for req in requests])
 
     async def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
                           current_turn: int) -> Dict[str, Any]:
