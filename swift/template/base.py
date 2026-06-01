@@ -240,13 +240,16 @@ class Template(ProcessorMixin):
         self.init_env_args()
 
     def _init_placeholder_tokens(self):
-        for i, token in enumerate(self.placeholder_tokens):
-            if isinstance(token, str):
-                self.placeholder_tokens[i] = self.tokenizer.convert_tokens_to_ids(token)
         for mm_type in ['image', 'video', 'audio']:
+            mm_token = getattr(self.processor, f'{mm_type}_token', None)
             mm_token_id = getattr(self.processor, f'{mm_type}_token_id', None)
             if mm_token_id is not None and mm_token_id not in self.placeholder_tokens:
                 self.placeholder_tokens.append(mm_token_id)
+            elif mm_token is not None and mm_token not in self.placeholder_tokens:
+                self.placeholder_tokens.append(mm_token)
+        for i, token in enumerate(self.placeholder_tokens):
+            if isinstance(token, str):
+                self.placeholder_tokens[i] = self.tokenizer.convert_tokens_to_ids(token)
 
     def _get_model(self):
         if self.model is not None:
