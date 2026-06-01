@@ -508,6 +508,12 @@ class DeepseekV4Template(DeepseekV3_1Template):
             self.reasoning_effort = 'high' if self.enable_thinking else None
         self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
 
+    def _get_enable_thinking(self, inputs=None):
+        reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is not None:
+            return reasoning_effort in ('max', 'high')
+        return super()._get_enable_thinking(inputs)
+
     def _get_system(self, inputs):
         system = super()._get_system(inputs)
         reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
