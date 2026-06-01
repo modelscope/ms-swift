@@ -489,12 +489,48 @@ register_template(
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>'))
 
+REASONING_EFFORT_MAX = (
+    'Reasoning Effort: Absolute maximum with no shortcuts permitted.\n'
+    'You MUST be very thorough in your thinking and comprehensively decompose the problem to resolve '
+    'the root cause, rigorously stress-testing your logic against all potential paths, edge cases, '
+    'and adversarial scenarios.\n'
+    'Explicitly write out your entire deliberation process, documenting every intermediate step, '
+    'considered alternative, and rejected hypothesis to ensure absolutely no assumption is left unchecked.\n\n')
+
+
+class DeepseekV4Template(DeepseekV3_1Template):
+
+    def init_env_args(self):
+        super().init_env_args()
+        # reasoning_effort: "max", "high", or None
+        self.reasoning_effort = get_env_args('reasoning_effort', str, None)
+        if self.reasoning_effort is None:
+            self.reasoning_effort = 'high' if self.enable_thinking else None
+        self.enable_thinking = self.reasoning_effort in ('max', 'high')
+        self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
+
+    def _get_enable_thinking(self, inputs=None):
+        reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is not None:
+            return reasoning_effort in ('max', 'high')
+        return super()._get_enable_thinking(inputs)
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is None:
+            reasoning_effort = self.reasoning_effort
+        if reasoning_effort == 'max' and self._get_enable_thinking(inputs):
+            system = REASONING_EFFORT_MAX + (system or '')
+        return system
+
+
 register_template(
     DeepseekV2_5TemplateMeta(
         LLMTemplateType.deepseek_v4,
         agent_template='deepseek_v4',
         is_thinking=True,
-        template_cls=DeepseekV3_1Template,
+        template_cls=DeepseekV4Template,
         thinking_prefix='<think>',
         non_thinking_prefix='</think>',
         history_thinking_prefix='</think>'))
