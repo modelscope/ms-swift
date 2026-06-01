@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-
 """NPU-only Megatron checkpoint compatibility helpers.
 
 MindSpeed patches Megatron's distributed optimizer on NPU, but some Megatron-Core
@@ -8,9 +7,8 @@ checkpoint formats still need the native Megatron param_state loaders.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-
 import torch
+from contextlib import contextmanager
 
 from swift.utils import get_logger
 
@@ -171,8 +169,9 @@ def load_optimizer_state_dict(optimizer, state_dict):
         return
 
     distributed_optimizers = list(_iter_distributed_optimizers(optimizer))
-    mindspeed_patched = any(_has_mindspeed_patched_load_state_dict(distributed_optimizer)
-                            for distributed_optimizer in distributed_optimizers)
+    mindspeed_patched = any(
+        _has_mindspeed_patched_load_state_dict(distributed_optimizer)
+        for distributed_optimizer in distributed_optimizers)
     sharding_type = state_dict.get('param_state_sharding_type') if isinstance(state_dict, dict) else None
     native_loader_name = _MEGATRON_RESHARDABLE_PARAM_STATE_LOADERS.get(sharding_type)
     if native_loader_name is None:
@@ -186,9 +185,8 @@ def load_optimizer_state_dict(optimizer, state_dict):
         return
 
     if len(distributed_optimizers) != 1:
-        raise RuntimeError(
-            f'MindSpeed optimizer checkpoint compatibility supports exactly one distributed optimizer, '
-            f'got {len(distributed_optimizers)}.')
+        raise RuntimeError(f'MindSpeed optimizer checkpoint compatibility supports exactly one distributed optimizer, '
+                           f'got {len(distributed_optimizers)}.')
     distributed_optimizer = distributed_optimizers[0]
     if not hasattr(distributed_optimizer, native_loader_name):
         raise RuntimeError(f'Distributed optimizer does not support sharding type {sharding_type}.')
@@ -199,9 +197,8 @@ def load_optimizer_state_dict(optimizer, state_dict):
     if param_state is None:
         raise RuntimeError(f'Optimizer checkpoint missing param_state for sharding type {sharding_type}.')
 
-    logger.warning(
-        f'Loading optimizer param_state with ms-swift compatibility path because MindSpeed '
-        f'DistributedOptimizer.load_state_dict does not support {sharding_type}.')
+    logger.warning(f'Loading optimizer param_state with ms-swift compatibility path because MindSpeed '
+                   f'DistributedOptimizer.load_state_dict does not support {sharding_type}.')
     # Let MindSpeed restore the generic optimizer state; load the missing
     # reshardable param_state with Megatron-Core's native implementation.
     optimizer.load_state_dict(state_dict_without_param_state)
