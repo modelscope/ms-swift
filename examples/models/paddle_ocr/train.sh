@@ -27,3 +27,9 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataset_num_proc 4 \
     --dataloader_num_workers 4
+
+# CUDA_VISIBLE_DEVICES=0 \
+# swift infer \
+#   --adapters output/vx-xxx/checkpoint-xxx \
+#   --stream true \
+#   --load_data_args true
