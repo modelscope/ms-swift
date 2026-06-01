@@ -40,19 +40,6 @@ register_model(
         architectures=['Ernie4_5_MoeForCausalLM'],
     ))
 
-register_model(
-    ModelMeta(
-        MLLMModelType.paddle_ocr,
-        [
-            ModelGroup([
-                Model('PaddlePaddle/PaddleOCR-VL', 'PaddlePaddle/PaddleOCR-VL'),
-            ]),
-        ],
-        template=TemplateType.paddle_ocr,
-        model_arch=ModelArch.keye_vl,
-        architectures=['PaddleOCRVLForConditionalGeneration'],
-    ))
-
 
 class ErnieVLLoader(ModelLoader):
 
@@ -87,11 +74,6 @@ register_model(
 
 class PaddleOCR1_5Loader(ModelLoader):
 
-    def get_config(self, model_dir: str) -> PretrainedConfig:
-        from transformers import AutoConfig
-        auto_config_cls = self.auto_config_cls or AutoConfig
-        return auto_config_cls.from_pretrained(model_dir)
-
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
         self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
@@ -100,14 +82,19 @@ class PaddleOCR1_5Loader(ModelLoader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.paddle_ocr_1_5,
+        MLLMModelType.paddleocr_vl,
         [
             ModelGroup([
+                Model('PaddlePaddle/PaddleOCR-VL', 'PaddlePaddle/PaddleOCR-VL'),
+            ],
+                       template=TemplateType.paddle_ocr),
+            ModelGroup([
                 Model('PaddlePaddle/PaddleOCR-VL-1.5', 'PaddlePaddle/PaddleOCR-VL-1.5'),
-            ]),
+                Model('PaddlePaddle/PaddleOCR-VL-1.6', 'PaddlePaddle/PaddleOCR-VL-1.6'),
+            ],
+                       template=TemplateType.paddle_ocr_1_5),
         ],
         PaddleOCR1_5Loader,
-        template=TemplateType.paddle_ocr_1_5,
-        model_arch=ModelArch.paddle_ocr_1_5,
+        model_arch=ModelArch.paddleocr_vl,
         architectures=['PaddleOCRVLForConditionalGeneration'],
     ))
