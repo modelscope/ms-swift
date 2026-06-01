@@ -630,6 +630,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mhc_recompute_layer_num: Optional[int] = None
 
     # other
+    megatron_extra_kwargs: Optional[Union[dict, str]] = None
     check_model: bool = True
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     rope_scaling: Optional[Union[dict, str]] = None
