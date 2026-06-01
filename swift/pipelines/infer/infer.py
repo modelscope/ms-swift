@@ -50,7 +50,7 @@ class SwiftInfer(SwiftPipeline):
     @staticmethod
     def get_infer_engine(args: InferArguments, template=None, **extra_kwargs):
         infer_backend = extra_kwargs.pop('infer_backend', None) or args.infer_backend
-        engine_kwargs = extra_kwargs.pop('engine_kwargs')
+        engine_kwargs = extra_kwargs.pop('engine_kwargs', {})
         kwargs = {
             'model_id_or_path': args.model,
             'model_type': args.model_type,
