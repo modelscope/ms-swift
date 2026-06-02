@@ -58,7 +58,7 @@ Other hyperparameters in the paper
 ```bash
     --epsilon 3e-4 # from paper section 5.1
     --epsilon_high 4e-4 # from paper section 5.1
-    --gradient_accumulation_steps 8 
+    --gradient_accumulation_steps 8
     --steps_per_generation 32 # from paper section 5.1 (each batch of rollout data is partitioned into four minibatches for gradient updates)
     --beta 0 # zero kl regularization https://github.com/volcengine/verl/pull/2775#issuecomment-3131807306
 ```
