@@ -129,7 +129,8 @@ class KimiK25Template(Template):
             medias = [{'type': 'image', 'image': img} for img in inputs.images]
             image_inputs = image_processor.preprocess(medias, return_tensors='pt')
             grid_thws = image_inputs['grid_thws']
-            merge_kernel_size = image_processor.media_proc_cfg['merge_kernel_size']
+            media_proc_cfg = getattr(image_processor, 'media_proc_cfg', {})
+            merge_kernel_size = media_proc_cfg.get('merge_kernel_size', (2, 2))
             if isinstance(merge_kernel_size, (list, tuple)):
                 merge_length = merge_kernel_size[0] * merge_kernel_size[1]
             else:
@@ -165,8 +166,9 @@ class KimiK25Template(Template):
             pixel_values = pixel_values.to(device=inputs_embeds.device, dtype=vision_dtype)
             grid_thws = inputs['grid_thws'].to(inputs_embeds.device)
             image_features: list = model._extract_image_features(pixel_values, grid_thws)
-            all_features = torch.cat(image_features, dim=0).to(inputs_embeds.dtype)
-            media_token_id = model.config.media_placeholder_token_id
+            all_features = torch.cat(image_features, dim=0).to(device=inputs_embeds.device, dtype=inputs_embeds.dtype)
+            media_token_id = (getattr(model.config, 'media_placeholder_token_id', None)
+                              or self.tokenizer.convert_tokens_to_ids('<|media_pad|>'))
             inputs_embeds = inputs_embeds.clone()
             mask = input_ids.reshape(-1) == media_token_id
             inputs_embeds.reshape(-1, inputs_embeds.size(-1))[mask] = all_features
@@ -179,7 +181,7 @@ class KimiK25Template(Template):
             dummy_pixels = dummy_inputs['pixel_values'].to(device=inputs_embeds.device, dtype=vision_dtype)
             dummy_grid = dummy_inputs['grid_thws'].to(inputs_embeds.device)
             image_features = model._extract_image_features(dummy_pixels, dummy_grid)
-            inputs_embeds = inputs_embeds + torch.cat(image_features, dim=0).mean() * 0.
+            inputs_embeds = inputs_embeds + torch.cat(image_features, dim=0).mean().to(dtype=inputs_embeds.dtype) * 0.
         return {'inputs_embeds': inputs_embeds}
 
 
