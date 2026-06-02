@@ -159,11 +159,13 @@ class KimiK25Template(Template):
         if pixel_values is not None and pixel_values.size(0) > 0:
             vision_dtype = model.vision_tower.patch_embed.proj.weight.dtype
             pixel_values = pixel_values.to(vision_dtype)
-            image_features: list = model._extract_image_features(pixel_values, inputs['grid_thws'])
+            grid_thws = inputs['grid_thws'].to(pixel_values.device)
+            image_features: list = model._extract_image_features(pixel_values, grid_thws)
             all_features = torch.cat(image_features, dim=0).to(inputs_embeds.dtype)
             media_token_id = model.config.media_placeholder_token_id
             inputs_embeds = inputs_embeds.clone()
-            inputs_embeds[input_ids == media_token_id] = all_features
+            mask = input_ids.reshape(-1) == media_token_id
+            inputs_embeds.reshape(-1, inputs_embeds.size(-1))[mask] = all_features
         elif is_deepspeed_enabled():
             image_processor = self.processor.image_processor
             dummy_image = Image.new('RGB', (32, 32), (0, 0, 0))
