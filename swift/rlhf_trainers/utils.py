@@ -854,6 +854,7 @@ def assemble_teacher_topk_logprobs(
     cu_seqlens: Optional[List[int]],
     topk: int,
     device: torch.device,
+    offsets: Optional[List[int]] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     is_packed = cu_seqlens is not None
 
@@ -879,11 +880,12 @@ def assemble_teacher_topk_logprobs(
     for idx in range(batch_size):
         lps, ixs = parsed[idx]
         P = len(lps)
-        length = min(P, seq_len)
+        start = offsets[idx] if offsets is not None else 0
+        length = min(P, seq_len - start)
         if length <= 0:
             continue
-        out_lp[idx, :length] = torch.tensor(lps[:length], dtype=torch.float32)
-        out_ix[idx, :length] = torch.tensor(ixs[:length], dtype=torch.long)
+        out_lp[idx, start:start + length] = torch.tensor(lps[:length], dtype=torch.float32)
+        out_ix[idx, start:start + length] = torch.tensor(ixs[:length], dtype=torch.long)
     return out_lp.to(device), out_ix.to(device)
 
 

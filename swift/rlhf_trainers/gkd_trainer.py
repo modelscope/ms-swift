@@ -234,6 +234,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Top-k mode: teacher logprobs from API
         if teacher_output.is_topk_mode:
+            # Defensive: exclude positions where teacher topk is entirely -inf (uncovered tail,
+            # e.g. server omits trailing EOS/turn-end tokens that trainer keeps) so they don't
+            # enter log_softmax and produce NaN. The main left-pad misalignment is already fixed
+            # by offset-aligned assembly; this only guards the residual trailing mismatch.
+            uncovered = torch.isinf(teacher_output.topk_logprobs).all(dim=-1)
+            if uncovered.any():
+                shifted_labels = shifted_labels.masked_fill(uncovered, -100)
             return self.generalized_jsd_loss(
                 student_logits=student_logits,
                 labels=shifted_labels,
@@ -672,14 +679,28 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         """
         input_ids = encoded_chunk['input_ids']
         server_seq_lens = None
+        offsets = None
         if self.template.padding_free:
             server_seq_lens = [0]
             for lps, ixs in parsed_chunk:
                 server_seq_lens.append(server_seq_lens[-1] + len(lps) + 1)
-            trainer_seq_lens = encoded_chunk['cu_seq_lens_q']
-            if server_seq_lens[-1] != int(trainer_seq_lens[-1]):
+            trainer_seq_lens = encoded_chunk.get('cu_seq_lens_q')
+            if trainer_seq_lens is None:
+                position_ids = encoded_chunk.get('text_position_ids')
+                if position_ids is None:
+                    position_ids = encoded_chunk.get('position_ids')
+                if position_ids is not None:
+                    trainer_seq_lens = get_cu_seqlens_from_position_ids(position_ids)
+            if trainer_seq_lens is not None and server_seq_lens[-1] != int(trainer_seq_lens[-1]):
                 logger.warning('The number of tokens returned by the teacher server differs from that of the trainer. '
                                'This may be caused by non-aligned processing.')
+        else:
+            attention_mask = encoded_chunk.get('attention_mask')
+            if attention_mask is not None:
+                offsets = []
+                for i in range(attention_mask.shape[0]):
+                    nz = attention_mask[i].nonzero().flatten()
+                    offsets.append(int(nz[0]) if nz.numel() else 0)
 
         batch_size, seq_len = input_ids.shape
         return assemble_teacher_topk_logprobs(
@@ -689,6 +710,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             cu_seqlens=server_seq_lens,
             topk=self.gkd_logits_topk,
             device=input_ids.device,
+            offsets=offsets,
         )
 
     def _fetch_and_assemble_teacher_logprobs(self, chunks):

@@ -21,7 +21,7 @@ from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_tea
                                        parse_prompt_logprobs, replace_assistant_response_with_ids)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import Template
-from swift.utils import get_logger, is_last_rank, to_device
+from swift.utils import get_cu_seqlens_from_position_ids, get_logger, is_last_rank, to_device
 from ..utils import forward_step_helper, get_padding_to
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
@@ -358,7 +358,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 for lps, ixs in parsed:
                     server_seq_lens.append(server_seq_lens[-1] + len(lps) + 1)
                 trainer_seq_lens = encoded_batch.get('cu_seq_lens_q')
-                if server_seq_lens[-1] != int(trainer_seq_lens[-1]):
+                if trainer_seq_lens is None:
+                    position_ids = encoded_batch.get('text_position_ids')
+                    if position_ids is None:
+                        position_ids = encoded_batch.get('position_ids')
+                    if position_ids is not None:
+                        trainer_seq_lens = get_cu_seqlens_from_position_ids(position_ids)
+                if trainer_seq_lens is not None and server_seq_lens[-1] != int(trainer_seq_lens[-1]):
                     logger.warning(
                         'The number of tokens returned by the teacher server differs from that of the trainer. '
                         'This may be caused by non-aligned processing')
