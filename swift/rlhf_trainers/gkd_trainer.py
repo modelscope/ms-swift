@@ -234,10 +234,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         # Top-k mode: teacher logprobs from API
         if teacher_output.is_topk_mode:
-            # Defensive: exclude positions where teacher topk is entirely -inf (uncovered tail,
-            # e.g. server omits trailing EOS/turn-end tokens that trainer keeps) so they don't
-            # enter log_softmax and produce NaN. The main left-pad misalignment is already fixed
-            # by offset-aligned assembly; this only guards the residual trailing mismatch.
+            # in case server omits any training token (NaN)
             uncovered = torch.isinf(teacher_output.topk_logprobs).all(dim=-1)
             if uncovered.any():
                 shifted_labels = shifted_labels.masked_fill(uncovered, -100)
