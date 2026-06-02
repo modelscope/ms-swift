@@ -13,8 +13,7 @@ from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.protocol import ChatCompletionResponse, ChatCompletionResponseChoice, RolloutInferRequest
 from swift.rewards import ORM, AsyncORM, orms, rm_plugins
 from swift.rewards.rm_plugin import DefaultRMPlugin
-# register context manager(used in gym training)
-from swift.rollout.gym_env import ContextManager, Env, context_managers, envs
+from swift.rollout.gym_env import Env, envs
 from swift.rollout.multi_turn import MultiTurnScheduler, multi_turns
 from swift.template import Template
 from swift.utils import get_logger, to_device
@@ -1227,10 +1226,3 @@ class CustomEnv(Env):
 
 
 envs['custom_env'] = CustomEnv
-
-
-class CustomCtxManager(ContextManager):
-    pass
-
-
-context_managers['custom_ctx'] = CustomCtxManager

@@ -232,6 +232,9 @@ class SwiftMixin:
             init_lora_weights = getattr(config, 'init_lora_weights', None)
             if isinstance(init_lora_weights, str):
                 config = copy(config)
+                # Save requires_grad state to protect against peft inject_adapter side effects
+                # (peft >= 0.18.1 incorrectly freezes active adapter when loading a temporary adapter)
+                requires_grad_state = {n: p.requires_grad for n, p in model.named_parameters()}
                 os.makedirs(os.path.join(output_dir, 'converted'), exist_ok=True)
                 if 'lora-ga' in init_lora_weights:
                     try:
@@ -257,6 +260,10 @@ class SwiftMixin:
                             os.path.dirname(output_dir), 'initial_model'),
                     )
                     model.peft_config['default'] = config
+                # Restore requires_grad state after conversion to prevent peft side effects
+                for n, p in model.named_parameters():
+                    if n in requires_grad_state:
+                        p.requires_grad = requires_grad_state[n]
 
     def _load_rng_state(self, *args, **kwargs):
         if self.args.resume_only_model:

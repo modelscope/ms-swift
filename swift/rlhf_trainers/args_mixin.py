@@ -288,6 +288,15 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             turns, while 'per_round' limits the output length for each turn. Defaults to 'per_round'.
         vllm_server_pass_dataset (bool): Pass extra dataset information to the vLLM server, used for
             multi-turn training. Defaults to False.
+        use_gym_env (Optional[bool]): If set, the trainer treats `rollout_infos['total_reward']` produced
+            by a gym-style multi-turn scheduler as the reward (no reward function needed). Works in both
+            `server` and `colocate` modes, and on the Megatron trainer. When `None` (default), it auto-defaults
+            to `True` if `gym_env` is set; otherwise it is auto-detected from the connected vLLM server in
+            `server` mode and `False` otherwise. An explicit value here is authoritative — it is never
+            overridden by the value reported by the rollout server.
+        gym_env (Optional[str]): Default gym environment name used by the `gym_scheduler`. Equivalent to
+            `--gym_env` on `swift rollout` but for the trainer-side colocate path; per-row `env_config.name`
+            still wins over this default. Defaults to None.
         dynamic_sample (bool): If True, filters out data with a reward standard deviation of 0 within a group
             and samples new data. Defaults to False.
         max_resample_times (int): When `dynamic_sample` is enabled, this limits the number of resampling
@@ -389,6 +398,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
+    use_gym_env: Optional[bool] = None
+    gym_env: Optional[str] = None
 
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
@@ -444,3 +455,10 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # and mask sequences where this delta > threshold AND advantage < 0
     # Falls back to old_per_token_logps if rollout_per_token_logps is not available
     off_policy_sequence_mask_delta: Optional[float] = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        # gym_env implies use_gym_env unless the user said otherwise; mirrors deploy_args behavior so the
+        # default propagates to GRPOConfig too (not just RLHFArguments).
+        if self.use_gym_env is None and self.gym_env is not None:
+            self.use_gym_env = True

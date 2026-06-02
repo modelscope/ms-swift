@@ -186,6 +186,8 @@ class RLHFMegatronArgumentsMixin:
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
+    use_gym_env: Optional[bool] = None
+    gym_env: Optional[str] = None
 
     num_iterations: int = 1
 
@@ -341,8 +343,6 @@ class RLHFMegatronArgumentsMixin:
                 raise ValueError('async_generate is not supported for Megatron GRPO right now')
             if self.sync_ref_model:
                 raise ValueError('sync_ref_model is not supported for Megatron GRPO right now')
-            if self.multi_turn_scheduler:
-                raise ValueError('multi_turn_scheduler is not supported for Megatron GRPO right now')
             if self.num_iterations > 1:
                 raise ValueError('num_iterations > 1 is not supported for Megatron GRPO right now')
 
@@ -384,6 +384,10 @@ class RLHFMegatronArgumentsMixin:
                 logger.info(f'Auto-configured soft_max_length = max_completion_length {self.max_completion_length}')
         if not self.use_ray:
             assert self.use_vllm, 'use_vllm must be True for Megatron GRPO'
+
+        # Mirror deploy_args: gym_env implies use_gym_env unless the user said otherwise.
+        if self.use_gym_env is None and self.gym_env is not None:
+            self.use_gym_env = True
 
 
 @dataclass
@@ -630,6 +634,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mhc_recompute_layer_num: Optional[int] = None
 
     # other
+    megatron_extra_kwargs: Optional[Union[dict, str]] = None
     check_model: bool = True
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     rope_scaling: Optional[Union[dict, str]] = None
@@ -742,6 +747,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.fp8 = self.fp8_format
         self.fp4 = self.fp4_format
 
+        if self.megatron_extra_kwargs is not None:
+            self.megatron_extra_kwargs = json_parse_to_dict(self.megatron_extra_kwargs)
         if self.task_type not in {'causal_lm', 'generative_reranker'}:
             self.untie_embeddings_and_output_weights = True
         if self.vit_gradient_checkpointing_kwargs is not None:

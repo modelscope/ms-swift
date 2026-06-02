@@ -11,21 +11,6 @@ Megatron GRPO 当前已支持以下功能：
 - **模型支持**：兼容 Megatron Swift 中的 LLM 及 MLLM（多模态大模型）
 - **算法支持**：涵盖 swift GRPO 的大部分功能
 
-以下参数或功能将在后续版本中逐步支持：
-
-- **Reward Model / Reward Model Plugin**
-- **多轮 Rollout 调度机制**（`multi_turn_scheduler`）：实现多轮对话策略优化
-- **虚拟流水线并行**（VPP）
-- **参考模型同步更新**（`sync_ref_model`）
-- **Async Generate** (`async_generate`)
-- **num_iterations**
-- **日志同步 SwanLab**
-
-⚠️ 注意：以下参数在 Megatron GRPO 中不生效：
-
-- **`use_vllm`**：Megatron GRPO 仅使用 vLLM 进行 Rollout 推理。
-- **`move_model_batches`**：该参数专用于 DeepSpeed ZeRO-3 优化，在 Megatron 架构下无效。
-
 与 ms-swift GRPO 相同，Megatron GRPO batch size 相关的参数均以 **completion-level** 为单位，即表示模型生成的 completion 数量，而非 prompt 数量。
 
 #### 参数对比
