@@ -112,8 +112,68 @@ class KimiK25Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        raise ValueError('KimiK25Template does not currently support image or video. '
+        if media_type == 'image':
+            return ['<|media_start|>image<|media_content|><|media_pad|><|media_end|>']
+        raise ValueError(f'KimiK25Template does not currently support {media_type}. '
                          'Please open an issue to request support.')
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        media_token = self._tokenize('<|media_pad|>')[0]
+        idx_list = findall(input_ids, media_token)
+        if inputs.images:
+            image_processor = self.processor.image_processor
+            medias = [{'type': 'image', 'image': img} for img in inputs.images]
+            image_inputs = image_processor.preprocess(medias, return_tensors='pt')
+            grid_thws = image_inputs['grid_thws']
+            merge_kernel_size = image_processor.media_proc_cfg['merge_kernel_size']
+            merge_length = merge_kernel_size[0] * merge_kernel_size[1]
+
+            def _get_new_tokens(i):
+                token_len = (grid_thws[i].prod() // merge_length).item()
+                return [media_token] * token_len
+
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
+            encoded['loss_scale'] = loss_scale
+            encoded['input_ids'] = input_ids
+            encoded['labels'] = labels
+            encoded.update(image_inputs)
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        grid_thws = self.concat_tensor(batch, 'grid_thws', 0)
+        if grid_thws is not None:
+            res['grid_thws'] = grid_thws
+        return res
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        inputs_embeds = model.get_input_embeddings()(input_ids)
+
+        if pixel_values is not None and pixel_values.size(0) > 0:
+            vision_dtype = model.vision_tower.patch_embed.proj.weight.dtype
+            pixel_values = pixel_values.to(vision_dtype)
+            image_features: list = model._extract_image_features(pixel_values, inputs['grid_thws'])
+            all_features = torch.cat(image_features, dim=0).to(inputs_embeds.dtype)
+            media_token_id = model.config.media_placeholder_token_id
+            inputs_embeds = inputs_embeds.clone()
+            inputs_embeds[input_ids == media_token_id] = all_features
+        elif is_deepspeed_enabled():
+            image_processor = self.processor.image_processor
+            dummy_image = Image.new('RGB', (32, 32), (0, 0, 0))
+            dummy_inputs = image_processor.preprocess([{'type': 'image', 'image': dummy_image}], return_tensors='pt')
+            vision_dtype = model.vision_tower.patch_embed.proj.weight.dtype
+            dummy_pixels = dummy_inputs['pixel_values'].to(vision_dtype).to(inputs_embeds.device)
+            dummy_grid = dummy_inputs['grid_thws'].to(inputs_embeds.device)
+            image_features = model._extract_image_features(dummy_pixels, dummy_grid)
+            inputs_embeds = inputs_embeds + torch.cat(image_features, dim=0).mean() * 0.
+        return {'inputs_embeds': inputs_embeds}
 
 
 register_template(
