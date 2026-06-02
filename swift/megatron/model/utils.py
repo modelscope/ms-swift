@@ -52,6 +52,7 @@ def get_mcore_model_config(args, hf_config):
     kwargs['params_dtype'] = args.torch_dtype
     kwargs['num_layers_in_first_pipeline_stage'] = args.decoder_first_pipeline_num_layers
     kwargs['num_layers_in_last_pipeline_stage'] = args.decoder_last_pipeline_num_layers
+    kwargs['fp4_param'] = args.fp4_param_gather
     kwargs['fp8_param'] = args.fp8_param_gather
     swiglu = kwargs.get('swiglu', True)
     add_bias_linear = kwargs.get('add_bias_linear', False)

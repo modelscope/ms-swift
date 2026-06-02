@@ -51,7 +51,7 @@ class HfConfigFactory:
             res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
-            if k.endswith('_config'):
+            if k.endswith('_config') and k != 'talker_config':
                 if isinstance(config, dict):
                     v = config[k]
                 else:
