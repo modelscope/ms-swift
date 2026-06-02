@@ -814,6 +814,102 @@ def replace_assistant_response_with_ids(messages: 'Messages',
     return messages
 
 
+def build_teacher_infer_request(data: Dict) -> 'RolloutInferRequest':
+    """Build a minimal RolloutInferRequest for the GKD teacher logprobs fetch.
+
+    Only `messages` + multimodal fields (`images` / `audios` / `videos`) are
+    forwarded. If `data['response_token_ids']` is present, the last assistant
+    content in messages is replaced with that token-id list, enabling
+    token-in-token-out so the teacher server avoids re-tokenizing the response.
+    """
+    import base64
+    import uuid as _uuid
+    from copy import deepcopy
+
+    from swift.infer_engine.protocol import RolloutInferRequest
+
+    def _process_image(img):
+        if isinstance(img, dict):
+            if img.get('bytes'):
+                return base64.b64encode(img['bytes']).decode('utf-8')
+            if img.get('path'):
+                return img['path']
+        return img
+
+    messages = deepcopy(data.get('messages', []))
+    if data.get('response_token_ids'):
+        messages = replace_assistant_response_with_ids(messages, data['response_token_ids'])
+
+    images = data.get('images')
+    if images:
+        if not isinstance(images, list):
+            images = [images]
+        images = [_process_image(img) for img in images]
+
+    return RolloutInferRequest(
+        messages=messages,
+        images=images or [],
+        audios=data.get('audios') or [],
+        videos=data.get('videos') or [],
+        uuid=str(_uuid.uuid4().hex),
+    )
+
+
+def parse_prompt_logprobs(response, topk: int) -> Tuple[List[List[float]], List[List[int]]]:
+    raw = response.prompt_logprobs or []
+    lps: List[List[float]] = []
+    ixs: List[List[int]] = []
+    for pos_lp in raw[1:]:
+        sorted_items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])[:topk]
+        lp_row = [info['logprob'] for _, info in sorted_items]
+        ix_row = [int(tid) for tid, _ in sorted_items]
+        lps.append(lp_row)
+        ixs.append(ix_row)
+    return lps, ixs
+
+
+def assemble_teacher_topk_logprobs(
+    parsed: List[Tuple[List[List[float]], List[List[int]]]],
+    batch_size: int,
+    seq_len: int,
+    cu_seqlens: Optional[List[int]],
+    topk: int,
+    device: torch.device,
+    offsets: Optional[List[int]] = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    is_packed = cu_seqlens is not None
+
+    if is_packed:
+        total_len = seq_len
+        out_lp = torch.full((total_len, topk), float('-inf'), dtype=torch.float32)
+        out_ix = torch.zeros(total_len, topk, dtype=torch.long)
+        num_seqs = len(cu_seqlens) - 1
+        assert len(parsed) == num_seqs, f'parsed length {len(parsed)} != num_seqs {num_seqs}'
+        for i in range(num_seqs):
+            start, end = cu_seqlens[i], cu_seqlens[i + 1]
+            lps, ixs = parsed[i]
+            length = min(len(lps), end - start)
+            if length <= 0:
+                continue
+            out_lp[start:start + length] = torch.tensor(lps[:length], dtype=torch.float32)
+            out_ix[start:start + length] = torch.tensor(ixs[:length], dtype=torch.long)
+        return out_lp.unsqueeze(0).to(device), out_ix.unsqueeze(0).to(device)
+
+    out_lp = torch.full((batch_size, seq_len, topk), float('-inf'), dtype=torch.float32)
+    out_ix = torch.zeros(batch_size, seq_len, topk, dtype=torch.long)
+    assert len(parsed) == batch_size, f'parsed length {len(parsed)} != batch_size {batch_size}'
+    for idx in range(batch_size):
+        lps, ixs = parsed[idx]
+        P = len(lps)
+        start = offsets[idx] if offsets is not None else 0
+        length = min(P, seq_len - start)
+        if length <= 0:
+            continue
+        out_lp[idx, start:start + length] = torch.tensor(lps[:length], dtype=torch.float32)
+        out_ix[idx, start:start + length] = torch.tensor(ixs[:length], dtype=torch.long)
+    return out_lp.to(device), out_ix.to(device)
+
+
 def patch_save_last_checkpoint():
     import trl
     if version.parse(trl.__version__) >= version.parse('0.20'):

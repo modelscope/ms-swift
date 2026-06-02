@@ -1,10 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Dict
 
-from swift.utils import get_logger
 from ..main import cli_main as swift_cli_main
-
-logger = get_logger()
 
 ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.cli._megatron.pt',

@@ -497,6 +497,9 @@ class VllmEngine(InferEngine):
                 # Return only the sampled token's logprob
                 kwargs['logprobs'] = 0
 
+        if request_config.prompt_logprobs is not None:
+            kwargs['prompt_logprobs'] = request_config.prompt_logprobs
+
         # TODO: beam search
         for key in ['n', 'best_of', 'frequency_penalty', 'presence_penalty', 'seed']:
             if hasattr(SamplingParams, key):
@@ -619,6 +622,25 @@ class VllmEngine(InferEngine):
             choices.append(choice)
         return ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
+    @staticmethod
+    def _format_prompt_logprobs(prompt_logprobs):
+        if prompt_logprobs is None:
+            return None
+        result = []
+        for pos_lps in prompt_logprobs:
+            if pos_lps is None:
+                result.append(None)
+            else:
+                pos_dict = {}
+                for token_id, lp_obj in pos_lps.items():
+                    pos_dict[str(token_id)] = {
+                        'logprob': lp_obj.logprob,
+                        'rank': getattr(lp_obj, 'rank', None),
+                        'decoded_token': getattr(lp_obj, 'decoded_token', ''),
+                    }
+                result.append(pos_dict)
+        return result
+
     def _create_embedding_response(self, result, generation_config, request_id) -> EmbeddingResponse:
         assert result is not None
         embedding = result.outputs.data.cpu().numpy().tolist()
@@ -673,12 +695,16 @@ class VllmEngine(InferEngine):
             images = inputs['template_inputs'].images
             if all(isinstance(image, Image.Image) for image in images):
                 images_size = [image.size for image in images]
+        formatted_prompt_logprobs = None
+        if request_config.prompt_logprobs is not None:
+            formatted_prompt_logprobs = self._format_prompt_logprobs(result.prompt_logprobs)
         return ChatCompletionResponse(
             model=self.model_name,
             choices=choices,
             usage=usage_info,
             id=request_id,
             prompt_token_ids=prompt_token_ids,
+            prompt_logprobs=formatted_prompt_logprobs,
             images_size=images_size)
 
     def _create_seq_cls_response(
