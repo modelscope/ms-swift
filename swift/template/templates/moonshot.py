@@ -130,7 +130,10 @@ class KimiK25Template(Template):
             image_inputs = image_processor.preprocess(medias, return_tensors='pt')
             grid_thws = image_inputs['grid_thws']
             merge_kernel_size = image_processor.media_proc_cfg['merge_kernel_size']
-            merge_length = merge_kernel_size[0] * merge_kernel_size[1]
+            if isinstance(merge_kernel_size, (list, tuple)):
+                merge_length = merge_kernel_size[0] * merge_kernel_size[1]
+            else:
+                merge_length = merge_kernel_size * merge_kernel_size
 
             def _get_new_tokens(i):
                 token_len = (grid_thws[i].prod() // merge_length).item()
@@ -157,9 +160,10 @@ class KimiK25Template(Template):
         inputs_embeds = model.get_input_embeddings()(input_ids)
 
         if pixel_values is not None and pixel_values.size(0) > 0:
-            vision_dtype = model.vision_tower.patch_embed.proj.weight.dtype
-            pixel_values = pixel_values.to(vision_dtype)
-            grid_thws = inputs['grid_thws'].to(pixel_values.device)
+            vision_tower = self.get_base_model(model).vision_tower
+            vision_dtype = next(vision_tower.parameters()).dtype
+            pixel_values = pixel_values.to(device=inputs_embeds.device, dtype=vision_dtype)
+            grid_thws = inputs['grid_thws'].to(inputs_embeds.device)
             image_features: list = model._extract_image_features(pixel_values, grid_thws)
             all_features = torch.cat(image_features, dim=0).to(inputs_embeds.dtype)
             media_token_id = model.config.media_placeholder_token_id
@@ -170,8 +174,9 @@ class KimiK25Template(Template):
             image_processor = self.processor.image_processor
             dummy_image = Image.new('RGB', (32, 32), (0, 0, 0))
             dummy_inputs = image_processor.preprocess([{'type': 'image', 'image': dummy_image}], return_tensors='pt')
-            vision_dtype = model.vision_tower.patch_embed.proj.weight.dtype
-            dummy_pixels = dummy_inputs['pixel_values'].to(vision_dtype).to(inputs_embeds.device)
+            vision_tower = self.get_base_model(model).vision_tower
+            vision_dtype = next(vision_tower.parameters()).dtype
+            dummy_pixels = dummy_inputs['pixel_values'].to(device=inputs_embeds.device, dtype=vision_dtype)
             dummy_grid = dummy_inputs['grid_thws'].to(inputs_embeds.device)
             image_features = model._extract_image_features(dummy_pixels, dummy_grid)
             inputs_embeds = inputs_embeds + torch.cat(image_features, dim=0).mean() * 0.
