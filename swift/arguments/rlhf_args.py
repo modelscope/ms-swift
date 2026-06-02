@@ -65,6 +65,7 @@ class TeacherModelArguments:
             remotely. When this is set, `teacher_model` is not required. Defaults to None.
     """
     teacher_model: Optional[str] = None
+    teacher_model_group: Optional[List[str]] = field(default_factory=list)
     teacher_adapters: List[str] = field(default_factory=list)
     teacher_model_type: Optional[str] = field(
         default=None, metadata={'help': f'model_type choices: {list(MODEL_MAPPING.keys())}'})
@@ -73,15 +74,15 @@ class TeacherModelArguments:
         default=None,
         metadata={
             'help':
-            'DeepSpeed configuration for teacher model. '
-            'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
+                'DeepSpeed configuration for teacher model. '
+                'Can be a path to a json file or one of: zero0, zero1, zero2, zero3, zero2_offload, zero3_offload'
         })
     teacher_model_server: Optional[str] = field(
         default=None,
         metadata={
             'help':
-            'URL of the teacher model server (e.g., http://localhost:8000). '
-            'When set, teacher logprobs are fetched via API instead of loading a local model.'
+                'URL of the teacher model server (e.g., http://localhost:8000). '
+                'When set, teacher logprobs are fetched via API instead of loading a local model.'
         })
 
 

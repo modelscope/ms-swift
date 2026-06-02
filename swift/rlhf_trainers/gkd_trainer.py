@@ -3,21 +3,22 @@ import inspect
 import os
 import random
 import re
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import trl
-from accelerate.utils import gather_object, is_peft_model
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
+from typing import Dict, Optional, Union
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import trl
+from accelerate.utils import gather_object, is_peft_model
 from packaging import version
 from transformers import PreTrainedModel
 from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler
-from typing import Dict, Optional, Union
 
 from swift.infer_engine.protocol import MultiModalRequestMixin
 from swift.template import TemplateInputs
@@ -30,6 +31,7 @@ from .utils import (get_gather_if_zero3_context, identity_data_collator, prepare
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
+
     _liger_kernel_available = True
 except ImportError:
     _liger_kernel_available = False
@@ -82,6 +84,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
         teacher_model = kwargs.pop('teacher_model', None)
+        self.teacher_model_group = kwargs.pop('teacher_model_group', None)
         teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.gkd_logits_topk = kwargs.pop('gkd_logits_topk', None)
@@ -112,27 +115,45 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._teacher_use_disable_adapter = teacher_use_disable_adapter
         self._is_self_distillation = (teacher_model is None and teacher_model_server is None)
 
-        # Initialize teacher model
-        if teacher_model is not None:
+        # Initialize teacher model(s)
+        self.teacher_model_group = None
+
+        # Helper to prepare a single teacher model
+        def _prepare_teacher_model(model, is_first=False):
             if self.is_deepspeed_enabled:
-                if teacher_deepspeed_config is not None:
-                    self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
-                    if not self.is_teacher_ds3:
-                        self.teacher_ds3_gather_for_generation = False
-                    self.teacher_model = prepare_deepspeed(
-                        teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
-                else:
-                    self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
+                ds_config = teacher_deepspeed_config if is_first and teacher_deepspeed_config else None
+                # For group models after the first, we might reuse config or let prepare_deepspeed handle it
+                prepared = prepare_deepspeed(
+                    model, self.accelerator,
+                    deepspeed_config=ds_config if ds_config else teacher_deepspeed_config,
+                    training_args=args
+                )
             elif self.is_fsdp_enabled:
                 from .utils import prepare_fsdp
-                self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
+                prepared = prepare_fsdp(model, self.accelerator)
             else:
-                self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
-            self.teacher_model.eval()
+                prepared = self.accelerator.prepare_model(model, evaluation_mode=True)
+
+            prepared.eval()
             if self.args.offload_teacher_model:
-                self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
-        else:
-            self.teacher_model = None
+                self.offload_model(self.accelerator.unwrap_model(prepared))
+            return prepared
+
+        if self.teacher_model_group is not None and len(self.teacher_model_group) > 0:
+            # Multi-Teacher Mode (MOPD)
+            prepared_models = []
+            for idx, model_name in enumerate(self.teacher_model_group):
+                prepared_models.append(_prepare_teacher_model(model_name, is_first=(idx == 0)))
+
+            self.teacher_model_group = prepared_models
+            # Set primary teacher for compatibility with existing paths (e.g., liger loss check)
+            self.teacher_model = prepared_models[0]
+            logger.info(f'Initialized {len(prepared_models)} teacher models for MOPD.')
+
+        elif teacher_model is not None:
+            # Single Teacher Mode
+            self.teacher_model = _prepare_teacher_model(teacher_model, is_first=True)
+            logger.info('Initialized single teacher model.')
 
         # Initialize rollout infrastructure for vLLM support
         self.prepare_rollout()
@@ -446,6 +467,40 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
+        elif self.teacher_model_group is not None:
+            if self.args.sft_alpha > 0:
+                model_inputs['labels'] = inputs['labels']
+            outputs_student = model(**model_inputs)
+
+            t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
+                k: v
+                for k, v in model_inputs.items() if k != 'labels'
+            }
+
+            # Collect all teacher logits
+            teacher_logits_list = []
+            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
+            for teacher_model in self.teacher_model_group:
+                with torch.no_grad(), load_context, \
+                        disable_gradient_checkpointing(teacher_model, self.args.gradient_checkpointing_kwargs):
+                    outputs_teacher = teacher_model(**t_fwd)
+                    teacher_logits_list.append(outputs_teacher.logits)
+
+            # Compute average probability distribution from multiple teachers
+            # Convert logits to probabilities, then average
+            teacher_probs_list = [F.softmax(logits / self.temperature, dim=-1) for logits in teacher_logits_list]
+            avg_teacher_probs = torch.stack(teacher_probs_list).mean(dim=0)
+            # Convert back to logits for JSD loss computation
+            avg_teacher_logits = torch.log(avg_teacher_probs + 1e-8) * self.temperature
+
+            # Create TeacherOutput with averaged logits
+            opsd_labels = opsd_teacher_inputs.get('labels') if opsd_teacher_inputs is not None else None
+            teacher_out = TeacherOutput(full_logits=avg_teacher_logits, opsd_teacher_labels=opsd_labels)
+            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
+
+            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
+                loss = loss + self.args.sft_alpha * outputs_student.loss
+
         # Separate teacher model provided
         else:
             assert self.teacher_model is not None
@@ -913,16 +968,16 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return student_logits, teacher_logits
 
     def generalized_jsd_loss(
-        self,
-        student_logits,
-        teacher_logits=None,
-        labels=None,
-        beta=0.5,
-        temperature=1.0,
-        chunk_size=512,
-        topk=None,
-        teacher_topk_logprobs=None,
-        teacher_topk_indices=None,
+            self,
+            student_logits,
+            teacher_logits=None,
+            labels=None,
+            beta=0.5,
+            temperature=1.0,
+            chunk_size=512,
+            topk=None,
+            teacher_topk_logprobs=None,
+            teacher_topk_indices=None,
     ):
         # Align vocab sizes when student and teacher have different vocabulary dimensions
         if teacher_logits is not None:

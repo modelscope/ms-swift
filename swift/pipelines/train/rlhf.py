@@ -1,9 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-import peft
 from contextlib import nullcontext
-from packaging import version
 from typing import List, Optional, Union
+
+import peft
+from packaging import version
 
 from swift.arguments import BaseArguments, RLHFArguments
 from swift.dataset import DatasetLoader, load_dataset
@@ -13,9 +14,9 @@ from swift.tuner_plugin import Tuner, tuners_map
 from swift.tuners import Swift
 from swift.utils import (HfConfigFactory, disable_deepspeed_zero3, get_logger, get_model_parameter_info,
                          safe_snapshot_download)
-from ..utils import prepare_adapter
 from .kto import prepare_kto_dataset
 from .sft import SwiftSft
+from ..utils import prepare_adapter
 
 logger = get_logger()
 
@@ -132,6 +133,25 @@ class SwiftRLHF(SwiftSft):
                 model, _ = result
                 setattr(self, f'{key}_model', model)
 
+        # Handle teacher_model_group for GKD
+        if args.rlhf_type == 'gkd' and hasattr(args, 'teacher_model_group') and args.teacher_model_group:
+            logger.info(f'Loading teacher_model_group with {len(args.teacher_model_group)} models')
+            teacher_model_group_models = []
+            for idx, teacher_model_path in enumerate(args.teacher_model_group):
+                logger.info(f'Loading teacher model group [{idx}]: {teacher_model_path}')
+                # Use teacher_model_type and teacher_model_revision if available, otherwise infer
+                model_type = getattr(args, 'teacher_model_type', None)
+                model_revision = getattr(args, 'teacher_model_revision', None)
+                args.teacher_group_model = teacher_model_path
+                # setattr(self, 'teacher_group_model',teacher_model_path)
+                result = self._prepare_single_model('teacher_group', None, model_type, model_revision)
+                if result is not None:
+                    model, _ = result
+                    teacher_model_group_models.append(model)
+                    logger.info(f'Successfully loaded teacher model group [{idx}]: {model}')
+            setattr(self, 'teacher_model_group', teacher_model_group_models)
+            logger.info(f'Total teacher_model_group_models loaded: {len(teacher_model_group_models)}')
+
         # Handle reward model(s)
         self.reward_model = None
         if hasattr(args, 'reward_model') and args.reward_model is not None:
@@ -239,6 +259,8 @@ class SwiftRLHF(SwiftSft):
             if self.args.teacher_model_server:
                 trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
             trainer_kwargs['teacher_use_disable_adapter'] = getattr(self.args, '_teacher_use_disable_adapter', False)
+            if hasattr(self, 'teacher_model_group_models') and self.teacher_model_group_models:
+                trainer_kwargs['teacher_model_group'] = self.teacher_model_group_models
         return trainer_kwargs
 
 
