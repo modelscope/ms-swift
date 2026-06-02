@@ -252,7 +252,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 - 🔥vit_lr: Specifies the learning rate for the ViT module when training multimodal models. Default is `None`, same as `learning_rate`. Typically used together with `--freeze_vit` and `--freeze_aligner`.
   - Note: The "learning_rate" printed in the logs is the learning rate of `param_groups[0]`, where the order of param_groups is vit, aligner, llm (if it contains trainable parameters).
 - 🔥aligner_lr: Specifies the learning rate for the aligner module in multimodal models. Default is `None`, same as `learning_rate`.
-- lr_scheduler_type: Type of learning rate scheduler. Default is `'cosine'`.
+- lr_scheduler_type: The type of learning rate scheduler, defaults to `'cosine'`. Common options: `'linear'`, `'constant'`, `'cosine_with_min_lr'`.
 - lr_scheduler_kwargs: Additional arguments for the learning rate scheduler. Default is `None`.
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Default is `None`.
   - Note: When using DDP without DeepSpeed/FSDP and `gradient_checkpointing_kwargs` is `None`, it defaults to `'{"use_reentrant": false}'` to prevent errors.
