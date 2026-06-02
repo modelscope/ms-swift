@@ -6,8 +6,7 @@ import torch
 import torch.nn.functional as F
 from packaging import version
 from PIL import Image
-from transformers import (AutoConfig, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
-                          PreTrainedTokenizerBase)
+from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 
