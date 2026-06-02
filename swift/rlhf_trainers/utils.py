@@ -909,10 +909,10 @@ def patch_vllm_moe_model_weight_loader(model):
     Args:
         model: The vLLM model to patch.
     """
-    # Check if already patched (idempotent).
-    # Note: the flag can be lost when vLLM sleep/wake_up recreates the model
-    # object, so the expensive import step is cached in _get_moe_model_registry.
-    if getattr(model, '_swift_moe_weight_loader_patched', False):
+    # Check if already patched (idempotent). On NPU/vLLM-Ascend, sleep/wake
+    # and full-model reload can recreate expert Parameters while keeping this
+    # model-level flag, so the loader needs to be reattached every reload.
+    if getattr(model, '_swift_moe_weight_loader_patched', False) and not is_torch_npu_available():
         return
 
     supported_moe_models, mlp_attr_mapping = _get_moe_model_registry()
