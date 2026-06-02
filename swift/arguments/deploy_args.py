@@ -113,6 +113,7 @@ class RolloutArguments(DeployArguments):
         super().__post_init__()
         self._check_args()
         self._check_device_count()
+        self._check_vllm_enable_expert_parallel()
         self._check_deprecated_args()
 
     def _set_default_engine_type(self):
@@ -156,6 +157,12 @@ class RolloutArguments(DeployArguments):
                 f'vllm_tensor_parallel_size: {self.vllm_tensor_parallel_size}, '
                 f'vllm_data_parallel_size: {self.vllm_data_parallel_size}, '
                 f'required_device_count: {required_device_count}.')
+
+    def _check_vllm_enable_expert_parallel(self):
+        if self.vllm_enable_expert_parallel and not self.vllm_use_async_engine:
+            self.vllm_use_async_engine = True
+            logger.warning('vllm_enable_expert_parallel is only supported with vllm_use_async_engine, '
+                           'set vllm_use_async_engine to True.')
 
     def _check_deprecated_args(self):
         if self.context_manager is not None:
