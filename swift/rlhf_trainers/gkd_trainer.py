@@ -278,16 +278,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         model_inputs = {k: v for k, v in inputs.items() if k != 'labels'}
         model_inputs.pop('position_ids', None)
         model_inputs.pop('text_position_ids', None)
-        kwargs = {}
-        base_model = self.template.get_base_model(model)
-        parameters = inspect.signature(base_model.generate).parameters
-        if 'use_model_defaults' in parameters:
-            kwargs['use_model_defaults'] = False
         with self.template.generate_context():
             if self.model.model_meta.is_multimodal:
                 _, model_inputs = self.template.pre_forward_hook(model, None, model_inputs)
-            generated_outputs = model.generate(
-                **model_inputs, generation_config=generation_config, return_dict_in_generate=True, **kwargs)
+            generated_outputs = self.template.generate(
+                model, **model_inputs, generation_config=generation_config, return_dict_in_generate=True)
         # Get the generated token IDs
         generated_tokens = generated_outputs.sequences
         if not self.template.skip_prompt:
