@@ -122,11 +122,7 @@ class GKDTrainer(BaseRayTrainer):
 
     def _encode_rollout_batch(self, rollout_batch):
         """Encode rollout samples for the training workers."""
-        from swift.megatron.utils import get_padding_to
-        from swift.utils import get_current_device, to_device
-
         template = self.template
-        device = torch.device('cpu')
         samples = []
         for item in rollout_batch:
             encoded = template.encode(item)

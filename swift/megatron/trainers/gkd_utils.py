@@ -99,7 +99,7 @@ def jsd_topk(student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, 
 
 def generalized_jsd_loss(
     student_logits: torch.Tensor,
-    teacher_logits: torch.Tensor,
+    teacher_logits: Optional[torch.Tensor] = None,
     labels: Optional[torch.Tensor] = None,
     beta: float = 0.5,
     temperature: float = 1.0,
@@ -118,8 +118,8 @@ def generalized_jsd_loss(
     num_valid = local_num_valid.float()
 
     if cp_size > 1:
-        torch.distributed.all_reduce(num_valid, op=torch.distributed.ReduceOp.SUM,
-                                     group=mpu.get_context_parallel_group())
+        torch.distributed.all_reduce(
+            num_valid, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
 
     if num_valid == 0:
         return (student_logits.sum() * 0).reshape(())
@@ -129,8 +129,8 @@ def generalized_jsd_loss(
             mask = torch.ones(student_logits.shape[:2], dtype=torch.bool, device=student_logits.device)
         total_loss = jsd_topk(student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta, temperature)
         if cp_size > 1:
-            torch.distributed.all_reduce(total_loss, op=torch.distributed.ReduceOp.SUM,
-                                         group=mpu.get_context_parallel_group())
+            torch.distributed.all_reduce(
+                total_loss, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
         return total_loss / num_valid
 
     student_logits, teacher_logits = align_vocab_size(student_logits, teacher_logits)
@@ -185,7 +185,7 @@ def generalized_jsd_loss(
     del student_logits_masked, teacher_logits_masked
 
     if cp_size > 1:
-        torch.distributed.all_reduce(total_loss, op=torch.distributed.ReduceOp.SUM,
-                                     group=mpu.get_context_parallel_group())
+        torch.distributed.all_reduce(
+            total_loss, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
 
     return total_loss / num_valid

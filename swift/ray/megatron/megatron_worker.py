@@ -104,33 +104,38 @@ class MegatronWorker(CheckpointEngineMixin):
         """Forward teacher model on encoded batch, return TeacherOutput per sample."""
         from swift.megatron.trainers.gkd_utils import vocab_parallel_topk
         from swift.megatron.trainers.utils import prepare_batch
-        from swift.megatron.utils import forward_step_helper
+        from swift.megatron.utils import forward_step_helper, get_padding_to
         from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 
         assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
         teacher_model = self.teacher.models[0]
         gkd_logits_topk = getattr(self._args, 'gkd_logits_topk', None)
+        template = self._pipeline.template
+        device = get_current_device()
 
-        micro_batches = split_micro_batches(batch, self._args.micro_batch_size)
+        sample_chunks = self._split_sample_chunks(batch)
         results = []
         with torch.no_grad():
-            for mb in micro_batches:
-                mb_gpu = to_device(mb, get_current_device())
-                teacher_data = prepare_batch(self._args, mb_gpu)
+            for chunk in sample_chunks:
+                encoded_list = [s['encoded'] for s in chunk]
+                collated = template.data_collator(encoded_list, padding_to=get_padding_to(self._args))
+                collated = to_device(collated, device)
+                teacher_data = prepare_batch(self._args, collated)
                 teacher_data.pop('loss_scale', None)
-                labels = teacher_data.pop('labels', None)
+                teacher_data.pop('labels', None)  # pop labels to compute logits
                 teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
-                    if gkd_logits_topk is not None:
-                        topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=gkd_logits_topk)
-                        teacher_out = TeacherOutput(topk_logprobs=topk_logits.cpu(), topk_indices=topk_indices.cpu())
-                    else:
-                        teacher_out = TeacherOutput(full_logits=teacher_logits.cpu())
-                    results.append(teacher_out)
+                    for i in range(len(chunk)):
+                        if gkd_logits_topk is not None:
+                            topk_logits, topk_indices = vocab_parallel_topk(teacher_logits[i:i + 1], k=gkd_logits_topk)
+                            results.append(
+                                TeacherOutput(topk_logprobs=topk_logits.cpu(), topk_indices=topk_indices.cpu()))
+                        else:
+                            results.append(TeacherOutput(full_logits=teacher_logits[i:i + 1].cpu()))
                 else:
-                    results.append(TeacherOutput())
-                del mb_gpu
+                    results.extend(TeacherOutput() for _ in chunk)
+                del collated
         gc_collect()
         return results
 
@@ -612,6 +617,17 @@ class MegatronWorker(CheckpointEngineMixin):
             return torch.cat(routed_tensors, dim=0).unsqueeze(0).to(device=device)
         return torch.stack(routed_tensors).to(device=device)
 
+    @staticmethod
+    def _collate_teacher_outputs(teacher_outputs, device):
+        from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+        fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'opsd_teacher_labels')
+        kwargs = {}
+        for field in fields:
+            tensors = [getattr(t, field) for t in teacher_outputs]
+            if tensors[0] is not None:
+                kwargs[field] = torch.cat(tensors, dim=0).to(device)
+        return TeacherOutput(**kwargs)
+
     def _collate_local_grpo_samples(self, samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         from swift.megatron.utils import get_padding_to
         from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
@@ -659,6 +675,9 @@ class MegatronWorker(CheckpointEngineMixin):
             encoded_batch['advantages'] = torch.tensor([float(s.get('advantage', 0.0)) for s in samples],
                                                        dtype=torch.float32,
                                                        device=device)
+        if samples and samples[0].get('teacher_output') is not None:
+            encoded_batch['teacher_output'] = self._collate_teacher_outputs([s['teacher_output'] for s in samples],
+                                                                            device)
         return encoded_batch
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:

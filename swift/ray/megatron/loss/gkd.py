@@ -2,11 +2,10 @@
 """GKD loss for Ray-based Megatron training."""
 from __future__ import annotations
 
-from functools import partial
-from typing import Any, Dict
-
 import torch
+from functools import partial
 from megatron.core import mpu
+from typing import Any, Dict
 
 from swift.megatron.trainers.gkd_utils import generalized_jsd_loss
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
@@ -60,14 +59,23 @@ class GKDLoss(Loss):
                 topk_logprobs = None
                 topk_indices = None
             jsd_loss = generalized_jsd_loss(
-                s_logits, t_logits, beta=self.beta, temperature=self.temperature,
-                teacher_topk_logprobs=topk_logprobs, teacher_topk_indices=topk_indices,
+                s_logits,
+                t_logits,
+                beta=self.beta,
+                temperature=self.temperature,
+                teacher_topk_logprobs=topk_logprobs,
+                teacher_topk_indices=topk_indices,
                 cp_size=args.context_parallel_size)
         else:
             jsd_loss = generalized_jsd_loss(
-                student_logits, teacher_output.full_logits, labels=labels, beta=self.beta,
-                temperature=self.temperature, teacher_topk_logprobs=teacher_output.topk_logprobs,
-                teacher_topk_indices=teacher_output.topk_indices, cp_size=args.context_parallel_size)
+                student_logits,
+                teacher_output.full_logits,
+                labels=labels,
+                beta=self.beta,
+                temperature=self.temperature,
+                teacher_topk_logprobs=teacher_output.topk_logprobs,
+                teacher_topk_indices=teacher_output.topk_indices,
+                cp_size=args.context_parallel_size)
 
         loss = jsd_loss
         sft_loss = None
@@ -84,7 +92,7 @@ class GKDLoss(Loss):
                 torch.distributed.all_reduce(
                     sft_stats, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
                 sft_loss_sum, sft_loss_count = sft_stats[0], sft_stats[1]
-            sft_loss = sft_loss_sum / sft_loss_count
+            sft_loss = sft_loss_sum / sft_loss_count if sft_loss_count > 0 else sft_loss_sum * 0
             loss = loss + self.sft_alpha * sft_loss
 
         metric = {'loss': loss.detach().clone()}

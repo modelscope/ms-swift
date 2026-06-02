@@ -6,9 +6,8 @@ TrainableModelWorker extends it with training capabilities via _LifecycleTrainer
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence
-
 import torch
+from typing import Any, Dict, Optional, Sequence
 
 from swift.utils import gc_collect, get_current_device, get_logger, to_device
 
@@ -26,8 +25,9 @@ class MegatronModelWorker:
     @classmethod
     def from_pretrained(cls, args, model_dir):
         """Load an inference-only model (ref / teacher)."""
-        from swift.megatron.model import get_mcore_model
         from transformers import AutoConfig
+
+        from swift.megatron.model import get_mcore_model
 
         hf_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         models = get_mcore_model(args, hf_config)
@@ -53,8 +53,11 @@ class MegatronModelWorker:
     def compute_per_token_logps(self, data_iterator, temperature=1.0, enable_routing_replay=False):
         from swift.megatron.trainers.utils import compute_per_token_logps_fn
         return compute_per_token_logps_fn(
-            self.models[0], self.args, data_iterator,
-            temperature=temperature, enable_routing_replay=enable_routing_replay)
+            self.models[0],
+            self.args,
+            data_iterator,
+            temperature=temperature,
+            enable_routing_replay=enable_routing_replay)
 
     def offload_to_cpu(self):
         from swift.megatron.trainers.utils import offload_megatron_model_to_cpu
