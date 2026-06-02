@@ -163,6 +163,7 @@ class RolloutArguments(DeployArguments):
             self.vllm_use_async_engine = True
             logger.warning('vllm_enable_expert_parallel is only supported with vllm_use_async_engine, '
                            'set vllm_use_async_engine to True.')
+
     def _check_deprecated_args(self):
         if self.context_manager is not None:
             raise ValueError('The "context_manager" argument has been removed. '
