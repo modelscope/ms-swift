@@ -13,7 +13,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from packaging import version
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, Trainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler
 from typing import Dict, Optional, Union
@@ -783,6 +783,14 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                       inputs: DataType,
                       num_items_in_batch: Optional[int] = None) -> torch.Tensor:
         return HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
+
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        inputs = self._prepare_inputs(inputs)
+        with torch.no_grad():
+            with self.compute_loss_context_manager():
+                loss = self.compute_loss(model, inputs)
+            loss = loss.mean().detach()
+        return loss, None, None
 
     @contextmanager
     def offload_context(self):
