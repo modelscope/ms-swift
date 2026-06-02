@@ -15,7 +15,6 @@ specific MoE paths they need.
 from __future__ import annotations
 
 import inspect
-
 import torch
 
 from swift.utils.logger import get_logger
@@ -215,8 +214,9 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts, name: str, param) -> Non
             # MoE parameter has already been converted to a 3D per-local-expert
             # layout.  Initial checkpoint load and other layouts continue to use
             # the original vLLM loader.
-            is_runtime_sync_into_processed_param = (param.data.dim() == 3 and loaded_weight.dim() in {2, 3}
-                                                    and quant_method_module.startswith('vllm_ascend'))
+            is_runtime_sync_into_processed_param = (
+                param.data.dim() == 3 and loaded_weight.dim() in {2, 3}
+                and quant_method_module.startswith('vllm_ascend'))
             if not is_runtime_sync_into_processed_param:
                 return origin_weight_loader(param, loaded_weight, weight_name, shard_id, expert_id, return_success)
 

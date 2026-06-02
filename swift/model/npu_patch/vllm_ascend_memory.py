@@ -7,10 +7,9 @@ inference and SWIFT GRPO rollout.
 """
 from __future__ import annotations
 
+import torch
 from contextlib import contextmanager
 from functools import partial
-
-import torch
 
 _ORIGIN_TORCH_NPU_MEM_GET_INFO = None
 _BOUND_TORCH_NPU_MEM_GET_INFO_DEVICE = None
