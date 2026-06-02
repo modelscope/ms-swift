@@ -74,28 +74,34 @@ register_template(
 
 
 class PaddleOCRTemplate(Template):
-    image_placeholder = ['<image>']
     image_token = '<|IMAGE_PLACEHOLDER|>'
     image_token_id = 100295
     skip_prompt = False
+    version = 'v1'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         assert media_type == 'image'
-        if self.mode == 'vllm':
-            return ['<|IMAGE_START|><|IMAGE_PLACEHOLDER|><|IMAGE_END|>']
-        return ['<|IMAGE_START|>', [-100], '<|IMAGE_END|>']
+        return ['<|IMAGE_START|><|IMAGE_PLACEHOLDER|><|IMAGE_END|>']
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
-        idx_list = findall(input_ids, -100)
+        idx_list = findall(input_ids, self.image_token_id)
         processor = self.processor
         images = inputs.images
         if images:
-            image_inputs = processor.image_processor(images=images, return_tensors='pt')
+            processor_kwargs = {}
+            if self.version == 'v1_5' and inputs.chat_template_kwargs:
+                for key in ['shortest_edge', 'longest_edge']:
+                    value = inputs.chat_template_kwargs.get(key, None)
+                    if value:
+                        processor_kwargs[key] = value
+                if processor_kwargs:
+                    processor_kwargs = {'size': processor_kwargs}
+            image_inputs = processor.image_processor(images=images, return_tensors='pt', **processor_kwargs)
             image_inputs['pixel_values'] = image_inputs['pixel_values']
             image_grid_thw = image_inputs['image_grid_thw']
             merge_size = processor.image_processor.merge_size**2
@@ -261,8 +267,9 @@ register_template(
 
 
 class PaddleOCR1_5Template(PaddleOCRTemplate):
-    use_model = True
+    version = 'v1_5'
     skip_prompt = True
+    support_padding_free = True
 
     def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if not self.is_training:

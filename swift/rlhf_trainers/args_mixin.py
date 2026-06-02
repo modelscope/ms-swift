@@ -288,6 +288,15 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             turns, while 'per_round' limits the output length for each turn. Defaults to 'per_round'.
         vllm_server_pass_dataset (bool): Pass extra dataset information to the vLLM server, used for
             multi-turn training. Defaults to False.
+        use_gym_env (Optional[bool]): If set, the trainer treats `rollout_infos['total_reward']` produced
+            by a gym-style multi-turn scheduler as the reward (no reward function needed). Works in both
+            `server` and `colocate` modes, and on the Megatron trainer. When `None` (default), it auto-defaults
+            to `True` if `gym_env` is set; otherwise it is auto-detected from the connected vLLM server in
+            `server` mode and `False` otherwise. An explicit value here is authoritative — it is never
+            overridden by the value reported by the rollout server.
+        gym_env (Optional[str]): Default gym environment name used by the `gym_scheduler`. Equivalent to
+            `--gym_env` on `swift rollout` but for the trainer-side colocate path; per-row `env_config.name`
+            still wins over this default. Defaults to None.
         dynamic_sample (bool): If True, filters out data with a reward standard deviation of 0 within a group
             and samples new data. Defaults to False.
         max_resample_times (int): When `dynamic_sample` is enabled, this limits the number of resampling
@@ -322,6 +331,14 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
             constraints on negative dominance. The default value is 1.05.
         real_tau (float): The temperature parameter. REAL induces monotonic and bounded gradient weighting with
             magnitude upper-bounded by 1/tau. The default value is 0.5.
+        fipo_decay_rate (float): Half-life used to derive `fipo_gamma`. Defaults to 32.0.
+        fipo_clip_range (Optional[float]): Clip range for the FIPO influence weight. `0.2` clips to
+            `[0.8, 1.2]`; `None` or `0` disables clipping. Defaults to 0.2.
+        fipo_clip_high_only (bool): If `True`, clips the FIPO influence weight to `[1, 1 + fipo_clip_range]`.
+            Defaults to True.
+        fipo_safety_threshold (Optional[float]): Safety threshold for negative advantages. Tokens with
+            `advantage < 0` and importance ratio above this value have their FIPO influence weight capped to
+            `[0.8, 1.0]` to avoid over-penalization. Defaults to 4.0.
         advantage_estimator (Literal['grpo', 'rloo', 'reinforce_plus_plus']): The advantage estimation
             function to use. 'grpo' calculates the relative advantage within a group. Options are 'grpo', 'rloo',
             'reinforce_plus_plus'. Defaults to 'grpo'.
@@ -381,6 +398,8 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     max_turns: Optional[int] = None
     completion_length_limit_scope: Literal['total', 'per_round'] = 'per_round'
     vllm_server_pass_dataset: bool = False
+    use_gym_env: Optional[bool] = None
+    gym_env: Optional[str] = None
 
     # DAPO, https://arxiv.org/abs/2503.14476
     dynamic_sample: bool = False
@@ -414,6 +433,12 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # REAL https://arxiv.org/abs/2602.05630
     real_tau: float = 0.5
 
+    # FIPO https://arxiv.org/abs/2603.19835
+    fipo_decay_rate: float = 32.0
+    fipo_clip_range: Optional[float] = 0.2
+    fipo_clip_high_only: bool = True
+    fipo_safety_threshold: Optional[float] = 4.0
+
     num_generations_eval: Optional[int] = None
 
     # dataset
@@ -430,3 +455,10 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # and mask sequences where this delta > threshold AND advantage < 0
     # Falls back to old_per_token_logps if rollout_per_token_logps is not available
     off_policy_sequence_mask_delta: Optional[float] = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        # gym_env implies use_gym_env unless the user said otherwise; mirrors deploy_args behavior so the
+        # default propagates to GRPOConfig too (not just RLHFArguments).
+        if self.use_gym_env is None and self.gym_env is not None:
+            self.use_gym_env = True

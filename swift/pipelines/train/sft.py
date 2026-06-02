@@ -7,7 +7,7 @@ from swift.arguments import SftArguments
 from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
                            LazyLLMDataset, PackingDataset, load_dataset)
 from swift.infer_engine import prepare_generation_config
-from swift.ray import RayHelper
+from swift.ray_utils import RayHelper
 from swift.sequence_parallel import sequence_parallel
 from swift.trainers import TrainerFactory
 from swift.utils import append_to_jsonl, get_logger, get_model_parameter_info, is_master, plot_images, stat_array

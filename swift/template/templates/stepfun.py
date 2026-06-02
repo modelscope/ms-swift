@@ -69,6 +69,7 @@ register_template(
         MLLMTemplateType.got_ocr2,
         default_system='        You should follow the instructions carefully and explain your answers in detail.',
         template_cls=GOT_OCR2Template,
+        agent_template=None,
     ))
 
 
@@ -105,6 +106,7 @@ register_template(
         MLLMTemplateType.got_ocr2_hf,
         default_system='        You should follow the instructions carefully and explain your answers in detail.',
         template_cls=GOT_OCR2HfTemplate,
+        agent_template=None,
     ))
 
 

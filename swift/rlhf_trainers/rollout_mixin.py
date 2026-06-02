@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional, Union
 from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.model import MultiModelKeys
-from swift.rollout import MultiTurnScheduler, multi_turns
+from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
 from swift.tuners import Swift
@@ -40,9 +40,10 @@ from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
                     _create_parameter_buckets, _process_bucket_with_flattened_tensor,
                     add_base_layer_suffix_by_param_names, aggressive_empty_cache, check_vllm_version_ge,
-                    expand_vllm_param_name_aliases, get_even_process_data, get_gather_if_zero3_context,
-                    patch_lora_merge, patch_lora_unmerge, patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader,
-                    profiling_context, profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
+                    expand_vllm_param_name_aliases, finish_vllm_weight_reload, get_even_process_data,
+                    get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_vllm_load_adapter,
+                    patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator, set_expandable_segments,
+                    vllm_supports_lora_load_inplace)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -214,19 +215,24 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
                              'please update vLLM to 0.10.2 or later.')
 
+        explicit_use_gym_env = getattr(args, 'use_gym_env', None)
+        if explicit_use_gym_env is not None:
+            self.use_gym_env = bool(explicit_use_gym_env)
+
         if self.vllm_mode == 'server':
             if self.accelerator.is_main_process:
                 self.vllm_client.get_engine_type()
                 self.vllm_client.reset_mm_cache()
                 vllm_use_async_engine = [self.vllm_client.use_async_engine]
-                use_gym_env = [self.vllm_client.use_gym_env]
                 enable_multi_turn = [self.vllm_client.enable_multi_turn]
                 enable_lora = [self.vllm_client.enable_lora]
+                # Only inherit use_gym_env from rollout server when the trainer hasn't set it explicitly.
+                use_gym_env = [self.vllm_client.use_gym_env] if explicit_use_gym_env is None else [self.use_gym_env]
             else:
                 vllm_use_async_engine = [False]
-                use_gym_env = [False]
                 enable_multi_turn = [self.enable_server_multi_turn]
                 enable_lora = [False]
+                use_gym_env = [self.use_gym_env]
             self.vllm_use_async_engine = broadcast_object_list(vllm_use_async_engine, from_process=0)[0]
             self.use_gym_env = broadcast_object_list(use_gym_env, from_process=0)[0]
             self.enable_server_multi_turn = broadcast_object_list(enable_multi_turn, from_process=0)[0]
@@ -250,6 +256,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
+
         self.dynamic_num_samples = False  # grpo multi-turn
         self.base_sync_done = False
         self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
@@ -569,7 +576,13 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             llm_model = self.engine.inner_model
             # Patch MoE weight_loader if needed
             patch_vllm_moe_model_weight_loader(llm_model)
-            llm_model.load_weights(state_dict.items())
+            # Re-run process_weights_after_loading on FusedMoE layers so
+            # the kernel-format layout is rebuilt after the in-place reload
+            # (workaround for vLLM issue #42821).
+            try:
+                llm_model.load_weights(state_dict.items())
+            finally:
+                finish_vllm_weight_reload(llm_model)
         del state_dict
 
     def _fix_param_name_to_vllm(self, name: str, extra_prefixes: Optional[List[str]] = None) -> str:
@@ -883,168 +896,17 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
     def _colocate_multi_turn_infer(self, inputs: DataType, first_turn_rollout_outputs: List[RolloutOutput],
                                    request_config: RequestConfig) -> List[RolloutOutput]:
-        """
-        Handles multi-turn inference under colocate mode.
-
-        This method iteratively rolls out turns until all dialogues are finished
-        according to the multi_turn_scheduler.
-        """
-        args = self.args
-        orig_size = len(inputs)
-        # Preallocate to preserve order
-        rollout_outputs: List[RolloutOutput] = [None] * orig_size
-        rollout_infos = [{} for _ in range(orig_size)]
-        response_token_ids = [[] for _ in range(orig_size)]
-        response_loss_mask = [[] for _ in range(orig_size)]
-        rollout_logprobs = [[] for _ in range(orig_size)]
-        is_continuations = [False] * orig_size
-        # Attach index to inputs for tracking
         requests = self.inputs2requests(inputs)
-        index_to_infer = list(range(orig_size))
-        current_turn = 1
-        outputs = first_turn_rollout_outputs
-        while True:
-            has_local_data = bool(len(index_to_infer) > 0)
-            has_global_data = gather_object([has_local_data])
-            if not any(has_global_data):
-                break
-            assert len(index_to_infer) == len(outputs)
-            for index, output in zip(index_to_infer, outputs):
-                messages = requests[index].messages
-                if messages[-1]['content'] is None:
-                    # for continuation, we add dummy response, remove here
-                    remove_response(messages)
-                # Get model response
-                response = output.response
-                response_choice = response.choices[0]
-                # Update conversation history
-                completion = response_choice.message.content
-                is_continuation = is_continuations[index] = False
-                if messages[-1]['role'] == 'assistant':
-                    messages[-1]['content'] += completion
-                    is_continuation = is_continuations[index] = True
-                else:
-                    messages.append({'role': 'assistant', 'content': completion})
-
-            current_requests = [requests[index] for index in index_to_infer]
-            # Determine which dialogues are finished
-            should_stops = [
-                self.multi_turn_scheduler.check_finished(req, output.response.choices[0], current_turn)
-                for req, output in zip(current_requests, outputs)
-            ]
-
-            # Prepare pending inputs for next turn
-            next_turn_index_to_infer = []
-            for stop, index, output in zip(should_stops, index_to_infer, outputs):
-                if args.max_turns:
-                    stop = stop or (current_turn >= args.max_turns)
-                if stop:
-                    # For stopped dialogues, collect final turn's data
-                    is_continuation = is_continuations[index]
-                    response_choice = output.response.choices[0]
-                    current_logprobs = self._extract_logprobs_from_choice(response_choice)
-                    final_token_ids = response_choice.token_ids
-
-                    if is_continuation and response_token_ids[index]:
-                        # For continuation, extend the last turn's data
-                        response_token_ids[index][-1].extend(final_token_ids)
-                        if response_loss_mask[index]:
-                            response_loss_mask[index][-1].extend([1] * len(final_token_ids))
-                        if rollout_logprobs[index] and current_logprobs:
-                            rollout_logprobs[index][-1].extend(current_logprobs)
-                    elif not response_token_ids[index]:
-                        # First turn stopped immediately - need to initialize with final response data
-                        if final_token_ids:
-                            response_token_ids[index] = [list(final_token_ids)]
-                            response_loss_mask[index] = [[1] * len(final_token_ids)]
-                        if current_logprobs:
-                            rollout_logprobs[index] = [current_logprobs]
-                    else:
-                        # Not continuation but has previous data - append as new turn
-                        if final_token_ids:
-                            response_token_ids[index].append(list(final_token_ids))
-                            response_loss_mask[index].append([1] * len(final_token_ids))
-                        if current_logprobs:
-                            rollout_logprobs[index].append(current_logprobs)
-
-                    # Validate rollout_logprobs completeness: if logprobs are incomplete (missing for some turns),
-                    # clear them to disable rollout importance sampling correction (which requires complete logprobs)
-                    # Note: rollout_logprobs should match the number of loss_mask=1 tokens, not total response tokens
-                    # because completion_mask in grpo_trainer is based on labels != -100, which corresponds to loss_mask=1 # noqa
-                    final_rollout_logprobs = rollout_logprobs[index]
-                    if rollout_logprobs[index]:
-                        total_logprob_count = sum(len(turn_lps) for turn_lps in rollout_logprobs[index])
-                        if response_loss_mask[index]:
-                            # Check if the number of logprobs matches the number of loss_mask=1 tokens
-                            total_loss_mask_1_count = sum(sum(mask) for mask in response_loss_mask[index])
-                            if total_loss_mask_1_count != total_logprob_count:
-                                # Incomplete logprobs, clear them
-                                final_rollout_logprobs = []
-                        else:
-                            # No loss_mask, fall back to checking against response_token_ids
-                            if response_token_ids[index]:
-                                total_token_count = sum(len(turn_ids) for turn_ids in response_token_ids[index])
-                                if total_token_count != total_logprob_count:
-                                    final_rollout_logprobs = []
-                            else:
-                                final_rollout_logprobs = []
-
-                    rollout_outputs[index] = RolloutOutput(
-                        response=output.response,
-                        messages=requests[index].messages,
-                        response_token_ids=response_token_ids[index],
-                        response_loss_mask=response_loss_mask[index],
-                        rollout_infos={
-                            **rollout_infos[index], 'num_turns': current_turn
-                        },
-                        rollout_logprobs=final_rollout_logprobs)
-                    continue
-                is_continuation = is_continuations[index]
-                step_result = self.multi_turn_scheduler.step(requests[index], output.response.choices[0], current_turn)
-                current_request: RolloutInferRequest = step_result['infer_request']
-                # Track response tokens and masks
-                return_token_id = False
-                if 'response_token_ids' in step_result:
-                    if is_continuation and response_token_ids[index]:
-                        response_token_ids[index][-1].extend(step_result['response_token_ids'])
-                    else:
-                        response_token_ids[index].append(step_result['response_token_ids'])
-                    return_token_id = True
-                if 'response_loss_mask' in step_result:
-                    assert return_token_id, 'You must return response_token_ids with response_loss_mask return'
-                    assert len(step_result['response_loss_mask']) == len(step_result['response_token_ids']), \
-                        'response_loss_mask must have the same length as response_token_ids'
-                    if is_continuation and response_loss_mask[index]:
-                        response_loss_mask[index][-1].extend(step_result['response_loss_mask'])
-                    else:
-                        response_loss_mask[index].append(step_result['response_loss_mask'])
-
-                if 'rollout_infos' in step_result:
-                    # Always overwrite the rollout info for this step.
-                    # If you need to keep all step-wise details, switch to append or merge instead.
-                    rollout_infos[index].update(step_result['rollout_infos'])
-
-                # Track rollout_logprobs for rollout importance sampling correction
-                # Prefer step's returned logprobs (which may be modified/truncated) over raw response_choice logprobs
-                if 'rollout_logprobs' in step_result and step_result['rollout_logprobs']:
-                    current_logprobs = step_result['rollout_logprobs']
-                else:
-                    current_logprobs = self._extract_logprobs_from_choice(output.response.choices[0])
-                if current_logprobs:
-                    if is_continuation and rollout_logprobs[index]:
-                        rollout_logprobs[index][-1].extend(current_logprobs)
-                    else:
-                        rollout_logprobs[index].append(current_logprobs)
-
-                requests[index] = current_request
-                next_turn_index_to_infer.append(index)
-            current_turn += 1
-            infer_requests = [requests[index] for index in next_turn_index_to_infer]
-            # Rollout for the next turn
-            outputs = self._rollout(infer_requests if has_local_data else [], request_config)
-            index_to_infer = next_turn_index_to_infer
-
-        assert all(o is not None for o in rollout_outputs)
+        invoke_async_hook(self.multi_turn_scheduler.on_trajectory_start(requests))
+        rollout_outputs = run_multi_turn(
+            requests=requests,
+            first_turn_outputs=first_turn_rollout_outputs,
+            scheduler=self.multi_turn_scheduler,
+            rollout_fn=lambda reqs, cfg: self._rollout(reqs, cfg),
+            request_config=request_config,
+            max_turns=self.args.max_turns,
+            gather_fn=gather_object,
+        )
         return self._postprocess_rollout_outputs(inputs, rollout_outputs)
 
     def _fast_infer(self, inputs: DataType) -> DataType:
@@ -1156,6 +1018,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             outputs_count = gather_object(outputs_count)[0]
             if outputs_count != len(all_requests):
                 self.dynamic_num_samples = True
+                logger.warning(
+                    'Detected a multi-turn scheduler that splits one trajectory into multiple training samples '
+                    'This code path is scheduled for removal in swift 4.4 — please migrate '
+                    'to a single-trajectory scheduler (e.g. return one sample per request from `run`).')
                 if self.dynamic_sample:
                     logger.warning('Mismatch between returned samples and requests detected.')
                 if self.template.padding_free:
@@ -1438,8 +1304,11 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             tokenizer = getattr(self, 'processing_class', None)
             if isinstance(args.multi_turn_scheduler, str):
                 assert args.multi_turn_scheduler in multi_turns
-                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](
-                    max_turns=args.max_turns, tokenizer=tokenizer)
+                scheduler_kwargs = {'max_turns': args.max_turns, 'tokenizer': tokenizer}
+                gym_env = getattr(args, 'gym_env', None)
+                if gym_env is not None:
+                    scheduler_kwargs['gym_env'] = gym_env
+                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](**scheduler_kwargs)
                 self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
             else:
                 assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)

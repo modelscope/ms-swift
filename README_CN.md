@@ -141,10 +141,10 @@ uv pip install -e . --torch-backend=auto
 | modelscope   | >=1.23       |                     |                    |
 | datasets     | >=3.0,<4.8.5 | 3.6.0/4.8.4         |                    |
 | peft         | >=0.11,<0.20 |                     |                    |
-| flash_attn   |              | 2.8.3/4.0.0b12 |                    |
+| flash_attn   |              | 2.8.3/4.0.0b15 |                    |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF               |
 | deepspeed    | >=0.14       | 0.18.9              | 训练                 |
-| vllm         | >=0.5.1      | 0.11.0/0.20.2        | 推理/部署              |
+| vllm         | >=0.5.1      | 0.11.0/0.21.0        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |
 | gradio       |              | 5.32.1              | Web-UI/App         |

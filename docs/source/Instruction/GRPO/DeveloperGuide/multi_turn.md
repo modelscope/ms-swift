@@ -24,6 +24,29 @@ class MultiTurnScheduler(ABC):
     def __init__(self, max_turns: Optional[int] = None, *args, **kwargs):
         self.max_turns = max_turns
 
+    def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
+        """在首轮推理前调用，用于初始化轨迹级别状态。
+
+        可在此方法中直接修改 requests（如注入环境初始 observation）。
+        默认实现为空（no-op）。
+        """
+        pass
+
+    def on_turn_end(self, infer_request: 'RolloutInferRequest',
+                    response_choice: 'ChatCompletionResponseChoice',
+                    current_turn: int) -> Dict[str, Any]:
+        """在 assistant 消息追加后、check_finished 前调用。
+
+        用于推进环境状态（如 env.step）并返回每轮元数据。
+
+        Returns:
+            Dict[str, Any]: 可选包含以下键：
+                - 'done' (bool): 若存在，将覆盖 check_finished 的结果
+                - 'rollout_infos' (dict): 合并到轨迹累积的额外信息中
+        默认返回空字典（no-op）。
+        """
+        return {}
+
     def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
              current_turn: int) -> Dict:
         """
@@ -144,14 +167,51 @@ swift rollout \
 
 在 `rollout` 命令中使用参数 `use_async_engine` 来指定 engine 的种类（默认使用 async engine）：
 
-> 注意: async engine 以及下面的自定义多轮交互逻辑 目前仅支持 server mode，对于 colocate mode 下的多轮交互逻辑，请参考 RolloutTrainerMixin 的 _colocate_multi_turn_infer 方法
+> 注意: async engine 仅在 server mode 下可用。
+
+### GYM 环境训练
+
+如果你的多轮任务可以建模为标准的 gym environment（`reset` / `step` / 环境直接给奖励），推荐直接复用框架内置的 `gym_scheduler`，并通过实现一个 `Env` 子类来描述任务。
+
+`GYMScheduler` 基于通用 hook 协议实现，无需重载 `run` 方法：
+- **`on_trajectory_start`**: 调用 `env.reset` 并注入初始 observation 到首轮 user 消息
+- **`on_turn_end`**: 调用 `env.step` 推进环境，返回 `{'done': bool, 'rollout_infos': dict}`
+
+这种设计使得 `GYMScheduler` 同时适用于 server mode（`run()`）和 colocate mode（`run_multi_turn()`），用户只需实现 Env 接口即可。
+
+完整接口、自定义 env 的步骤参考 [GYM 环境训练文档](./gym_env.md)。
 
 ## 高级设置
 
 ### 自定义多轮交互逻辑
-在以上默认逻辑中，我们用一条轨迹来计算多轮 rollout 的损失，这里需要假设多轮交互的过程中，模型的历史信息没有收到改变。
 
-而在一些多轮场景中，我们可以需要在多轮 rollout 过程中动态地修改模型的历史信息（比如压缩历史信息），此时，我们需要将每轮的 rollout 单独作为一条轨迹进行训练。
+在以上默认逻辑中，我们用一条轨迹来计算多轮 rollout 的损失，这里需要假设多轮交互的过程中，模型的历史信息没有受到改变。
+
+而在一些多轮场景中，我们可能需要在多轮 rollout 过程中动态地修改模型的历史信息（比如压缩历史信息），此时，我们需要将每轮的 rollout 单独作为一条轨迹进行训练。
+
+> Note: 这种“一条轨迹拆成多条样本”的训练模式将在 **swift 4.4** 版本中移除，后续仅保留“一次 rollout 对应一条轨迹样本”的形式。
+
+#### 方式一：使用 hook
+
+```python
+class CustomScheduler(MultiTurnScheduler):
+    def on_trajectory_start(self, requests):
+        # 首轮推理前初始化（如环境 reset、注入初始状态）
+        for req in requests:
+            req.messages = [system_msg, user_msg(initial_observation)]
+
+    def on_turn_end(self, req, response_choice, current_turn):
+        # 每轮推理后推进状态，返回 done 和 rollout_infos
+        next_obs, reward, done = self.advance_env(req.messages)
+        return {
+            'done': done,
+            'rollout_infos': {'reward': reward, ...}
+        }
+```
+
+这种方式同时适用于 server mode 和 colocate mode，无需重载 `run` 方法。
+
+#### 方式二：重载 run 方法（完全自定义）
 
 比较常见的一种场景是对于思考类模型，在实际推理过程中，模型通常只会保留最后一轮的思考内容，而忽略历史模型回复中的思考内容。
 
@@ -204,12 +264,16 @@ response_loss_mask 返回可以参考[ToolCallScheduler类](https://github.com/m
 
 在奖励函数中获取多轮 Rollout 中的信息
 
-在`step`或者`run`方法中，返回 `rollout_infos` 对象，在奖励函数的 kwargs 中获取 `rollout_infos`：
+在 `on_turn_end` 方法或 `step/run` 方法中，返回 `rollout_infos` 对象，在奖励函数的 kwargs 中获取 `rollout_infos`：
 
 ```python
 class Scheduler():
-    def step(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
-             current_turn: int) -> Dict:
+    def on_turn_end(self, infer_request, response_choice, current_turn):
+        ...
+        return {'done': done, 'rollout_infos': extra_dict}
+
+    # 或者在 step 方法中
+    def step(self, infer_request, response_choice, current_turn):
         ...
         return {'infer_request': infer_request, 'rollout_infos': extra_dict}
 

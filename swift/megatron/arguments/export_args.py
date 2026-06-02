@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 from swift.utils import HfConfigFactory, get_logger, to_abspath
 from .megatron_args import MegatronArguments
@@ -15,7 +15,11 @@ class MegatronExportArguments(MegatronBaseArguments):
     to_mcore: bool = False
     to_hf: bool = False
     test_convert_precision: bool = False
+    padding_free: bool = False
+    attention_backend: str = 'unfused'
     test_convert_dtype: str = 'float32'
+    recompute_granularity: Literal['selective', 'full', 'none'] = 'none'
+
     exist_ok: bool = False
     merge_lora: Optional[bool] = None
 
@@ -59,8 +63,6 @@ class MegatronExportArguments(MegatronBaseArguments):
             'no_load_optim': True,
             'no_load_rng': True,
             'finetune': True,
-            'attention_backend': 'unfused',
-            'padding_free': False,
         }
         for k, v in convert_kwargs.items():
             setattr(self, k, v)

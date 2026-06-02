@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import swift
 from swift.hub import get_hub
 from swift.model import get_ckpt_dir, get_model_processor, load_by_unsloth
-from swift.ray import RayArguments
+from swift.ray_utils import RayArguments
 from swift.template import Template, get_template
 from swift.tuner_plugin import tuners_map
 from swift.utils import (Processor, check_json_format, get_dist_setting, get_logger, import_external_file, is_dist,

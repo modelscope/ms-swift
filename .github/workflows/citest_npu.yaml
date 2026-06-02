@@ -43,6 +43,18 @@ jobs:
     timeout-minutes: 240
     container:
       image: 'ascendai/cann:8.3.rc2-910b-ubuntu22.04-py3.11'
+      options: >-
+        --privileged
+        --device=/dev/davinci0
+        --device=/dev/davinci1
+        --device=/dev/davinci2
+        --device=/dev/davinci3
+        --device=/dev/davinci_manager
+        --device=/dev/devmm_svm
+        --device=/dev/hisi_hdc
+        --volume=/usr/local/Ascend/driver:/usr/local/Ascend/driver:ro
+        --volume=/usr/local/sbin/npu-smi:/usr/local/sbin/npu-smi:ro
+        --volume=/etc/ascend_install.info:/etc/ascend_install.info:ro
     steps:
       - name: Config mirrors
         run: |

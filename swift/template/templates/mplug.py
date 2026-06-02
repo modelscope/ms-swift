@@ -178,9 +178,12 @@ class mPlugOwl3TemplateMeta(QwenTemplateMeta):
     system_prefix: Optional[Prompt] = None
 
 
-register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template))
+register_template(
+    mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3, template_cls=mPlugOwl3Template, agent_template=None))
 
-register_template(mPlugOwl3TemplateMeta(MLLMTemplateType.mplug_owl3_241101, template_cls=mPlugOwl3_241101Template))
+register_template(
+    mPlugOwl3TemplateMeta(
+        MLLMTemplateType.mplug_owl3_241101, template_cls=mPlugOwl3_241101Template, agent_template=None))
 
 
 class DocOwl2Template(Template):

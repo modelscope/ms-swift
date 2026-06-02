@@ -1,0 +1,92 @@
+# Ray + Megatron GRPO on FrozenLake (multi-turn, colocate mode).
+# Parameters aligned with examples/megatron/grpo/multi_turn/frozen_lake.sh
+rlhf_type: grpo
+
+model: Qwen/Qwen3.5-2B
+dataset: 'examples/megatron/grpo/multi_turn/frozen_lake.jsonl#1024'
+external_plugins: examples/megatron/grpo/multi_turn/frozen_lake_plugin.py
+load_from_cache_file: false
+split_dataset_ratio: 0
+dataset_num_proc: 4
+dataloader_num_workers: 4
+
+# Multi-turn frozen_lake env
+multi_turn_scheduler: gym_scheduler
+gym_env: frozen_lake
+use_gym_env: true
+max_turns: 10
+
+# Batch config
+micro_batch_size: 1
+global_batch_size: 64
+num_generations: 8
+steps_per_generation: 4
+train_iters: 120
+logging_steps: 1
+seed: 42
+
+# Length params
+max_length: 6120
+max_completion_length: 512
+vllm_max_model_len: 6632
+
+enable_thinking: false
+
+# Training config
+padding_free: true
+cross_entropy_loss_fusion: true
+gradient_accumulation_fusion: false
+attention_backend: flash
+recompute_granularity: selective
+
+# Optimizer
+lr: 5e-5
+bf16: true
+
+# Generation config
+temperature: 1.0
+top_p: 1.0
+top_k: 80
+
+# GRPO params
+beta: 0.001
+epsilon: 0.2
+epsilon_high: 0.2
+loss_type: grpo
+advantage_estimator: grpo
+importance_sampling_level: token
+dynamic_sample: false
+overlong_filter: true
+log_completions: true
+log_rollout_offpolicy_metrics: true
+
+# vLLM + colocate
+use_vllm: true
+colocate_groups: [[train, rollout]]
+offload_model: true
+offload_optimizer: true
+sleep_level: 1
+
+# Checkpointing
+eval_steps: 1000
+save_steps: 1000
+no_save_optim: true
+no_save_rng: true
+
+# Reporting
+report_to: swanlab
+
+train:
+  gpus: 8
+  tuner_type: lora
+  lora_rank: 8
+  lora_alpha: 32
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  context_parallel_size: 1
+  output_dir: megatron_output/ray_grpo_frozen_lake_colocate
+
+rollout:
+  gpus: 8
+  vllm_tensor_parallel_size: 1
+  vllm_gpu_memory_utilization: 0.5

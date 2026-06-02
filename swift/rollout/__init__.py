@@ -4,13 +4,15 @@ from typing import TYPE_CHECKING
 from swift.utils.import_utils import _LazyModule
 
 if TYPE_CHECKING:
-    from .gym_env import ContextManager, Env, context_managers, envs
+    from .agent_loop import extract_logprobs_from_choice, invoke_async_hook, run_multi_turn
+    from .gym_env import Env, envs
     from .multi_turn import MultiTurnScheduler, RolloutScheduler, multi_turns
 
 else:
     _import_structure = {
         'multi_turn': ['multi_turns', 'RolloutScheduler', 'MultiTurnScheduler'],
-        'gym_env': ['envs', 'Env', 'context_managers', 'ContextManager'],
+        'gym_env': ['envs', 'Env'],
+        'agent_loop': ['run_multi_turn', 'extract_logprobs_from_choice', 'invoke_async_hook'],
     }
 
     import sys

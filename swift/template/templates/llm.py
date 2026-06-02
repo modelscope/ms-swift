@@ -347,7 +347,7 @@ class HyV3Template(Template):
         if self.reasoning_effort is None:
             self.reasoning_effort = 'high' if self.enable_thinking else 'no_think'
         self.enable_thinking = self.reasoning_effort != 'no_think'
-        self.chat_template_kwargs = {'reasoning_effort': self.reasoning_effort}
+        self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
 
     def _get_enable_thinking(self, inputs=None):
         reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')

@@ -15,6 +15,7 @@ from peft.utils import CONFIG_NAME
 from peft.utils.other import SAFETENSORS_WEIGHTS_NAME, WEIGHTS_NAME
 from torch import nn
 from transformers import Trainer as HfTrainer
+from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Dict, List, Literal, Optional, Union
 
@@ -247,7 +248,12 @@ class SwiftModel(nn.Module):
             The state dict.
         """
         if device is None:
-            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+            if torch.cuda.is_available():
+                device = 'cuda'
+            elif is_torch_npu_available():
+                device = 'npu'
+            else:
+                device = 'cpu'
         if os.path.exists(os.path.join(path, SAFETENSORS_WEIGHTS_NAME)):
             filename = os.path.join(path, SAFETENSORS_WEIGHTS_NAME)
             from safetensors.torch import load_file as safe_load_file

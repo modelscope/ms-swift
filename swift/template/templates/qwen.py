@@ -149,7 +149,10 @@ qwen3_reranker_system = (
 
 register_template(
     Qwen3MixedTemplateMeta(
-        LLMTemplateType.qwen3_reranker, default_system=qwen3_reranker_system, template_cls=Qwen3RerankerTemplate))
+        LLMTemplateType.qwen3_reranker,
+        default_system=qwen3_reranker_system,
+        template_cls=Qwen3RerankerTemplate,
+        agent_template=None))
 
 register_template(Qwen2_5MathTemplateMeta(LLMTemplateType.qwen2_5_math))
 
@@ -217,7 +220,7 @@ class QwenVLTemplate(Template):
         return [f'<box>{self._get_bbox_str(bbox)}</box>']
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen_vl, template_cls=QwenVLTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen_vl, template_cls=QwenVLTemplate, agent_template=None))
 
 
 class QwenAudioTemplate(Template):
@@ -251,7 +254,7 @@ class QwenAudioTemplate(Template):
         return res
 
 
-register_template(QwenTemplateMeta(MLLMTemplateType.qwen_audio, template_cls=QwenAudioTemplate))
+register_template(QwenTemplateMeta(MLLMTemplateType.qwen_audio, template_cls=QwenAudioTemplate, agent_template=None))
 
 
 class Qwen2AudioTemplate(Template):
@@ -1170,6 +1173,7 @@ register_template(
         MLLMTemplateType.ovis1_6_llama3,
         default_system='You are a helpful and honest multimodal assistant.',
         template_cls=Ovis1_6Template,
+        agent_template=None,
     ))
 
 

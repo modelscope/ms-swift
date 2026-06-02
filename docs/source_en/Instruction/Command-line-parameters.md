@@ -638,7 +638,11 @@ The meanings of the following parameters can be referenced [here](https://huggin
 - reward_model_plugin: The logic for the reward model, which defaults to ORM logic. For more information, please refer to [Customized Reward Models](./GRPO/DeveloperGuide/reward_model.md#custom-reward-model).
 - dataset_shuffle: Whether to shuffle the dataset randomly. Default is True.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
-- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
+- loss_type: The type of loss normalization. Options are ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real', 'fipo'], default is 'grpo'. For details, refer to this [doc](./GRPO/DeveloperGuide/loss_types.md)
+- fipo_decay_rate: Half-life parameter for FIPO Future-KL. The actual discount is `2 ** (-1 / fipo_decay_rate)`. Default is 32.0.
+- fipo_clip_range: Clipping range for the FIPO influence weight. Default is 0.2; set to None or 0 to disable clipping.
+- fipo_clip_high_only: Whether to clip the FIPO influence weight to `[1.0, 1.0 + fipo_clip_range]` only. Default is True.
+- fipo_safety_threshold: Caps the FIPO influence weight to `[0.8, 1.0]` for negative-advantage tokens whose IS ratio exceeds this threshold. Default is 4.0.
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
 - use_vllm: Whether to use vLLM as the infer_backend for GRPO generation, default is False.
@@ -690,6 +694,8 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - move_model_batches: When moving model parameters to fast inference frameworks such as vLLM/LMDeploy, determines how many batches to divide the layers into. The default is `None`, which means the entire model is not split. Otherwise, the model is split into `move_model_batches + 1` (non-layer parameters) + `1` (multi-modal component parameters) batches.
 - multi_turn_scheduler: Multi-turn GRPO parameter; pass the corresponding plugin name, and make sure to implement it in plugin/multi_turn.py.
 - max_turns: Maximum number of rounds for multi-turn GRPO. The default is None, which means there is no limit.
+- gym_env: Globally select the gym environment name (must be registered in the plugin). Defaults to None and can be overridden per row via `env_config.name`. See the [documentation](./GRPO/DeveloperGuide/gym_env.md).
+- use_gym_env: Whether to use the env-provided `total_reward` as the reward (no reward function required). Defaults to None; when not set explicitly, it is auto-enabled if `gym_env` is set, otherwise inherited from the rollout server in server mode, and False in all other cases.
 - top_entropy_quantile: Only tokens whose entropy ranks within the specified top quantile are included in the loss calculation. The default is 1.0, which means low-entropy tokens are not filtered. For details, refer to the [documentation](./GRPO/AdvancedResearch/entropy_mask.md).
 - log_entropy: Logs the entropy values during training. The default is False. For more information, refer to the [documentation](./GRPO/GetStarted/GRPO.md#logged-metrics).
 - rollout_importance_sampling_mode: Training-inference mismatch correction mode. Options are `token_truncate`, `token_mask`, `sequence_truncate`, `sequence_mask`. Default is None (disabled). For details, refer to the [documentation](./GRPO/AdvancedResearch/training_inference_mismatch.md).
@@ -750,6 +756,8 @@ Deployment Arguments inherit from the [inference arguments](#inference-arguments
 The rollout parameters inherit from the [deployment parameters](#deployment-arguments).
 - multi_turn_scheduler: The scheduler for multi-turn GRPO training. Pass the corresponding plugin name, and ensure the implementation is added in `plugin/multi_turn.py`. Default is `None`. See [documentation](./GRPO/DeveloperGuide/multi_turn.md) for details.
 - max_turns: Maximum number of turns in multi-turn GRPO training. Default is `None`, meaning no limit.
+- gym_env: Globally select the gym environment name (must be registered in the plugin). Defaults to None and can be overridden per row via `env_config.name`. See the [documentation](./GRPO/DeveloperGuide/gym_env.md).
+- use_gym_env: Whether to enable gym-environment mode (rollout emits `total_reward` for the trainer to consume). Defaults to None; when not set explicitly, it is auto-enabled if `gym_env` is set.
 - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
 - vllm_max_lora_rank: LoRA parameter for the vLLM engine. Must be greater than or equal to the training lora_rank; it is recommended to set them equal. Defaults to 16.
 - vllm_enable_expert_parallel: Enable Expert Parallel (EP) for MoE models, distributing experts across ranks. Valid when vllm_use_async_engine is true. Default is False.
@@ -956,7 +964,7 @@ The meanings of the following parameters can be found in the example code [here]
 
 
 ## Other Environment Variables
-
+- USE_HF: Use ModelScope/HuggingFace. Defaults to '0'.
 - CUDA_VISIBLE_DEVICES: Controls which GPU to use. By default, all GPUs are used.
 - ASCEND_RT_VISIBLE_DEVICES: Controls which NPU (effective for ASCEND cards) are used. By default, all NPUs are used.
 - MODELSCOPE_CACHE: Controls the cache path. (Recommended to set this value during multi-node training to ensure all nodes use the same dataset cache.)

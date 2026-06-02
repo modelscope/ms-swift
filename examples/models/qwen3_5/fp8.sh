@@ -19,6 +19,7 @@ megatron sft \
     --linear_decoupled_in_proj true \
     --load_from_cache_file true \
     --add_non_thinking_prefix true \
+    --loss_scale ignore_empty_think \
     --fp8_recipe blockwise \
     --fp8_format e4m3 \
     --fp8_param_gather true \

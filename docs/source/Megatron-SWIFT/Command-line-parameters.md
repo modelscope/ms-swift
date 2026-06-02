@@ -112,7 +112,8 @@
 - 🔥no_save_rng: 不保存rng，默认为False。
 - 🔥mcore_model: 加载的checkpoint目录（mcore存储格式），默认None。对于断点续训的介绍，请查看`--finetune false`参数的介绍。
   - megatron-swift推荐直接加载和存储safetensors权重，参考[mcore-bridge文档](./Mcore-Bridge.md)。
-  - `--model`与`--mcore_model`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`后加mcore权重目录。`--model/--adapters`不支持加载断点续训状态，因此若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--mcore_model/--mcore_adapter`来加载断点续训的状态。
+  - `--model`与`--mcore_model`的区别：`--model/--adapters/--ref_model/--ref_adapters`后加safetensors权重目录，`--mcore_model/--mcore_adapter/--mcore_ref_model/--mcore_ref_adapter`后加mcore权重目录。
+  - `--model/--adapters`不支持加载断点续训状态，因此若设置`--no_save_optim false`，将额外存储mcore权重格式用于断点续训，你需要使用`--mcore_model/--mcore_adapter`来加载断点续训的状态。例如：`--model <hf-model> --mcore_adapter <mcore-adapter-ckpt>`。（使用`--model/--adapters`断点续训也可以，只是不读取优化器状态。）
 - 🔥no_load_optim: 不载入optimizer，默认为False。
   - 注意：断点续训时，设置`--no_load_optim false`读取优化器状态通常比`--no_load_optim true`不读取优化器状态消耗更大的显存资源。
 - 🔥no_load_rng: 不载入rng，默认为False。
@@ -151,7 +152,7 @@
 - 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。
 - virtual_pipeline_model_parallel_size: 每个流水线并行 rank 的虚拟流水线阶段数量。默认为None。vpp并行，用于减少pp并行的计算空泡，提高GPU利用率，但会略微提高通信量。
 - microbatch_group_size_per_vp_stage: 每个虚拟流水线阶段处理的连续微批次数量。默认为None，等于pipeline_model_parallel_size。
-- 🔥pipeline_model_parallel_layout: 一个描述自定义流水线（pp/vpp）模型并行布局的字符串。例如："E|(t|)*3,m|m||L"。其中 E、L、t、m 分别表示嵌入层（embedding）、损失层（loss）、Transformer 解码器层和 MTP 层。阶段之间用 "|" 分隔。重复的阶段或层可以通过乘法表示。逗号仅用于提升可读性（无实际语法作用）。默认值为 None，表示不使用此参数设置布局。
+- 🔥pipeline_model_parallel_layout: 一个描述自定义流水线（pp/vpp）模型并行布局的字符串。例如：`"Et*4|(tttt|)*14tmL"`。其中 E、L、t、m 分别表示嵌入层（embedding）、损失层（loss）、Transformer 解码器层和 MTP 层。阶段之间用 "|" 分隔。重复的阶段或层可以通过乘法表示。逗号仅用于提升可读性（无实际语法作用）。默认值为 None，表示不使用此参数设置布局。
   - 该参数通常在异构GPU集群上使用。
 - 🔥expert_model_parallel_size: 专家并行数，默认为1。
 - 🔥expert_tensor_parallel_size: 专家TP并行度。默认值为1。
@@ -174,10 +175,16 @@
 **fp8参数**:
 - fp8_format: 用于前向和反向传播中FP8张量的FP8格式方案。可选为'e4m3'，'hybrid'。默认为None。
 - fp8_recipe: 用于前向和反向传播中 FP8 张量的 FP8 算法方案。可选为'tensorwise', 'delayed', 'mxfp8', 'blockwise'。默认为'delayed'。其中blockwise fp8需要 cuda129 以上版本。
-- fp8_amax_history_len: 每个张量记录 amax 历史的步数。默认为1024。
-- fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent', 'max'。默认为'max'。
 - fp8_param_gather: 保持计算参数为 fp8（不使用任何其他中间数据类型），并在 fp8 格式下执行参数的 all-gather 操作。默认为False。
   - 提示：若想导出FP8权重格式，设置为True；否则设置为False。
+- fp8_amax_history_len: 每个张量记录 amax 历史的步数。默认为1024。
+- fp8_amax_compute_algo: 用于根据历史记录计算 amax 的算法。可选为'most_recent', 'max'。默认为'max'。
+
+**fp4参数**:
+- fp4_format: 用于前向和反向传播中FP4张量的FP4格式方案，可选为'e2m1'。默认为None。
+- fp4_recipe: 若设置此参数，则通过 Transformer Engine 启用 FP4 精度。目前仅支持 'nvfp4'，该选项使用适用于 Blackwell+ 架构的 NVFP4BlockScaling 方案。默认为'nvfp4'。
+- fp4_param_gather: 若设置此参数，则将参数保持为 FP4 精度以节省内存。注意并非所有参数都会被转换为 FP4，例如偏置项将保持不变。默认为False。
+
 
 **混合精度参数**:
 - fp16: fp16模式。默认为None，会根据模型的torch_dtype进行设置，即torch_dtype为float16或者float32则fp16设置为True。torch_dtype默认读取config.json。
@@ -202,9 +209,14 @@
 - moe_token_drop_policy: 可选为'probs', 'position'。默认为'probs'。
 
 **DSA参数**
-- dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为None。
+- dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为`0.`。
 - dsa_indexer_use_sparse_loss: 是否使用稀疏 DSA 索引器损失。如果为 True，索引器损失将使用 top-k 索引进行计算。默认为False。
 
+**Deepseek-V4**
+- csa_dense_mode: 是否对压缩稀疏注意力使用密集模式。若为 `True`，CSA 索引器将被禁用。默认为False。
+- use_fused_mhc: 对 mHC 操作使用 cuTile 融合内核。若为 True，将尝试用融合的 cuda.tile（cuTile）自动微分函数替换参考
+mHC 模块以在支持的 GPU 上获得更好的性能。需要安装 cuTile；若 cuTile 不可用，该标志将被静默重置为 False 并发出警告。默认为False。
+- mhc_recompute_layer_num: 每个 MHC 重计算块的层数。设置后，每 `mhc_recompute_layer_num` 层构成一个重计算块。若为 None，Transformer 块中的所有层共享单个重计算块。默认为None。
 
 **MTP参数**
 - mtp_num_layers: 多token预测（MTP）层的数量。MTP将每个位置的预测范围扩展到多个未来token。此MTP实现使用D个顺序模块依次预测D个额外的token。默认为None。（需要"megatron-core>=0.14"）
@@ -267,6 +279,7 @@ lora训练：
 
 
 **其他参数**:
+- megatron_extra_kwargs: 透传入Megatron的其他参数（透传入[mcore-bridge](https://github.com/modelscope/mcore-bridge/blob/78cb9be33ebad69a0d940a2bc4e198f866084b70/src/mcore_bridge/config/model_config.py#L116)的 `ModelConfig` 类，继承自 megatron-core 的 TransformerConfig），也可用于覆盖自动读取的`config.json`参数。传入json字符串。默认为None。
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
   - **目前rope_scaling模块使用transformers实现，支持transformers支持的所有rope_scaling。**

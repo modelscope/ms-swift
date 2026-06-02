@@ -170,7 +170,6 @@ class SeedTemplateMeta(TemplateMeta):
     template_cls: Type[Template] = SeedTemplate
     default_system: Optional[str] = None
     stop_words: List[Word] = field(default_factory=lambda: ['<seed:eos>'])
-    agent_template: str = 'react_en'
 
 
 register_template(SeedTemplateMeta(LLMTemplateType.seed_oss, default_system=None, template_cls=SeedTemplate))

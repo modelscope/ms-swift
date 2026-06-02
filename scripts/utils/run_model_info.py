@@ -42,9 +42,9 @@ def get_model_info_table():
     cache_mapping = get_cache_mapping(fpaths[0])
     end_words = [['### 多模态大模型', '## 数据集'], ['### Multimodal large models', '## Datasets']]
     result = [
-        '| Model ID | Model Type | Default Template | '
+        '| Model ID | Model Type | Default Template | Default Agent Template | '
         'Requires | Support Megatron | Tags | HF Model ID |\n'
-        '| -------- | -----------| ---------------- | '
+        '| -------- | -----------| ---------------- | ---------------------- | '
         '-------- | ---------------- | ---- | ----------- |\n'
     ] * 2
     res_llm: List[Any] = []
@@ -71,6 +71,9 @@ def get_model_info_table():
                 tags = ', '.join(group.tags or model_meta.tags) or '-'
                 requires = ', '.join(group.requires or model_meta.requires) or '-'
                 template = group.template or model_meta.template
+                template_meta = TEMPLATE_MAPPING.get(template)
+                agent_template = template_meta.agent_template if template_meta else ''
+                agent_template = agent_template or ''
                 if is_megatron_available():
                     from mcore_bridge.model import MODEL_MAPPING as MCORE_MODEL_MAPPING
                     if supported_mcore_model_types is None:
@@ -97,7 +100,8 @@ def get_model_info_table():
                         mg_count_mllm += 1
                     else:
                         mg_count_llm += 1
-                r = f'|{ms_model_id}|{model_type}|{template}|{requires}|{support_megatron}|{tags}|{hf_model_id}|\n'
+                r = (f'|{ms_model_id}|{model_type}|{template}|{agent_template}|{requires}|'
+                     f'{support_megatron}|{tags}|{hf_model_id}|\n')
                 if model_meta.is_multimodal:
                     res_mllm.append(r)
                 else:
