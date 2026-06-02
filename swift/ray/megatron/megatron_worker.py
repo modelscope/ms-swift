@@ -41,6 +41,9 @@ class MegatronWorker(CheckpointEngineMixin):
         self.rollout = None
         self._checkpoint_engine = None
         self._bucket_size: int = 3072 << 20
+        self.actor = None  # TrainableModelWorker
+        self.ref = None  # MegatronModelWorker (explicit ref for full fine-tune)
+        self.teacher = None  # MegatronModelWorker (colocated teacher)
 
     def init_model(
         self,
@@ -73,16 +76,63 @@ class MegatronWorker(CheckpointEngineMixin):
             self._init_rollout_adapter(rollout_config)
 
     def _init_trainable(self):
+        from .model_worker import TrainableModelWorker
+
         pipeline = self._pipeline
         args = pipeline.args
-
-        # reuse megatron trainer to
         self._megatron = _make_lifecycle_trainer(args, pipeline.template)
 
         if self._loss_cls_path:
             loss_cls = _import_class(self._loss_cls_path)
             self._loss_fn = loss_cls(args)
             self._megatron.forward_step = self._loss_fn.forward_step
+
+        self.actor = TrainableModelWorker(args, self._megatron)
+        if args.tuner_type == 'full' and self._megatron.ref_models:
+            from .model_worker import MegatronModelWorker
+            self.ref = MegatronModelWorker(args, self._megatron.ref_models)
+
+    @dispatch_collect(dispatch='broadcast', collect='first')
+    def init_teacher_model(self, model_dir: str):
+        """Load a colocated teacher model (same parallelism as student)."""
+        from .model_worker import MegatronModelWorker
+        self.teacher = MegatronModelWorker.from_pretrained(self._args, model_dir)
+        logger.info('Colocated teacher model loaded from %s', model_dir)
+
+    @dispatch_collect(dispatch='dp_split', collect='dp_flat')
+    def compute_teacher_logits(self, batch) -> Any:
+        """Forward teacher model on encoded batch, return TeacherOutput per sample."""
+        from swift.megatron.trainers.gkd_utils import vocab_parallel_topk
+        from swift.megatron.trainers.utils import prepare_batch
+        from swift.megatron.utils import forward_step_helper
+        from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+
+        assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
+        teacher_model = self.teacher.models[0]
+        gkd_logits_topk = getattr(self._args, 'gkd_logits_topk', None)
+
+        micro_batches = split_micro_batches(batch, self._args.micro_batch_size)
+        results = []
+        with torch.no_grad():
+            for mb in micro_batches:
+                mb_gpu = to_device(mb, get_current_device())
+                teacher_data = prepare_batch(self._args, mb_gpu)
+                teacher_data.pop('loss_scale', None)
+                labels = teacher_data.pop('labels', None)
+                teacher_logits = forward_step_helper(teacher_model, teacher_data)
+                if teacher_logits is not None:
+                    teacher_logits = teacher_logits.detach()
+                    if gkd_logits_topk is not None:
+                        topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=gkd_logits_topk)
+                        teacher_out = TeacherOutput(topk_logprobs=topk_logits.cpu(), topk_indices=topk_indices.cpu())
+                    else:
+                        teacher_out = TeacherOutput(full_logits=teacher_logits.cpu())
+                    results.append(teacher_out)
+                else:
+                    results.append(TeacherOutput())
+                del mb_gpu
+        gc_collect()
+        return results
 
     def get_parallel_info(self) -> Dict[str, Any]:
         from megatron.core import mpu
@@ -194,8 +244,14 @@ class MegatronWorker(CheckpointEngineMixin):
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_ref_logps(self, batch) -> Any:
         """Compute per-token logps under the frozen reference model."""
-        megatron = self._megatron
-        with megatron.null_ref_context() as ref_models:
+        if self.ref is not None:
+            model = self.ref.models[0]
+            if isinstance(batch, list):
+                return self._compute_logps_from_samples(batch, model, 'ref_per_token_logps', with_completion_mask=False)
+            result = self._compute_logps_batched(batch, model, 'ref_per_token_logps')
+            return self._split_logps_rows(
+                result.get('ref_per_token_logps'), None, 'ref_per_token_logps', seq_lengths=batch.get('seq_lengths'))
+        with self.actor.null_ref_context() as ref_models:
             if isinstance(batch, list):
                 return self._compute_logps_from_samples(
                     batch, ref_models[0], 'ref_per_token_logps', with_completion_mask=False)
@@ -461,18 +517,19 @@ class MegatronWorker(CheckpointEngineMixin):
 
     @dispatch_collect(dispatch='broadcast', collect='first')
     def offload_to_cpu(self):
-        from swift.megatron.trainers.utils import offload_megatron_model_to_cpu, offload_megatron_optimizer
-        offload_megatron_model_to_cpu(self._megatron.wrapped_models)
-        if getattr(self._megatron, 'optimizer', None) and self._args.offload_optimizer:
-            offload_megatron_optimizer(self._megatron.optimizer)
-        gc_collect()
+        self.actor.offload_to_cpu()
+        if self.ref is not None:
+            self.ref.offload_to_cpu()
+        if self.teacher is not None:
+            self.teacher.offload_to_cpu()
 
     @dispatch_collect(dispatch='broadcast', collect='first')
     def reload_to_gpu(self):
-        from swift.megatron.trainers.utils import load_megatron_model_to_gpu, load_megatron_optimizer
-        load_megatron_model_to_gpu(self._megatron.wrapped_models)
-        if getattr(self._megatron, 'optimizer', None) and self._args.offload_optimizer:
-            load_megatron_optimizer(self._megatron.optimizer)
+        self.actor.reload_to_gpu()
+        if self.ref is not None:
+            self.ref.reload_to_gpu(load_grad=False)
+        if self.teacher is not None:
+            self.teacher.reload_to_gpu(load_grad=False)
 
     def _split_sample_chunks(self, samples: Sequence[Dict[str, Any]]) -> List[Sequence[Dict[str, Any]]]:
         micro_batch_size = self._args.micro_batch_size
@@ -625,3 +682,6 @@ class MegatronWorker(CheckpointEngineMixin):
         self._megatron = None
         self._loss_fn = None
         self._checkpoint_engine = None
+        self.actor = None
+        self.ref = None
+        self.teacher = None

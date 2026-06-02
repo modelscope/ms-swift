@@ -1180,14 +1180,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_logps_packed, per_token_entropy_packed = compute_logps_and_entropy_from_logits(
                 logits_packed, labels, compute_entropy=self.compute_entropy)
 
-            # In CP mode, all_gather and reconstruct full sequence
             if args.context_parallel_size > 1:
+                from .utils import _postprocess_packed_tensor_cp
                 num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
-                per_token_logps_packed = self._postprocess_packed_tensor_cp(per_token_logps_packed, packed_seq_params,
-                                                                            num_samples)
+                per_token_logps_packed = _postprocess_packed_tensor_cp(args, per_token_logps_packed, packed_seq_params,
+                                                                       num_samples)
                 if per_token_entropy_packed is not None:
-                    per_token_entropy_packed = self._postprocess_packed_tensor_cp(per_token_entropy_packed,
-                                                                                  packed_seq_params, num_samples)
+                    per_token_entropy_packed = _postprocess_packed_tensor_cp(args, per_token_entropy_packed,
+                                                                             packed_seq_params, num_samples)
 
             if args.padding_free:
                 # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]

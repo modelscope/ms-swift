@@ -16,6 +16,10 @@ _TRAINER_REGISTRY: Dict[str, Dict[str, Any]] = {
         'trainer': 'swift.ray.megatron.grpo_trainer.GRPOTrainer',
         'loss': 'swift.ray.megatron.loss.grpo.GRPOLoss',
     },
+    'gkd': {
+        'trainer': 'swift.ray.megatron.gkd_trainer.GKDTrainer',
+        'loss': 'swift.ray.megatron.loss.gkd.GKDLoss',
+    },
 }
 
 _KNOWN_GROUPS = frozenset(('train', 'rollout'))

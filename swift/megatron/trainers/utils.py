@@ -3,6 +3,7 @@ import gc
 import torch
 from accelerate.utils import gather as hf_gather
 from accelerate.utils import gather_object as hf_gather_object
+from contextlib import nullcontext
 from dataclasses import dataclass
 from megatron.core import mpu
 from megatron.core.distributed import DistributedDataParallel as DDP
@@ -342,3 +343,140 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
     )
     return MegatronDataLoaderDispatcher(base_dataloader)
+
+
+def _should_use_npu_attention_mask(args) -> bool:
+    from transformers.utils import is_torch_npu_available
+    return (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
+            and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
+
+
+def prepare_batch(args, data, vp_stage=None, num_samples=None):
+    """Prepare a micro-batch for Megatron forward: PP slicing, packed_seq_params, CP slicing.
+
+    Extracted from BaseMegatronTrainer._prepare_batch for reuse in ray workers.
+    """
+    from swift.megatron.utils import get_batch_on_this_cp_rank, get_packed_seq_params
+    batch = get_batch_on_this_pp_rank(args, data, vp_stage=vp_stage)
+    if num_samples is None:
+        num_samples = batch.pop('num_samples')
+    text_position_ids = batch.pop('text_position_ids', None)
+    if text_position_ids is None:
+        text_position_ids = batch.get('position_ids')
+    if _should_use_npu_attention_mask(args):
+        if 'attention_mask_2d' not in batch and batch.get('attention_mask') is not None:
+            batch['attention_mask_2d'] = (~batch['attention_mask']).sum(dim=(1, 2)) > 0
+        batch['attention_mask'] = None
+    else:
+        batch.pop('attention_mask_2d', None)
+    if args.padding_free and text_position_ids is not None:
+        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+        batch['packed_seq_params'].num_samples = num_samples
+    batch = get_batch_on_this_cp_rank(args, batch)
+    return batch
+
+
+def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_grad=True, enable_routing_replay=False):
+    """Forward pass → logits → temperature-scaled per-token logps.
+
+    Extracted from MegatronRLHFTrainer.compute_per_token_logps for reuse in ray workers.
+
+    Returns:
+        (per_token_logps, routing_topk_idx) — either may be None on non-last PP stages.
+    """
+    from swift.megatron.utils import (RouterReplayHelper, forward_step_helper, get_local_topk_idx_for_current_rank,
+                                      get_router_replay_data, set_router_replay_data)
+    from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
+
+    data = prepare_batch(args, next(data_iterator))
+    data.pop('loss_scale', None)
+    labels = data.get('labels')
+
+    routing_topk_idx = None
+    global_topk_idx = data.pop('routed_experts', None)
+    if enable_routing_replay and RouterReplayHelper.is_replay_forward_action(model.config):
+        assert global_topk_idx is not None, 'When router_replay_mode = R3, routed_experts must be in data'
+        routing_topk_idx = get_local_topk_idx_for_current_rank(global_topk_idx, model.config,
+                                                               data.get('packed_seq_params'))
+        set_router_replay_data(routing_topk_idx, model.config)
+
+    data_for_forward = {k: v for k, v in data.items() if k != 'labels'}
+    context = torch.no_grad() if no_grad else nullcontext()
+    is_training = model.training
+    if is_training:
+        model.eval()
+    try:
+        with context:
+            output_tensor = forward_step_helper(model, data_for_forward)
+    finally:
+        if is_training:
+            model.train()
+
+    if enable_routing_replay and RouterReplayHelper.is_r2_record_action(model.config):
+        routing_topk_idx = get_router_replay_data(model.config)
+
+    if labels is None or output_tensor is None:
+        return None, routing_topk_idx
+
+    if temperature != 1.0:
+        output_tensor.div_(temperature)
+    per_token_logps, _ = compute_logps_and_entropy_from_logits(output_tensor, labels)
+
+    packed_seq_params = data.get('packed_seq_params')
+    if packed_seq_params is not None:
+        num_samples = packed_seq_params.num_samples
+    else:
+        input_ids = data.get('input_ids')
+        num_samples = input_ids.shape[0] if input_ids is not None else labels.shape[0]
+
+    if args.context_parallel_size > 1:
+        per_token_logps = _postprocess_packed_tensor_cp(args, per_token_logps, packed_seq_params, num_samples)
+    return per_token_logps, routing_topk_idx
+
+
+def _postprocess_packed_tensor_cp(args, tensor, packed_seq_params, num_samples):
+    """In CP mode, all_gather and reconstruct full tensor sequences.
+
+    Extracted from MegatronRLHFTrainer._postprocess_packed_tensor_cp.
+    """
+    cp_size = args.context_parallel_size
+    cp_rank = mpu.get_context_parallel_rank()
+
+    output_list = [torch.empty_like(tensor) for _ in range(cp_size)]
+    torch.distributed.all_gather(output_list, tensor.contiguous(), group=mpu.get_context_parallel_group())
+    output_list[cp_rank] = tensor
+
+    if packed_seq_params is not None:
+        cu_seqlens_full = packed_seq_params.cu_seqlens_q
+        cu_seqlens_cp = cu_seqlens_full // cp_size
+        total_packed_len = cu_seqlens_full[num_samples].item()
+        output_full = tensor.new_zeros(1, total_packed_len)
+        for i in range(num_samples):
+            start_full = cu_seqlens_full[i].item()
+            end_full = cu_seqlens_full[i + 1].item()
+            seq_len = end_full - start_full
+            chunk_len = seq_len // cp_size
+            half_chunk = chunk_len // 2
+            for j in range(cp_size):
+                o = output_list[j][0]
+                start_cp = cu_seqlens_cp[i].item()
+                o0 = o[start_cp:start_cp + half_chunk]
+                o1 = o[start_cp + half_chunk:start_cp + chunk_len]
+                output_full[0, start_full + j * half_chunk:start_full + (j + 1) * half_chunk] = o0
+                output_full[0, end_full - (j + 1) * half_chunk:end_full - j * half_chunk] = o1
+    else:
+        batch_size = tensor.shape[0]
+        seq_len_per_cp = tensor.shape[1]
+        full_seq_len = seq_len_per_cp * cp_size
+        output_full = tensor.new_zeros(batch_size, full_seq_len)
+        chunk_len = full_seq_len // (2 * cp_size)
+        for j in range(cp_size):
+            o = output_list[j]
+            half_len = seq_len_per_cp // 2
+            o0 = o[:, :half_len]
+            o1 = o[:, half_len:]
+            output_full[:, j * chunk_len:(j + 1) * chunk_len] = o0
+            reverse_idx = 2 * cp_size - j - 1
+            output_full[:, reverse_idx * chunk_len:(reverse_idx + 1) * chunk_len] = o1
+
+    return output_full

@@ -5,74 +5,23 @@ import asyncio
 import concurrent.futures
 import copy
 import os
-import ray
 import torch
 import uuid
-from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutInferRequest, RolloutOutput
-from swift.rlhf_trainers.utils import (compute_grpo_advantages, create_cyclic_iterator, make_reward_weights,
-                                       resolve_reward_funcs)
+from swift.rlhf_trainers.utils import compute_grpo_advantages, make_reward_weights, resolve_reward_funcs
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger
-from .driver_utils import compute_iter_params, extract_iteration, extract_train_metrics
+from .base_trainer import BaseRayTrainer
+from .driver_utils import extract_iteration, extract_train_metrics
 
 logger = get_logger()
 
 
-class GRPOTrainer:
-    """Driver-side GRPO trainer.
-
-    Constructed by ``MegatronRayPipeline._create_trainer`` with the
-    WorkerGroups and rollout replicas.  Heavy state (args / template /
-    reward funcs) is bootstrapped lazily in ``_prepare_state`` on the
-    first call to ``train()``.
-    """
-
-    def __init__(
-        self,
-        worker_groups: Dict[str, Any],
-        rollout_replicas: List[Any],
-        weight_sync_mode: str = 'nccl',
-        sleep_level: int = 1,
-    ):
-        self.worker_groups = worker_groups
-        self.rollout_replicas = rollout_replicas
-        self._weight_sync_mode = weight_sync_mode
-        self._sleep_level = sleep_level
-
-    def set_data_info(self, data_info: Dict[str, Any]) -> None:
-        self._data_info = data_info
-
-    @property
-    def train_group(self):
-        return self.worker_groups['train']
-
-    def _distribute_to_replicas(self, batch, params):
-        """Split *batch* across all replicas and gather results in parallel."""
-        n = len(self.rollout_replicas)
-        chunk_size = (len(batch) + n - 1) // n
-        refs = []
-        for i, replica in enumerate(self.rollout_replicas):
-            shard = batch[i * chunk_size:(i + 1) * chunk_size]
-            if not shard:
-                continue
-            refs.append(replica.generate(shard, params))
-        parts = ray.get(refs)
-        result = []
-        for p in parts:
-            result.extend(p)
-        return result
-
-    @property
-    def is_colocated_rollout(self) -> bool:
-        """True if rollout and train share the same placement group."""
-        from .rollout.replica import RolloutMode
-        if not self.rollout_replicas:
-            return False
-        return self.rollout_replicas[0].mode == RolloutMode.HYBRID
+class GRPOTrainer(BaseRayTrainer):
+    """Driver-side GRPO trainer."""
 
     def _prepare_state(self) -> None:
         assert hasattr(self, '_data_info'), 'call set_data_info() before train()'
@@ -172,61 +121,6 @@ class GRPOTrainer:
             logprobs=True,
         )
 
-    def train(self) -> Any:
-        self._prepare_state()
-
-        tg = self.train_group
-        self._build_dataloader(tg)
-
-        args_override = compute_iter_params(self._data_info, tg.dp_size)
-        meta = tg.setup(args_override)
-        train_iters = meta['train_iters']
-        iteration = meta['iteration']
-
-        try:
-            iteration = self._train_loop(tg, train_iters, iteration)
-        finally:
-            results = tg.finalize()
-
-        return results
-
-    @property
-    def ckpt_manager(self):
-        if not hasattr(self, '_ckpt_manager'):
-            from .checkpoint_engine import CheckpointEngineManager
-            tg = self.train_group
-
-            self._ckpt_manager = CheckpointEngineManager(
-                train_actors=tg.workers,
-                rollout_replicas=self.rollout_replicas,
-                weight_sync_mode=self._weight_sync_mode,
-                is_colocated=self.is_colocated_rollout,
-                sleep_level=self._sleep_level,
-                train_group=tg,
-            )
-        return self._ckpt_manager
-
-    @contextmanager
-    def _generation_context(self, tg, ckpt):
-        """Offload train model + wake vLLM for generation, reload afterwards."""
-        offload_model = getattr(self.args, 'offload_model', False)
-        offload_optimizer = getattr(self.args, 'offload_optimizer', False)
-        enable_offload = offload_model or offload_optimizer or self.is_colocated_rollout
-
-        if enable_offload:
-            tg.offload_to_cpu()
-        if self.is_colocated_rollout:
-            ckpt.wake_up_rollout(tags=['kv_cache'])
-
-        try:
-            yield
-        finally:
-            tg.finalize_generation()
-            if self.is_colocated_rollout:
-                ckpt.sleep_rollout()
-            if enable_offload:
-                tg.reload_to_gpu()
-
     def _train_loop(self, tg, train_iters, iteration):
         ckpt = self.ckpt_manager
         merge_and_sync = not self.args.vllm_enable_lora
@@ -311,23 +205,6 @@ class GRPOTrainer:
         train_str = '  '.join(core_parts + extra_parts)
         logger.info('iter %d/%d  reward=%.4f  group_std=%.4f  adv_nonzero=%.1f%%  %s  %s', iteration, train_iters,
                     mean_reward, group_std, nonzero_adv * 100, per_func_str, train_str)
-
-    def _build_dataloader(self, tg):
-        info = self._data_info
-        dataset = info['train_dataset']
-        num_gen = int(info.get('num_generations', 1) or 1)
-        spg = self._steps_per_generation
-        prompts_per_generation = max(info['global_batch_size'] * spg // max(num_gen, 1), 1)
-        self._dataloader = torch.utils.data.DataLoader(
-            dataset,
-            batch_size=prompts_per_generation,
-            shuffle=True,
-            collate_fn=info['data_collator'],
-            drop_last=True,
-        )
-        self._data_iter = create_cyclic_iterator(self._dataloader)
-        logger.info('GRPO driver dataloader: dataset=%d, prompts_per_generation=%d, num_gen=%d, spg=%d', len(dataset),
-                    prompts_per_generation, num_gen, spg)
 
     def _generate(self, expanded_batch) -> List[RolloutOutput]:
         """Run a prompt batch through rollout replicas.
