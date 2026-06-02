@@ -17,7 +17,7 @@ pip install "transformers==4.57.*" "qwen_omni_utils==0.0.8"
 First, we need to register the model to obtain the model and processor.
 
 ```python
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
 
 from swift.model import (Model, ModelGroup, ModelMeta, MultiModelKeys, get_model_processor, register_model,
                          register_model_arch, ModelLoader)
@@ -44,8 +44,7 @@ class Qwen2_5OmniLoader(ModelLoader):
 
 
     def get_config(self, model_dir: str) -> PretrainedConfig:
-        from transformers import Qwen2_5OmniConfig
-        config = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         if enable_audio_output is not None:
             config.enable_audio_output = enable_audio_output

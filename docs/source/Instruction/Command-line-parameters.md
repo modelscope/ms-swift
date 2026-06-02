@@ -247,7 +247,7 @@ ENV:
 - 🔥vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
   - 提示：在日志中打印的"learning_rate"为`param_groups[0]`的学习率，其中param_groups的顺序依次是vit, aligner, llm（若含可训练参数）。
 - 🔥aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
-- lr_scheduler_type: lr_scheduler类型，默认为'cosine'。
+- lr_scheduler_type: lr_scheduler类型，默认为'cosine'。常见选择：'linear', 'constant', 'cosine_with_min_lr'。
 - lr_scheduler_kwargs: lr_scheduler其他参数。默认为None。
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。
   - 注意：当使用DDP而不使用deepspeed/fsdp，且gradient_checkpointing_kwargs为None，会默认设置其为`'{"use_reentrant": false}'`而避免出现报错。
