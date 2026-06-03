@@ -22,7 +22,7 @@ _TRAINER_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
 }
 
-_KNOWN_GROUPS = frozenset(('train', 'rollout'))
+_KNOWN_GROUPS = frozenset(('train', 'rollout', 'teacher'))
 
 
 def register_ray_trainer(
@@ -68,14 +68,9 @@ class MegatronRayPipeline:
         self.resource_pool_manager = None
         self.worker_groups: Dict[str, Any] = {}
         self.rollout_replicas: List[Any] = []
+        self.teacher_replicas: List[Any] = []
 
     def _validate_gkd_ray_constraints(self) -> None:
-        # Ray GKD round-trips teacher outputs through the driver: the API (server) teacher path is
-        # not wired up yet, and full-logits teacher mode is not TP-safe because only the tp-rank-0
-        # vocab shard is collected/redistributed. Guard both early with clear messages.
-        if self.shared_cfg.get('teacher_model_server') is not None:
-            raise NotImplementedError('Ray GKD does not support teacher_model_server (API teacher) yet; '
-                                      'use a colocated teacher_model instead.')
         train_cfg = self.group_cfgs.get('train') or {}
         tp_size = train_cfg.get('tensor_model_parallel_size', 1) or 1
         if tp_size > 1 and self.shared_cfg.get('gkd_logits_topk') is None:
@@ -91,6 +86,7 @@ class MegatronRayPipeline:
         self._init_worker_groups()
         with self._colocate_offload_ctx():
             self._init_rollout_replicas()
+        self._init_teacher_replicas()
         self._driver_trainer = self._create_trainer()
         self._driver_trainer.set_data_info(self._data_info)
 
@@ -246,6 +242,26 @@ class MegatronRayPipeline:
             template_kwargs=template_kwargs,
         )
 
+    def _init_teacher_replicas(self) -> None:
+        teacher_gpus = self.group_gpus.get('teacher', 0)
+        if teacher_gpus <= 0:
+            self.teacher_replicas = []
+            return
+
+        from .rollout.replica import RolloutReplica
+
+        teacher_cfg = self.group_cfgs.get('teacher', {})
+        pool = self.resource_pool_manager.get_pool('teacher')
+        template_kwargs = self._get_template_kwargs_for_rollout()
+        self.teacher_replicas = RolloutReplica.create_replicas(
+            rollout_cfg=teacher_cfg,
+            rollout_gpus=teacher_gpus,
+            pool=pool,
+            is_hybrid=False,
+            sleep_level=0,
+            template_kwargs=template_kwargs,
+        )
+
     def _with_router_replay_rollout_config(self, rollout_cfg: Dict[str, Any]) -> Dict[str, Any]:
         cfg = dict(rollout_cfg or {})
         args = self._data_info.get('_driver_args')
@@ -305,7 +321,8 @@ class MegatronRayPipeline:
         weight_sync_mode = self._get_weight_sync_mode()
         sleep_level = self._resolve_sleep_level()
         return trainer_cls(
-            self.worker_groups, self.rollout_replicas, weight_sync_mode=weight_sync_mode, sleep_level=sleep_level)
+            self.worker_groups, self.rollout_replicas, weight_sync_mode=weight_sync_mode, sleep_level=sleep_level,
+            teacher_replicas=self.teacher_replicas)
 
     def _resolve_sleep_level(self) -> int:
         """Colocate: honor user config; separate: force 0."""
@@ -340,6 +357,13 @@ class MegatronRayPipeline:
             except Exception as e:  # noqa: BLE001
                 logger.warning('RolloutReplica shutdown failed: %s', e)
         self.rollout_replicas = []
+
+        for replica in self.teacher_replicas:
+            try:
+                replica.shutdown()
+            except Exception as e:  # noqa: BLE001
+                logger.warning('TeacherReplica shutdown failed: %s', e)
+        self.teacher_replicas = []
 
         seen: set = set()
         for wg in self.worker_groups.values():

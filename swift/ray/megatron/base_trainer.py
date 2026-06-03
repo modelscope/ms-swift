@@ -26,11 +26,13 @@ class BaseRayTrainer:
         rollout_replicas: List[Any],
         weight_sync_mode: str = 'nccl',
         sleep_level: int = 1,
+        teacher_replicas: List[Any] = None,
     ):
         self.worker_groups = worker_groups
         self.rollout_replicas = rollout_replicas
         self._weight_sync_mode = weight_sync_mode
         self._sleep_level = sleep_level
+        self.teacher_replicas = teacher_replicas or []
 
     def set_data_info(self, data_info: Dict[str, Any]) -> None:
         self._data_info = data_info
