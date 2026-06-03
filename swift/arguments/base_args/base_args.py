@@ -36,10 +36,32 @@ def _patch_peft():
        when torch.distributed is initialized (e.g. MoE training with target_parameters).
     2. _maybe_shard_state_dict_for_tp internal logic accesses base_layer.weight.device which
        fails for expert modules that don't have a `weight` attribute.
+    3. ParamWrapper._get_in_out_features: Under ZeRO-3, param.shape is the local shard shape
+       (possibly empty). Use ds_shape to get the original unpartitioned shape.
     """
     if version.parse(peft.__version__) >= version.parse('0.19.0'):
         from peft.utils import save_and_load
         save_and_load._maybe_shard_state_dict_for_tp = lambda model, state_dict, adapter_name: None
+    try:
+        from peft.tuners.lora.layer import ParamWrapper
+    except ImportError:
+        return
+
+    def _get_in_out_features(self, module):
+        param = self.get_param()
+        shape = getattr(param, 'ds_shape', param.shape)
+        if len(shape) == 3:
+            num_experts, in_features, out_features = shape
+        elif len(shape) == 2:
+            num_experts, in_features, out_features = 1, shape[1], shape[0]
+        else:
+            raise ValueError(
+                f"lora.{self.__class__.__name__} was initialized with {len(shape)} dimensional Parameter, "
+                "but only 2d and 3d are supported.")
+        self.num_experts = num_experts
+        return in_features, out_features
+
+    ParamWrapper._get_in_out_features = _get_in_out_features
 
 
 @dataclass
