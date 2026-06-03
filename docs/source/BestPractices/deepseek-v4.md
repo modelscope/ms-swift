@@ -9,6 +9,9 @@
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@dev
 pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
+
+# Megatron-LM在以下commit hash下进行测试
+# pip install git+https://github.com/NVIDIA/Megatron-LM.git@630956b357d4b2375e3fc5c7be8b8e429092866d
 ```
 
 ## 精度对齐
