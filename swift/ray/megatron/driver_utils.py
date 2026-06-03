@@ -63,6 +63,7 @@ class RayConfig:
     colocate_groups: List[List[str]] = field(default_factory=list)
     train_gpus: int = 0
     rollout_gpus: int = 0
+    teacher_gpus: int = 0
     sleep_level: int = 1
     nnodes: int = 1
 
@@ -71,6 +72,7 @@ class RayConfig:
         return {
             'train': self.train_gpus,
             'rollout': self.rollout_gpus,
+            'teacher': self.teacher_gpus,
         }
 
     def gpus_as_process_on_nodes(self, total_gpus: int) -> List[int]:
@@ -94,7 +96,7 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
     sleep_level = int(raw.pop('sleep_level', 1))
     nnodes = int(raw.pop('nnodes', 1))
 
-    known_groups = ('train', 'rollout')
+    known_groups = ('train', 'rollout', 'teacher')
     group_configs: Dict[str, dict] = {}
     for g in known_groups:
         group_configs[g] = raw.pop(g, {}) or {}
@@ -109,6 +111,7 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
         colocate_groups=colocate_groups,
         train_gpus=gpu_counts.get('train', 0),
         rollout_gpus=gpu_counts.get('rollout', 0),
+        teacher_gpus=gpu_counts.get('teacher', 0),
         sleep_level=sleep_level,
         nnodes=nnodes,
     )
@@ -118,7 +121,7 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
     return ray_config, group_configs, shared_config
 
 
-_KNOWN_ROLES = frozenset(('train', 'rollout'))
+_KNOWN_ROLES = frozenset(('train', 'rollout', 'teacher'))
 
 
 def _validate_colocate_groups(
