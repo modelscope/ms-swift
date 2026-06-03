@@ -158,6 +158,7 @@ def get_model_list() -> List[str]:
 
 
 class ModelLoader(BaseModelLoader):
+    default_trust_remote_code = True
 
     def __init__(
         self,
@@ -245,7 +246,7 @@ class ModelLoader(BaseModelLoader):
 
     def get_config(self, model_dir: str) -> PretrainedConfig:
         auto_config_cls = self.auto_config_cls or AutoConfig
-        return auto_config_cls.from_pretrained(model_dir, trust_remote_code=True)
+        return auto_config_cls.from_pretrained(model_dir, trust_remote_code=self.default_trust_remote_code)
 
     def _get_tokenizer(self, processor):
         if not isinstance(processor, PreTrainedTokenizerBase) and hasattr(processor, 'tokenizer'):
@@ -264,7 +265,7 @@ class ModelLoader(BaseModelLoader):
                 auto_tokenizer_cls = AutoProcessor
             else:
                 auto_tokenizer_cls = AutoTokenizer
-        return auto_tokenizer_cls.from_pretrained(model_dir, trust_remote_code=True)
+        return auto_tokenizer_cls.from_pretrained(model_dir, trust_remote_code=self.default_trust_remote_code)
 
     def get_model(self, model_dir: str, config: PretrainedConfig, processor: Processor,
                   model_kwargs) -> PreTrainedModel:
@@ -283,7 +284,7 @@ class ModelLoader(BaseModelLoader):
             with patch_automodel_for_sequence_classification(model_config=config, patch_from_pretrained=False):
                 try:
                     model = AutoModelForSequenceClassification.from_pretrained(
-                        model_dir, config=config, trust_remote_code=True, **self.model_kwargs)
+                        model_dir, config=config, trust_remote_code=self.default_trust_remote_code, **self.model_kwargs)
                     auto_model_cls = AutoModelForSequenceClassification
                 except ValueError:
                     pass
@@ -312,7 +313,8 @@ class ModelLoader(BaseModelLoader):
             else:
                 context = partial(patch_automodel, **context_kwargs)
             with context():
-                model = auto_model_cls.from_pretrained(model_dir, config=config, trust_remote_code=True, **model_kwargs)
+                model = auto_model_cls.from_pretrained(
+                    model_dir, config=config, trust_remote_code=self.default_trust_remote_code, **model_kwargs)
         # fix not save modeling_xxx.py (transformers 4.45)
         # https://github.com/huggingface/transformers/issues/24737
         has_remote_code = hasattr(config, 'auto_map') and auto_model_cls.__name__ in config.auto_map
@@ -470,6 +472,7 @@ class ModelLoader(BaseModelLoader):
         model_dir = self.model_info.model_dir
         with patch_get_dynamic_module(), patch_tp_plan(self.load_model), patch_offload_context:
             config = self.get_config(model_dir)
+            config.name_or_path = model_dir
             self._postprocess_config(config)
             model, processor = self._get_model_processor(model_dir, config)
             self._postprocess_processor(processor)
@@ -484,7 +487,9 @@ class SentenceTransformersLoader(ModelLoader):
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from sentence_transformers import SentenceTransformer
         model = SentenceTransformer(
-            model_dir, trust_remote_code=True, model_kwargs={
+            model_dir,
+            trust_remote_code=self.default_trust_remote_code,
+            model_kwargs={
                 'torch_dtype': self.torch_dtype,
             })
         model.config = config

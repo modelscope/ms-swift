@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import json
 import os
+import peft
 import shutil
 from dataclasses import dataclass, field, fields
 from packaging import version
@@ -26,6 +27,19 @@ logger = get_logger()
 def get_supported_tuners():
     return {'lora', 'full', 'longlora', 'adalora', 'llamapro', 'adapter', 'vera', 'boft', 'fourierft', 'reft', 'bone'
             } | set(tuners_map.keys())
+
+
+def _patch_peft():
+    """Patch peft functions that are incompatible with SWIFT.
+
+    1. _maybe_shard_state_dict_for_tp: TP sharding is not used by SWIFT, and causes errors
+       when torch.distributed is initialized (e.g. MoE training with target_parameters).
+    2. _maybe_shard_state_dict_for_tp internal logic accesses base_layer.weight.device which
+       fails for expert modules that don't have a `weight` attribute.
+    """
+    if version.parse(peft.__version__) >= version.parse('0.19.0'):
+        from peft.utils import save_and_load
+        save_and_load._maybe_shard_state_dict_for_tp = lambda model, state_dict, adapter_name: None
 
 
 @dataclass
@@ -150,6 +164,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         ]
 
     def __post_init__(self):
+        _patch_peft()
         self.swift_version = swift.__version__
         if self.use_hf or use_hf_hub():
             self.use_hf = True

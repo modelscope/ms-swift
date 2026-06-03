@@ -196,19 +196,19 @@ When `gkd_logits_topk` is set, you can use an external teacher model API service
 | `--teacher_model_server` | str | None | Teacher model service URL<br>e.g., `http://localhost:8000` |
 | `--gkd_logits_topk` | int | **Required** | Must be set when using external API; corresponds to the top_logprobs returned by the API |
 
-**Supported Backends**:
-- `vllm serve` (recommended)
-
-> **Note**: Only `vllm serve` is supported as the teacher server backend. The training code sends raw token IDs via the `prompt` field and uses the `prompt_logprobs` parameter in the `/v1/completions` API to obtain input token log-probabilities. This is a vLLM-native feature.
-
 **Step 1: Deploy Teacher Model Service**
 
+Using `swift deploy` (specify `--infer_backend vllm`):
+
 ```bash
-# Deploy teacher model with vllm serve
-CUDA_VISIBLE_DEVICES=0 vllm serve Qwen/Qwen2.5-14B-Instruct \
+CUDA_VISIBLE_DEVICES=0 \
+swift deploy \
+    --model Qwen/Qwen2.5-14B-Instruct \
+    --infer_backend vllm \
     --port 8000 \
-    --max-logprobs 64 \
-    --gpu-memory-utilization 0.9
+    --max_logprobs 64 \
+    --max_length 4096 \
+    --vllm_max_model_len 4096
 ```
 
 **Step 2: Start GKD Training**
@@ -225,9 +225,7 @@ swift rlhf \
     ...
 ```
 
-> **vLLM max_logprobs Limitation**:
-> - vLLM default `max_logprobs=20`, adjustable via `--max-logprobs N` parameter
-> - `gkd_logits_topk` cannot exceed the server's `max_logprobs` setting
+Script example available [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh)
 
 ## Sampling Acceleration
 
@@ -245,8 +243,6 @@ Use vLLM as the inference backend to accelerate student model sampling. Supports
 > **Note**: vLLM acceleration only applies to student model on-policy sampling (`lmbda > 0`). Teacher model sequential KD sampling (`seq_kd=True`) currently still uses Transformers. Pre-sampling scheme is recommended.
 
 Training script reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/vllm_server.sh), for related parameters, please refer to [GRPO vLLM Parameters](./Command-line-parameters.md#vllm_mode).
-
-Training script using Teacher Server reference [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/teacher_server.sh).
 
 
 ### Solution 2: Teacher Model Pre-sampling

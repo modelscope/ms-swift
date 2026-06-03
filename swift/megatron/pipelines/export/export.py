@@ -62,12 +62,12 @@ class MegatronExport(SwiftPipeline):
             args=args,
             processor=self.processor,
         )
-        args_path = os.path.join(args.mcore_adapter or args.mcore_model or args.model, 'args.json')
-        if os.path.exists(args_path):
-            if is_master():
+        args_path = os.path.join(args.ckpt_dir, 'args.json')
+        if is_master():
+            if os.path.exists(args_path):
                 shutil.copy(args_path, os.path.join(args.output_dir, 'args.json'))
-        else:
-            args.save_args(args.output_dir)
+            else:
+                args.save_args(args.output_dir)
         if args.test_convert_precision:
             with disable_safe_ddp_context_use_barrier():
                 if save_peft_format:

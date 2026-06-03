@@ -37,13 +37,15 @@ if is_trl_available():
 logger = logging.getLogger(__name__)
 
 
-class VLLMClient:
+class VLLMInferClient:
+    """Inference-only vLLM client. Posts to /infer/ endpoint.
+    No weight synchronization. Used for GKD teacher server etc.
+    """
 
     def __init__(self,
                  base_urls: Optional[List[str]] = None,
                  hosts: List[str] = ['0.0.0.0'],
                  server_ports: List[int] = [8000],
-                 group_ports: Optional[Union[int, List[int]]] = None,
                  connection_timeout: float = 240.0):
         if not is_vllm_available():
             raise ImportError('vLLM is not installed. Please install it with `pip install vllm`.')
@@ -67,20 +69,7 @@ class VLLMClient:
             self.hosts = hosts
 
         self.num_servers = len(self.base_urls)
-
-        if group_ports is None:
-            group_ports = [51216 + i for i in range(self.num_servers)]
-
         self.sessions = [requests.Session() for _ in range(self.num_servers)]
-
-        if isinstance(group_ports, int):
-            self.group_ports = [group_ports + i for i in range(self.num_servers)]
-        elif isinstance(group_ports, list) and len(group_ports) == self.num_servers:
-            self.group_ports = group_ports
-        else:
-            raise ValueError('group_port must be int or list of length num_servers')
-
-        self.pynccl_comms = []
         self.check_server(connection_timeout)
 
     def check_server(self, total_timeout: float = 0.0, retry_interval: float = 2.0):
@@ -127,9 +116,6 @@ class VLLMClient:
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ):
-        if not hasattr(self, 'use_async_engine') or not hasattr(self, 'use_gym_env'):
-            self.get_engine_type()
-
         n = len(infer_requests)
         chunk_size = (n + self.num_servers - 1) // self.num_servers
         chunks = [infer_requests[i:i + chunk_size] for i in range(0, n, chunk_size)]
@@ -183,6 +169,30 @@ class VLLMClient:
 
         return [res for server_results in results for res in server_results]
 
+
+class VLLMClient(VLLMInferClient):
+
+    def __init__(self,
+                 base_urls: Optional[List[str]] = None,
+                 hosts: List[str] = ['0.0.0.0'],
+                 server_ports: List[int] = [8000],
+                 group_ports: Optional[Union[int, List[int]]] = None,
+                 connection_timeout: float = 240.0):
+        super().__init__(
+            base_urls=base_urls, hosts=hosts, server_ports=server_ports, connection_timeout=connection_timeout)
+
+        if group_ports is None:
+            group_ports = [51216 + i for i in range(self.num_servers)]
+
+        if isinstance(group_ports, int):
+            self.group_ports = [group_ports + i for i in range(self.num_servers)]
+        elif isinstance(group_ports, list) and len(group_ports) == self.num_servers:
+            self.group_ports = group_ports
+        else:
+            raise ValueError('group_port must be int or list of length num_servers')
+
+        self.pynccl_comms = []
+
     def init_communicator(self, device: Union[int, str] = 0):
         self.pynccl_comms = []
         for i in range(self.num_servers):
@@ -209,6 +219,9 @@ class VLLMClient:
 
             pg = StatelessProcessGroup.create(
                 host=self.hosts[i], port=self.group_ports[i], rank=rank, world_size=world_size)
+            if is_vllm_ascend_available():
+                import torch_npu
+                torch_npu.npu.set_device(device)
             comm = PyNcclCommunicator(pg, device=device)
             self.pynccl_comms.append(comm)
 
