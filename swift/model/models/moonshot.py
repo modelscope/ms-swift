@@ -51,6 +51,7 @@ register_model(
         ],
         template=TemplateType.kimi_k25,
         model_arch=ModelArch.kimi_k25,
+        mcore_model_type='kimi_k25',
         architectures=['KimiK25ForConditionalGeneration'],
         requires=['transformers>=4.57.1,<5.0.0'],
     ))

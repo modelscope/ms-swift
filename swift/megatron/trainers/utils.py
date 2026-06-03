@@ -15,6 +15,12 @@ from swift.utils import empty_cache, get_current_device, get_logger, to_device
 logger = get_logger()
 
 
+_MM_TENSOR_KEYS = frozenset({
+    'pixel_values', 'grid_thws', 'image_grid_hws', 'image_grid_thw',
+    'video_grid_thw', 'second_per_grid_ts',
+})
+
+
 def get_batch_on_this_pp_rank(args, data, vp_stage=None):
     if args.task_type == 'causal_lm':
         data['labels'] = torch.roll(data['labels'], -1, dims=-1)
@@ -27,6 +33,13 @@ def get_batch_on_this_pp_rank(args, data, vp_stage=None):
     if not is_pp_last_stage:
         batch['labels'] = None
         batch['loss_scale'] = None
+    # MM pixel tensors are consumed by the vision encoder on the first PP stage.
+    # Subsequent stages receive image features as activations via the PP channel.
+    if getattr(args, 'is_multimodal', False):
+        is_pp_first_stage = mpu.is_pipeline_first_stage(ignore_virtual=False, vp_stage=vp_stage)
+        if not is_pp_first_stage:
+            for key in _MM_TENSOR_KEYS:
+                batch.pop(key, None)
 
     return batch
 
