@@ -25,6 +25,9 @@ from swift.utils import (HfConfigFactory, deep_getattr, get_device_count, get_di
 
 logger = get_logger()
 
+transformers_version = version.parse(transformers.__version__)
+transformers_5 = transformers_version >= version.parse('5.0.0')
+
 
 def patch_fixed_float_dtype(module: torch.nn.Module, dtype):
     """Patch the module, to make sure the consisitent dtype."""
@@ -449,7 +452,12 @@ def patch_mp_ddp():
         return
     _mp_ddp_patched = True
     if is_mp_ddp():
-        from accelerate.utils.modeling import get_balanced_memory, infer_auto_device_map
+        if transformers_5:
+            from transformers.integrations import accelerate as tf_accelerate
+            get_balanced_memory = tf_accelerate.get_balanced_memory
+            infer_auto_device_map = tf_accelerate.infer_auto_device_map
+        else:
+            from accelerate.utils.modeling import get_balanced_memory, infer_auto_device_map
 
         @wraps(infer_auto_device_map)
         def _infer_auto_device_map_patch(model: nn.Module,
@@ -470,9 +478,11 @@ def patch_mp_ddp():
         _old_ddp_init = DDP.__init__
         accelerate.accelerator.torch.nn.parallel.DistributedDataParallel.__init__ = (
             lambda self, model, device_ids, output_device, *args, **kwargs: _old_ddp_init(self, model, *args, **kwargs))
-        transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: {}
-        transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
-
+        if transformers_5:
+            tf_accelerate.infer_auto_device_map = _infer_auto_device_map_patch
+        else:
+            transformers.modeling_utils.infer_auto_device_map = _infer_auto_device_map_patch
+            transformers.modeling_utils.get_balanced_memory = lambda *args, **kwargs: {}
         _old_accelerator_init = trainer.Accelerator.__init__
         trainer.Accelerator.__init__ = (lambda self, device_placement=False, *args, **kwargs: _old_accelerator_init(
             self, device_placement=device_placement, *args, **kwargs))
@@ -496,8 +506,7 @@ def patch_get_dynamic_module():
 
 @contextmanager
 def patch_tp_plan(load_model: bool):
-    if not load_model or not is_mp() or version.parse(
-            transformers.__version__) < version.parse('4.50') or 'WORLD_SIZE' not in os.environ:
+    if not load_model or not is_mp() or transformers_version < version.parse('4.50') or 'WORLD_SIZE' not in os.environ:
         yield
         return
     logger.info_once('Patch tp_plan.')
