@@ -96,6 +96,10 @@ class MegatronWorker(CheckpointEngineMixin):
     def init_teacher_model(self, model_dir: str):
         """Load a colocated teacher model (same parallelism as student)."""
         from .model_worker import MegatronModelWorker
+
+        # Prefer the worker's own resolved teacher_model_dir; bridge.load_weights needs a
+        # real local path to locate safetensors (a raw model id yields an empty state dict).
+        model_dir = getattr(self._args, 'teacher_model_dir', None) or model_dir
         self.teacher = MegatronModelWorker.from_pretrained(self._args, model_dir)
         logger.info('Colocated teacher model loaded from %s', model_dir)
 

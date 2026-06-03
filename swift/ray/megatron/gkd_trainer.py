@@ -32,8 +32,13 @@ class GKDTrainer(BaseRayTrainer):
         self.sft_alpha = getattr(args, 'sft_alpha', 0.0)
 
         self._steps_per_generation = 1
+        # GKD generates exactly one completion per prompt (on-policy student generation),
+        # so num_generations is always 1 here regardless of the (GRPO-oriented) default.
+        info['num_generations'] = 1
         self._padding_to = info.get('_padding_to')
-        self._teacher_model_dir = getattr(args, 'teacher_model', None) or getattr(args, 'teacher_model_dir', None)
+        # Prefer the resolved local snapshot dir (teacher_model_dir) over the raw model id
+        # (teacher_model); bridge.load_weights needs a real path to locate safetensors.
+        self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or getattr(args, 'teacher_model', None)
         self._teacher_model_server = getattr(args, 'teacher_model_server', None)
 
     def _train_loop(self, tg, train_iters, iteration):
@@ -125,7 +130,7 @@ class GKDTrainer(BaseRayTrainer):
         template = self.template
         samples = []
         for item in rollout_batch:
-            encoded = template.encode(item)
+            encoded = template.encode(item, return_length=True)
             if encoded is None:
                 continue
             samples.append({'encoded': encoded})
