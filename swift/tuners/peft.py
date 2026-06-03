@@ -5,6 +5,7 @@ import os.path
 import peft
 import torch
 import torch.nn
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from functools import partial, reduce
 from modelscope import snapshot_download
@@ -82,6 +83,32 @@ class LoraConfig(peft.LoraConfig):
         return self
 
 
+@contextmanager
+def _patch_param_wrapper():
+    try:
+        from peft.tuners.lora.layer import ParamWrapper
+    except ImportError:
+        yield
+        return
+    _get_param_origin = ParamWrapper.get_param
+
+    def _get_param_patched(self):
+        param = _get_param_origin(self)
+        if hasattr(param, 'ds_id'):
+            from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+            if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
+                import deepspeed
+                with deepspeed.zero.GatheredParameters([param], modifier_rank=None):
+                    return param.data.clone()
+        return param
+
+    ParamWrapper.get_param = _get_param_patched
+    try:
+        yield
+    finally:
+        ParamWrapper.get_param = _get_param_origin
+
+
 def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **kwargs):
     if target is None:
         return
@@ -89,7 +116,8 @@ def _create_and_replace_hook(self, peft_config, adapter_name, target, *args, **k
     if target.__class__.__name__ == 'NonDynamicallyQuantizableLinear':
         return
 
-    return self._create_and_replace_origin(peft_config, adapter_name, target, *args, **kwargs)
+    with _patch_param_wrapper():
+        return self._create_and_replace_origin(peft_config, adapter_name, target, *args, **kwargs)
 
 
 def _convert_dtype(target: torch.nn.Module, adapter_name: str, lora_dtype: str):
