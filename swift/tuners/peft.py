@@ -85,6 +85,14 @@ class LoraConfig(peft.LoraConfig):
 
 @contextmanager
 def _patch_param_wrapper():
+    """Patch ParamWrapper.get_param for DeepSpeed ZeRO-3 compatibility.
+
+    When a parameter is NOT_AVAILABLE in ZeRO-3, param.data is a placeholder tensor
+    with wrong shape/ndim. All callers of get_param() only need metadata
+    (shape, ndim, dtype, device, requires_grad), so instead of gathering the full
+    parameter and cloning (O(N) memory), we use ds_shape + expand trick to create
+    a stride-0 tensor with correct metadata using O(1) memory.
+    """
     try:
         from peft.tuners.lora.layer import ParamWrapper
     except ImportError:
@@ -97,9 +105,14 @@ def _patch_param_wrapper():
         if hasattr(param, 'ds_id'):
             from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
             if param.ds_status == ZeroParamStatus.NOT_AVAILABLE:
-                import deepspeed
-                with deepspeed.zero.GatheredParameters([param], modifier_rank=None):
-                    return param.data.clone()
+                # ds_shape is always set by DeepSpeed for managed params
+                ds_shape = param.ds_shape
+                # Create a 1-element tensor then expand with stride-0: no real memory alloc
+                ones_shape = tuple(1 for _ in ds_shape)
+                fake = torch.empty(ones_shape, dtype=param.dtype, device=param.device)
+                if param.requires_grad and param.dtype.is_floating_point:
+                    fake.requires_grad_(True)
+                return fake.expand(ds_shape)
         return param
 
     ParamWrapper.get_param = _get_param_patched
