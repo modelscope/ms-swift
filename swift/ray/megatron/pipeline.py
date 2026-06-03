@@ -61,10 +61,26 @@ class MegatronRayPipeline:
         }
         self.shared_cfg = {k: v for k, v in shared_config.items() if v is not None}
 
+        if self.rlhf_type == 'gkd':
+            self._validate_gkd_ray_constraints()
+
         self._entry = _TRAINER_REGISTRY[self.rlhf_type]
         self.resource_pool_manager = None
         self.worker_groups: Dict[str, Any] = {}
         self.rollout_replicas: List[Any] = []
+
+    def _validate_gkd_ray_constraints(self) -> None:
+        # Ray GKD round-trips teacher outputs through the driver: the API (server) teacher path is
+        # not wired up yet, and full-logits teacher mode is not TP-safe because only the tp-rank-0
+        # vocab shard is collected/redistributed. Guard both early with clear messages.
+        if self.shared_cfg.get('teacher_model_server') is not None:
+            raise NotImplementedError('Ray GKD does not support teacher_model_server (API teacher) yet; '
+                                      'use a colocated teacher_model instead.')
+        train_cfg = self.group_cfgs.get('train') or {}
+        tp_size = train_cfg.get('tensor_model_parallel_size', 1) or 1
+        if tp_size > 1 and self.shared_cfg.get('gkd_logits_topk') is None:
+            raise ValueError('Ray GKD with tensor_model_parallel_size > 1 requires gkd_logits_topk to be set '
+                             '(full-logits teacher mode is not TP-safe in the ray path).')
 
     def init(self) -> None:
         # Initialize Ray, create resource pools, spawn workers and replicas.

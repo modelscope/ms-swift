@@ -5,11 +5,11 @@ from __future__ import annotations
 import ray
 import torch
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from swift.rlhf_trainers.utils import create_cyclic_iterator
 from swift.utils import get_logger
-from .driver_utils import compute_iter_params, extract_iteration
+from .driver_utils import compute_iter_params
 
 logger = get_logger()
 

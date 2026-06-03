@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 import torch
-from typing import Any, Dict, List, Optional, Sequence
+from typing import List
 
 from swift.infer_engine.protocol import RolloutOutput
 from swift.utils import get_logger
