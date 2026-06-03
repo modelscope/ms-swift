@@ -193,8 +193,10 @@ class KimiK25Template(Template):
             if getattr(base_model, 'mm_projector', None):
                 image_features = base_model.mm_projector(image_features)
             if image_features:
-                inputs_embeds = inputs_embeds + torch.cat(
-                    image_features, dim=0).mean().to(dtype=inputs_embeds.dtype) * 0.
+                # nan_to_num guards against a non-finite value from the all-zero dummy
+                # pass leaking into the text batch (NaN * 0 == NaN in IEEE-754).
+                zero_term = torch.nan_to_num(torch.cat(image_features, dim=0).mean() * 0.)
+                inputs_embeds = inputs_embeds + zero_term.to(dtype=inputs_embeds.dtype)
         return {'inputs_embeds': inputs_embeds}
 
 
