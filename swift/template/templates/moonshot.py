@@ -164,7 +164,10 @@ class KimiK25Template(Template):
             vision_tower = self.get_base_model(model).vision_tower
             vision_dtype = next(vision_tower.parameters()).dtype
             pixel_values = pixel_values.to(device=inputs_embeds.device, dtype=vision_dtype)
-            grid_thws = inputs['grid_thws'].to(inputs_embeds.device)
+            grid_thws = inputs.get('grid_thws')
+            if grid_thws is None:
+                raise KeyError('pixel_values present in inputs but grid_thws is missing')
+            grid_thws = grid_thws.to(inputs_embeds.device)
             image_features: list = model._extract_image_features(pixel_values, grid_thws)
             all_features = torch.cat(image_features, dim=0).to(device=inputs_embeds.device, dtype=inputs_embeds.dtype)
             media_token_id = (getattr(model.config, 'media_placeholder_token_id', None)
@@ -181,7 +184,9 @@ class KimiK25Template(Template):
             dummy_pixels = dummy_inputs['pixel_values'].to(device=inputs_embeds.device, dtype=vision_dtype)
             dummy_grid = dummy_inputs['grid_thws'].to(inputs_embeds.device)
             image_features = model._extract_image_features(dummy_pixels, dummy_grid)
-            inputs_embeds = inputs_embeds + torch.cat(image_features, dim=0).mean().to(dtype=inputs_embeds.dtype) * 0.
+            if image_features:
+                inputs_embeds = inputs_embeds + torch.cat(image_features, dim=0).mean().to(
+                    dtype=inputs_embeds.dtype) * 0.
         return {'inputs_embeds': inputs_embeds}
 
 
