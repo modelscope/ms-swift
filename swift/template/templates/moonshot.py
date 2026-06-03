@@ -175,8 +175,9 @@ class KimiK25Template(Template):
             if getattr(base_model, 'mm_projector', None):
                 image_features = base_model.mm_projector(image_features)
             all_features = torch.cat(image_features, dim=0).to(device=inputs_embeds.device, dtype=inputs_embeds.dtype)
-            media_token_id = (getattr(model.config, 'media_placeholder_token_id', None)
-                              or self.tokenizer.convert_tokens_to_ids('<|media_pad|>'))
+            media_token_id = (
+                getattr(model.config, 'media_placeholder_token_id', None)
+                or self.tokenizer.convert_tokens_to_ids('<|media_pad|>'))
             inputs_embeds = inputs_embeds.clone()
             mask = input_ids.reshape(-1) == media_token_id
             inputs_embeds.reshape(-1, inputs_embeds.size(-1))[mask] = all_features
@@ -192,8 +193,8 @@ class KimiK25Template(Template):
             if getattr(base_model, 'mm_projector', None):
                 image_features = base_model.mm_projector(image_features)
             if image_features:
-                inputs_embeds = inputs_embeds + torch.cat(image_features, dim=0).mean().to(
-                    dtype=inputs_embeds.dtype) * 0.
+                inputs_embeds = inputs_embeds + torch.cat(
+                    image_features, dim=0).mean().to(dtype=inputs_embeds.dtype) * 0.
         return {'inputs_embeds': inputs_embeds}
 
 

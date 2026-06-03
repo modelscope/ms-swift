@@ -14,10 +14,13 @@ from swift.utils import empty_cache, get_current_device, get_logger, to_device
 
 logger = get_logger()
 
-
 _MM_TENSOR_KEYS = frozenset({
-    'pixel_values', 'grid_thws', 'image_grid_hws', 'image_grid_thw',
-    'video_grid_thw', 'second_per_grid_ts',
+    'pixel_values',
+    'grid_thws',
+    'image_grid_hws',
+    'image_grid_thw',
+    'video_grid_thw',
+    'second_per_grid_ts',
 })
 
 
