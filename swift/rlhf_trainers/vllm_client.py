@@ -219,6 +219,9 @@ class VLLMClient(VLLMInferClient):
 
             pg = StatelessProcessGroup.create(
                 host=self.hosts[i], port=self.group_ports[i], rank=rank, world_size=world_size)
+            if is_vllm_ascend_available():
+                import torch_npu
+                torch_npu.npu.set_device(device)
             comm = PyNcclCommunicator(pg, device=device)
             self.pynccl_comms.append(comm)
 

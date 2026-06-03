@@ -22,6 +22,7 @@ from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
+from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
 
@@ -1025,10 +1026,10 @@ def patch_vllm_moe_model_weight_loader(model):
     Args:
         model: The vLLM model to patch.
     """
-    # Check if already patched (idempotent).
-    # Note: the flag can be lost when vLLM sleep/wake_up recreates the model
-    # object, so the expensive import step is cached in _get_moe_model_registry.
-    if getattr(model, '_swift_moe_weight_loader_patched', False):
+    # Check if already patched (idempotent). On NPU/vLLM-Ascend, sleep/wake
+    # and full-model reload can recreate expert Parameters while keeping this
+    # model-level flag, so the loader needs to be reattached every reload.
+    if getattr(model, '_swift_moe_weight_loader_patched', False) and not is_torch_npu_available():
         return
 
     supported_moe_models, mlp_attr_mapping = _get_moe_model_registry()
@@ -1061,6 +1062,13 @@ def patch_vllm_moe_model_weight_loader(model):
     if not hasattr(inner_model, 'layers'):
         return
 
+    def maybe_patch_vllm_ascend_moe_expert_weight_loader(experts, name, param):
+        quant_method = getattr(experts, 'quant_method', None)
+        if not is_torch_npu_available() or not type(quant_method).__module__.startswith('vllm_ascend'):
+            return
+        from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_moe_expert_weight_loader
+        patch_vllm_ascend_moe_expert_weight_loader(experts, name, param)
+
     for layer in inner_model.layers:
         mlp_attr = mlp_attr_mapping.get(original_model_type, 'mlp')
 
@@ -1077,6 +1085,7 @@ def patch_vllm_moe_model_weight_loader(model):
             if 'w13_weight' in name or 'w2_weight' in name:
                 if not hasattr(param, 'weight_loader'):
                     param.weight_loader = experts.weight_loader
+                maybe_patch_vllm_ascend_moe_expert_weight_loader(experts, name, param)
 
     # Mark the model as patched (for idempotency)
     original_model._swift_moe_weight_loader_patched = True
