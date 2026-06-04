@@ -699,6 +699,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     def _check_mcore_bridge(self):
         if self.language_model_only:
             require_version('mcore-bridge>=1.4.3', 'Please install "mcore-bridge>=1.4.3" to use language_model_only.')
+            if self.tuner_type == 'lora_llm':
+                raise ValueError('`tuner_type="lora_llm"` is not supported when `language_model_only=True`. '
+                                 'Please use `tuner_type="lora"` instead.')
 
     def __post_init__(self):
         if self.tuner_type != 'full':
