@@ -636,6 +636,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # other
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
+    language_model_only: bool = False
     check_model: bool = True
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     rope_scaling: Optional[Union[dict, str]] = None

@@ -297,6 +297,7 @@ LoRA Training:
 
 **Other Parameters**:
 - megatron_extra_kwargs: Additional arguments passed directly to Megatron (forwarded to the `ModelConfig` class in [mcore-bridge](https://github.com/modelscope/mcore-bridge/blob/78cb9be33ebad69a0d940a2bc4e198f866084b70/src/mcore_bridge/config/model_config.py#L116), which inherits from megatron-core's `TransformerConfig`). Can also be used to override parameters automatically read from `config.json`. Accepts a JSON string. Defaults to None.
+- language_model_only: Only train the language model part of the multimodal model, and only load and save the language model part. Defaults to False.
 - check_model: Check local model files for corruption or modifications and provide prompts. Defaults to True. **If in an offline environment, please set to False**.
 - rope_scaling: Parameters related to rope_scaling. Defaults to None. For format reference, see [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1), pass as a JSON string.
   - **Currently the rope_scaling module uses transformers implementation and supports all rope_scaling supported by transformers.**
