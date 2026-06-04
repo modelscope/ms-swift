@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import torch
 import torch.distributed as dist
 import transformers
@@ -208,9 +209,15 @@ register_model(
     ))
 
 
-def _patch_gemma4_forward(model, processor):
-    from transformers.models.gemma4.modeling_gemma4 import (Gemma4ModelOutputWithPast, create_masks_for_generate,
-                                                            torch_compilable_check)
+def _patch_gemma4_forward(model, processor, is_gemma4_unified: bool = False):
+    if is_gemma4_unified:
+        from transformers.models.gemma4_unified.modeling_gemma4_unified import \
+            Gemma4UnifiedModelOutputWithPast as Gemma4ModelOutputWithPast
+        from transformers.models.gemma4_unified.modeling_gemma4_unified import (create_masks_for_generate,
+                                                                                torch_compilable_check)
+    else:
+        from transformers.models.gemma4.modeling_gemma4 import (Gemma4ModelOutputWithPast, create_masks_for_generate,
+                                                                torch_compilable_check)
     if hasattr(model, 'origin_forward'):
         return
 
@@ -379,7 +386,10 @@ def _patch_gemma4_forward(model, processor):
                     from transformers.models.gemma4.modeling_gemma4 import get_block_sequence_ids_for_mask
                     block_sequence_ids = torch.full([*inputs_embeds.size()[:-1]], -1, device=inputs_embeds.device)
                     if mm_token_type_ids is not None:
-                        block_sequence_ids = get_block_sequence_ids_for_mask(mm_token_type_ids)
+                        kwargs = {
+                            'device': inputs_embeds.device
+                        } if 'device' in inspect.signature(get_block_sequence_ids_for_mask).parameters else {}
+                        block_sequence_ids = get_block_sequence_ids_for_mask(mm_token_type_ids, **kwargs)
 
                     mask_kwargs['block_sequence_ids'] = block_sequence_ids
 
@@ -450,6 +460,7 @@ class Gemma4UnifiedLoader(ModelLoader):
         from transformers import Gemma4UnifiedForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Gemma4UnifiedForConditionalGeneration
         model = super().get_model(model_dir, config, processor, model_kwargs)
+        _patch_gemma4_forward(model.model, processor, is_gemma4_unified=True)
         return model
 
 
