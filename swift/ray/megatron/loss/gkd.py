@@ -7,7 +7,9 @@ from functools import partial
 from megatron.core import mpu
 from typing import Any, Dict
 
-from swift.megatron.trainers.gkd_utils import generalized_jsd_loss
+from swift.megatron.trainers.gkd_utils import align_vocab_size, cp_reduce, tp_gather_topk
+from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
+from swift.rlhf_trainers.gkd_loss import gkd_loss
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 from .base import Loss
 
@@ -43,45 +45,23 @@ class GKDLoss(Loss):
     def loss_func(self, output_tensor, *, labels, teacher_output, data=None):
         args = self.args
         student_logits = output_tensor
-        teacher_output.validate()
 
-        opsd_teacher_labels = teacher_output.opsd_teacher_labels
-        if opsd_teacher_labels is not None:
-            student_mask = labels != -100
-            teacher_mask = opsd_teacher_labels != -100
-            s_logits = student_logits[student_mask][None]
-            if teacher_output.is_topk_mode:
-                t_logits = None
-                topk_logprobs = teacher_output.topk_logprobs[teacher_mask][None]
-                topk_indices = teacher_output.topk_indices[teacher_mask][None]
-            else:
-                t_logits = teacher_output.full_logits[teacher_mask][None]
-                topk_logprobs = None
-                topk_indices = None
-            jsd_loss = generalized_jsd_loss(
-                s_logits,
-                t_logits,
-                beta=self.beta,
-                temperature=self.temperature,
-                teacher_topk_logprobs=topk_logprobs,
-                teacher_topk_indices=topk_indices,
-                cp_size=args.context_parallel_size)
-        else:
-            jsd_loss = generalized_jsd_loss(
-                student_logits,
-                teacher_output.full_logits,
-                labels=labels,
-                beta=self.beta,
-                temperature=self.temperature,
-                teacher_topk_logprobs=teacher_output.topk_logprobs,
-                teacher_topk_indices=teacher_output.topk_indices,
-                cp_size=args.context_parallel_size)
+        jsd_loss = gkd_loss(
+            student_logits,
+            teacher_output,
+            labels,
+            self.beta,
+            self.temperature,
+            gather_fn=tp_gather_topk,
+            align_vocab_fn=align_vocab_size,
+            log_softmax_fn=vocab_parallel_log_softmax,
+            kl_div_fn=vocab_parallel_kl_div,
+            reduce_fn=partial(cp_reduce, cp_size=args.context_parallel_size))
 
         loss = jsd_loss
         sft_loss = None
         if self.sft_alpha > 0:
             logits_sbv = student_logits.transpose(0, 1).contiguous()
-            # Use megatron's built-in CE loss
             loss_mask = labels != -100
             per_token_loss = torch.nn.functional.cross_entropy(
                 logits_sbv.view(-1, logits_sbv.size(-1)), labels.view(-1), reduction='none').view_as(labels)

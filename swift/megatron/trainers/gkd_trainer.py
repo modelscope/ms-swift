@@ -16,6 +16,7 @@ from typing import Dict, List, Optional
 from swift.infer_engine.protocol import RequestConfig
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
+from swift.rlhf_trainers.gkd_loss import build_opsd_teacher_data, gkd_loss
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_teacher_infer_request,
                                        parse_prompt_logprobs, replace_assistant_response_with_ids)
@@ -23,10 +24,11 @@ from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import Template
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger, is_last_rank, to_device
 from ..utils import forward_step_helper, get_padding_to
-from .gkd_utils import generalized_jsd_loss, vocab_parallel_topk
+from .gkd_utils import align_vocab_size, cp_reduce, tp_gather_topk, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import load_megatron_model_to_gpu, offload_megatron_model_to_cpu
+from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 
 logger = get_logger()
 
@@ -159,20 +161,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             template.max_length = original_max_length
 
     def _build_opsd_teacher_data(self, inputs: List[Dict]) -> Optional[List[Dict]]:
-        """Build teacher data for OPSD by replacing the last user message with teacher_prompt."""
-        if not all('teacher_prompt' in data and data['teacher_prompt'] for data in inputs):
-            return None
-        teacher_data = []
-        for data in inputs:
-            teacher_item = {k: v for k, v in data.items() if k != 'teacher_prompt'}
-            messages = [dict(m) for m in data.get('messages', [])]
-            for msg in reversed(messages):
-                if msg['role'] == 'user':
-                    msg['content'] = data['teacher_prompt']
-                    break
-            teacher_item['messages'] = messages
-            teacher_data.append(teacher_item)
-        return teacher_data
+        return build_opsd_teacher_data(inputs)
 
     def _encode_batch(self, batch: List[Dict]) -> Dict[str, torch.Tensor]:
         """Encode a batch of raw data into model inputs."""
@@ -487,25 +476,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return RerunDataIterator(iter(encoded_batches))
 
-    def generalized_jsd_loss(self,
-                             student_logits,
-                             teacher_logits,
-                             labels=None,
-                             beta=0.5,
-                             chunk_size=512,
-                             teacher_topk_logprobs=None,
-                             teacher_topk_indices=None):
-        return generalized_jsd_loss(
-            student_logits,
-            teacher_logits,
-            labels=labels,
-            beta=beta,
-            temperature=self.temperature,
-            chunk_size=chunk_size,
-            teacher_topk_logprobs=teacher_topk_logprobs,
-            teacher_topk_indices=teacher_topk_indices,
-            cp_size=self.args.context_parallel_size)
-
     def loss_func(self,
                   output_tensor: torch.Tensor,
                   *,
@@ -514,41 +484,18 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                   data_source: DataSource = DataSource.DATASET):
         """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
-        teacher_output.validate()
 
-        opsd_teacher_labels = teacher_output.opsd_teacher_labels
-        if opsd_teacher_labels is not None:
-            student_mask = labels != -100
-            teacher_mask = opsd_teacher_labels != -100
-            assert student_mask.sum() == teacher_mask.sum(), (
-                f'OPSD label count mismatch: student={student_mask.sum().item()}, '
-                f'teacher={teacher_mask.sum().item()}. '
-                'Student and teacher must share the same response tokens.')
-            s_logits = student_logits[student_mask][None]
-            if teacher_output.is_topk_mode:
-                t_logits = None
-                topk_logprobs = teacher_output.topk_logprobs[teacher_mask][None]
-                topk_indices = teacher_output.topk_indices[teacher_mask][None]
-            else:
-                t_logits = teacher_output.full_logits[teacher_mask][None]
-                topk_logprobs = None
-                topk_indices = None
-            jsd_loss = self.generalized_jsd_loss(
-                student_logits=s_logits,
-                teacher_logits=t_logits,
-                beta=self.beta,
-                teacher_topk_logprobs=topk_logprobs,
-                teacher_topk_indices=topk_indices,
-            )
-        else:
-            jsd_loss = self.generalized_jsd_loss(
-                student_logits=student_logits,
-                teacher_logits=teacher_output.full_logits,
-                labels=labels,
-                beta=self.beta,
-                teacher_topk_logprobs=teacher_output.topk_logprobs,
-                teacher_topk_indices=teacher_output.topk_indices,
-            )
+        jsd_loss = gkd_loss(
+            student_logits,
+            teacher_output,
+            labels,
+            self.beta,
+            self.temperature,
+            gather_fn=tp_gather_topk,
+            align_vocab_fn=align_vocab_size,
+            log_softmax_fn=vocab_parallel_log_softmax,
+            kl_div_fn=vocab_parallel_kl_div,
+            reduce_fn=partial(cp_reduce, cp_size=self.args.context_parallel_size))
 
         loss = jsd_loss
 

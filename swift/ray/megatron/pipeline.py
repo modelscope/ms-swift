@@ -317,7 +317,10 @@ class MegatronRayPipeline:
         weight_sync_mode = self._get_weight_sync_mode()
         sleep_level = self._resolve_sleep_level()
         return trainer_cls(
-            self.worker_groups, self.rollout_replicas, weight_sync_mode=weight_sync_mode, sleep_level=sleep_level,
+            self.worker_groups,
+            self.rollout_replicas,
+            weight_sync_mode=weight_sync_mode,
+            sleep_level=sleep_level,
             teacher_replicas=self.teacher_replicas)
 
     def _resolve_sleep_level(self) -> int:
