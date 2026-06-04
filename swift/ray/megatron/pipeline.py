@@ -256,6 +256,7 @@ class MegatronRayPipeline:
             is_hybrid=False,
             sleep_level=0,
             template_kwargs=template_kwargs,
+            actor_name_prefix='swift_teacher_server',
         )
 
     def _with_router_replay_rollout_config(self, rollout_cfg: Dict[str, Any]) -> Dict[str, Any]:

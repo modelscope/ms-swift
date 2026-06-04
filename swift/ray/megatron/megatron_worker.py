@@ -102,6 +102,8 @@ class MegatronWorker(CheckpointEngineMixin):
         model_dir = getattr(self._args, 'teacher_model_dir', None) or model_dir
         self.teacher = MegatronModelWorker.from_pretrained(self._args, model_dir)
         logger.info('Colocated teacher model loaded from %s', model_dir)
+        if getattr(self._args, 'offload_teacher_model', False):
+            self.teacher.offload_to_cpu()
 
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_teacher_logits(self, batch) -> Any:
@@ -119,6 +121,12 @@ class MegatronWorker(CheckpointEngineMixin):
         from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 
         assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
+        # Offload-aware: when offload_teacher_model is set, the teacher stays on CPU during
+        # the student train_step (reload_to_gpu skips it) and is only brought to GPU here for
+        # the teacher forward, then offloaded again
+        offload_teacher = getattr(self._args, 'offload_teacher_model', False)
+        if offload_teacher:
+            self.teacher.reload_to_gpu(load_grad=False)
         teacher_model = self.teacher.models[0]
         gkd_logits_topk = getattr(self._args, 'gkd_logits_topk', None)
         template = self._pipeline.template
@@ -152,6 +160,9 @@ class MegatronWorker(CheckpointEngineMixin):
                         cached.extend(None for _ in chunk)
                 del collated
         gc_collect()
+
+        if offload_teacher:
+            self.teacher.offload_to_cpu()
 
         if gkd_logits_topk is None:
             self._cached_teacher_logits = cached
@@ -570,7 +581,9 @@ class MegatronWorker(CheckpointEngineMixin):
         self.actor.reload_to_gpu()
         if self.ref is not None:
             self.ref.reload_to_gpu(load_grad=False)
-        if self.teacher is not None:
+        # When offload_teacher_model is set, the teacher is managed by compute_teacher_logits
+        # (loaded only for the teacher forward), so keep it on CPU here.
+        if self.teacher is not None and not getattr(self._args, 'offload_teacher_model', False):
             self.teacher.reload_to_gpu(load_grad=False)
 
     def _split_sample_chunks(self, samples: Sequence[Dict[str, Any]]) -> List[Sequence[Dict[str, Any]]]:

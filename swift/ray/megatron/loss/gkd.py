@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import torch
+import torch.nn.functional as F
 from functools import partial
 from megatron.core import mpu
 from typing import Any, Dict
@@ -42,6 +43,25 @@ class GKDLoss(Loss):
             teacher_output=teacher_output,
         )
 
+    @staticmethod
+    def _logp_gap(student_logits, teacher_output, labels, temperature):
+        """Debug metric: teacher-probability-weighted expected abs logprob gap between
+        student and teacher over the teacher top-k, at covered response positions.
+        For an identical student/teacher model (and correct token alignment) this is ~0."""
+        if not teacher_output.is_topk_mode:
+            return None
+        mask = labels != -100
+        uncovered = torch.isinf(teacher_output.topk_logprobs).all(dim=-1)
+        mask = mask & ~uncovered
+        if mask.sum() == 0:
+            return None
+        s_topk = tp_gather_topk(student_logits, teacher_output.topk_indices)
+        s_log = F.log_softmax(s_topk[mask].float() / temperature, dim=-1)
+        t_log = F.log_softmax(teacher_output.topk_logprobs[mask].float() / temperature, dim=-1)
+        gap = (t_log.exp() * (s_log - t_log).abs()).sum(dim=-1)
+        gap = gap[torch.isfinite(gap)]
+        return gap.mean() if gap.numel() > 0 else None
+
     def loss_func(self, output_tensor, *, labels, teacher_output, data=None):
         args = self.args
         student_logits = output_tensor
@@ -79,6 +99,11 @@ class GKDLoss(Loss):
         if sft_loss is not None:
             metric['jsd_loss'] = jsd_loss.detach().clone()
             metric['sft_loss'] = sft_loss.detach().clone()
+
+        # Debug: student vs teacher logprob gap (~0 for identical models with aligned tokens).
+        logp_gap = self._logp_gap(student_logits, teacher_output, labels, self.temperature)
+        if logp_gap is not None:
+            metric['logp_gap'] = logp_gap.detach().to(loss.dtype)
 
         # All-reduce metrics across DP group
         dp_group = mpu.get_data_parallel_group()

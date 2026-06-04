@@ -9,7 +9,8 @@ from typing import List
 
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.rlhf_trainers.gkd_trainer import TeacherOutput
-from swift.rlhf_trainers.utils import build_teacher_infer_request, parse_prompt_logprobs
+from swift.rlhf_trainers.utils import (build_teacher_infer_request, parse_prompt_logprobs,
+                                       replace_assistant_response_with_ids)
 from swift.utils import get_logger
 from .base_trainer import BaseRayTrainer
 from .driver_utils import extract_iteration, extract_train_metrics
@@ -133,10 +134,21 @@ class GKDTrainer(BaseRayTrainer):
         return merged
 
     def _encode_rollout_batch(self, rollout_batch):
-        """Encode rollout samples for the training workers."""
+        """Encode rollout samples for the training workers.
+
+        Token-in-token-out: replace the assistant text with the on-policy
+        ``response_token_ids`` before encoding, so the student is trained on the
+        exact tokens that were generated (and that the teacher scores). Re-encoding
+        the decoded text would re-tokenize the response and break student/teacher
+        alignment. Mirrors the non-ray trainer's ``_encode_batch``.
+        """
         template = self.template
         samples = []
         for item in rollout_batch:
+            if item.get('response_token_ids'):
+                item = dict(item)
+                item['messages'] = replace_assistant_response_with_ids(
+                    copy.deepcopy(item['messages']), item['response_token_ids'])
             encoded = template.encode(item, return_length=True)
             if encoded is None:
                 continue
