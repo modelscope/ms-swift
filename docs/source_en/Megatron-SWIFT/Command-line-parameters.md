@@ -151,6 +151,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
 - overlap_p2p_comm: Overlap pipeline parallel communication with forward and backward blocks in 1F1B. Defaults to True.
 - batch_p2p_comm: Use batch_isend_irecv instead of individual isend/irecv calls. Defaults to `None`, and is set to `not args.overlap_p2p_comm`.
+  - If pipeline parallelism hangs, you can set this to False.
 - align_param_gather: When set to True, all PP stages will launch parameter all-gather operations simultaneously. Otherwise, each PP stage will launch independently as needed. Defaults to True.
 - 🔥sequence_parallel: Enables sequence parallel optimization; this option takes effect only when `tensor_model_parallel_size` is set. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.

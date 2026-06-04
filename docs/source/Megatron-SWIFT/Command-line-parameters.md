@@ -145,6 +145,7 @@
 - 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
 - overlap_p2p_comm: 在 1F1B 中将流水线并行通信与前向和反向块重叠，默认为True。
 - batch_p2p_comm: 使用 batch_isend_irecv 代替单独的 isend/irecv 调用。默认为None，设置为`not args.overlap_p2p_comm`。
+  - 如果出现PP并行卡住的情况，可以设置为False。
 - align_param_gather: 设置为True，所有 PP 阶段将同时启动参数全收集（all-gather）操作。否则，每个 PP 阶段将根据需要独立启动。默认为True。
 - 🔥sequence_parallel: 启动序列并行优化，该参数需要设置`tensor_model_parallel_size`才生效。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
