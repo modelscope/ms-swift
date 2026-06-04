@@ -19,9 +19,9 @@
 | software  | version         |
 | --------- | --------------- |
 | Python    | >= 3.10, < 3.12 |
-| CANN      | == 8.5.1        |
-| torch     | == 2.7.1        |
-| torch_npu | == 2.7.1.post2  |
+| CANN      | >= 8.5.1        |
+| torch     | >= 2.7.1        |
+| torch_npu | >= 2.7.1.post4  |
 
 基础环境准备请参照 [Ascend PyTorch 安装文档](https://gitcode.com/Ascend/pytorch)。本文示例实验环境为 8 * 昇腾910B3 64G。
 
@@ -167,8 +167,8 @@ git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 
-# 安装 torch-npu
-pip install torch_npu decorator
+# 安装 torch_npu
+pip install torch_npu==2.7.1.post4 decorator
 # 如果你想要使用 deepspeed（控制显存占用，训练速度会有一定下降）
 pip install deepspeed
 
@@ -176,8 +176,8 @@ pip install deepspeed
 pip install evalscope[opencompass]
 
 # 如果需要使用 vllm-ascend 进行推理，请安装以下包（更多版本请参考 [vLLM-Ascend 官网](https://docs.vllm.ai/projects/ascend/en/latest/installation.html)）
-pip install vllm==0.14.0
-pip install vllm-ascend==0.14.0rc1
+pip install vllm==0.18.0
+pip install vllm-ascend==0.18.0
 ```
 
 ### NPU 可用性检查

@@ -19,9 +19,9 @@ Recommended base environment versions:
 | software  | version         |
 | --------- | --------------- |
 | Python    | >= 3.10, < 3.12 |
-| CANN      | == 8.5.1        |
-| torch     | == 2.7.1        |
-| torch_npu | == 2.7.1.post2  |
+| CANN      | >= 8.5.1        |
+| torch     | >= 2.7.1        |
+| torch_npu | >= 2.7.1.post4  |
 
 For base environment setup, see the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch). The examples in this document were verified on 8 * Ascend 910B3 64G.
 
@@ -169,8 +169,8 @@ git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 
-# Install torch-npu
-pip install torch_npu decorator
+# Install torch_npu
+pip install torch_npu==2.7.1.post4 decorator
 # If you want to use deepspeed (to reduce memory usage, with some speed overhead)
 pip install deepspeed
 
@@ -178,8 +178,8 @@ pip install deepspeed
 pip install evalscope[opencompass]
 
 # If you need vllm-ascend for inference, install the following packages (for more versions, see the [vLLM-Ascend official website](https://docs.vllm.ai/projects/ascend/en/latest/installation.html))
-pip install vllm==0.14.0
-pip install vllm-ascend==0.14.0rc1
+pip install vllm==0.18.0
+pip install vllm-ascend==0.18.0
 ```
 
 ### NPU Availability Check
