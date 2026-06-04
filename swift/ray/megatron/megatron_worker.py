@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import torch
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence
 
 from swift.utils import gc_collect, get_current_device, get_logger, to_device
@@ -105,6 +106,25 @@ class MegatronWorker(CheckpointEngineMixin):
         if getattr(self._args, 'offload_teacher_model', False):
             self.teacher.offload_to_cpu()
 
+    @contextmanager
+    def load_teacher_model_context(self):
+        """Bring the colocated teacher to GPU only for its forward, then offload.
+
+        When ``offload_teacher_model`` is set the teacher stays on CPU during the student
+        train_step (``reload_to_gpu`` skips it); this context loads it on enter and offloads
+        on exit (even on error). It loads only the teacher — not actor/ref at once — which
+        lowers the peak-memory / OOM risk. Mirrors the non-ray ``load_teacher_model_context``.
+        """
+        if not getattr(self._args, 'offload_teacher_model', False):
+            yield
+            return
+        self.teacher.reload_to_gpu(load_grad=False)
+        try:
+            yield
+        finally:
+            self.teacher.offload_to_cpu()
+            gc_collect()
+
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_teacher_logits(self, batch) -> Any:
         """Forward teacher model on encoded batch, return TeacherOutput per sample.
@@ -121,13 +141,6 @@ class MegatronWorker(CheckpointEngineMixin):
         from swift.rlhf_trainers.gkd_trainer import TeacherOutput
 
         assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
-        # Offload-aware: when offload_teacher_model is set, the teacher stays on CPU during
-        # the student train_step (reload_to_gpu skips it) and is only brought to GPU here for
-        # the teacher forward, then offloaded again
-        offload_teacher = getattr(self._args, 'offload_teacher_model', False)
-        if offload_teacher:
-            self.teacher.reload_to_gpu(load_grad=False)
-        teacher_model = self.teacher.models[0]
         gkd_logits_topk = getattr(self._args, 'gkd_logits_topk', None)
         template = self._pipeline.template
         device = get_current_device()
@@ -135,7 +148,8 @@ class MegatronWorker(CheckpointEngineMixin):
         sample_chunks = self._split_sample_chunks(batch)
         results = []
         cached = []
-        with torch.no_grad():
+        with self.load_teacher_model_context(), torch.no_grad():
+            teacher_model = self.teacher.models[0]
             for chunk in sample_chunks:
                 encoded_list = [s['encoded'] for s in chunk]
                 collated = template.data_collator(encoded_list, padding_to=get_padding_to(self._args))
@@ -160,9 +174,6 @@ class MegatronWorker(CheckpointEngineMixin):
                         cached.extend(None for _ in chunk)
                 del collated
         gc_collect()
-
-        if offload_teacher:
-            self.teacher.offload_to_cpu()
 
         if gkd_logits_topk is None:
             self._cached_teacher_logits = cached
