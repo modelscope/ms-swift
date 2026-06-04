@@ -61,17 +61,11 @@ class MegatronRayPipeline:
         }
         self.shared_cfg = {k: v for k, v in shared_config.items() if v is not None}
 
-        if self.rlhf_type == 'gkd':
-            self._validate_gkd_ray_constraints()
-
         self._entry = _TRAINER_REGISTRY[self.rlhf_type]
         self.resource_pool_manager = None
         self.worker_groups: Dict[str, Any] = {}
         self.rollout_replicas: List[Any] = []
         self.teacher_replicas: List[Any] = []
-
-    def _validate_gkd_ray_constraints(self) -> None:
-        pass
 
     def init(self) -> None:
         # Initialize Ray, create resource pools, spawn workers and replicas.

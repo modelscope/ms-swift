@@ -65,7 +65,7 @@ def tp_gather_topk(logits: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     return torch.where(in_range, gathered, gathered_for_reduce)
 
 
-def cp_reduce(total_loss, num_valid, cp_size):
+def cp_reduce(total_loss, num_valid, *, cp_size):
     """Normalize total_loss by num_valid with CP all-reduce when cp_size > 1."""
     num_valid_f = num_valid.float() if isinstance(num_valid, torch.Tensor) else torch.tensor(
         float(num_valid), device=total_loss.device)

@@ -680,6 +680,11 @@ class MegatronWorker(CheckpointEngineMixin):
 
     @staticmethod
     def _collate_teacher_outputs(teacher_outputs, device):
+        """Collate per-sample TeacherOutputs into a batched one.
+
+        Only used for topk mode; full_logits mode uses _cached_teacher_logits
+        (kept on-GPU per TP rank) and bypasses this path entirely.
+        """
         from swift.rlhf_trainers.gkd_trainer import TeacherOutput
         fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'opsd_teacher_labels')
         kwargs = {}
