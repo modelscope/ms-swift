@@ -465,6 +465,6 @@ register_model(
         ],
         Gemma4UnifiedLoader,
         architectures=['Gemma4UnifiedForConditionalGeneration'],
-        model_arch=ModelArch.gemma3n,
+        model_arch=ModelArch.gemma4_unified,
         requires=['transformers>=5.10.0'],
     ))

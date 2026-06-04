@@ -757,7 +757,6 @@ register_model_arch(
         MLLMModelArch.gemma4_unified,
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.embed_vision', 'model.embed_audio'],
-        vision_tower=['model.vision_tower', 'model.audio_tower'],
     ))
 
 register_model_arch(
