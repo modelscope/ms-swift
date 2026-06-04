@@ -1,4 +1,4 @@
-# 8 * 65GiB
+# 4 * 65GiB
 # Due to the use of group_by_length, the data is not sufficiently shuffled,
 # which may cause fluctuations in the loss curve. Please adjust the parameters accordingly.
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
