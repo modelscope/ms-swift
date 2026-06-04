@@ -175,8 +175,8 @@ class MSHub(HubOperation):
     def patch_hub(cls):
         hub_create_repo = huggingface_hub.create_repo
         hub_upload_folder = huggingface_hub.upload_folder
-        trainer_create_repo = trainer.create_repo
-        trainer_upload_folder = trainer.upload_folder
+        trainer_create_repo = getattr(trainer, 'create_repo', None)
+        trainer_upload_folder = getattr(trainer, 'upload_folder', None)
 
         huggingface_hub.create_repo = cls.create_repo
         huggingface_hub.upload_folder = partial(cls.upload_folder, api)

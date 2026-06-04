@@ -353,3 +353,17 @@ register_template(
         template_cls=Gemma4Template,
         is_thinking=True,
         non_thinking_prefix='<|channel>thought\n<channel|>'))
+
+
+class Gemma4UnifiedTemplate(Gemma4Template):
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        return inputs
+
+
+register_template(
+    Gemma4TemplateMeta(
+        MLLMTemplateType.gemma4_unified,
+        template_cls=Gemma4UnifiedTemplate,
+        is_thinking=True,
+        non_thinking_prefix='<|channel>thought\n<channel|>'))
