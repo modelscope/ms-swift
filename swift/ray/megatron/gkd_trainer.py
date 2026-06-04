@@ -30,10 +30,10 @@ class GKDTrainer(BaseRayTrainer):
         self.device = torch.device('cpu')
 
         self.global_batch_size = int(args.global_batch_size)
-        self.temperature = getattr(args, 'temperature', 1.0)
-        self.beta = getattr(args, 'beta', 0.5)
-        self.sft_alpha = getattr(args, 'sft_alpha', 0.0)
-        self.gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
+        self.temperature = args.temperature
+        self.beta = args.beta
+        self.sft_alpha = args.sft_alpha
+        self.gkd_logits_topk = args.gkd_logits_topk
 
         self._steps_per_generation = 1
         # GKD generates exactly one completion per prompt (on-policy student generation),
@@ -42,8 +42,8 @@ class GKDTrainer(BaseRayTrainer):
         self._padding_to = info.get('_padding_to')
         # Prefer the resolved local snapshot dir (teacher_model_dir) over the raw model id
         # (teacher_model); bridge.load_weights needs a real path to locate safetensors.
-        self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or getattr(args, 'teacher_model', None)
-        self._teacher_model_server = getattr(args, 'teacher_model_server', None)
+        self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
+        self._teacher_model_server = args.teacher_model_server
 
     def _train_loop(self, tg, train_iters, iteration):
         ckpt = self.ckpt_manager
@@ -68,8 +68,9 @@ class GKDTrainer(BaseRayTrainer):
                 self._fetch_teacher_from_replicas(rollout_with_outputs, samples)
             elif self._teacher_model_dir and not self._teacher_model_server:
                 teacher_outputs = tg.compute_teacher_logits(samples)
-                for sample, t_out in zip(samples, teacher_outputs):
-                    sample['teacher_output'] = t_out
+                if teacher_outputs:
+                    for sample, t_out in zip(samples, teacher_outputs):
+                        sample['teacher_output'] = t_out
 
             results = tg.train_step(samples)
             iteration = extract_iteration(results)
@@ -102,9 +103,9 @@ class GKDTrainer(BaseRayTrainer):
             n=1,
             max_tokens=args.max_completion_length,
             temperature=args.temperature,
-            top_p=getattr(args, 'top_p', 1.0),
-            top_k=getattr(args, 'top_k', -1),
-            stop=getattr(args, 'stop_words', None),
+            top_p=args.top_p,
+            top_k=args.top_k,
+            stop=args.stop_words or None,
             return_details=True,
         )
         completions = self._distribute_to_replicas(list(batch), request_config)

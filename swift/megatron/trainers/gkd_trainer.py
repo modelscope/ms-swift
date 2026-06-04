@@ -23,7 +23,7 @@ from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import Template
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger, is_last_rank, to_device
 from ..utils import forward_step_helper, get_padding_to
-from .gkd_utils import align_vocab_size, generalized_jsd_loss, jsd_topk, tp_gather_topk, vocab_parallel_topk
+from .gkd_utils import generalized_jsd_loss, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import load_megatron_model_to_gpu, offload_megatron_model_to_cpu
@@ -418,7 +418,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     teacher_logits = teacher_logits.detach()
 
                 if topk is not None and teacher_logits is not None:
-                    topk_logits, topk_indices = self._vocab_parallel_topk(teacher_logits, k=topk)
+                    topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=topk)
                     teacher_out = TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices)
                 else:
                     teacher_out = TeacherOutput(full_logits=teacher_logits)
@@ -487,9 +487,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return RerunDataIterator(iter(encoded_batches))
 
-    def _align_vocab_size(self, student_logits, teacher_logits):
-        return align_vocab_size(student_logits, teacher_logits)
-
     def generalized_jsd_loss(self,
                              student_logits,
                              teacher_logits,
@@ -508,15 +505,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             teacher_topk_logprobs=teacher_topk_logprobs,
             teacher_topk_indices=teacher_topk_indices,
             cp_size=self.args.context_parallel_size)
-
-    def _vocab_parallel_topk(self, logits, k):
-        return vocab_parallel_topk(logits, k)
-
-    def _tp_gather_topk(self, logits, indices):
-        return tp_gather_topk(logits, indices)
-
-    def _jsd_topk(self, student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta):
-        return jsd_topk(student_logits, teacher_topk_logprobs, teacher_topk_indices, mask, beta, self.temperature)
 
     def loss_func(self,
                   output_tensor: torch.Tensor,

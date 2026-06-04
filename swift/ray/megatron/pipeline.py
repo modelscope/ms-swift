@@ -71,11 +71,7 @@ class MegatronRayPipeline:
         self.teacher_replicas: List[Any] = []
 
     def _validate_gkd_ray_constraints(self) -> None:
-        train_cfg = self.group_cfgs.get('train') or {}
-        tp_size = train_cfg.get('tensor_model_parallel_size', 1) or 1
-        if tp_size > 1 and self.shared_cfg.get('gkd_logits_topk') is None:
-            raise ValueError('Ray GKD with tensor_model_parallel_size > 1 requires gkd_logits_topk to be set '
-                             '(full-logits teacher mode is not TP-safe in the ray path).')
+        pass
 
     def init(self) -> None:
         # Initialize Ray, create resource pools, spawn workers and replicas.

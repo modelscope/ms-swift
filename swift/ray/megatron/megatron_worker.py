@@ -105,7 +105,14 @@ class MegatronWorker(CheckpointEngineMixin):
 
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_teacher_logits(self, batch) -> Any:
-        """Forward teacher model on encoded batch, return TeacherOutput per sample."""
+        """Forward teacher model on encoded batch, return TeacherOutput per sample.
+
+        In full_logits mode (gkd_logits_topk is None), logits stay on each TP
+        rank's GPU as vocab-parallel shards — the loss functions handle TP via
+        vocab_parallel_log_softmax/kl_div.  Results are cached in
+        ``_cached_teacher_logits`` and injected during train_step; the driver
+        receives an empty list (no round-trip needed).
+        """
         from swift.megatron.trainers.gkd_utils import vocab_parallel_topk
         from swift.megatron.trainers.utils import prepare_batch
         from swift.megatron.utils import forward_step_helper, get_padding_to
@@ -119,6 +126,7 @@ class MegatronWorker(CheckpointEngineMixin):
 
         sample_chunks = self._split_sample_chunks(batch)
         results = []
+        cached = []
         with torch.no_grad():
             for chunk in sample_chunks:
                 encoded_list = [s['encoded'] for s in chunk]
@@ -126,7 +134,7 @@ class MegatronWorker(CheckpointEngineMixin):
                 collated = to_device(collated, device)
                 teacher_data = prepare_batch(self._args, collated)
                 teacher_data.pop('loss_scale', None)
-                teacher_data.pop('labels', None)  # pop labels to compute logits
+                teacher_data.pop('labels', None)
                 teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
@@ -136,11 +144,18 @@ class MegatronWorker(CheckpointEngineMixin):
                             results.append(
                                 TeacherOutput(topk_logprobs=topk_logits.cpu(), topk_indices=topk_indices.cpu()))
                         else:
-                            results.append(TeacherOutput(full_logits=teacher_logits[i:i + 1].cpu()))
+                            cached.append(teacher_logits[i:i + 1])
                 else:
-                    results.extend(TeacherOutput() for _ in chunk)
+                    if gkd_logits_topk is not None:
+                        results.extend(TeacherOutput() for _ in chunk)
+                    else:
+                        cached.extend(None for _ in chunk)
                 del collated
         gc_collect()
+
+        if gkd_logits_topk is None:
+            self._cached_teacher_logits = cached
+            return []
         return results
 
     def get_parallel_info(self) -> Dict[str, Any]:
@@ -184,6 +199,7 @@ class MegatronWorker(CheckpointEngineMixin):
         megatron = self._megatron
         args = megatron.args
         assert isinstance(batch, list), f'train_step expects List[Dict], got {type(batch).__name__}'
+        self._inject_cached_teacher_logits(batch)
         micro_batches = self._build_local_micro_batches(batch)
         data_iterator = iter(micro_batches)
         assert len(micro_batches) == args.num_microbatches, (
@@ -208,6 +224,23 @@ class MegatronWorker(CheckpointEngineMixin):
         del data_iterator
         gc_collect()
         return self._extract_step_metrics(megatron)
+
+    def _inject_cached_teacher_logits(self, batch: list) -> None:
+        """Inject cached full_logits into samples when teacher used full-vocab mode.
+
+        In full_logits mode, compute_teacher_logits keeps vocab-parallel shards
+        on each TP rank's GPU and returns an empty list to the driver.  Here we
+        wrap each cached shard as a TeacherOutput and attach it to the
+        corresponding sample so the normal collation path handles it.
+        """
+        cached = getattr(self, '_cached_teacher_logits', None)
+        if not cached:
+            return
+        from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+        for sample, logits in zip(batch, cached):
+            if logits is not None:
+                sample['teacher_output'] = TeacherOutput(full_logits=logits)
+        self._cached_teacher_logits = None
 
     @staticmethod
     def _extract_step_metrics(megatron) -> Dict[str, Any]:
