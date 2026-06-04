@@ -937,7 +937,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     def _init_multimodal_full(self):
         visual_cls = self.megatron_model_meta.visual_cls
-        if self.tuner_type == 'full' and self.is_multimodal and visual_cls is not None:
+        if self.tuner_type == 'full' and self.is_multimodal and visual_cls is not None and not self.language_model_only:
             vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
             aligner = [f'visual.{aligner}' for aligner in getattr(visual_cls, '_aligner', [])]
             generator = [f'visual.{generator}' for generator in getattr(visual_cls, '_generator', [])]
