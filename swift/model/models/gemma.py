@@ -431,6 +431,8 @@ register_model(
             ],
                        template=TemplateType.gemma4_nothinking),
             ModelGroup([
+                Model('google/gemma-4-12B', 'google/gemma-4-12B'),
+                Model('google/gemma-4-12B-it', 'google/gemma-4-12B-it'),
                 Model('google/gemma-4-31B', 'google/gemma-4-31B'),
                 Model('google/gemma-4-31B-it', 'google/gemma-4-31B-it'),
                 Model('google/gemma-4-26B-A4B', 'google/gemma-4-26B-A4B'),

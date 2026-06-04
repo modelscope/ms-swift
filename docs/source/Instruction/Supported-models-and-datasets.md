@@ -1130,6 +1130,8 @@
 |[google/gemma-4-E2B-it](https://modelscope.cn/models/google/gemma-4-E2B-it)|gemma4|gemma4_nothinking||transformers>=4.53|&#x2714;|-|[google/gemma-4-E2B-it](https://huggingface.co/google/gemma-4-E2B-it)|
 |[google/gemma-4-E4B](https://modelscope.cn/models/google/gemma-4-E4B)|gemma4|gemma4_nothinking||transformers>=4.53|&#x2714;|-|[google/gemma-4-E4B](https://huggingface.co/google/gemma-4-E4B)|
 |[google/gemma-4-E4B-it](https://modelscope.cn/models/google/gemma-4-E4B-it)|gemma4|gemma4_nothinking||transformers>=4.53|&#x2714;|-|[google/gemma-4-E4B-it](https://huggingface.co/google/gemma-4-E4B-it)|
+|[google/gemma-4-12B](https://modelscope.cn/models/google/gemma-4-12B)|gemma4|gemma4||transformers>=4.53|&#x2714;|-|[google/gemma-4-12B](https://huggingface.co/google/gemma-4-12B)|
+|[google/gemma-4-12B-it](https://modelscope.cn/models/google/gemma-4-12B-it)|gemma4|gemma4||transformers>=4.53|&#x2714;|-|[google/gemma-4-12B-it](https://huggingface.co/google/gemma-4-12B-it)|
 |[google/gemma-4-31B](https://modelscope.cn/models/google/gemma-4-31B)|gemma4|gemma4||transformers>=4.53|&#x2714;|-|[google/gemma-4-31B](https://huggingface.co/google/gemma-4-31B)|
 |[google/gemma-4-31B-it](https://modelscope.cn/models/google/gemma-4-31B-it)|gemma4|gemma4||transformers>=4.53|&#x2714;|-|[google/gemma-4-31B-it](https://huggingface.co/google/gemma-4-31B-it)|
 |[google/gemma-4-26B-A4B](https://modelscope.cn/models/google/gemma-4-26B-A4B)|gemma4|gemma4||transformers>=4.53|&#x2714;|-|[google/gemma-4-26B-A4B](https://huggingface.co/google/gemma-4-26B-A4B)|
