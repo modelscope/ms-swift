@@ -114,7 +114,7 @@ class SwiftMixin:
         trainer_parameters = inspect.signature(HfTrainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
-        with self.hub.patch_hub():
+        with self.hub.patch_hub(), self._patch_transformers5_deepspeed_state(args):
             super().__init__(
                 model=model,
                 args=args,
@@ -140,6 +140,48 @@ class SwiftMixin:
             # The weights have already been loaded outside the trainer,
             # so reading train_state is skipped here.
             self.args.resume_from_checkpoint = None
+
+    @contextmanager
+    def _patch_transformers5_deepspeed_state(self, args):
+        if not (transformers_5 and getattr(args, 'deepspeed', None) and getattr(args, 'deepspeed_plugin', None)):
+            yield
+            return
+
+        try:
+            from accelerate.state import AcceleratorState, PartialState
+            from accelerate.utils import DistributedType
+        except Exception:
+            yield
+            return
+
+        state_init = AcceleratorState.__init__
+
+        def _state_init(state, *state_args, **state_kwargs):
+            state_init(state, *state_args, **state_kwargs)
+            deepspeed_plugin = state_kwargs.get('deepspeed_plugin')
+            if deepspeed_plugin is None or getattr(state, 'deepspeed_plugins', None) is not None:
+                return
+
+            # Transformers 5 can pre-initialize PartialState for DeepSpeed before
+            # AcceleratorState stores the explicit plugin passed by Trainer.
+            mixed_precision = state_kwargs.get('mixed_precision')
+            state.distributed_type = DistributedType.DEEPSPEED
+            if not isinstance(deepspeed_plugin, dict):
+                deepspeed_plugin.set_mixed_precision(mixed_precision)
+                deepspeed_plugin.select(_from_accelerator_state=True)
+            else:
+                for plugin in deepspeed_plugin.values():
+                    plugin.set_mixed_precision(mixed_precision)
+                first_plugin = next(iter(deepspeed_plugin.values()))
+                first_plugin.select(_from_accelerator_state=True)
+            state.deepspeed_plugins = deepspeed_plugin
+            PartialState._shared_state['distributed_type'] = state.distributed_type
+
+        AcceleratorState.__init__ = _state_init
+        try:
+            yield
+        finally:
+            AcceleratorState.__init__ = state_init
 
     def _get_data_collator(self, args, template):
         padding_to = template.max_length if args.tuner_type == 'longlora' else None
