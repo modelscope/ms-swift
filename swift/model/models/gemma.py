@@ -225,7 +225,7 @@ def _patch_gemma4_forward(model, processor, is_gemma4_unified: bool = False):
         images = [Image.new('RGB', (32, 32), (0, 0, 0))]
         image_inputs = processor.image_processor(images=images, return_tensors='pt')
         image_inputs = to_device(image_inputs, inputs_embeds.device)
-        dummy_pixel = image_inputs['pixel_values'].to(model.vision_tower.dtype)
+        dummy_pixel = image_inputs['pixel_values'].to(model.dtype)
         dummy_pos_ids = image_inputs.get('image_position_ids')
         image_features = model.get_image_features(dummy_pixel, dummy_pos_ids, return_dict=True).pooler_output
         inputs_embeds = inputs_embeds + image_features.mean() * 0.
