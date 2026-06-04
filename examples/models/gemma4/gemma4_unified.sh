@@ -7,10 +7,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 \
 megatron sft \
     --model google/gemma-4-12B-it \
     --save_safetensors true \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
-              'AI-ModelScope/alpaca-gpt4-data-en#500' \
-              'swift/self-cognition#500' \
-              'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
+    --dataset 'AI-ModelScope/LaTeX_OCR:human_handwrite#2000' \
     --load_from_cache_file true \
     --add_non_thinking_prefix true \
     --loss_scale ignore_empty_think \
@@ -42,9 +39,7 @@ megatron sft \
     --sequence_parallel true \
     --attention_backend unfused \
     --group_by_length true \
-    --padding_free false \
-    --model_author swift \
-    --model_name swift-robot
+    --padding_free false
 
 # CUDA_VISIBLE_DEVICES=0 swift infer \
 #     --model megatron_output/gemma-4-12B-it/vx-xxx/checkpoint-xxx \
