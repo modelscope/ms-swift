@@ -431,8 +431,6 @@ register_model(
             ],
                        template=TemplateType.gemma4_nothinking),
             ModelGroup([
-                Model('google/gemma-4-12B', 'google/gemma-4-12B'),
-                Model('google/gemma-4-12B-it', 'google/gemma-4-12B-it'),
                 Model('google/gemma-4-31B', 'google/gemma-4-31B'),
                 Model('google/gemma-4-31B-it', 'google/gemma-4-31B-it'),
                 Model('google/gemma-4-26B-A4B', 'google/gemma-4-26B-A4B'),
@@ -443,5 +441,30 @@ register_model(
         Gemma4Loader,
         architectures=['Gemma4ForConditionalGeneration'],
         model_arch=ModelArch.gemma3n,
-        requires=['transformers>=4.53'],
+    ))
+
+
+class Gemma4UnifiedLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Gemma4UnifiedForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or Gemma4UnifiedForConditionalGeneration
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.gemma4_unified,
+        [
+            ModelGroup([
+                Model('google/gemma-4-12B', 'google/gemma-4-12B'),
+                Model('google/gemma-4-12B-it', 'google/gemma-4-12B-it'),
+            ],
+                       template=TemplateType.gemma4),
+        ],
+        Gemma4UnifiedLoader,
+        architectures=['Gemma4UnifiedForConditionalGeneration'],
+        model_arch=ModelArch.gemma3n,
+        requires=['transformers>=5.10.0'],
     ))
