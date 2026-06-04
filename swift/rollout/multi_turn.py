@@ -3,19 +3,27 @@
 import asyncio
 from abc import ABC
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
-from swift.infer_engine import GRPOVllmEngine
 from swift.infer_engine.protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, RequestConfig,
                                          RolloutInferRequest, RolloutOutput)
 from swift.template import Messages
 from swift.utils import remove_response
 from .gym_env import Env, envs
 
+if TYPE_CHECKING:
+    # Imported only for type hints; importing it at runtime pulls in vllm, which would make
+    # `swift.rollout` (and thus GRPO trainer init) hard-require vllm even when use_vllm=False.
+    from swift.infer_engine import GRPOVllmEngine
+
 
 class RolloutScheduler(ABC):
     # Single Turn Rollout Scheduler
-    def __init__(self, infer_engine: Optional[GRPOVllmEngine] = None, max_turns: Optional[int] = None, *args, **kwargs):
+    def __init__(self,
+                 infer_engine: Optional['GRPOVllmEngine'] = None,
+                 max_turns: Optional[int] = None,
+                 *args,
+                 **kwargs):
         self.infer_engine = infer_engine
         # Tokenizer can be passed explicitly (e.g., in colocate mode where infer_engine may be None)
         self._tokenizer = kwargs.get('tokenizer', None)
@@ -722,7 +730,7 @@ class GYMScheduler(MultiTurnScheduler):
     server mode (``run()``) and colocate mode (``run_multi_turn()``).
     """
 
-    def __init__(self, infer_engine: Optional[GRPOVllmEngine] = None, max_turns: Optional[int] = None, **kwargs):
+    def __init__(self, infer_engine: Optional['GRPOVllmEngine'] = None, max_turns: Optional[int] = None, **kwargs):
         super().__init__(infer_engine, max_turns, **kwargs)
         self.gym_env_name = kwargs.get('gym_env', None)
         # Per-trajectory state (keyed by uuid)
