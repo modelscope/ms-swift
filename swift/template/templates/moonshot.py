@@ -162,14 +162,13 @@ class KimiK25Template(Template):
         inputs_embeds = model.get_input_embeddings()(input_ids)
 
         if pixel_values is not None and pixel_values.size(0) > 0:
-            media_token = self.tokenizer.convert_tokens_to_ids('<|media_pad|>')
             pixel_values = pixel_values.to(model.vision_tower.dtype)
             image_features: torch.Tensor = model._extract_image_features(pixel_values, inputs['grid_thws'])
             if model.mm_projector:
                 image_features = model.mm_projector(image_features)
             image_features = torch.cat(image_features, dim=0)
             inputs_embeds = inputs_embeds.to(image_features.dtype)
-            image_mask = (input_ids == media_token).unsqueeze(-1).expand_as(inputs_embeds)
+            image_mask = (input_ids == self.config.media_placeholder_token_id).unsqueeze(-1).expand_as(inputs_embeds)
             inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_features)
         elif is_deepspeed_enabled():
             image_processor = self.processor.image_processor
