@@ -116,6 +116,8 @@ class KimiK25Template(Template):
                     inputs: StdTemplateInputs) -> List[Context]:
         if media_type == 'image':
             return ['<|media_begin|>image<|media_content|><|media_pad|><|media_end|>\n']
+        raise ValueError(f'KimiK25Template does not currently support {media_type}. '
+                         'Please open an issue to request support.')
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         encoded = super()._encode(inputs)
