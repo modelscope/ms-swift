@@ -113,16 +113,13 @@ class HfConfigFactory:
     @staticmethod
     def del_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
                         attr_name: str,
-                        include_vit: bool = False,
-                        ensure_set: bool = True) -> int:
+                        include_vit: bool = False) -> int:
         """Remove all the attr_name attributes."""
         attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
-        if ensure_set and len(attrs) == 0:
-            attrs.append((config, None))
         for config, _ in attrs:
             if isinstance(config, dict):
-                config.pop(attr_name)
-            else:
+                config.pop(attr_name, None)
+            elif hasattr(config, attr_name):
                 delattr(config, attr_name)
         return len(attrs)
 
