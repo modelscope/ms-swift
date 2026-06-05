@@ -10,8 +10,6 @@ from accelerate.utils import broadcast_object_list, gather_object, is_peft_model
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
-from dataclasses import dataclass
-from enum import Enum
 from packaging import version
 from transformers import PreTrainedModel, Trainer
 from trl import SFTTrainer as HFSFTTrainer
@@ -19,7 +17,7 @@ from trl.trainer.utils import RepeatSampler
 from typing import Dict, Optional, Union
 
 from swift.infer_engine.protocol import RequestConfig
-from swift.rlhf_trainers.gkd_loss import build_opsd_teacher_data, gkd_loss
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, build_opsd_teacher_data, gkd_loss
 from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_teacher_infer_request,
                                        parse_prompt_logprobs, prepare_fsdp, replace_assistant_response_with_ids)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
@@ -50,52 +48,6 @@ if is_wandb_available():
     import wandb
 if is_swanlab_available():
     import swanlab
-
-
-class DataSource(str, Enum):
-    STUDENT = 'student'  # On-policy: student model generates responses
-    TEACHER = 'teacher'  # Sequential KD: teacher model generates responses
-    DATASET = 'dataset'  # Off-policy: use dataset responses
-
-
-@dataclass
-class TeacherOutput:
-    """Unified container for teacher model outputs from all three sources:
-    local full-vocab, local top-k, and external API top-k.
-    """
-    full_logits: Optional[torch.Tensor] = None
-    topk_logprobs: Optional[torch.Tensor] = None
-    topk_indices: Optional[torch.Tensor] = None
-    opsd_teacher_labels: Optional[torch.Tensor] = None
-
-    @property
-    def is_topk_mode(self) -> bool:
-        return self.topk_logprobs is not None and self.topk_indices is not None
-
-    def validate(self):
-        if self.full_logits is None and not self.is_topk_mode:
-            raise ValueError('TeacherOutput must provide either full_logits or '
-                             '(topk_logprobs, topk_indices). Got neither.')
-
-    def select(self, mask: torch.Tensor) -> 'TeacherOutput':
-        """Select active positions by boolean mask."""
-        return TeacherOutput(
-            full_logits=self.full_logits[mask] if self.full_logits is not None else None,
-            topk_logprobs=self.topk_logprobs[mask] if self.topk_logprobs is not None else None,
-            topk_indices=self.topk_indices[mask] if self.topk_indices is not None else None,
-        )
-
-    def to_topk(self, k: int, topk_fn=None) -> 'TeacherOutput':
-        """Convert full logits to topk representation."""
-        if self.is_topk_mode:
-            return self
-        fn = topk_fn or (lambda logits, k: torch.topk(logits, k=k, dim=-1))
-        vals, ids = fn(self.full_logits, k)
-        return TeacherOutput(
-            topk_logprobs=vals,
-            topk_indices=ids,
-            opsd_teacher_labels=self.opsd_teacher_labels,
-        )
 
 
 class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
@@ -204,7 +156,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             )
         if self.gkd_logits_topk is not None:
             teacher_output = teacher_output.to_topk(self.gkd_logits_topk)
-        return gkd_loss(student_logits, teacher_output, shifted_labels, self.beta, self.temperature)
+        total, num_valid = gkd_loss(student_logits, teacher_output, shifted_labels, self.beta, self.temperature)
+        if num_valid == 0:
+            return total * 0
+        return total / num_valid
 
     # Code borrowed from huggingface/trl
     def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):

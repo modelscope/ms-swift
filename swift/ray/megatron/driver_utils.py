@@ -96,9 +96,8 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
     sleep_level = int(raw.pop('sleep_level', 1))
     nnodes = int(raw.pop('nnodes', 1))
 
-    known_groups = ('train', 'rollout', 'teacher')
     group_configs: Dict[str, dict] = {}
-    for g in known_groups:
+    for g in KNOWN_GROUPS:
         group_configs[g] = raw.pop(g, {}) or {}
 
     gpu_counts = {g: int(cfg.pop('gpus', 0)) for g, cfg in group_configs.items()}
@@ -121,7 +120,7 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
     return ray_config, group_configs, shared_config
 
 
-_KNOWN_ROLES = frozenset(('train', 'rollout', 'teacher'))
+KNOWN_GROUPS = frozenset(('train', 'rollout', 'teacher'))
 
 
 def _validate_colocate_groups(
@@ -138,9 +137,9 @@ def _validate_colocate_groups(
                              f'got {group!r}')
         group_gpu_counts = set()
         for role in group:
-            if role not in _KNOWN_ROLES:
+            if role not in KNOWN_GROUPS:
                 raise ValueError(f'colocate_groups[{idx}] contains unknown role {role!r}; '
-                                 f'valid roles: {sorted(_KNOWN_ROLES)}')
+                                 f'valid roles: {sorted(KNOWN_GROUPS)}')
             if role in seen:
                 raise ValueError(f'Role {role!r} appears in multiple colocate groups')
             seen.add(role)

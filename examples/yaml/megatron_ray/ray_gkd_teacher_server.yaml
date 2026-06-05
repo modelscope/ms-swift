@@ -1,0 +1,75 @@
+# [Experimental] Ray-based Megatron GKD — external teacher server mode
+#
+# Instead of colocating the teacher model on training GPUs, this config
+# points to an external vLLM-compatible server that serves teacher logprobs.
+#
+# Workflow:
+#   1. Start a vLLM server with --return-tokens-as-token-ids:
+#        python -m vllm.entrypoints.openai.api_server \
+#            --model Qwen/Qwen3-32B --tensor-parallel-size 4 \
+#            --port 8000 --return-tokens-as-token-ids
+#   2. Launch training:
+#        swift rlhf --config ray_gkd_teacher_server.yaml
+#
+# The driver sends prompt+completion to the teacher server with
+# `prompt_logprobs=K` to retrieve top-k logprobs, which are used
+# for the JSD distillation loss. This avoids GPU memory contention
+# between teacher and student.
+rlhf_type: gkd
+
+model: Qwen/Qwen3-8B-Base
+teacher_model_server: http://localhost:8000/v1
+teacher_model: Qwen/Qwen3-32B
+gkd_logits_topk: 64
+
+dataset: AI-ModelScope/alpaca-gpt4-data-en#2000 AI-ModelScope/alpaca-gpt4-data-zh#2000
+dataset_num_proc: 4
+split_dataset_ratio: 0
+
+micro_batch_size: 1
+global_batch_size: 16
+num_train_epochs: 1
+logging_steps: 1
+seed: 42
+max_length: 8192
+max_completion_length: 8192
+padding_free: true
+sequence_parallel: true
+attention_backend: flash
+
+lr: 1e-6
+min_lr: 1e-6
+lr_warmup_fraction: 0.0
+
+temperature: 1.0
+beta: 0.5
+sft_alpha: 0.0
+
+finetune: true
+no_save_optim: true
+no_save_rng: true
+recompute_granularity: selective
+
+use_vllm: true
+
+colocate_groups: [[train, rollout]]
+offload_model: true
+offload_optimizer: true
+sleep_level: 1
+
+train:
+  gpus: 4
+  tuner_type: lora
+  lora_rank: 8
+  lora_alpha: 32
+  tensor_model_parallel_size: 1
+  pipeline_model_parallel_size: 1
+  expert_model_parallel_size: 1
+  context_parallel_size: 1
+  output_dir: megatron_output/ray_gkd_teacher_server
+
+rollout:
+  gpus: 4
+  vllm_tensor_parallel_size: 1
+  vllm_gpu_memory_utilization: 0.4
+  vllm_max_model_len: 16384

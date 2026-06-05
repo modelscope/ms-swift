@@ -22,8 +22,6 @@ _TRAINER_REGISTRY: Dict[str, Dict[str, Any]] = {
     },
 }
 
-_KNOWN_GROUPS = frozenset(('train', 'rollout', 'teacher'))
-
 
 def register_ray_trainer(
     rlhf_type: str,
@@ -189,7 +187,7 @@ class MegatronRayPipeline:
 
         loss_cls = self._entry.get('loss')
         rollout_config = self._build_rollout_config_for_workers() if self._is_rollout_hybrid() else None
-        wg.broadcast('init_model', cfg, loss_cls_path=loss_cls, rollout_config=rollout_config)
+        wg.broadcast('init_actor', cfg, loss_cls_path=loss_cls, rollout_config=rollout_config)
         wg.build_dispatch_info(worker_cls=MegatronWorker)
 
         self.worker_groups[role] = wg

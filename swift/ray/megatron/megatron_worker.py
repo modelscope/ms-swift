@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import os
 import torch
-from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence
 
 from swift.utils import gc_collect, get_current_device, get_logger, to_device
@@ -46,21 +45,21 @@ class MegatronWorker(CheckpointEngineMixin):
         self.ref = None  # MegatronModelWorker (explicit ref for full fine-tune)
         self.teacher = None  # MegatronModelWorker (colocated teacher)
 
-    def init_model(
+    def init_actor(
         self,
         cfg: Dict[str, Any],
         loss_cls_path: Optional[str] = None,
         rollout_config: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Initialise the Megatron model and (optionally) the rollout adapter.
+        """Initialise the training (actor) model, optimizer, and optionally the rollout adapter.
+
+        This only sets up the actor model for training. Ref and teacher models
+        are initialized separately (ref in _init_trainable, teacher via
+        init_teacher_model).
 
         Args:
             cfg: Merged config dict (shared + group overrides).
-                 Parsed via ``HfArgumentParser.parse_dict`` and the resulting
-                 args instance is passed directly to ``MegatronRLHF``.
             rollout_config: When provided, creates an internal RolloutAdapter.
-                Expected keys: ``rollout_tp_size``, ``rollout_dp_size``,
-                ``bucket_size_mb`` (optional, default 2048).
         """
         from swift.megatron.arguments import MegatronRLHFArguments
         from swift.megatron.pipelines.train.rlhf import MegatronRLHF
@@ -106,76 +105,19 @@ class MegatronWorker(CheckpointEngineMixin):
         if getattr(self._args, 'offload_teacher_model', False):
             self.teacher.offload_to_cpu()
 
-    @contextmanager
-    def load_teacher_model_context(self):
-        """Bring the colocated teacher to GPU only for its forward, then offload.
-
-        When ``offload_teacher_model`` is set the teacher stays on CPU during the student
-        train_step (``reload_to_gpu`` skips it); this context loads it on enter and offloads
-        on exit (even on error). It loads only the teacher — not actor/ref at once — which
-        lowers the peak-memory / OOM risk. Mirrors the non-ray ``load_teacher_model_context``.
-        """
-        if not getattr(self._args, 'offload_teacher_model', False):
-            yield
-            return
-        self.teacher.reload_to_gpu(load_grad=False)
-        try:
-            yield
-        finally:
-            self.teacher.offload_to_cpu()
-            gc_collect()
-
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_teacher_logits(self, batch) -> Any:
         """Forward teacher model on encoded batch, return TeacherOutput per sample.
 
-        In full_logits mode (gkd_logits_topk is None), logits stay on each TP
-        rank's GPU as vocab-parallel shards — the loss functions handle TP via
-        vocab_parallel_log_softmax/kl_div.  Results are cached in
-        ``_cached_teacher_logits`` and injected during train_step; the driver
-        receives an empty list (no round-trip needed).
+        Core logic lives in GKDLoss.compute_teacher_logits; this is a thin
+        wrapper that manages model lifecycle (offload) and result caching.
         """
-        from swift.megatron.trainers.gkd_utils import vocab_parallel_topk
-        from swift.megatron.trainers.utils import prepare_batch
-        from swift.megatron.utils import forward_step_helper, get_padding_to
-        from swift.rlhf_trainers.gkd_trainer import TeacherOutput
-
         assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
-        gkd_logits_topk = getattr(self._args, 'gkd_logits_topk', None)
-        template = self._pipeline.template
-        device = get_current_device()
-
-        sample_chunks = self._split_sample_chunks(batch)
-        results = []
-        cached = []
-        with self.load_teacher_model_context(), torch.no_grad():
-            teacher_model = self.teacher.models[0]
-            for chunk in sample_chunks:
-                encoded_list = [s['encoded'] for s in chunk]
-                collated = template.data_collator(encoded_list, padding_to=get_padding_to(self._args))
-                collated = to_device(collated, device)
-                teacher_data = prepare_batch(self._args, collated)
-                teacher_data.pop('loss_scale', None)
-                teacher_data.pop('labels', None)
-                teacher_logits = forward_step_helper(teacher_model, teacher_data)
-                if teacher_logits is not None:
-                    teacher_logits = teacher_logits.detach()
-                    for i in range(len(chunk)):
-                        if gkd_logits_topk is not None:
-                            topk_logits, topk_indices = vocab_parallel_topk(teacher_logits[i:i + 1], k=gkd_logits_topk)
-                            results.append(
-                                TeacherOutput(topk_logprobs=topk_logits.cpu(), topk_indices=topk_indices.cpu()))
-                        else:
-                            cached.append(teacher_logits[i:i + 1])
-                else:
-                    if gkd_logits_topk is not None:
-                        results.extend(TeacherOutput() for _ in chunk)
-                    else:
-                        cached.extend(None for _ in chunk)
-                del collated
+        with self.teacher.loaded_context():
+            results, cached = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
+                                                                   self._pipeline.template, self._args)
         gc_collect()
-
-        if gkd_logits_topk is None:
+        if cached:
             self._cached_teacher_logits = cached
             return []
         return results
@@ -258,7 +200,7 @@ class MegatronWorker(CheckpointEngineMixin):
         cached = getattr(self, '_cached_teacher_logits', None)
         if not cached:
             return
-        from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+        from swift.rlhf_trainers.gkd_loss import TeacherOutput
         for sample, logits in zip(batch, cached):
             if logits is not None:
                 sample['teacher_output'] = TeacherOutput(full_logits=logits)
@@ -685,7 +627,7 @@ class MegatronWorker(CheckpointEngineMixin):
         Only used for topk mode; full_logits mode uses _cached_teacher_logits
         (kept on-GPU per TP rank) and bypasses this path entirely.
         """
-        from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+        from swift.rlhf_trainers.gkd_loss import TeacherOutput
         fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'opsd_teacher_labels')
         kwargs = {}
         for field in fields:

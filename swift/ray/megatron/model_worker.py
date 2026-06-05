@@ -7,6 +7,7 @@ TrainableModelWorker extends it with training capabilities via _LifecycleTrainer
 from __future__ import annotations
 
 import torch
+from contextlib import contextmanager
 from typing import Any, Dict, Optional, Sequence
 
 from swift.utils import gc_collect, get_current_device, get_logger, to_device
@@ -15,7 +16,14 @@ logger = get_logger()
 
 
 class MegatronModelWorker:
-    """Wraps a single Megatron model with forward / logps / offload interfaces."""
+    """Wraps a single Megatron model with inference / offload interfaces.
+
+    Two creation paths:
+    - ``__init__(args, models)``: wraps models already created in the current
+      process (e.g. ref models created by MegatronRLHFTrainer.prepare_model).
+    - ``from_pretrained(args, model_dir)``: independently loads a new model
+      from disk (e.g. colocated teacher with different weights).
+    """
 
     def __init__(self, args, models, bridge=None):
         self.args = args
@@ -24,7 +32,7 @@ class MegatronModelWorker:
 
     @classmethod
     def from_pretrained(cls, args, model_dir):
-        """Load an inference-only model (ref / teacher)."""
+        """Load an inference-only model (ref / teacher) from disk."""
         from transformers import AutoConfig
 
         from swift.megatron.model import get_mcore_model
@@ -38,17 +46,6 @@ class MegatronModelWorker:
             m.eval()
         models[0].config.bridge.load_weights(models, model_dir)
         return cls(args, models, bridge=models[0].config.bridge)
-
-    def forward(self, data, vp_stage=None):
-        """Forward with PP communication. Returns (output_tensor, labels)."""
-        from swift.megatron.trainers.utils import prepare_batch
-        from swift.megatron.utils import forward_step_helper
-
-        batch = prepare_batch(self.args, data, vp_stage=vp_stage)
-        labels = batch.pop('labels', None)
-        batch.pop('loss_scale', None)
-        output = forward_step_helper(self.models[vp_stage or 0], batch)
-        return output, labels
 
     def compute_per_token_logps(self, data_iterator, temperature=1.0, enable_routing_replay=False):
         from swift.megatron.trainers.utils import compute_per_token_logps_fn
@@ -68,9 +65,32 @@ class MegatronModelWorker:
         from swift.megatron.trainers.utils import load_megatron_model_to_gpu
         load_megatron_model_to_gpu(self.models, load_grad=load_grad)
 
+    @contextmanager
+    def loaded_context(self, load_grad=False):
+        """Temporarily load model to GPU, offload on exit.
+
+        No-op if offloading is not configured. Use this to bracket
+        inference on an offloaded model (e.g. teacher forward).
+        """
+        if not getattr(self.args, 'offload_teacher_model', False):
+            yield
+            return
+        self.reload_to_gpu(load_grad=load_grad)
+        try:
+            yield
+        finally:
+            self.offload_to_cpu()
+
 
 class TrainableModelWorker(MegatronModelWorker):
-    """Trainable model wrapping a _LifecycleTrainer with optimizer / training step."""
+    """Trainable model wrapping a _LifecycleTrainer with optimizer / training step.
+
+    Note: the lifecycle_trainer dependency on MegatronRLHFTrainer is a
+    transitional design. Future refactoring should extract the needed
+    capabilities (optimizer, model wrapping, ref model context) into
+    standalone components so the ray module no longer depends on the
+    non-ray trainer hierarchy.
+    """
 
     def __init__(self, args, lifecycle_trainer):
         self._trainer = lifecycle_trainer

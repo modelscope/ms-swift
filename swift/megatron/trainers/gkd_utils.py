@@ -1,22 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Pure functions for GKD loss computation, extracted from MegatronGKDTrainer."""
+"""Megatron-specific GKD utilities: TP-aware gather/topk and CP reduce."""
 import torch
-import torch.nn.functional as F
 from megatron.core import mpu
-
-
-def align_vocab_size(student_logits, teacher_logits):
-    stu_vocab = student_logits.shape[-1]
-    tea_vocab = teacher_logits.shape[-1]
-    if stu_vocab == tea_vocab:
-        return student_logits, teacher_logits
-    if stu_vocab < tea_vocab:
-        student_logits = F.pad(student_logits, (0, tea_vocab - stu_vocab), 'constant', 0)
-        student_logits[..., stu_vocab:] = teacher_logits[..., stu_vocab:]
-    else:
-        teacher_logits = F.pad(teacher_logits, (0, stu_vocab - tea_vocab), 'constant', 0)
-        teacher_logits[..., tea_vocab:] = student_logits[..., tea_vocab:]
-    return student_logits, teacher_logits
 
 
 def vocab_parallel_topk(logits: torch.Tensor, k: int) -> tuple:

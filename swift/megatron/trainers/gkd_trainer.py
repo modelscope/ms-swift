@@ -4,7 +4,6 @@ import random
 import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
-from enum import Enum
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
@@ -16,28 +15,20 @@ from typing import Dict, List, Optional
 from swift.infer_engine.protocol import RequestConfig
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
-from swift.rlhf_trainers.gkd_loss import build_opsd_teacher_data, gkd_loss
-from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, build_opsd_teacher_data, gkd_loss
 from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_teacher_infer_request,
                                        parse_prompt_logprobs, replace_assistant_response_with_ids)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import Template
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger, is_last_rank, to_device
 from ..utils import forward_step_helper, get_padding_to
-from .gkd_utils import align_vocab_size, cp_reduce, tp_gather_topk, vocab_parallel_topk
+from .gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import load_megatron_model_to_gpu, offload_megatron_model_to_cpu
 from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 
 logger = get_logger()
-
-
-class DataSource(str, Enum):
-    """Data source for GKD training."""
-    DATASET = 'dataset'  # Offline: use responses from dataset
-    STUDENT = 'student'  # On-policy: use student-generated responses
-    TEACHER = 'teacher'  # Sequential KD: use teacher-generated responses
 
 
 class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
@@ -485,19 +476,18 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """Compute GKD loss (JSD + optional SFT loss)."""
         student_logits = output_tensor
 
-        jsd_loss = gkd_loss(
+        jsd_total, jsd_num_valid = gkd_loss(
             student_logits,
             teacher_output,
             labels,
             self.beta,
             self.temperature,
             gather_fn=tp_gather_topk,
-            align_vocab_fn=align_vocab_size,
             log_softmax_fn=vocab_parallel_log_softmax,
-            kl_div_fn=vocab_parallel_kl_div,
-            reduce_fn=partial(cp_reduce, cp_size=self.args.context_parallel_size))
+            kl_div_fn=vocab_parallel_kl_div)
+        jsd_loss_val = cp_reduce(jsd_total, jsd_num_valid, cp_size=self.args.context_parallel_size)
 
-        loss = jsd_loss
+        loss = jsd_loss_val
 
         # Add SFT loss if enabled (skip for student-generated responses)
         sft_loss = None
@@ -525,7 +515,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         metric = {'loss': loss.detach().clone()}
         if sft_loss is not None:
-            metric['jsd_loss'] = jsd_loss.detach().clone()
+            metric['jsd_loss'] = jsd_loss_val.detach().clone()
             metric['sft_loss'] = sft_loss.detach().clone()
         metric = self._all_reduce_metric(metric)
 

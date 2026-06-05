@@ -2,44 +2,78 @@
 """Shared GKD loss utilities across HF / Megatron / Ray backends."""
 import torch
 import torch.nn.functional as F
-from typing import Callable, List, Optional
+from dataclasses import dataclass
+from enum import Enum
+from typing import Callable, Optional, Tuple
+
+# ---------------------------------------------------------------------------
+# Data types — shared across all backends
+# ---------------------------------------------------------------------------
+
+
+class DataSource(str, Enum):
+    """Data source for GKD training."""
+    DATASET = 'dataset'
+    STUDENT = 'student'
+    TEACHER = 'teacher'
+
+
+@dataclass
+class TeacherOutput:
+    """Unified container for teacher model outputs from all three sources:
+    local full-vocab, local top-k, and external API top-k.
+    """
+    full_logits: Optional[torch.Tensor] = None
+    topk_logprobs: Optional[torch.Tensor] = None
+    topk_indices: Optional[torch.Tensor] = None
+    opsd_teacher_labels: Optional[torch.Tensor] = None
+
+    @property
+    def is_topk_mode(self) -> bool:
+        return self.topk_logprobs is not None and self.topk_indices is not None
+
+    def validate(self):
+        if self.full_logits is None and not self.is_topk_mode:
+            raise ValueError('TeacherOutput must provide either full_logits or '
+                             '(topk_logprobs, topk_indices). Got neither.')
+
+    def select(self, mask: torch.Tensor) -> 'TeacherOutput':
+        """Select active positions by boolean mask."""
+        return TeacherOutput(
+            full_logits=self.full_logits[mask] if self.full_logits is not None else None,
+            topk_logprobs=self.topk_logprobs[mask] if self.topk_logprobs is not None else None,
+            topk_indices=self.topk_indices[mask] if self.topk_indices is not None else None,
+        )
+
+    def to_topk(self, k: int, topk_fn=None) -> 'TeacherOutput':
+        """Convert full logits to topk representation."""
+        if self.is_topk_mode:
+            return self
+        fn = topk_fn or (lambda logits, k: torch.topk(logits, k=k, dim=-1))
+        vals, ids = fn(self.full_logits, k)
+        return TeacherOutput(
+            topk_logprobs=vals,
+            topk_indices=ids,
+            opsd_teacher_labels=self.opsd_teacher_labels,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Default primitives (standard PyTorch, no TP/CP)
 # ---------------------------------------------------------------------------
 
 
-def default_log_softmax(logits):
+def default_log_softmax(logits: torch.Tensor) -> torch.Tensor:
     return F.log_softmax(logits, dim=-1)
 
 
-def default_kl_div(input_log_probs, target_log_probs):
+def default_kl_div(input_log_probs: torch.Tensor, target_log_probs: torch.Tensor) -> torch.Tensor:
     """KL(target || input), returns per-position scalar [N]."""
     return (torch.exp(target_log_probs) * (target_log_probs - input_log_probs)).sum(-1)
 
 
-def default_gather(logits, indices):
+def default_gather(logits: torch.Tensor, indices: torch.Tensor) -> torch.Tensor:
     return torch.gather(logits, dim=-1, index=indices)
-
-
-def default_align_vocab(student_logits, teacher_logits):
-    stu_vocab = student_logits.shape[-1]
-    tea_vocab = teacher_logits.shape[-1]
-    if stu_vocab == tea_vocab:
-        return student_logits, teacher_logits
-    if stu_vocab < tea_vocab:
-        student_logits = F.pad(student_logits, (0, tea_vocab - stu_vocab), 'constant', 0)
-        student_logits[..., stu_vocab:] = teacher_logits[..., stu_vocab:]
-    else:
-        teacher_logits = F.pad(teacher_logits, (0, stu_vocab - tea_vocab), 'constant', 0)
-        teacher_logits[..., tea_vocab:] = student_logits[..., tea_vocab:]
-    return student_logits, teacher_logits
-
-
-def default_reduce(total_loss, num_valid):
-    if num_valid == 0:
-        return total_loss * 0
-    return total_loss / float(num_valid)
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +81,14 @@ def default_reduce(total_loss, num_valid):
 # ---------------------------------------------------------------------------
 
 
-def jsd_loss(s_logits, t_logits, beta, log_softmax_fn=default_log_softmax, kl_div_fn=default_kl_div, chunk_size=512):
+def jsd_loss(
+    s_logits: torch.Tensor,
+    t_logits: torch.Tensor,
+    beta: float,
+    log_softmax_fn: Callable = default_log_softmax,
+    kl_div_fn: Callable = default_kl_div,
+    chunk_size: int = 512,
+) -> torch.Tensor:
     """Chunked JSD between student and teacher.
 
     This is THE function for JSD math. To customize KL computation,
@@ -65,6 +106,8 @@ def jsd_loss(s_logits, t_logits, beta, log_softmax_fn=default_log_softmax, kl_di
         Scalar — unnormalized total JSD (caller normalizes by num_valid).
     """
     N = s_logits.size(0)
+    # N may be 0 when a CP rank's partition has no valid tokens;
+    # returning zero lets cp_reduce still all-reduce without hanging.
     if N == 0:
         return s_logits.new_zeros(())
 
@@ -96,11 +139,34 @@ def jsd_loss(s_logits, t_logits, beta, log_softmax_fn=default_log_softmax, kl_di
 
 
 # ---------------------------------------------------------------------------
+# Internal vocab alignment
+# ---------------------------------------------------------------------------
+
+
+def _align_vocab(student_logits: torch.Tensor, teacher_logits: torch.Tensor):
+    stu_vocab = student_logits.shape[-1]
+    tea_vocab = teacher_logits.shape[-1]
+    if stu_vocab == tea_vocab:
+        return student_logits, teacher_logits
+    if stu_vocab < tea_vocab:
+        student_logits = F.pad(student_logits, (0, tea_vocab - stu_vocab), 'constant', 0)
+        student_logits[..., stu_vocab:] = teacher_logits[..., stu_vocab:]
+    else:
+        teacher_logits = F.pad(teacher_logits, (0, stu_vocab - tea_vocab), 'constant', 0)
+        teacher_logits[..., tea_vocab:] = student_logits[..., tea_vocab:]
+    return student_logits, teacher_logits
+
+
+# ---------------------------------------------------------------------------
 # extract_active — unified mask extraction (OPSD / non-OPSD)
 # ---------------------------------------------------------------------------
 
 
-def extract_active(student_logits, teacher_output, labels):
+def extract_active(
+    student_logits: torch.Tensor,
+    teacher_output: TeacherOutput,
+    labels: torch.Tensor,
+) -> Tuple[torch.Tensor, TeacherOutput, torch.Tensor]:
     """Extract active positions from student logits and teacher output.
 
     Args:
@@ -129,22 +195,25 @@ def extract_active(student_logits, teacher_output, labels):
 
 
 # ---------------------------------------------------------------------------
-# gkd_loss — full pipeline: mask → prepare → jsd → reduce
+# gkd_loss — full pipeline: mask → prepare → jsd
 # ---------------------------------------------------------------------------
 
 
-def gkd_loss(student_logits,
-             teacher_output,
-             labels,
-             beta,
-             temperature,
-             gather_fn=default_gather,
-             align_vocab_fn=default_align_vocab,
-             log_softmax_fn=default_log_softmax,
-             kl_div_fn=default_kl_div,
-             reduce_fn=None,
-             chunk_size=512):
-    """Full GKD loss pipeline.
+def gkd_loss(
+    student_logits: torch.Tensor,
+    teacher_output: TeacherOutput,
+    labels: torch.Tensor,
+    beta: float,
+    temperature: float,
+    gather_fn: Callable = default_gather,
+    log_softmax_fn: Callable = default_log_softmax,
+    kl_div_fn: Callable = default_kl_div,
+    chunk_size: int = 512,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Full GKD loss pipeline. Returns (total_loss, num_valid).
+
+    Caller is responsible for normalization (e.g. simple division for HF,
+    CP all-reduce + division for Megatron).
 
     Args:
         student_logits: [B, S, V] student model logits
@@ -153,11 +222,12 @@ def gkd_loss(student_logits,
         beta: JSD interpolation coefficient
         temperature: temperature scaling
         gather_fn: (logits[N,V], indices[N,K]) -> [N,K], for topk gather
-        align_vocab_fn: (s[N,V1], t[N,V2]) -> (s[N,V], t[N,V]), vocab alignment
         log_softmax_fn: logits -> log_probs (may be TP-aware for full-vocab)
         kl_div_fn: (input_log, target_log) -> per_position KL (may be TP-aware)
-        reduce_fn: (total_loss, num_valid) -> scalar (handles CP all-reduce if needed)
         chunk_size: chunk size for memory efficiency
+
+    Returns:
+        (total_loss, num_valid) — unnormalized total and count of valid positions.
     """
     teacher_output.validate()
     s_active, t_active, num_valid = extract_active(student_logits, teacher_output, labels)
@@ -169,17 +239,14 @@ def gkd_loss(student_logits,
     else:
         s_logits = s_active
         t_logits = t_active.full_logits
-        if align_vocab_fn is not None:
-            s_logits, t_logits = align_vocab_fn(s_logits, t_logits)
+        s_logits, t_logits = _align_vocab(s_logits, t_logits)
         lsf, kdf = log_softmax_fn, kl_div_fn
 
     s_logits = s_logits / temperature
     t_logits = t_logits / temperature
 
     total = jsd_loss(s_logits, t_logits, beta, lsf, kdf, chunk_size)
-
-    reduce = reduce_fn or default_reduce
-    return reduce(total, num_valid)
+    return total, num_valid
 
 
 # ---------------------------------------------------------------------------

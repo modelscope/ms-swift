@@ -430,16 +430,13 @@ def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_g
         num_samples = input_ids.shape[0] if input_ids is not None else labels.shape[0]
 
     if args.context_parallel_size > 1:
-        per_token_logps = _postprocess_packed_tensor_cp(args, per_token_logps, packed_seq_params, num_samples)
+        per_token_logps = _postprocess_packed_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
+                                                        num_samples)
     return per_token_logps, routing_topk_idx
 
 
-def _postprocess_packed_tensor_cp(args, tensor, packed_seq_params, num_samples):
-    """In CP mode, all_gather and reconstruct full tensor sequences.
-
-    Extracted from MegatronRLHFTrainer._postprocess_packed_tensor_cp.
-    """
-    cp_size = args.context_parallel_size
+def _postprocess_packed_tensor_cp(cp_size, tensor, packed_seq_params, num_samples):
+    """In CP mode, all_gather and reconstruct full tensor sequences."""
     cp_rank = mpu.get_context_parallel_rank()
 
     output_list = [torch.empty_like(tensor) for _ in range(cp_size)]

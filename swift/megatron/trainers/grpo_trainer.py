@@ -1183,10 +1183,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if args.context_parallel_size > 1:
                 from .utils import _postprocess_packed_tensor_cp
                 num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
-                per_token_logps_packed = _postprocess_packed_tensor_cp(args, per_token_logps_packed, packed_seq_params,
-                                                                       num_samples)
+                cp_size = args.context_parallel_size
+                per_token_logps_packed = _postprocess_packed_tensor_cp(cp_size, per_token_logps_packed,
+                                                                       packed_seq_params, num_samples)
                 if per_token_entropy_packed is not None:
-                    per_token_entropy_packed = _postprocess_packed_tensor_cp(args, per_token_entropy_packed,
+                    per_token_entropy_packed = _postprocess_packed_tensor_cp(cp_size, per_token_entropy_packed,
                                                                              packed_seq_params, num_samples)
 
             if args.padding_free:

@@ -77,7 +77,8 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         if per_token:
             if args.context_parallel_size > 1:
                 from .utils import _postprocess_packed_tensor_cp
-                per_token_logps = _postprocess_packed_tensor_cp(args, per_token_logps, packed_seq_params, num_samples
+                per_token_logps = _postprocess_packed_tensor_cp(args.context_parallel_size, per_token_logps,
+                                                                packed_seq_params, num_samples
                                                                 or packed_seq_params.num_samples)
             return per_token_logps
 

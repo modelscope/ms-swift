@@ -8,7 +8,7 @@ import torch
 from typing import List
 
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
-from swift.rlhf_trainers.gkd_trainer import TeacherOutput
+from swift.rlhf_trainers.gkd_loss import TeacherOutput
 from swift.rlhf_trainers.utils import (build_teacher_infer_request, parse_prompt_logprobs,
                                        replace_assistant_response_with_ids)
 from swift.utils import get_logger
