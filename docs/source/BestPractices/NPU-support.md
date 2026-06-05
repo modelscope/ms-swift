@@ -19,9 +19,9 @@
 | software  | version         |
 | --------- | --------------- |
 | Python    | >= 3.10, < 3.12 |
-| CANN      | >= 8.5.1        |
-| torch     | >= 2.7.1        |
-| torch_npu | >= 2.7.1.post4  |
+| CANN      | >= 9.0.0        |
+| torch     | >= 2.9.0        |
+| torch_npu | >= 2.9.0        |
 
 基础环境准备请参照 [Ascend PyTorch 安装文档](https://gitcode.com/Ascend/pytorch)。本文示例实验环境为 8 * 昇腾910B3 64G。
 
@@ -41,7 +41,7 @@
 |          | QLoRA               | 暂不支持 |
 | RLHF     | GRPO                | 已支持   |
 |          | PPO                 | 已支持   |
-| 性能优化 | FA 等融合算子       | 已支持   |
+| 性能优化 | FA 等融合算子        | 已支持    |
 |          | Liger-Kernel        | 暂不支持 |
 | 部署     | PT                  | 已支持   |
 |          | vLLM                | 已支持   |
@@ -66,6 +66,9 @@
 | SFT       | Ovis2.5-2B                  | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-Omni-30B-A3B-Instruct | Megatron              | Atlas 900 A3 SuperPoD |
+| SFT       | Qwen3.5-27B                 | Megatron/deepspeed    | Atlas 900 A3 SuperPoD |
+| SFT       | Qwen3.5-35B-A3B             | Megatron              | Atlas 900 A3 SuperPoD |
 
 ### 已验证 RL 组合
 
@@ -168,7 +171,7 @@ cd ms-swift
 pip install -e .
 
 # 安装 torch_npu
-pip install torch_npu==2.7.1.post4 decorator
+pip install torch_npu==2.9.0 decorator
 # 如果你想要使用 deepspeed（控制显存占用，训练速度会有一定下降）
 pip install deepspeed
 
@@ -201,13 +204,13 @@ print(torch.randn(10, device='npu:0'))
 # 1. 获取并切换 Megatron-LM 至 v0.15.3 版本
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout v0.15.3
+git checkout v0.16.0
 cd ..
 
 # 2. 获取并安装 MindSpeed
 git clone https://gitcode.com/Ascend/MindSpeed.git
 cd MindSpeed
-git checkout core_r0.15.3
+git checkout core_r0.16.0
 pip install -e .
 cd ..
 
@@ -217,11 +220,16 @@ cd mcore-bridge
 pip install -e .
 cd ..
 
-# 4. 设置环境变量
+# 4. 获取并安装 triton-ascend
+https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
+下载python版本的wheel，暂不支持pip下载。
+pip install <wheel name>
+
+# 5. 设置环境变量
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 
-# 5. 如需回退到 transformers 的 GatedDeltaNet 实现，可关闭 Megatron GDN
+# 6. 如需回退到 transformers 的 GatedDeltaNet 实现，可关闭 Megatron GDN
 export USE_MCORE_GDN=0
 ```
 
@@ -258,17 +266,9 @@ Qwen3.5 modeling.chunk_gated_delta_rule
 
 - 该 patch 主要覆盖的是 **Qwen3.5 linear attention 的 gated-delta-rule 路径**；
 - 它并不等价于“将整个 fla 包完整替换为 MindSpeed”；
-- 若需要这条路径生效，请确保当前环境中可以正确导入 MindSpeed。
-- 精度对齐验证版本：torch 2.7.1 + MindSpeed 0.12.1 + flash-linear-attention 4.1.0 + triton-ascend 3.2.0 + transformers 5.2.0
+- 若需要这条路径生效，请确保当前环境中可以正确导入 MindSpeed 和 triton ascend
+- 精度对齐验证版本：torch 2.9.0 + MindSpeed 0.16.0 + flash-linear-attention 0.4.2 + triton-ascend 3.2.1 + transformers 5.2.0
 
-当前 Qwen3.5 在 NPU 上如果走 Megatron-SWIFT 训练，还需要额外注意版本和功能约束：
-
-1. 当前 NPU 文档中约定的 MindSpeed 训练组合是 `Megatron-LM v0.15.3 + MindSpeed core_r0.15.3`，这个版本的 `megatron-core` 还没有包含 `0.16` 才引入的 `core.ssm.gated_delta_net` 原生 GDN 内核。因此需要显式从默认值改为 `USE_MCORE_GDN=0`，将 GDN 切回由 `mcore-bridge` 包装的 transformers 原生实现，再配合 ms-swift 内置的 Qwen3.5 FLA NPU 补丁，把 `chunk_gated_delta_rule` 重定向到 MindSpeed Triton 算子。这条回退路径的已知代价是：
-
-   - transformers 版 GDN 不支持 packing，也不支持 GDN 的 TP/CP。
-   - transformers 版 GDN 在 NPU + flash-attn 组合下还有一个已知 mask 链路问题：`padding_free=False` 时，GDN 会读到 trainer 处理后的 `attention_mask`，而不是实际需要的 `attention_mask_2d`，从而触发 `aclnnFlashAttentionScore` 异步报错。该问题已在 `mcore-bridge` 的 `qwen3_5_npu` 分支修复，NPU 用户需要使用包含该修复的版本。
-
-2. 后续如果 MindSpeed 提供 `core_r0.16.x` 适配分支，上述 `USE_MCORE_GDN=0` 和 transformers GDN 功能受限这两个约束就可以一并解除。
 
 ### 环境查看
 

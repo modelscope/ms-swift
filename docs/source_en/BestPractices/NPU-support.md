@@ -66,6 +66,9 @@ For base environment setup, see the [Ascend PyTorch installation guide](https://
 | SFT       | Ovis2.5-2B                  | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-Omni-30B-A3B-Instruct | Megatron              | Atlas 900 A3 SuperPoD |
+| SFT       | Qwen3.5-27B                 | Megatron/deepspeed    | Atlas 900 A3 SuperPoD |
+| SFT       | Qwen3.5-35B-A3B             | Megatron              | Atlas 900 A3 SuperPoD |
 
 ### Verified RL Combinations
 
@@ -170,7 +173,7 @@ cd ms-swift
 pip install -e .
 
 # Install torch_npu
-pip install torch_npu==2.7.1.post4 decorator
+pip install torch_npu==2.9.0 decorator
 # If you want to use deepspeed (to reduce memory usage, with some speed overhead)
 pip install deepspeed
 
@@ -200,30 +203,35 @@ print(torch.randn(10, device='npu:0'))
 If you need MindSpeed(Megatron-LM), install the required dependencies as follows.
 
 ```shell
-# 1. Clone Megatron-LM and switch to v0.15.3
+# 1. 获取并切换 Megatron-LM 至 v0.15.3 版本
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout v0.15.3
+git checkout v0.16.0
 cd ..
 
-# 2. Clone and install MindSpeed
+# 2. 获取并安装 MindSpeed
 git clone https://gitcode.com/Ascend/MindSpeed.git
 cd MindSpeed
-git checkout core_r0.15.3
+git checkout core_r0.16.0
 pip install -e .
 cd ..
 
-# 3. Clone and install mcore-bridge
+# 3. 获取并安装 mcore-bridge
 git clone https://github.com/modelscope/mcore-bridge.git
 cd mcore-bridge
 pip install -e .
 cd ..
 
-# 4. Set environment variables
+# 4. 获取并安装 triton-ascend
+https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
+下载python版本的wheel，暂不支持pip下载。
+pip install <wheel name>
+
+# 5. 设置环境变量
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 
-# 5. Disable Megatron GDN if you need to fall back to the transformers GatedDeltaNet implementation
+# 6. 如需回退到 transformers 的 GatedDeltaNet 实现，可关闭 Megatron GDN
 export USE_MCORE_GDN=0
 ```
 
@@ -262,34 +270,7 @@ Therefore:
 - This patch mainly covers the **gated-delta-rule path of Qwen3.5 linear attention**.
 - It is not equivalent to “fully replacing the entire fla package with MindSpeed”.
 - To make this path effective, ensure that MindSpeed can be imported correctly in the current environment.
-- Verified versions for accuracy alignment: torch 2.7.1 + MindSpeed 0.12.1 + flash-linear-attention 4.1.0 + triton-ascend 3.2.0 + transformers 5.2.0
-
-When running Qwen3.5 with Megatron-SWIFT on NPU, note the following version and feature constraints:
-
-1. The MindSpeed training combination currently pinned by the NPU documentation
-   is `Megatron-LM v0.15.3 + MindSpeed core_r0.15.3`. This version of
-   `megatron-core` does not yet ship the native GDN kernel
-   `core.ssm.gated_delta_net` introduced in `0.16`. As a result, you must
-   override the default and explicitly set `USE_MCORE_GDN=0`, which switches
-   GDN back to the transformers-native implementation wrapped by
-   `mcore-bridge`. Combined with ms-swift's built-in Qwen3.5 FLA NPU patch,
-   `chunk_gated_delta_rule` is then redirected to MindSpeed's Triton kernels.
-   The known costs of this fallback path are:
-
-   - The transformers GDN implementation does not support packing, nor TP/CP
-     for the GDN layer.
-   - Under the NPU + flash-attn combination, the transformers GDN
-     implementation also has a known mask-routing issue: when
-     `padding_free=False`, GDN ends up reading the `attention_mask` that has
-     already been transformed by the trainer instead of the `attention_mask_2d`
-     it actually needs, which triggers an asynchronous
-     `aclnnFlashAttentionScore` failure. This has been fixed on the
-     `qwen3_5_npu` branch of `mcore-bridge`; NPU users must therefore install
-     a version that includes the fix.
-
-2. Once MindSpeed ships a `core_r0.16.x` adaptation branch, both constraints
-   — the required `USE_MCORE_GDN=0` override and the feature limitations of
-   the transformers GDN implementation — can be lifted together.
+- Verified versions for accuracy alignment: torch 2.9.0 + MindSpeed 0.16.0 + flash-linear-attention 0.4.2 + triton-ascend 3.2.1 + transformers 5.2.0
 
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
