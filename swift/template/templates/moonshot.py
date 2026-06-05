@@ -1,12 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+import math
 import torch
 from dataclasses import dataclass, field
 from PIL import Image
 from torch import nn as nn
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import is_deepspeed_enabled
+from swift.utils import is_deepspeed_enabled, to_device
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -103,6 +104,7 @@ class KimiK25Template(Template):
     placeholder_tokens = ['<|media_pad|>', '<|kimi_k25_video_placeholder|>']
     jinja_enable_thinking_key = 'thinking'
     support_padding_free = True
+    skip_prompt = False
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
@@ -112,8 +114,74 @@ class KimiK25Template(Template):
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
-        raise ValueError('KimiK25Template does not currently support image or video. '
+        if media_type == 'image':
+            return ['<|media_begin|>image<|media_content|><|media_pad|><|media_end|>\n']
+        raise ValueError(f'KimiK25Template does not currently support {media_type}. '
                          'Please open an issue to request support.')
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+        media_token = self._tokenize('<|media_pad|>')[0]
+        idx_list = findall(input_ids, media_token)
+        if inputs.images:
+            image_processor = self.processor.image_processor
+            image_inputs = image_processor([{
+                'type': 'image',
+                'image': image
+            } for image in inputs.images],
+                                           return_tensors='pt')
+            grid_thws = image_inputs['grid_thws']
+            merge_length = math.prod(self.config.vision_config.merge_kernel_size)
+
+            def _get_new_tokens(i):
+                token_len = (grid_thws[i].prod() // merge_length)
+                return [media_token] * token_len
+
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
+
+            encoded['loss_scale'] = loss_scale
+            encoded['input_ids'] = input_ids
+            encoded['labels'] = labels
+            encoded.update(image_inputs)
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        grid_thws = self.concat_tensor(batch, 'grid_thws', 0)
+        if grid_thws is not None:
+            res['grid_thws'] = grid_thws
+        return res
+
+    def _post_encode(self, model: nn.Module, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        input_ids = inputs['input_ids']
+        pixel_values = inputs.get('pixel_values')
+        inputs_embeds = model.get_input_embeddings()(input_ids)
+
+        if pixel_values is not None and pixel_values.size(0) > 0:
+            pixel_values = pixel_values.to(model.vision_tower.dtype)
+            image_features: torch.Tensor = model._extract_image_features(pixel_values, inputs['grid_thws'])
+            if model.mm_projector:
+                image_features = model.mm_projector(image_features)
+            image_features = torch.cat(image_features, dim=0)
+            inputs_embeds = inputs_embeds.to(image_features.dtype)
+            image_mask = (input_ids == self.config.media_placeholder_token_id).unsqueeze(-1).expand_as(inputs_embeds)
+            inputs_embeds = inputs_embeds.masked_scatter(image_mask, image_features)
+        elif is_deepspeed_enabled():
+            image_processor = self.processor.image_processor
+            dummy_image = Image.new('RGB', (32, 32), (0, 0, 0))
+            image_inputs = image_processor([{'type': 'image', 'image': dummy_image}], return_tensors='pt')
+            image_inputs = to_device(image_inputs, inputs_embeds.device)
+            pixel_values = image_inputs['pixel_values'].to(model.vision_tower.dtype)
+            image_features: torch.Tensor = model._extract_image_features(pixel_values, image_inputs['grid_thws'])
+            if model.mm_projector:
+                image_features = model.mm_projector(image_features)
+            image_features = torch.cat(image_features, dim=0)
+            inputs_embeds = inputs_embeds + image_features.mean() * 0.
+        return {'inputs_embeds': inputs_embeds}
 
 
 register_template(
