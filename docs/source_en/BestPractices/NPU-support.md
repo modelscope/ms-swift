@@ -222,9 +222,9 @@ cd mcore-bridge
 pip install -e .
 cd ..
 
-# 4. 获取并安装 triton-ascend
-https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
-下载python版本的wheel，暂不支持pip下载。
+# 4. Download and install triton-ascend
+# Download the Python wheel from the following release page (direct pip install is not supported yet):
+# https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
 pip install <wheel name>
 
 # 5. 设置环境变量
