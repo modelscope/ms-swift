@@ -201,7 +201,7 @@ print(torch.randn(10, device='npu:0'))
 如果需要使用 MindSpeed(Megatron-LM)，请按照下面引导安装必要依赖。
 
 ```shell
-# 1. 获取并切换 Megatron-LM 至 v0.15.3 版本
+# 1. 获取并切换 Megatron-LM 至 v0.16.0 版本
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
 git checkout v0.16.0
