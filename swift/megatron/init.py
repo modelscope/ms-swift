@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
 import importlib.metadata
-import inspect
 import logging
 import os
 import torch
 import torch.distributed as dist
 from contextlib import contextmanager
-from copy import copy
+from copy import copy, deepcopy
 from packaging import version
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
@@ -140,7 +139,7 @@ def _patch_mcore_bridge():
         if processor is None or args is None:
             return
         hf_config = self.config.hf_config
-        hf_config = copy(hf_config)
+        hf_config = deepcopy(hf_config)
         if is_master() and not hasattr(self, 'hf_model'):
             if hasattr(self, 'get_hf_meta_model'):
                 self.hf_model = self.get_hf_meta_model()
