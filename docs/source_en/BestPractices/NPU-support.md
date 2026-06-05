@@ -203,35 +203,35 @@ print(torch.randn(10, device='npu:0'))
 If you need MindSpeed(Megatron-LM), install the required dependencies as follows.
 
 ```shell
-# 1. 获取并切换 Megatron-LM 至 v0.16.0 版本
+# 1. Clone Megatron-LM and switch to v0.16.0
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
 git checkout v0.16.0
 cd ..
 
-# 2. 获取并安装 MindSpeed
+# 2. Clone and install MindSpeed
 git clone https://gitcode.com/Ascend/MindSpeed.git
 cd MindSpeed
 git checkout core_r0.16.0
 pip install -e .
 cd ..
 
-# 3. 获取并安装 mcore-bridge
+# 3. Clone and install mcore-bridge
 git clone https://github.com/modelscope/mcore-bridge.git
 cd mcore-bridge
 pip install -e .
 cd ..
 
-# 4. 获取并安装 triton-ascend
-https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
-下载python版本的wheel，暂不支持pip下载。
+# 4. Download and install triton-ascend
+# Download the Python wheel from the following release page (direct pip install is not supported yet):
+# https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
 pip install <wheel name>
 
-# 5. 设置环境变量
+# 5. Set environment variables
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 
-# 6. 如需回退到 transformers 的 GatedDeltaNet 实现，可关闭 Megatron GDN
+# 6. Disable Megatron GDN if you need to fall back to the transformers GatedDeltaNet implementation
 export USE_MCORE_GDN=0
 ```
 
