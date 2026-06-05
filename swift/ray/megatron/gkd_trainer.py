@@ -69,6 +69,8 @@ class GKDTrainer(BaseRayTrainer):
                 self._fetch_teacher_from_replicas(rollout_with_outputs, samples)
             elif self._teacher_model_dir and not self._teacher_model_server:
                 teacher_outputs = tg.compute_teacher_logits(samples)
+                # In full_logits mode, compute_teacher_logits returns [] (logits cached on
+                # worker GPUs); _inject_cached_teacher_logits handles injection at train_step.
                 if teacher_outputs:
                     for sample, t_out in zip(samples, teacher_outputs):
                         sample['teacher_output'] = t_out
@@ -98,7 +100,6 @@ class GKDTrainer(BaseRayTrainer):
         return expanded
 
     def _generate(self, batch) -> List[RolloutOutput]:
-        from swift.infer_engine.protocol import RequestConfig
         args = self.args
         request_config = RequestConfig(
             n=1,
