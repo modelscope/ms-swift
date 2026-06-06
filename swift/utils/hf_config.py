@@ -111,6 +111,19 @@ class HfConfigFactory:
         return len(attrs)
 
     @staticmethod
+    def del_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
+                        attr_name: str,
+                        include_vit: bool = False) -> int:
+        """Remove all the attr_name attributes."""
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
+        for config, _ in attrs:
+            if isinstance(config, dict):
+                config.pop(attr_name, None)
+            elif hasattr(config, attr_name):
+                delattr(config, attr_name)
+        return len(attrs)
+
+    @staticmethod
     def get_max_model_len(config: Union[PretrainedConfig, Dict[str, Any]]) -> Optional[int]:
         """Get the max length supported by the model"""
         INF = int(1e9)
