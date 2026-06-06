@@ -28,8 +28,8 @@
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为True。
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为None，如果是cuda设置为'te'，npu设置为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为None，`task_type`为'causal_lm'且为预训练/微调时，默认为True，否则默认为False。
-- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
-  - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_3，请设置`--attn_impl flash_attention_3`。
+- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto、flash_2、flash_3、flash_4)。默认为 flash。
+  - 如果安装'flash_attention_4/3'，`--attention_backend flash`则优先使用fa4/fa3。如果要显式设置，你可以设置`--attention_backend flash_2/3/4`。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_4/3，请设置`--attn_impl flash_attention_4/3`。
   - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4、GPT-OSS。
 - optimizer: 优化器类型，可选为'adam'、'sgd'、'muon'和'dist_muon'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
