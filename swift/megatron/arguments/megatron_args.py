@@ -6,7 +6,6 @@ import torch
 from dataclasses import dataclass, field, fields
 from mcore_bridge.model import get_mcore_model_type, get_model_meta
 from megatron.core import mpu
-from megatron.core.transformer import attention
 from megatron.core.transformer.enums import AttnBackend
 from packaging import version
 from transformers.utils import is_torch_npu_available
