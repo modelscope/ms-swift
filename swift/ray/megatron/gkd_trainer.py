@@ -46,6 +46,10 @@ class GKDTrainer(BaseRayTrainer):
         self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
         self._teacher_model_server = args.teacher_model_server
 
+        if self._teacher_model_server and not self.teacher_replicas:
+            raise NotImplementedError('teacher_model_server is not yet supported in the Ray pipeline. '
+                                      'Use teacher_model (colocated) or teacher replicas (teacher.gpus > 0) instead.')
+
     def _train_loop(self, tg, train_iters, iteration):
         ckpt = self.ckpt_manager
 
@@ -143,16 +147,21 @@ class GKDTrainer(BaseRayTrainer):
         alignment. Mirrors the non-ray trainer's ``_encode_batch``.
         """
         template = self.template
+        original_max_length = template.max_length
         samples = []
-        for item in rollout_batch:
-            if item.get('response_token_ids'):
-                item = dict(item)
-                item['messages'] = replace_assistant_response_with_ids(
-                    copy.deepcopy(item['messages']), item['response_token_ids'])
-            encoded = template.encode(item, return_length=True)
-            if encoded is None:
-                continue
-            samples.append({'encoded': encoded})
+        try:
+            template.max_length = original_max_length + self.args.max_completion_length
+            for item in rollout_batch:
+                if item.get('response_token_ids'):
+                    item = dict(item)
+                    item['messages'] = replace_assistant_response_with_ids(
+                        copy.deepcopy(item['messages']), item['response_token_ids'])
+                encoded = template.encode(item, return_length=True)
+                if encoded is None:
+                    continue
+                samples.append({'encoded': encoded})
+        finally:
+            template.max_length = original_max_length
         return samples
 
     def _fetch_teacher_from_replicas(self, rollout_with_outputs, samples):

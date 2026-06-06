@@ -241,6 +241,11 @@ class MegatronRayPipeline:
         teacher_cfg = self.group_cfgs.get('teacher', {})
         pool = self.resource_pool_manager.get_pool('teacher')
         template_kwargs = self._get_template_kwargs_for_rollout()
+        args = self._data_info.get('_driver_args')
+        if args is not None:
+            base_len = template_kwargs.get('max_length') or getattr(args, 'max_length')
+            template_kwargs = dict(template_kwargs)
+            template_kwargs['max_length'] = base_len + args.max_completion_length
         self.teacher_replicas = RolloutReplica.create_replicas(
             rollout_cfg=teacher_cfg,
             rollout_gpus=teacher_gpus,

@@ -621,19 +621,48 @@ class MegatronWorker(CheckpointEngineMixin):
         return torch.stack(routed_tensors).to(device=device)
 
     @staticmethod
-    def _collate_teacher_outputs(teacher_outputs, device):
+    def _collate_teacher_outputs(teacher_outputs, device, padding_free=False, target_seq_len=None):
         """Collate per-sample TeacherOutputs into a batched one.
 
         Only used for topk mode; full_logits mode uses _cached_teacher_logits
         (kept on-GPU per TP rank) and bypasses this path entirely.
+
+        Layout must match the student labels:
+        - padding_free: student labels are [1, total_tokens] (samples concatenated
+          along the sequence dim), so concatenate per-sample teacher tensors along
+          dim=1. Empty placeholders ([0, ...], emitted by the colocated path for all
+          but the first sample of a micro-batch) are dropped first.
+        - otherwise: stack per-sample tensors along the batch dim (dim=0).
+
+        ``target_seq_len`` is the student's collated sequence length. The student
+        collation pads the sequence to a multiple via ``get_padding_to`` (SP/CP/fp8),
+        so the standalone-teacher tensors (built from each sample's raw, unpadded
+        length) can be 1+ tokens short. Pad the teacher seq dim to ``target_seq_len``
+        so extract_active's label mask aligns; the padded tail has labels == -100 and
+        is masked out, leaving the loss unchanged.
         """
         from swift.rlhf_trainers.gkd_loss import TeacherOutput
         fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'opsd_teacher_labels')
         kwargs = {}
         for field in fields:
             tensors = [getattr(t, field) for t in teacher_outputs]
-            if tensors[0] is not None:
-                kwargs[field] = torch.cat(tensors, dim=0).to(device)
+            if tensors[0] is None:
+                continue
+            pad_val = float('-inf') if field == 'topk_logprobs' else 0
+            if padding_free:
+                non_empty = [t for t in tensors if t.shape[0] > 0]
+                cat = torch.cat(non_empty, dim=1)
+                if target_seq_len is not None and cat.shape[1] < target_seq_len:
+                    cat = torch.nn.functional.pad(cat, (0, 0, 0, target_seq_len - cat.shape[1]), value=pad_val)
+                kwargs[field] = cat.to(device)
+            else:
+                max_len = target_seq_len or max(t.shape[1] for t in tensors)
+                padded = []
+                for t in tensors:
+                    if t.shape[1] < max_len:
+                        t = torch.nn.functional.pad(t, (0, 0, 0, max_len - t.shape[1]), value=pad_val)
+                    padded.append(t)
+                kwargs[field] = torch.cat(padded, dim=0).to(device)
         return TeacherOutput(**kwargs)
 
     def _collate_local_grpo_samples(self, samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
@@ -685,7 +714,9 @@ class MegatronWorker(CheckpointEngineMixin):
                                                        device=device)
         if samples and samples[0].get('teacher_output') is not None:
             encoded_batch['teacher_output'] = self._collate_teacher_outputs([s['teacher_output'] for s in samples],
-                                                                            device)
+                                                                            device,
+                                                                            padding_free=template.padding_free,
+                                                                            target_seq_len=labels.shape[-1])
         return encoded_batch
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:
