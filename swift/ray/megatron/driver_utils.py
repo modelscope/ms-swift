@@ -238,6 +238,16 @@ def _prepare_dataset(args, template):
     """Load and optionally encode dataset — no pipeline object needed."""
     from swift.dataset import DatasetLoader, load_dataset
 
+    # Ray pipeline has no validation/eval loop yet
+    if args.split_dataset_ratio and args.split_dataset_ratio > 0:
+        logger.warning(
+            'Ray pipeline has no validation loop yet; overriding split_dataset_ratio '
+            '%s -> 0.0 (no validation split).', args.split_dataset_ratio)
+        args.split_dataset_ratio = 0.0
+    if args.val_dataset:
+        logger.warning('Ray pipeline has no validation loop yet; ignoring val_dataset=%s.', args.val_dataset)
+        args.val_dataset = []
+
     pre_process = args.rlhf_type not in ('grpo', 'gkd')
     train_datasets, val_datasets = [], []
 

@@ -379,8 +379,6 @@ def prepare_batch(args, data, vp_stage=None, num_samples=None):
 def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_grad=True, enable_routing_replay=False):
     """Forward pass → logits → temperature-scaled per-token logps.
 
-    Extracted from MegatronRLHFTrainer.compute_per_token_logps for reuse in ray workers.
-
     Returns:
         (per_token_logps, routing_topk_idx) — either may be None on non-last PP stages.
     """

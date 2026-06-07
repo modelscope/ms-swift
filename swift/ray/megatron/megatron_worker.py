@@ -28,11 +28,6 @@ def _make_lifecycle_trainer(args, template):
         def forward_step(self, data_iterator, model):
             return None
 
-        def _determine_best_metric(self, metrics):
-            if metrics is None:
-                metrics = getattr(self, '_last_logged_metrics', None)
-            return super()._determine_best_metric(metrics)
-
     return _LifecycleTrainer(args, template)
 
 
@@ -117,10 +112,21 @@ class MegatronWorker(CheckpointEngineMixin):
         Core logic lives in GKDLoss.compute_teacher_logits; this is a thin
         wrapper that manages model lifecycle (offload) and result caching.
         """
-        assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
-        with self.teacher.loaded_context():
-            results, cached = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
-                                                                   self._pipeline.template, self._args)
+        if getattr(self._args, '_teacher_use_disable_adapter', False):
+            # Self-distillation (LoRA): teacher = student base model with the LoRA adapter
+            # disabled — no separate teacher loaded, mirroring the non-ray GKD trainer.
+            from contextlib import ExitStack
+            megatron = self._megatron
+            with ExitStack() as stack:
+                for m in megatron.peft_models:
+                    stack.enter_context(m.disable_adapter())
+                results, cached = self._loss_fn.compute_teacher_logits(megatron.unwrapped_models[0], batch,
+                                                                       self._pipeline.template, self._args)
+        else:
+            assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
+            with self.teacher.loaded_context():
+                results, cached = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
+                                                                       self._pipeline.template, self._args)
         gc_collect()
         if cached:
             self._cached_teacher_logits = cached

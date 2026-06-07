@@ -9,7 +9,7 @@ from swift.megatron.utils import load_mcore_checkpoint
 from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, safe_snapshot_download
 from .base import BaseMegatronTrainer
-from .utils import reconstruct_tensor_cp
+from .utils import compute_per_token_logps_fn, reconstruct_tensor_cp
 
 logger = get_logger()
 
@@ -94,7 +94,6 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         return all_logps
 
     def compute_per_token_logps(self, model, data_iterator, no_grad=True, temperature=1.0):
-        from .utils import compute_per_token_logps_fn
         return compute_per_token_logps_fn(
             model,
             self.args,

@@ -49,6 +49,8 @@ class GKDTrainer(BaseRayTrainer):
         # (teacher_model); bridge.load_weights needs a real path to locate safetensors.
         self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
         self._teacher_model_server = args.teacher_model_server
+        # Self-distillation (LoRA + same teacher_model)
+        self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
 
         if self._teacher_model_server and not self.teacher_replicas:
             raise NotImplementedError('teacher_model_server is not yet supported in the Ray pipeline. '
@@ -87,7 +89,7 @@ class GKDTrainer(BaseRayTrainer):
                     raise NotImplementedError('Teacher replicas currently require on-policy generation (lmbda=1). '
                                               'Use a colocated teacher_model for lmbda<1 (off-policy) training.')
                 self._fetch_teacher_from_replicas(rollout_with_outputs, samples)
-            elif self._teacher_model_dir and not self._teacher_model_server:
+            elif self._teacher_use_disable_adapter or (self._teacher_model_dir and not self._teacher_model_server):
                 teacher_outputs = tg.compute_teacher_logits(samples)
                 # In full_logits mode, compute_teacher_logits returns [] (logits cached on
                 # worker GPUs); _inject_cached_teacher_logits handles injection at train_step.
@@ -262,7 +264,10 @@ class GKDTrainer(BaseRayTrainer):
             topk_logprobs[:length] = torch.tensor(lps[:length], dtype=torch.float32)
             topk_indices[:length] = torch.tensor(ixs[:length], dtype=torch.long)
 
-        return TeacherOutput(
-            topk_logprobs=topk_logprobs.unsqueeze(0),
-            topk_indices=topk_indices.unsqueeze(0),
-        )
+        kwargs = dict(topk_logprobs=topk_logprobs.unsqueeze(0), topk_indices=topk_indices.unsqueeze(0))
+        if opsd_teacher_labels is not None:
+            labels = opsd_teacher_labels
+            if not isinstance(labels, torch.Tensor):
+                labels = torch.tensor(labels, dtype=torch.long)
+            kwargs['opsd_teacher_labels'] = labels.unsqueeze(0) if labels.dim() == 1 else labels
+        return TeacherOutput(**kwargs)

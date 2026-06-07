@@ -15,12 +15,6 @@ from swift.rlhf_trainers.gkd_loss import TeacherOutput, gkd_loss
 from swift.utils import gc_collect, get_current_device, to_device
 from .base import Loss
 
-# Fields injected by the GRPO-style collator (`_collate_local_grpo_samples`, reused by
-# the ray GKD path) that are NOT valid `GPTModel.forward` kwargs and must be stripped
-# before `model(**inputs)`. Leaving them in raises
-# `TypeError: GPTModel.forward() got an unexpected keyword argument 'completion_mask'`
-# — which under PP>1 manifests as a pipeline deadlock (the failing first stage never
-# runs send_forward, so the last stage hangs in recv_forward).
 _NON_MODEL_KEYS = frozenset({
     'completion_mask',
     'truncated_mask',
@@ -55,10 +49,6 @@ class GKDLoss(Loss):
         data.pop('loss_scale', None)
         labels = data.pop('labels', None)
 
-        # The ray GKD path reuses the GRPO collator, which injects training-only fields
-        # (completion_mask, seq_lengths, rollout_per_token_logps, ...) that GPTModel.forward
-        # rejects. Keep only valid model kwargs. (set_input_tensor for PP is handled
-        # automatically by megatron's forward_backward schedule.)
         inputs = {k: v for k, v in data.items() if k not in _NON_MODEL_KEYS}
 
         student_output = model(**inputs)
@@ -80,21 +70,18 @@ class GKDLoss(Loss):
         template,
         args,
     ):
-        """Forward teacher model on encoded batch.
+        """Forward the teacher model on the encoded batch.
 
-        Returns:
-            (results, cached) — In topk mode, results is a list of
-            TeacherOutput (CPU) and cached is empty. In full_logits mode,
-            results is empty and cached is a list of GPU tensors for
-            injection during train_step.
+        Returns a per-sample list of ``TeacherOutput`` (top-k or full-vocab), kept on the
+        worker's GPU. The caller caches it locally and injects it at train_step — required
+        for context parallel, where each CP rank must use its own sequence shard.
         """
         gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
         device = get_current_device()
         micro_batch_size = getattr(args, 'micro_batch_size', len(batch))
         sample_chunks = [batch[i:i + micro_batch_size] for i in range(0, len(batch), micro_batch_size)]
 
-        results: list = []
-        cached: list = []
+        outputs: list = []
         with torch.no_grad():
             for chunk in sample_chunks:
                 # OPSD: score the teacher on its own (teacher_prompt) sequence and keep
@@ -122,18 +109,19 @@ class GKDLoss(Loss):
                                 sl = opsd_labels_full[i:i + 1]
                                 if sl.shape[0] > 0:
                                     opsd_label_i = sl
-                            cached.append(
+                            outputs.append(
                                 TeacherOutput(
                                     topk_logprobs=topk_logits,
                                     topk_indices=topk_indices,
                                     opsd_teacher_labels=opsd_label_i))
                         else:
-                            cached.append(TeacherOutput(full_logits=teacher_logits[i:i + 1]))
+                            outputs.append(TeacherOutput(full_logits=teacher_logits[i:i + 1]))
                 else:
-                    cached.extend(TeacherOutput() for _ in chunk)
+                    # PP non-last stage: no logits produced, placeholder for batch alignment
+                    outputs.extend(TeacherOutput() for _ in chunk)
                 del collated
 
-        return results, cached
+        return outputs
 
     # ------------------------------------------------------------------
     # Loss computation
