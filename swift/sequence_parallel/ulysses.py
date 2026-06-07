@@ -723,61 +723,62 @@ class SequenceParallel:
         1. Determine the Sequence Parallel (SP) size first based on GCD to satisfy constraints.
         2. Allocate all remaining model parallelism to Ring Parallel (RP).
         """
-        rank, local_rank, world_size, local_world_size = get_dist_setting()
+        _, _, world_size, _ = get_dist_setting()
         self.dp_world_size = world_size // self.world_size
-
-        # 1. SP size is the greatest common divisor of num_heads and world_size.
-        # This guarantees it divides both, satisfying all constraints.
-        sp_world_size = math.gcd(self.num_heads, self.world_size)
-        self.sp_world_size = sp_world_size
-
-        # 2. RP size is the remaining factor of the model parallel world size.
-        # This ensures all GPUs in the model parallel group are used.
-        rp_world_size = self.world_size // self.sp_world_size
-        self.rp_world_size = rp_world_size
+        # SP size is the GCD of num_heads and world_size, guaranteeing it divides both.
+        self.sp_world_size = math.gcd(self.num_heads, self.world_size)
+        # RP takes the remaining factor so all model-parallel GPUs are used.
+        self.rp_world_size = self.world_size // self.sp_world_size
 
         if self.rp_world_size > 1:
-            self.device_mesh = init_device_mesh(
-                get_device().split(':')[0],
-                mesh_shape=(self.dp_world_size, self.rp_world_size, self.sp_world_size),
-                mesh_dim_names=('data', 'ring', 'sequence'))
+            mesh_shape = (self.dp_world_size, self.rp_world_size, self.sp_world_size)
+            mesh_dim_names = ('data', 'ring', 'sequence')
         else:
-            self.device_mesh = init_device_mesh(
-                get_device().split(':')[0],
-                mesh_shape=(self.dp_world_size, self.sp_world_size),
-                mesh_dim_names=('data', 'sequence'))
+            mesh_shape = (self.dp_world_size, self.sp_world_size)
+            mesh_dim_names = ('data', 'sequence')
+        self.device_mesh = init_device_mesh(
+            get_device().split(':')[0], mesh_shape=mesh_shape, mesh_dim_names=mesh_dim_names)
+
+    def _dim_group(self, dim_name: str):
+        """Return the process group of the given mesh dim, or None if absent."""
+        if not self.device_mesh or dim_name not in self.device_mesh.mesh_dim_names:
+            return None
+        return self.device_mesh[dim_name].get_group()
+
+    def _dim_rank(self, dim_name: str, default: int) -> int:
+        """Return the rank within the given mesh dim, or `default` if absent."""
+        group = self._dim_group(dim_name)
+        return dist.get_rank(group) if group is not None else default
 
     @property
     def sp_group(self):
         """Return the sequence parallel group"""
-        return self.device_mesh['sequence'].get_group() if self.device_mesh else None
+        return self._dim_group('sequence')
 
     @property
     def sp_rank(self):
         """Return the sequence parallel rank"""
-        return dist.get_rank(self.device_mesh['sequence'].get_group()) if self.device_mesh else 0
+        return self._dim_rank('sequence', default=0)
 
     @property
     def dp_group(self):
         """Return the data parallel group"""
-        return self.device_mesh['data'].get_group() if self.device_mesh else None
+        return self._dim_group('data')
 
     @property
     def dp_rank(self):
         """Return the data parallel rank"""
-        return dist.get_rank(self.device_mesh['data'].get_group()) if self.device_mesh else 0
+        return self._dim_rank('data', default=0)
 
     @property
     def rp_group(self):
-        """Return the data parallel group"""
-        return self.device_mesh['ring'].get_group(
-        ) if self.device_mesh and 'ring' in self.device_mesh.mesh_dim_names else None
+        """Return the ring parallel group"""
+        return self._dim_group('ring')
 
     @property
     def rp_rank(self):
-        """Return the data parallel rank"""
-        return dist.get_rank(self.device_mesh['ring'].get_group()
-                             ) if self.device_mesh and 'ring' in self.device_mesh.mesh_dim_names else -1
+        """Return the ring parallel rank"""
+        return self._dim_rank('ring', default=-1)
 
     def prepare_inputs(self, inputs):
         """Prepare inputs
