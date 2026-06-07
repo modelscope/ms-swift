@@ -114,6 +114,8 @@ class SwiftMixin:
         trainer_parameters = inspect.signature(HfTrainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
+        # Pass callbacks in __init__ to correctly invoke on_init_end
+        callbacks = self._get_callbacks(args)
         with self.hub.patch_hub():
             super().__init__(
                 model=model,
@@ -121,11 +123,11 @@ class SwiftMixin:
                 data_collator=data_collator,
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
+                callbacks=callbacks,
                 **kwargs)
         # fix https://github.com/huggingface/transformers/pull/43919
         if transformers_5:
             self.accelerator.gradient_state.plugin_kwargs['num_steps'] = 1
-        self._add_callbacks()
         if get_function(model.__class__.forward) is not get_function(model.forward):
             self.label_names = find_labels(model)
             self.can_return_loss = can_return_loss(model)
@@ -145,9 +147,11 @@ class SwiftMixin:
         padding_to = template.max_length if args.tuner_type == 'longlora' else None
         return partial(template.data_collator, padding_to=padding_to)
 
-    def _add_callbacks(self):
-        for callback in self.args.callbacks:
-            self.add_callback(callbacks_map[callback](self.args, self))
+    def _get_callbacks(self, args):
+        callbacks = []
+        for callback in args.callbacks:
+            callbacks.append(callbacks_map[callback](args, self))
+        return callbacks
 
     def _collect_config_info(self) -> Dict[str, str]:
         """
