@@ -7,7 +7,7 @@ import copy
 import os
 import torch
 import uuid
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutInferRequest, RolloutOutput
@@ -15,7 +15,7 @@ from swift.rlhf_trainers.utils import compute_grpo_advantages, make_reward_weigh
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger
 from .base_trainer import BaseRayTrainer
-from .driver_utils import extract_iteration, extract_train_metrics
+from .driver_utils import extract_iteration
 
 logger = get_logger()
 

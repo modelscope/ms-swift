@@ -1,21 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-"""Unit tests for Ray-based Megatron GKD fixes (no GPU / no distributed init).
-
-Run:
-    python tests/megatron/test_ray_gkd.py
-or with pytest:
-    pytest tests/megatron/test_ray_gkd.py
-
-Covers the standalone-teacher / padding_free correctness fixes:
-- _collate_teacher_outputs: padding_free seq-dim concat, off-by-one pad to the
-  student's collated (SP-padded) length, and empty-placeholder dropping.
-- _logp_gap: metric-key consistency across DP ranks (always a tensor in top-k mode,
-  None only in full-vocab mode) — prevents the DP all_reduce shape-mismatch deadlock.
-- build_opsd_teacher_data: OPSD teacher-prompt substitution.
-"""
 import torch
 
-from swift.ray.megatron.loss.gkd import GKDLoss
 from swift.ray.megatron.megatron_worker import MegatronWorker
 from swift.rlhf_trainers.gkd_loss import TeacherOutput, build_opsd_teacher_data, extract_active
 
@@ -99,43 +84,6 @@ def test_collate_opsd_keeps_teacher_length_not_student_target():
     assert out.topk_logprobs.shape == (1, t_total, k), out.topk_logprobs.shape
     assert out.opsd_teacher_labels.shape == (1, t_total)
     assert (out.opsd_teacher_labels == 5).all()
-
-
-def test_logp_gap_full_vocab_returns_none():
-    """Full-vocab mode -> None on every rank (consistent: mode is global)."""
-    s = torch.randn(1, 4, 8)
-    labels = torch.tensor([[0, 1, 2, -100]])
-    t = TeacherOutput(full_logits=torch.randn(1, 4, 8))
-    assert GKDLoss._logp_gap(s, t, labels, temperature=1.0) is None
-
-
-def test_logp_gap_topk_all_uncovered_returns_tensor_not_none():
-    """top-k mode with no covered positions must return a tensor (0.0), NOT None,
-    so the metric dict keeps the same keys on every DP rank (no all_reduce desync)."""
-    k = 4
-    s = torch.randn(1, 4, 8)
-    labels = torch.tensor([[0, 1, 2, 3]])
-    # all teacher topk -inf -> every position 'uncovered' -> mask.sum() == 0
-    t = TeacherOutput(
-        topk_logprobs=torch.full((1, 4, k), float('-inf')),
-        topk_indices=torch.zeros((1, 4, k), dtype=torch.long),
-    )
-    gap = GKDLoss._logp_gap(s, t, labels, temperature=1.0)
-    assert gap is not None and torch.is_tensor(gap)
-    assert float(gap) == 0.0
-
-
-def test_logp_gap_opsd_returns_none():
-    """OPSD: teacher/student have different lengths, so the positional logp_gap is
-    undefined and must be skipped (None) consistently on all DP ranks."""
-    s = torch.randn(1, 4, 8)
-    labels = torch.tensor([[0, 1, 2, 3]])
-    t = TeacherOutput(  # teacher length 6 != student length 4
-        topk_logprobs=torch.randn(1, 6, 3),
-        topk_indices=torch.zeros((1, 6, 3), dtype=torch.long),
-        opsd_teacher_labels=torch.tensor([[-100, -100, -100, -100, 1, 2]]),
-    )
-    assert GKDLoss._logp_gap(s, t, labels, temperature=1.0) is None
 
 
 def test_build_opsd_teacher_data_substitutes_teacher_prompt():

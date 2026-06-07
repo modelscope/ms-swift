@@ -336,14 +336,3 @@ def extract_iteration(step_results) -> int:
         if isinstance(r, dict) and 'iteration' in r:
             return int(r['iteration'])
     return 0
-
-
-def extract_train_metrics(step_results) -> Dict[str, float]:
-    """Extract all training metrics from the first worker that reported them."""
-    if not step_results:
-        return {}
-    for r in step_results:
-        if isinstance(r, dict) and 'loss' in r:
-            skip = {'iteration', 'elapsed_time', 'remaining_time', 'train_speed(s/it)', 'memory(GiB)'}
-            return {k: v for k, v in r.items() if k not in skip and isinstance(v, (int, float))}
-    return {}

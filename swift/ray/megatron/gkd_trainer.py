@@ -14,7 +14,7 @@ from swift.rlhf_trainers.utils import (build_teacher_infer_request, parse_prompt
                                        replace_assistant_response_with_ids)
 from swift.utils import get_logger
 from .base_trainer import BaseRayTrainer
-from .driver_utils import extract_iteration, extract_train_metrics
+from .driver_utils import extract_iteration
 
 logger = get_logger()
 
@@ -90,12 +90,9 @@ class GKDTrainer(BaseRayTrainer):
                                               'Use a colocated teacher_model for lmbda<1 (off-policy) training.')
                 self._fetch_teacher_from_replicas(rollout_with_outputs, samples)
             elif self._teacher_use_disable_adapter or (self._teacher_model_dir and not self._teacher_model_server):
-                teacher_outputs = tg.compute_teacher_logits(samples)
-                # In full_logits mode, compute_teacher_logits returns [] (logits cached on
-                # worker GPUs); _inject_cached_teacher_logits handles injection at train_step.
-                if teacher_outputs:
-                    for sample, t_out in zip(samples, teacher_outputs):
-                        sample['teacher_output'] = t_out
+                # Teacher outputs are cached worker-local and injected at train_step via
+                # _inject_cached_teacher_logits (required for CP per-rank slice alignment).
+                tg.compute_teacher_logits(samples)
 
             self._maybe_log_completions(rollout_with_outputs, gen_step=iteration)
             results = tg.train_step(
@@ -215,19 +212,31 @@ class GKDTrainer(BaseRayTrainer):
         return template.encode(opsd_item, return_length=True)
 
     def _fetch_teacher_from_replicas(self, rollout_with_outputs, samples):
-        """Fetch teacher logprobs from Ray teacher replicas (token-in-token-out)."""
+        """Fetch teacher logprobs from Ray teacher replicas (token-in-token-out).
+
+        OPSD: when an item carries a ``teacher_prompt``, the teacher must score its OWN
+        (teacher_prompt + same on-policy response) sequence. We build the request from that
+        teacher view and attach ``opsd_teacher_labels`` (from the teacher-side encoding) so
+        ``extract_active`` aligns the shared response by mask rather than by position.
+        """
         topk = self.gkd_logits_topk
         assert topk is not None, 'gkd_logits_topk must be set when using teacher replicas'
 
-        # OPSD requires the teacher to score its own teacher_prompt and to set
-        # opsd_teacher_labels for mask-based alignment. Standalone replicas only score the
-        # student prompt and cannot produce those labels, which would silently misalign the
-        # JSD. Fail loudly instead; use a colocated teacher_model for OPSD.
-        if any(item.get('teacher_prompt') for item in rollout_with_outputs):
-            raise NotImplementedError('OPSD (teacher_prompt) is not supported with standalone teacher replicas; '
-                                      'use a colocated teacher_model for OPSD.')
-
-        requests = [build_teacher_infer_request(item) for item in rollout_with_outputs]
+        template = self.template
+        requests = []
+        teacher_encodeds = []  # teacher-side encoded (OPSD) or None (non-OPSD)
+        for item in rollout_with_outputs:
+            opsd_list = build_opsd_teacher_data([item])  # None unless item has teacher_prompt
+            if opsd_list:
+                opsd_item = opsd_list[0]
+                if opsd_item.get('response_token_ids'):
+                    opsd_item['messages'] = replace_assistant_response_with_ids(
+                        copy.deepcopy(opsd_item['messages']), opsd_item['response_token_ids'])
+                requests.append(build_teacher_infer_request(opsd_item))
+                teacher_encodeds.append(template.encode(opsd_item, return_length=True))
+            else:
+                requests.append(build_teacher_infer_request(item))
+                teacher_encodeds.append(None)
         request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
 
         replicas = self.teacher_replicas
@@ -244,14 +253,19 @@ class GKDTrainer(BaseRayTrainer):
         for p in parts:
             responses.extend(p)
 
-        for sample, response in zip(samples, responses):
+        for sample, response, t_encoded in zip(samples, responses, teacher_encodeds):
             parsed = parse_prompt_logprobs(response, topk=topk)
-            teacher_output = self._build_per_sample_teacher_output(parsed, sample['encoded'], topk)
-            sample['teacher_output'] = teacher_output
+            encoded = t_encoded if t_encoded is not None else sample['encoded']
+            opsd_labels = t_encoded.get('labels') if t_encoded is not None else None
+            sample['teacher_output'] = self._build_per_sample_teacher_output(parsed, encoded, topk, opsd_labels)
 
     @staticmethod
-    def _build_per_sample_teacher_output(parsed, encoded, topk):
-        """Build a per-sample TeacherOutput from parsed prompt logprobs."""
+    def _build_per_sample_teacher_output(parsed, encoded, topk, opsd_teacher_labels=None):
+        """Build a per-sample TeacherOutput from parsed prompt logprobs.
+
+        For OPSD, ``encoded`` is the teacher-side encoding and ``opsd_teacher_labels`` are
+        its labels; together they let ``extract_active`` mask-align the shared response.
+        """
         lps, ixs = parsed
         input_ids = encoded['input_ids']
         seq_len = len(input_ids) if isinstance(input_ids, list) else input_ids.shape[-1]

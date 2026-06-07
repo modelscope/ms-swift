@@ -42,7 +42,7 @@ class BucketedWeightSender:
         # When provided, reuse this caller-owned persistent GPU buffer instead of
         # allocating a fresh one per sync. Reusing the same storage keeps the CUDA IPC
         # handle signature stable across sync rounds, so the vLLM worker's IPC-mapping
-        # cache hits and no new mapping is leaked each step (driver reclaims lazily).
+        # cache hits and no new mapping is leaked each step.
         self._external_buffer = external_buffer
         self._owns_buffer = True
 

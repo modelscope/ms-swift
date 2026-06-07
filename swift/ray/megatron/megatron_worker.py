@@ -106,11 +106,12 @@ class MegatronWorker(CheckpointEngineMixin):
             self.teacher.offload_to_cpu()
 
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
-    def compute_teacher_logits(self, batch) -> Any:
-        """Forward teacher model on encoded batch, return TeacherOutput per sample.
+    def compute_teacher_logits(self, batch) -> None:
+        """Forward the teacher and cache per-sample TeacherOutput locally on this worker.
 
-        Core logic lives in GKDLoss.compute_teacher_logits; this is a thin
-        wrapper that manages model lifecycle (offload) and result caching.
+        Core logic lives in GKDLoss.compute_teacher_logits. The result is ALWAYS cached
+        worker-local (never returned to the driver): for context parallel each rank must
+        inject its own sequence shard at train_step via _inject_cached_teacher_logits.
         """
         if getattr(self._args, '_teacher_use_disable_adapter', False):
             # Self-distillation (LoRA): teacher = student base model with the LoRA adapter
@@ -120,18 +121,14 @@ class MegatronWorker(CheckpointEngineMixin):
             with ExitStack() as stack:
                 for m in megatron.peft_models:
                     stack.enter_context(m.disable_adapter())
-                results, cached = self._loss_fn.compute_teacher_logits(megatron.unwrapped_models[0], batch,
-                                                                       self._pipeline.template, self._args)
+                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(megatron.unwrapped_models[0], batch,
+                                                                                   self._pipeline.template, self._args)
         else:
             assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
             with self.teacher.loaded_context():
-                results, cached = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
-                                                                       self._pipeline.template, self._args)
+                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
+                                                                                   self._pipeline.template, self._args)
         gc_collect()
-        if cached:
-            self._cached_teacher_logits = cached
-            return []
-        return results
 
     def get_parallel_info(self) -> Dict[str, Any]:
         from megatron.core import mpu

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 from megatron.core import mpu
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -127,37 +126,6 @@ class GKDLoss(Loss):
     # Loss computation
     # ------------------------------------------------------------------
 
-    # DEBUG, remove later
-    @staticmethod
-    def _logp_gap(student_logits, teacher_output, labels, temperature):
-        """Debug metric: teacher-probability-weighted expected abs logprob gap between
-        student and teacher over the teacher top-k, at covered response positions.
-        For an identical student/teacher model (and correct token alignment) this is ~0.
-
-        Returns None only in full-vocab mode (consistent across all DP ranks). In top-k
-        mode it always returns a tensor (0.0 when a rank has no covered positions) so the
-        reported metric dict keeps an identical key set on every DP rank — otherwise the
-        DP all_reduce in loss_func would deadlock on mismatched tensor shapes (e.g. the
-        standalone-teacher path can leave a DP rank with all-uncovered positions)."""
-        if not teacher_output.is_topk_mode:
-            return None
-        if teacher_output.opsd_teacher_labels is not None:
-            # OPSD: teacher and student score different prompts (different sequence
-            # lengths/positions), so a positional logprob gap is undefined. Skip it —
-            # consistently on every DP rank (OPSD is a global mode) to avoid desync.
-            return None
-        mask = labels != -100
-        uncovered = torch.isinf(teacher_output.topk_logprobs).all(dim=-1)
-        mask = mask & ~uncovered
-        if mask.sum() == 0:
-            return student_logits.new_zeros(())
-        s_topk = tp_gather_topk(student_logits, teacher_output.topk_indices)
-        s_log = F.log_softmax(s_topk[mask].float() / temperature, dim=-1)
-        t_log = F.log_softmax(teacher_output.topk_logprobs[mask].float() / temperature, dim=-1)
-        gap = (t_log.exp() * (s_log - t_log).abs()).sum(dim=-1)
-        gap = gap[torch.isfinite(gap)]
-        return gap.mean() if gap.numel() > 0 else student_logits.new_zeros(())
-
     def loss_func(self, output_tensor, *, labels, teacher_output, data=None):
         args = self.args
         student_logits = output_tensor
@@ -194,10 +162,6 @@ class GKDLoss(Loss):
         if sft_loss is not None:
             metric['jsd_loss'] = jsd_loss_val.detach().clone()
             metric['sft_loss'] = sft_loss.detach().clone()
-
-        logp_gap = self._logp_gap(student_logits, teacher_output, labels, self.temperature)
-        if logp_gap is not None:
-            metric['logp_gap'] = logp_gap.detach().to(loss.dtype)
 
         dp_group = mpu.get_data_parallel_group()
         reporting = torch.stack(list(metric.values()), dim=0)
