@@ -15,6 +15,26 @@ from swift.rlhf_trainers.gkd_loss import TeacherOutput, gkd_loss
 from swift.utils import gc_collect, get_current_device, to_device
 from .base import Loss
 
+# Fields injected by the GRPO-style collator (`_collate_local_grpo_samples`, reused by
+# the ray GKD path) that are NOT valid `GPTModel.forward` kwargs and must be stripped
+# before `model(**inputs)`. Leaving them in raises
+# `TypeError: GPTModel.forward() got an unexpected keyword argument 'completion_mask'`
+# — which under PP>1 manifests as a pipeline deadlock (the failing first stage never
+# runs send_forward, so the last stage hangs in recv_forward).
+_NON_MODEL_KEYS = frozenset({
+    'completion_mask',
+    'truncated_mask',
+    'seq_lengths',
+    'rollout_per_token_logps',
+    'old_per_token_logps',
+    'ref_per_token_logps',
+    'advantages',
+    'num_samples',
+    'num_items_in_batch',
+    'logits_to_keep',
+    'routed_experts',
+})
+
 
 class GKDLoss(Loss):
     """GKD loss: JSD between student and teacher + optional SFT loss."""
@@ -35,7 +55,13 @@ class GKDLoss(Loss):
         data.pop('loss_scale', None)
         labels = data.pop('labels', None)
 
-        student_output = model(**data)
+        # The ray GKD path reuses the GRPO collator, which injects training-only fields
+        # (completion_mask, seq_lengths, rollout_per_token_logps, ...) that GPTModel.forward
+        # rejects. Keep only valid model kwargs. (set_input_tensor for PP is handled
+        # automatically by megatron's forward_backward schedule.)
+        inputs = {k: v for k, v in data.items() if k not in _NON_MODEL_KEYS}
+
+        student_output = model(**inputs)
         from functools import partial
         return student_output, partial(
             self.loss_func,
@@ -71,27 +97,40 @@ class GKDLoss(Loss):
         cached: list = []
         with torch.no_grad():
             for chunk in sample_chunks:
-                encoded_list = [s['encoded'] for s in chunk]
+                # OPSD: score the teacher on its own (teacher_prompt) sequence and keep
+                # the teacher labels so extract_active can mask-align the shared response.
+                is_opsd = chunk[0].get('opsd_teacher_encoded') is not None
+                if is_opsd and gkd_logits_topk is None:
+                    raise NotImplementedError('OPSD with full-vocab teacher is not supported in the Ray pipeline yet; '
+                                              'set gkd_logits_topk (top-k) for OPSD.')
+                key = 'opsd_teacher_encoded' if is_opsd else 'encoded'
+                encoded_list = [s[key] for s in chunk]
                 collated = template.data_collator(encoded_list, padding_to=get_padding_to(args))
                 collated = to_device(collated, device)
                 teacher_data = prepare_batch(args, collated)
                 teacher_data.pop('loss_scale', None)
-                teacher_data.pop('labels', None)
+                labels_t = teacher_data.pop('labels', None)
+                opsd_labels_full = labels_t if is_opsd else None
                 teacher_logits = forward_step_helper(teacher_model, teacher_data)
                 if teacher_logits is not None:
                     teacher_logits = teacher_logits.detach()
                     for i in range(len(chunk)):
                         if gkd_logits_topk is not None:
                             topk_logits, topk_indices = vocab_parallel_topk(teacher_logits[i:i + 1], k=gkd_logits_topk)
-                            results.append(
-                                TeacherOutput(topk_logprobs=topk_logits.cpu(), topk_indices=topk_indices.cpu()))
+                            opsd_label_i = None
+                            if opsd_labels_full is not None:
+                                sl = opsd_labels_full[i:i + 1]
+                                if sl.shape[0] > 0:
+                                    opsd_label_i = sl
+                            cached.append(
+                                TeacherOutput(
+                                    topk_logprobs=topk_logits,
+                                    topk_indices=topk_indices,
+                                    opsd_teacher_labels=opsd_label_i))
                         else:
-                            cached.append(teacher_logits[i:i + 1])
+                            cached.append(TeacherOutput(full_logits=teacher_logits[i:i + 1]))
                 else:
-                    if gkd_logits_topk is not None:
-                        results.extend(TeacherOutput() for _ in chunk)
-                    else:
-                        cached.extend(None for _ in chunk)
+                    cached.extend(TeacherOutput() for _ in chunk)
                 del collated
 
         return results, cached
@@ -100,6 +139,7 @@ class GKDLoss(Loss):
     # Loss computation
     # ------------------------------------------------------------------
 
+    # DEBUG, remove later
     @staticmethod
     def _logp_gap(student_logits, teacher_output, labels, temperature):
         """Debug metric: teacher-probability-weighted expected abs logprob gap between
@@ -112,6 +152,11 @@ class GKDLoss(Loss):
         DP all_reduce in loss_func would deadlock on mismatched tensor shapes (e.g. the
         standalone-teacher path can leave a DP rank with all-uncovered positions)."""
         if not teacher_output.is_topk_mode:
+            return None
+        if teacher_output.opsd_teacher_labels is not None:
+            # OPSD: teacher and student score different prompts (different sequence
+            # lengths/positions), so a positional logprob gap is undefined. Skip it —
+            # consistently on every DP rank (OPSD is a global mode) to avoid desync.
             return None
         mask = labels != -100
         uncovered = torch.isinf(teacher_output.topk_logprobs).all(dim=-1)

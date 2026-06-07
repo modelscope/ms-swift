@@ -190,20 +190,22 @@ class MegatronWorker(CheckpointEngineMixin):
         return self._extract_step_metrics(megatron)
 
     def _inject_cached_teacher_logits(self, batch: list) -> None:
-        """Inject cached full_logits into samples when teacher used full-vocab mode.
+        """Inject worker-local cached teacher outputs into samples.
 
-        In full_logits mode, compute_teacher_logits keeps vocab-parallel shards
-        on each TP rank's GPU and returns an empty list to the driver.  Here we
-        wrap each cached shard as a TeacherOutput and attach it to the
-        corresponding sample so the normal collation path handles it.
+        The colocated teacher always caches its per-sample ``TeacherOutput``
+        (top-k or full-vocab) on the worker's own GPU and returns an empty list
+        to the driver — avoiding a driver round-trip. This is REQUIRED for
+        context parallel (CP): each CP rank computes and keeps its own sequence
+        shard, so injecting the local shard keeps teacher/student CP slices
+        aligned (a driver round-trip would only collect the cp-rank-0 shard and
+        broadcast it to all ranks, corrupting the alignment).
         """
         cached = getattr(self, '_cached_teacher_logits', None)
         if not cached:
             return
-        from swift.rlhf_trainers.gkd_loss import TeacherOutput
-        for sample, logits in zip(batch, cached):
-            if logits is not None:
-                sample['teacher_output'] = TeacherOutput(full_logits=logits)
+        for sample, t_out in zip(batch, cached):
+            if t_out is not None:
+                sample['teacher_output'] = t_out
         self._cached_teacher_logits = None
 
     @staticmethod
@@ -640,26 +642,35 @@ class MegatronWorker(CheckpointEngineMixin):
         length) can be 1+ tokens short. Pad the teacher seq dim to ``target_seq_len``
         so extract_active's label mask aligns; the padded tail has labels == -100 and
         is masked out, leaving the loss unchanged.
+
+        OPSD: when ``opsd_teacher_labels`` is present, the teacher scores a *different*
+        prompt (so its sequence length differs from the student) and extract_active
+        aligns by mask (``opsd_teacher_labels != -100``), not by position. In that case
+        the teacher keeps its own length (``target_seq_len`` is ignored).
         """
         from swift.rlhf_trainers.gkd_loss import TeacherOutput
+        opsd = any(getattr(t, 'opsd_teacher_labels', None) is not None for t in teacher_outputs)
+        effective_target = None if opsd else target_seq_len
+        pad_vals = {'topk_logprobs': float('-inf'), 'opsd_teacher_labels': -100}
         fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'opsd_teacher_labels')
         kwargs = {}
         for field in fields:
             tensors = [getattr(t, field) for t in teacher_outputs]
-            if tensors[0] is None:
+            tensors = [t for t in tensors if t is not None]
+            if not tensors:
                 continue
-            pad_val = float('-inf') if field == 'topk_logprobs' else 0
+            pad_val = pad_vals.get(field, 0)
             if padding_free:
                 non_empty = [t for t in tensors if t.shape[0] > 0]
                 cat = torch.cat(non_empty, dim=1)
-                if target_seq_len is not None and cat.shape[1] < target_seq_len:
-                    cat = torch.nn.functional.pad(cat, (0, 0, 0, target_seq_len - cat.shape[1]), value=pad_val)
+                if effective_target is not None and cat.dim() == 3 and cat.shape[1] < effective_target:
+                    cat = torch.nn.functional.pad(cat, (0, 0, 0, effective_target - cat.shape[1]), value=pad_val)
                 kwargs[field] = cat.to(device)
             else:
-                max_len = target_seq_len or max(t.shape[1] for t in tensors)
+                max_len = effective_target or max(t.shape[1] for t in tensors)
                 padded = []
                 for t in tensors:
-                    if t.shape[1] < max_len:
+                    if t.dim() == 3 and t.shape[1] < max_len:
                         t = torch.nn.functional.pad(t, (0, 0, 0, max_len - t.shape[1]), value=pad_val)
                     padded.append(t)
                 kwargs[field] = torch.cat(padded, dim=0).to(device)
@@ -713,10 +724,15 @@ class MegatronWorker(CheckpointEngineMixin):
                                                        dtype=torch.float32,
                                                        device=device)
         if samples and samples[0].get('teacher_output') is not None:
-            encoded_batch['teacher_output'] = self._collate_teacher_outputs([s['teacher_output'] for s in samples],
-                                                                            device,
-                                                                            padding_free=template.padding_free,
-                                                                            target_seq_len=labels.shape[-1])
+            # CP>1: the teacher output is already CP-sharded per rank (kept worker-local),
+            # so do NOT pad it back to the full sequence length — it must stay the same
+            # length as the CP-sharded student logits produced in forward_step.
+            cp_size = getattr(self._args, 'context_parallel_size', 1)
+            encoded_batch['teacher_output'] = self._collate_teacher_outputs(
+                [s['teacher_output'] for s in samples],
+                device,
+                padding_free=template.padding_free,
+                target_seq_len=None if cp_size > 1 else labels.shape[-1])
         return encoded_batch
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:

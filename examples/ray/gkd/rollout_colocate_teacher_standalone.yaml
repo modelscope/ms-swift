@@ -1,25 +1,17 @@
-# [Experimental] Ray-based Megatron GKD — colocate mode
-#
-# On-policy GKD: the student generates completions via vLLM, a colocated teacher
-# model produces (top-k) logits, and the student is distilled with a JSD loss.
-#
-# Notes:
-# - Ray GKD currently supports a colocated `teacher_model` only. The API teacher
-#   (`teacher_model_server`) path is not supported in the ray pipeline yet.
-# - When `tensor_model_parallel_size > 1`, `gkd_logits_topk` must be set: the
-#   full-logits teacher mode is not TP-safe in the ray path (only the tp-rank-0
-#   vocab shard is collected/redistributed through the driver).
+# Ray Megatron GKD — standalone vLLM teacher replicas (top-k only).
+# See examples/ray/README.md (section 2b). gkd_logits_topk is REQUIRED; the teacher
+# group below serves the teacher model and its max_logprobs must be >= gkd_logits_topk.
+# Do NOT set a top-level `teacher_model` here. Validated Qwen3.5-2B/4B, TP2 -> DP2.
 rlhf_type: gkd
 
-model: Qwen/Qwen3-8B-Base
-teacher_model: Qwen/Qwen3-32B
+model: Qwen/Qwen3.5-2B
 gkd_logits_topk: 64
 
 dataset: AI-ModelScope/alpaca-gpt4-data-en#2000 AI-ModelScope/alpaca-gpt4-data-zh#2000
 dataset_num_proc: 4
 split_dataset_ratio: 0
 
-micro_batch_size: 1
+micro_batch_size: 2
 global_batch_size: 16
 num_train_epochs: 1
 logging_steps: 1
@@ -48,7 +40,6 @@ use_vllm: true
 colocate_groups: [[train, rollout]]
 offload_model: true
 offload_optimizer: true
-offload_teacher_model: true
 sleep_level: 1
 
 train:
@@ -56,14 +47,22 @@ train:
   tuner_type: lora
   lora_rank: 8
   lora_alpha: 32
-  tensor_model_parallel_size: 1
+  tensor_model_parallel_size: 2
   pipeline_model_parallel_size: 1
   expert_model_parallel_size: 1
   context_parallel_size: 1
-  output_dir: megatron_output/ray_gkd_colocate
+  output_dir: megatron_output/gkd_rollout_colocate_teacher_standalone
 
 rollout:
   gpus: 4
   vllm_tensor_parallel_size: 1
   vllm_gpu_memory_utilization: 0.4
   vllm_max_model_len: 16384
+
+teacher:
+  gpus: 4
+  model: Qwen/Qwen3.5-4B          # teacher served by these replicas
+  vllm_tensor_parallel_size: 1
+  vllm_gpu_memory_utilization: 0.9
+  vllm_max_model_len: 16384
+  vllm_engine_kwargs: {"max_logprobs": 64}   # must be >= gkd_logits_topk

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import copy
+import random
 import ray
 import torch
 from typing import List
 
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
-from swift.rlhf_trainers.gkd_loss import TeacherOutput
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, build_opsd_teacher_data
 from swift.rlhf_trainers.utils import (build_teacher_infer_request, parse_prompt_logprobs,
                                        replace_assistant_response_with_ids)
 from swift.utils import get_logger
@@ -19,10 +20,8 @@ logger = get_logger()
 
 
 class GKDTrainer(BaseRayTrainer):
-    """Driver-side GKD trainer: student generation + teacher distillation."""
 
     def _prepare_state(self) -> None:
-        assert hasattr(self, '_data_info'), 'call set_data_info() before train()'
         info = self._data_info
         args = info['_driver_args']
         template = info['template']
@@ -35,6 +34,11 @@ class GKDTrainer(BaseRayTrainer):
         self.beta = args.beta
         self.sft_alpha = args.sft_alpha
         self.gkd_logits_topk = args.gkd_logits_topk
+        # GKD on-policy schedule: each step is on-policy (student generates) with
+        # probability ``lmbda``; otherwise off-policy (distill on dataset responses).
+        self.lmbda = args.lmbda
+        self.seq_kd = args.seq_kd
+        self._data_source_rng = random.Random(getattr(args, 'seed', 42))
 
         self._steps_per_generation = 1
         # GKD generates exactly one completion per prompt (on-policy student generation),
@@ -59,17 +63,29 @@ class GKDTrainer(BaseRayTrainer):
             logger.info('Colocated teacher model initialized from %s', self._teacher_model_dir)
 
         while iteration < train_iters:
-            ckpt.sync_weights(merge_and_sync=True)
+            prompt_batch = next(self._data_iter)
+            data_source = self._determine_data_source()
 
-            with self._generation_context(tg, ckpt):
-                prompt_batch = next(self._data_iter)
-                rollout_batch = self._expand_for_generation(prompt_batch)
-                completions = self._generate(rollout_batch)
-                rollout_with_outputs = self._postprocess_rollout(rollout_batch, completions)
-
-            samples = self._encode_rollout_batch(rollout_with_outputs)
+            if data_source == DataSource.STUDENT:
+                # On-policy: sync the latest weights to the rollout engine and generate.
+                ckpt.sync_weights(merge_and_sync=True)
+                with self._generation_context(tg, ckpt):
+                    rollout_batch = self._expand_for_generation(prompt_batch)
+                    completions = self._generate(rollout_batch)
+                    rollout_with_outputs = self._postprocess_rollout(rollout_batch, completions)
+                samples = self._encode_rollout_batch(rollout_with_outputs)
+            else:
+                # Off-policy (lmbda<1): distill on the dataset's ground-truth responses,
+                # no generation. Dataset items already carry the assistant response, so
+                # _encode_rollout_batch encodes it as-is (no token-in-token-out swap) and
+                # no weight sync to the rollout engine is needed.
+                rollout_with_outputs = None
+                samples = self._encode_rollout_batch(prompt_batch)
 
             if self.teacher_replicas:
+                if rollout_with_outputs is None:
+                    raise NotImplementedError('Teacher replicas currently require on-policy generation (lmbda=1). '
+                                              'Use a colocated teacher_model for lmbda<1 (off-policy) training.')
                 self._fetch_teacher_from_replicas(rollout_with_outputs, samples)
             elif self._teacher_model_dir and not self._teacher_model_server:
                 teacher_outputs = tg.compute_teacher_logits(samples)
@@ -82,16 +98,32 @@ class GKDTrainer(BaseRayTrainer):
             results = tg.train_step(samples)
             iteration = extract_iteration(results)
             train_m = extract_train_metrics(results)
-            self._log_iteration(iteration, train_iters, train_m)
+            self._log_iteration(iteration, train_iters, train_m, data_source)
 
         return iteration
 
-    def _log_iteration(self, iteration, train_iters, train_m):
+    def _determine_data_source(self):
+        """Pick the data source for this step (GKD on/off-policy schedule).
+
+        With probability ``lmbda`` the step is on-policy (the student generates the
+        response); otherwise it is off-policy and we distill on the dataset's
+        ground-truth response. ``seq_kd`` (teacher-generated responses) is not
+        implemented in the Ray pipeline and falls back to dataset responses.
+        """
+        if self._data_source_rng.random() < self.lmbda:
+            return DataSource.STUDENT
+        if self.seq_kd:
+            logger.warning_once('seq_kd=True but teacher generation is not implemented in Ray GKD; '
+                                'using dataset responses for off-policy steps.')
+        return DataSource.DATASET
+
+    def _log_iteration(self, iteration, train_iters, train_m, data_source=None):
         core_keys = ('loss', 'jsd_loss', 'sft_loss', 'grad_norm', 'lr')
         core_parts = [f'{k}={train_m[k]:.6f}' for k in core_keys if k in train_m]
         extra_parts = [f'{k}={v:.6f}' for k, v in train_m.items() if k not in core_keys]
         train_str = '  '.join(core_parts + extra_parts)
-        logger.info('iter %d/%d  %s', iteration, train_iters, train_str)
+        tag = f'[{data_source.value}] ' if data_source is not None else ''
+        logger.info('iter %d/%d  %s%s', iteration, train_iters, tag, train_str)
 
     def _expand_for_generation(self, prompt_batch):
         from swift.utils import remove_response
@@ -152,7 +184,8 @@ class GKDTrainer(BaseRayTrainer):
         samples = []
         try:
             template.max_length = original_max_length + self.args.max_completion_length
-            for item in rollout_batch:
+            for orig_item in rollout_batch:
+                item = orig_item
                 if item.get('response_token_ids'):
                     item = dict(item)
                     item['messages'] = replace_assistant_response_with_ids(
@@ -160,10 +193,34 @@ class GKDTrainer(BaseRayTrainer):
                 encoded = template.encode(item, return_length=True)
                 if encoded is None:
                     continue
-                samples.append({'encoded': encoded})
+                sample = {'encoded': encoded}
+                # OPSD: if the dataset row carries a `teacher_prompt`, also encode the
+                # teacher-prompt view (same on-policy response, token-in-token-out) so the
+                # colocated teacher can be scored on its own sequence. No-op otherwise.
+                opsd_encoded = self._encode_opsd_teacher(orig_item, template)
+                if opsd_encoded is not None:
+                    sample['opsd_teacher_encoded'] = opsd_encoded
+                samples.append(sample)
         finally:
             template.max_length = original_max_length
         return samples
+
+    @staticmethod
+    def _encode_opsd_teacher(item, template):
+        """Encode the OPSD teacher view of a rollout item, or None if not OPSD.
+
+        Mirrors the non-ray Megatron GKD: replace the last user turn with
+        ``teacher_prompt`` (keeping the on-policy response), then re-apply the
+        token-in-token-out response so teacher and student score identical tokens.
+        """
+        opsd_list = build_opsd_teacher_data([item])  # None unless item has teacher_prompt
+        if not opsd_list:
+            return None
+        opsd_item = opsd_list[0]
+        if opsd_item.get('response_token_ids'):
+            opsd_item['messages'] = replace_assistant_response_with_ids(
+                copy.deepcopy(opsd_item['messages']), opsd_item['response_token_ids'])
+        return template.encode(opsd_item, return_length=True)
 
     def _fetch_teacher_from_replicas(self, rollout_with_outputs, samples):
         """Fetch teacher logprobs from Ray teacher replicas (token-in-token-out)."""

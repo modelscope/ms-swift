@@ -115,9 +115,16 @@ class MegatronRayPipeline:
         assigned: set = set()
 
         for colocated in colocated_sets:
-            gpus = self.group_gpus.get(next(iter(colocated)), 0)
-            if gpus <= 0:
+            # Colocated roles share one GPU set, so they must request the same number
+            # of gpus. Validate explicitly (and avoid relying on frozenset order).
+            gpus_by_role = {g: self.group_gpus.get(g, 0) for g in colocated}
+            distinct = set(gpus_by_role.values())
+            if distinct == {0}:
                 continue
+            if len(distinct) > 1:
+                raise ValueError(f'Colocated roles must request the same number of gpus, but got '
+                                 f'{gpus_by_role}. Set an equal `gpus` for all roles in {sorted(colocated)}.')
+            gpus = distinct.pop()
             pon = self.ray_config.gpus_as_process_on_nodes(gpus)
             shared = ResourcePool(pon, max_colocate_count=len(colocated))
             for g in colocated:

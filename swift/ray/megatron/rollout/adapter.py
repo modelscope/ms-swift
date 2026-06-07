@@ -33,6 +33,12 @@ class RolloutAdapter:
         self.use_shm = not _is_ipc_supported()
         self.zmq_handle = (f'ipc:///tmp/swift-rollout-zmq-replica-{replica_rank}-rank-{rollout_rank}.sock')
         self._server_handle = None
+        # Persistent CUDA IPC buffer reused across all update_weights() syncs so the IPC
+        # handle stays stable (the vLLM worker's mapping cache hits) and no IPC mapping
+        # leaks per step. Without this every sync allocated a fresh buffer+handle -> the
+        # worker rebuilt the mapping each step and the driver reclaimed it lazily, leaking
+        # ~one weights buffer per step (OOM after ~30 steps). Aligned with twinkle/verl.
+        self._ipc_buffer: Optional[torch.Tensor] = None
 
     @property
     def server_handle(self) -> Any:
@@ -76,11 +82,22 @@ class RolloutAdapter:
 
         start_time = time.time()
 
+        # Lazily (re)allocate the persistent IPC buffer; reused across syncs so the
+        # handle signature stays stable and the worker-side IPC cache hits.
+        external_buffer = None
+        if not self.use_shm:
+            from swift.utils import get_current_device
+            bucket_size = self.bucket_size_mb << 20
+            if self._ipc_buffer is None or self._ipc_buffer.numel() < bucket_size:
+                self._ipc_buffer = torch.empty(bucket_size, dtype=torch.uint8, device=get_current_device())
+            external_buffer = self._ipc_buffer
+
         async def _do_ipc_sync():
             sender = BucketedWeightSender(
                 zmq_handle=self.zmq_handle,
                 bucket_size_mb=self.bucket_size_mb,
                 use_shm=self.use_shm,
+                external_buffer=external_buffer,
             )
             try:
                 async with sender:

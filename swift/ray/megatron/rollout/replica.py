@@ -189,6 +189,11 @@ class RolloutReplica:
                 'RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES': '1',
                 'NCCL_CUMEM_ENABLE': '0',
                 visible_key: cvd,
+                # NOTE: deliberately do NOT inject PYTORCH_CUDA_ALLOC_CONF=expandable_segments
+                # for the vLLM server process. vLLM's sleep/wake CuMemAllocator (CUDA VMM)
+                # conflicts with PyTorch expandable_segments and leaks ~one weights copy per
+                # sleep/wake cycle -> cumem OOM after ~30 steps. The vLLM process must use the
+                # default caching allocator.
             }
             handle = actor_cls.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(node_id=node_id, soft=False),

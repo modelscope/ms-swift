@@ -12,7 +12,7 @@ import asyncio
 import os
 import torch
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from swift.utils import get_current_device, synchronize
 from swift.utils.logger import get_logger
@@ -29,6 +29,7 @@ class BucketedWeightSender:
         bucket_size_mb: int = 512,
         use_shm: bool = False,
         timeout_s: int = 600,
+        external_buffer: Optional[torch.Tensor] = None,
     ):
         self.zmq_handle = zmq_handle
         self.bucket_size = int(bucket_size_mb) << 20
@@ -38,6 +39,12 @@ class BucketedWeightSender:
         self.buffer = None
         self.shm = None
         self._pending_handshake = None
+        # When provided, reuse this caller-owned persistent GPU buffer instead of
+        # allocating a fresh one per sync. Reusing the same storage keeps the CUDA IPC
+        # handle signature stable across sync rounds, so the vLLM worker's IPC-mapping
+        # cache hits and no new mapping is leaked each step (driver reclaims lazily).
+        self._external_buffer = external_buffer
+        self._owns_buffer = True
 
     async def __aenter__(self):
         self._init_socket_and_buffer()
@@ -60,7 +67,13 @@ class BucketedWeightSender:
         from torch.multiprocessing.reductions import reduce_tensor
 
         if not self.use_shm:
-            self.buffer = torch.empty(self.bucket_size, dtype=torch.uint8, device=get_current_device())
+            if self._external_buffer is not None and self._external_buffer.numel() >= self.bucket_size:
+                # Reuse the persistent buffer -> stable IPC handle -> worker cache hit.
+                self.buffer = self._external_buffer
+                self._owns_buffer = False
+            else:
+                self.buffer = torch.empty(self.bucket_size, dtype=torch.uint8, device=get_current_device())
+                self._owns_buffer = True
             self._pending_handshake = reduce_tensor(self.buffer)
         else:
             from multiprocessing import shared_memory
@@ -157,7 +170,8 @@ class BucketedWeightSender:
                     os.remove(ipc_path)
             except OSError:
                 pass
-        del self.buffer
+        if self._owns_buffer:
+            del self.buffer
         self.buffer = None
         if self.shm is not None:
             try:
