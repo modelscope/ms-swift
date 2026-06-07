@@ -28,6 +28,11 @@ def _make_lifecycle_trainer(args, template):
         def forward_step(self, data_iterator, model):
             return None
 
+        def _determine_best_metric(self, metrics):
+            if metrics is None:
+                metrics = getattr(self, '_last_logged_metrics', None)
+            return super()._determine_best_metric(metrics)
+
     return _LifecycleTrainer(args, template)
 
 
@@ -159,11 +164,12 @@ class MegatronWorker(CheckpointEngineMixin):
         }
 
     @dispatch_collect(dispatch='dp_split', collect='all')
-    def train_step(self, batch) -> Dict[str, Any]:
+    def train_step(self, batch, extra_metrics=None) -> Dict[str, Any]:
         megatron = self._megatron
         args = megatron.args
         assert isinstance(batch, list), f'train_step expects List[Dict], got {type(batch).__name__}'
         self._inject_cached_teacher_logits(batch)
+        self._inject_extra_metrics(extra_metrics)
         micro_batches = self._build_local_micro_batches(batch)
         data_iterator = iter(micro_batches)
         assert len(micro_batches) == args.num_microbatches, (
@@ -207,6 +213,28 @@ class MegatronWorker(CheckpointEngineMixin):
             if t_out is not None:
                 sample['teacher_output'] = t_out
         self._cached_teacher_logits = None
+
+    def _inject_extra_metrics(self, extra_metrics) -> None:
+        """Inject driver-computed metrics (reward, MathAccuracy, data_source, ...) into
+        the megatron trainer's ``_train_metrics`` so they flow through the standard
+        ``on_log`` path (console PrintCallback + tensorboard + swanlab), unifying ALL
+        logging in the worker's megatron callbacks (the driver no longer prints metrics).
+
+        Values are stored as ``[sum, count]`` pairs to match ``_aggregated_metrics`` /
+        ``_log_callback`` (which divides sum/count), so a per-step scalar logs as itself.
+        """
+        if not extra_metrics:
+            return
+        megatron = self._megatron
+        tm = getattr(megatron, '_train_metrics', None)
+        if tm is None:
+            tm = megatron._train_metrics = {}
+        device = get_current_device()
+        for k, v in extra_metrics.items():
+            if v is None:
+                continue
+            add = torch.tensor([float(v), 1.0], dtype=torch.float32, device=device)
+            tm[k] = tm[k] + add if k in tm else add
 
     @staticmethod
     def _extract_step_metrics(megatron) -> Dict[str, Any]:
@@ -670,8 +698,13 @@ class MegatronWorker(CheckpointEngineMixin):
                 max_len = effective_target or max(t.shape[1] for t in tensors)
                 padded = []
                 for t in tensors:
+                    # opsd_teacher_labels is 2D [1, S]; topk_*/full_logits are 3D [1, S, *].
+                    # Pad the sequence dim (dim=1) of either to max_len so torch.cat works
+                    # even when per-sample teacher seq lengths differ within a micro-batch.
                     if t.dim() == 3 and t.shape[1] < max_len:
                         t = torch.nn.functional.pad(t, (0, 0, 0, max_len - t.shape[1]), value=pad_val)
+                    elif t.dim() == 2 and t.shape[1] < max_len:
+                        t = torch.nn.functional.pad(t, (0, max_len - t.shape[1]), value=pad_val)
                     padded.append(t)
                 kwargs[field] = torch.cat(padded, dim=0).to(device)
         return TeacherOutput(**kwargs)

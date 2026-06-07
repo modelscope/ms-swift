@@ -2,13 +2,14 @@
 """Base class for Ray-based Megatron trainers (driver-side)."""
 from __future__ import annotations
 
+import os
 import ray
 import torch
 from contextlib import contextmanager
 from typing import Any, Dict, List
 
 from swift.rlhf_trainers.utils import create_cyclic_iterator
-from swift.utils import get_logger
+from swift.utils import JsonlWriter, get_logger
 from .driver_utils import compute_iter_params
 
 logger = get_logger()
@@ -136,3 +137,27 @@ class BaseRayTrainer:
         finally:
             results = tg.finalize()
         return results
+
+    def _maybe_log_completions(self, rollout_with_outputs, rewards=None, gen_step=None) -> None:
+        """Driver-side ``log_completions``: dump prompt/completion (+reward) to
+        ``output_dir/completions.jsonl``, mirroring the non-ray trainers. No-op unless
+        ``args.log_completions`` is set. Completions live on the driver (rollout side),
+        so this is the right place to log them (worker on_log handles scalar metrics)."""
+        args = self.args
+        if not getattr(args, 'log_completions', False) or not rollout_with_outputs:
+            return
+
+        if getattr(self, '_completions_writer', None) is None:
+            self._completions_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'))
+        table = []
+        for i, item in enumerate(rollout_with_outputs):
+            msgs = item.get('messages') or []
+            has_resp = bool(msgs) and msgs[-1].get('role') == 'assistant'
+            completion = msgs[-1].get('content') or '' if has_resp else ''
+            prompt_msgs = msgs[:-1] if has_resp else msgs
+            prompt = ''.join(f"{m.get('role')}: {m.get('content')}\n" for m in prompt_msgs)
+            row = {'gen_step': gen_step, 'prompt': prompt, 'completion': completion}
+            if rewards is not None and i < len(rewards):
+                row['reward'] = float(rewards[i])
+            table.append(row)
+        self._completions_writer.append(table)

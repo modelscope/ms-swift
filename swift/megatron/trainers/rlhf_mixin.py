@@ -9,6 +9,7 @@ from swift.megatron.utils import load_mcore_checkpoint
 from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, safe_snapshot_download
 from .base import BaseMegatronTrainer
+from .utils import reconstruct_tensor_cp
 
 logger = get_logger()
 
@@ -76,10 +77,8 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         per_token_logps = per_token_logps * loss_mask
         if per_token:
             if args.context_parallel_size > 1:
-                from .utils import _postprocess_packed_tensor_cp
-                per_token_logps = _postprocess_packed_tensor_cp(args.context_parallel_size, per_token_logps,
-                                                                packed_seq_params, num_samples
-                                                                or packed_seq_params.num_samples)
+                per_token_logps = reconstruct_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
+                                                        num_samples or packed_seq_params.num_samples)
             return per_token_logps
 
         if args.padding_free:

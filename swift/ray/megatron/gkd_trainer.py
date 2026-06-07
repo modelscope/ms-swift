@@ -95,10 +95,10 @@ class GKDTrainer(BaseRayTrainer):
                     for sample, t_out in zip(samples, teacher_outputs):
                         sample['teacher_output'] = t_out
 
-            results = tg.train_step(samples)
+            self._maybe_log_completions(rollout_with_outputs, gen_step=iteration)
+            results = tg.train_step(
+                samples, extra_metrics={'on_policy': 1.0 if data_source == DataSource.STUDENT else 0.0})
             iteration = extract_iteration(results)
-            train_m = extract_train_metrics(results)
-            self._log_iteration(iteration, train_iters, train_m, data_source)
 
         return iteration
 
@@ -116,14 +116,6 @@ class GKDTrainer(BaseRayTrainer):
             logger.warning_once('seq_kd=True but teacher generation is not implemented in Ray GKD; '
                                 'using dataset responses for off-policy steps.')
         return DataSource.DATASET
-
-    def _log_iteration(self, iteration, train_iters, train_m, data_source=None):
-        core_keys = ('loss', 'jsd_loss', 'sft_loss', 'grad_norm', 'lr')
-        core_parts = [f'{k}={train_m[k]:.6f}' for k in core_keys if k in train_m]
-        extra_parts = [f'{k}={v:.6f}' for k, v in train_m.items() if k not in core_keys]
-        train_str = '  '.join(core_parts + extra_parts)
-        tag = f'[{data_source.value}] ' if data_source is not None else ''
-        logger.info('iter %d/%d  %s%s', iteration, train_iters, tag, train_str)
 
     def _expand_for_generation(self, prompt_batch):
         from swift.utils import remove_response
@@ -191,8 +183,6 @@ class GKDTrainer(BaseRayTrainer):
                     item['messages'] = replace_assistant_response_with_ids(
                         copy.deepcopy(item['messages']), item['response_token_ids'])
                 encoded = template.encode(item, return_length=True)
-                if encoded is None:
-                    continue
                 sample = {'encoded': encoded}
                 # OPSD: if the dataset row carries a `teacher_prompt`, also encode the
                 # teacher-prompt view (same on-policy response, token-in-token-out) so the
@@ -226,6 +216,14 @@ class GKDTrainer(BaseRayTrainer):
         """Fetch teacher logprobs from Ray teacher replicas (token-in-token-out)."""
         topk = self.gkd_logits_topk
         assert topk is not None, 'gkd_logits_topk must be set when using teacher replicas'
+
+        # OPSD requires the teacher to score its own teacher_prompt and to set
+        # opsd_teacher_labels for mask-based alignment. Standalone replicas only score the
+        # student prompt and cannot produce those labels, which would silently misalign the
+        # JSD. Fail loudly instead; use a colocated teacher_model for OPSD.
+        if any(item.get('teacher_prompt') for item in rollout_with_outputs):
+            raise NotImplementedError('OPSD (teacher_prompt) is not supported with standalone teacher replicas; '
+                                      'use a colocated teacher_model for OPSD.')
 
         requests = [build_teacher_infer_request(item) for item in rollout_with_outputs]
         request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)

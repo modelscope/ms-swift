@@ -136,6 +136,8 @@ class GRPOTrainer(BaseRayTrainer):
                 rollout_with_outputs = self._postprocess_rollout(rollout_batch, completions)
 
             rewards_per_func = self.score_completions(rollout_with_outputs)
+            self._maybe_log_completions(
+                rollout_with_outputs, rewards=rewards_per_func.sum(dim=1).tolist(), gen_step=iteration)
 
             n_samples = len(rollout_with_outputs)
             chunk_size = n_samples // spg
@@ -180,31 +182,28 @@ class GRPOTrainer(BaseRayTrainer):
                 for sample in chunk_samples:
                     sample.pop('completion_mask', None)
 
-                results = tg.train_step(chunk_samples)
+                results = tg.train_step(
+                    chunk_samples,
+                    extra_metrics=self._build_grpo_log_metrics(rewards, chunk_advantages, chunk_rewards_pf))
                 iteration = extract_iteration(results)
-                train_m = extract_train_metrics(results)
-
-                self._log_iteration(iteration, train_iters, rewards, chunk_advantages, chunk_rewards_pf, train_m)
 
         return iteration
 
-    def _log_iteration(self, iteration, train_iters, rewards, advantages, rewards_per_func, train_m):
-        mean_reward = rewards.mean().item()
-        nonzero_adv = (advantages.abs() > 1e-8).float().mean().item()
+    def _build_grpo_log_metrics(self, rewards, advantages, rewards_per_func) -> Dict[str, float]:
+        """Driver-computed GRPO metrics (reward / reward_std / adv_nonzero / per-func),
+        injected into the worker megatron on_log so all logging is unified there."""
         K = self.num_generations
         grouped = rewards.view(-1, K)
-        group_std = grouped.std(dim=1).mean().item()
-        per_func_parts = [
-            f'{self.reward_func_names[i]}={rewards_per_func[:, i].nanmean().item():.4f}'
-            for i in range(rewards_per_func.shape[1])
-        ]
-        per_func_str = '  '.join(per_func_parts)
-        core_keys = ('loss', 'grad_norm', 'lr', 'kl')
-        core_parts = [f'{k}={train_m[k]:.6f}' for k in core_keys if k in train_m]
-        extra_parts = [f'{k}={v:.6f}' for k, v in train_m.items() if k not in core_keys]
-        train_str = '  '.join(core_parts + extra_parts)
-        logger.info('iter %d/%d  reward=%.4f  group_std=%.4f  adv_nonzero=%.1f%%  %s  %s', iteration, train_iters,
-                    mean_reward, group_std, nonzero_adv * 100, per_func_str, train_str)
+        metrics = {
+            'reward': rewards.mean().item(),
+            'reward_std': grouped.std(dim=1).mean().item(),
+            'adv_nonzero': (advantages.abs() > 1e-8).float().mean().item(),
+        }
+        for i in range(rewards_per_func.shape[1]):
+            val = rewards_per_func[:, i].nanmean().item()
+            if val == val:  # skip NaN (a reward func produced no finite value this step)
+                metrics[self.reward_func_names[i]] = val
+        return metrics
 
     def _generate(self, expanded_batch) -> List[RolloutOutput]:
         """Run a prompt batch through rollout replicas.

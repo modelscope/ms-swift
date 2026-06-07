@@ -36,7 +36,7 @@ from swift.utils import (JsonlWriter, get_logger, get_packed_seq_params, remove_
                          start_event_loop_in_daemon, to_device)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
-from .utils import gather, gather_object
+from .utils import gather, gather_object, reconstruct_tensor_cp
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
 try:
@@ -1181,14 +1181,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 logits_packed, labels, compute_entropy=self.compute_entropy)
 
             if args.context_parallel_size > 1:
-                from .utils import _postprocess_packed_tensor_cp
                 num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
                 cp_size = args.context_parallel_size
-                per_token_logps_packed = _postprocess_packed_tensor_cp(cp_size, per_token_logps_packed,
-                                                                       packed_seq_params, num_samples)
+                per_token_logps_packed = reconstruct_tensor_cp(cp_size, per_token_logps_packed, packed_seq_params,
+                                                               num_samples)
                 if per_token_entropy_packed is not None:
-                    per_token_entropy_packed = _postprocess_packed_tensor_cp(cp_size, per_token_entropy_packed,
-                                                                             packed_seq_params, num_samples)
+                    per_token_entropy_packed = reconstruct_tensor_cp(cp_size, per_token_entropy_packed,
+                                                                     packed_seq_params, num_samples)
 
             if args.padding_free:
                 # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]

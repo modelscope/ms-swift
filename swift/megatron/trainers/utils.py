@@ -430,15 +430,16 @@ def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_g
         num_samples = input_ids.shape[0] if input_ids is not None else labels.shape[0]
 
     if args.context_parallel_size > 1:
-        per_token_logps = _postprocess_packed_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
-                                                        num_samples)
+        per_token_logps = reconstruct_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
+                                                num_samples)
     return per_token_logps, routing_topk_idx
 
 
-def _postprocess_packed_tensor_cp(cp_size, tensor, packed_seq_params, num_samples):
+def reconstruct_tensor_cp(cp_size, tensor, packed_seq_params, num_samples):
     """In CP mode, all_gather and reconstruct full tensor sequences."""
     cp_rank = mpu.get_context_parallel_rank()
 
+    # All-gather across CP ranks
     output_list = [torch.empty_like(tensor) for _ in range(cp_size)]
     torch.distributed.all_gather(output_list, tensor.contiguous(), group=mpu.get_context_parallel_group())
     output_list[cp_rank] = tensor
@@ -446,32 +447,51 @@ def _postprocess_packed_tensor_cp(cp_size, tensor, packed_seq_params, num_sample
     if packed_seq_params is not None:
         cu_seqlens_full = packed_seq_params.cu_seqlens_q
         cu_seqlens_cp = cu_seqlens_full // cp_size
+
+        # Calculate total packed length
         total_packed_len = cu_seqlens_full[num_samples].item()
         output_full = tensor.new_zeros(1, total_packed_len)
+
+        # Reconstruct each sequence
         for i in range(num_samples):
             start_full = cu_seqlens_full[i].item()
             end_full = cu_seqlens_full[i + 1].item()
             seq_len = end_full - start_full
+
+            # Length of each chunk after CP split
             chunk_len = seq_len // cp_size
             half_chunk = chunk_len // 2
+
+            # Concatenate from each CP rank's output (load-balanced split)
             for j in range(cp_size):
                 o = output_list[j][0]
                 start_cp = cu_seqlens_cp[i].item()
                 o0 = o[start_cp:start_cp + half_chunk]
                 o1 = o[start_cp + half_chunk:start_cp + chunk_len]
+
+                # Place back to full sequence
                 output_full[0, start_full + j * half_chunk:start_full + (j + 1) * half_chunk] = o0
                 output_full[0, end_full - (j + 1) * half_chunk:end_full - j * half_chunk] = o1
     else:
+        # non-padding_free mode: [batch_size, seq_len/cp_size] -> [batch_size, seq_len]
+        # Each CP rank has chunks split with load-balanced pattern (2*cp_size chunks)
         batch_size = tensor.shape[0]
         seq_len_per_cp = tensor.shape[1]
         full_seq_len = seq_len_per_cp * cp_size
         output_full = tensor.new_zeros(batch_size, full_seq_len)
+
+        # Each CP rank j holds chunks j and (2*cp_size - j - 1) from the original 2*cp_size split
+        # Reconstruct the full sequence by placing chunks back in correct positions
         chunk_len = full_seq_len // (2 * cp_size)
+
         for j in range(cp_size):
             o = output_list[j]
+            # This rank holds 2 chunks: chunk j and chunk (2*cp_size - j - 1)
             half_len = seq_len_per_cp // 2
             o0 = o[:, :half_len]
             o1 = o[:, half_len:]
+
+            # Place chunk j at position j * chunk_len
             output_full[:, j * chunk_len:(j + 1) * chunk_len] = o0
             reverse_idx = 2 * cp_size - j - 1
             output_full[:, reverse_idx * chunk_len:(reverse_idx + 1) * chunk_len] = o1
