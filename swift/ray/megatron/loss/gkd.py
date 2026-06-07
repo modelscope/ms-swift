@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import torch
+from functools import partial
 from megatron.core import mpu
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -10,11 +11,12 @@ from swift.megatron.trainers.gkd_utils import cp_reduce, tp_gather_topk, vocab_p
 from swift.megatron.trainers.utils import prepare_batch
 from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 from swift.megatron.utils import forward_step_helper, get_padding_to
-from swift.rlhf_trainers.gkd_loss import TeacherOutput, gkd_loss
+from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.utils import gc_collect, get_current_device, to_device
 from .base import Loss
 
 _NON_MODEL_KEYS = frozenset({
+    'data_source',
     'completion_mask',
     'truncated_mask',
     'seq_lengths',
@@ -41,6 +43,7 @@ class GKDLoss(Loss):
     def forward_step(self, data_iterator, model):
         data = next(data_iterator)
         teacher_output = data.pop('teacher_output', TeacherOutput())
+        data_source = data.pop('data_source', None)
         data.pop('opsd_teacher_batch', None)
         data.pop('opsd_teacher_messages', None)
         data = prepare_batch(self.args, data)
@@ -51,11 +54,11 @@ class GKDLoss(Loss):
         inputs = {k: v for k, v in data.items() if k not in _NON_MODEL_KEYS}
 
         student_output = model(**inputs)
-        from functools import partial
         return student_output, partial(
             self.loss_func,
             labels=labels,
             teacher_output=teacher_output,
+            data_source=data_source,
         )
 
     # ------------------------------------------------------------------
@@ -126,7 +129,7 @@ class GKDLoss(Loss):
     # Loss computation
     # ------------------------------------------------------------------
 
-    def loss_func(self, output_tensor, *, labels, teacher_output, data=None):
+    def loss_func(self, output_tensor, *, labels, teacher_output, data_source=None):
         args = self.args
         student_logits = output_tensor
 
@@ -143,7 +146,9 @@ class GKDLoss(Loss):
 
         loss = jsd_loss_val
         sft_loss = None
-        if self.sft_alpha > 0:
+        # SFT loss only applies to ground-truth (dataset) responses; skip it on
+        # student-generated (on-policy) responses, matching the non-ray GKD trainer.
+        if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
             logits_sbv = student_logits.transpose(0, 1).contiguous()
             loss_mask = labels != -100
             per_token_loss = torch.nn.functional.cross_entropy(

@@ -769,6 +769,8 @@ class MegatronWorker(CheckpointEngineMixin):
                 device,
                 padding_free=template.padding_free,
                 target_seq_len=None if cp_size > 1 else labels.shape[-1])
+        if samples and samples[0].get('data_source') is not None:
+            encoded_batch['data_source'] = samples[0]['data_source']
         return encoded_batch
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:

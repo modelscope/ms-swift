@@ -56,6 +56,10 @@ class GKDTrainer(BaseRayTrainer):
             raise NotImplementedError('teacher_model_server is not yet supported in the Ray pipeline. '
                                       'Use teacher_model (colocated) or teacher replicas (teacher.gpus > 0) instead.')
 
+        vp_size = getattr(args, 'virtual_pipeline_model_parallel_size', None)
+        assert vp_size is None or vp_size == 1, \
+            'Ray GKD does not support VPP (virtual_pipeline_model_parallel_size > 1).'
+
     def _train_loop(self, tg, train_iters, iteration):
         ckpt = self.ckpt_manager
 
@@ -94,6 +98,10 @@ class GKDTrainer(BaseRayTrainer):
                 # _inject_cached_teacher_logits (required for CP per-rank slice alignment).
                 tg.compute_teacher_logits(samples)
 
+            # Tag each sample with the step's data_source so the worker can gate the SFT
+            # loss in loss_func (SFT only on dataset responses, not on-policy generations).
+            for s in samples:
+                s['data_source'] = data_source
             self._maybe_log_completions(rollout_with_outputs, gen_step=iteration)
             results = tg.train_step(
                 samples, extra_metrics={'on_policy': 1.0 if data_source == DataSource.STUDENT else 0.0})
