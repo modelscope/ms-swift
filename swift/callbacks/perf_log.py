@@ -38,7 +38,7 @@ class PerfMetricsLogCallback(TrainerCallback):
 
     def __init__(self, args: 'TrainingArguments', trainer: 'Trainer'):
         super().__init__(args, trainer)
-        self.device_tflops = None
+        self.max_tflops = None
         self.elapsed = 0.0
         self.step_start_time = None
 
@@ -62,7 +62,7 @@ class PerfMetricsLogCallback(TrainerCallback):
             tflops = self._estimate_device_tflops_by_dtype(device, dtype)
             logger.info(f'Estimate test finished. [{tflops} TFLOPS] Device count: [{device_count}]')
 
-        self.device_tflops = tflops * device_count
+        self.max_tflops = tflops * device_count
 
     def on_step_begin(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
         self.step_start_time = time.time()
@@ -73,7 +73,7 @@ class PerfMetricsLogCallback(TrainerCallback):
     def on_log(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, logs=None, **kwargs):
         total_flos = getattr(state, 'total_flos', 0)
         actual_flops = total_flos / self.elapsed
-        theoretical_max_flops = self.device_tflops * 1e12
+        theoretical_max_flops = self.max_tflops * 1e12
         mfu = actual_flops / theoretical_max_flops
         logger.debug(f'Total_flos[{total_flos}] elapsed_time[{self.elapsed}]sec Average MFU[{mfu}]')
         logs['MFU'] = round(mfu, 6)
