@@ -4,7 +4,8 @@ import torch
 from transformers import TrainerControl, TrainerState
 from typing import TYPE_CHECKING
 
-from swift.utils import empty_cache, get_current_device, get_device_count, get_env_args, get_logger, synchronize
+from swift.utils import (empty_cache, get_current_device, get_device_count, get_dist_setting, get_env_args, get_logger,
+                         synchronize)
 from .base import TrainerCallback
 
 if TYPE_CHECKING:
@@ -44,8 +45,13 @@ class PerfMetricsLogCallback(TrainerCallback):
     def on_init_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
 
         # Top priority. Specify by ENV
-        tflops = get_env_args('DEVICE_TFLOPS', int, None)
-        device_count = max(get_device_count(), 1)
+        tflops = get_env_args('DEVICE_TFLOPS', float, None)
+        # `state.total_flos` is summed across all ranks (cluster-global) by HF Trainer,
+        # so the theoretical denominator must use the TOTAL number of GPUs in use across the entire cluster.
+        _, _, world_size, local_world_size = get_dist_setting()
+        local_n_gpu = get_device_count()
+        gpus_per_process = max(1, local_n_gpu // max(local_world_size, 1))
+        device_count = max(world_size * gpus_per_process, 1)
         if tflops is not None:
             logger.info(f"Specify theoretical max TFLOPS through ENV 'DEVICE_TFLOPS'. [{tflops} TFLOPS]")
         else:
@@ -55,7 +61,6 @@ class PerfMetricsLogCallback(TrainerCallback):
             logger.info(f'Estimating device TFLOPS baseline. Device: [{device}] dtype: [{dtype}]')
             tflops = self._estimate_device_tflops_by_dtype(device, dtype)
             logger.info(f'Estimate test finished. [{tflops} TFLOPS] Device count: [{device_count}]')
-        # TODO Collect comprehensive TFLOPS data. Then provide a fallback strategy based on lookup tables.
 
         self.device_tflops = tflops * device_count
 
