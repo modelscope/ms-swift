@@ -125,6 +125,7 @@ class PerfMetricsLogCallback(TrainerCallback):
     @staticmethod
     def _retrieve_flops_from_map(device):
         """Retrieve theoretical FLOPS from Map.    """
+        # This function is never used.
 
         device_name = device.get_device_name()
         flops = None
