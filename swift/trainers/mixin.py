@@ -114,6 +114,7 @@ class SwiftMixin:
         trainer_parameters = inspect.signature(HfTrainer.__init__).parameters
         tokenizer_key = 'processing_class' if 'processing_class' in trainer_parameters else 'tokenizer'
         kwargs[tokenizer_key] = template.tokenizer
+        # Pass callbacks in __init__ to correctly invoke on_init_end
         callbacks = self._get_callbacks(args)
         with self.hub.patch_hub():
             super().__init__(
