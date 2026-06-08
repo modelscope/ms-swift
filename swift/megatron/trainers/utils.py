@@ -26,7 +26,8 @@ def get_batch_on_this_pp_rank(args, data, vp_stage=None):
     is_pp_last_stage = mpu.is_pipeline_last_stage(ignore_virtual=False, vp_stage=vp_stage)
     if not is_pp_last_stage:
         batch['labels'] = None
-        batch['loss_scale'] = None
+        if 'loss_scale' in batch:
+            batch['loss_scale'] = None
 
     return batch
 
