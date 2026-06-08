@@ -32,7 +32,7 @@ from swift.megatron.utils import (apply_router_replay_patch, disable_forward_pre
                                   get_optimizer_param_scheduler, get_padding_to, init_persistent_async_worker,
                                   initialize_tp_communicators, load_mcore_checkpoint,
                                   logical_and_across_model_parallel_group, maybe_finalize_async_save,
-                                  prepare_mcore_model, reduce_max_stat_across_model_parallel_group,
+                                  prepare_mcore_model, reconstruct_tensor_cp, reduce_max_stat_across_model_parallel_group,
                                   save_mcore_checkpoint, should_disable_forward_pre_hook, warmup_jit_function,
                                   wrap_model)
 from swift.template import Template
@@ -1013,6 +1013,8 @@ class BaseMegatronTrainer(ABC):
         return {}
 
     def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None, num_samples=None):
+        if self.args.context_parallel_size > 1:
+            output_tensor = reconstruct_tensor_cp(output_tensor, packed_seq_params, dim=1)
         if packed_seq_params is None:
             attention_mask_2d = (~attention_mask).sum(dim=(1, 2)) > 0
             last_token_idx = get_last_valid_indices(attention_mask_2d.long())

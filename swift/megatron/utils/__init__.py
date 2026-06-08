@@ -9,4 +9,4 @@ from .parallel_utils import logical_and_across_model_parallel_group, reduce_max_
 from .patcher import patch_merge_fn, patch_torch_dist_shard
 from .router_replay_utils import (RouterReplayHelper, apply_router_replay_patch, get_local_topk_idx_for_current_rank,
                                   get_router_replay_data, set_router_replay_data)
-from .utils import forward_step_helper, get_packed_seq_params, get_padding_to, prepare_mcore_model
+from .utils import forward_step_helper, get_packed_seq_params, get_padding_to, prepare_mcore_model, reconstruct_tensor_cp

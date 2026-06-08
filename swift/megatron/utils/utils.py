@@ -237,3 +237,42 @@ def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
         packed.cu_seqlens_kv_padded = params['cu_seq_lens_k']
 
     return packed
+
+
+def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
+    """In CP mode, all-gather and undo the load-balanced (zigzag) chunking
+    produced by ``split_cp_inputs``, restoring the full sequence in original
+    token order along ``dim``.
+
+    Args:
+        tensor: CP-sharded local tensor whose sequence dim is at ``dim``.
+        packed_seq_params: ``PackedSeqParams`` for THD inputs, or ``None`` for
+            regular ``[B, S, ...]`` inputs.
+        dim: Sequence dimension index of ``tensor`` (default: 1).
+
+    Returns:
+        torch.Tensor: Full-sequence tensor with the same shape as ``tensor``
+        except the size at ``dim`` is multiplied by ``cp_size``.
+    """
+    from megatron.core.ssm.mamba_context_parallel import _undo_attention_load_balancing
+
+    cp_size = mpu.get_context_parallel_world_size()
+    if cp_size <= 1:
+        return tensor
+
+    cp_rank = mpu.get_context_parallel_rank()
+    cp_group = mpu.get_context_parallel_group()
+
+    # All-gather across CP ranks (preserve local autograd graph for `tensor`).
+    output_list = [torch.empty_like(tensor) for _ in range(cp_size)]
+    torch.distributed.all_gather(output_list, tensor.contiguous(), group=cp_group)
+    output_list[cp_rank] = tensor
+    gathered = torch.cat(output_list, dim=dim)
+
+    # `_undo_attention_load_balancing` assumes sequence dim is 0; transpose if needed.
+    if dim != 0:
+        gathered = gathered.transpose(0, dim).contiguous()
+    out = _undo_attention_load_balancing(gathered, cp_size, packed_seq_params)
+    if dim != 0:
+        out = out.transpose(0, dim).contiguous()
+    return out
