@@ -11,6 +11,7 @@ from megatron.core.optimizer import ChainedOptimizer
 from typing import Any, Optional
 
 from swift.dataloader import DataLoaderDispatcher
+from swift.megatron.utils import get_batch_on_this_cp_rank, get_packed_seq_params
 from swift.utils import empty_cache, get_current_device, get_logger, to_device
 
 logger = get_logger()
@@ -312,7 +313,8 @@ class TrainerState:
     should_log: bool = False
 
     iteration: int = 0
-    consumed_train_samples = 0
+    consumed_train_samples: int = 0
+    num_input_tokens_seen: int = 0
     # compat transformers
     max_steps: Optional[int] = None
 
@@ -357,7 +359,6 @@ def prepare_batch(args, data, vp_stage=None, num_samples=None):
 
     Extracted from BaseMegatronTrainer._prepare_batch for reuse in ray workers.
     """
-    from swift.megatron.utils import get_batch_on_this_cp_rank, get_packed_seq_params
     batch = get_batch_on_this_pp_rank(args, data, vp_stage=vp_stage)
     if num_samples is None:
         num_samples = batch.pop('num_samples')

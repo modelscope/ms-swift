@@ -41,7 +41,7 @@ from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
                          is_master, ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .utils import TrainerState, build_streaming_dataloader
+from .utils import TrainerState, build_streaming_dataloader, prepare_batch
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -985,7 +985,6 @@ class BaseMegatronTrainer(ABC):
                 and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
 
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
-        from .utils import prepare_batch
         return prepare_batch(self.args, data, vp_stage=vp_stage, num_samples=num_samples)
 
     def get_batch(self, data_iterator, vp_stage=None):
