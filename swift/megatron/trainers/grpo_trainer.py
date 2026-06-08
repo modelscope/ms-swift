@@ -526,6 +526,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             # Load weights only (faster and reduces memory peak)
             kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+            aggressive_empty_cache()
             self.engine.engine.wake_up(**kwargs)
 
         # Step 2: Load model weights
