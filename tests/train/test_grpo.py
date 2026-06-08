@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+from tests._test_utils import setup_device_env
+
+setup_device_env('0,1')
 
 kwargs = {
     'per_device_train_batch_size': 2,
@@ -109,9 +111,41 @@ def test_mllm_pt():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
+def test_grpo_minimal():
+    from packaging import version
+    import trl
+    if version.parse(trl.__version__) < version.parse('0.26'):
+        print(f'Skipping test_grpo_minimal: trl>=0.26 required, found trl=={trl.__version__}')
+        return
+    from swift import InferArguments, RLHFArguments, infer_main, rlhf_main
+    result = rlhf_main(
+        RLHFArguments(
+            rlhf_type='grpo',
+            model='Qwen/Qwen2-0.5B',
+            tuner_type='lora',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#20'],
+            system=SYSTEM_PROMPT,
+            reward_funcs=['format'],
+            max_completion_length=128,
+            num_generations=2,
+            max_steps=2,
+            per_device_train_batch_size=2,
+            gradient_accumulation_steps=1,
+            save_steps=2,
+            split_dataset_ratio=0.01,
+            logging_steps=1,
+            use_vllm=False,
+            **{k: v for k, v in kwargs.items() if k not in ['per_device_train_batch_size', 'save_steps',
+                                                              'gradient_accumulation_steps', 'num_train_epochs',
+                                                              'per_device_eval_batch_size']}))
+    last_model_checkpoint = result['last_model_checkpoint']
+    infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True))
+
+
 if __name__ == '__main__':
     # test_llm()
     # test_llm_zero3()
     # test_llm_vllm()
     # test_llm_vllm_zero2()
     test_mllm_pt()
+    # test_grpo_minimal()

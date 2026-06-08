@@ -1,8 +1,9 @@
-import os
 import torch
 from typing import Literal
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from tests._test_utils import setup_device_env
+
+setup_device_env('0')
 
 
 def _prepare(infer_backend: Literal['vllm', 'transformers', 'lmdeploy']):

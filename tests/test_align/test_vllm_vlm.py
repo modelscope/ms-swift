@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from tests._test_utils import setup_device_env
+
+setup_device_env('0')
 
 
 def _infer_audio(model, use_chat_template: bool = True, max_model_len=8192, system=None, limit_mm_per_prompt=None):

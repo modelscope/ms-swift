@@ -1,7 +1,9 @@
 import os
 
+from tests._test_utils import setup_device_env
+
 os.environ['SWIFT_DEBUG'] = '1'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+setup_device_env('0,1,2,3')
 
 system = 'You are a helpful assistant.'
 

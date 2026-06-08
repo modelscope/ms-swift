@@ -1,5 +1,7 @@
 import os
 
+from tests._test_utils import setup_device_env
+
 kwargs = {
     'per_device_train_batch_size': 5,
     'save_steps': 5,
@@ -9,7 +11,7 @@ kwargs = {
 
 
 def test_train_eval_loop():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+    setup_device_env('1')
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(

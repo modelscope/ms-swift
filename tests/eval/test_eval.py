@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+from tests._test_utils import setup_device_env
+
+setup_device_env('3')
 
 infer_backend = 'transformers'
 

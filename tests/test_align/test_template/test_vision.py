@@ -1,7 +1,9 @@
 import os
+
+from tests._test_utils import setup_device_env
 import torch
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+setup_device_env('0,1,2,3')
 os.environ['SWIFT_DEBUG'] = '1'
 
 
@@ -1031,7 +1033,7 @@ def test_llava_onevision1_5():
 
 
 def test_paddle_ocr():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    setup_device_env('0')
     engine = TransformersEngine('PaddlePaddle/PaddleOCR-VL')
     query = 'OCR:'
     messages = [{'role': 'user', 'content': query}]
@@ -1199,7 +1201,7 @@ def test_step3_vl():
 
 
 def test_paddle_ocr_1_5():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    setup_device_env('0')
     engine = TransformersEngine('PaddlePaddle/PaddleOCR-VL-1.5')
     query = 'OCR:'
     messages = [{'role': 'user', 'content': query}]

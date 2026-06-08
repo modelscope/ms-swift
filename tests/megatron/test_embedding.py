@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+from tests._test_utils import setup_device_env
+
+setup_device_env('0,1')
 
 
 def test_embedding():

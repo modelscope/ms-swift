@@ -1,4 +1,6 @@
 import os
+
+from tests._test_utils import setup_device_env
 import torch
 import unittest
 
@@ -7,7 +9,7 @@ from swift.model import get_processor
 from swift.template import get_template
 from swift.utils import get_logger, seed_everything
 
-# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# setup_device_env('0')
 os.environ['SWIFT_DEBUG'] = '1'
 
 logger = get_logger()

@@ -1,4 +1,6 @@
 import os
+
+from tests._test_utils import setup_device_env
 import shutil
 import tempfile
 import transformers
@@ -8,7 +10,7 @@ from packaging import version
 from swift import ExportArguments, export_main
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    setup_device_env('0')
 
 
 class TestTemplate(unittest.TestCase):

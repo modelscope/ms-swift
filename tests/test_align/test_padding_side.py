@@ -1,7 +1,9 @@
 import os
+
+from tests._test_utils import setup_device_env
 from pprint import pprint
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+setup_device_env('1')
 kwargs = {
     'per_device_train_batch_size': 4,
     'per_device_eval_batch_size': 4,
