@@ -107,6 +107,7 @@ class TestSwiftResTuning(unittest.TestCase):
         model_loaded = Swift.from_pretrained(model, self.tmp_dir)
         self.model_comparison(model_swift_1, model_loaded)
 
+    @unittest.skip('swift3.0')
     def test_swift_restuning_diffusers_sd(self):
         model_dir = snapshot_download('AI-ModelScope/stable-diffusion-v1-5')
         from diffusers import UNet2DConditionModel

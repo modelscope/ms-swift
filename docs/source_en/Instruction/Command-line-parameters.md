@@ -252,7 +252,7 @@ This list inherits from the Transformers `Seq2SeqTrainingArguments`, with ms-swi
 - 🔥vit_lr: Specifies the learning rate for the ViT module when training multimodal models. Default is `None`, same as `learning_rate`. Typically used together with `--freeze_vit` and `--freeze_aligner`.
   - Note: The "learning_rate" printed in the logs is the learning rate of `param_groups[0]`, where the order of param_groups is vit, aligner, llm (if it contains trainable parameters).
 - 🔥aligner_lr: Specifies the learning rate for the aligner module in multimodal models. Default is `None`, same as `learning_rate`.
-- lr_scheduler_type: Type of learning rate scheduler. Default is `'cosine'`.
+- lr_scheduler_type: The type of learning rate scheduler, defaults to `'cosine'`. Common options: `'linear'`, `'constant'`, `'cosine_with_min_lr'`.
 - lr_scheduler_kwargs: Additional arguments for the learning rate scheduler. Default is `None`.
 - gradient_checkpointing_kwargs: Arguments passed to `torch.utils.checkpoint`. For example: `--gradient_checkpointing_kwargs '{"use_reentrant": false}'`. Default is `None`.
   - Note: When using DDP without DeepSpeed/FSDP and `gradient_checkpointing_kwargs` is `None`, it defaults to `'{"use_reentrant": false}'` to prevent errors.
@@ -321,6 +321,7 @@ Other important parameters:
   - Note: The behavior of `'all-linear'` differs between LLMs and multimodal LLMs. For standard LLMs, it automatically finds all linear layers except `lm_head` and attaches tuners. **For multimodal LLMs, tuners are by default only attached to the LLM component; this behavior can be controlled via `freeze_llm`, `freeze_vit`, and `freeze_aligner`**.
 - 🔥target_regex: A regular expression to specify LoRA modules. Default is `None`. If provided, `target_modules` is ignored. For example: `--target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'` applies LoRA to modules matching the pattern. This argument is not limited to LoRA and can be used with other tuners.
 - target_parameters: List of parameter names (not module names) to replace with LoRA. Similar in behavior to `target_modules`, but operates at the parameter level. Requires "peft>=0.17.0". This is useful for models like Mixture-of-Experts (MoE) layers in Hugging Face Transformers, which may use `nn.Parameter` instead of `nn.Linear`.
+  - Note: This parameter requires `lora_dropout` to be set to 0.
 - init_weights: Method for initializing weights. For LoRA: options are 'true', 'false', 'gaussian', 'pissa', 'pissa_niter_[number of iters]', 'olora', 'loftq', 'lora-ga'. For Bone: 'true', 'false', 'bat'. Default is 'true'.
 - 🔥modules_to_save: Additional original model modules to include in training and saving, even after attaching a tuner. Default is `[]`. Applies to tuners beyond LoRA. For example: `--modules_to_save embed_tokens lm_head` enables training of `embed_tokens` and `lm_head` during LoRA training, and their weights will be saved in `adapter_model.safetensors`.
 
@@ -760,6 +761,7 @@ The rollout parameters inherit from the [deployment parameters](#deployment-argu
 - use_gym_env: Whether to enable gym-environment mode (rollout emits `total_reward` for the trainer to consume). Defaults to None; when not set explicitly, it is auto-enabled if `gym_env` is set.
 - vllm_enable_lora: Enable the vLLM engine to load LoRA adapters; defaults to False. Used to accelerate weight synchronization during LoRA training. See the [documentation](./GRPO/GetStarted/GRPO.md#weight-sync-acceleration) for details.
 - vllm_max_lora_rank: LoRA parameter for the vLLM engine. Must be greater than or equal to the training lora_rank; it is recommended to set them equal. Defaults to 16.
+- vllm_enable_expert_parallel: Enable Expert Parallel (EP) for MoE models, distributing experts across ranks. Valid when vllm_use_async_engine is true. Default is False.
 
 ### Web-UI Arguments
 - server_name: Host for the web UI, default is '0.0.0.0'.

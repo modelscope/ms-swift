@@ -51,7 +51,7 @@ class HfConfigFactory:
             res.append((config, deep_getattr(config, attr_name)))
 
         for k in keys:
-            if k.endswith('_config'):
+            if k.endswith('_config') and k != 'talker_config':
                 if isinstance(config, dict):
                     v = config[k]
                 else:
@@ -108,6 +108,19 @@ class HfConfigFactory:
                 config[attr_name] = value
             else:
                 setattr(config, attr_name, value)
+        return len(attrs)
+
+    @staticmethod
+    def del_config_attr(config: Union[PretrainedConfig, Dict[str, Any]],
+                        attr_name: str,
+                        include_vit: bool = False) -> int:
+        """Remove all the attr_name attributes."""
+        attrs = HfConfigFactory._get_config_attrs(config, attr_name, include_vit)
+        for config, _ in attrs:
+            if isinstance(config, dict):
+                config.pop(attr_name, None)
+            elif hasattr(config, attr_name):
+                delattr(config, attr_name)
         return len(attrs)
 
     @staticmethod

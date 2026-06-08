@@ -199,6 +199,7 @@ class RequestConfig:
     stream: bool = False
     logprobs: bool = False
     top_logprobs: Optional[int] = None
+    prompt_logprobs: Optional[int] = None
 
     n: int = 1
     best_of: Optional[int] = None
@@ -462,13 +463,22 @@ class ChatCompletionResponse:
     object: str = 'chat.completion'
     created: int = field(default_factory=lambda: int(time.time()))
     prompt_token_ids: Optional[List[int]] = None
+    prompt_logprobs: Optional[List] = None
     images_size: Optional[List[Tuple[int, int]]] = None
 
     def to_cmpl_response(self) -> 'CompletionResponse':
         self = deepcopy(self)
         choices = [choice.to_cmpl_choice() for choice in self.choices]
         id_ = f'cmpl{self.id[len("chatcmpl"):]}'
-        return CompletionResponse(self.model, choices, self.usage, id_, created=self.created)
+        return CompletionResponse(
+            self.model,
+            choices,
+            self.usage,
+            id_,
+            created=self.created,
+            prompt_token_ids=self.prompt_token_ids,
+            prompt_logprobs=self.prompt_logprobs,
+        )
 
 
 class RolloutOutput(BaseModel):
@@ -507,6 +517,8 @@ class RolloutOutput(BaseModel):
     # rollout logprobs for each turn (used for rollout importance sampling correction in multi-turn scenarios)
     rollout_logprobs: List[List[float]] = Field(default_factory=list)
 
+    prompt_logprobs: Optional[List] = None
+
     @field_validator('response_token_ids', 'response_loss_mask', 'rollout_logprobs', mode='before')
     @classmethod
     def _wrap_flat_list(cls, v):
@@ -539,6 +551,8 @@ class CompletionResponse:
     id: str = field(default_factory=lambda: f'cmpl-{random_uuid()}')
     object: str = 'text_completion'
     created: int = field(default_factory=lambda: int(time.time()))
+    prompt_token_ids: Optional[List[int]] = None
+    prompt_logprobs: Optional[List] = None
 
 
 @dataclass

@@ -7,7 +7,6 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
-from functools import partial
 from itertools import repeat
 from packaging import version
 from queue import Queue
@@ -359,22 +358,17 @@ def patch_lmdeploy(load_weights=False):
     TurboMindInstance._create_model_instance = _create_model_instance
 
 
-def patch_npu_vllm(vllm_device: str):
+def patch_npu_vllm(vllm_device: str, *, colocate: bool = False):
     if isinstance(vllm_device, int):
         vllm_device = get_device(vllm_device)
     device_type = vllm_device.split(':')[0]
+    if device_type == 'npu':
+        from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_runtime
+        from swift.model.npu_patch.vllm_ascend_memory import vllm_ascend_mem_get_info_context
+        patch_vllm_ascend_runtime(colocate=colocate)
+        return vllm_ascend_mem_get_info_context(vllm_device)
 
-    @contextmanager
-    def new_group_context():
-        original_new_group = torch.distributed.new_group
-        try:
-            torch.distributed.new_group = partial(original_new_group, use_local_synchronization=True)
-            torch.npu.mem_get_info = partial(torch.npu.mem_get_info, device=vllm_device)
-            yield
-        finally:
-            torch.distributed.new_group = original_new_group
-
-    return new_group_context() if device_type == 'npu' else nullcontext()
+    return nullcontext()
 
 
 def patch_vllm_triton_device_guard():

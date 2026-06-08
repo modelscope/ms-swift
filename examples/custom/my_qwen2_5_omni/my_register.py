@@ -1,6 +1,6 @@
 import torch
 from functools import partial
-from transformers import PretrainedConfig, PreTrainedModel
+from transformers import AutoConfig, PretrainedConfig, PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import Any, Dict, List, Literal, Optional
 
@@ -35,8 +35,7 @@ register_model_arch(
 class Qwen2_5OmniLoader(ModelLoader):
 
     def get_config(self, model_dir: str) -> PretrainedConfig:
-        from transformers import Qwen2_5OmniConfig
-        config = Qwen2_5OmniConfig.from_pretrained(model_dir, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         enable_audio_output = get_env_args('ENABLE_AUDIO_OUTPUT', bool, None)
         if enable_audio_output is not None:
             config.enable_audio_output = enable_audio_output

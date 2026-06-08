@@ -247,7 +247,7 @@ ENV:
 - 🔥vit_lr: 当训练多模态大模型时，该参数指定vit的学习率，默认为None，等于learning_rate。通常与`--freeze_vit`、`--freeze_aligner`参数结合使用。
   - 提示：在日志中打印的"learning_rate"为`param_groups[0]`的学习率，其中param_groups的顺序依次是vit, aligner, llm（若含可训练参数）。
 - 🔥aligner_lr: 当训练多模态大模型时，该参数指定aligner的学习率，默认为None，等于learning_rate。
-- lr_scheduler_type: lr_scheduler类型，默认为'cosine'。
+- lr_scheduler_type: lr_scheduler类型，默认为'cosine'。常见选择：'linear', 'constant', 'cosine_with_min_lr'。
 - lr_scheduler_kwargs: lr_scheduler其他参数。默认为None。
 - gradient_checkpointing_kwargs: 传入`torch.utils.checkpoint`中的参数。例如设置为`--gradient_checkpointing_kwargs '{"use_reentrant": false}'`。默认为None。
   - 注意：当使用DDP而不使用deepspeed/fsdp，且gradient_checkpointing_kwargs为None，会默认设置其为`'{"use_reentrant": false}'`而避免出现报错。
@@ -315,6 +315,7 @@ ENV:
   - 注意：在LLM和多模态LLM中，'all-linear'的行为有所不同。若是LLM则自动寻找除lm_head外的linear并附加tuner；**若是多模态LLM，则默认只在LLM上附加tuner，该行为可以被`freeze_llm`、`freeze_vit`、`freeze_aligner`控制**。
 - 🔥target_regex: 指定lora模块的regex表达式，默认为`None`。如果该值传入，则target_modules参数失效。例如你可以设置`--target_regex '^(language_model).*\.(q_proj|k_proj|v_proj|o_proj|gate_proj|up_proj|down_proj)$'`，将符合该正则的模块指定为LoRA模块。该参数不限于LoRA，可用于其他tuners。
 - target_parameters: 要替换为LoRA的参数名称列表。该参数的行为与 `target_modules` 类似，但传入的应是参数名称而不是模块名称。该特性需要安装"peft>=0.17.0"。例如，在 Hugging Face Transformers 中许多混合专家（MoE）层中，并未使用 `nn.Linear`，而是使用了 `nn.Parameter`。这时可以使用target_parameters参数实现。
+  - 注意：该参数需要设置`lora_dropout`为 0。
 - init_weights: 初始化weights的方法，LoRA可以指定为'true'、'false'、'gaussian'、'pissa'、'pissa_niter_[number of iters]'、'olora'、'loftq'、'lora-ga'，Bone可以指定为'true'、'false'、'bat'。默认值'true'。
 - 🔥modules_to_save: 在已附加tuner后，额外指定一部分原模型模块参与训练和存储。默认为`[]`。该参数不限于LoRA，可用于其他tuners。例如设置为`--modules_to_save embed_tokens lm_head`，在LoRA训练中解开embed_tokens和lm_head层进行训练，这两部分的权重信息最终会保存在`adapter_model.safetensors`中。
 
@@ -739,6 +740,7 @@ Rollout参数继承于[部署参数](#部署参数)
 - use_gym_env: 是否启用 gym 环境模式（rollout 输出 `total_reward` 供 trainer 使用）。默认为None，未显式传入时若设置了 `gym_env` 则自动设为True。
 - vllm_enable_lora: 支持vLLM Engine 加载 LoRA adapter，默认为False。用于加速LoRA训练的权重同步，具体参考[文档](./GRPO/GetStarted/GRPO.md#权重同步加速)。
 - vllm_max_lora_rank: vLLM Engine LoRA参数，需大于等于训练的lora_rank，建议等于。默认为16。
+- vllm_enable_expert_parallel: 开启MoE模型的专家并行（EP），将experts分布到不同rank，在vllm_use_async_engine True时生效。默认为False。
 
 ### Web-UI参数
 - server_name: web-ui的host，默认为'0.0.0.0'。

@@ -4,7 +4,8 @@ import torch
 from transformers import TrainerControl, TrainerState
 from typing import TYPE_CHECKING
 
-from swift.utils import empty_cache, get_current_device, get_device_count, get_env_args, get_logger, synchronize
+from swift.utils import (empty_cache, get_current_device, get_device_count, get_dist_setting, get_env_args, get_logger,
+                         synchronize)
 from .base import TrainerCallback
 
 if TYPE_CHECKING:
@@ -37,15 +38,20 @@ class PerfMetricsLogCallback(TrainerCallback):
 
     def __init__(self, args: 'TrainingArguments', trainer: 'Trainer'):
         super().__init__(args, trainer)
-        self.device_tflops = None
+        self.max_tflops = None
         self.elapsed = 0.0
         self.step_start_time = None
 
     def on_init_end(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
 
         # Top priority. Specify by ENV
-        tflops = get_env_args('DEVICE_TFLOPS', int, None)
-        device_count = max(get_device_count(), 1)
+        tflops = get_env_args('DEVICE_TFLOPS', float, None)
+        # `state.total_flos` is summed across all ranks (cluster-global) by HF Trainer,
+        # so the theoretical denominator must use the TOTAL number of GPUs in use across the entire cluster.
+        _, _, world_size, local_world_size = get_dist_setting()
+        local_n_gpu = get_device_count()
+        gpus_per_process = max(1, local_n_gpu // max(local_world_size, 1))
+        device_count = max(world_size * gpus_per_process, 1)
         if tflops is not None:
             logger.info(f"Specify theoretical max TFLOPS through ENV 'DEVICE_TFLOPS'. [{tflops} TFLOPS]")
         else:
@@ -55,9 +61,8 @@ class PerfMetricsLogCallback(TrainerCallback):
             logger.info(f'Estimating device TFLOPS baseline. Device: [{device}] dtype: [{dtype}]')
             tflops = self._estimate_device_tflops_by_dtype(device, dtype)
             logger.info(f'Estimate test finished. [{tflops} TFLOPS] Device count: [{device_count}]')
-        # TODO Collect comprehensive TFLOPS data. Then provide a fallback strategy based on lookup tables.
 
-        self.device_tflops = tflops * device_count
+        self.max_tflops = tflops * device_count
 
     def on_step_begin(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, **kwargs):
         self.step_start_time = time.time()
@@ -68,7 +73,7 @@ class PerfMetricsLogCallback(TrainerCallback):
     def on_log(self, args: 'TrainingArguments', state: TrainerState, control: TrainerControl, logs=None, **kwargs):
         total_flos = getattr(state, 'total_flos', 0)
         actual_flops = total_flos / self.elapsed
-        theoretical_max_flops = self.device_tflops * 1e12
+        theoretical_max_flops = self.max_tflops * 1e12
         mfu = actual_flops / theoretical_max_flops
         logger.debug(f'Total_flos[{total_flos}] elapsed_time[{self.elapsed}]sec Average MFU[{mfu}]')
         logs['MFU'] = round(mfu, 6)
@@ -120,6 +125,7 @@ class PerfMetricsLogCallback(TrainerCallback):
     @staticmethod
     def _retrieve_flops_from_map(device):
         """Retrieve theoretical FLOPS from Map.    """
+        # This function is never used.
 
         device_name = device.get_device_name()
         flops = None

@@ -30,8 +30,8 @@
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss computation fusion. Defaults to True.
 - cross_entropy_fusion_impl: Implementation for cross-entropy loss fusion. Options are 'native' and 'te'. Defaults to None. Automatically set to 'te' for CUDA and 'native' for NPU.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padding tokens in the global batch. Defaults to None. When `task_type` is 'causal_lm' and during pretraining/fine-tuning, it defaults to True; otherwise, it defaults to False.
-- 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto). Default is flash.
-  - If `flash_attention_3` is installed, specifying `--attention_backend flash` will prioritize using FA3. Refer to the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3). To use flash_attention_3 for the ViT part of multimodal models, set `--attn_impl flash_attention_3`.
+- 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto, flash_2, flash_3, flash_4). Defaults to `flash`.
+  - If `flash_attention_4/3` is installed, `--attention_backend flash` will prioritize fa4/fa3. To explicitly specify a version, you can set `--attention_backend flash_2/3/4`. For training script examples, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3). To use flash_attention_4/3 for the ViT part of multimodal models, please set `--attn_impl flash_attention_4/3`.
   - Some models may not support flash attention; you need to manually set `--attention_backend unfused/fused --padding_free false`, for example: Llama4, GPT-OSS.
 - optimizer: Optimizer type. Options include 'adam', 'sgd', 'muon', and 'dist_muon'. Default is 'adam'.
   - Note: This 'adam' is actually 'adamw'. See [here](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70) for reference.
@@ -150,6 +150,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
   - This parameter is typically used when **the total number of Transformer layers is not divisible by the pipeline parallelism (PP) size**, or when the first pipeline stage (PP stage 0) of a multimodal model consumes excessive GPU memory.
 - 🔥decoder_last_pipeline_num_layers: The number of Transformer layers in the last pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
 - overlap_p2p_comm: Overlap pipeline parallel communication with forward and backward blocks in 1F1B. Defaults to True.
+- batch_p2p_comm: Use batch_isend_irecv instead of individual isend/irecv calls. Defaults to `None`, and is set to `not args.overlap_p2p_comm`.
+  - If pipeline parallelism hangs, you can set this to False.
 - align_param_gather: When set to True, all PP stages will launch parameter all-gather operations simultaneously. Otherwise, each PP stage will launch independently as needed. Defaults to True.
 - 🔥sequence_parallel: Enables sequence parallel optimization; this option takes effect only when `tensor_model_parallel_size` is set. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
@@ -295,6 +297,7 @@ LoRA Training:
 
 **Other Parameters**:
 - megatron_extra_kwargs: Additional arguments passed directly to Megatron (forwarded to the `ModelConfig` class in [mcore-bridge](https://github.com/modelscope/mcore-bridge/blob/78cb9be33ebad69a0d940a2bc4e198f866084b70/src/mcore_bridge/config/model_config.py#L116), which inherits from megatron-core's `TransformerConfig`). Can also be used to override parameters automatically read from `config.json`. Accepts a JSON string. Defaults to None.
+- language_model_only: Only train the language model part of the multimodal model, and only load and save the language model part. Defaults to False. (Requires "mcore-bridge>=1.4.3")
 - check_model: Check local model files for corruption or modifications and provide prompts. Defaults to True. **If in an offline environment, please set to False**.
 - rope_scaling: Parameters related to rope_scaling. Defaults to None. For format reference, see [llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1), pass as a JSON string.
   - **Currently the rope_scaling module uses transformers implementation and supports all rope_scaling supported by transformers.**

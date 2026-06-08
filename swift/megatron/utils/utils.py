@@ -93,7 +93,7 @@ def get_target_modules(args, model):
         return args.target_modules
     target_modules = args.target_modules.copy()
     if 'all-linear' in target_modules:
-        if args.is_multimodal:
+        if args.is_multimodal and not args.language_model_only:
             if args.tuner_type == 'lora_llm':
                 kwargs = {
                     'freeze_llm': False,
