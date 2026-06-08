@@ -115,7 +115,7 @@ class MegatronWorker(CheckpointEngineMixin):
         """
         if getattr(self._args, '_teacher_use_disable_adapter', False):
             # Self-distillation (LoRA): teacher = student base model with the LoRA adapter
-            # disabled — no separate teacher loaded, mirroring the non-ray GKD trainer.
+            # disabled — no separate teacher loaded.
             from contextlib import ExitStack
             megatron = self._megatron
             with ExitStack() as stack:

@@ -195,9 +195,9 @@ class BaseRayTrainer:
 
     def _maybe_log_completions(self, rollout_with_outputs, rewards=None, gen_step=None) -> None:
         """Driver-side ``log_completions``: dump prompt/completion (+reward) to
-        ``output_dir/completions.jsonl``, mirroring the non-ray trainers. No-op unless
-        ``args.log_completions`` is set. Completions live on the driver (rollout side),
-        so this is the right place to log them (worker on_log handles scalar metrics)."""
+        ``output_dir/completions.jsonl``. No-op unless ``args.log_completions`` is set.
+        Completions live on the driver (rollout side), so this is the right place to log them
+        (worker on_log handles scalar metrics)."""
         args = self.args
         if not getattr(args, 'log_completions', False) or not rollout_with_outputs:
             return

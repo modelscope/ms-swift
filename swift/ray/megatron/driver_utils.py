@@ -31,14 +31,36 @@ def parse_args_from_dict(class_type, cfg: Dict[str, Any]):
     """Construct a dataclass from a config dict via HfArgumentParser."""
     from swift.utils import parse_args
 
-    argv = _dict_to_argv(cfg)
+    argv = _dict_to_argv(cfg, _list_typed_fields(class_type))
     args, remaining_args = parse_args(class_type, argv)
     if remaining_args:
         logger.warning('parse_args_from_dict: unrecognised args: %s', remaining_args)
     return args
 
 
-def _dict_to_argv(cfg: Dict[str, Any]) -> List[str]:
+def _list_typed_fields(class_type) -> frozenset:
+    """Names of List-typed dataclass fields. A YAML scalar for such a field
+    (e.g. ``dataset: a b``, CLI-style space-separated) must be split into multiple
+    argv tokens so argparse nargs='+' receives several values instead of one bogus
+    string. Single-valued fields (e.g. ``system: 'You are ...'``) are unaffected."""
+    import dataclasses
+    import typing
+    try:
+        fields = dataclasses.fields(class_type)
+    except TypeError:
+        return frozenset()
+    names = set()
+    for f in fields:
+        t = f.type
+        if isinstance(t, str):
+            if t.startswith(('List', 'list')) or 'List[' in t or 'list[' in t:
+                names.add(f.name)
+        elif typing.get_origin(t) in (list, typing.List):
+            names.add(f.name)
+    return frozenset(names)
+
+
+def _dict_to_argv(cfg: Dict[str, Any], list_fields: frozenset = frozenset()) -> List[str]:
     """Convert a flat config dict to an argv-style list for argparse."""
     argv: List[str] = []
     for k, v in cfg.items():
@@ -52,6 +74,9 @@ def _dict_to_argv(cfg: Dict[str, Any]) -> List[str]:
             argv += [str(item) for item in v]
         elif isinstance(v, dict):
             argv += [flag, json.dumps(v)]
+        elif isinstance(v, str) and k in list_fields and v.strip():
+            argv.append(flag)
+            argv += v.split()
         else:
             argv += [flag, str(v)]
     return argv

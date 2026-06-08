@@ -42,7 +42,6 @@ class GKDTrainer(BaseRayTrainer):
         self._data_source_rng = random.Random(getattr(args, 'seed', 42))
 
         # steps_per_generation>1: one generation (one data_source) feeds spg training steps,
-        # reducing weight-sync / generation frequency. Mirrors the non-ray GKD trainer.
         gen_bs = getattr(args, 'generation_batch_size', None)
         spg = getattr(args, 'steps_per_generation', None)
         if gen_bs is not None:
@@ -55,15 +54,8 @@ class GKDTrainer(BaseRayTrainer):
         # so num_generations is always 1 here regardless of the (GRPO-oriented) default.
         info['num_generations'] = 1
         self._padding_to = info.get('_padding_to')
-        # Prefer the resolved local snapshot dir (teacher_model_dir) over the raw model id
-        # (teacher_model); bridge.load_weights needs a real path to locate safetensors.
         self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
         self._teacher_model_server = args.teacher_model_server
-        # Self-distillation: teacher_model == student model. The worker scores the teacher
-        # via disable_adapter() (LoRA) and loads NO separate teacher. The driver's own args
-        # may lack tuner_type (it lives in the train group), so detect self-distillation by
-        # teacher_model == model directly and force _teacher_model_dir=None to skip
-        # init_teacher_model (which would otherwise fail to load a non-existent teacher).
         self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
         if not self._teacher_use_disable_adapter and args.teacher_model is not None \
                 and args.teacher_model == args.model:
@@ -82,7 +74,7 @@ class GKDTrainer(BaseRayTrainer):
         # truncation_strategy='delete': resample prompts whose encode fails (over max_length).
         self.truncation_strategy = getattr(args, 'truncation_strategy', None)
         self.max_completion_length = args.max_completion_length
-        self._max_resample_rounds = getattr(args, 'max_resample_times', 10) or 10
+        self._max_resample_rounds = getattr(args, 'max_resample_times', 3)
         self._needs_resample_iterator = self.truncation_strategy == 'delete'
 
     def _train_loop(self, tg, train_iters, iteration):
@@ -143,8 +135,7 @@ class GKDTrainer(BaseRayTrainer):
                 # loss in loss_func (SFT only on dataset responses, not on-policy generations).
                 for s in samples:
                     s['data_source'] = data_source
-                results = tg.train_step(
-                    samples, extra_metrics={'on_policy': 1.0 if data_source == DataSource.STUDENT else 0.0})
+                results = tg.train_step(samples)
                 iteration = extract_iteration(results)
 
         return iteration
@@ -212,8 +203,8 @@ class GKDTrainer(BaseRayTrainer):
     @contextmanager
     def _extended_max_length(self):
         """Temporarily extend template.max_length by max_completion_length so the
-        prompt+response (token-in-token-out) encodes without truncation. Mirrors the
-        non-ray trainer's _template_context."""
+        prompt+response (token-in-token-out) encodes without truncation.
+        """
         template = self.template
         original = template.max_length
         template.max_length = original + self.args.max_completion_length
@@ -229,7 +220,7 @@ class GKDTrainer(BaseRayTrainer):
         ``response_token_ids`` before encoding, so the student is trained on the
         exact tokens that were generated (and that the teacher scores). Re-encoding
         the decoded text would re-tokenize the response and break student/teacher
-        alignment. Mirrors the non-ray trainer's ``_encode_batch``.
+        alignment.
         """
         template = self.template
         samples = []
@@ -255,9 +246,8 @@ class GKDTrainer(BaseRayTrainer):
     def _encode_opsd_teacher(item, template):
         """Encode the OPSD teacher view of a rollout item, or None if not OPSD.
 
-        Mirrors the non-ray Megatron GKD: replace the last user turn with
-        ``teacher_prompt`` (keeping the on-policy response), then re-apply the
-        token-in-token-out response so teacher and student score identical tokens.
+        replace the last user turn with ``teacher_prompt`` (keeping the on-policy response),
+        then re-apply the token-in-token-out response so teacher and student score identical tokens.
         """
         opsd_list = build_opsd_teacher_data([item])  # None unless item has teacher_prompt
         if not opsd_list:

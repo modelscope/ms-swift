@@ -2533,7 +2533,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     ) -> Dict[str, float]:
         """
         Compute off-policy diagnostic metrics (always computed for monitoring).
-        reference: verl/verl/trainer/ppo/rollout_corr_helper.py
 
         These metrics help diagnose the off-policy gap between rollout and training policies,
         which can arise from policy mismatch (e.g., vLLM BF16 vs FSDP FP32), model staleness,

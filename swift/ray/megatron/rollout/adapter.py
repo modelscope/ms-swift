@@ -37,7 +37,7 @@ class RolloutAdapter:
         # handle stays stable (the vLLM worker's mapping cache hits) and no IPC mapping
         # leaks per step. Without this every sync allocated a fresh buffer+handle -> the
         # worker rebuilt the mapping each step and the driver reclaimed it lazily, leaking
-        # ~one weights buffer per step (OOM after ~30 steps). Aligned with twinkle/verl.
+        # ~one weights buffer per step (OOM after ~30 steps).
         self._ipc_buffer: Optional[torch.Tensor] = None
 
     @property

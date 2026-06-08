@@ -89,8 +89,7 @@ def _set_death_signal():
     """Ensure this process is killed when its parent exits.
 
     Prevents orphan vLLM TP worker processes from leaking GPU memory
-    when the parent Ray actor dies unexpectedly.  Adopted from verl's
-    ``set_death_signal`` utility.
+    when the parent Ray actor dies unexpectedly.
     """
     import ctypes
     import platform
@@ -315,9 +314,6 @@ class WeightSyncWorkerExtension:
     # sender's bucket buffer via CUDA IPC (same node, same device) or
     # shared memory (CPU / cross-device fallback).
     #
-    # Reference: twinkle ``TwinkleWorkerExtension.update_weights_from_ipc``
-    # and verl ``vLLMColocateWorkerExtension.update_weights_from_ipc``.
-    #
     # TP>1:
     #   Only the TP driver (rank 0 in the TP group) talks to the ZMQ
     #   socket; the IPC handle / shm name and every bucket metadata is
@@ -377,7 +373,7 @@ class WeightSyncWorkerExtension:
         ``rebuild_cuda_tensor`` and reuse the cached mapping.  This avoids
         accumulating IPC mappings that the CUDA driver releases lazily,
         which is the root cause of apparent GPU memory growth under
-        frequent syncs.  (Aligned with twinkle / verl.)
+        frequent syncs.
 
         When ``peft_config`` is provided and ``base_sync_done`` is True,
         the received weights are loaded as a LoRA adapter via

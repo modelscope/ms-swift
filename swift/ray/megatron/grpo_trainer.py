@@ -57,7 +57,7 @@ class GRPOTrainer(BaseRayTrainer):
         self.dynamic_sample = getattr(args, 'dynamic_sample', False)
         self.max_resample_times = getattr(args, 'max_resample_times', 3)
         self.truncation_strategy = getattr(args, 'truncation_strategy', None)
-        self._max_resample_rounds = 10
+        self._max_resample_rounds = getattr(args, 'max_resample_times', 10)
         self._needs_resample_iterator = self.dynamic_sample or self.truncation_strategy == 'delete'
 
     def _prepare_multi_turn(self) -> None:
@@ -428,8 +428,7 @@ class GRPOTrainer(BaseRayTrainer):
 
     def _encode_check(self, item) -> None:
         """Detect over-length / encode failures for a GRPO prompt. The response is
-        removed first (GRPO encodes prompt-only at rollout time), mirroring the non-ray
-        resample_encode_failed_inputs. Raises on failure."""
+        removed first (GRPO encodes prompt-only at rollout time). Raises on failure."""
         from swift.utils import remove_response
         probe = dict(item)
         if probe.get('messages'):
@@ -442,14 +441,6 @@ class GRPOTrainer(BaseRayTrainer):
         rollout_with_outputs: List[Dict[str, Any]],
         rewards_per_func: torch.Tensor,
     ) -> Tuple[List[Dict[str, Any]], torch.Tensor]:
-        """DAPO (https://arxiv.org/abs/2503.14476) dynamic sampling, driver-side.
-
-        Drops prompt groups whose reward std==0 (no learning signal) and resamples fresh
-        prompts until the batch is refilled to its original size or ``max_resample_times``
-        is reached. The driver holds the full rollout, so std is computed directly without
-        the cross-rank gather the non-ray trainer needs. MUST run inside the generation
-        context (rollout engine awake) since it re-runs generation for resampled prompts.
-        """
         num_gen = self.num_generations
         target = len(rollout_with_outputs)
         valid_samples: List[Dict[str, Any]] = []

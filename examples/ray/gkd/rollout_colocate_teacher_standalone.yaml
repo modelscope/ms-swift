@@ -26,6 +26,7 @@ min_lr: 1e-6
 lr_warmup_fraction: 0.0
 
 temperature: 1.0
+lmbda: 1
 beta: 0.5
 sft_alpha: 0.0
 
