@@ -1,14 +1,12 @@
 # Ray Megatron GKD — separate rollout (disjoint GPUs) + colocated teacher.
-# See examples/ray/README.md for details. No `colocate_groups` => train and rollout
-# use disjoint GPU sets; keep rollout vllm_gpu_memory_utilization modest (~0.6) to
-# leave headroom for the per-step weight sync. Validated Qwen3.5-2B/4B, TP2 -> DP2.
+# No `colocate_groups` => train and rollout use disjoint GPU sets
 rlhf_type: gkd
 
 model: Qwen/Qwen3.5-2B
 teacher_model: Qwen/Qwen3.5-4B
 gkd_logits_topk: 64
 
-dataset: AI-ModelScope/alpaca-gpt4-data-en#2000 AI-ModelScope/alpaca-gpt4-data-zh#2000
+dataset: AI-ModelScope/alpaca-gpt4-data-en#2000
 dataset_num_proc: 4
 split_dataset_ratio: 0
 
@@ -57,5 +55,5 @@ train:
 rollout:
   gpus: 4
   vllm_tensor_parallel_size: 1
-  vllm_gpu_memory_utilization: 0.6  # leave headroom for per-step weight sync
+  vllm_gpu_memory_utilization: 0.8
   vllm_max_model_len: 16384

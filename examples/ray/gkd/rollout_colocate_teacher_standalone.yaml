@@ -1,13 +1,12 @@
 # Ray Megatron GKD — standalone vLLM teacher replicas (top-k only).
-# See examples/ray/README.md (section 2b). gkd_logits_topk is REQUIRED; the teacher
-# group below serves the teacher model and its max_logprobs must be >= gkd_logits_topk.
-# Do NOT set a top-level `teacher_model` here. Validated Qwen3.5-2B/4B, TP2 -> DP2.
+# gkd_logits_topk is REQUIRED; the teacher group below serves the teacher model and its max_logprobs must be >= gkd_logits_topk.
+# Do NOT set a top-level `teacher_model` here.
 rlhf_type: gkd
 
 model: Qwen/Qwen3.5-2B
 gkd_logits_topk: 64
 
-dataset: AI-ModelScope/alpaca-gpt4-data-en#2000 AI-ModelScope/alpaca-gpt4-data-zh#2000
+dataset: AI-ModelScope/alpaca-gpt4-data-en#2000
 dataset_num_proc: 4
 split_dataset_ratio: 0
 

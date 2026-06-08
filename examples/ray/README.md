@@ -1,6 +1,6 @@
 # Ray-based Megatron RLHF examples (GKD & GRPO)
 
-On-policy RL/distillation on top of Megatron, orchestrated by Ray. The student is
+GRPO/GKD on top of Megatron, orchestrated by Ray. The student/actor is
 trained with Megatron, generates completions with vLLM, and — for GKD — is distilled with a teacher model.
 
 ## How to run
@@ -59,7 +59,6 @@ omit it for full-vocab distillation.
 |------|------------------|:-----:|:----------:|--------|
 | **Colocated `teacher_model`** | set top-level `teacher_model:` (+ `offload_teacher_model: true`) | ✅ | ✅ | supported |
 | **Standalone teacher replicas** | add a `teacher:` group with `gpus`, `model`, and `vllm_engine_kwargs.max_logprobs` | ✅ | ❌ | supported |
-| **External teacher API server** (`teacher_model_server`) | — | – | – | ❌ not supported — the Ray pipeline raises `NotImplementedError`; no plan to add it, no example shipped |
 
 ### 2a. Colocated teacher (`rollout_colocate_teacher_colocate.yaml`, `rollout_separate_teacher_colocate.yaml`)
 The teacher shares the **train** GPUs and is offloaded to CPU between teacher
@@ -95,9 +94,8 @@ teacher:
 - **top-k** (`gkd_logits_topk: K`): the teacher exposes only the top-K logprobs per
   position. Much lower memory, works for every teacher mode.
 - **full-vocab** (omit `gkd_logits_topk`): distill the full vocabulary distribution.
-  Colocated teacher only, and **memory-heavy at TP>1** (caches per-rank vocab-sharded
-  teacher logits). If you OOM: switch to top-k, lower `micro_batch_size`, or lower
-  `vllm_gpu_memory_utilization`.
+  Colocated teacher only, and **memory-heavy** (caches per-rank vocab-sharded
+  teacher logits). If you OOM: switch to top-k, lower `micro_batch_size`
 
 ---
 
@@ -113,8 +111,8 @@ external_plugins: examples/train/rlhf/opsd/opsd_plugin.py   # registers teacher_
 teacher_model: Qwen/Qwen3.5-4B
 gkd_logits_topk: 64
 ```
-- Supported in Ray for **colocated teacher + top-k** only (full-vocab OPSD and
-  standalone-teacher OPSD are not supported yet).
+- Supported in Ray with **top-k** (`gkd_logits_topk`) for both a **colocated teacher**
+  and **standalone teacher replicas** (`teacher.gpus > 0`).
 - No extra flag is needed: OPSD activates automatically when rows carry a non-empty
   `teacher_prompt`; otherwise training falls back to plain GKD.
 
@@ -131,11 +129,5 @@ gkd_logits_topk: 64
   with `tensor_model_parallel_size: 2` → DP2.
 - **Memory release (colocate)**: `offload_model`, `offload_optimizer`,
   `offload_teacher_model`, and `sleep_level: 1` are what let colocated roles fit.
-- **vLLM memory**: colocate rollout `~0.4`; separate rollout `~0.6` (weight-sync
-  headroom); standalone teacher replicas can go high (`~0.9`).
 - **GRPO specifics**: rewards via `reward_funcs` + `external_plugins`; sampling via
   `num_generations` / `steps_per_generation`; no `teacher_*` settings.
-
-## Validated reference
-The GKD examples were validated with student **Qwen3.5-2B** / teacher **Qwen3.5-4B**
-on 4–8×H20, train **TP2 → DP2**, across all three placement/teacher combinations.
