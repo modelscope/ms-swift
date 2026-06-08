@@ -111,6 +111,10 @@ class GKDTrainer(BaseRayTrainer):
 
             # Split one generation into ``spg`` chunks; each chunk is one training step
             # (same data_source). spg=1 degenerates to a single chunk == the whole batch.
+            # n == global_batch_size * spg: the driver dataloader uses drop_last=True + a
+            # cyclic iterator (see _setup_dataloader) and GKD uses num_generations=1, so n is
+            # always an exact multiple of spg and the spg chunks tile source_items with no
+            # remainder. (max(., 1) only guards the impossible spg > n case.)
             n = len(source_items)
             chunk_size = max(n // spg, 1)
             for step_idx in range(spg):

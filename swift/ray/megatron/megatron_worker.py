@@ -760,15 +760,16 @@ class MegatronWorker(CheckpointEngineMixin):
                                                        dtype=torch.float32,
                                                        device=device)
         if samples and samples[0].get('teacher_output') is not None:
-            # CP>1: the teacher output is already CP-sharded per rank (kept worker-local),
-            # so do NOT pad it back to the full sequence length — it must stay the same
-            # length as the CP-sharded student logits produced in forward_step.
             cp_size = getattr(self._args, 'context_parallel_size', 1)
-            encoded_batch['teacher_output'] = self._collate_teacher_outputs(
-                [s['teacher_output'] for s in samples],
-                device,
-                padding_free=template.padding_free,
-                target_seq_len=None if cp_size > 1 else labels.shape[-1])
+            if cp_size > 1:
+                raise ValueError('Standalone teacher replicas (teacher.gpus > 0) do not support '
+                                 'context_parallel_size > 1: per-sample teacher token-logprobs are built from '
+                                 'raw sequence lengths and cannot be CP-sharded to align with the student. '
+                                 'Use a colocated teacher_model for CP>1.')
+            encoded_batch['teacher_output'] = self._collate_teacher_outputs([s['teacher_output'] for s in samples],
+                                                                            device,
+                                                                            padding_free=template.padding_free,
+                                                                            target_seq_len=labels.shape[-1])
         if samples and samples[0].get('data_source') is not None:
             encoded_batch['data_source'] = samples[0]['data_source']
         return encoded_batch

@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 
+from swift.ray.megatron.gkd_trainer import GKDTrainer
 from swift.ray.megatron.megatron_worker import MegatronWorker
 from swift.rlhf_trainers.gkd_loss import TeacherOutput, build_opsd_teacher_data, extract_active
 
@@ -84,6 +85,24 @@ def test_collate_opsd_keeps_teacher_length_not_student_target():
     assert out.topk_logprobs.shape == (1, t_total, k), out.topk_logprobs.shape
     assert out.opsd_teacher_labels.shape == (1, t_total)
     assert (out.opsd_teacher_labels == 5).all()
+
+
+def test_build_per_sample_teacher_output_uses_raw_input_length():
+    """Standalone teacher outputs are built from each sample's RAW (un-CP-padded) input
+    length. Because these raw per-sample token-logprobs cannot be CP-sharded to match the
+    student, CP>1 with standalone teacher replicas is rejected by a fail-fast in
+    MegatronWorker._collate_local_grpo_samples (use a colocated teacher_model for CP>1).
+    This test guards the raw-length contract that the CP>1 fail-fast depends on.
+    """
+    k = 3
+    raw_len = 5
+    lps = [[-1.0] * k for _ in range(raw_len)]
+    ixs = [[0] * k for _ in range(raw_len)]
+    encoded = {'input_ids': list(range(raw_len))}
+    out = GKDTrainer._build_per_sample_teacher_output((lps, ixs), encoded, topk=k)
+    assert out.topk_logprobs.shape == (1, raw_len, k), out.topk_logprobs.shape
+    assert out.topk_indices.shape == (1, raw_len, k)
+    assert out.opsd_teacher_labels is None
 
 
 def test_build_opsd_teacher_data_substitutes_teacher_prompt():

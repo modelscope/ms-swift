@@ -42,20 +42,24 @@ def _list_typed_fields(class_type) -> frozenset:
     """Names of List-typed dataclass fields. A YAML scalar for such a field
     (e.g. ``dataset: a b``, CLI-style space-separated) must be split into multiple
     argv tokens so argparse nargs='+' receives several values instead of one bogus
-    string. Single-valued fields (e.g. ``system: 'You are ...'``) are unaffected."""
+    string. Single-valued fields (e.g. ``system: 'You are ...'``) are unaffected.
+
+    We match on the *stringified* type so List[str] / list[str] and wrapped forms like
+    Optional[List[str]] / Union[..., List[str]] are all caught uniformly: typing.get_origin
+    returns Union (not list) for the Optional case and would miss it. A dict/tuple field
+    that merely mentions List is harmless here — only str values get whitespace-split in
+    _dict_to_argv (dict/list values take their own branches).
+    """
     import dataclasses
-    import typing
+    import re
     try:
         fields = dataclasses.fields(class_type)
     except TypeError:
         return frozenset()
     names = set()
     for f in fields:
-        t = f.type
-        if isinstance(t, str):
-            if t.startswith(('List', 'list')) or 'List[' in t or 'list[' in t:
-                names.add(f.name)
-        elif typing.get_origin(t) in (list, typing.List):
+        t_str = f.type if isinstance(f.type, str) else str(f.type)
+        if re.search(r'\b[Ll]ist\b', t_str):
             names.add(f.name)
     return frozenset(names)
 

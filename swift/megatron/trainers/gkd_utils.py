@@ -59,6 +59,9 @@ def cp_reduce(total_loss, num_valid, *, cp_size):
             num_valid_f, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
         torch.distributed.all_reduce(
             total_loss, op=torch.distributed.ReduceOp.SUM, group=mpu.get_context_parallel_group())
-    if num_valid_f == 0:
-        return total_loss * 0
-    return total_loss / num_valid_f
+    # Avoid the host-device sync from ``if num_valid_f == 0`` (num_valid_f is a GPU scalar,
+    # so a Python bool() forces a .item() stream sync every step). Keep the zero-valid
+    # guard on-device with torch.where: num_valid==0 -> loss 0, else total_loss/num_valid.
+    safe = torch.where(num_valid_f == 0, torch.ones_like(num_valid_f), num_valid_f)
+    loss = total_loss / safe
+    return torch.where(num_valid_f == 0, torch.zeros_like(loss), loss)
