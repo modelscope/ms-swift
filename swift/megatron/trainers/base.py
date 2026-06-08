@@ -445,7 +445,9 @@ class BaseMegatronTrainer(ABC):
             else:
                 param_group['max_lr'] = lr
                 param_group['min_lr'] = min_lr
-            lr_mult = param_group.pop('lr_mult')
+            # Keep `lr_mult` (don't pop): mcore 0.17 requires it as a param-group
+            # identity key when resuming optimizer state (make_needed_groups).
+            lr_mult = param_group['lr_mult']
             param_group['max_lr'] *= lr_mult
             param_group['min_lr'] *= lr_mult
         return param_groups
