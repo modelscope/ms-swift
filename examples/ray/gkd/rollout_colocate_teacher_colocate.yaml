@@ -5,7 +5,9 @@ model: Qwen/Qwen3.5-2B
 teacher_model: Qwen/Qwen3.5-4B
 gkd_logits_topk: 64  # omit for full-vocab distillation
 
-dataset: AI-ModelScope/alpaca-gpt4-data-en#2000
+dataset:
+  - 'AI-ModelScope/alpaca-gpt4-data-zh#2000'
+  - 'AI-ModelScope/alpaca-gpt4-data-en#2000'
 dataset_num_proc: 4
 split_dataset_ratio: 0
 
