@@ -184,7 +184,15 @@ def extract_active(
         assert s_mask.sum() == t_mask.sum(), (f'OPSD label count mismatch: student={s_mask.sum().item()}, '
                                               f'teacher={t_mask.sum().item()}. '
                                               'Student and teacher must share the same response tokens.')
-        return student_logits[s_mask], teacher_output.select(t_mask), s_mask.sum()
+        s_active = student_logits[s_mask]
+        t_active = teacher_output.select(t_mask)
+        if t_active.is_topk_mode:
+            uncovered = torch.isinf(t_active.topk_logprobs).all(dim=-1)
+            if uncovered.any():
+                keep = ~uncovered
+                s_active = s_active[keep]
+                t_active = t_active.select(keep)
+        return s_active, t_active, torch.tensor(int(s_active.shape[0]), device=labels.device)
 
     mask = labels != -100
     if teacher_output.is_topk_mode:

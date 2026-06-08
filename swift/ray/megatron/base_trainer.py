@@ -140,27 +140,33 @@ class BaseRayTrainer:
         self.template.encode(item)
 
     def _resample_failed_prompts(self, prompts):
-        """Replace prompts whose encode() fails (e.g. exceeds max_length) with fresh
-        prompts from the resample iterator. Mirrors non-ray resample_encode_failed_inputs."""
+        """Replace prompts whose encode() fails (e.g. exceeds max_length) with fresh prompts
+        from the resample iterator. Mirrors non-ray resample_encode_failed_inputs, but caps the
+        TOTAL encode attempts (fail-fast): a systematic failure (e.g. max_length too small, so
+        every prompt is over-length) raises quickly instead of churning through the iterator,
+        and an empty batch from the iterator breaks the loop instead of spinning forever."""
         required = len(prompts)
-        valid, pending = [], list(prompts)
         max_rounds = getattr(self, '_max_resample_rounds', 10)
-        n_dropped = 0
-        for _ in range(max_rounds + 1):
-            if len(valid) >= required:
-                break
-            while len(pending) < required - len(valid):
-                pending.extend(next(self._resample_iter))
-            while pending and len(valid) < required:
-                item = pending.pop(0)
-                try:
-                    self._encode_check(item)
-                    valid.append(item)
-                except Exception:
-                    n_dropped += 1
+        max_attempts = required * (max_rounds + 1)  # total encode budget (== max_rounds resamples)
+        valid, pending = [], list(prompts)
+        attempts = n_dropped = 0
+        while len(valid) < required and attempts < max_attempts:
+            if not pending:
+                batch = list(next(self._resample_iter))
+                if not batch:  # guard: an empty batch would otherwise spin forever
+                    break
+                pending.extend(batch)
+            item = pending.pop(0)
+            attempts += 1
+            try:
+                self._encode_check(item)
+                valid.append(item)
+            except Exception:
+                n_dropped += 1
         if len(valid) < required:
             raise RuntimeError(f'resample(truncation=delete): only collected {len(valid)}/{required} valid prompts '
-                               f'after {max_rounds} rounds; increase max_length or change truncation_strategy.')
+                               f'after {attempts} encode attempts ({n_dropped} failed); '
+                               f'increase max_length or change truncation_strategy.')
         return valid[:required]
 
     def _prepare_state(self) -> None:

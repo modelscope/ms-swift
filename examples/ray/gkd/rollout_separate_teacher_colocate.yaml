@@ -42,7 +42,6 @@ use_vllm: true
 offload_model: true
 offload_optimizer: true
 offload_teacher_model: true
-sleep_level: 1
 
 train:
   gpus: 4

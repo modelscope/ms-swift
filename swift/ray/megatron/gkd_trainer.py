@@ -279,18 +279,19 @@ class GKDTrainer(BaseRayTrainer):
         topk = self.gkd_logits_topk
         assert topk is not None, 'gkd_logits_topk must be set when using teacher replicas'
 
-        template = self.template
         requests = []
         teacher_encodeds = []  # teacher-side encoded (OPSD) or None (non-OPSD)
-        for item in rollout_with_outputs:
-            opsd_list = build_opsd_teacher_data([item])  # None unless item has teacher_prompt
-            if opsd_list:
-                opsd_item = opsd_list[0]
+        for item, sample in zip(rollout_with_outputs, samples):
+            # Reuse the teacher-prompt encoding already produced by _encode_rollout_batch
+            # (avoids a second tokenize/template pass); only the vLLM request is rebuilt.
+            opsd_encoded = sample.get('opsd_teacher_encoded')
+            if opsd_encoded is not None:
+                opsd_item = build_opsd_teacher_data([item])[0]
                 if opsd_item.get('response_token_ids'):
                     opsd_item['messages'] = replace_assistant_response_with_ids(
                         copy.deepcopy(opsd_item['messages']), opsd_item['response_token_ids'])
                 requests.append(build_teacher_infer_request(opsd_item))
-                teacher_encodeds.append(template.encode(opsd_item, return_length=True))
+                teacher_encodeds.append(opsd_encoded)
             else:
                 requests.append(build_teacher_infer_request(item))
                 teacher_encodeds.append(None)

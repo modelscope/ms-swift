@@ -7,7 +7,7 @@ import copy
 import os
 import torch
 import uuid
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutInferRequest, RolloutOutput
