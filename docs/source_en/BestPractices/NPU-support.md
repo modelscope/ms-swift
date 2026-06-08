@@ -22,6 +22,7 @@ Recommended base environment versions:
 | CANN      | >= 8.5.1        |
 | torch     | >= 2.7.1        |
 | torch_npu | >= 2.7.1.post4  |
+Note: The officially recommended version compatibility matrix for the vLLM Ascend series has been updated to CANN 9.0.0, torch 2.9.0, torch_npu 2.9.0, vllm-ascend 0.18.0 for A3, and vllm-ascend 0.19.1 for A5.
 
 For base environment setup, see the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch). The examples in this document were verified on 8 * Ascend 910B3 64G.
 
