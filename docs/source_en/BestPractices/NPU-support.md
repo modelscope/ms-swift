@@ -224,9 +224,7 @@ pip install -e .
 cd ..
 
 # 4. Download and install triton-ascend
-# Download the Python wheel from the following release page (direct pip install is not supported yet):
-# https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
-pip install <wheel name>
+pip install triton-ascend==3.2.1 --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
 
 # 5. Set environment variables
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>

@@ -222,9 +222,7 @@ pip install -e .
 cd ..
 
 # 4. 获取并安装 triton-ascend
-# 请从以下链接下载 python 版本的 wheel（暂不支持 pip 直接下载）：
-# https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
-pip install <wheel name>
+pip install triton-ascend==3.2.1 --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
 
 # 5. 设置环境变量
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
