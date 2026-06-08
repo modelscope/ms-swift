@@ -19,8 +19,6 @@ class MegatronTrainer(BaseMegatronTrainer):
 
     def seq_cls_loss_func(self, output_tensor, *, labels: torch.Tensor, packed_seq_params=None, attention_mask=None):
         args = self.args
-        if args.context_parallel_size > 1:
-            raise ValueError('Currently `task_type="seq_cls"` does not support context parallelism.')
         logits = self.get_last_tokens(output_tensor, packed_seq_params, attention_mask)
         num_labels = args.num_labels
         acc = None

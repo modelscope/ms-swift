@@ -16,9 +16,6 @@ class MegatronRerankerTrainer(BaseMegatronTrainer):
 
     def __init__(self, args, template):
         super().__init__(args, template)
-        if args.context_parallel_size > 1:
-            raise ValueError('Currently `task_type="reranker/generative_reranker"` does not support '
-                             'context parallelism.')
         self._loss_func = loss_map[args.loss_type](args, self)
         self.eval_metrics = eval_metrics_map['reranker'](args, self)
 
