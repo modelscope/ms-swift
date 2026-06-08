@@ -222,8 +222,8 @@ pip install -e .
 cd ..
 
 # 4. 获取并安装 triton-ascend
-https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
-下载python版本的wheel，暂不支持pip下载。
+# 请从以下链接下载 python 版本的 wheel（暂不支持 pip 直接下载）：
+# https://gitcode.com/Ascend/triton-ascend/releases/v3.2.1
 pip install <wheel name>
 
 # 5. 设置环境变量
