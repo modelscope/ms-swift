@@ -136,8 +136,11 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
                 logger.warning_once('The cross_entropy loss function defined in Liger Kernel will not '
                                     'take effect, potentially leading to increased GPU memory consumption.')
             labels = inputs.pop('labels')
+        num_tokens = inputs.pop('num_tokens', None)
         outputs = model(**inputs)
         mode = 'train' if self.model.training else 'eval'
+        if num_tokens is not None:
+            self.state.num_tokens += num_tokens
         if getattr(outputs, 'aux_loss', None) is not None:
             self.custom_metrics[mode]['aux_loss'].update(outputs.aux_loss)
         # Save past state if it exists
