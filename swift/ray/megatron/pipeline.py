@@ -16,9 +16,11 @@ _TRAINER_REGISTRY: Dict[str, Dict[str, Any]] = {
         'trainer': 'swift.ray.megatron.grpo_trainer.GRPOTrainer',
         'loss': 'swift.ray.megatron.loss.grpo.GRPOLoss',
     },
+    'gkd': {
+        'trainer': 'swift.ray.megatron.gkd_trainer.GKDTrainer',
+        'loss': 'swift.ray.megatron.loss.gkd.GKDLoss',
+    },
 }
-
-_KNOWN_GROUPS = frozenset(('train', 'rollout'))
 
 
 def register_ray_trainer(
@@ -61,6 +63,7 @@ class MegatronRayPipeline:
         self.resource_pool_manager = None
         self.worker_groups: Dict[str, Any] = {}
         self.rollout_replicas: List[Any] = []
+        self.teacher_replicas: List[Any] = []
 
     def init(self) -> None:
         # Initialize Ray, create resource pools, spawn workers and replicas.
@@ -71,6 +74,7 @@ class MegatronRayPipeline:
         self._init_worker_groups()
         with self._colocate_offload_ctx():
             self._init_rollout_replicas()
+        self._init_teacher_replicas()
         self._driver_trainer = self._create_trainer()
         self._driver_trainer.set_data_info(self._data_info)
 
@@ -111,9 +115,16 @@ class MegatronRayPipeline:
         assigned: set = set()
 
         for colocated in colocated_sets:
-            gpus = self.group_gpus.get(next(iter(colocated)), 0)
-            if gpus <= 0:
+            # Colocated roles share one GPU set, so they must request the same number
+            # of gpus. Validate explicitly (and avoid relying on frozenset order).
+            gpus_by_role = {g: self.group_gpus.get(g, 0) for g in colocated}
+            distinct = set(gpus_by_role.values())
+            if distinct == {0}:
                 continue
+            if len(distinct) > 1:
+                raise ValueError(f'Colocated roles must request the same number of gpus, but got '
+                                 f'{gpus_by_role}. Set an equal `gpus` for all roles in {sorted(colocated)}.')
+            gpus = distinct.pop()
             pon = self.ray_config.gpus_as_process_on_nodes(gpus)
             shared = ResourcePool(pon, max_colocate_count=len(colocated))
             for g in colocated:
@@ -183,7 +194,7 @@ class MegatronRayPipeline:
 
         loss_cls = self._entry.get('loss')
         rollout_config = self._build_rollout_config_for_workers() if self._is_rollout_hybrid() else None
-        wg.broadcast('init_model', cfg, loss_cls_path=loss_cls, rollout_config=rollout_config)
+        wg.broadcast('init_actor', cfg, loss_cls_path=loss_cls, rollout_config=rollout_config)
         wg.build_dispatch_info(worker_cls=MegatronWorker)
 
         self.worker_groups[role] = wg
@@ -224,6 +235,32 @@ class MegatronRayPipeline:
             is_hybrid=is_hybrid,
             sleep_level=self.ray_config.sleep_level,
             template_kwargs=template_kwargs,
+        )
+
+    def _init_teacher_replicas(self) -> None:
+        teacher_gpus = self.group_gpus.get('teacher', 0)
+        if teacher_gpus <= 0:
+            self.teacher_replicas = []
+            return
+
+        from .rollout.replica import RolloutReplica
+
+        teacher_cfg = self.group_cfgs.get('teacher', {})
+        pool = self.resource_pool_manager.get_pool('teacher')
+        template_kwargs = self._get_template_kwargs_for_rollout()
+        args = self._data_info.get('_driver_args')
+        if args is not None:
+            base_len = template_kwargs.get('max_length') or getattr(args, 'max_length')
+            template_kwargs = dict(template_kwargs)
+            template_kwargs['max_length'] = base_len + args.max_completion_length
+        self.teacher_replicas = RolloutReplica.create_replicas(
+            rollout_cfg=teacher_cfg,
+            rollout_gpus=teacher_gpus,
+            pool=pool,
+            is_hybrid=False,
+            sleep_level=0,
+            template_kwargs=template_kwargs,
+            actor_name_prefix='swift_teacher_server',
         )
 
     def _with_router_replay_rollout_config(self, rollout_cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -285,7 +322,11 @@ class MegatronRayPipeline:
         weight_sync_mode = self._get_weight_sync_mode()
         sleep_level = self._resolve_sleep_level()
         return trainer_cls(
-            self.worker_groups, self.rollout_replicas, weight_sync_mode=weight_sync_mode, sleep_level=sleep_level)
+            self.worker_groups,
+            self.rollout_replicas,
+            weight_sync_mode=weight_sync_mode,
+            sleep_level=sleep_level,
+            teacher_replicas=self.teacher_replicas)
 
     def _resolve_sleep_level(self) -> int:
         """Colocate: honor user config; separate: force 0."""
@@ -320,6 +361,13 @@ class MegatronRayPipeline:
             except Exception as e:  # noqa: BLE001
                 logger.warning('RolloutReplica shutdown failed: %s', e)
         self.rollout_replicas = []
+
+        for replica in self.teacher_replicas:
+            try:
+                replica.shutdown()
+            except Exception as e:  # noqa: BLE001
+                logger.warning('TeacherReplica shutdown failed: %s', e)
+        self.teacher_replicas = []
 
         seen: set = set()
         for wg in self.worker_groups.values():

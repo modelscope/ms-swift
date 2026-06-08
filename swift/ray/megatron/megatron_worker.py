@@ -41,22 +41,25 @@ class MegatronWorker(CheckpointEngineMixin):
         self.rollout = None
         self._checkpoint_engine = None
         self._bucket_size: int = 3072 << 20
+        self.actor = None  # TrainableModelWorker
+        self.ref = None  # MegatronModelWorker (explicit ref for full fine-tune)
+        self.teacher = None  # MegatronModelWorker (colocated teacher)
 
-    def init_model(
+    def init_actor(
         self,
         cfg: Dict[str, Any],
         loss_cls_path: Optional[str] = None,
         rollout_config: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Initialise the Megatron model and (optionally) the rollout adapter.
+        """Initialise the training (actor) model, optimizer, and optionally the rollout adapter.
+
+        This only sets up the actor model for training. Ref and teacher models
+        are initialized separately (ref in _init_trainable, teacher via
+        init_teacher_model).
 
         Args:
             cfg: Merged config dict (shared + group overrides).
-                 Parsed via ``HfArgumentParser.parse_dict`` and the resulting
-                 args instance is passed directly to ``MegatronRLHF``.
             rollout_config: When provided, creates an internal RolloutAdapter.
-                Expected keys: ``rollout_tp_size``, ``rollout_dp_size``,
-                ``bucket_size_mb`` (optional, default 2048).
         """
         from swift.megatron.arguments import MegatronRLHFArguments
         from swift.megatron.pipelines.train.rlhf import MegatronRLHF
@@ -73,16 +76,59 @@ class MegatronWorker(CheckpointEngineMixin):
             self._init_rollout_adapter(rollout_config)
 
     def _init_trainable(self):
+        from .model_worker import TrainableModelWorker
+
         pipeline = self._pipeline
         args = pipeline.args
-
-        # reuse megatron trainer to
         self._megatron = _make_lifecycle_trainer(args, pipeline.template)
 
         if self._loss_cls_path:
             loss_cls = _import_class(self._loss_cls_path)
             self._loss_fn = loss_cls(args)
             self._megatron.forward_step = self._loss_fn.forward_step
+
+        self.actor = TrainableModelWorker(args, self._megatron)
+        if args.tuner_type == 'full' and self._megatron.ref_models:
+            from .model_worker import MegatronModelWorker
+            self.ref = MegatronModelWorker(args, self._megatron.ref_models)
+
+    @dispatch_collect(dispatch='broadcast', collect='first')
+    def init_teacher_model(self, model_dir: str):
+        """Load a colocated teacher model (same parallelism as student)."""
+        from .model_worker import MegatronModelWorker
+
+        # Prefer the worker's own resolved teacher_model_dir; bridge.load_weights needs a
+        # real local path to locate safetensors (a raw model id yields an empty state dict).
+        model_dir = getattr(self._args, 'teacher_model_dir', None) or model_dir
+        self.teacher = MegatronModelWorker.from_pretrained(self._args, model_dir)
+        logger.info('Colocated teacher model loaded from %s', model_dir)
+        if getattr(self._args, 'offload_teacher_model', False):
+            self.teacher.offload_to_cpu()
+
+    @dispatch_collect(dispatch='dp_split', collect='dp_flat')
+    def compute_teacher_logits(self, batch) -> None:
+        """Forward the teacher and cache per-sample TeacherOutput locally on this worker.
+
+        Core logic lives in GKDLoss.compute_teacher_logits. The result is ALWAYS cached
+        worker-local (never returned to the driver): for context parallel each rank must
+        inject its own sequence shard at train_step via _inject_cached_teacher_logits.
+        """
+        if getattr(self._args, '_teacher_use_disable_adapter', False):
+            # Self-distillation (LoRA): teacher = student base model with the LoRA adapter
+            # disabled — no separate teacher loaded.
+            from contextlib import ExitStack
+            megatron = self._megatron
+            with ExitStack() as stack:
+                for m in megatron.peft_models:
+                    stack.enter_context(m.disable_adapter())
+                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(megatron.unwrapped_models[0], batch,
+                                                                                   self._pipeline.template, self._args)
+        else:
+            assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
+            with self.teacher.loaded_context():
+                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
+                                                                                   self._pipeline.template, self._args)
+        gc_collect()
 
     def get_parallel_info(self) -> Dict[str, Any]:
         from megatron.core import mpu
@@ -121,10 +167,12 @@ class MegatronWorker(CheckpointEngineMixin):
         }
 
     @dispatch_collect(dispatch='dp_split', collect='all')
-    def train_step(self, batch) -> Dict[str, Any]:
+    def train_step(self, batch, extra_metrics=None) -> Dict[str, Any]:
         megatron = self._megatron
         args = megatron.args
         assert isinstance(batch, list), f'train_step expects List[Dict], got {type(batch).__name__}'
+        self._inject_cached_teacher_logits(batch)
+        self._inject_extra_metrics(extra_metrics)
         micro_batches = self._build_local_micro_batches(batch)
         data_iterator = iter(micro_batches)
         assert len(micro_batches) == args.num_microbatches, (
@@ -149,6 +197,47 @@ class MegatronWorker(CheckpointEngineMixin):
         del data_iterator
         gc_collect()
         return self._extract_step_metrics(megatron)
+
+    def _inject_cached_teacher_logits(self, batch: list) -> None:
+        """Inject worker-local cached teacher outputs into samples.
+
+        The colocated teacher always caches its per-sample ``TeacherOutput``
+        (top-k or full-vocab) on the worker's own GPU and returns an empty list
+        to the driver — avoiding a driver round-trip. This is REQUIRED for
+        context parallel (CP): each CP rank computes and keeps its own sequence
+        shard, so injecting the local shard keeps teacher/student CP slices
+        aligned (a driver round-trip would only collect the cp-rank-0 shard and
+        broadcast it to all ranks, corrupting the alignment).
+        """
+        cached = getattr(self, '_cached_teacher_logits', None)
+        if not cached:
+            return
+        for sample, t_out in zip(batch, cached):
+            if t_out is not None:
+                sample['teacher_output'] = t_out
+        self._cached_teacher_logits = None
+
+    def _inject_extra_metrics(self, extra_metrics) -> None:
+        """Inject driver-computed metrics (reward, MathAccuracy, data_source, ...) into
+        the megatron trainer's ``_train_metrics`` so they flow through the standard
+        ``on_log`` path (console PrintCallback + tensorboard + swanlab), unifying ALL
+        logging in the worker's megatron callbacks (the driver no longer prints metrics).
+
+        Values are stored as ``[sum, count]`` pairs to match ``_aggregated_metrics`` /
+        ``_log_callback`` (which divides sum/count), so a per-step scalar logs as itself.
+        """
+        if not extra_metrics:
+            return
+        megatron = self._megatron
+        tm = getattr(megatron, '_train_metrics', None)
+        if tm is None:
+            tm = megatron._train_metrics = {}
+        device = get_current_device()
+        for k, v in extra_metrics.items():
+            if v is None:
+                continue
+            add = torch.tensor([float(v), 1.0], dtype=torch.float32, device=device)
+            tm[k] = tm[k] + add if k in tm else add
 
     @staticmethod
     def _extract_step_metrics(megatron) -> Dict[str, Any]:
@@ -194,8 +283,14 @@ class MegatronWorker(CheckpointEngineMixin):
     @dispatch_collect(dispatch='dp_split', collect='dp_flat')
     def compute_ref_logps(self, batch) -> Any:
         """Compute per-token logps under the frozen reference model."""
-        megatron = self._megatron
-        with megatron.null_ref_context() as ref_models:
+        if self.ref is not None:
+            model = self.ref.models[0]
+            if isinstance(batch, list):
+                return self._compute_logps_from_samples(batch, model, 'ref_per_token_logps', with_completion_mask=False)
+            result = self._compute_logps_batched(batch, model, 'ref_per_token_logps')
+            return self._split_logps_rows(
+                result.get('ref_per_token_logps'), None, 'ref_per_token_logps', seq_lengths=batch.get('seq_lengths'))
+        with self.actor.null_ref_context() as ref_models:
             if isinstance(batch, list):
                 return self._compute_logps_from_samples(
                     batch, ref_models[0], 'ref_per_token_logps', with_completion_mask=False)
@@ -461,18 +556,21 @@ class MegatronWorker(CheckpointEngineMixin):
 
     @dispatch_collect(dispatch='broadcast', collect='first')
     def offload_to_cpu(self):
-        from swift.megatron.trainers.utils import offload_megatron_model_to_cpu, offload_megatron_optimizer
-        offload_megatron_model_to_cpu(self._megatron.wrapped_models)
-        if getattr(self._megatron, 'optimizer', None) and self._args.offload_optimizer:
-            offload_megatron_optimizer(self._megatron.optimizer)
-        gc_collect()
+        self.actor.offload_to_cpu()
+        if self.ref is not None:
+            self.ref.offload_to_cpu()
+        if self.teacher is not None:
+            self.teacher.offload_to_cpu()
 
     @dispatch_collect(dispatch='broadcast', collect='first')
     def reload_to_gpu(self):
-        from swift.megatron.trainers.utils import load_megatron_model_to_gpu, load_megatron_optimizer
-        load_megatron_model_to_gpu(self._megatron.wrapped_models)
-        if getattr(self._megatron, 'optimizer', None) and self._args.offload_optimizer:
-            load_megatron_optimizer(self._megatron.optimizer)
+        self.actor.reload_to_gpu()
+        if self.ref is not None:
+            self.ref.reload_to_gpu(load_grad=False)
+        # When offload_teacher_model is set, the teacher is managed by compute_teacher_logits
+        # (loaded only for the teacher forward), so keep it on CPU here.
+        if self.teacher is not None and not getattr(self._args, 'offload_teacher_model', False):
+            self.teacher.reload_to_gpu(load_grad=False)
 
     def _split_sample_chunks(self, samples: Sequence[Dict[str, Any]]) -> List[Sequence[Dict[str, Any]]]:
         micro_batch_size = self._args.micro_batch_size
@@ -555,6 +653,65 @@ class MegatronWorker(CheckpointEngineMixin):
             return torch.cat(routed_tensors, dim=0).unsqueeze(0).to(device=device)
         return torch.stack(routed_tensors).to(device=device)
 
+    @staticmethod
+    def _collate_teacher_outputs(teacher_outputs, device, padding_free=False, target_seq_len=None):
+        """Collate per-sample TeacherOutputs into a batched one.
+
+        Only used for topk mode; full_logits mode uses _cached_teacher_logits
+        (kept on-GPU per TP rank) and bypasses this path entirely.
+
+        Layout must match the student labels:
+        - padding_free: student labels are [1, total_tokens] (samples concatenated
+          along the sequence dim), so concatenate per-sample teacher tensors along
+          dim=1. Empty placeholders ([0, ...], emitted by the colocated path for all
+          but the first sample of a micro-batch) are dropped first.
+        - otherwise: stack per-sample tensors along the batch dim (dim=0).
+
+        ``target_seq_len`` is the student's collated sequence length. The student
+        collation pads the sequence to a multiple via ``get_padding_to`` (SP/CP/fp8),
+        so the standalone-teacher tensors (built from each sample's raw, unpadded
+        length) can be 1+ tokens short. Pad the teacher seq dim to ``target_seq_len``
+        so extract_active's label mask aligns; the padded tail has labels == -100 and
+        is masked out, leaving the loss unchanged.
+
+        OPSD: when ``opsd_teacher_labels`` is present, the teacher scores a *different*
+        prompt (so its sequence length differs from the student) and extract_active
+        aligns by mask (``opsd_teacher_labels != -100``), not by position. In that case
+        the teacher keeps its own length (``target_seq_len`` is ignored).
+        """
+        from swift.rlhf_trainers.gkd_loss import TeacherOutput
+        opsd = any(getattr(t, 'opsd_teacher_labels', None) is not None for t in teacher_outputs)
+        effective_target = None if opsd else target_seq_len
+        pad_vals = {'topk_logprobs': float('-inf'), 'opsd_teacher_labels': -100}
+        fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'opsd_teacher_labels')
+        kwargs = {}
+        for field in fields:
+            tensors = [getattr(t, field) for t in teacher_outputs]
+            tensors = [t for t in tensors if t is not None]
+            if not tensors:
+                continue
+            pad_val = pad_vals.get(field, 0)
+            if padding_free:
+                non_empty = [t for t in tensors if t.shape[0] > 0]
+                cat = torch.cat(non_empty, dim=1)
+                if effective_target is not None and cat.dim() == 3 and cat.shape[1] < effective_target:
+                    cat = torch.nn.functional.pad(cat, (0, 0, 0, effective_target - cat.shape[1]), value=pad_val)
+                kwargs[field] = cat.to(device)
+            else:
+                max_len = effective_target or max(t.shape[1] for t in tensors)
+                padded = []
+                for t in tensors:
+                    # opsd_teacher_labels is 2D [1, S]; topk_*/full_logits are 3D [1, S, *].
+                    # Pad the sequence dim (dim=1) of either to max_len so torch.cat works
+                    # even when per-sample teacher seq lengths differ within a micro-batch.
+                    if t.dim() == 3 and t.shape[1] < max_len:
+                        t = torch.nn.functional.pad(t, (0, 0, 0, max_len - t.shape[1]), value=pad_val)
+                    elif t.dim() == 2 and t.shape[1] < max_len:
+                        t = torch.nn.functional.pad(t, (0, max_len - t.shape[1]), value=pad_val)
+                    padded.append(t)
+                kwargs[field] = torch.cat(padded, dim=0).to(device)
+        return TeacherOutput(**kwargs)
+
     def _collate_local_grpo_samples(self, samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
         from swift.megatron.utils import get_padding_to
         from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
@@ -602,6 +759,19 @@ class MegatronWorker(CheckpointEngineMixin):
             encoded_batch['advantages'] = torch.tensor([float(s.get('advantage', 0.0)) for s in samples],
                                                        dtype=torch.float32,
                                                        device=device)
+        if samples and samples[0].get('teacher_output') is not None:
+            cp_size = getattr(self._args, 'context_parallel_size', 1)
+            if cp_size > 1:
+                raise ValueError('Standalone teacher replicas (teacher.gpus > 0) do not support '
+                                 'context_parallel_size > 1: per-sample teacher token-logprobs are built from '
+                                 'raw sequence lengths and cannot be CP-sharded to align with the student. '
+                                 'Use a colocated teacher_model for CP>1.')
+            encoded_batch['teacher_output'] = self._collate_teacher_outputs([s['teacher_output'] for s in samples],
+                                                                            device,
+                                                                            padding_free=template.padding_free,
+                                                                            target_seq_len=labels.shape[-1])
+        if samples and samples[0].get('data_source') is not None:
+            encoded_batch['data_source'] = samples[0]['data_source']
         return encoded_batch
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:
@@ -625,3 +795,6 @@ class MegatronWorker(CheckpointEngineMixin):
         self._megatron = None
         self._loss_fn = None
         self._checkpoint_engine = None
+        self.actor = None
+        self.ref = None
+        self.teacher = None
