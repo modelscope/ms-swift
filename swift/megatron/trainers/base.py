@@ -867,7 +867,7 @@ class BaseMegatronTrainer(ABC):
         return eval_metrics
 
     def compute_eval_metrics(self, metrics):
-        if self.eval_metrics is not None:
+        if self.eval_metrics is not None and mpu.is_pipeline_last_stage():
             metric = self.eval_metrics.compute()
             for k, v in metric.items():
                 metrics[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
