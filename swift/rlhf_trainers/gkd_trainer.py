@@ -13,7 +13,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from packaging import version
-from transformers import PreTrainedModel
+from transformers import PreTrainedModel, Trainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler
 from typing import Dict, Optional, Union
@@ -555,10 +555,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     with unwrap_model_for_generation(
                             model, self.accelerator,
                             gather_deepspeed3_params=args.ds3_gather_for_generation) as unwrapped_model:
+                        was_training = unwrapped_model.training
                         unwrapped_model.eval()
                         new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
                             unwrapped_model, encoded_inputs, self.generation_config, self.processing_class.pad_token_id)
-                        unwrapped_model.train()
+                        if was_training:
+                            unwrapped_model.train()
                     # override with generated inputs
                     encoded_inputs['input_ids'] = new_input_ids
                     encoded_inputs['attention_mask'] = new_attention_mask
@@ -621,11 +623,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     @profiling_decorator
     def _prepare_inputs(self, inputs: DataType) -> Dict[str, torch.Tensor]:
-
         model = self.model
-        steps_per_generation = self.args.steps_per_generation
 
-        if self._step % steps_per_generation == 0 or self._buffered_inputs is None:
+        def _prepare_input(inputs):
             if self._get_random_num() <= self.lmbda:
                 data_source = DataSource.STUDENT
             elif self.seq_kd:
@@ -644,25 +644,32 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
                 input_chunks = self.split_by_mini_batches(rollout_inputs)
                 generated_chunks = self.split_by_mini_batches(generated_inputs)
-                self._buffered_inputs = [
+                results = [
                     self._build_encoded_inputs(
                         model, chunk_inputs, data_source=data_source, generated_inputs=chunk_generated)
                     for chunk_inputs, chunk_generated in zip(input_chunks, generated_chunks)
                 ]
             else:
                 input_chunks = self.split_by_mini_batches(inputs)
-                self._buffered_inputs = [
+                results = [
                     self._build_encoded_inputs(model, chunk_inputs, data_source=data_source)
                     for chunk_inputs in input_chunks
                 ]
 
             if self.use_teacher_api:
-                self._fetch_and_assemble_teacher_logprobs(self._buffered_inputs)
+                self._fetch_and_assemble_teacher_logprobs(results)
+            return results
 
-        step_idx = self._step % steps_per_generation
-        encoded_inputs = self._buffered_inputs[step_idx]
-        self._step += 1
-        return encoded_inputs
+        mode = 'train' if model.training else 'eval'
+        steps_per_generation = self.args.steps_per_generation
+        if mode == 'train':
+            if self._step % steps_per_generation == 0 or self._buffered_inputs is None:
+                self._buffered_inputs = _prepare_input(inputs)
+            inputs = self._buffered_inputs[self._step % steps_per_generation]
+            self._step += 1
+        else:
+            inputs = _prepare_input(inputs)[0]
+        return inputs
 
     def _assemble_topk_for_chunk(self, parsed_chunk, encoded_chunk: Dict[str, torch.Tensor]):
         """Assemble parsed teacher (logprobs, indices) into a chunk-aligned tensor.
@@ -777,14 +784,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                       num_items_in_batch: Optional[int] = None) -> torch.Tensor:
         return HFSFTTrainer.training_step(self, model, inputs, num_items_in_batch)
 
-    def prediction_step(self, model, inputs, *args, **kwargs):
-        encoded_inputs = self._prepare_batch_inputs(inputs, encode_prompt_only=False)
-
-        if self.use_teacher_api:
-            self._inline_fetch_teacher_logprobs(encoded_inputs, list(inputs))
-
-        with self.template.forward_context(self.model, encoded_inputs):
-            return super().prediction_step(model, encoded_inputs, *args, **kwargs)
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        inputs = self._prepare_inputs(inputs)
+        with torch.no_grad():
+            with self.compute_loss_context_manager():
+                loss = self.compute_loss(model, inputs)
+            loss = loss.mean().detach()
+        return loss, None, None
 
     @contextmanager
     def offload_context(self):

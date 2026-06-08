@@ -28,8 +28,8 @@
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为True。
 - cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为None，如果是cuda设置为'te'，npu设置为'native'。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为None，`task_type`为'causal_lm'且为预训练/微调时，默认为True，否则默认为False。
-- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto)。默认为 flash。
-  - 如果安装'flash_attention_3'，`--attention_backend flash`则优先使用fa3。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_3，请设置`--attn_impl flash_attention_3`。
+- 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto、flash_2、flash_3、flash_4)。默认为 flash。
+  - 如果安装'flash_attention_4/3'，`--attention_backend flash`则优先使用fa4/fa3。如果要显式设置，你可以设置`--attention_backend flash_2/3/4`。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_4/3，请设置`--attn_impl flash_attention_4/3`。
   - 有些模型可能不支持flash，你需要手动设置`--attention_backend unfused/fused --padding_free false`，例如：Llama4、GPT-OSS。
 - optimizer: 优化器类型，可选为'adam'、'sgd'、'muon'和'dist_muon'。默认为adam。
   - 注意：此'adam'为'adamw'，参考[这里](https://github.com/NVIDIA/TransformerEngine/blob/d8f1e68f7c414f3e7985a8b41de4443b2f819af3/transformer_engine/pytorch/optimizers/fused_adam.py#L69-L70)。
@@ -144,6 +144,8 @@
   - 该参数通常用于**Transformer层数无法被PP整除**，或者多模态模型第0个pp阶段显存占用过高的情况。
 - 🔥decoder_last_pipeline_num_layers: decoder最后一个流水线阶段所包含的Transformer层数。默认为 None，表示将Transformer层数平均分配到所有流水线阶段。
 - overlap_p2p_comm: 在 1F1B 中将流水线并行通信与前向和反向块重叠，默认为True。
+- batch_p2p_comm: 使用 batch_isend_irecv 代替单独的 isend/irecv 调用。默认为None，设置为`not args.overlap_p2p_comm`。
+  - 如果出现PP并行卡住的情况，可以设置为False。
 - align_param_gather: 设置为True，所有 PP 阶段将同时启动参数全收集（all-gather）操作。否则，每个 PP 阶段将根据需要独立启动。默认为True。
 - 🔥sequence_parallel: 启动序列并行优化，该参数需要设置`tensor_model_parallel_size`才生效。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
@@ -280,6 +282,7 @@ lora训练：
 
 **其他参数**:
 - megatron_extra_kwargs: 透传入Megatron的其他参数（透传入[mcore-bridge](https://github.com/modelscope/mcore-bridge/blob/78cb9be33ebad69a0d940a2bc4e198f866084b70/src/mcore_bridge/config/model_config.py#L116)的 `ModelConfig` 类，继承自 megatron-core 的 TransformerConfig），也可用于覆盖自动读取的`config.json`参数。传入json字符串。默认为None。
+- language_model_only: 只训练多模态模型的语言模型部分，并且只会加载和保存语言模型部分。默认为False。（需"mcore-bridge>=1.4.3"）
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 - rope_scaling: rope_scaling相关参数，默认为None。格式参考[llama3.1 config.json](https://modelscope.cn/models/LLM-Research/Meta-Llama-3.1-8B-Instruct/file/view/master?fileName=config.json&status=1)，传入json字符串。
   - **目前rope_scaling模块使用transformers实现，支持transformers支持的所有rope_scaling。**

@@ -28,6 +28,27 @@ def deduplicate_preserve_order(items):
     return list(dict.fromkeys(items))
 
 
+def get_available_npu_devices(visible_npus):
+    npu_devices = [device.strip() for device in visible_npus.split(',') if device.strip()]
+    if not npu_devices:
+        return []
+
+    try:
+        import torch_npu  # noqa: F401
+        npu_count = torch.npu.device_count() if hasattr(torch, 'npu') and torch.npu.is_available() else 0
+    except Exception as e:
+        logger.warning('Failed to query torch.npu.device_count(): %s' % e)
+        return []
+
+    if npu_count <= 0:
+        logger.warning('ASCEND_RT_VISIBLE_DEVICES=%s, but torch.npu.device_count()=%s' % (visible_npus, npu_count))
+        return []
+    if npu_count < len(npu_devices):
+        logger.warning('ASCEND_RT_VISIBLE_DEVICES=%s, but torch.npu.device_count()=%s; using %s' %
+                       (visible_npus, npu_count, ','.join(npu_devices[:npu_count])))
+    return npu_devices[:npu_count]
+
+
 def test_cases_result_to_df(result_list):
     table_header = ['Name', 'Result', 'Info', 'Start time', 'Stop time', 'Time cost(seconds)']
     df = pandas.DataFrame(result_list, columns=table_header).sort_values(by=['Start time'], ascending=True)
@@ -138,7 +159,7 @@ def async_run_command_with_popen(cmd, device_id):
     env = os.environ.copy()
     visible_npus = env.get('ASCEND_RT_VISIBLE_DEVICES')
     if visible_npus:
-        npu_devices = [device.strip() for device in visible_npus.split(',') if device.strip()]
+        npu_devices = get_available_npu_devices(visible_npus)
         if npu_devices:
             env['ASCEND_RT_VISIBLE_DEVICES'] = npu_devices[device_id % len(npu_devices)]
             logger.info('Worker id: %s ASCEND_RT_VISIBLE_DEVICES: %s' % (device_id, env['ASCEND_RT_VISIBLE_DEVICES']))

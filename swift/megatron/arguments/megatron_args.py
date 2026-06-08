@@ -535,6 +535,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     account_for_embedding_in_pipeline_split: bool = False
     account_for_loss_in_pipeline_split: bool = False
     overlap_p2p_comm: bool = True
+    batch_p2p_comm: Optional[bool] = None
     align_param_gather: bool = True
 
     sequence_parallel: bool = False
@@ -635,6 +636,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     # other
     megatron_extra_kwargs: Optional[Union[dict, str]] = None
+    language_model_only: bool = False
     check_model: bool = True
     torch_dtype: Optional[Union[torch.dtype, str]] = None
     rope_scaling: Optional[Union[dict, str]] = None
@@ -695,7 +697,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             os.environ['NVTE_APPLY_QK_LAYER_SCALING'] = '1'
 
     def _check_mcore_bridge(self):
-        pass
+        if self.language_model_only:
+            require_version('mcore-bridge>=1.4.3', 'Please install "mcore-bridge>=1.4.3" to use language_model_only.')
+            if self.tuner_type == 'lora_llm':
+                raise ValueError('`tuner_type="lora_llm"` is not supported when `language_model_only=True`. '
+                                 'Please use `tuner_type="lora"` instead.')
 
     def __post_init__(self):
         if self.tuner_type != 'full':
@@ -793,7 +799,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._init_multimodal_full()
         self._map_dtype()
         self._init_weigh_decay()
-        self.attention_backend = AttnBackend[self.attention_backend]
+        self._init_attention_backend()
         if self.sequence_parallel and self.tensor_model_parallel_size <= 1:
             self.sequence_parallel = False
         if self.tp_comm_overlap and not self.sequence_parallel:
@@ -802,6 +808,28 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
         self._init_distributed()
         self._check_muon()
+
+    def _init_attention_backend(self):
+        if self.attention_backend.startswith('flash_'):
+            from transformer_engine.pytorch.attention.dot_product_attention.utils import FlashAttentionUtils as fa_utils
+
+            fa_version = int(self.attention_backend[len('flash_'):])
+            assert fa_version in (2, 3, 4), (f'Unsupported flash attention version: {fa_version}. '
+                                             f'Supported: flash_2, flash_3, flash_4.')
+            available = {2: fa_utils.is_installed, 3: fa_utils.v3_is_installed, 4: fa_utils.v4_is_installed}
+            if not available[fa_version]:
+                raise ValueError(f'flash-attn v{fa_version} is not installed. '
+                                 f'Detected installations: FA2={available[2]}, FA3={available[3]}, FA4={available[4]}.')
+
+            if fa_version != 2:
+                fa_utils.is_installed = False
+            if fa_version != 3:
+                fa_utils.v3_is_installed = False
+            if fa_version != 4:
+                fa_utils.v4_is_installed = False
+            logger.info(f'Forcing Flash Attention v{fa_version} as the attention backend.')
+            self.attention_backend = 'flash'
+        self.attention_backend = AttnBackend[self.attention_backend]
 
     def _init_distributed(self):
         initialize_megatron(self)
@@ -872,6 +900,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.virtual_pipeline_model_parallel_size is None:
             self.overlap_p2p_comm = False
             self.align_param_gather = False
+        if self.batch_p2p_comm is None:
+            self.batch_p2p_comm = not self.overlap_p2p_comm
 
     def _load_adapter_config(self):
         assert len(self.adapters) == 1, 'Currently only support one adapter'
@@ -933,7 +963,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     def _init_multimodal_full(self):
         visual_cls = self.megatron_model_meta.visual_cls
-        if self.tuner_type == 'full' and self.is_multimodal and visual_cls is not None:
+        if self.tuner_type == 'full' and self.is_multimodal and visual_cls is not None and not self.language_model_only:
             vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
             aligner = [f'visual.{aligner}' for aligner in getattr(visual_cls, '_aligner', [])]
             generator = [f'visual.{generator}' for generator in getattr(visual_cls, '_generator', [])]

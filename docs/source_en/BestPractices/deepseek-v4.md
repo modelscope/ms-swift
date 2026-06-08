@@ -9,6 +9,9 @@ You need to use the `dev` branch of Megatron-Core, together with the `main` bran
 pip install git+https://github.com/NVIDIA/Megatron-LM.git@dev
 pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
+
+# Megatron-LM is tested under the following commit hash
+pip install git+https://github.com/NVIDIA/Megatron-LM.git@630956b357d4b2375e3fc5c7be8b8e429092866d
 ```
 
 ## Precision Alignment

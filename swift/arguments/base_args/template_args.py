@@ -131,6 +131,7 @@ class TemplateArguments:
     padding_free: bool = False
     loss_scale: str = 'default'
     sequence_parallel_size: int = 1
+    is_binary_loss_scale: Optional[bool] = None
     # infer/deploy
     template_backend: Literal['swift', 'jinja'] = 'swift'
     # thinking
@@ -175,6 +176,7 @@ class TemplateArguments:
             # train
             'padding_free': self.padding_free,
             'loss_scale': self.loss_scale,
+            'is_binary_loss_scale': self.is_binary_loss_scale,
             'sequence_parallel_size': self.sequence_parallel_size,
             # infer/deploy
             'template_backend': self.template_backend,
