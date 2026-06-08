@@ -84,6 +84,24 @@ def is_mp_ddp() -> bool:
     return False
 
 
+def is_npu_available():
+    try:
+        import torch
+        import torch_npu  # noqa: F401
+        return torch.npu.is_available()
+    except ImportError:
+        return False
+
+
+def select_device(device_ids='0'):
+    if is_npu_available():
+        os.environ['ASCEND_RT_VISIBLE_DEVICES'] = device_ids
+    elif os.environ.get('CUDA_VISIBLE_DEVICES') is None:
+        import torch
+        if torch.cuda.is_available():
+            os.environ['CUDA_VISIBLE_DEVICES'] = device_ids
+
+
 def is_pai_training_job() -> bool:
     return 'PAI_TRAINING_JOB_ID' in os.environ
 

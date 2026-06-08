@@ -1,6 +1,8 @@
 if __name__ == '__main__':
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+    from swift.utils import select_device
+    select_device('0')
     os.environ['HF_ENDPOINT'] = 'https://hf-mirror.com'
 
 import os
