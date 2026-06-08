@@ -522,6 +522,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # add prompt ids and system prompts
         batch = self._preprocess_inputs(batch)
         # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
+        aggressive_empty_cache()
         if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             # Load weights only (faster and reduces memory peak)
