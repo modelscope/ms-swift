@@ -43,7 +43,6 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        # Get the batch.
         vp_stage = model.module.module.vp_stage
         data = self.get_batch(data_iterator, vp_stage)
         data.pop('loss_scale', None)
