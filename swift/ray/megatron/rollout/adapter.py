@@ -35,9 +35,7 @@ class RolloutAdapter:
         self._server_handle = None
         # Persistent CUDA IPC buffer reused across all update_weights() syncs so the IPC
         # handle stays stable (the vLLM worker's mapping cache hits) and no IPC mapping
-        # leaks per step. Without this every sync allocated a fresh buffer+handle -> the
-        # worker rebuilt the mapping each step and the driver reclaimed it lazily, leaking
-        # ~one weights buffer per step (OOM after ~30 steps).
+        # leaks per step.
         self._ipc_buffer: Optional[torch.Tensor] = None
 
     @property
