@@ -116,6 +116,53 @@ class BaseRayTrainer:
         logger.info('%s driver dataloader: dataset=%d, prompts_per_generation=%d, num_gen=%d, spg=%d',
                     type(self).__name__, len(dataset), prompts_per_generation, num_gen, spg)
 
+    def _build_resample_iterator(self) -> None:
+        """Independent cyclic prompt iterator (different shuffle order) used to replace
+        encode-failed prompts (truncation_strategy='delete') and to refill DAPO
+        dynamic_sample std=0 groups (driver-side)."""
+        info = self._data_info
+        dataset = info['train_dataset']
+        num_gen = int(info.get('num_generations', 1) or 1)
+        spg = self._steps_per_generation
+        prompts_per_generation = max(info['global_batch_size'] * spg // max(num_gen, 1), 1)
+        loader = torch.utils.data.DataLoader(
+            dataset,
+            batch_size=prompts_per_generation,
+            shuffle=True,
+            collate_fn=info['data_collator'],
+            drop_last=True,
+        )
+        self._resample_iter = create_cyclic_iterator(loader)
+
+    def _encode_check(self, item) -> None:
+        """Try to encode a prompt to detect over-length / encode failures. Raises on
+        failure. Subclasses override to match their encode semantics."""
+        self.template.encode(item)
+
+    def _resample_failed_prompts(self, prompts):
+        """Replace prompts whose encode() fails (e.g. exceeds max_length) with fresh
+        prompts from the resample iterator. Mirrors non-ray resample_encode_failed_inputs."""
+        required = len(prompts)
+        valid, pending = [], list(prompts)
+        max_rounds = getattr(self, '_max_resample_rounds', 10)
+        n_dropped = 0
+        for _ in range(max_rounds + 1):
+            if len(valid) >= required:
+                break
+            while len(pending) < required - len(valid):
+                pending.extend(next(self._resample_iter))
+            while pending and len(valid) < required:
+                item = pending.pop(0)
+                try:
+                    self._encode_check(item)
+                    valid.append(item)
+                except Exception:
+                    n_dropped += 1
+        if len(valid) < required:
+            raise RuntimeError(f'resample(truncation=delete): only collected {len(valid)}/{required} valid prompts '
+                               f'after {max_rounds} rounds; increase max_length or change truncation_strategy.')
+        return valid[:required]
+
     def _prepare_state(self) -> None:
         raise NotImplementedError
 
@@ -126,6 +173,8 @@ class BaseRayTrainer:
         self._prepare_state()
         tg = self.train_group
         self._build_dataloader(tg)
+        if getattr(self, '_needs_resample_iterator', False):
+            self._build_resample_iterator()
 
         args_override = compute_iter_params(self._data_info, tg.dp_size)
         meta = tg.setup(args_override)

@@ -53,6 +53,13 @@ class GRPOTrainer(BaseRayTrainer):
         self._prepare_rewards()
         self._prepare_multi_turn()
 
+        # DAPO dynamic_sample + truncation_strategy='delete' resampling (driver-side).
+        self.dynamic_sample = getattr(args, 'dynamic_sample', False)
+        self.max_resample_times = getattr(args, 'max_resample_times', 3)
+        self.truncation_strategy = getattr(args, 'truncation_strategy', None)
+        self._max_resample_rounds = 10
+        self._needs_resample_iterator = self.dynamic_sample or self.truncation_strategy == 'delete'
+
     def _prepare_multi_turn(self) -> None:
         """Configure driver-side multi-turn scheduler (Mode A only).
 
@@ -131,11 +138,18 @@ class GRPOTrainer(BaseRayTrainer):
 
             with self._generation_context(tg, ckpt):
                 prompt_batch = next(self._data_iter)
+                if self.truncation_strategy == 'delete':
+                    prompt_batch = self._resample_failed_prompts(prompt_batch)
                 rollout_batch = self.expand_for_generation(prompt_batch)
                 completions = self._generate(rollout_batch)
                 rollout_with_outputs = self._postprocess_rollout(rollout_batch, completions)
+                rewards_per_func = self.score_completions(rollout_with_outputs)
+                # DAPO dynamic sampling: drop zero-variance (std==0) prompt groups and
+                # resample fresh prompts (the rollout engine is still awake in this context).
+                if self.dynamic_sample:
+                    rollout_with_outputs, rewards_per_func = self._dynamic_sampling(rollout_with_outputs,
+                                                                                    rewards_per_func)
 
-            rewards_per_func = self.score_completions(rollout_with_outputs)
             self._maybe_log_completions(
                 rollout_with_outputs, rewards=rewards_per_func.sum(dim=1).tolist(), gen_step=iteration)
 
@@ -411,6 +425,65 @@ class GRPOTrainer(BaseRayTrainer):
             beta=self.beta,
             kl_values=kl_values,
         )
+
+    def _encode_check(self, item) -> None:
+        """Detect over-length / encode failures for a GRPO prompt. The response is
+        removed first (GRPO encodes prompt-only at rollout time), mirroring the non-ray
+        resample_encode_failed_inputs. Raises on failure."""
+        from swift.utils import remove_response
+        probe = dict(item)
+        if probe.get('messages'):
+            probe['messages'] = [m.copy() for m in probe['messages']]
+            remove_response(probe['messages'])
+        self.template.encode(probe)
+
+    def _dynamic_sampling(
+        self,
+        rollout_with_outputs: List[Dict[str, Any]],
+        rewards_per_func: torch.Tensor,
+    ) -> Tuple[List[Dict[str, Any]], torch.Tensor]:
+        """DAPO (https://arxiv.org/abs/2503.14476) dynamic sampling, driver-side.
+
+        Drops prompt groups whose reward std==0 (no learning signal) and resamples fresh
+        prompts until the batch is refilled to its original size or ``max_resample_times``
+        is reached. The driver holds the full rollout, so std is computed directly without
+        the cross-rank gather the non-ray trainer needs. MUST run inside the generation
+        context (rollout engine awake) since it re-runs generation for resampled prompts.
+        """
+        num_gen = self.num_generations
+        target = len(rollout_with_outputs)
+        valid_samples: List[Dict[str, Any]] = []
+        valid_rewards: List[torch.Tensor] = []
+        cur_rollout, cur_rewards = rollout_with_outputs, rewards_per_func
+
+        for resample_count in range(self.max_resample_times + 1):
+            rewards = (cur_rewards * self.reward_weights.unsqueeze(0)).nansum(dim=1)
+            if num_gen > 1:
+                grouped_std = rewards.view(-1, num_gen).std(dim=1).repeat_interleave(num_gen)
+            else:
+                grouped_std = torch.zeros_like(rewards)
+            keep_mask = grouped_std > 0
+            for i in range(len(cur_rollout)):
+                if keep_mask[i]:
+                    valid_samples.append(cur_rollout[i])
+                    valid_rewards.append(cur_rewards[i])
+            logger.info('dynamic_sample round %d: kept %d/%d (std>0), accumulated %d/%d', resample_count,
+                        int(keep_mask.sum().item()), len(cur_rollout), len(valid_samples), target)
+            if len(valid_samples) >= target or resample_count >= self.max_resample_times:
+                break
+            prompt_batch = next(self._resample_iter)
+            if self.truncation_strategy == 'delete':
+                prompt_batch = self._resample_failed_prompts(prompt_batch)
+            rb = self.expand_for_generation(prompt_batch)
+            comp = self._generate(rb)
+            cur_rollout = self._postprocess_rollout(rb, comp)
+            cur_rewards = self.score_completions(cur_rollout)
+
+        if len(valid_samples) >= target:
+            return valid_samples[:target], torch.stack(valid_rewards[:target])
+        logger.warning('dynamic_sample: only %d/%d std>0 samples after %d retries; using original batch.',
+                       len(valid_samples), target, self.max_resample_times)
+        return rollout_with_outputs, rewards_per_func
 
     def _batch_encode_parallel(self, infer_requests: Sequence[Dict[str, Any]], strict: bool):
         max_workers = max(min(32, os.cpu_count() or 1, len(infer_requests)), 1)

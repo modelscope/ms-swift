@@ -6,6 +6,7 @@ import copy
 import random
 import ray
 import torch
+from contextlib import contextmanager
 from typing import List
 
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
@@ -40,7 +41,16 @@ class GKDTrainer(BaseRayTrainer):
         self.seq_kd = args.seq_kd
         self._data_source_rng = random.Random(getattr(args, 'seed', 42))
 
-        self._steps_per_generation = 1
+        # steps_per_generation>1: one generation (one data_source) feeds spg training steps,
+        # reducing weight-sync / generation frequency. Mirrors the non-ray GKD trainer.
+        gen_bs = getattr(args, 'generation_batch_size', None)
+        spg = getattr(args, 'steps_per_generation', None)
+        if gen_bs is not None:
+            self._steps_per_generation = max(int(gen_bs) // self.global_batch_size, 1)
+        elif spg is not None:
+            self._steps_per_generation = int(spg)
+        else:
+            self._steps_per_generation = 1
         # GKD generates exactly one completion per prompt (on-policy student generation),
         # so num_generations is always 1 here regardless of the (GRPO-oriented) default.
         info['num_generations'] = 1
@@ -49,8 +59,17 @@ class GKDTrainer(BaseRayTrainer):
         # (teacher_model); bridge.load_weights needs a real path to locate safetensors.
         self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
         self._teacher_model_server = args.teacher_model_server
-        # Self-distillation (LoRA + same teacher_model)
+        # Self-distillation: teacher_model == student model. The worker scores the teacher
+        # via disable_adapter() (LoRA) and loads NO separate teacher. The driver's own args
+        # may lack tuner_type (it lives in the train group), so detect self-distillation by
+        # teacher_model == model directly and force _teacher_model_dir=None to skip
+        # init_teacher_model (which would otherwise fail to load a non-existent teacher).
         self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
+        if not self._teacher_use_disable_adapter and args.teacher_model is not None \
+                and args.teacher_model == args.model:
+            self._teacher_use_disable_adapter = True
+        if self._teacher_use_disable_adapter:
+            self._teacher_model_dir = None
 
         if self._teacher_model_server and not self.teacher_replicas:
             raise NotImplementedError('teacher_model_server is not yet supported in the Ray pipeline. '
@@ -60,8 +79,15 @@ class GKDTrainer(BaseRayTrainer):
         assert vp_size is None or vp_size == 1, \
             'Ray GKD does not support VPP (virtual_pipeline_model_parallel_size > 1).'
 
+        # truncation_strategy='delete': resample prompts whose encode fails (over max_length).
+        self.truncation_strategy = getattr(args, 'truncation_strategy', None)
+        self.max_completion_length = args.max_completion_length
+        self._max_resample_rounds = getattr(args, 'max_resample_times', 10) or 10
+        self._needs_resample_iterator = self.truncation_strategy == 'delete'
+
     def _train_loop(self, tg, train_iters, iteration):
         ckpt = self.ckpt_manager
+        spg = self._steps_per_generation
 
         # Initialize colocated teacher if configured
         if self._teacher_model_dir and not self._teacher_model_server:
@@ -69,7 +95,10 @@ class GKDTrainer(BaseRayTrainer):
             logger.info('Colocated teacher model initialized from %s', self._teacher_model_dir)
 
         while iteration < train_iters:
+            # One generation (a single data_source) feeds ``spg`` training steps.
             prompt_batch = next(self._data_iter)
+            if self.truncation_strategy == 'delete':
+                prompt_batch = self._resample_failed_prompts(prompt_batch)
             data_source = self._determine_data_source()
 
             if data_source == DataSource.STUDENT:
@@ -79,33 +108,44 @@ class GKDTrainer(BaseRayTrainer):
                     rollout_batch = self._expand_for_generation(prompt_batch)
                     completions = self._generate(rollout_batch)
                     rollout_with_outputs = self._postprocess_rollout(rollout_batch, completions)
-                samples = self._encode_rollout_batch(rollout_with_outputs)
+                source_items = rollout_with_outputs
             else:
                 # Off-policy (lmbda<1): distill on the dataset's ground-truth responses,
-                # no generation. Dataset items already carry the assistant response, so
-                # _encode_rollout_batch encodes it as-is (no token-in-token-out swap) and
-                # no weight sync to the rollout engine is needed.
+                # no generation and no weight sync to the rollout engine.
                 rollout_with_outputs = None
-                samples = self._encode_rollout_batch(prompt_batch)
+                source_items = list(prompt_batch)
 
-            if self.teacher_replicas:
-                if rollout_with_outputs is None:
-                    raise NotImplementedError('Teacher replicas currently require on-policy generation (lmbda=1). '
-                                              'Use a colocated teacher_model for lmbda<1 (off-policy) training.')
-                self._fetch_teacher_from_replicas(rollout_with_outputs, samples)
-            elif self._teacher_use_disable_adapter or (self._teacher_model_dir and not self._teacher_model_server):
-                # Teacher outputs are cached worker-local and injected at train_step via
-                # _inject_cached_teacher_logits (required for CP per-rank slice alignment).
-                tg.compute_teacher_logits(samples)
-
-            # Tag each sample with the step's data_source so the worker can gate the SFT
-            # loss in loss_func (SFT only on dataset responses, not on-policy generations).
-            for s in samples:
-                s['data_source'] = data_source
             self._maybe_log_completions(rollout_with_outputs, gen_step=iteration)
-            results = tg.train_step(
-                samples, extra_metrics={'on_policy': 1.0 if data_source == DataSource.STUDENT else 0.0})
-            iteration = extract_iteration(results)
+
+            # Split one generation into ``spg`` chunks; each chunk is one training step
+            # (same data_source). spg=1 degenerates to a single chunk == the whole batch.
+            n = len(source_items)
+            chunk_size = max(n // spg, 1)
+            for step_idx in range(spg):
+                if iteration >= train_iters:
+                    break
+                chunk = source_items[step_idx * chunk_size:(step_idx + 1) * chunk_size]
+                if not chunk:
+                    break
+                samples = self._encode_rollout_batch(chunk)
+
+                if self.teacher_replicas:
+                    if rollout_with_outputs is None:
+                        raise NotImplementedError('Teacher replicas currently require on-policy generation (lmbda=1). '
+                                                  'Use a colocated teacher_model for lmbda<1 (off-policy) training.')
+                    self._fetch_teacher_from_replicas(chunk, samples)
+                elif self._teacher_use_disable_adapter or (self._teacher_model_dir and not self._teacher_model_server):
+                    # Teacher outputs are cached worker-local and injected at train_step via
+                    # _inject_cached_teacher_logits (required for CP per-rank slice alignment).
+                    tg.compute_teacher_logits(samples)
+
+                # Tag each sample with the step's data_source so the worker can gate the SFT
+                # loss in loss_func (SFT only on dataset responses, not on-policy generations).
+                for s in samples:
+                    s['data_source'] = data_source
+                results = tg.train_step(
+                    samples, extra_metrics={'on_policy': 1.0 if data_source == DataSource.STUDENT else 0.0})
+                iteration = extract_iteration(results)
 
         return iteration
 
@@ -169,6 +209,19 @@ class GKDTrainer(BaseRayTrainer):
             merged.append(item)
         return merged
 
+    @contextmanager
+    def _extended_max_length(self):
+        """Temporarily extend template.max_length by max_completion_length so the
+        prompt+response (token-in-token-out) encodes without truncation. Mirrors the
+        non-ray trainer's _template_context."""
+        template = self.template
+        original = template.max_length
+        template.max_length = original + self.args.max_completion_length
+        try:
+            yield
+        finally:
+            template.max_length = original
+
     def _encode_rollout_batch(self, rollout_batch):
         """Encode rollout samples for the training workers.
 
@@ -179,10 +232,8 @@ class GKDTrainer(BaseRayTrainer):
         alignment. Mirrors the non-ray trainer's ``_encode_batch``.
         """
         template = self.template
-        original_max_length = template.max_length
         samples = []
-        try:
-            template.max_length = original_max_length + self.args.max_completion_length
+        with self._extended_max_length():
             for orig_item in rollout_batch:
                 item = orig_item
                 if item.get('response_token_ids'):
@@ -198,8 +249,6 @@ class GKDTrainer(BaseRayTrainer):
                 if opsd_encoded is not None:
                     sample['opsd_teacher_encoded'] = opsd_encoded
                 samples.append(sample)
-        finally:
-            template.max_length = original_max_length
         return samples
 
     @staticmethod

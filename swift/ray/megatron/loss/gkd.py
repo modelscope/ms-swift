@@ -59,6 +59,7 @@ class GKDLoss(Loss):
             labels=labels,
             teacher_output=teacher_output,
             data_source=data_source,
+            model=model,
         )
 
     # ------------------------------------------------------------------
@@ -129,7 +130,7 @@ class GKDLoss(Loss):
     # Loss computation
     # ------------------------------------------------------------------
 
-    def loss_func(self, output_tensor, *, labels, teacher_output, data_source=None):
+    def loss_func(self, output_tensor, *, labels, teacher_output, data_source=None, model=None):
         args = self.args
         student_logits = output_tensor
 
@@ -149,10 +150,18 @@ class GKDLoss(Loss):
         # SFT loss only applies to ground-truth (dataset) responses; skip it on
         # student-generated (on-policy) responses, matching the non-ray GKD trainer.
         if self.sft_alpha > 0 and data_source != DataSource.STUDENT:
+            # Vocab-parallel-aware SFT loss: route through ``model.compute_language_model_loss``
+            # (mirrors the non-ray GKD trainer). Naive ``torch.nn.functional.cross_entropy``
+            # would index out of bounds on the TP-sharded local vocab when TP>1.
+            assert model is not None, 'sft_alpha>0 requires the model handle from forward_step'
+            unwrapped = model
+            while hasattr(unwrapped, 'module'):
+                unwrapped = unwrapped.module
+            if hasattr(unwrapped, 'language_model'):
+                unwrapped = unwrapped.language_model
             logits_sbv = student_logits.transpose(0, 1).contiguous()
+            per_token_loss = unwrapped.compute_language_model_loss(labels, logits_sbv)
             loss_mask = labels != -100
-            per_token_loss = torch.nn.functional.cross_entropy(
-                logits_sbv.view(-1, logits_sbv.size(-1)), labels.view(-1), reduction='none').view_as(labels)
             sft_loss_sum = (per_token_loss * loss_mask).sum()
             sft_loss_count = loss_mask.sum().float()
             if args.context_parallel_size > 1:
