@@ -1014,7 +1014,8 @@ class BaseMegatronTrainer(ABC):
 
     def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None, num_samples=None):
         if packed_seq_params is None:
-            last_token_idx = get_last_valid_indices((~attention_mask[:, 0, -1]).long())
+            attention_mask_2d = attention_mask.sum(dim=(1, 2)) > 0
+            last_token_idx = get_last_valid_indices(attention_mask_2d.long())
             last_tokens = output_tensor[torch.arange(output_tensor.shape[0]), last_token_idx]
         else:
             num_samples = num_samples or packed_seq_params.num_samples
