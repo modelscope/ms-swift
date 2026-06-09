@@ -1,9 +1,9 @@
-# NPU 稳定性环境变量
+# NPU stability environment variables
 export HCCL_OP_BASE_FFTS_MODE_ENABLE=TRUE
 export MULTI_STREAM_MEMORY_REUSE=1
-# 显存控制环境变量
+# NPU memory management environment variables
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
-# NPU 性能环境变量
+# NPU performance environment variables
 export TASK_QUEUE_ENABLE=2
 
 NPROC_PER_NODE=8 \

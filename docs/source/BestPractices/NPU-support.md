@@ -21,7 +21,7 @@
 | Python    | >= 3.10, < 3.12 |
 | CANN      | >= 8.5.1        |
 | torch     | >= 2.7.1        |
-| torch_npu | >= 2.7.1 post4  |
+| torch_npu | >= 2.7.1.post4  |
 
 基础环境准备请参照 [Ascend PyTorch 安装文档](https://gitcode.com/Ascend/pytorch)。本文示例实验环境为 8 * 昇腾910B3 64G。
 注：vllm ascend系列官方推荐版本配套已更新至 CANN9.0.0 torch 2.9.0 torch_npu 2.9.0 vllm-ascend 0.18.0(A3) 0.19.1(A5)
