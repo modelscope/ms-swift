@@ -118,8 +118,8 @@ class MegatronTrainer(BaseMegatronTrainer):
                 self.seq_cls_loss_func,
                 labels=labels,
                 packed_seq_params=packed_seq_params,
-                attention_mask=data.get('attention_mask') if data.get('attention_mask') is not None else data.get(
-                    'attention_mask_2d'))
+                attention_mask=data.get('attention_mask')
+                if data.get('attention_mask') is not None else data.get('attention_mask_2d'))
         else:
             loss_func = partial(
                 self.loss_func,
