@@ -295,9 +295,7 @@ class WeightSyncWorkerExtension:
         *model_config* and *target_device* are available (same as verl);
         falls back to FusedMoE-only path otherwise.
         """
-        model_config = getattr(self.model_runner, 'model_config', None)
-        if model_config is None:
-            model_config = getattr(getattr(self, 'vllm_config', None), 'model_config', None)
+        model_config = self.model_runner.model_config
         finish_vllm_weight_reload(self.model_runner.model, model_config=model_config, target_device=self.device)
 
     def close_communicator(self) -> None:
@@ -525,9 +523,7 @@ class WeightSyncWorkerExtension:
         # #42821).  Skipped for LoRA sync because the adapter path
         # doesn't call ``load_weights``.
         if not is_lora_sync:
-            model_config = getattr(getattr(self, 'model_runner', None), 'model_config', None)
-            if model_config is None:
-                model_config = getattr(getattr(self, 'vllm_config', None), 'model_config', None)
+            model_config = self.model_runner.model_config
             finish_vllm_weight_reload(self.model_runner.model, model_config=model_config, target_device=self.device)
 
         if is_lora_sync and all_lora_weights:
