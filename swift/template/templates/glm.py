@@ -33,8 +33,8 @@ class GLM4Template(Template):
                     res_context_list[i] = res_context_list[i][:-len('\n')]
         return res_context_list, loss_scale_list, answer_len
 
-    def decode(self, *args, **kwargs):
-        response = super().decode(*args, **kwargs)
+    def decode_generate_ids(self, *args, **kwargs):
+        response = super().decode_generate_ids(*args, **kwargs)
         return response.lstrip('\n') if self.strip_newline else response
 
 
