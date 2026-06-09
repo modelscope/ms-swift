@@ -362,6 +362,7 @@ def prepare_batch(args, data, vp_stage=None, num_samples=None):
     batch = get_batch_on_this_pp_rank(args, data, vp_stage=vp_stage)
     if num_samples is None:
         num_samples = batch.pop('num_samples')
+    seq_lens = batch.pop('seq_lens', None)
     text_position_ids = batch.pop('text_position_ids', None)
     if text_position_ids is None:
         text_position_ids = batch.get('position_ids')
@@ -374,6 +375,7 @@ def prepare_batch(args, data, vp_stage=None, num_samples=None):
     if args.padding_free and text_position_ids is not None:
         batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
         batch['packed_seq_params'].num_samples = num_samples
+        batch['packed_seq_params'].seq_lens = torch.tensor(seq_lens, device=text_position_ids.device)
     batch = get_batch_on_this_cp_rank(args, batch)
     return batch
 
