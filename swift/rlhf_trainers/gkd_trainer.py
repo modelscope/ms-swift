@@ -19,7 +19,8 @@ from typing import Dict, Optional, Union
 from swift.infer_engine.protocol import RequestConfig
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, build_opsd_teacher_data, gkd_loss
 from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_teacher_infer_request,
-                                       parse_prompt_logprobs, prepare_fsdp, replace_assistant_response_with_ids)
+                                       get_non_thinking_prefix_ids, parse_prompt_logprobs, prepare_fsdp,
+                                       replace_assistant_response_with_ids)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
@@ -369,11 +370,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         mode = 'transformers' if encode_prompt_only else 'train'
         original_mode = template.mode
         template.set_mode(mode)
+        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
         try:
             for data in inputs:
                 if 'response_token_ids' in data and data['response_token_ids']:
                     data = {**data}
-                    data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
+                    data['messages'] = replace_assistant_response_with_ids(
+                        data['messages'], data['response_token_ids'], non_thinking_prefix_ids=non_thinking_prefix_ids)
 
                 if encode_prompt_only:
                     # Remove response content for prompt-only encoding
@@ -616,7 +619,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         all_raw = gather_object(local_raw)
 
         if self.accelerator.is_main_process:
-            requests = [build_teacher_infer_request(d) for d in all_raw]
+            non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
+            requests = [
+                build_teacher_infer_request(d, non_thinking_prefix_ids=non_thinking_prefix_ids) for d in all_raw
+            ]
             request_config = RequestConfig(prompt_logprobs=self.gkd_logits_topk, max_tokens=1, temperature=0.0)
             responses = self.teacher_client.infer(requests, request_config=request_config, use_tqdm=False)
             parsed_global = [parse_prompt_logprobs(r, topk=self.gkd_logits_topk) for r in responses]
@@ -640,36 +646,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             topk_lp, topk_ix = self._assemble_topk_for_chunk(chunk_parsed, target)
             c['_teacher_topk_logprobs'] = topk_lp
             c['_teacher_topk_indices'] = topk_ix
-
-    def _inline_fetch_teacher_logprobs(self, encoded_inputs: Dict[str, torch.Tensor], raw_data) -> None:
-        """Fetch teacher logprobs with gather+broadcast (used in eval/prediction_step).
-
-        Same synchronization pattern as _fetch_and_assemble_teacher_logprobs:
-        only main_process has teacher_client, so we gather raw → fetch on rank0 → broadcast.
-        """
-        all_raw = gather_object(list(raw_data))
-
-        if self.accelerator.is_main_process:
-            requests = [build_teacher_infer_request(d) for d in all_raw]
-            request_config = RequestConfig(prompt_logprobs=self.gkd_logits_topk, max_tokens=1, temperature=0.0)
-            responses = self.teacher_client.infer(requests, request_config=request_config, use_tqdm=False)
-            parsed_global = [parse_prompt_logprobs(r, topk=self.gkd_logits_topk) for r in responses]
-        else:
-            parsed_global = None
-
-        container = [parsed_global]
-        broadcast_object_list(container, from_process=0)
-        parsed_global = container[0]
-
-        # Slice this rank's portion (gather_object returns rank-ordered list)
-        n_local = len(raw_data)
-        rank = self.accelerator.process_index
-        parsed = parsed_global[rank * n_local:(rank + 1) * n_local]
-
-        target = encoded_inputs.get('_opsd_teacher_inputs') or encoded_inputs
-        topk_lp, topk_ix = self._assemble_topk_for_chunk(parsed, target)
-        encoded_inputs['_teacher_topk_logprobs'] = topk_lp
-        encoded_inputs['_teacher_topk_indices'] = topk_ix
 
     @profiling_decorator
     def training_step(self,

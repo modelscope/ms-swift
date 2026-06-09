@@ -26,9 +26,9 @@ from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, Roll
 from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, detect_async_reward_indices, make_reward_weights, nanstd,
-                                       pad_logps_back_to_batch, profiling_context, profiling_decorator,
-                                       replace_assistant_response_with_ids, resolve_reward_funcs,
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, detect_async_reward_indices, get_non_thinking_prefix_ids,
+                                       make_reward_weights, nanstd, pad_logps_back_to_batch, profiling_context,
+                                       profiling_decorator, replace_assistant_response_with_ids, resolve_reward_funcs,
                                        set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template, TemplateInputs
@@ -367,10 +367,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 padding_to = cur_seq_len if template.padding_free else max_seq_len
                 padding_len = padding_to - experts_seq_len
                 if padding_len > 0:
+                    last_entry = routed_experts[-1:].expand(padding_len, -1, -1)
+                    padded_tail = torch.cat([routed_experts, last_entry], dim=0)
                     padding_right = template.padding_side == 'right'
-                    padding_routed_experts = nn.functional.pad(routed_experts,
-                                                               (0, 0, 0, 0, 0, padding_len) if padding_right else
-                                                               (0, 0, 0, 0, padding_len, 0), 'constant', 0)
+                    if padding_right:
+                        padding_routed_experts = padded_tail
+                    else:
+                        left_pad = torch.zeros(padding_len, *routed_experts.shape[1:], dtype=routed_experts.dtype)
+                        padding_routed_experts = torch.cat([left_pad, padded_tail], dim=0)
                 routed_experts_list.append(padding_routed_experts)
             if template.padding_free:
                 global_routed_experts = torch.cat(routed_experts_list, dim=0).unsqueeze(0)
@@ -1125,6 +1129,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _maybe_replace_response_token(self, batch):
         # maybe replace the response token with the response token ids to avoid repetitive tokenize
+        non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
 
         for data in batch:
             if 'response_token_ids' in data and data['response_token_ids']:
@@ -1132,8 +1137,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 if 'response_loss_mask' in data and data['response_loss_mask']:
                     loss_mask = data['response_loss_mask']
                 # token in token out
-                data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'],
-                                                                       loss_mask)
+                data['messages'] = replace_assistant_response_with_ids(
+                    data['messages'],
+                    data['response_token_ids'],
+                    loss_mask,
+                    non_thinking_prefix_ids=non_thinking_prefix_ids)
         return batch
 
     @property

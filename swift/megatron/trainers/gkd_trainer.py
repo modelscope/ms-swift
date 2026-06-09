@@ -17,7 +17,8 @@ from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, build_opsd_teacher_data, gkd_loss
 from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, build_teacher_infer_request,
-                                       parse_prompt_logprobs, replace_assistant_response_with_ids)
+                                       get_non_thinking_prefix_ids, parse_prompt_logprobs,
+                                       replace_assistant_response_with_ids)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import Template
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger, is_last_rank, to_device
@@ -159,9 +160,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         template = self.template
         args = self.args
         max_length = template.max_length + self.max_completion_length
+        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
         for data in batch:
             if 'response_token_ids' in data:
-                data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'])
+                data['messages'] = replace_assistant_response_with_ids(
+                    data['messages'], data['response_token_ids'], non_thinking_prefix_ids=non_thinking_prefix_ids)
 
         with self._template_context(template, max_length=max_length):
             encoded_list = [template.encode(data, return_length=True) for data in batch]

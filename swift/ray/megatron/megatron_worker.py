@@ -597,12 +597,14 @@ class MegatronWorker(CheckpointEngineMixin):
             return routed[:target_len] if padding_right else routed[-target_len:]
 
         pad_len = target_len - current_len
-        pad = [0] * (2 * routed.dim())
+        last_entry = routed[-1:].expand(pad_len, *routed.shape[1:])
+        padded = torch.cat([routed, last_entry], dim=0)
+
         if padding_right:
-            pad[2 * (routed.dim() - 1) + 1] = pad_len
+            return padded
         else:
-            pad[2 * (routed.dim() - 1)] = pad_len
-        return torch.nn.functional.pad(routed, tuple(pad), 'constant', 0)
+            left_pad = torch.zeros(pad_len, *routed.shape[1:], dtype=routed.dtype)
+            return torch.cat([left_pad, padded], dim=0)
 
     def _build_routed_experts_batch(
         self,
@@ -644,7 +646,6 @@ class MegatronWorker(CheckpointEngineMixin):
                     raise AssertionError(
                         f'The seq_len of routed_experts({experts_seq_len}) does not match encoded length '
                         f'({expected_len}); expected same length or one less.')
-
             target_len = int(cur_seq_len.item()) if template.padding_free else max_seq_len
             routed = self._pad_or_trim_routed_experts(routed, target_len, padding_right=padding_right)
             routed_tensors.append(routed)

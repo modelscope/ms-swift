@@ -11,7 +11,7 @@ from typing import List
 
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, build_opsd_teacher_data
-from swift.rlhf_trainers.utils import (build_teacher_infer_request, parse_prompt_logprobs,
+from swift.rlhf_trainers.utils import (build_teacher_infer_request, get_non_thinking_prefix_ids, parse_prompt_logprobs,
                                        replace_assistant_response_with_ids)
 from swift.utils import get_logger
 from .base_trainer import BaseRayTrainer
@@ -228,13 +228,16 @@ class GKDTrainer(BaseRayTrainer):
         """
         template = self.template
         samples = []
+        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
         with self._extended_max_length():
             for orig_item in rollout_batch:
                 item = orig_item
                 if item.get('response_token_ids'):
                     item = dict(item)
                     item['messages'] = replace_assistant_response_with_ids(
-                        copy.deepcopy(item['messages']), item['response_token_ids'])
+                        copy.deepcopy(item['messages']),
+                        item['response_token_ids'],
+                        non_thinking_prefix_ids=non_thinking_prefix_ids)
                 encoded = template.encode(item, return_length=True)
                 sample = {'encoded': encoded}
                 # OPSD: if the dataset row carries a `teacher_prompt`, also encode the
@@ -259,7 +262,9 @@ class GKDTrainer(BaseRayTrainer):
         opsd_item = opsd_list[0]
         if opsd_item.get('response_token_ids'):
             opsd_item['messages'] = replace_assistant_response_with_ids(
-                copy.deepcopy(opsd_item['messages']), opsd_item['response_token_ids'])
+                copy.deepcopy(opsd_item['messages']),
+                opsd_item['response_token_ids'],
+                non_thinking_prefix_ids=get_non_thinking_prefix_ids(template))
         return template.encode(opsd_item, return_length=True)
 
     def _fetch_teacher_from_replicas(self, rollout_with_outputs, samples):
@@ -283,7 +288,9 @@ class GKDTrainer(BaseRayTrainer):
                 opsd_item = build_opsd_teacher_data([item])[0]
                 if opsd_item.get('response_token_ids'):
                     opsd_item['messages'] = replace_assistant_response_with_ids(
-                        copy.deepcopy(opsd_item['messages']), opsd_item['response_token_ids'])
+                        copy.deepcopy(opsd_item['messages']),
+                        opsd_item['response_token_ids'],
+                        non_thinking_prefix_ids=non_thinking_prefix_ids)
                 requests.append(build_teacher_infer_request(opsd_item))
                 teacher_encodeds.append(opsd_encoded)
             else:
