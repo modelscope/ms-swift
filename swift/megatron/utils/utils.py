@@ -7,6 +7,7 @@ from megatron.core.extensions.transformer_engine import TEGroupedLinear, TELayer
 from megatron.core.inference.communication_utils import recv_from_prev_pipeline_rank_, send_to_next_pipeline_rank
 from megatron.core.models.common.embeddings.language_model_embedding import LanguageModelEmbedding
 from megatron.core.packed_seq_params import PackedSeqParams
+from megatron.core.ssm.mamba_context_parallel import _undo_attention_load_balancing
 from megatron.core.transformer.moe.router import TopKRouter
 from torch import nn
 from transformers.utils import is_torch_npu_available
@@ -254,7 +255,6 @@ def reconstruct_tensor_cp(tensor, packed_seq_params, dim=1) -> torch.Tensor:
         torch.Tensor: Full-sequence tensor with the same shape as ``tensor``
         except the size at ``dim`` is multiplied by ``cp_size``.
     """
-    from megatron.core.ssm.mamba_context_parallel import _undo_attention_load_balancing
 
     cp_size = mpu.get_context_parallel_world_size()
     if cp_size <= 1:
