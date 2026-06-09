@@ -1504,7 +1504,8 @@ class Template(ProcessorMixin):
             input_ids = encoded['input_ids']
             padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
             input_ids += [self.tokenizer.pad_token_id] * padding_len
-            encoded['labels'] += [-100] * padding_len
+            if encoded.get('labels') is not None:
+                encoded['labels'] += [-100] * padding_len
             if encoded.get('loss_scale') is not None:
                 encoded['loss_scale'] += [0] * padding_len
             if encoded.get('length') is not None:
@@ -1839,6 +1840,7 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
+        real_seq_lens = [len(b['input_ids']) for b in batch] if self.use_megatron else None
         self._handle_megatron_cp(batch)
         if self.padding_free:
             batch[:] = [self.packing_row(batch)]
@@ -1900,7 +1902,6 @@ class Template(ProcessorMixin):
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         if self.use_megatron:
-            # For code simplicity, only the attention_backend 'flash' is supported here.
             if padding_to is not None:
                 padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
             if self.padding_free:
@@ -1918,7 +1919,7 @@ class Template(ProcessorMixin):
                 res['attention_mask'] = torch.tril(torch.ones(
                     (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
                 assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
-                for i, seq_len in enumerate(seq_lens):
+                for i, seq_len in enumerate(real_seq_lens):
                     res['attention_mask'][i, :, :, seq_len:] = 0
                 res['attention_mask'] = ~res['attention_mask']
 
@@ -1942,7 +1943,8 @@ class Template(ProcessorMixin):
         res.update(self._data_collator_mm_data(batch))
         if not self.use_megatron and self.sequence_parallel_size > 1:
             res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
-
+        if self.use_megatron:
+            res['seq_lens'] = real_seq_lens  # CP locates the last token.
         return res
 
     def _pad_3d_position_ids(self,

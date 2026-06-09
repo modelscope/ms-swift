@@ -11,6 +11,7 @@ from megatron.core.optimizer import ChainedOptimizer
 from typing import Any, Optional
 
 from swift.dataloader import DataLoaderDispatcher
+from swift.megatron.utils import get_batch_on_this_cp_rank, get_packed_seq_params
 from swift.utils import empty_cache, get_current_device, get_logger, to_device
 
 logger = get_logger()
@@ -312,7 +313,7 @@ class TrainerState:
     should_log: bool = False
 
     iteration: int = 0
-    consumed_train_samples = 0
+    consumed_train_samples: int = 0
     # compat transformers
     max_steps: Optional[int] = None
 
@@ -357,10 +358,10 @@ def prepare_batch(args, data, vp_stage=None, num_samples=None):
 
     Extracted from BaseMegatronTrainer._prepare_batch for reuse in ray workers.
     """
-    from swift.megatron.utils import get_batch_on_this_cp_rank, get_packed_seq_params
     batch = get_batch_on_this_pp_rank(args, data, vp_stage=vp_stage)
     if num_samples is None:
         num_samples = batch.pop('num_samples')
+    seq_lens = batch.pop('seq_lens', None)
     text_position_ids = batch.pop('text_position_ids', None)
     if text_position_ids is None:
         text_position_ids = batch.get('position_ids')
@@ -373,6 +374,8 @@ def prepare_batch(args, data, vp_stage=None, num_samples=None):
     if args.padding_free and text_position_ids is not None:
         batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
         batch['packed_seq_params'].num_samples = num_samples
+        if seq_lens is not None:
+            batch['packed_seq_params'].seq_lens = torch.tensor(seq_lens, device=text_position_ids.device)
     batch = get_batch_on_this_cp_rank(args, batch)
     return batch
 
