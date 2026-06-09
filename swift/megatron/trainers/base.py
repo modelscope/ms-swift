@@ -1016,8 +1016,10 @@ class BaseMegatronTrainer(ABC):
         if self.args.context_parallel_size > 1:
             output_tensor = reconstruct_tensor_cp(output_tensor, packed_seq_params, dim=1)
         if packed_seq_params is None:
-            attention_mask_2d = (~attention_mask).sum(dim=(1, 2)) > 0
-            last_token_idx = get_last_valid_indices(attention_mask_2d.long())
+            # Compatible with attention_mask_2d
+            if attention_mask.dim() > 2:
+                attention_mask = (~attention_mask).sum(dim=(1, 2)) > 0
+            last_token_idx = get_last_valid_indices(attention_mask.long())
             last_tokens = output_tensor[torch.arange(output_tensor.shape[0]), last_token_idx]
         else:
             num_samples = num_samples or packed_seq_params.num_samples

@@ -42,5 +42,6 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
             self.loss_func,
             labels=labels,
             packed_seq_params=data.get('packed_seq_params'),
-            attention_mask=data.get('attention_mask'))
+            attention_mask=data.get('attention_mask') if data.get('attention_mask') is not None else data.get(
+                'attention_mask_2d'))
         return output_tensor, loss_func
