@@ -947,8 +947,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
             connection.send({'type': 'call', 'method': 'collective_rpc', 'kwargs': kwargs})
         # Wait for all workers to complete before returning
         loop = asyncio.get_running_loop()
-        for connection in self.connections:
-            await loop.run_in_executor(None, connection.recv)
+        await asyncio.gather(*(loop.run_in_executor(None, connection.recv) for connection in self.connections))
         return {'message': 'Weights processed after loading'}
 
     async def reset_prefix_cache(self):

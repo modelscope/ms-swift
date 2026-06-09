@@ -817,7 +817,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             finish_vllm_weight_reload(
                 self.engine.inner_model,
                 model_config=_model_config,
-                target_device=self.engine.inner_model.device if hasattr(self.engine.inner_model, 'device') else None)
+                target_device=getattr(self.engine.inner_model, 'device', None))
         elif self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.process_weights_after_loading()
 
