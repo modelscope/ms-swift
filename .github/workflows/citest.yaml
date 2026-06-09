@@ -71,6 +71,16 @@ jobs:
         run: git lfs checkout
       - name: Run unittest
         shell: bash
+        env:
+          UV_INDEX_URL: "http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple"
+          UV_EXTRA_INDEX_URL: "https://repo.huaweicloud.com/ascend/repos/pypi"
+          UV_INDEX_STRATEGY: "unsafe-best-match"
+          UV_INSECURE_HOST: "cache-service.nginx-pypi-cache.svc.cluster.local"
+          UV_HTTP_TIMEOUT: 120
+          UV_NO_CACHE: 1
+          UV_SYSTEM_PYTHON: 1
+          PIP_INDEX_URL: "http://cache-service.nginx-pypi-cache.svc.cluster.local/pypi/simple"
+          PIP_TRUSTED_HOST: "cache-service.nginx-pypi-cache.svc.cluster.local"
         run: |
           set -e
           source /mnt/modelscope/ci_env.sh
