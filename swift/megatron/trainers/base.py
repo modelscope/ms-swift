@@ -1012,7 +1012,7 @@ class BaseMegatronTrainer(ABC):
                 }
         return {}
 
-    def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None, num_samples=None):
+    def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None):
         if self.args.context_parallel_size > 1:
             output_tensor = reconstruct_tensor_cp(output_tensor, packed_seq_params, dim=1)
         if packed_seq_params is None:
@@ -1022,10 +1022,7 @@ class BaseMegatronTrainer(ABC):
             last_token_idx = get_last_valid_indices(attention_mask.long())
             last_tokens = output_tensor[torch.arange(output_tensor.shape[0]), last_token_idx]
         else:
-            num_samples = num_samples or packed_seq_params.num_samples
-            if self.args.context_parallel_size > 1:
-                last_token_idx = packed_seq_params.cu_seqlens_q[:num_samples] + packed_seq_params.seq_lens - 1
-            else:
-                last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
+            num_samples = packed_seq_params.seq_lens.shape[0]
+            last_token_idx = packed_seq_params.cu_seqlens_q[:num_samples] + packed_seq_params.seq_lens - 1
             last_tokens = output_tensor[0, last_token_idx]
         return last_tokens

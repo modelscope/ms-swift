@@ -70,15 +70,16 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
                 for m in self.peft_models:
                     m.set_adapter('default')
 
-    def get_logps(self, output_tensor, labels, packed_seq_params, num_samples, per_token=False):
+    def get_logps(self, output_tensor, labels, packed_seq_params, per_token=False):
         args = self.args
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
+        num_samples = packed_seq_params.seq_lens.shape[0]
         if per_token:
             if args.context_parallel_size > 1:
                 per_token_logps = reconstruct_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
-                                                        num_samples or packed_seq_params.num_samples)
+                                                        num_samples)
             return per_token_logps
 
         if args.padding_free:

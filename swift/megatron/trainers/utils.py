@@ -423,7 +423,7 @@ def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_g
 
     packed_seq_params = data.get('packed_seq_params')
     if packed_seq_params is not None:
-        num_samples = len(packed_seq_params.seq_lens)
+        num_samples = packed_seq_params.seq_lens.shape[0]
     else:
         input_ids = data.get('input_ids')
         num_samples = input_ids.shape[0] if input_ids is not None else labels.shape[0]
