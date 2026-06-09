@@ -575,15 +575,7 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     self.vllm_client.update_named_param(name, param)
         elif self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
-            # Patch MoE weight_loader if needed
-            patch_vllm_moe_model_weight_loader(llm_model)
-            # Re-run process_weights_after_loading on FusedMoE layers so
-            # the kernel-format layout is rebuilt after the in-place reload
-            # (workaround for vLLM issue #42821).
-            try:
-                llm_model.load_weights(state_dict.items())
-            finally:
-                finish_vllm_weight_reload(llm_model)
+            llm_model.load_weights(state_dict.items())
         del state_dict
 
     def _fix_param_name_to_vllm(self, name: str, extra_prefixes: Optional[List[str]] = None) -> str:
@@ -791,6 +783,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         gather_if_zero3 = get_gather_if_zero3_context(self)
 
+        # Colocate: patch MoE weight_loader once before loading all groups
+        if self.vllm_mode == 'colocate':
+            patch_vllm_moe_model_weight_loader(self.engine.inner_model)
+
         for i, parameter_group in enumerate(self.parameter_groups):
             parameter_group_no_lora = self.parameter_groups_no_lora[i]
 
@@ -814,6 +810,16 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                     if should_merge:
                         with patch_lora_unmerge(self.model):
                             self.model.unmerge_adapter()
+
+        # Re-run process_weights_after_loading once after ALL groups loaded
+        if self.vllm_mode == 'colocate':
+            _model_config = getattr(getattr(self.engine, 'engine', None), 'model_config', None)
+            finish_vllm_weight_reload(
+                self.engine.inner_model,
+                model_config=_model_config,
+                target_device=self.engine.inner_model.device if hasattr(self.engine.inner_model, 'device') else None)
+        elif self.vllm_mode == 'server' and self.accelerator.is_main_process:
+            self.vllm_client.process_weights_after_loading()
 
         if is_peft:
             self.base_sync_done = True

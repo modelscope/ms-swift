@@ -1091,21 +1091,41 @@ def patch_vllm_moe_model_weight_loader(model):
     original_model._swift_moe_weight_loader_patched = True
 
 
-def finish_vllm_weight_reload(vllm_model):
-    """Re-run ``process_weights_after_loading`` on every FusedMoE layer after
-    an in-place vLLM weight update.
+def finish_vllm_weight_reload(vllm_model, model_config=None, target_device=None):
+    """Re-run ``process_weights_after_loading`` after an in-place vLLM
+    weight update so that kernel-format layouts (FusedMoE, quantised
+    linear, attention, etc.) are rebuilt on the newly-loaded data.
 
-    Without this, the second ``model.load_weights`` of an RL training step
-    writes raw checkpoint-format data over the kernel-format buffers and
-    silently corrupts forward output (vLLM issue #42821).
+    Without this, ``model.load_weights`` writes raw checkpoint-format
+    data over kernel-format buffers and silently corrupts forward output
+    (vLLM issue #42821).
+
+    When *model_config* and *target_device* are provided, delegates to
+    vLLM's built-in ``process_weights_after_loading``.
+    Otherwise falls back to a FusedMoE-only loop for backward
+    compatibility.
     """
     if vllm_model is None:
         return
+    logger = get_logger()
+
+    # Prefer vLLM's built-in
+    if model_config is not None and target_device is not None:
+        try:
+            from vllm.model_executor.model_loader.utils import process_weights_after_loading as _vllm_process
+            _vllm_process(vllm_model, model_config, target_device)
+            return
+        except Exception as e:
+            logger.warning(
+                'finish_vllm_weight_reload: vLLM built-in '
+                'process_weights_after_loading failed (%s); '
+                'falling back to FusedMoE-only path.', e)
+
+    # Fallback: FusedMoE only
     try:
         from vllm.model_executor.layers.fused_moe.layer import FusedMoE
     except (ImportError, AttributeError):
         return  # vLLM is too old to have FusedMoE; nothing to fix.
-    logger = get_logger()
     for module in vllm_model.modules():
         if not isinstance(module, FusedMoE):
             continue

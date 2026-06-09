@@ -419,6 +419,31 @@ class VLLMClient(VLLMInferClient):
         if all_errors:
             raise RuntimeError(f'Multiple errors: {all_errors}')
 
+    def process_weights_after_loading(self):
+        """Trigger process_weights_after_loading on all vLLM workers.
+
+        Must be called **once** after ALL weight buckets have been
+        sent via ``update_flattened_params``.  This mirrors the
+        pattern used by verl and ROLL.
+        """
+        errors = [None] * self.num_servers
+
+        def _process_single_server(i):
+            try:
+                response = self.sessions[i].post(f'{self.base_urls[i]}/process_weights_after_loading/', )
+                if response.status_code != 200:
+                    raise Exception(f'Server {i} process_weights_after_loading failed: {response.text}')
+            except Exception as e:
+                errors[i] = e
+
+        with ThreadPoolExecutor(max_workers=self.num_servers) as executor:
+            futures = [executor.submit(_process_single_server, i) for i in range(self.num_servers)]
+            for future in futures:
+                future.result()
+        all_errors = [e for e in errors if e is not None]
+        if all_errors:
+            raise RuntimeError(f'Multiple errors on process_weights_after_loading: {all_errors}')
+
     def update_model_params(self, model: nn.Module):
         for name, param in model.named_parameters():
             self.update_named_param(name, param.data)
