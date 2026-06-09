@@ -619,10 +619,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         all_raw = gather_object(local_raw)
 
         if self.accelerator.is_main_process:
-            non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
-            requests = [
-                build_teacher_infer_request(d, non_thinking_prefix_ids=non_thinking_prefix_ids) for d in all_raw
-            ]
+            requests = [build_teacher_infer_request(d) for d in all_raw]
             request_config = RequestConfig(prompt_logprobs=self.gkd_logits_topk, max_tokens=1, temperature=0.0)
             responses = self.teacher_client.infer(requests, request_config=request_config, use_tqdm=False)
             parsed_global = [parse_prompt_logprobs(r, topk=self.gkd_logits_topk) for r in responses]

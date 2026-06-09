@@ -1141,8 +1141,8 @@ def finish_vllm_weight_reload(vllm_model, model_config=None, target_device=None)
     # Prefer vLLM's built-in
     if model_config is not None and target_device is not None:
         try:
-            from vllm.model_executor.model_loader.utils import process_weights_after_loading as _vllm_process
-            _vllm_process(vllm_model, model_config, target_device)
+            from vllm.model_executor.model_loader.utils import process_weights_after_loading
+            process_weights_after_loading(vllm_model, model_config, target_device)
             return
         except Exception as e:
             logger.warning(

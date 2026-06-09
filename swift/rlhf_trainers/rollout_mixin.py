@@ -813,11 +813,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         # Re-run process_weights_after_loading once after ALL groups loaded
         if self.vllm_mode == 'colocate':
-            _model_config = getattr(getattr(self.engine, 'engine', None), 'model_config', None)
+            _model_config = self.engine.engine.model_config
+            llm_model = self.engine.inner_model
             finish_vllm_weight_reload(
-                self.engine.inner_model,
-                model_config=_model_config,
-                target_device=getattr(self.engine.inner_model, 'device', None))
+                llm_model, model_config=_model_config, target_device=next(llm_model.parameters()).device)
         elif self.vllm_mode == 'server' and self.accelerator.is_main_process:
             self.vllm_client.process_weights_after_loading()
 
