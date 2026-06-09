@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from transformers.integrations import deepspeed_config
-from transformers.utils import strtobool
+from transformers.utils import is_torch_npu_available, strtobool
 from typing import Optional, Tuple
 
 from .logger import get_logger
@@ -84,17 +84,8 @@ def is_mp_ddp() -> bool:
     return False
 
 
-def is_npu_available():
-    try:
-        import torch
-        import torch_npu  # noqa: F401
-        return torch.npu.is_available()
-    except ImportError:
-        return False
-
-
 def select_device(device_ids='0'):
-    if is_npu_available():
+    if is_torch_npu_available():
         os.environ['ASCEND_RT_VISIBLE_DEVICES'] = device_ids
     elif os.environ.get('CUDA_VISIBLE_DEVICES') is None:
         import torch
