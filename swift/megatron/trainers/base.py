@@ -984,8 +984,8 @@ class BaseMegatronTrainer(ABC):
         return (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
                 and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
 
-    def _prepare_batch(self, data, vp_stage=None, num_samples=None):
-        return prepare_batch(self.args, data, vp_stage=vp_stage, num_samples=num_samples)
+    def _prepare_batch(self, data, vp_stage=None):
+        return prepare_batch(self.args, data, vp_stage=vp_stage)
 
     def get_batch(self, data_iterator, vp_stage=None):
         """Generate a batch."""
