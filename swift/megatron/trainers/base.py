@@ -446,6 +446,7 @@ class BaseMegatronTrainer(ABC):
                 param_group['max_lr'] = lr
                 param_group['min_lr'] = min_lr
             lr_mult = param_group.pop('lr_mult')
+            param_group['lr_mult'] = 1.
             param_group['max_lr'] *= lr_mult
             param_group['min_lr'] *= lr_mult
         return param_groups
