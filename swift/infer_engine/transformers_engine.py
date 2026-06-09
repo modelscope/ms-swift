@@ -310,7 +310,7 @@ class TransformersEngine(InferEngine):
                 toolcall = None
                 if is_finished[i]:
                     toolcall = self._get_toolcall(
-                        self.template.decode(generate_ids, template_inputs=template_inputs[i]))
+                        self.template.decode_generate_ids(generate_ids, template_inputs=template_inputs[i]))
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, usage_info.completion_tokens,
                                                         is_finished[i])
 
@@ -434,7 +434,7 @@ class TransformersEngine(InferEngine):
 
                 logprobs = self._get_logprobs(logprobs_list, generate_ids, request_config.top_logprobs)
                 usage_info = self._update_usage_info(usage_info, len(generate_ids))
-                response = self.template.decode(generate_ids, template_inputs=template_inputs[i])
+                response = self.template.decode_generate_ids(generate_ids, template_inputs=template_inputs[i])
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, len(generate_ids), True)
                 toolcall = self._get_toolcall(response)
                 token_ids = generate_ids if request_config.return_details else None
