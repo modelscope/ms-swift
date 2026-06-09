@@ -367,14 +367,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 padding_to = cur_seq_len if template.padding_free else max_seq_len
                 padding_len = padding_to - experts_seq_len
                 if padding_len > 0:
-                    last_entry = routed_experts[-1:].expand(padding_len, -1, -1)
-                    padded_tail = torch.cat([routed_experts, last_entry], dim=0)
                     padding_right = template.padding_side == 'right'
-                    if padding_right:
-                        padding_routed_experts = padded_tail
-                    else:
-                        left_pad = torch.zeros(padding_len, *routed_experts.shape[1:], dtype=routed_experts.dtype)
-                        padding_routed_experts = torch.cat([left_pad, padded_tail], dim=0)
+                    padding_routed_experts = nn.functional.pad(routed_experts,
+                                                               (0, 0, 0, 0, 0, padding_len) if padding_right else
+                                                               (0, 0, 0, 0, padding_len, 0), 'constant', 0)
                 routed_experts_list.append(padding_routed_experts)
             if template.padding_free:
                 global_routed_experts = torch.cat(routed_experts_list, dim=0).unsqueeze(0)
