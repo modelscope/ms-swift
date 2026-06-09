@@ -314,7 +314,6 @@ class TrainerState:
 
     iteration: int = 0
     consumed_train_samples: int = 0
-    num_input_tokens_seen: int = 0
     # compat transformers
     max_steps: Optional[int] = None
 
