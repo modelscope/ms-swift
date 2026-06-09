@@ -644,7 +644,6 @@ class MegatronWorker(CheckpointEngineMixin):
                     raise AssertionError(
                         f'The seq_len of routed_experts({experts_seq_len}) does not match encoded length '
                         f'({expected_len}); expected same length or one less.')
-
             target_len = int(cur_seq_len.item()) if template.padding_free else max_seq_len
             routed = self._pad_or_trim_routed_experts(routed, target_len, padding_right=padding_right)
             routed_tensors.append(routed)
