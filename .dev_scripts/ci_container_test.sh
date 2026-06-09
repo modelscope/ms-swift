@@ -210,6 +210,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         pip install math-verify -i "$NPU_PIP_INDEX"
         pip install ray -i "$NPU_PIP_INDEX"
         pip install msgspec -i "$NPU_PIP_INDEX"
+        pip install zmq -i "$NPU_PIP_INDEX"
     fi
     pip install "transformers<5.0" "peft<0.19"
     # pip install autoawq -U --no-deps
