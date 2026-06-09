@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+import torch
 from transformers.integrations import deepspeed_config
 from transformers.utils import is_torch_npu_available, strtobool
 from typing import Optional, Tuple
@@ -87,10 +88,8 @@ def is_mp_ddp() -> bool:
 def select_device(device_ids='0'):
     if is_torch_npu_available():
         os.environ['ASCEND_RT_VISIBLE_DEVICES'] = device_ids
-    elif os.environ.get('CUDA_VISIBLE_DEVICES') is None:
-        import torch
-        if torch.cuda.is_available():
-            os.environ['CUDA_VISIBLE_DEVICES'] = device_ids
+    elif torch.cuda.is_available():
+        os.environ['CUDA_VISIBLE_DEVICES'] = device_ids
 
 
 def is_pai_training_job() -> bool:
