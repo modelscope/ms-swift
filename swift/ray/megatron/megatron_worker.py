@@ -597,14 +597,12 @@ class MegatronWorker(CheckpointEngineMixin):
             return routed[:target_len] if padding_right else routed[-target_len:]
 
         pad_len = target_len - current_len
-        last_entry = routed[-1:].expand(pad_len, *routed.shape[1:])
-        padded = torch.cat([routed, last_entry], dim=0)
-
+        pad = [0] * (2 * routed.dim())
         if padding_right:
-            return padded
+            pad[2 * (routed.dim() - 1) + 1] = pad_len
         else:
-            left_pad = torch.zeros(pad_len, *routed.shape[1:], dtype=routed.dtype)
-            return torch.cat([left_pad, padded], dim=0)
+            pad[2 * (routed.dim() - 1)] = pad_len
+        return torch.nn.functional.pad(routed, tuple(pad), 'constant', 0)
 
     def _build_routed_experts_batch(
         self,
