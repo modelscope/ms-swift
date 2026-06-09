@@ -36,7 +36,7 @@ from swift.utils import (JsonlWriter, get_logger, get_packed_seq_params, remove_
                          start_event_loop_in_daemon, to_device)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
-from .utils import gather, gather_object
+from .utils import gather, gather_object, reconstruct_tensor_cp
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
 try:
@@ -526,6 +526,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             # Load weights only (faster and reduces memory peak)
             kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+            aggressive_empty_cache()
             self.engine.engine.wake_up(**kwargs)
 
         # Step 2: Load model weights
@@ -1180,14 +1181,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_logps_packed, per_token_entropy_packed = compute_logps_and_entropy_from_logits(
                 logits_packed, labels, compute_entropy=self.compute_entropy)
 
-            # In CP mode, all_gather and reconstruct full sequence
             if args.context_parallel_size > 1:
                 num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
-                per_token_logps_packed = self._postprocess_packed_tensor_cp(per_token_logps_packed, packed_seq_params,
-                                                                            num_samples)
+                cp_size = args.context_parallel_size
+                per_token_logps_packed = reconstruct_tensor_cp(cp_size, per_token_logps_packed, packed_seq_params,
+                                                               num_samples)
                 if per_token_entropy_packed is not None:
-                    per_token_entropy_packed = self._postprocess_packed_tensor_cp(per_token_entropy_packed,
-                                                                                  packed_seq_params, num_samples)
+                    per_token_entropy_packed = reconstruct_tensor_cp(cp_size, per_token_entropy_packed,
+                                                                     packed_seq_params, num_samples)
 
             if args.padding_free:
                 # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]

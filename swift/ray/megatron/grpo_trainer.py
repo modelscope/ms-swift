@@ -5,74 +5,23 @@ import asyncio
 import concurrent.futures
 import copy
 import os
-import ray
 import torch
 import uuid
-from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutInferRequest, RolloutOutput
-from swift.rlhf_trainers.utils import (compute_grpo_advantages, create_cyclic_iterator, make_reward_weights,
-                                       resolve_reward_funcs)
+from swift.rlhf_trainers.utils import compute_grpo_advantages, make_reward_weights, resolve_reward_funcs
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger
-from .driver_utils import compute_iter_params, extract_iteration, extract_train_metrics
+from .base_trainer import BaseRayTrainer
+from .driver_utils import extract_iteration
 
 logger = get_logger()
 
 
-class GRPOTrainer:
-    """Driver-side GRPO trainer.
-
-    Constructed by ``MegatronRayPipeline._create_trainer`` with the
-    WorkerGroups and rollout replicas.  Heavy state (args / template /
-    reward funcs) is bootstrapped lazily in ``_prepare_state`` on the
-    first call to ``train()``.
-    """
-
-    def __init__(
-        self,
-        worker_groups: Dict[str, Any],
-        rollout_replicas: List[Any],
-        weight_sync_mode: str = 'nccl',
-        sleep_level: int = 1,
-    ):
-        self.worker_groups = worker_groups
-        self.rollout_replicas = rollout_replicas
-        self._weight_sync_mode = weight_sync_mode
-        self._sleep_level = sleep_level
-
-    def set_data_info(self, data_info: Dict[str, Any]) -> None:
-        self._data_info = data_info
-
-    @property
-    def train_group(self):
-        return self.worker_groups['train']
-
-    def _distribute_to_replicas(self, batch, params):
-        """Split *batch* across all replicas and gather results in parallel."""
-        n = len(self.rollout_replicas)
-        chunk_size = (len(batch) + n - 1) // n
-        refs = []
-        for i, replica in enumerate(self.rollout_replicas):
-            shard = batch[i * chunk_size:(i + 1) * chunk_size]
-            if not shard:
-                continue
-            refs.append(replica.generate(shard, params))
-        parts = ray.get(refs)
-        result = []
-        for p in parts:
-            result.extend(p)
-        return result
-
-    @property
-    def is_colocated_rollout(self) -> bool:
-        """True if rollout and train share the same placement group."""
-        from .rollout.replica import RolloutMode
-        if not self.rollout_replicas:
-            return False
-        return self.rollout_replicas[0].mode == RolloutMode.HYBRID
+class GRPOTrainer(BaseRayTrainer):
+    """Driver-side GRPO trainer."""
 
     def _prepare_state(self) -> None:
         assert hasattr(self, '_data_info'), 'call set_data_info() before train()'
@@ -103,6 +52,13 @@ class GRPOTrainer:
         self._padding_to = info.get('_padding_to')
         self._prepare_rewards()
         self._prepare_multi_turn()
+
+        # DAPO dynamic_sample + truncation_strategy='delete' resampling (driver-side).
+        self.dynamic_sample = getattr(args, 'dynamic_sample', False)
+        self.max_resample_times = getattr(args, 'max_resample_times', 3)
+        self.truncation_strategy = getattr(args, 'truncation_strategy', None)
+        self._max_resample_rounds = getattr(args, 'max_resample_times', 10)
+        self._needs_resample_iterator = self.dynamic_sample or self.truncation_strategy == 'delete'
 
     def _prepare_multi_turn(self) -> None:
         """Configure driver-side multi-turn scheduler (Mode A only).
@@ -172,61 +128,6 @@ class GRPOTrainer:
             logprobs=True,
         )
 
-    def train(self) -> Any:
-        self._prepare_state()
-
-        tg = self.train_group
-        self._build_dataloader(tg)
-
-        args_override = compute_iter_params(self._data_info, tg.dp_size)
-        meta = tg.setup(args_override)
-        train_iters = meta['train_iters']
-        iteration = meta['iteration']
-
-        try:
-            iteration = self._train_loop(tg, train_iters, iteration)
-        finally:
-            results = tg.finalize()
-
-        return results
-
-    @property
-    def ckpt_manager(self):
-        if not hasattr(self, '_ckpt_manager'):
-            from .checkpoint_engine import CheckpointEngineManager
-            tg = self.train_group
-
-            self._ckpt_manager = CheckpointEngineManager(
-                train_actors=tg.workers,
-                rollout_replicas=self.rollout_replicas,
-                weight_sync_mode=self._weight_sync_mode,
-                is_colocated=self.is_colocated_rollout,
-                sleep_level=self._sleep_level,
-                train_group=tg,
-            )
-        return self._ckpt_manager
-
-    @contextmanager
-    def _generation_context(self, tg, ckpt):
-        """Offload train model + wake vLLM for generation, reload afterwards."""
-        offload_model = getattr(self.args, 'offload_model', False)
-        offload_optimizer = getattr(self.args, 'offload_optimizer', False)
-        enable_offload = offload_model or offload_optimizer or self.is_colocated_rollout
-
-        if enable_offload:
-            tg.offload_to_cpu()
-        if self.is_colocated_rollout:
-            ckpt.wake_up_rollout(tags=['kv_cache'])
-
-        try:
-            yield
-        finally:
-            tg.finalize_generation()
-            if self.is_colocated_rollout:
-                ckpt.sleep_rollout()
-            if enable_offload:
-                tg.reload_to_gpu()
-
     def _train_loop(self, tg, train_iters, iteration):
         ckpt = self.ckpt_manager
         merge_and_sync = not self.args.vllm_enable_lora
@@ -237,11 +138,20 @@ class GRPOTrainer:
 
             with self._generation_context(tg, ckpt):
                 prompt_batch = next(self._data_iter)
+                if self.truncation_strategy == 'delete':
+                    prompt_batch = self._resample_failed_prompts(prompt_batch)
                 rollout_batch = self.expand_for_generation(prompt_batch)
                 completions = self._generate(rollout_batch)
                 rollout_with_outputs = self._postprocess_rollout(rollout_batch, completions)
+                rewards_per_func = self.score_completions(rollout_with_outputs)
+                # DAPO dynamic sampling: drop zero-variance (std==0) prompt groups and
+                # resample fresh prompts (the rollout engine is still awake in this context).
+                if self.dynamic_sample:
+                    rollout_with_outputs, rewards_per_func = self._dynamic_sampling(rollout_with_outputs,
+                                                                                    rewards_per_func)
 
-            rewards_per_func = self.score_completions(rollout_with_outputs)
+            self._maybe_log_completions(
+                rollout_with_outputs, rewards=rewards_per_func.sum(dim=1).tolist(), gen_step=iteration)
 
             n_samples = len(rollout_with_outputs)
             chunk_size = n_samples // spg
@@ -286,48 +196,28 @@ class GRPOTrainer:
                 for sample in chunk_samples:
                     sample.pop('completion_mask', None)
 
-                results = tg.train_step(chunk_samples)
+                results = tg.train_step(
+                    chunk_samples,
+                    extra_metrics=self._build_grpo_log_metrics(rewards, chunk_advantages, chunk_rewards_pf))
                 iteration = extract_iteration(results)
-                train_m = extract_train_metrics(results)
-
-                self._log_iteration(iteration, train_iters, rewards, chunk_advantages, chunk_rewards_pf, train_m)
 
         return iteration
 
-    def _log_iteration(self, iteration, train_iters, rewards, advantages, rewards_per_func, train_m):
-        mean_reward = rewards.mean().item()
-        nonzero_adv = (advantages.abs() > 1e-8).float().mean().item()
+    def _build_grpo_log_metrics(self, rewards, advantages, rewards_per_func) -> Dict[str, float]:
+        """Driver-computed GRPO metrics (reward / reward_std / adv_nonzero / per-func),
+        injected into the worker megatron on_log so all logging is unified there."""
         K = self.num_generations
         grouped = rewards.view(-1, K)
-        group_std = grouped.std(dim=1).mean().item()
-        per_func_parts = [
-            f'{self.reward_func_names[i]}={rewards_per_func[:, i].nanmean().item():.4f}'
-            for i in range(rewards_per_func.shape[1])
-        ]
-        per_func_str = '  '.join(per_func_parts)
-        core_keys = ('loss', 'grad_norm', 'lr', 'kl')
-        core_parts = [f'{k}={train_m[k]:.6f}' for k in core_keys if k in train_m]
-        extra_parts = [f'{k}={v:.6f}' for k, v in train_m.items() if k not in core_keys]
-        train_str = '  '.join(core_parts + extra_parts)
-        logger.info('iter %d/%d  reward=%.4f  group_std=%.4f  adv_nonzero=%.1f%%  %s  %s', iteration, train_iters,
-                    mean_reward, group_std, nonzero_adv * 100, per_func_str, train_str)
-
-    def _build_dataloader(self, tg):
-        info = self._data_info
-        dataset = info['train_dataset']
-        num_gen = int(info.get('num_generations', 1) or 1)
-        spg = self._steps_per_generation
-        prompts_per_generation = max(info['global_batch_size'] * spg // max(num_gen, 1), 1)
-        self._dataloader = torch.utils.data.DataLoader(
-            dataset,
-            batch_size=prompts_per_generation,
-            shuffle=True,
-            collate_fn=info['data_collator'],
-            drop_last=True,
-        )
-        self._data_iter = create_cyclic_iterator(self._dataloader)
-        logger.info('GRPO driver dataloader: dataset=%d, prompts_per_generation=%d, num_gen=%d, spg=%d', len(dataset),
-                    prompts_per_generation, num_gen, spg)
+        metrics = {
+            'reward': rewards.mean().item(),
+            'reward_std': grouped.std(dim=1).mean().item(),
+            'adv_nonzero': (advantages.abs() > 1e-8).float().mean().item(),
+        }
+        for i in range(rewards_per_func.shape[1]):
+            val = rewards_per_func[:, i].nanmean().item()
+            if val == val:  # skip NaN (a reward func produced no finite value this step)
+                metrics[self.reward_func_names[i]] = val
+        return metrics
 
     def _generate(self, expanded_batch) -> List[RolloutOutput]:
         """Run a prompt batch through rollout replicas.
@@ -535,6 +425,56 @@ class GRPOTrainer:
             beta=self.beta,
             kl_values=kl_values,
         )
+
+    def _encode_check(self, item) -> None:
+        """Detect over-length / encode failures for a GRPO prompt. The response is
+        removed first (GRPO encodes prompt-only at rollout time). Raises on failure."""
+        from swift.utils import remove_response
+        probe = dict(item)
+        if probe.get('messages'):
+            probe['messages'] = [m.copy() for m in probe['messages']]
+            remove_response(probe['messages'])
+        self.template.encode(probe)
+
+    def _dynamic_sampling(
+        self,
+        rollout_with_outputs: List[Dict[str, Any]],
+        rewards_per_func: torch.Tensor,
+    ) -> Tuple[List[Dict[str, Any]], torch.Tensor]:
+        num_gen = self.num_generations
+        target = len(rollout_with_outputs)
+        valid_samples: List[Dict[str, Any]] = []
+        valid_rewards: List[torch.Tensor] = []
+        cur_rollout, cur_rewards = rollout_with_outputs, rewards_per_func
+
+        for resample_count in range(self.max_resample_times + 1):
+            rewards = (cur_rewards * self.reward_weights.unsqueeze(0)).nansum(dim=1)
+            if num_gen > 1:
+                grouped_std = rewards.view(-1, num_gen).std(dim=1).repeat_interleave(num_gen)
+            else:
+                grouped_std = torch.zeros_like(rewards)
+            keep_mask = grouped_std > 0
+            for i in range(len(cur_rollout)):
+                if keep_mask[i]:
+                    valid_samples.append(cur_rollout[i])
+                    valid_rewards.append(cur_rewards[i])
+            logger.info('dynamic_sample round %d: kept %d/%d (std>0), accumulated %d/%d', resample_count,
+                        int(keep_mask.sum().item()), len(cur_rollout), len(valid_samples), target)
+            if len(valid_samples) >= target or resample_count >= self.max_resample_times:
+                break
+            prompt_batch = next(self._resample_iter)
+            if self.truncation_strategy == 'delete':
+                prompt_batch = self._resample_failed_prompts(prompt_batch)
+            rb = self.expand_for_generation(prompt_batch)
+            comp = self._generate(rb)
+            cur_rollout = self._postprocess_rollout(rb, comp)
+            cur_rewards = self.score_completions(cur_rollout)
+
+        if len(valid_samples) >= target:
+            return valid_samples[:target], torch.stack(valid_rewards[:target])
+        logger.warning('dynamic_sample: only %d/%d std>0 samples after %d retries; using original batch.',
+                       len(valid_samples), target, self.max_resample_times)
+        return rollout_with_outputs, rewards_per_func
 
     def _batch_encode_parallel(self, infer_requests: Sequence[Dict[str, Any]], strict: bool):
         max_workers = max(min(32, os.cpu_count() or 1, len(infer_requests)), 1)

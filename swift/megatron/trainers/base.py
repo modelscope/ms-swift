@@ -29,10 +29,10 @@ from swift.dataset import RowPreprocessor
 from swift.megatron.callbacks import megatron_callbacks_map
 from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import (apply_router_replay_patch, disable_forward_pre_hook, enable_forward_pre_hook,
-                                  get_batch_on_this_cp_rank, get_optimizer_param_scheduler, get_packed_seq_params,
-                                  get_padding_to, init_persistent_async_worker, initialize_tp_communicators,
-                                  load_mcore_checkpoint, logical_and_across_model_parallel_group,
-                                  maybe_finalize_async_save, prepare_mcore_model,
+                                  get_optimizer_param_scheduler, get_padding_to, init_persistent_async_worker,
+                                  initialize_tp_communicators, load_mcore_checkpoint,
+                                  logical_and_across_model_parallel_group, maybe_finalize_async_save,
+                                  prepare_mcore_model, reconstruct_tensor_cp,
                                   reduce_max_stat_across_model_parallel_group, save_mcore_checkpoint,
                                   should_disable_forward_pre_hook, warmup_jit_function, wrap_model)
 from swift.template import Template
@@ -41,7 +41,7 @@ from swift.trainers.utils import patch_modelscope_hub_timeout
 from swift.utils import (deep_getattr, gc_collect, get_current_device, get_last_valid_indices, get_logger, is_last_rank,
                          is_master, ms_logger_context)
 from .batch_sampler import MegatronPretrainingRandomSampler, MegatronPretrainingSampler
-from .utils import TrainerState, build_streaming_dataloader, get_batch_on_this_pp_rank
+from .utils import TrainerState, build_streaming_dataloader, prepare_batch
 
 try:
     from megatron.core.optimizer import param_group_identifier_keys
@@ -867,7 +867,7 @@ class BaseMegatronTrainer(ABC):
         return eval_metrics
 
     def compute_eval_metrics(self, metrics):
-        if self.eval_metrics is not None:
+        if self.eval_metrics is not None and mpu.is_pipeline_last_stage():
             metric = self.eval_metrics.compute()
             for k, v in metric.items():
                 metrics[k] = v if isinstance(v, torch.Tensor) else torch.tensor(v)
@@ -985,25 +985,7 @@ class BaseMegatronTrainer(ABC):
                 and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
 
     def _prepare_batch(self, data, vp_stage=None, num_samples=None):
-        batch = get_batch_on_this_pp_rank(self.args, data, vp_stage=vp_stage)
-        if num_samples is None:
-            num_samples = batch.pop('num_samples')
-        args = self.args
-        text_position_ids = batch.pop('text_position_ids', None)
-        if text_position_ids is None:
-            text_position_ids = batch.get('position_ids')
-        if self._should_use_npu_generated_attention_mask(args):
-            if 'attention_mask_2d' not in batch and batch.get('attention_mask') is not None:
-                batch['attention_mask_2d'] = (~batch['attention_mask']).sum(dim=(1, 2)) > 0
-            batch['attention_mask'] = None
-        else:
-            batch.pop('attention_mask_2d', None)
-        if args.padding_free and text_position_ids is not None:
-            batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
-            batch['packed_seq_params'].num_samples = num_samples
-        # slice batch along sequence dimension for context parallelism
-        batch = get_batch_on_this_cp_rank(args, batch)
-        return batch
+        return prepare_batch(self.args, data, vp_stage=vp_stage, num_samples=num_samples)
 
     def get_batch(self, data_iterator, vp_stage=None):
         """Generate a batch."""
@@ -1031,11 +1013,19 @@ class BaseMegatronTrainer(ABC):
         return {}
 
     def get_last_tokens(self, output_tensor, packed_seq_params=None, attention_mask=None, num_samples=None):
+        if self.args.context_parallel_size > 1:
+            output_tensor = reconstruct_tensor_cp(output_tensor, packed_seq_params, dim=1)
         if packed_seq_params is None:
-            last_token_idx = get_last_valid_indices((~attention_mask[:, 0, -1]).long())
+            # Compatible with attention_mask_2d
+            if attention_mask.dim() > 2:
+                attention_mask = (~attention_mask).sum(dim=(1, 2)) > 0
+            last_token_idx = get_last_valid_indices(attention_mask.long())
             last_tokens = output_tensor[torch.arange(output_tensor.shape[0]), last_token_idx]
         else:
             num_samples = num_samples or packed_seq_params.num_samples
-            last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
+            if self.args.context_parallel_size > 1:
+                last_token_idx = packed_seq_params.cu_seqlens_q[:num_samples] + packed_seq_params.seq_lens - 1
+            else:
+                last_token_idx = packed_seq_params.cu_seqlens_q[1:num_samples + 1] - 1
             last_tokens = output_tensor[0, last_token_idx]
         return last_tokens

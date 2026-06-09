@@ -110,7 +110,6 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         return res
 
     def forward_step(self, data_iterator, model):
-        # Get the batch.
         unwrapped_model = model.module.module
         input_tensor = unwrapped_model.get_input_tensor()
         vp_stage = unwrapped_model.vp_stage

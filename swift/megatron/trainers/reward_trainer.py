@@ -11,10 +11,6 @@ logger = get_logger()
 
 class MegatronRewardTrainer(MegatronRLHFTrainer):
 
-    def __init__(self, args, template):
-        super().__init__(args, template)
-        assert args.context_parallel_size == 1, 'Currently `rlhf_type="rm"` does not support context parallelism.'
-
     def loss_func(self, output_tensor, *, data):
         packed_seq_params = data.get('packed_seq_params')
         margin = data.pop('margin', None)
@@ -43,7 +39,6 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
         return loss, metric
 
     def forward_step(self, data_iterator, model):
-        # Get the batch.
         vp_stage = model.module.module.vp_stage
         data = self.get_batch(data_iterator, vp_stage)
         data.pop('loss_scale', None)
