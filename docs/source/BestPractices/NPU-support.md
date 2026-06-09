@@ -24,7 +24,7 @@
 | torch_npu | >= 2.7.1.post4  |
 
 基础环境准备请参照 [Ascend PyTorch 安装文档](https://gitcode.com/Ascend/pytorch)。本文示例实验环境为 8 * 昇腾910B3 64G。
-注：vllm ascend系列官方推荐版本配套已更新至 CANN9.0.0 torch 2.9.0 torch_npu 2.9.0 vllm-ascend 0.18.0(A3) 0.19.1(A5)
+注：vllm ascend系列官方推荐版本配套已更新至 CANN9.0.0 torch 2.9.0 torch_npu 2.9.0 vllm-ascend 0.18.0(A3) 0.19.1(A5)，详情请参阅 [vLLM Ascend 安装文档](https://docs.vllm.ai/projects/ascend/en/v0.18.0/installation.html)。
 
 | 一级特性 | 特性                | 进展     |
 | -------- | ------------------- | -------- |
@@ -62,14 +62,11 @@
 | SFT       | Qwen3-30B-A3B               | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3-32B                   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3-VL-30B-A3B-Instruct   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3-Omni-30B-A3B-Instruct | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-Omni-30B-A3B-Instruct | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
 | SFT       | InternVL3-8B                | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Ovis2.5-2B                  | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3-Omni-30B-A3B-Instruct | Megatron              | Atlas 900 A3 SuperPoD |
-| SFT       | Qwen3.5-27B                 | Megatron/deepspeed    | Atlas 900 A3 SuperPoD |
-| SFT       | Qwen3.5-35B-A3B             | Megatron              | Atlas 900 A3 SuperPoD |
+| SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
+| SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
 
 ### 已验证 RL 组合
 

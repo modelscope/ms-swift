@@ -22,7 +22,7 @@ Recommended base environment versions:
 | CANN      | >= 8.5.1        |
 | torch     | >= 2.7.1        |
 | torch_npu | >= 2.7.1.post4  |
-Note: The officially recommended version compatibility matrix for the vLLM Ascend series has been updated to CANN 9.0.0, torch 2.9.0, torch_npu 2.9.0, vllm-ascend 0.18.0 for A3, and vllm-ascend 0.19.1 for A5.
+Note: The officially recommended version compatibility matrix for the vLLM Ascend series has been updated to CANN 9.0.0, torch 2.9.0, torch_npu 2.9.0, vllm-ascend 0.18.0 for A3, and vllm-ascend 0.19.1 for A5. For details, see the [vLLM Ascend installation guide](https://docs.vllm.ai/projects/ascend/en/v0.18.0/installation.html).
 
 For base environment setup, see the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch). The examples in this document were verified on 8 * Ascend 910B3 64G.
 
@@ -62,14 +62,11 @@ For base environment setup, see the [Ascend PyTorch installation guide](https://
 | SFT       | Qwen3-30B-A3B               | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3-32B                   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3-VL-30B-A3B-Instruct   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3-Omni-30B-A3B-Instruct | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-Omni-30B-A3B-Instruct | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
 | SFT       | InternVL3-8B                | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Ovis2.5-2B                  | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3-Omni-30B-A3B-Instruct | Megatron              | Atlas 900 A3 SuperPoD |
-| SFT       | Qwen3.5-27B                 | Megatron/deepspeed    | Atlas 900 A3 SuperPoD |
-| SFT       | Qwen3.5-35B-A3B             | Megatron              | Atlas 900 A3 SuperPoD |
+| SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
+| SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
 
 ### Verified RL Combinations
 
