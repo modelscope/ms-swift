@@ -1845,7 +1845,9 @@ class Template(ProcessorMixin):
         if self.padding_free:
             batch[:] = [self.packing_row(batch)]
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
-        elif self.use_megatron:
+        elif self.use_megatron or self.sequence_parallel_size > 1:
+            assert padding_side == 'right', (
+                f'padding_side must be "right" when use_megatron or sequence_parallel_size > 1, got {padding_side!r}.')
             for encoded in batch:
                 val = encoded['input_ids'] if encoded.get('labels') is None else encoded['labels']
                 encoded['position_ids'] = list(range(len(val)))
@@ -1941,8 +1943,6 @@ class Template(ProcessorMixin):
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
-        if not self.use_megatron and self.sequence_parallel_size > 1:
-            res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
         if self.use_megatron:
             res['seq_lens'] = real_seq_lens  # CP locates the last token.
         return res
@@ -2015,26 +2015,6 @@ class Template(ProcessorMixin):
             grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
             if grid_thw is not None:
                 res[f'{media_type}_grid_thw'] = grid_thw
-        return res
-
-    def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):
-        input_ids = res.get('input_ids')
-        attention_mask = res.get('attention_mask')
-        labels = res.get('labels')
-        loss_scale = res.get('loss_scale')
-        if self.sequence_parallel_size > 1 and input_ids is not None:
-            bs, seq_len = input_ids.shape
-            if 'position_ids' not in res:
-                position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-            else:
-                position_ids = res['position_ids']
-            assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
-            res['position_ids'] = position_ids
-        _local_var = locals()
-        for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
-            value = _local_var[key]
-            if value is not None:
-                res[key] = value
         return res
 
     def print_inputs(self, inputs: Dict[str, Any]) -> None:
