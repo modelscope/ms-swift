@@ -69,8 +69,7 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
                         if item_value is None:
                             continue
                         if item_key == 'properties' and isinstance(item_value, dict):
-                            items_inner.append(
-                                f'properties:{{{cls._format_parameters(item_value, items_required)}}}')
+                            items_inner.append(f'properties:{{{cls._format_parameters(item_value, items_required)}}}')
                         elif item_key == 'required':
                             req_str = ','.join(f'{QUOTE}{r}{QUOTE}' for r in item_value)
                             items_inner.append(f'required:[{req_str}]')
@@ -78,8 +77,7 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
                             if isinstance(item_value, str):
                                 items_inner.append(f'type:{cls._format_argument(item_value.upper())}')
                             else:
-                                items_inner.append(
-                                    f'type:{cls._format_argument([str(t).upper() for t in item_value])}')
+                                items_inner.append(f'type:{cls._format_argument([str(t).upper() for t in item_value])}')
                         else:
                             items_inner.append(f'{item_key}:{cls._format_argument(item_value)}')
                     inner.append('items:{' + ','.join(items_inner) + '}')
@@ -88,11 +86,9 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
             if type_upper == 'OBJECT':
                 inner_required = value.get('required', [])
                 if isinstance(value.get('properties'), dict):
-                    inner.append(
-                        f'properties:{{{cls._format_parameters(value["properties"], inner_required)}}}')
+                    inner.append(f'properties:{{{cls._format_parameters(value["properties"], inner_required)}}}')
                 else:
-                    inner.append(
-                        f'properties:{{{cls._format_parameters(value, inner_required, filter_keys=True)}}}')
+                    inner.append(f'properties:{{{cls._format_parameters(value, inner_required, filter_keys=True)}}}')
                 if value.get('required'):
                     req_str = ','.join(f'{QUOTE}{r}{QUOTE}' for r in value['required'])
                     inner.append(f'required:[{req_str}]')
@@ -111,8 +107,7 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
             param_parts: List[str] = []
             properties = params.get('properties')
             if properties:
-                param_parts.append(
-                    f'properties:{{{cls._format_parameters(properties, params.get("required", []))}}}')
+                param_parts.append(f'properties:{{{cls._format_parameters(properties, params.get("required", []))}}}')
             if params.get('required'):
                 req_str = ','.join(f'{QUOTE}{r}{QUOTE}' for r in params['required'])
                 param_parts.append(f'required:[{req_str}]')
@@ -144,9 +139,8 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
             if isinstance(arguments, str):
                 arguments = self._parse_json(arguments) or {}
             if isinstance(arguments, dict):
-                args_str = ','.join(
-                    f'{k}:{self._format_argument(arguments[k], escape_keys=False)}'
-                    for k in sorted(arguments.keys()))
+                args_str = ','.join(f'{k}:{self._format_argument(arguments[k], escape_keys=False)}'
+                                    for k in sorted(arguments.keys()))
             else:
                 args_str = ''
             invocations.append(f'<|tool_call>call:{name}{{{args_str}}}<tool_call|>')
@@ -158,9 +152,8 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
             tool_name = tool_message.get('name') or 'unknown'
             tool_content = tool_message.get('content')
             if isinstance(tool_content, dict):
-                inner = ','.join(
-                    f'{k}:{self._format_argument(tool_content[k], escape_keys=False)}'
-                    for k in sorted(tool_content.keys()))
+                inner = ','.join(f'{k}:{self._format_argument(tool_content[k], escape_keys=False)}'
+                                 for k in sorted(tool_content.keys()))
                 parts.append(f'<|tool_response>response:{tool_name}{{{inner}}}<tool_response|>')
             else:
                 # Match jinja: treat string/other content as a single `value:` field.
