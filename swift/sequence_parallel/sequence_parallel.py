@@ -644,7 +644,6 @@ class SequenceParallel:
         1. set extra_kwargs['text_position_ids']
         2. split labels
         """
-        position_ids = None
         position_ids = inputs.get('text_position_ids')
         input_ids = inputs.get('input_ids')
         if position_ids is None:
