@@ -81,7 +81,7 @@ rollout:
 更多文档请参考
 
 - **GRPO 训练**：[Megatron GRPO 文档](../Megatron-SWIFT/GRPO.md)
-- **GKD 训练**：[GKD 文档](../Megatron-SWIFT//GKD.md)
+- **GKD 训练**：[GKD 文档](../Megatron-SWIFT/GKD.md)
 - **Megatron 训练参数**：[命令行参数文档](../Megatron-SWIFT/Command-line-parameters.md)
 - **Megatron 快速开始**：[Quick Start](../Megatron-SWIFT/Quick-start.md)
 
