@@ -1,5 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
-from .ulysses import SequenceParallel, sequence_parallel
+from .sequence_parallel import SequenceParallel, sequence_parallel
 from .utils import (ChunkedCrossEntropyLoss, GatherLoss, GatherTensor, SequenceParallelDispatcher,
                     SequenceParallelSampler)
