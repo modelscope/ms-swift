@@ -2,6 +2,7 @@
 from .deepseek_v3_1 import DeepSeekV31AgentTemplate
 from .deepseek_v4 import DeepSeekV4AgentTemplate
 from .extra import ReactGRPOAgentTemplate
+from .gemma4 import Gemma4AgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
                    GLM5_1AgentTemplate)
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
@@ -46,6 +47,8 @@ agent_template_map = {
     'deepseek_v4': DeepSeekV4AgentTemplate,
     'minimax_m2': MinimaxM2AgentTemplate,
     'seed_oss': SeedAgentTemplate,
+    # ref: https://modelscope.cn/models/google/gemma-4-12B-it
+    'gemma4': Gemma4AgentTemplate,
     # extra
     'react_grpo': ReactGRPOAgentTemplate,
     'mistral': MistralAgentTemplate,
