@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch.nn
+import torch.nn.functional as F
 from functools import partial
 
 from swift.loss import loss_map
@@ -28,7 +29,17 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
         last_hidden_state = self.get_last_tokens(output_tensor, packed_seq_params, attention_mask)
         if not training:
             self.eval_metrics.update(last_hidden_state.detach(), labels)
-        loss = self._loss_func({'last_hidden_state': last_hidden_state}, labels)
+        mrl_dims = getattr(self.args, 'mrl_dims', None)
+        if mrl_dims:
+            # Matryoshka Representation Learning: compute loss on each truncated dimension
+            # and aggregate with the corresponding weights.
+            loss = None
+            for dim, weight in mrl_dims.items():
+                sliced = F.normalize(last_hidden_state[..., :dim], p=2, dim=-1)
+                cur_loss = weight * self._loss_func({'last_hidden_state': sliced}, labels)
+                loss = cur_loss if loss is None else loss + cur_loss
+        else:
+            loss = self._loss_func({'last_hidden_state': last_hidden_state}, labels)
         metric = {'loss': loss.detach().clone()}
         metric = self._all_reduce_metric(metric)
         return loss, metric

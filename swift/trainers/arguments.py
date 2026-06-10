@@ -5,7 +5,7 @@ import platform
 from dataclasses import dataclass, field
 from transformers.training_args import TrainingArguments as HfTrainingArguments
 from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
-from typing import List, Literal, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
 
 from swift.loss import loss_map
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
@@ -163,6 +163,10 @@ class TrainArgumentsMixin:
     # plugins
     optimizer: Optional[str] = None
     loss_type: Optional[str] = field(default=None, metadata={'help': f'loss_func choices: {list(loss_map.keys())}'})
+    # embedding (Matryoshka Representation Learning)
+    # Dict[int, float], where the key is the embedding dimension and the value is the corresponding loss weight,
+    # e.g. '{"32": 1.0, "64": 1.0, "128": 1.0}'.
+    mrl_dims: Optional[Union[str, Dict[int, float]]] = None
     eval_metric: Optional[str] = None
     callbacks: List[str] = field(default_factory=list)
     # early_step
@@ -257,6 +261,9 @@ class TrainArgumentsMixin:
             self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.gradient_checkpointing_kwargs:
             self.gradient_checkpointing_kwargs = json_parse_to_dict(self.gradient_checkpointing_kwargs)
+        if self.mrl_dims is not None:
+            self.mrl_dims = json_parse_to_dict(self.mrl_dims)
+            self.mrl_dims = {int(k): float(v) for k, v in self.mrl_dims.items()}
         self._init_liger()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
