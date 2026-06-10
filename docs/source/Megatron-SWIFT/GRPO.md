@@ -19,7 +19,7 @@ Megatron GRPO 当前已支持以下功能：
 
 | ms-swift 参数 | Megatron-SWIFT 参数 | 说明 |
 |---------------|---------------------|------|
-| `per_device_train_batch_size` | `micro_batch_size` | 每张 GPU 的训练批次大小（completion-level） |
+| `per_device_train_batch_size` | `micro_batch_size` | 每个DP组的训练批次大小（completion-level） |
 | `gradient_accumulation_steps` | - | 梯度累积步数，在 Megatron-SWIFT 中已包含在 `global_batch_size` 的计算中 |
 | - | `global_batch_size` | 全局批次大小（completion-level）<br/>**Megatron-SWIFT**: `micro_batch_size × dp_size × gradient_accumulation_steps`<br/>**ms-swift**: `per_device_train_batch_size × world_size × gradient_accumulation_steps` |
 | `num_generations` | `num_generations` | 每个 prompt 生成的 completion 数量 |
