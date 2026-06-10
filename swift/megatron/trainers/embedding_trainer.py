@@ -29,12 +29,16 @@ class MegatronEmbeddingTrainer(BaseMegatronTrainer):
         last_hidden_state = self.get_last_tokens(output_tensor, packed_seq_params, attention_mask)
         if not training:
             self.eval_metrics.update(last_hidden_state.detach(), labels)
-        mrl_dims = getattr(self.args, 'mrl_dims', None)
+        mrl_dims = self.args.mrl_dims
         if mrl_dims:
             # Matryoshka Representation Learning: compute loss on each truncated dimension
             # and aggregate with the corresponding weights.
             loss = None
             for dim, weight in mrl_dims.items():
+                if dim > last_hidden_state.shape[-1]:
+                    logger.warning_once(f'MRL: skipping dimension {dim} because it exceeds the model hidden size '
+                                        f'({last_hidden_state.shape[-1]}).')
+                    continue
                 sliced = F.normalize(last_hidden_state[..., :dim], p=2, dim=-1)
                 cur_loss = weight * self._loss_func({'last_hidden_state': sliced}, labels)
                 loss = cur_loss if loss is None else loss + cur_loss
