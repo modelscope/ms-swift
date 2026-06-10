@@ -26,9 +26,9 @@ from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, Roll
 from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, detect_async_reward_indices, make_reward_weights, nanstd,
-                                       pad_logps_back_to_batch, profiling_context, profiling_decorator,
-                                       replace_assistant_response_with_ids, resolve_reward_funcs,
+from swift.rlhf_trainers.utils import (aggressive_empty_cache, detect_async_reward_indices, get_non_thinking_prefix_ids,
+                                       make_reward_weights, nanstd, pad_logps_back_to_batch, profiling_context,
+                                       profiling_decorator, replace_assistant_response_with_ids, resolve_reward_funcs,
                                        set_expandable_segments)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template, TemplateInputs
@@ -36,7 +36,7 @@ from swift.utils import (JsonlWriter, get_logger, get_packed_seq_params, remove_
                          start_event_loop_in_daemon, to_device)
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
-from .utils import gather, gather_object
+from .utils import gather, gather_object, reconstruct_tensor_cp
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
 try:
@@ -526,6 +526,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             # Load weights only (faster and reduces memory peak)
             kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+            aggressive_empty_cache()
             self.engine.engine.wake_up(**kwargs)
 
         # Step 2: Load model weights
@@ -1124,6 +1125,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def _maybe_replace_response_token(self, batch):
         # maybe replace the response token with the response token ids to avoid repetitive tokenize
+        non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
 
         for data in batch:
             if 'response_token_ids' in data and data['response_token_ids']:
@@ -1131,8 +1133,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 if 'response_loss_mask' in data and data['response_loss_mask']:
                     loss_mask = data['response_loss_mask']
                 # token in token out
-                data['messages'] = replace_assistant_response_with_ids(data['messages'], data['response_token_ids'],
-                                                                       loss_mask)
+                data['messages'] = replace_assistant_response_with_ids(
+                    data['messages'],
+                    data['response_token_ids'],
+                    loss_mask,
+                    non_thinking_prefix_ids=non_thinking_prefix_ids)
         return batch
 
     @property
@@ -1180,14 +1185,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_logps_packed, per_token_entropy_packed = compute_logps_and_entropy_from_logits(
                 logits_packed, labels, compute_entropy=self.compute_entropy)
 
-            # In CP mode, all_gather and reconstruct full sequence
             if args.context_parallel_size > 1:
                 num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
-                per_token_logps_packed = self._postprocess_packed_tensor_cp(per_token_logps_packed, packed_seq_params,
-                                                                            num_samples)
+                cp_size = args.context_parallel_size
+                per_token_logps_packed = reconstruct_tensor_cp(cp_size, per_token_logps_packed, packed_seq_params,
+                                                               num_samples)
                 if per_token_entropy_packed is not None:
-                    per_token_entropy_packed = self._postprocess_packed_tensor_cp(per_token_entropy_packed,
-                                                                                  packed_seq_params, num_samples)
+                    per_token_entropy_packed = reconstruct_tensor_cp(cp_size, per_token_entropy_packed,
+                                                                     packed_seq_params, num_samples)
 
             if args.padding_free:
                 # Pad from rmpad [1, total_tokens] to batch format [batch_size, max_seq_len]

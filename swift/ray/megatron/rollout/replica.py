@@ -89,11 +89,13 @@ class RolloutReplica:
         mode: RolloutMode = RolloutMode.HYBRID,
         replica_rank: int = 0,
         template_kwargs: Optional[Dict[str, Any]] = None,
+        actor_name_prefix: str = 'swift_rollout_server',
     ) -> None:
         self.config = config
         self.mode = mode
         self.replica_rank = replica_rank
         self.template_kwargs = template_kwargs
+        self.actor_name_prefix = actor_name_prefix
         self._servers: List[Any] = []
 
     @classmethod
@@ -105,6 +107,7 @@ class RolloutReplica:
         is_hybrid: bool,
         sleep_level: int = 0,
         template_kwargs: Optional[Dict[str, Any]] = None,
+        actor_name_prefix: str = 'swift_rollout_server',
     ) -> List['RolloutReplica']:
         """Factory: create all rollout replicas from pipeline config.
 
@@ -129,7 +132,8 @@ class RolloutReplica:
             replica_infos = bundle_infos[offset:offset + world_size_per_replica]
             nodes = {info[0] for info in replica_infos}
             gpus_per_node = (world_size_per_replica if len(nodes) == 1 else world_size_per_replica // len(nodes))
-            replica = cls(config, mode=mode, replica_rank=i, template_kwargs=template_kwargs)
+            replica = cls(
+                config, mode=mode, replica_rank=i, template_kwargs=template_kwargs, actor_name_prefix=actor_name_prefix)
             replica._spawn_actors(replica_infos, gpus_per_node)
             replicas.append(replica)
 
@@ -189,7 +193,7 @@ class RolloutReplica:
             handle = actor_cls.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(node_id=node_id, soft=False),
                 runtime_env=RuntimeEnv(env_vars=env_vars),
-                name=f'swift_rollout_server_{self.replica_rank}_{node_rank}',
+                name=f'{self.actor_name_prefix}_{self.replica_rank}_{node_rank}',
                 max_concurrency=10,
             ).remote(
                 node_rank=node_rank,

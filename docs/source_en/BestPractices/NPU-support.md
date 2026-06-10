@@ -22,6 +22,7 @@ Recommended base environment versions:
 | CANN      | >= 8.5.1        |
 | torch     | >= 2.7.1        |
 | torch_npu | >= 2.7.1.post4  |
+Note: The officially recommended version compatibility matrix for the vLLM Ascend series has been updated to CANN 9.0.0, torch 2.9.0, torch_npu 2.9.0, vllm-ascend 0.18.0 for A3, and vllm-ascend 0.19.1 for A5. For details, see the [vLLM Ascend installation guide](https://docs.vllm.ai/projects/ascend/en/v0.18.0/installation.html).
 
 For base environment setup, see the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch). The examples in this document were verified on 8 * Ascend 910B3 64G.
 
@@ -61,11 +62,11 @@ For base environment setup, see the [Ascend PyTorch installation guide](https://
 | SFT       | Qwen3-30B-A3B               | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3-32B                   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Qwen3-VL-30B-A3B-Instruct   | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3-Omni-30B-A3B-Instruct | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3-Omni-30B-A3B-Instruct | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
 | SFT       | InternVL3-8B                | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
 | SFT       | Ovis2.5-2B                  | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
-| SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed | Atlas 900 A2 PODc |
+| SFT       | Qwen3.5-27B                 | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
+| SFT       | Qwen3.5-35B-A3B             | FSDP1/FSDP2/deepspeed/Megatron | Atlas 900 A2 PODc/A3 SuperPoD |
 
 ### Verified RL Combinations
 
@@ -170,7 +171,7 @@ cd ms-swift
 pip install -e .
 
 # Install torch_npu
-pip install torch_npu==2.7.1.post4 decorator
+pip install torch_npu==2.9.0 decorator
 # If you want to use deepspeed (to reduce memory usage, with some speed overhead)
 pip install deepspeed
 
@@ -200,16 +201,16 @@ print(torch.randn(10, device='npu:0'))
 If you need MindSpeed(Megatron-LM), install the required dependencies as follows.
 
 ```shell
-# 1. Clone Megatron-LM and switch to v0.15.3
+# 1. Clone Megatron-LM and switch to v0.16.0
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout v0.15.3
+git checkout v0.16.0
 cd ..
 
 # 2. Clone and install MindSpeed
 git clone https://gitcode.com/Ascend/MindSpeed.git
 cd MindSpeed
-git checkout core_r0.15.3
+git checkout core_r0.16.0
 pip install -e .
 cd ..
 
@@ -219,11 +220,14 @@ cd mcore-bridge
 pip install -e .
 cd ..
 
-# 4. Set environment variables
+# 4. Download and install triton-ascend
+pip install triton-ascend==3.2.1 --extra-index-url=https://triton-ascend.osinfra.cn/pypi/simple
+
+# 5. Set environment variables
 export PYTHONPATH=$PYTHONPATH:<your_local_megatron_lm_path>
 export MEGATRON_LM_PATH=<your_local_megatron_lm_path>
 
-# 5. Disable Megatron GDN if you need to fall back to the transformers GatedDeltaNet implementation
+# 6. Disable Megatron GDN if you need to fall back to the transformers GatedDeltaNet implementation
 export USE_MCORE_GDN=0
 ```
 
@@ -262,7 +266,7 @@ Therefore:
 - This patch mainly covers the **gated-delta-rule path of Qwen3.5 linear attention**.
 - It is not equivalent to “fully replacing the entire fla package with MindSpeed”.
 - To make this path effective, ensure that MindSpeed can be imported correctly in the current environment.
-- Verified versions for accuracy alignment: torch 2.7.1 + MindSpeed 0.12.1 + flash-linear-attention 4.1.0 + triton-ascend 3.2.0 + transformers 5.2.0
+- Verified versions for accuracy alignment: torch 2.9.0 + MindSpeed 0.16.0 + flash-linear-attention 0.4.2 + triton-ascend 3.2.1 + transformers 5.2.0
 
 When running Qwen3.5 with Megatron-SWIFT on NPU, note the following version and feature constraints:
 

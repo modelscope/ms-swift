@@ -60,9 +60,10 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
                          start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
-from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, identity_data_collator,
-                    load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
-                    profiling_context, profiling_decorator, replace_assistant_response_with_ids)
+from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, get_non_thinking_prefix_ids,
+                    identity_data_collator, load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch,
+                    patch_save_last_checkpoint, profiling_context, profiling_decorator,
+                    replace_assistant_response_with_ids)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -804,6 +805,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         template = self.template
         gas_chunks = self.split_by_mini_batches(inputs)
         ga_batch_encoded_inputs = []
+        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
         for batch in gas_chunks:
             # Encode and process each batch (size=bs)
             with self._template_context(template):
@@ -812,8 +814,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         loss_mask = None
                         if 'response_loss_mask' in data and data['response_loss_mask']:
                             loss_mask = data['response_loss_mask']
-                        data['messages'] = replace_assistant_response_with_ids(data['messages'],
-                                                                               data['response_token_ids'], loss_mask)
+                        data['messages'] = replace_assistant_response_with_ids(
+                            data['messages'],
+                            data['response_token_ids'],
+                            loss_mask,
+                            non_thinking_prefix_ids=non_thinking_prefix_ids)
                 batch_encoded_inputs = [template.encode(data, return_length=True) for data in batch]
                 for encoded_inputs in batch_encoded_inputs:
                     extra_kwargs = encoded_inputs.get('_extra_kwargs') or {}
@@ -2533,7 +2538,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     ) -> Dict[str, float]:
         """
         Compute off-policy diagnostic metrics (always computed for monitoring).
-        reference: verl/verl/trainer/ppo/rollout_corr_helper.py
 
         These metrics help diagnose the off-policy gap between rollout and training policies,
         which can arise from policy mismatch (e.g., vLLM BF16 vs FSDP FP32), model staleness,

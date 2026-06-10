@@ -115,7 +115,7 @@ class Emu3GenTemplate(Template):
         res['logits_processor'] = logits_processor
         return res
 
-    def decode(self, generate_ids: List[int], **kwargs) -> Any:
+    def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> Any:
         mm_list = self.processor.decode(generate_ids)
         for im in mm_list:
             if not isinstance(im, Image.Image):

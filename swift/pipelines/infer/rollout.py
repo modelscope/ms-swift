@@ -89,8 +89,7 @@ def _set_death_signal():
     """Ensure this process is killed when its parent exits.
 
     Prevents orphan vLLM TP worker processes from leaking GPU memory
-    when the parent Ray actor dies unexpectedly.  Adopted from verl's
-    ``set_death_signal`` utility.
+    when the parent Ray actor dies unexpectedly.
     """
     import ctypes
     import platform
@@ -285,13 +284,19 @@ class WeightSyncWorkerExtension:
         named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
 
         patch_vllm_moe_model_weight_loader(self.model_runner.model)
-        # Re-run process_weights_after_loading on FusedMoE layers so the
-        # kernel-format layout is rebuilt after the in-place reload
-        # (workaround for vLLM issue #42821).
-        try:
-            self.model_runner.model.load_weights(weights=list(named_params.items()))
-        finally:
-            finish_vllm_weight_reload(self.model_runner.model)
+        self.model_runner.model.load_weights(weights=list(named_params.items()))
+
+    def process_weights_after_loading(self) -> None:
+        """Re-run process_weights_after_loading once after ALL weight
+        buckets have been loaded, so the kernel-format layout is rebuilt
+        on complete weights rather than partial ones.
+
+        Uses vLLM's built-in ``process_weights_after_loading`` when
+        *model_config* and *target_device* are available (same as verl);
+        falls back to FusedMoE-only path otherwise.
+        """
+        model_config = self.model_runner.model_config
+        finish_vllm_weight_reload(self.model_runner.model, model_config=model_config, target_device=self.device)
 
     def close_communicator(self) -> None:
         """
@@ -314,9 +319,6 @@ class WeightSyncWorkerExtension:
     # NCCL broadcast hop of ``update_flattened_params`` and reuses the
     # sender's bucket buffer via CUDA IPC (same node, same device) or
     # shared memory (CPU / cross-device fallback).
-    #
-    # Reference: twinkle ``TwinkleWorkerExtension.update_weights_from_ipc``
-    # and verl ``vLLMColocateWorkerExtension.update_weights_from_ipc``.
     #
     # TP>1:
     #   Only the TP driver (rank 0 in the TP group) talks to the ZMQ
@@ -377,7 +379,7 @@ class WeightSyncWorkerExtension:
         ``rebuild_cuda_tensor`` and reuse the cached mapping.  This avoids
         accumulating IPC mappings that the CUDA driver releases lazily,
         which is the root cause of apparent GPU memory growth under
-        frequent syncs.  (Aligned with twinkle / verl.)
+        frequent syncs.
 
         When ``peft_config`` is provided and ``base_sync_done`` is True,
         the received weights are loaded as a LoRA adapter via
@@ -516,12 +518,13 @@ class WeightSyncWorkerExtension:
             if metadata.get('is_last'):
                 break
 
-        # Re-run process_weights_after_loading on FusedMoE layers so the
-        # kernel-format layout is rebuilt after the in-place reload
-        # (workaround for vLLM issue #42821).  Skipped for LoRA sync
-        # because the adapter path doesn't call ``load_weights``.
+        # Re-run process_weights_after_loading so the kernel-format
+        # layout is rebuilt after the in-place reload (vLLM issue
+        # #42821).  Skipped for LoRA sync because the adapter path
+        # doesn't call ``load_weights``.
         if not is_lora_sync:
-            finish_vllm_weight_reload(self.model_runner.model)
+            model_config = self.model_runner.model_config
+            finish_vllm_weight_reload(self.model_runner.model, model_config=model_config, target_device=self.device)
 
         if is_lora_sync and all_lora_weights:
             req_kw = dict(
@@ -702,6 +705,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
         self.app.post('/update_adapter_flattened_param/')(self.update_adapter_flattened_param)
         self.app.post('/update_adapter_param/')(self.update_adapter_param)
         self.app.post('/update_flattened_params/')(self.update_flattened_params)
+        self.app.post('/process_weights_after_loading/')(self.process_weights_after_loading)
         self.app.post('/reset_prefix_cache/')(self.reset_prefix_cache)
         self.app.post('/reset_encoder_cache/')(self.reset_encoder_cache)
         self.app.post('/reset_mm_cache/')(self.reset_mm_cache)
@@ -929,6 +933,18 @@ class SwiftRolloutDeploy(SwiftPipeline):
             connection.send({'type': 'fire_and_forget', 'method': 'collective_rpc', 'kwargs': kwargs})
 
         return {'message': 'Request received, updating flattened parameters'}
+
+    async def process_weights_after_loading(self):
+        """
+        Triggers process_weights_after_loading on all workers.
+        """
+        kwargs = {'method': 'process_weights_after_loading', 'args': ()}
+        for connection in self.connections:
+            connection.send({'type': 'call', 'method': 'collective_rpc', 'kwargs': kwargs})
+        # Wait for all workers to complete before returning
+        loop = asyncio.get_running_loop()
+        await asyncio.gather(*(loop.run_in_executor(None, connection.recv) for connection in self.connections))
+        return {'message': 'Weights processed after loading'}
 
     async def reset_prefix_cache(self):
         """

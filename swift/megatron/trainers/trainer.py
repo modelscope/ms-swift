@@ -19,8 +19,6 @@ class MegatronTrainer(BaseMegatronTrainer):
 
     def seq_cls_loss_func(self, output_tensor, *, labels: torch.Tensor, packed_seq_params=None, attention_mask=None):
         args = self.args
-        if args.context_parallel_size > 1:
-            raise ValueError('Currently `task_type="seq_cls"` does not support context parallelism.')
         logits = self.get_last_tokens(output_tensor, packed_seq_params, attention_mask)
         num_labels = args.num_labels
         acc = None
@@ -106,7 +104,6 @@ class MegatronTrainer(BaseMegatronTrainer):
         return new_metrics
 
     def forward_step(self, data_iterator, model):
-        # Get the batch.
         vp_stage = model.module.module.vp_stage
         data = self.get_batch(data_iterator, vp_stage)
         loss_scale = data.pop('loss_scale', None)
@@ -121,7 +118,8 @@ class MegatronTrainer(BaseMegatronTrainer):
                 self.seq_cls_loss_func,
                 labels=labels,
                 packed_seq_params=packed_seq_params,
-                attention_mask=data.get('attention_mask'))
+                attention_mask=data.get('attention_mask')
+                if data.get('attention_mask') is not None else data.get('attention_mask_2d'))
         else:
             loss_func = partial(
                 self.loss_func,

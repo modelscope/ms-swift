@@ -39,7 +39,6 @@ def parse_args_from_dict(class_type, cfg: Dict[str, Any]):
 
 
 def _dict_to_argv(cfg: Dict[str, Any]) -> List[str]:
-    """Convert a flat config dict to an argv-style list for argparse."""
     argv: List[str] = []
     for k, v in cfg.items():
         if k in _RAY_ONLY_KEYS or v is None:
@@ -63,6 +62,7 @@ class RayConfig:
     colocate_groups: List[List[str]] = field(default_factory=list)
     train_gpus: int = 0
     rollout_gpus: int = 0
+    teacher_gpus: int = 0
     sleep_level: int = 1
     nnodes: int = 1
 
@@ -71,6 +71,7 @@ class RayConfig:
         return {
             'train': self.train_gpus,
             'rollout': self.rollout_gpus,
+            'teacher': self.teacher_gpus,
         }
 
     def gpus_as_process_on_nodes(self, total_gpus: int) -> List[int]:
@@ -94,9 +95,8 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
     sleep_level = int(raw.pop('sleep_level', 1))
     nnodes = int(raw.pop('nnodes', 1))
 
-    known_groups = ('train', 'rollout')
     group_configs: Dict[str, dict] = {}
-    for g in known_groups:
+    for g in KNOWN_GROUPS:
         group_configs[g] = raw.pop(g, {}) or {}
 
     gpu_counts = {g: int(cfg.pop('gpus', 0)) for g, cfg in group_configs.items()}
@@ -109,6 +109,7 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
         colocate_groups=colocate_groups,
         train_gpus=gpu_counts.get('train', 0),
         rollout_gpus=gpu_counts.get('rollout', 0),
+        teacher_gpus=gpu_counts.get('teacher', 0),
         sleep_level=sleep_level,
         nnodes=nnodes,
     )
@@ -118,7 +119,7 @@ def parse_ray_yaml(config_path: str) -> 'tuple[RayConfig, Dict[str, Dict[str, An
     return ray_config, group_configs, shared_config
 
 
-_KNOWN_ROLES = frozenset(('train', 'rollout'))
+KNOWN_GROUPS = frozenset(('train', 'rollout', 'teacher'))
 
 
 def _validate_colocate_groups(
@@ -135,9 +136,9 @@ def _validate_colocate_groups(
                              f'got {group!r}')
         group_gpu_counts = set()
         for role in group:
-            if role not in _KNOWN_ROLES:
+            if role not in KNOWN_GROUPS:
                 raise ValueError(f'colocate_groups[{idx}] contains unknown role {role!r}; '
-                                 f'valid roles: {sorted(_KNOWN_ROLES)}')
+                                 f'valid roles: {sorted(KNOWN_GROUPS)}')
             if role in seen:
                 raise ValueError(f'Role {role!r} appears in multiple colocate groups')
             seen.add(role)
@@ -236,6 +237,16 @@ def _prepare_dataset(args, template):
     """Load and optionally encode dataset — no pipeline object needed."""
     from swift.dataset import DatasetLoader, load_dataset
 
+    # Ray pipeline has no validation/eval loop yet
+    if args.split_dataset_ratio and args.split_dataset_ratio > 0:
+        logger.warning(
+            'Ray pipeline has no validation loop yet; overriding split_dataset_ratio '
+            '%s -> 0.0 (no validation split).', args.split_dataset_ratio)
+        args.split_dataset_ratio = 0.0
+    if args.val_dataset:
+        logger.warning('Ray pipeline has no validation loop yet; ignoring val_dataset=%s.', args.val_dataset)
+        args.val_dataset = []
+
     pre_process = args.rlhf_type not in ('grpo', 'gkd')
     train_datasets, val_datasets = [], []
 
@@ -324,14 +335,3 @@ def extract_iteration(step_results) -> int:
         if isinstance(r, dict) and 'iteration' in r:
             return int(r['iteration'])
     return 0
-
-
-def extract_train_metrics(step_results) -> Dict[str, float]:
-    """Extract all training metrics from the first worker that reported them."""
-    if not step_results:
-        return {}
-    for r in step_results:
-        if isinstance(r, dict) and 'loss' in r:
-            skip = {'iteration', 'elapsed_time', 'remaining_time', 'train_speed(s/it)', 'memory(GiB)'}
-            return {k: v for k, v in r.items() if k not in skip and isinstance(v, (int, float))}
-    return {}

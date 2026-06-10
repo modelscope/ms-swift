@@ -716,7 +716,7 @@ def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
         for key, val in batch.items():
             if key not in keys:
                 continue
-            if args.task_type == 'seq_cls' and key == 'labels':
+            if args.task_type in ('seq_cls', 'embedding', 'generative_reranker') and key == 'labels':
                 continue
             if val is not None:
                 batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)

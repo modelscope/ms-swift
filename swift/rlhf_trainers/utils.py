@@ -16,7 +16,6 @@ from functools import partial
 from io import BytesIO
 from msgspec import field
 from packaging import version
-from peft.tuners import lora
 from peft.tuners.lora import LoraLayer
 from PIL import Image
 from pydantic import BaseModel, field_validator
@@ -509,7 +508,19 @@ def round_robin(num_reqs, num_workers):
 
 @contextmanager
 def patch_lora_merge(model, parameter_group=None):
-    """Patch LoraLayer's merge and get_delta_weight methods for controlled merging.
+    """Patch LoraLayer.merge to support selective merging by ``parameter_group``.
+
+    peft's ``merge_adapter()`` merges the whole model; this patch lets us merge only the
+    layers whose name is in ``parameter_group`` (used by the vLLM weight-sync, which merges
+    one parameter group at a time within its DeepSpeed Zero3 gather context).
+
+    Before merging, each target adapter's sublayers (lora_A/B, and the DoRA
+    ``lora_magnitude_vector``) are aligned to the base-layer device via peft's
+    type-agnostic ``_move_adapter_to_device_of_base_layer``. This is correct for
+    Linear/Embedding/Conv as well as parameter-based ``ParamWrapper`` (MoE experts via
+    ``target_parameters``), whose base layer has no ``.weight`` and which overrides the
+    method to use ``get_param().device``. This replaces the previous hand-rolled,
+    Linear-only device handling that hard-coded ``base_layer.weight.device``.
 
     Args:
         model: The PEFT model to patch
@@ -523,32 +534,11 @@ def patch_lora_merge(model, parameter_group=None):
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
         if parameter_group and all(self.name not in pg for pg in parameter_group):
             return  # Skip if not in target parameter group
-        adapter_names = check_adapters_to_merge(self, adapter_names)
-        if not adapter_names:
-            return
-
-        for active_adapter in adapter_names:
-            if active_adapter in self.lora_A.keys():
-                base_layer = self.get_base_layer()
-                if self.use_dora.get(active_adapter, False):
-                    self.lora_magnitude_vector[active_adapter].weight.data = \
-                        self.lora_magnitude_vector[active_adapter].weight.data.to(base_layer.weight.device)
-
+        for active_adapter in check_adapters_to_merge(self, adapter_names) or []:
+            # Align adapter sublayers (lora_A/B, DoRA magnitude, ...) to the base device.
+            # Type-agnostic: ParamWrapper overrides this to use get_param().device.
+            self._move_adapter_to_device_of_base_layer(active_adapter)
         return self.merge_origin(safe_merge, adapter_names)
-
-    def get_delta_weight(self, adapter) -> torch.Tensor:
-        # Ensure tensors are on correct device
-        if isinstance(self, lora.Embedding):
-            self.lora_embedding_A[adapter].data = self.lora_embedding_A[adapter].data.to(self.base_layer.weight.device)
-            self.lora_embedding_B[adapter].data = self.lora_embedding_B[adapter].data.to(self.base_layer.weight.device)
-        else:
-            self.lora_A[adapter].weight.data = self.lora_A[adapter].weight.data.to(self.base_layer.weight.device)
-            self.lora_B[adapter].weight.data = self.lora_B[adapter].weight.data.to(self.base_layer.weight.device)
-        return self.get_delta_weight_origin(adapter).to(self.base_layer.weight.device)
-
-    def _cache_pop(self, key: str) -> Any:
-        value = self._caches.pop(key).to(self.base_layer.weight.device)
-        return value
 
     # Patch all LoraLayer instances
     for name, module in model.named_modules():
@@ -557,38 +547,32 @@ def patch_lora_merge(model, parameter_group=None):
             if not hasattr(module, 'merge_origin') and hasattr(module, 'base_layer'):
                 module.merge_origin = module.merge
                 module.merge = MethodType(merge, module)
-                module.get_delta_weight_origin = module.get_delta_weight
-                module.get_delta_weight = MethodType(get_delta_weight, module)
-                module._cache_pop_origin = module._cache_pop
-                module._cache_pop = MethodType(_cache_pop, module)
 
     try:
         yield model
     finally:
         # Cleanup: restore original methods
         for module in model.modules():
-            if isinstance(module, LoraLayer):
-                if hasattr(module, 'merge_origin'):
-                    module.merge = module.merge_origin
-                    del module.merge_origin
-                    module.get_delta_weight = module.get_delta_weight_origin
-                    del module.get_delta_weight_origin
-                    module._cache_pop = module._cache_pop_origin
-                    del module._cache_pop_origin
+            if isinstance(module, LoraLayer) and hasattr(module, 'merge_origin'):
+                module.merge = module.merge_origin
+                del module.merge_origin
 
 
 @contextmanager
 def patch_lora_unmerge(model):
+    """Patch LoraLayer.unmerge to align adapter sublayers to the base device first.
+
+    Mirrors ``patch_lora_merge``'s device handling (via peft's type-agnostic
+    ``_move_adapter_to_device_of_base_layer``) so unmerge works under DeepSpeed Zero3 /
+    offload and for parameter-based ``ParamWrapper`` layers.
+    """
 
     def unmerge_patched(self):
         if not self.merged:
             return
-        # Move magnitude vectors to correct device first
+        # Move adapter sublayers (incl. DoRA magnitude) to the base device first
         for adapter in list(self.merged_adapters):
-            if self.use_dora.get(adapter, False):
-                self.lora_magnitude_vector[adapter].weight.data = \
-                    self.lora_magnitude_vector[adapter].weight.data.to(self.base_layer.weight.device)
-
+            self._move_adapter_to_device_of_base_layer(adapter)
         return self.unmerge_origin()
 
     for module in model.modules():
@@ -729,9 +713,25 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
+def get_non_thinking_prefix_ids(template) -> Optional[List[int]]:
+    """Return the token ids of the non-thinking prefix (e.g. '<think>\n\n</think>\n\n').
+
+    When enable_thinking=False, the rollout engine injects this prefix into the prompt, so it
+    is part of the forwarded sequence (and routed_experts), but the generated response_token_ids
+    do NOT contain it. Token-in-token-out re-encoding must re-add it (masked out of the loss) to
+    keep the trainer/teacher sequence aligned with the rollout sequence. Returns None when the
+    prefix is not applicable (thinking enabled, or template has no non_thinking_prefix).
+    """
+    non_thinking_prefix = template.template_meta.non_thinking_prefix
+    if template.enable_thinking is False and non_thinking_prefix:
+        return template.tokenizer.encode(non_thinking_prefix, add_special_tokens=False)
+    return None
+
+
 def replace_assistant_response_with_ids(messages: 'Messages',
                                         completion_ids: List[Union[int, List[int]]],
-                                        loss_mask: Optional[List[List[int]]] = None) -> 'Messages':  # noqa
+                                        loss_mask: Optional[List[List[int]]] = None,
+                                        non_thinking_prefix_ids: Optional[List[int]] = None) -> 'Messages':  # noqa
     """
     Replace assistant messages in a conversation with token IDs (and optional loss masks).
 
@@ -784,6 +784,19 @@ def replace_assistant_response_with_ids(messages: 'Messages',
         completion_ids = [completion_ids]
     if loss_mask and isinstance(loss_mask[0], int):
         loss_mask = [loss_mask]
+
+    # Inject the non-thinking prefix (e.g. '<think>\n\n</think>\n\n') into the LAST assistant turn.
+    # When enable_thinking false, the engine prepends non_thinking_prefix before generation
+    # so completion_ids here are generated with the non-thinking prefix, inject here
+    if non_thinking_prefix_ids:
+        n_prefix = len(non_thinking_prefix_ids)
+        last_ids = list(completion_ids[-1])
+        # Skip if the response already starts with the prefix (avoid double injection).
+        if last_ids[:n_prefix] != list(non_thinking_prefix_ids):
+            if loss_mask is None:
+                loss_mask = [[1] * len(ids) for ids in completion_ids]
+            completion_ids[-1] = list(non_thinking_prefix_ids) + last_ids
+            loss_mask[-1] = [0] * n_prefix + list(loss_mask[-1])
 
     if loss_mask:
         assert (
@@ -1091,33 +1104,14 @@ def patch_vllm_moe_model_weight_loader(model):
     original_model._swift_moe_weight_loader_patched = True
 
 
-def finish_vllm_weight_reload(vllm_model):
-    """Re-run ``process_weights_after_loading`` on every FusedMoE layer after
-    an in-place vLLM weight update.
-
-    Without this, the second ``model.load_weights`` of an RL training step
-    writes raw checkpoint-format data over the kernel-format buffers and
-    silently corrupts forward output (vLLM issue #42821).
-    """
-    if vllm_model is None:
+def finish_vllm_weight_reload(vllm_model, model_config, target_device):
+    if vllm_model is None or model_config is None or target_device is None:
         return
     try:
-        from vllm.model_executor.layers.fused_moe.layer import FusedMoE
-    except (ImportError, AttributeError):
-        return  # vLLM is too old to have FusedMoE; nothing to fix.
-    logger = get_logger()
-    for module in vllm_model.modules():
-        if not isinstance(module, FusedMoE):
-            continue
-        quant_method = getattr(module, 'quant_method', None)
-        if quant_method is None or not hasattr(quant_method, 'process_weights_after_loading'):
-            continue
-        try:
-            quant_method.process_weights_after_loading(module)
-        except Exception as e:  # noqa: BLE001
-            logger.warning('finish_vllm_weight_reload: process_weights_after_loading failed '
-                           'on %s: %s',
-                           type(module).__name__, e)
+        from vllm.model_executor.model_loader.utils import process_weights_after_loading
+        process_weights_after_loading(vllm_model, model_config, target_device)
+    except Exception:
+        return
 
 
 def patch_vllm_load_adapter():
@@ -1508,6 +1502,7 @@ def compute_chord_loss(trainer, grpo_loss: torch.Tensor) -> torch.Tensor:
     chord_sft_loss = torch.tensor(0.0, device=grpo_loss.device, dtype=grpo_loss.dtype)
     if mu > 0:
         sft_inputs = next(trainer.chord_sft_iterator)
+        sft_inputs = to_device(sft_inputs, 'cpu')
         sft_inputs = to_device(trainer.template.data_collator(sft_inputs), trainer.accelerator.device)
 
         labels = sft_inputs.pop('labels')
