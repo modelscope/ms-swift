@@ -175,6 +175,9 @@ The inference results are as follows:
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
+For Megatron-Ray Training, refer to this [doc](../Instruction/Ray.md)
+
+
 ### Mcore-Bridge [Recommended]
 
 Mcore-Bridge eliminates the tedious process of model conversion. For details, refer to the [Mcore-Bridge Documentation](./Mcore-Bridge.md).

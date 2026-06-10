@@ -3,7 +3,7 @@
 ## Megatron参数
 
 **训练参数**:
-- 🔥micro_batch_size: 每个device的批次大小，默认为1。
+- 🔥micro_batch_size: 每个DP组的批次大小，默认为1。
 - 🔥global_batch_size: 总批次大小，等价于`micro_batch_size*数据并行大小*梯度累加步数`。默认为16。
   - 其中，`数据并行大小 (DP) = 总GPU数 / (TP × PP × CP)`。
 - 🔥recompute_granularity: 重新计算激活的粒度，可选项为'full', 'selective' and 'none'。其中full代表重新计算整个transformer layer，selective代表只计算transformer layer中的核心注意力部分。通常'selective'是推荐的。默认为'selective'。
@@ -293,6 +293,8 @@ lora训练：
 - 🔥task_type: 默认为'causal_lm'。可选为'causal_lm'、'seq_cls'、'embedding'和'generative_reranker'。
 - num_labels: 分类模型（即`--task_type seq_cls`）需要指定该参数。代表标签数量，默认为None。
 - problem_type: 分类模型（即`--task_type seq_cls`）需要指定该参数。可选为'regression', 'single_label_classification', 'multi_label_classification'。默认为None，若模型为 reward_model 或 num_labels 为1，该参数为'regression'，其他情况，该参数为'single_label_classification'。
+- mrl_dims: Embedding训练的[Matryoshka表征学习（MRL）](https://arxiv.org/abs/2205.13147)维度配置，默认为None。格式为`Dict[int, float]`或Json字符串，key为截断的embedding维度，value为该维度对应的loss权重，例如`'{"32": 1.0, "64": 1.0, "128": 1.0}'`。开启后，trainer会对`last_hidden_state`分别截断到每个维度并做L2归一化，再调用`loss_type`对应的loss加权累加。仅在`task_type='embedding'`下生效。
+  - 注意：可支持的最大embedding维度由模型`config.json`中的`hidden_size`决定，key大于`hidden_size`的KV对将被自动忽略。
 - 🔥save_strategy: 保存策略，可选项为'steps'和'epoch'。默认为'steps'。当设置为'epoch'时，会根据数据集大小自动计算`save_steps`和`eval_steps`以实现每个epoch保存一次，用户传入的`save_steps`和`eval_steps`参数值将被忽略。
 - callbacks: 自定义trainer callback，默认为`[]`。
 

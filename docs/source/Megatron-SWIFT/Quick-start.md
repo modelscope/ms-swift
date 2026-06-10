@@ -172,6 +172,7 @@ swift infer \
 I am a language model developed by swift, you can call me swift-robot. How can I assist you?
 ```
 
+Megatron Ray 训练，参考[Ray 文档](../Instruction/Ray.md)
 
 ### Mcore-Bridge【推荐】
 

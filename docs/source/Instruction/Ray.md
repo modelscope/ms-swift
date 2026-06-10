@@ -76,6 +76,15 @@ rollout:
 - **top-k**：蒸馏损失仅在 teacher 概率最高的 k 个 token 上计算（通过 `gkd_logits_topk` 设置），显存占用更低，但会丢弃长尾分布信息。
 - **full-vocab**：蒸馏损失在完整词表上计算，保留完整分布信息，但显存占用较高。
 
+### 相关文档
+
+更多文档请参考
+
+- **GRPO 训练**：[Megatron GRPO 文档](../Megatron-SWIFT/GRPO.md)
+- **GKD 训练**：[GKD 文档](../Megatron-SWIFT/GKD.md)
+- **Megatron 训练参数**：[命令行参数文档](../Megatron-SWIFT/Command-line-parameters.md)
+- **Megatron 快速开始**：[Quick Start](../Megatron-SWIFT/Quick-start.md)
+
 详细配置说明和示例见 [examples](https://github.com/modelscope/ms-swift/tree/main/examples/ray)。
 
 ## Swift Ray
