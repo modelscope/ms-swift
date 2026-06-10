@@ -87,7 +87,7 @@ class InferStreamer(InferTools):
         raw_tokens = raw_tokens[self.cache_idx:]
         if self.first_token:
             raw_tokens = []
-        response = self.template.decode(
+        response = self.template.decode_generate_ids(
             raw_tokens, is_finished=is_finished, first_token=self.first_token, **self.decode_kwargs)
         response = self._align_blank_suffix(response)
         return self._get_response(response, is_finished, len(raw_tokens))

@@ -60,8 +60,8 @@ class FlorenceTemplate(Template):
                 image_features, inputs_embeds)
         return {'inputs_embeds': inputs_embeds}
 
-    def decode(self, generate_ids: List[int], **kwargs) -> Any:
-        response = super().decode(generate_ids, **kwargs)
+    def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> Any:
+        response = super().decode_generate_ids(generate_ids, **kwargs)
         template_inputs = kwargs.get('template_inputs')
         images = template_inputs.images
         image_size = None
