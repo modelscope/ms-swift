@@ -170,6 +170,11 @@ class Gemma4AgentTemplate(BaseAgentTemplate):
         with_action = self.keyword.action in assistant_content and self.keyword.action_input in assistant_content
         if with_action:
             return super()._format_tool_responses(assistant_content, tool_messages)
+        # If the model hallucinated a trailing `<|tool_response>` opener (e.g. when stop
+        # tokens were not configured), strip it so the rendered turn does not contain
+        # `<|tool_response><|tool_response>response:...`.
+        if assistant_content.endswith('<|tool_response>'):
+            assistant_content = assistant_content[:-len('<|tool_response>')]
         # In gemma4, tool_call/tool_response/follow-up assistant text all live in the
         # same `<|turn>model ... <turn|>` block, so we do not open a new model turn here.
         res: 'Prompt' = [self._get_tool_responses(tool_messages)]
