@@ -651,7 +651,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # embedding (Matryoshka Representation Learning)
     # Dict[int, float], where the key is the embedding dimension and the value is the corresponding loss weight,
     # e.g. '{"32": 1.0, "64": 1.0, "128": 1.0}'.
-    mrl_dims: Union[str, Dict[int, float]] = None
+    mrl_dims: Optional[Union[dict, str]] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
     callbacks: List[str] = field(default_factory=list)
 
