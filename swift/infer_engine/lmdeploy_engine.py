@@ -226,7 +226,7 @@ class LmdeployEngine(InferEngine):
                 toolcall = None
                 if is_finished:
                     toolcall = self._get_toolcall(
-                        self.template.decode(output.token_ids, template_inputs=inputs['template_inputs']))
+                        self.template.decode_generate_ids(output.token_ids, template_inputs=inputs['template_inputs']))
                 finish_reason = self._get_finish_reason(generation_config.max_new_tokens, output.num_token,
                                                         output.status.name == 'FINISH')
                 choices = [
@@ -261,7 +261,7 @@ class LmdeployEngine(InferEngine):
                 async for output in generator.async_stream_infer(session_id=session_id, **inputs, **kwargs):
                     pass
 
-        response = self.template.decode(output.token_ids, template_inputs=inputs['template_inputs'])
+        response = self.template.decode_generate_ids(output.token_ids, template_inputs=inputs['template_inputs'])
         logprobs = self._get_logprobs(output.logprobs, output.token_ids, request_config.top_logprobs)
 
         usage_info = self._get_usage_info(len(inputs['input_ids']), output.num_token)

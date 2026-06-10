@@ -729,9 +729,25 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
+def get_non_thinking_prefix_ids(template) -> Optional[List[int]]:
+    """Return the token ids of the non-thinking prefix (e.g. '<think>\n\n</think>\n\n').
+
+    When enable_thinking=False, the rollout engine injects this prefix into the prompt, so it
+    is part of the forwarded sequence (and routed_experts), but the generated response_token_ids
+    do NOT contain it. Token-in-token-out re-encoding must re-add it (masked out of the loss) to
+    keep the trainer/teacher sequence aligned with the rollout sequence. Returns None when the
+    prefix is not applicable (thinking enabled, or template has no non_thinking_prefix).
+    """
+    non_thinking_prefix = template.template_meta.non_thinking_prefix
+    if template.enable_thinking is False and non_thinking_prefix:
+        return template.tokenizer.encode(non_thinking_prefix, add_special_tokens=False)
+    return None
+
+
 def replace_assistant_response_with_ids(messages: 'Messages',
                                         completion_ids: List[Union[int, List[int]]],
-                                        loss_mask: Optional[List[List[int]]] = None) -> 'Messages':  # noqa
+                                        loss_mask: Optional[List[List[int]]] = None,
+                                        non_thinking_prefix_ids: Optional[List[int]] = None) -> 'Messages':  # noqa
     """
     Replace assistant messages in a conversation with token IDs (and optional loss masks).
 
@@ -784,6 +800,19 @@ def replace_assistant_response_with_ids(messages: 'Messages',
         completion_ids = [completion_ids]
     if loss_mask and isinstance(loss_mask[0], int):
         loss_mask = [loss_mask]
+
+    # Inject the non-thinking prefix (e.g. '<think>\n\n</think>\n\n') into the LAST assistant turn.
+    # When enable_thinking false, the engine prepends non_thinking_prefix before generation
+    # so completion_ids here are generated with the non-thinking prefix, inject here
+    if non_thinking_prefix_ids:
+        n_prefix = len(non_thinking_prefix_ids)
+        last_ids = list(completion_ids[-1])
+        # Skip if the response already starts with the prefix (avoid double injection).
+        if last_ids[:n_prefix] != list(non_thinking_prefix_ids):
+            if loss_mask is None:
+                loss_mask = [[1] * len(ids) for ids in completion_ids]
+            completion_ids[-1] = list(non_thinking_prefix_ids) + last_ids
+            loss_mask[-1] = [0] * n_prefix + list(loss_mask[-1])
 
     if loss_mask:
         assert (
@@ -1091,33 +1120,14 @@ def patch_vllm_moe_model_weight_loader(model):
     original_model._swift_moe_weight_loader_patched = True
 
 
-def finish_vllm_weight_reload(vllm_model):
-    """Re-run ``process_weights_after_loading`` on every FusedMoE layer after
-    an in-place vLLM weight update.
-
-    Without this, the second ``model.load_weights`` of an RL training step
-    writes raw checkpoint-format data over the kernel-format buffers and
-    silently corrupts forward output (vLLM issue #42821).
-    """
-    if vllm_model is None:
+def finish_vllm_weight_reload(vllm_model, model_config, target_device):
+    if vllm_model is None or model_config is None or target_device is None:
         return
     try:
-        from vllm.model_executor.layers.fused_moe.layer import FusedMoE
-    except (ImportError, AttributeError):
-        return  # vLLM is too old to have FusedMoE; nothing to fix.
-    logger = get_logger()
-    for module in vllm_model.modules():
-        if not isinstance(module, FusedMoE):
-            continue
-        quant_method = getattr(module, 'quant_method', None)
-        if quant_method is None or not hasattr(quant_method, 'process_weights_after_loading'):
-            continue
-        try:
-            quant_method.process_weights_after_loading(module)
-        except Exception as e:  # noqa: BLE001
-            logger.warning('finish_vllm_weight_reload: process_weights_after_loading failed '
-                           'on %s: %s',
-                           type(module).__name__, e)
+        from vllm.model_executor.model_loader.utils import process_weights_after_loading
+        process_weights_after_loading(vllm_model, model_config, target_device)
+    except Exception:
+        return
 
 
 def patch_vllm_load_adapter():

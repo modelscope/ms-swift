@@ -611,7 +611,7 @@ class VllmEngine(InferEngine):
             toolcall = None
             if output.is_finished:
                 toolcall = self._get_toolcall(
-                    self.template.decode(output.token_ids, **infer_streamers[i].decode_kwargs))
+                    self.template.decode_generate_ids(output.token_ids, **infer_streamers[i].decode_kwargs))
 
             choice = ChatCompletionResponseStreamChoice(
                 index=i,
@@ -664,7 +664,7 @@ class VllmEngine(InferEngine):
         choices = []
         for output in result.outputs:
             output.token_ids = list(output.token_ids)
-            response = self.template.decode(output.token_ids, template_inputs=inputs['template_inputs'])
+            response = self.template.decode_generate_ids(output.token_ids, template_inputs=inputs['template_inputs'])
 
             # Extract reasoning content if reasoning_parser is enabled
             reasoning_content = None

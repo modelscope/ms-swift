@@ -721,13 +721,13 @@ class Template(ProcessorMixin):
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
-    def decode(self,
-               generate_ids: List[int],
-               *,
-               is_finished: bool = True,
-               first_token=True,
-               template_inputs=None,
-               **kwargs) -> Any:
+    def decode_generate_ids(self,
+                            generate_ids: List[int],
+                            *,
+                            is_finished: bool = True,
+                            first_token=True,
+                            template_inputs=None,
+                            **kwargs) -> Any:
         if kwargs.get('spaces_between_special_tokens') is None:
             kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
