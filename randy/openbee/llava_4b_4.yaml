@@ -1,27 +1,25 @@
 ### model
-model: /nas_train/app.e0016372/models/lmms-lab/LLaVA-OneVision-1.5-4B
-model_type: llava_onevision1_5
+model: /nas_train/app.e0016372/train/LLaVA-OneVision-1.5-4B/openbee/v2
 
 ### method
-debug: true
+# debug: true
 stage: sft
 tuner_type: full
-lora_rank: 16
-lora_alpha: 32
-freeze_vit: true
-freeze_llm: true
+freeze_vit: false
+freeze_llm: false
 freeze_aligner: false
 
 ### optimize
 attn_impl: flash_attn
 use_liger_kernel: false
-vit_gradient_checkpointing: false
+vit_gradient_checkpointing: true
 gradient_checkpointing_kwargs: {"use_reentrant": false}
 
 ### dataset
-dataset: llava_pretrain_558k
-packing: false
-max_length: 4096
+cached_dataset:
+  - /nas_user/app.e0016372/datasets/Open-Bee/Honey-Data-1M/cache/train
+packing: true
+max_length: 16384
 max_pixels: 2560000
 dataloader_num_workers: 8
 dataloader_persistent_workers: true
@@ -29,28 +27,25 @@ dataloader_persistent_workers: true
 # load_from_cache_file: true
 
 ### output
-output_dir: /nas_train/app.e0016372/train/sft/full/LLaVA-OneVision-1.5-4B
+output_dir: /nas_train/app.e0016372/train/LLaVA-OneVision-1.5-4B/openbee
 logging_steps: 10
 save_strategy: steps
-save_steps: 200
-save_total_limit: 2
+save_steps: 100
+save_total_limit: 1
 report_to: tensorboard
-create_checkpoint_symlink: true
 
 ### train
 per_device_train_batch_size: 1
-gradient_accumulation_steps: 1
-weight_decay: 0.0
+gradient_accumulation_steps: 4
+weight_decay: 0.01
 warmup_ratio: 0.03
-learning_rate: 1e-4
+learning_rate: 3e-5
 num_train_epochs: 1.0
 lr_scheduler_type: cosine_with_min_lr
-lr_scheduler_kwargs: {"min_lr": 1e-6}
+lr_scheduler_kwargs: {"min_lr": 5e-6}
 torch_dtype: bfloat16
 deepspeed: zero2
 
 ### plugins
 external_plugins:
-  - randy/plugins/model.py
   - randy/plugins/dataset.py
-  - randy/plugins/template.py

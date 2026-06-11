@@ -46,5 +46,25 @@
   {
     "dataset_name": "finevision",
     "dataset_path": "/nas_user/app.e0016372/datasets/FineVision/merged_all.jsonl"
+  },
+  {
+    "dataset_name": "cxmt_defects",
+    "dataset_path": "/nas_user/app.e0016372/datasets/cxmt/defects/defects.jsonl"
+  },
+  {
+    "dataset_name": "bee_training_data_stage1",
+    "dataset_path": "/nas_user/app.e0016372/datasets/Open-Bee/Bee-Training-Data-Stage1/merged_all.jsonl"
+  },
+  {
+    "dataset_name": "bee_training_data_stage2",
+    "dataset_path": "/nas_user/app.e0016372/datasets/Open-Bee/Bee-Training-Data-Stage2/merged_all.jsonl"
+  },
+  {
+    "dataset_name": "honey_data_15m",
+    "dataset_path": "/nas_user/app.e0016372/datasets/Open-Bee/Honey-Data-15M/merged_all.jsonl"
+  },
+  {
+    "dataset_name": "honey_data_1m",
+    "dataset_path": "/nas_user/app.e0016372/datasets/Open-Bee/Honey-Data-1M/merged_all.jsonl"
   }
 ]
