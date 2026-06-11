@@ -58,6 +58,7 @@ from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
                          is_wandb_available, remove_response, seed_worker, shutdown_event_loop_in_daemon,
                          start_event_loop_in_daemon, to_device, unwrap_model_for_generation)
+from swift.grpo.data import GRPOBatch
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, get_non_thinking_prefix_ids,
@@ -264,6 +265,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             # Advantages are always [batch_size], will be broadcast to [batch_size, seq_len] in loss computation
             all_advantages = torch.stack([data['advantages'] for data in batch])
             batch_encoded['advantages'] = all_advantages
+            batch_encoded['_rl'].advantages = all_advantages
 
         with profiling_context(self, 'log_metrics'):
             # --- logs (prompts + completions) ---
@@ -948,6 +950,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
                             batch_encoded_inputs['rollout_per_token_logps'] = rollout_logps_tensor
 
+            batch_encoded_inputs['_rl'] = GRPOBatch(
+                completion_mask=batch_encoded_inputs['completion_mask'],
+                truncated_mask=batch_encoded_inputs['truncated_mask'],
+                seq_lengths=batch_encoded_inputs.get('seq_lengths', torch.tensor([], device=self.accelerator.device)),
+                old_per_token_logps=batch_encoded_inputs.get('old_per_token_logps'),
+                ref_per_token_logps=batch_encoded_inputs.get('ref_per_token_logps'),
+                rollout_per_token_logps=batch_encoded_inputs.get('rollout_per_token_logps'),
+                logits_to_keep=batch_encoded_inputs.get('logits_to_keep'),
+            )
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
         # --- log completion lengths ---
@@ -960,6 +971,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         num_items_in_batch = total_lengths.sum()
         for batch_encoded in ga_batch_encoded_inputs:
             batch_encoded['num_items_in_batch'] = num_items_in_batch
+            batch_encoded['_rl'].num_items_in_batch = num_items_in_batch
 
         self._metrics[mode]['completions/mean_length'].append(total_lengths.mean().item())
         self._metrics[mode]['completions/min_length'].append(total_lengths.min().item())
@@ -1090,8 +1102,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _compute_loss_and_metrics(self, model, inputs):
         """Core loss computation without metrics recording."""
         mode = 'train' if self.model.training else 'eval'
-        completion_mask = inputs['completion_mask']
-        truncated_mask = inputs['truncated_mask']
+        rl: GRPOBatch = inputs['_rl']
+        completion_mask = rl.completion_mask
+        truncated_mask = rl.truncated_mask
         per_token_logps, entropies = self._get_per_token_logps_and_entropies(
             model, inputs, compute_entropy=self.compute_entropy)
 
@@ -1125,33 +1138,26 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             truncated_mask = truncated_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & (~truncated_mask)
 
-        # Compute the KL divergence between the model and the reference model
-        # Only compute KL for loss if kl_in_reward=False (GRPO style)
+        per_token_kl = None
         if self.beta != 0.0 and not self.kl_in_reward:
-            ref_per_token_logps = inputs['ref_per_token_logps']
+            ref_per_token_logps = rl.ref_per_token_logps
             safe_ratio = torch.clamp(ref_per_token_logps - per_token_logps, min=-20, max=20)
             per_token_kl = torch.clamp(torch.exp(safe_ratio) - safe_ratio - 1, min=-10, max=10)
-        else:
-            per_token_kl = None
 
-        advantages = inputs['advantages']
-        # When under on-policy training
-        # old_per_token_logps == per_token_logps, so we can skip it's computation
-        # (see _generate_and_score_completions) and use per_token_logps.detach() instead.
+        advantages = rl.advantages
         old_per_token_logps = (
-            per_token_logps.detach() if inputs['old_per_token_logps'] is None else inputs['old_per_token_logps'])
+            per_token_logps.detach() if rl.old_per_token_logps is None else rl.old_per_token_logps)
 
         # Compute rollout diagnostic metrics and apply IS correction if enabled
         rollout_correction_metrics = {}
         should_compute_rollout_metrics = (
             self.rollout_importance_sampling_mode is not None or self.log_rollout_offpolicy_metrics)
 
-        local_has_rollout_per_token_logps = inputs.get('rollout_per_token_logps') is not None
-        all_has_rollout_per_token_logps = gather_object([local_has_rollout_per_token_logps])
-
-        should_compute_rollout_metrics = should_compute_rollout_metrics and all(all_has_rollout_per_token_logps)
+        local_has_rollout = rl.rollout_per_token_logps is not None
+        should_compute_rollout_metrics = should_compute_rollout_metrics and all(gather_object([local_has_rollout]))
+        rollout_is_weights = None
         if (not self.disable_rollout_importance_sampling and should_compute_rollout_metrics):
-            rollout_per_token_logps = inputs['rollout_per_token_logps']
+            rollout_per_token_logps = rl.rollout_per_token_logps
 
             # Compute diagnostic metrics (KL, PPL, etc.) for monitoring off-policy gap
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
@@ -1165,9 +1171,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 is_metrics = self._compute_is_correction_metrics(rollout_log_ratio, rollout_is_weights, completion_mask)
                 rollout_correction_metrics.update(is_metrics)
 
-            inputs['rollout_is_weights'] = rollout_is_weights
-        else:
-            inputs['rollout_is_weights'] = None
+            pass
+        # rollout_is_weights is a local variable, initialized to None above
 
         log_ratio = per_token_logps - old_per_token_logps
         if self.importance_sampling_level == 'token':
@@ -1220,17 +1225,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if per_token_kl is not None:
             per_token_loss = per_token_loss + self.beta * per_token_kl
 
-        # Apply vLLM importance sampling weights if available
-        if inputs.get('rollout_is_weights') is not None and self.rollout_importance_sampling_mode is not None:
-            rollout_is_weights = inputs['rollout_is_weights']
+        if rollout_is_weights is not None and self.rollout_importance_sampling_mode is not None:
             per_token_loss = per_token_loss * rollout_is_weights
 
-        # Apply off-policy sequence masking if enabled
-        # Mask out sequences where delta > threshold AND advantage < 0
         if self.off_policy_sequence_mask_delta is not None:
-            rollout_per_token_logps = inputs.get('rollout_per_token_logps')
-            old_policy_per_token_logps = rollout_per_token_logps if rollout_per_token_logps is not None \
-                else old_per_token_logps
+            old_policy_per_token_logps = (
+                rl.rollout_per_token_logps if rl.rollout_per_token_logps is not None else old_per_token_logps)
             off_policy_seq_mask = self._compute_off_policy_sequence_mask(per_token_logps, old_policy_per_token_logps,
                                                                          completion_mask, advantages)
             # Expand sequence mask to token level and apply to completion_mask
@@ -1280,7 +1280,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 loss = loss + kl_loss * self.beta
         elif self.loss_type in ['cispo', 'dapo', 'fipo']:
             # CISPO, DAPO, and FIPO: Normalize by total completion tokens across all processes
-            normalizer = inputs['num_items_in_batch'] / self.accelerator.num_processes
+            normalizer = rl.num_items_in_batch / self.accelerator.num_processes
             loss = (per_token_loss * completion_mask).sum() / normalizer
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
@@ -1890,30 +1890,30 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def compute_liger_loss(self, unwrapped_model, inputs):
         assert not self.template.padding_free
         assert self.advantage_estimator == 'grpo'
+        rl: GRPOBatch = inputs['_rl']
         input_ids = inputs['input_ids']
-        logits_to_keep = inputs['logits_to_keep']
+        logits_to_keep = rl.logits_to_keep
         completion_ids = input_ids[:, -logits_to_keep:]
-        completion_mask = inputs['completion_mask']
+        completion_mask = rl.completion_mask
 
         last_hidden_state = self._get_last_hidden_state(unwrapped_model, inputs, logits_to_keep)
 
-        old_per_token_logps = inputs.get('old_per_token_logps')
-        local_has = inputs.get('rollout_per_token_logps') is not None
+        old_per_token_logps = rl.old_per_token_logps
+        local_has = rl.rollout_per_token_logps is not None
         vllm_is_ratio = None
         if all(gather_object([local_has])):
-            rollout_per_token_logps = inputs['rollout_per_token_logps']
-            _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, rollout_per_token_logps,
-                                                               completion_mask)
+            _, vllm_is_ratio = self._get_rollout_is_correction(
+                old_per_token_logps, rl.rollout_per_token_logps, completion_mask)
 
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
             selected_token_ids=completion_ids,
             attention_mask=completion_mask,
-            advantages=inputs['advantages'],
+            advantages=rl.advantages,
             bias=unwrapped_model.lm_head.bias,
             old_per_token_logps=old_per_token_logps,
-            ref_per_token_logps=inputs.get('ref_per_token_logps'),
+            ref_per_token_logps=rl.ref_per_token_logps,
             vllm_is_ratio=vllm_is_ratio,
         )
 
@@ -2159,8 +2159,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def get_chunked_inputs(self, inputs, start_idx, end_idx):
         chunk_inputs = {}
         batch_size = inputs['seq_lengths'].shape[0] if self.template.padding_free else inputs['input_ids'].shape[0]
-        # for LLM, slice the inputs
         for key, val in inputs.items():
+            if key == '_rl':
+                continue
             if isinstance(val, torch.Tensor):
                 if val.ndim == 0:
                     chunk_inputs[key] = val
@@ -2172,11 +2173,27 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 chunk_inputs[key] = val[start_idx:end_idx]
             else:
                 chunk_inputs[key] = val
+
+        rl: GRPOBatch = inputs['_rl']
+        chunk_rl = GRPOBatch(
+            completion_mask=rl.completion_mask[start_idx:end_idx],
+            truncated_mask=rl.truncated_mask[start_idx:end_idx],
+            seq_lengths=rl.seq_lengths[start_idx:end_idx] if rl.seq_lengths.numel() > 0 else rl.seq_lengths,
+            old_per_token_logps=(rl.old_per_token_logps[start_idx:end_idx]
+                                 if rl.old_per_token_logps is not None else None),
+            ref_per_token_logps=(rl.ref_per_token_logps[start_idx:end_idx]
+                                 if rl.ref_per_token_logps is not None else None),
+            rollout_per_token_logps=(rl.rollout_per_token_logps[start_idx:end_idx]
+                                     if rl.rollout_per_token_logps is not None else None),
+            advantages=rl.advantages[start_idx:end_idx] if rl.advantages is not None else None,
+            num_items_in_batch=rl.num_items_in_batch,
+            logits_to_keep=rl.logits_to_keep,
+        )
+        chunk_inputs['_rl'] = chunk_rl
+
         if self.is_multimodal:
-            # for MLLM, re-encode to get mm-related inputs
             origin_data = inputs['_origin_data'][start_idx:end_idx]
             template = self.template
-            # prevent to be overwritten by data_collator
             _preserved_chunk_keys = ('advantages', 'completion_mask', 'ref_per_token_logps', 'old_per_token_logps',
                                      'rollout_per_token_logps', 'truncated_mask', 'rollout_is_weights', 'seq_lengths')
             _preserved_dicts = {k: chunk_inputs.pop(k) for k in _preserved_chunk_keys if k in chunk_inputs}
