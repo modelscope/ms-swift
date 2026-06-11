@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from swift.utils import select_device
+
+select_device('0')
 
 kwargs = {
     'per_device_train_batch_size': 2,

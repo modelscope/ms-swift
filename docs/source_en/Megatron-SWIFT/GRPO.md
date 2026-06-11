@@ -19,7 +19,7 @@ The following table compares the batch-related parameters between ms-swift and M
 
 | ms-swift Parameter | Megatron-SWIFT Parameter | Description |
 |-------------------|--------------------------|-------------|
-| `per_device_train_batch_size` | `micro_batch_size` | Training batch size per GPU (completion-level) |
+| `per_device_train_batch_size` | `micro_batch_size` | Training batch size per DP group (completion-level) |
 | `gradient_accumulation_steps` | - | Gradient accumulation steps, already included in `global_batch_size` calculation in Megatron-SWIFT |
 | - | `global_batch_size` | Global batch size (completion-level)<br/>**Megatron-SWIFT**: `micro_batch_size × dp_size × gradient_accumulation_steps`<br/>**ms-swift**: `per_device_train_batch_size × world_size × gradient_accumulation_steps` |
 | `num_generations` | `num_generations` | Number of completions generated per prompt |

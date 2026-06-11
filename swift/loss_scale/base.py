@@ -178,7 +178,7 @@ class ConfigLossScale(LossScale):
             return True
         return all(scale in {0.0, 1.0} for lst in self.loss_scale_map.values() for scale in lst)
 
-    def get_loss_scale(self, context: str, *, query: Optional[str] = None):
+    def get_loss_scale(self, context: str, *, query: Optional[str] = None, **kwargs):
         """Calculate loss scale using the loaded configuration.
 
         If context is a string, uses the configuration map to calculate loss scales
@@ -197,3 +197,40 @@ class ConfigLossScale(LossScale):
         if isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map)
         return super().get_loss_scale(context)
+
+
+class ConcatLossScale(LossScale):
+    """Apply multiple loss scales sequentially.
+
+    The output segments of each underlying loss scale are fed into the next one,
+    and the corresponding weights are multiplied together. This makes it possible
+    to compose strategies such as ``hermes+ignore_empty_think``.
+    """
+
+    is_binary = None
+
+    def __init__(self,
+                 loss_scales: List[LossScale],
+                 base_strategy: Literal['default', 'last_round', 'all'] = 'default'):
+        super().__init__(base_strategy)
+        assert loss_scales, 'loss_scales must be a non-empty list'
+        self.loss_scales = loss_scales
+
+    def get_loss_scale(self, context, **kwargs):
+        contexts = [context]
+        weights = [1.0]
+        for ls in self.loss_scales:
+            new_contexts: List = []
+            new_weights: List[float] = []
+            for c, w in zip(contexts, weights):
+                sub_contexts, sub_weights = ls.get_loss_scale(c, **kwargs)
+                for sc, sw in zip(sub_contexts, sub_weights):
+                    new_contexts.append(sc)
+                    new_weights.append(w * sw)
+            contexts = new_contexts
+            weights = new_weights
+        return contexts, weights
+
+    @property
+    def is_binary_loss_scale(self):
+        return all(ls.is_binary_loss_scale for ls in self.loss_scales)

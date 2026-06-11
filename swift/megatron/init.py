@@ -97,9 +97,6 @@ def _patch_unified_memory():
     if is_torch_npu_available():
         return
 
-    mcore_015 = version.parse(importlib.metadata.version('megatron-core')) >= version.parse('0.15.0rc0')
-    if not mcore_015:
-        return
     from torch.utils import cpp_extension
     load_inline = cpp_extension.load_inline
 
@@ -120,7 +117,7 @@ def _patch_unified_memory():
 
 
 def _patch_mcore_bridge():
-    require_version('mcore-bridge>=1.3.0', 'please install mcore-bridge via `pip install mcore-bridge -U`')
+    require_version('mcore-bridge>=1.4.0', 'please install mcore-bridge via `pip install mcore-bridge -U`')
     import mcore_bridge
     from mcore_bridge import GPTBridge
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')

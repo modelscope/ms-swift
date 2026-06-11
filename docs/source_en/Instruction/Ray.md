@@ -76,6 +76,15 @@ rollout:
 - **top-k**: The distillation loss is computed only over the teacher's top-k highest-probability tokens (set via `gkd_logits_topk`). Lower memory usage, but discards long-tail distribution information.
 - **full-vocab**: The distillation loss is computed over the entire vocabulary, preserving the full distribution. Higher memory usage.
 
+### Related Documentation
+
+For more details, refer to:
+
+- **GRPO Training**: [Megatron GRPO docs](../Megatron-SWIFT/GRPO.md)
+- **GKD Training**: [GKD docs](../Megatron-SWIFT/GKD.md)
+- **Megatron Parameters**: [Command-line parameters](../Megatron-SWIFT/Command-line-parameters.md)
+- **Megatron Quick Start**: [Quick Start](../Megatron-SWIFT/Quick-start.md)
+
 For detailed configuration and examples, see [examples](https://github.com/modelscope/ms-swift/tree/main/examples/ray).
 
 ## Swift Ray

@@ -4,7 +4,7 @@
 
 **Training Parameters**:
 
-- 🔥micro_batch_size: Batch size per device, default is 1.
+- 🔥micro_batch_size: Batch size per DP group, default is 1.
 - 🔥global_batch_size: Total batch size, equivalent to `micro_batch_size * data parallel size * gradient accumulation steps`. Default is 16.
   - Here, `Data Parallelism size (DP) = Total number of GPUs / (TP × PP × CP)`.
 - 🔥recompute_granularity: Granularity of activation recomputation, options are 'full', 'selective' and 'none'. 'full' means recomputing the entire transformer layer, while 'selective' means only recomputing the core attention part of the transformer layer. 'selective' is generally recommended. Default is 'selective'.
@@ -213,7 +213,6 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - 🔥moe_grouped_gemm: When each rank contains multiple experts, multiple local GEMM kernels can be launched in parallel streams to improve utilization and performance by using GroupedLinear from TransformerEngine. Default is True.
 - 🔥moe_permute_fusion: Fuses token permutation operations during token dispatch. Default is False.
 - 🔥moe_aux_loss_coeff: Defaults to 0, meaning the auxiliary loss is not used. Generally, a higher value leads to worse training performance but more balanced MoE expert utilization. Please choose an appropriate value based on experimental results.
-  - Note: For `moe_aux_loss`, when `padding_free` is set to False, versions of `megatron-core < 0.16` have an issue where routing loss is computed on padding tokens. Please refer to [this PR](https://github.com/NVIDIA/Megatron-LM/pull/2142). Additionally, please use `mcore-bridge >= 1.4.0.dev`. Please refer to [this PR](https://github.com/modelscope/mcore-bridge/pull/79).
 - moe_z_loss_coeff: Scaling coefficient for z-loss. Default is None.
 - 🔥moe_shared_expert_overlap: Enables overlap between shared expert computation and the dispatcher. If not enabled, shared expert computation will be performed after routing experts. Only effective when `moe_shared_expert_intermediate_size` is set. Default is False.
 - 🔥moe_expert_capacity_factor: Capacity factor for each expert. `None` means no tokens will be dropped. Default is `None`. When `--moe_expert_capacity_factor` is set, tokens exceeding an expert’s capacity will be dropped based on their selection probability. This can **balance the training load and improve training speed** (for example, set it to 1. or 2.).
@@ -232,9 +231,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - mhc_recompute_layer_num: Number of layers per MHC recompute block. When set, every `mhc_recompute_layer_num` layers form a recompute block. If `None`, all layers in the transformer block share a single recompute block. Defaults to `None`.
 
 **MTP Parameters**
-- mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None. (requires "megatron-core>=0.14")
-  - Note: The value of mtp_num_layers will not be automatically retrieved from config.json and must be set manually. You can refer to the `num_nextn_predict_layers`, `mtp_num_hidden_layers` field in config.json to fill in this value. When using mcore-bridge, MTP weights will be loaded from safetensors files first. If not found, random initialization will be performed. (To use blockwise fp8 + mtp, please use mcore>=0.15)
-  - Multimodal MTP support: Requires installing "mcore-bridge>=1.1.0".
+- mtp_num_layers: Number of Multi-Token Prediction (MTP) layers. MTP extends the prediction scope at each position to multiple future tokens. This MTP implementation uses D sequential modules to sequentially predict D additional tokens. Default is None.
+  - Note: The value of mtp_num_layers will not be automatically retrieved from config.json and must be set manually. You can refer to the `num_nextn_predict_layers`, `mtp_num_hidden_layers` field in config.json to fill in this value. When using mcore-bridge, MTP weights will be loaded from safetensors files first. If not found, random initialization will be performed.
 - mtp_loss_scaling_factor: Scaling factor of Multi-Token Prediction (MTP) loss. We compute the average of MTP losses across all depths, then multiply it by this scaling factor to obtain the overall MTP loss, which serves as an additional training objective. Default is 0.1.
 - mtp_decoder_input_detach: Controls whether to stop gradients through decoder_input in the MTP branch. Defaults to False. When enabled, the MTP loss will not back-propagate directly through decoder_input to the embedding/ViT, but will still update the backbone via the hidden_states pathway.
 - mtp_shared_weights: Share weights across MTP layers, following the MTP scheme proposed in GLM-5. Defaults to False. For example, you can set `--mtp_num_layers 3 --mtp_shared_weights true`.
@@ -308,6 +306,8 @@ LoRA Training:
 - 🔥task_type: Defaults to 'causal_lm'. Options are 'causal_lm', 'seq_cls', 'embedding', and 'generative_reranker'.
 - num_labels: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Represents the number of labels. Defaults to None.
 - problem_type: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Options are 'regression', 'single_label_classification', 'multi_label_classification'. Defaults to None. If the model is reward_model or num_labels is 1, this parameter is 'regression'; otherwise, it is 'single_label_classification'.
+- mrl_dims: Dimension configuration for [Matryoshka Representation Learning (MRL)](https://arxiv.org/abs/2205.13147) on embedding training. Default is None. Format is `Dict[int, float]` or a JSON string, where the key is the truncated embedding dimension and the value is the corresponding loss weight, e.g. `'{"32": 1.0, "64": 1.0, "128": 1.0}'`. When enabled, the trainer slices `last_hidden_state` to each dimension, applies L2 normalization, and aggregates the per-dimension `loss_type` losses with the configured weights. Only effective when `task_type='embedding'`.
+  - Note: The maximum supported embedding dimension is determined by `hidden_size` in the model's `config.json`. Any key-value pair whose key is greater than `hidden_size` will be silently ignored.
 - 🔥save_strategy: Saving strategy, options are 'steps' and 'epoch'. Defaults to 'steps'. When set to 'epoch', `save_steps` and `eval_steps` are automatically calculated to save at each epoch, so any user-provided values for these arguments are ignored.
 - callbacks: Custom trainer callbacks. Defaults to `[]`.
 

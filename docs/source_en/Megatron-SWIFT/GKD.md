@@ -47,7 +47,7 @@ Same as Megatron SFT, use the following parameters to control batch size:
 
 | Parameter | Description |
 |-----------|-------------|
-| `--micro_batch_size` | Training batch size per GPU |
+| `--micro_batch_size` | Training batch size per DP group |
 | `--global_batch_size` | Global batch size: `micro_batch_size × dp_size × gradient_accumulation_steps` |
 
 ## Three Training Modes
