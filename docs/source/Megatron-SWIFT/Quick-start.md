@@ -77,7 +77,7 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | torch        | >=2.0        | 2.8.0/2.11.0       |                    |
 | transformer-engine    | >=2.3       |  2.14.1    |                  |
 | apex |   |  0.1 | |
-| megatron-core    |   >=0.15,<0.18    | 0.17.1      |                  |
+| megatron-core    |   >=0.16,<0.19    | 0.17.1      |                  |
 | mcore-bridge    |    >=1.3.0    |  1.4.2    |                  |
 | flash-attn    |        | 2.8.3/4.0.0b15   |                  |
 | transformers | >=4.33       | 4.57.6/5.8.1   |                    |

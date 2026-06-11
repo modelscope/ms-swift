@@ -1,4 +1,3 @@
-# mcore>=0.15
 # 2 * 40GiB
 # dataset format: https://github.com/modelscope/ms-swift/pull/5277
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
