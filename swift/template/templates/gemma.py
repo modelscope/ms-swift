@@ -10,7 +10,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt, findall
+from ..utils import Context, Prompt, Word, findall
 from ..vision_utils import load_audio
 
 
@@ -245,6 +245,7 @@ register_template(GemmaTemplateMeta(MLLMTemplateType.gemma3n, template_cls=Gemma
 
 class Gemma4Template(Template):
     placeholder_tokens = ['<|image|>', '<|audio|>', '<|video|>']
+    non_thinking_prefix_only_after_user = True
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -343,13 +344,16 @@ class Gemma4TemplateMeta(TemplateMeta):
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<turn|>\n'])
     suffix: Prompt = field(default_factory=lambda: ['<turn|>\n'])
     system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<bos><|turn>system\n{{SYSTEM}}<turn|>\n'])
+    stop_words: List[Word] = field(default_factory=lambda: ['<eos>', '<turn|>', '<|tool_response>'])
 
 
-register_template(Gemma4TemplateMeta(MLLMTemplateType.gemma4_nothinking, template_cls=Gemma4Template))
+register_template(
+    Gemma4TemplateMeta(MLLMTemplateType.gemma4_nothinking, template_cls=Gemma4Template, agent_template='gemma4'))
 
 register_template(
     Gemma4TemplateMeta(
         MLLMTemplateType.gemma4,
         template_cls=Gemma4Template,
+        agent_template='gemma4',
         is_thinking=True,
         non_thinking_prefix='<|channel>thought\n<channel|>'))
