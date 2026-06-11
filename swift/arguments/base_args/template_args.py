@@ -69,6 +69,9 @@ class TemplateArguments:
             [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
             ms-swift supports mixing basic strategies with other strategies,
             for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`.
+            Multiple non-base strategies can also be chained together (applied sequentially with their
+            weights multiplied), for example: `'hermes+ignore_empty_think'`,
+            `'last_round+hermes+ignore_empty_think'`.
             If no basic strategy is specified, it defaults to 'default',
             for example: 'hermes' is equivalent to 'default+hermes'.
             - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss
