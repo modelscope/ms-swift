@@ -23,7 +23,9 @@ def _test_client(port=8000):
 
 def _test(infer_backend):
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+    from swift.utils import select_device
+    select_device('0')
 
     from swift.arguments import DeployArguments
     from swift.pipelines import run_deploy

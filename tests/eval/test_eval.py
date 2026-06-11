@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+from swift.utils import select_device
+
+select_device('3')
 
 infer_backend = 'transformers'
 

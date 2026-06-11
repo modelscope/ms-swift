@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from swift.utils import select_device
+
+select_device('0')
 os.environ['SWIFT_DEBUG'] = '1'
 
 
