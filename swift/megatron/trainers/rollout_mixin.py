@@ -440,7 +440,8 @@ class MegatronRolloutMixin:
             finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
-            self.vllm_client.process_weights_after_loading()
+            if self.is_main_process:
+                self.vllm_client.process_weights_after_loading()
 
     def _get_vllm_param_names_for_mapping(self):
         """Get vLLM runtime parameter names for base_layer mapping.

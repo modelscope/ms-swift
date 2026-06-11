@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from swift.utils import select_device
+
+select_device('0')
 
 
 def _infer_audio(model, use_chat_template: bool = True, max_model_len=8192, system=None, limit_mm_per_prompt=None):

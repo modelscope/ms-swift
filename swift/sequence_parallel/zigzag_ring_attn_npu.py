@@ -3,7 +3,7 @@
 import torch
 from functools import cache
 
-from .utils import RingComm
+from .ring_utils import RingComm
 
 _NPU_BLOCK_MASK_SIZE = 2048
 _NPU_FULL_TOKENS = 2147483647

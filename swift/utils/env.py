@@ -84,6 +84,11 @@ def is_mp_ddp() -> bool:
     return False
 
 
+def select_device(device_ids='0'):
+    os.environ['CUDA_VISIBLE_DEVICES'] = device_ids
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = device_ids
+
+
 def is_pai_training_job() -> bool:
     return 'PAI_TRAINING_JOB_ID' in os.environ
 

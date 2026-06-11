@@ -308,6 +308,8 @@ LoRA Training:
 - 🔥task_type: Defaults to 'causal_lm'. Options are 'causal_lm', 'seq_cls', 'embedding', and 'generative_reranker'.
 - num_labels: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Represents the number of labels. Defaults to None.
 - problem_type: This parameter needs to be specified for classification models (i.e., `--task_type seq_cls`). Options are 'regression', 'single_label_classification', 'multi_label_classification'. Defaults to None. If the model is reward_model or num_labels is 1, this parameter is 'regression'; otherwise, it is 'single_label_classification'.
+- mrl_dims: Dimension configuration for [Matryoshka Representation Learning (MRL)](https://arxiv.org/abs/2205.13147) on embedding training. Default is None. Format is `Dict[int, float]` or a JSON string, where the key is the truncated embedding dimension and the value is the corresponding loss weight, e.g. `'{"32": 1.0, "64": 1.0, "128": 1.0}'`. When enabled, the trainer slices `last_hidden_state` to each dimension, applies L2 normalization, and aggregates the per-dimension `loss_type` losses with the configured weights. Only effective when `task_type='embedding'`.
+  - Note: The maximum supported embedding dimension is determined by `hidden_size` in the model's `config.json`. Any key-value pair whose key is greater than `hidden_size` will be silently ignored.
 - 🔥save_strategy: Saving strategy, options are 'steps' and 'epoch'. Defaults to 'steps'. When set to 'epoch', `save_steps` and `eval_steps` are automatically calculated to save at each epoch, so any user-provided values for these arguments are ignored.
 - callbacks: Custom trainer callbacks. Defaults to `[]`.
 
