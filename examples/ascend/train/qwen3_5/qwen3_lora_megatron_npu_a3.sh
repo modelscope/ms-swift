@@ -1,21 +1,18 @@
 # 16 * 64GiB Ascend A3
+export USE_MCORE_GDN=0
 
-# NPU stability environment variables
 export HCCL_OP_BASE_FFTS_MODE_ENABLE=TRUE
 export MULTI_STREAM_MEMORY_REUSE=1
-# NPU memory management environment variables
 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
-# NPU performance environment variables
 export TASK_QUEUE_ENABLE=2
 
-NPROC_PER_NODE=8 \
-ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+MASTER_PORT=29609 \
+NPROC_PER_NODE=16 \
 megatron sft \
     --model Qwen/Qwen3.5-35B-A3B \
-    --save_safetensors true \
-    --dataset 'AI-ModelScope/alpaca-gpt4-data-zh#500' \
-              'AI-ModelScope/alpaca-gpt4-data-en#500' \
-              'swift/self-cognition#500' \
+    --save_safetensors false \
+    --dataset 'AI-ModelScope/MAmmoTH-VL-Instruct-12M#1000' \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -33,7 +30,7 @@ megatron sft \
     --recompute_num_layers 1 \
     \
     --micro_batch_size 1 \
-    --global_batch_size 8 \
+    --global_batch_size 16 \
     --finetune true \
     --cross_entropy_loss_fusion true \
     --gradient_accumulation_fusion false \
@@ -42,11 +39,11 @@ megatron sft \
     --lr 1e-4 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-5 \
-    --num_train_epochs 16 \
+    --num_train_epochs 32 \
     \
-    --output_dir output/Qwen3.5-35B-A3B \
+    --output_dir /Qwen3.5-35B-A3B \
     --save_steps 2000 \
-    --max_length 1024 \
+    --max_length 4096 \
     --system 'You are a helpful assistant.' \
     \
     --dataloader_num_workers 4 \
