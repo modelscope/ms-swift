@@ -28,6 +28,15 @@ def add_train_message(logs, state, start_time, start_step) -> None:
     if state.max_memory:
         logs['memory(GiB)'] = round(state.max_memory, 2)
     logs['train_speed(s/it)'] = round(train_speed, 6)
+    num_tokens = getattr(state, 'num_tokens', None)
+    if num_tokens is not None:
+        num_tokens = float(num_tokens)
+        if dist.is_initialized():
+            num_tokens = torch.tensor(num_tokens)
+            dist.all_reduce(num_tokens, op=dist.ReduceOp.SUM)
+        tps = num_tokens / elapsed
+        logs['num_input_tokens_seen'] = round(num_tokens, 6)
+        logs['train_speed(tokens/s)'] = round(tps, 6)
 
 
 class ProgressCallbackNew(ProgressCallback):
@@ -50,6 +59,10 @@ class ProgressCallbackNew(ProgressCallback):
 
     def on_log(self, args: TrainingArguments, state: TrainerState, control, logs=None, **kwargs):
         add_train_message(logs, state, self.start_time, self.start_step)
+        n_steps = state.global_step - self.current_step
+        num_tokens = logs.pop('num_tokens', None)
+        if num_tokens is not None and n_steps > 0:
+            logs['']
         if not is_pai_training_job() and state.is_world_process_zero:
             jsonl_path = os.path.join(args.output_dir, 'logging.jsonl')
             append_to_jsonl(jsonl_path, logs)

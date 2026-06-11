@@ -1640,6 +1640,7 @@ class Template(ProcessorMixin):
         if self.packing and isinstance(batch[0], list):
             batch = sum(batch, start=[])
         num_samples = len(batch)
+        num_tokens = sum(sum([b['lengths'] for b in batch], start=[]))
         if self.task_type == 'causal_lm':
             if self.mode in {'transformers', 'train'}:
                 res = self._data_collator(batch, padding_to=padding_to)
@@ -1668,6 +1669,7 @@ class Template(ProcessorMixin):
             num_samples = res.pop('num_samples')
         if self.use_megatron:
             res['num_samples'] = num_samples
+        res['num_tokens'] = num_tokens
         return res
 
     @staticmethod

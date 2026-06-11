@@ -4,6 +4,7 @@ import time
 import torch
 import torch.distributed as dist
 from abc import ABC, abstractmethod
+from typing import Literal
 
 from swift.utils import get_current_device, get_logger
 
@@ -72,7 +73,7 @@ class InferStats(Metric):
 
 class MeanMetric(Metric):
 
-    def __init__(self, nan_value=0, device=None, group=None):
+    def __init__(self, nan_value=0, device=None, group=None, reduction: Literal['sum', 'mean'] = 'mean'):
         super().__init__()
         self.nan_value = nan_value
         self.add_state('state', default=0.)
@@ -81,6 +82,7 @@ class MeanMetric(Metric):
             device = get_current_device()
         self.device = device
         self.group = group
+        self.reduction = reduction
 
     def update(self, state: torch.Tensor):
         if isinstance(state, (torch.Tensor, np.ndarray)):
@@ -104,10 +106,11 @@ class MeanMetric(Metric):
             tensor = torch.tensor([self.state, self.count], device=self.device)
             dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=self.group)
             self.state, self.count = tensor[0].item(), int(tensor[1].item())
-        if self.count == 0:
-            value = self.nan_value
+        if reduction == 'sum':
+            value = self.state
         else:
-            value = self.state / self.count
-        return {
-            'value': value,
-        }
+            if self.count == 0:
+                value = self.nan_value
+            else:
+                value = self.state / self.count
+        return {'value': value}
