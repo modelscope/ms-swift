@@ -68,6 +68,11 @@ class Template(ProcessorMixin):
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
     jinja_enable_thinking_key = 'enable_thinking'
+    # If True, only inject non_thinking_prefix when the previous turn is a 'user' turn.
+    # Set this in subclasses where thinking / tool_call / tool_response / follow-up
+    # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
+    # the assistant turn after a tool_response should NOT open a new thinking block.
+    non_thinking_prefix_only_after_user: bool = False
 
     is_encoder_decoder = False
 
@@ -1153,7 +1158,11 @@ class Template(ProcessorMixin):
 
     def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
         message = messages[i]
-        return i >= start_idx and message['role'] == 'assistant'
+        if not (i >= start_idx and message['role'] == 'assistant'):
+            return False
+        if self.non_thinking_prefix_only_after_user and not (i > 0 and messages[i - 1]['role'] == 'user'):
+            return False
+        return True
 
     def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think>') -> None:
         messages = inputs.messages
