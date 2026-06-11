@@ -1,7 +1,9 @@
 import os
 from typing import Literal
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from swift.utils import select_device
+
+select_device('0')
 
 
 def test_llm_quant(quant_method: Literal['gptq', 'awq'] = 'awq'):
@@ -66,6 +68,32 @@ def test_fp8():
     infer_main(InferArguments(model='Qwen2.5-3B-Instruct-fp8'))
 
 
+def test_lora_merge_export_minimal():
+    from swift import ExportArguments, InferArguments, SftArguments, export_main, infer_main, sft_main
+    result = sft_main(
+        SftArguments(
+            model='Qwen/Qwen2-0.5B',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-zh#20'],
+            max_steps=2,
+            per_device_train_batch_size=1,
+            gradient_accumulation_steps=1,
+            save_steps=2,
+            split_dataset_ratio=0.01,
+            tuner_type='lora',
+            logging_steps=1,
+            output_dir='output/test_lora_merge_export'))
+    last_model_checkpoint = result['last_model_checkpoint']
+    merge_output_dir = 'output/test_lora_merge_export_merged'
+    export_main(
+        ExportArguments(
+            adapters=last_model_checkpoint,
+            merge_lora=True,
+            output_dir=merge_output_dir,
+            exist_ok=True,
+        ))
+    infer_main(InferArguments(model=merge_output_dir, load_data_args=True, max_batch_size=2))
+
+
 if __name__ == '__main__':
     # test_llm_quant('gptq')
     # test_vlm_quant('gptq')
@@ -74,3 +102,4 @@ if __name__ == '__main__':
     # test_bert()
     # test_reward_model()
     test_fp8()
+    # test_lora_merge_export_minimal()
