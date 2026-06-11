@@ -127,6 +127,7 @@
   - 'all': 计算所有tokens的损失。（**`swift pt`默认为该值**）
   - 'ignore_empty_think': 忽略空的`'<think>\n\n</think>\n\n'`损失计算。（满足正则匹配`'<think>\\s*</think>\\s*'`即可）。
   - 'react', 'hermes', 'qwen': 将`tool_call`部分的loss权重调整为2。
+  - 注意：在"ms-swift>=4.4.0"，支持了多个非基本策略串联使用（依次处理上一个策略的输出片段，权重相乘），例如：`'last_round+hermes+ignore_empty_think'`，其中'last_round'为基础策略，'hermes+ignore_empty_think'为多个非基本策略的串联使用，共用基础策略。
 - is_binary_loss_scale: 当loss_scale只可能为0/1时，该语义可被labels替代，将loss_scale为0的部分的labels设置为-100，从而兼容liger_kernel降低显存。默认为None，进行自动设置。
 - sequence_parallel_size: 序列并行大小，默认是1。当前支持CPT/SFT/DPO/GRPO。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/sequence_parallel)。
 - template_backend: 选择template后端，可选为'swift'、'jinja'，默认为'swift'。如果使用jinja，则使用transformers的`apply_chat_template`。
