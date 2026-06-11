@@ -296,7 +296,47 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     return frames
 
 
-def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
+def _decode_worker(queue, func, args, kwargs):
+    try:
+        queue.put((True, func(*args, **kwargs)))
+    except Exception as e:
+        queue.put((False, e))
+
+
+def _decode_with_timeout(func: Callable[..., _T], *args, **kwargs) -> _T:
+    # Native media decoders (audioread/ffmpeg, decord) can deadlock in C while holding the GIL on a
+    # corrupt/unsupported clip, silently hanging a DataLoader worker forever; a signal-based timeout
+    # can't interrupt them. When `MEDIA_DECODE_TIMEOUT` (seconds) > 0, decode in a killable subprocess.
+    timeout = get_env_args('media_decode_timeout', float, 0)
+    if not timeout or timeout <= 0:
+        return func(*args, **kwargs)
+    import multiprocessing as mp
+
+    # Fork the decode worker: load_audio runs inside the data pipeline where fork is already the
+    # norm (PyTorch DataLoader), and unlike forkserver/spawn it does not re-import the training
+    # entrypoint per call. Fall back to the default context where fork is unavailable.
+    try:
+        ctx = mp.get_context('fork')
+    except ValueError:
+        ctx = mp.get_context()
+    queue = ctx.SimpleQueue()
+    process = ctx.Process(target=_decode_worker, args=(queue, func, args, kwargs))
+    process.start()
+    process.join(timeout)
+    if process.is_alive():
+        process.terminate()
+        process.join()
+        raise TimeoutError(f'Media decode exceeded MEDIA_DECODE_TIMEOUT={timeout}s and was killed '
+                           '(likely a corrupt or unsupported clip).')
+    if process.exitcode != 0:
+        raise RuntimeError(f'Media decode subprocess exited abnormally (exitcode={process.exitcode}).')
+    ok, payload = queue.get()
+    if not ok:
+        raise payload
+    return payload
+
+
+def _load_audio(audio: Union[str, bytes], sampling_rate: int):
     import librosa
     try:
         audio_io = load_file(audio)
@@ -308,6 +348,11 @@ def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = F
         else:
             audio_io = _check_path(audio) or audio
         res = librosa.load(audio_io, sr=sampling_rate)
+    return res
+
+
+def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
+    res = _decode_with_timeout(_load_audio, audio, sampling_rate)
     return res if return_sr else res[0]
 
 
