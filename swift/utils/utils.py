@@ -537,8 +537,8 @@ def to_abspath(path: Union[str, List[str], None], check_path_exist: bool = False
 
 
 def swanlab_get_run():
-    import swanlab
     try:
+        import swanlab
         return swanlab.get_run()
-    except RuntimeError:
+    except (RuntimeError, ImportError):
         return None
