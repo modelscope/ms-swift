@@ -1,4 +1,4 @@
-# 16 * 64GiB Ascend A3
+# 8 * 64GiB Ascend A3
 
 # NPU stability environment variables
 export HCCL_OP_BASE_FFTS_MODE_ENABLE=TRUE
