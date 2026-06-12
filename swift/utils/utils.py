@@ -183,6 +183,12 @@ def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[
     return args, remaining_args
 
 
+def parse_args_from_dict(class_type: Type[_T], args: Dict[str, Any]) -> _T:
+    with _patch_get_type_hints():
+        parser = HfArgumentParser([class_type])
+    return parser.parse_dict(args, allow_extra_keys=True)[0]
+
+
 def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
     # The lower bound satisfying the condition "cond".
     while lo < hi:
