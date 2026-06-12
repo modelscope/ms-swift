@@ -15,7 +15,7 @@ NPROC_PER_NODE=16 \
 megatron sft \
     --model Qwen/Qwen3-Omni-30B-A3B-Instruct \
     --save_safetensors false \
-    --dataset AI-ModelScope/MAmmoTH-VL-Instruct-12M \
+    --dataset 'AI-ModelScope/MAmmoTH-VL-Instruct-12M#1000' \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
