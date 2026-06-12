@@ -283,14 +283,6 @@ When running Qwen3.5 with Megatron-SWIFT on NPU, note the following version and 
 
    - The transformers GDN implementation does not support packing, nor TP/CP
      for the GDN layer.
-   - Under the NPU + flash-attn combination, the transformers GDN
-     implementation also has a known mask-routing issue: when
-     `padding_free=False`, GDN ends up reading the `attention_mask` that has
-     already been transformed by the trainer instead of the `attention_mask_2d`
-     it actually needs, which triggers an asynchronous
-     `aclnnFlashAttentionScore` failure. This has been fixed on the
-     `qwen3_5_npu` branch of `mcore-bridge`; NPU users must therefore install
-     a version that includes the fix.
 
 2. When using the native 0.16 GDN path with `USE_MCORE_GDN=1`, do not apply
    the fallback-only limitations above to that path. The native path's packing,

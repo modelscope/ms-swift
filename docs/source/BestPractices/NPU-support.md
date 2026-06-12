@@ -271,7 +271,6 @@ Qwen3.5 modeling.chunk_gated_delta_rule
 1. 当前 NPU 文档中约定的 MindSpeed 训练组合是 `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`。在这个组合下，`megatron-core` 已包含 `core.ssm.gated_delta_net` 原生 GDN 内核，`mcore-bridge` 默认会按 `USE_MCORE_GDN=1` 走 Megatron-Core/MindSpeed GDN 路径。只有在需要主动回退到 transformers 版 GDN 时，才需要显式设置 `USE_MCORE_GDN=0`，将 GDN 切回由 `mcore-bridge` 包装的 transformers 原生实现，再配合 ms-swift 内置的 Qwen3.5 FLA NPU 补丁，把 `chunk_gated_delta_rule` 重定向到 MindSpeed Triton 算子。这条回退路径的已知代价是：
 
    - transformers 版 GDN 不支持 packing，也不支持 GDN 的 TP/CP。
-   - transformers 版 GDN 在 NPU + flash-attn 组合下还有一个已知 mask 链路问题：`padding_free=False` 时，GDN 会读到 trainer 处理后的 `attention_mask`，而不是实际需要的 `attention_mask_2d`，从而触发 `aclnnFlashAttentionScore` 异步报错。该问题已在 `mcore-bridge` 的 `qwen3_5_npu` 分支修复，NPU 用户需要使用包含该修复的版本。
 
 2. 如果使用 `USE_MCORE_GDN=1` 的 0.16 原生 GDN 路径，上述限制不应套用到该路径；原生路径的 packing、TP/CP、mask 链路和并行组合仍需以当前 MindSpeed/Megatron-LM、mcore-bridge 与目标脚本的实际验证为准。
 
