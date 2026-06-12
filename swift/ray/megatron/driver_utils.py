@@ -10,6 +10,7 @@ particular trainer class:
 * extracting the canonical iteration from worker results
 """
 import json
+import os
 import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
@@ -176,8 +177,6 @@ def build_dataset_from_dict(cfg: Dict[str, Any]):
     ``get_template``, ``get_dataset_kwargs``) so no distributed init
     or Megatron-specific ``__post_init__`` logic is triggered.
     """
-    import os
-
     from swift.megatron.arguments import MegatronRLHFArguments
     from swift.rlhf_trainers.utils import identity_data_collator
     cfg = dict(cfg)
