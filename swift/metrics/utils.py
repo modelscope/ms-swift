@@ -101,7 +101,7 @@ class MeanMetric(Metric):
 
     def compute(self):
         if dist.is_initialized():
-            tensor = torch.tensor([self.state, self.count], device=self.device)
+            tensor = torch.tensor([self.state, self.count], dtype=torch.float64, device=self.device)
             dist.all_reduce(tensor, op=dist.ReduceOp.SUM, group=self.group)
             self.state, self.count = tensor[0].item(), int(tensor[1].item())
         if self.count == 0:
