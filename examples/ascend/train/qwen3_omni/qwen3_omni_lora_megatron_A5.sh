@@ -6,7 +6,7 @@ export TASK_QUEUE_ENABLE=2
 export HCCL_CONNECT_TIMEOUT=600
 
 MODEL_PATH=Qwen/Qwen3-Omni-30B-A3B-Instruct
-DATASET_PATH=AI-ModelScope/MAmmoTH-VL-Instruct-12M
+DATASET_PATH='AI-ModelScope/MAmmoTH-VL-Instruct-12M#1000'
 
 NPROC_PER_NODE=8 \
 megatron sft \
