@@ -12,9 +12,10 @@ particular trainer class:
 import json
 import torch
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from swift.utils.logger import get_logger
+from swift.arguments import BaseArguments
+from swift.utils import get_logger, parse_args, seed_everything, to_abspath
 
 logger = get_logger()
 
@@ -29,8 +30,6 @@ _PARALLEL_DEFAULTS: Dict[str, Any] = {
 
 def parse_args_from_dict(class_type, cfg: Dict[str, Any]):
     """Construct a dataclass from a config dict via HfArgumentParser."""
-    from swift.utils import parse_args
-
     argv = _dict_to_argv(cfg)
     args, remaining_args = parse_args(class_type, argv)
     if remaining_args:
@@ -181,8 +180,6 @@ def build_dataset_from_dict(cfg: Dict[str, Any]):
 
     from swift.megatron.arguments import MegatronRLHFArguments
     from swift.rlhf_trainers.utils import identity_data_collator
-    from swift.utils import seed_everything, to_abspath
-
     cfg = dict(cfg)
     cfg['skip_megatron_init'] = True
     args = parse_args_from_dict(MegatronRLHFArguments, cfg)
@@ -202,7 +199,7 @@ def build_dataset_from_dict(cfg: Dict[str, Any]):
         _, processor = args.get_model_processor(load_model=False, download_model=args.mcore_model is None)
 
     template = _prepare_template(args, processor)
-    train_dataset, val_dataset = _prepare_dataset(args, template)
+    train_dataset, val_dataset = _prepare_dataset(args)
 
     data_collator = identity_data_collator if rlhf_type in ('grpo', 'gkd') else template.data_collator
 
@@ -233,10 +230,8 @@ def _prepare_template(args, processor):
     return template
 
 
-def _prepare_dataset(args, template):
+def _prepare_dataset(args: BaseArguments):
     """Load and optionally encode dataset — no pipeline object needed."""
-    from swift.dataset import DatasetLoader, load_dataset
-
     # Ray pipeline has no validation/eval loop yet
     if args.split_dataset_ratio and args.split_dataset_ratio > 0:
         logger.warning(
@@ -247,46 +242,8 @@ def _prepare_dataset(args, template):
         logger.warning('Ray pipeline has no validation loop yet; ignoring val_dataset=%s.', args.val_dataset)
         args.val_dataset = []
 
-    pre_process = args.rlhf_type not in ('grpo', 'gkd')
-    train_datasets, val_datasets = [], []
-
-    if args.dataset or args.val_dataset:
-        dataset_kwargs = args.get_dataset_kwargs()
-        train_dataset, val_dataset = None, None
-        if args.dataset:
-            train_dataset, val_dataset = load_dataset(
-                args.dataset,
-                split_dataset_ratio=args.split_dataset_ratio,
-                shuffle=args.dataset_shuffle,
-                **dataset_kwargs)
-        if args.val_dataset:
-            _, val_dataset = load_dataset(
-                args.val_dataset, split_dataset_ratio=1.0, shuffle=args.val_dataset_shuffle, **dataset_kwargs)
-
-        if not pre_process:
-            return train_dataset, val_dataset
-
-        from swift.dataset import AddLengthPreprocessor
-        for i, ds in enumerate([train_dataset, val_dataset]):
-            if ds is None:
-                continue
-            if not args.lazy_tokenize and not args.streaming:
-                preprocessor = AddLengthPreprocessor(template=template)
-                batch_size = 100 if args.model_meta.is_multimodal else 1000
-                ds = preprocessor(
-                    ds,
-                    num_proc=args.dataset_num_proc,
-                    load_from_cache_file=args.load_from_cache_file,
-                    strict=args.strict,
-                    batch_size=batch_size)
-            if i == 0:
-                train_datasets.append(ds)
-            else:
-                val_datasets.append(ds)
-
-    train_dataset = DatasetLoader.concat_datasets(train_datasets) if train_datasets else None
-    val_dataset = DatasetLoader.concat_datasets(val_datasets) if val_datasets else None
-    return train_dataset, val_dataset
+    assert args.rlhf_type in ('grpo', 'gkd')
+    return args.load_dataset()
 
 
 def compute_iter_params(data_info: Dict[str, Any], dp_size: int) -> Dict[str, Any]:
