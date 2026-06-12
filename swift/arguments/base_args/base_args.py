@@ -12,6 +12,7 @@ from swift.hub import get_hub
 from swift.model import get_ckpt_dir, get_model_processor, load_by_unsloth
 from swift.ray_utils import RayArguments
 from swift.template import Template, get_template
+from swift.dataset import load_dataset
 from swift.tuner_plugin import tuners_map
 from swift.utils import (Processor, check_json_format, get_dist_setting, get_logger, import_external_file, is_dist,
                          is_master, json_parse_to_dict, safe_snapshot_download, set_device, use_hf_hub)
@@ -342,3 +343,20 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         res['num_labels'] = num_labels or self.num_labels
 
         return get_model_processor(**res)
+
+    def load_dataset(self):
+        dataset_kwargs = self.get_dataset_kwargs()
+        train_dataset, val_dataset = None, None
+        if self.dataset:
+            train_dataset, val_dataset = load_dataset(
+                self.dataset,
+                split_dataset_ratio=self.split_dataset_ratio,
+                shuffle=self.dataset_shuffle,
+                **dataset_kwargs)
+        if len(self.val_dataset) > 0:
+            # Loading val dataset
+            dataset_kwargs.pop('interleave_prob', None)
+            _, val_dataset = load_dataset(
+                self.val_dataset, split_dataset_ratio=1.0, shuffle=self.val_dataset_shuffle, **dataset_kwargs)
+            assert self.split_dataset_ratio == 0.
+        return train_dataset, val_dataset
