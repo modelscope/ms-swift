@@ -28,8 +28,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar
 from swift.template import Messages
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
-                         get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, synchronize,
-                         to_device)
+                         get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, swanlab_get_run,
+                         synchronize, to_device)
 
 if is_wandb_available():
     import wandb
@@ -607,7 +607,7 @@ def profiling_context(trainer, name: str):
     if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
         wandb.log(profiling_metrics, commit=False)
 
-    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and is_main_process:
+    if 'swanlab' in trainer.args.report_to and swanlab_get_run() is not None and is_main_process:
         swanlab.log(profiling_metrics)
 
 

@@ -29,5 +29,5 @@ from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, f
 from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
                     find_node_ip, format_time, get_env_args, import_external_file, json_parse_to_dict, lower_bound,
                     parse_args, patch_getattr, read_multi_line, remove_response, retry_decorator, seed_everything,
-                    shutdown_event_loop_in_daemon, split_list, start_event_loop_in_daemon, subprocess_run, test_time,
-                    to_abspath, upper_bound)
+                    shutdown_event_loop_in_daemon, split_list, start_event_loop_in_daemon, subprocess_run,
+                    swanlab_get_run, test_time, to_abspath, upper_bound)

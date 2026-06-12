@@ -528,3 +528,11 @@ def to_abspath(path: Union[str, List[str], None], check_path_exist: bool = False
     for v in path:
         res.append(to_abspath(v, check_path_exist))
     return res
+
+
+def swanlab_get_run():
+    import swanlab
+    try:
+        return swanlab.get_run()
+    except RuntimeError:
+        return None
