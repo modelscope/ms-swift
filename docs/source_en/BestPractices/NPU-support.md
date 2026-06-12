@@ -204,7 +204,7 @@ If you need MindSpeed(Megatron-LM), install the required dependencies as follows
 # 1. Clone Megatron-LM and switch to v0.16.0
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout v0.16.0
+git checkout core_v0.16.0
 cd ..
 
 # 2. Clone and install MindSpeed
@@ -271,29 +271,24 @@ Therefore:
 When running Qwen3.5 with Megatron-SWIFT on NPU, note the following version and feature constraints:
 
 1. The MindSpeed training combination currently pinned by the NPU documentation
-   is `Megatron-LM v0.15.3 + MindSpeed core_r0.15.3`. This version of
-   `megatron-core` does not yet ship the native GDN kernel
-   `core.ssm.gated_delta_net` introduced in `0.16`. As a result, you must
-   override the default and explicitly set `USE_MCORE_GDN=0`, which switches
-   GDN back to the transformers-native implementation wrapped by
-   `mcore-bridge`. Combined with ms-swift's built-in Qwen3.5 FLA NPU patch,
-   `chunk_gated_delta_rule` is then redirected to MindSpeed's Triton kernels.
-   The known costs of this fallback path are:
+   is `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`. With this combination,
+   `megatron-core` already ships the native GDN kernel
+   `core.ssm.gated_delta_net`, and `mcore-bridge` defaults to the
+   Megatron-Core/MindSpeed GDN path with `USE_MCORE_GDN=1`. Set
+   `USE_MCORE_GDN=0` only when you intentionally need to fall back to the
+   transformers-native GDN implementation wrapped by `mcore-bridge`. Combined
+   with ms-swift's built-in Qwen3.5 FLA NPU patch, `chunk_gated_delta_rule` is
+   then redirected to MindSpeed's Triton kernels. The known costs of this
+   fallback path are:
 
    - The transformers GDN implementation does not support packing, nor TP/CP
      for the GDN layer.
-   - Under the NPU + flash-attn combination, the transformers GDN
-     implementation also has a known mask-routing issue: when
-     `padding_free=False`, GDN ends up reading the `attention_mask` that has
-     already been transformed by the trainer instead of the `attention_mask_2d`
-     it actually needs, which triggers an asynchronous
-     `aclnnFlashAttentionScore` failure. This has been fixed on the
-     `qwen3_5_npu` branch of `mcore-bridge`; NPU users must therefore install
-     a version that includes the fix.
 
-2. Once MindSpeed ships a `core_r0.16.x` adaptation branch, both constraints
-   — the required `USE_MCORE_GDN=0` override and the feature limitations of
-   the transformers GDN implementation — can be lifted together.
+2. When using the native 0.16 GDN path with `USE_MCORE_GDN=1`, do not apply
+   the fallback-only limitations above to that path. The native path's packing,
+   TP/CP, mask routing, and parallel combinations should still be verified
+   against the current MindSpeed/Megatron-LM, mcore-bridge, and target script
+   combination.
 
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
