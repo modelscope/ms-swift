@@ -9,6 +9,7 @@ MODEL_PATH=Qwen/Qwen3-Omni-30B-A3B-Instruct
 DATASET_PATH='AI-ModelScope/MAmmoTH-VL-Instruct-12M#1000'
 
 NPROC_PER_NODE=8 \
+ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 megatron sft \
     --model ${MODEL_PATH} \
     --save_safetensors false \
