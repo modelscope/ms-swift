@@ -202,7 +202,7 @@ print(torch.randn(10, device='npu:0'))
 # 1. 获取并切换 Megatron-LM 至 v0.16.0 版本
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout v0.16.0
+git checkout core_v0.16.0
 cd ..
 
 # 2. 获取并安装 MindSpeed

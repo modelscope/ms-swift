@@ -204,7 +204,7 @@ If you need MindSpeed(Megatron-LM), install the required dependencies as follows
 # 1. Clone Megatron-LM and switch to v0.16.0
 git clone https://github.com/NVIDIA/Megatron-LM.git
 cd Megatron-LM
-git checkout v0.16.0
+git checkout core_v0.16.0
 cd ..
 
 # 2. Clone and install MindSpeed
