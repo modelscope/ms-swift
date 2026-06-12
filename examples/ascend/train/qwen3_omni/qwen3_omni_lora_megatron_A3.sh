@@ -13,7 +13,7 @@ export TASK_QUEUE_ENABLE=2
 export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
 NPROC_PER_NODE=16 \
 megatron sft \
-    --model Qwen/Qwen3-Omni-30B-A3B-Instruct\
+    --model Qwen/Qwen3-Omni-30B-A3B-Instruct \
     --save_safetensors false \
     --dataset AI-ModelScope/MAmmoTH-VL-Instruct-12M \
     --tuner_type lora \
