@@ -5,7 +5,7 @@ from typing import List, Optional, Union
 
 from swift.arguments import SftArguments
 from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
-                           LazyLLMDataset, PackingDataset, load_dataset)
+                           LazyLLMDataset, PackingDataset)
 from swift.infer_engine import prepare_generation_config
 from swift.ray_utils import RayHelper
 from swift.sequence_parallel import sequence_parallel
@@ -78,20 +78,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
     def _get_dataset(self):
         # The random shuffling of the training set occurs in the dataloader of the trainer.
         args = self.args
-        dataset_kwargs = args.get_dataset_kwargs()
-        train_dataset, val_dataset = None, None
-        if args.dataset:
-            train_dataset, val_dataset = load_dataset(
-                args.dataset,
-                split_dataset_ratio=args.split_dataset_ratio,
-                shuffle=args.dataset_shuffle,
-                **dataset_kwargs)
-        if len(args.val_dataset) > 0:
-            # Loading val dataset
-            dataset_kwargs.pop('interleave_prob', None)
-            _, val_dataset = load_dataset(
-                args.val_dataset, split_dataset_ratio=1.0, shuffle=args.val_dataset_shuffle, **dataset_kwargs)
-            assert args.split_dataset_ratio == 0.
+        train_dataset, val_dataset = args.load_dataset()
         if args.truncation_strategy == 'split':
             logger.info(f'train_dataset: {train_dataset}')
             logger.info(f'val_dataset: {val_dataset}')
