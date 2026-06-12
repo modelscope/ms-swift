@@ -298,7 +298,10 @@ class Gemma4Template(Template):
 
         idx_list = []
         for key in ['image', 'video', 'audio']:
-            idx_list += findall(input_ids, getattr(self.config, f'{key}_token_id'))
+            token_id = getattr(self.config, f'{key}_token_id', None)
+            if token_id is None:
+                continue
+            idx_list += findall(input_ids, token_id)
         sorted_order = sorted(range(len(idx_list)), key=lambda i: idx_list[i])
         idx_list = [idx_list[i] for i in sorted_order]
         splited_tokens = [splited_tokens[i] for i in sorted_order]
@@ -353,6 +356,14 @@ register_template(
 register_template(
     Gemma4TemplateMeta(
         MLLMTemplateType.gemma4,
+        template_cls=Gemma4Template,
+        agent_template='gemma4',
+        is_thinking=True,
+        non_thinking_prefix='<|channel>thought\n<channel|>'))
+
+register_template(
+    Gemma4TemplateMeta(
+        MLLMTemplateType.diffusion_gemma,
         template_cls=Gemma4Template,
         agent_template='gemma4',
         is_thinking=True,

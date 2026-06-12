@@ -479,3 +479,27 @@ register_model(
         model_arch=ModelArch.gemma4_unified,
         requires=['transformers>=5.10.1'],
     ))
+
+
+class DiffusionGemmaLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import DiffusionGemmaForBlockDiffusion
+        self.auto_model_cls = self.auto_model_cls or DiffusionGemmaForBlockDiffusion
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.diffusion_gemma,
+        [
+            ModelGroup([
+                Model('google/diffusiongemma-26B-A4B-it', 'google/diffusiongemma-26B-A4B-it'),
+            ],
+                       template=TemplateType.diffusion_gemma),
+        ],
+        DiffusionGemmaLoader,
+        architectures=['DiffusionGemmaForBlockDiffusion'],
+        model_arch=ModelArch.diffusion_gemma,
+        requires=['transformers>=5.11'],
+    ))
