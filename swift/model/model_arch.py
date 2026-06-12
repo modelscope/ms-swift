@@ -763,9 +763,9 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.diffusion_gemma,
-        language_model=['model.model.encoder.language_model', 'model.model.decoder', 'lm_head'],
-        vision_tower=['model.model.encoder.vision_tower'],
-        aligner=['model.model.encoder.embed_vision'],
+        language_model=['model.encoder.language_model', 'model.decoder', 'lm_head'],
+        vision_tower=['model.encoder.vision_tower'],
+        aligner=['model.encoder.embed_vision'],
     ))
 
 register_model_arch(

@@ -361,10 +361,17 @@ register_template(
         is_thinking=True,
         non_thinking_prefix='<|channel>thought\n<channel|>'))
 
+
+class DiffusionGemmaTemplate(Gemma4Template):
+    # Code reference: https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/DiffusionGemma_(26B-A4B)-Sudoku.ipynb  # noqa
+    def compute_sft_loss(self, model, inputs: Dict[str, Any]):
+        outputs = model(**inputs)
+        return outputs
+
 register_template(
     Gemma4TemplateMeta(
         MLLMTemplateType.diffusion_gemma,
-        template_cls=Gemma4Template,
+        template_cls=DiffusionGemmaTemplate,
         agent_template='gemma4',
         is_thinking=True,
         non_thinking_prefix='<|channel>thought\n<channel|>'))

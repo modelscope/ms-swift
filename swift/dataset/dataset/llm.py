@@ -956,4 +956,4 @@ register_dataset(
         ms_dataset_id='sapientinc/sudoku-extreme-1k',
         hf_dataset_id='sapientinc/sudoku-extreme-1k',
         preprocess_func=SudokuPreprocessor(),
-))
+    ))

@@ -767,6 +767,11 @@ class Template(ProcessorMixin):
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
 
+
+    def compute_sft_loss(self, model, inputs: Dict[str, Any]):
+        # Default SFT Loss Calculation Method
+        return model(**inputs)
+
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         # Do not print template_meta.suffix_stop and eos_token.
         # However, other stop_words will be printed.

@@ -486,7 +486,9 @@ class DiffusionGemmaLoader(ModelLoader):
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import DiffusionGemmaForBlockDiffusion
         self.auto_model_cls = self.auto_model_cls or DiffusionGemmaForBlockDiffusion
-        return super().get_model(model_dir, config, processor, model_kwargs)
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        model.prepare_inputs_for_generation = None
+        return model
 
 
 register_model(
