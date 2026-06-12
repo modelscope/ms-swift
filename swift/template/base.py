@@ -767,10 +767,16 @@ class Template(ProcessorMixin):
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
 
-
-    def compute_sft_loss(self, model, inputs: Dict[str, Any]):
+    def compute_sft_loss(self, model, inputs: Dict[str, Any], num_items_in_batch: Optional[int] = None, trainer=None):
         # Default SFT Loss Calculation Method
-        return model(**inputs)
+        outputs = model(**inputs)
+        if 'labels' in inputs:
+            labels = inputs['labels']
+            outputs.loss = outputs.loss.to(labels.device)
+            # fix https://github.com/huggingface/transformers/issues/34263
+            if num_items_in_batch is not None:
+                outputs.loss = outputs.loss * ((labels[:, 1:] != -100).sum() / num_items_in_batch)
+        return outputs
 
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         # Do not print template_meta.suffix_stop and eos_token.
