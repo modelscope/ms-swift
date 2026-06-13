@@ -268,7 +268,7 @@ class Gemma4Template(Template):
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
-        if self._get_enable_thinking(inputs):
+        if not self.is_training and self._get_enable_thinking(inputs):
             system = '<|think|>\n' + (system or '')
         return system
 
@@ -366,18 +366,25 @@ register_template(
 
 class DiffusionGemmaTemplate(Gemma4Template):
     is_encoder_decoder = True
+    skip_prompt = True
 
     # Code reference: https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/DiffusionGemma_(26B-A4B)-Sudoku.ipynb  # noqa
     @property
     def loss_scale(self):
-        logger.warning_once('DiffusionGemmaTemplate only supports `last_round` loss scale, '
-                            'Setting loss_scale: last_round')
-        self._loss_scale = 'last_round'
-        return super().loss_scale
+        loss_scale = super().loss_scale
+        if self.is_training and loss_scale.base_strategy != 'last_round':
+            logger.warning_once(
+                'DiffusionGemmaTemplate only supports the `last_round` base strategy for loss scaling. '
+                'Setting loss_scale.base_strategy to `last_round`.'
+            )
+        loss_scale.base_strategy = 'last_round'
+        return loss_scale
 
     def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         inputs = super()._data_collator(batch, padding_to=padding_to)
-        return self._update_inputs(inputs)
+        if self.is_training:
+            inputs = self._update_inputs(inputs)
+        return inputs
 
     def _update_inputs(self, inputs):
         canvas_length = self.config.canvas_length

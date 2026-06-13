@@ -17,6 +17,7 @@ class FlorenceTemplate(Template):
     # If it's an encoder-decoder architecture, the default settings are
     # loss_scale: 'last_round' and skip_prompt: False.
     is_encoder_decoder = True
+    skip_prompt = False
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs) -> None:

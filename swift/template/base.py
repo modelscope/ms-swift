@@ -151,8 +151,6 @@ class Template(ProcessorMixin):
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
         self.norm_bbox = norm_bbox or self.norm_bbox
-        if self.is_encoder_decoder:
-            self.skip_prompt = False
         self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
@@ -203,7 +201,12 @@ class Template(ProcessorMixin):
         from swift.loss_scale import get_loss_scale
         if self._loss_scale not in self._loss_scale_cache:
             self._loss_scale_cache[self._loss_scale] = get_loss_scale(self._loss_scale)
-        return self._loss_scale_cache[self._loss_scale]
+        loss_scale = self._loss_scale_cache[self._loss_scale]
+        if self.is_training and self.template_meta.is_thinking and self.template_meta.non_thinking_prefix and 'ignore_empty_think' not in self._loss_scale:
+            logger.warning_once(
+                'This model is a hybrid thinking model, but `ignore_empty_think` is not set during training. '
+                'Please check if the configuration is correct.')
+        return loss_scale
 
     @property
     def agent_template(self):
