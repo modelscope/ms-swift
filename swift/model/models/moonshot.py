@@ -47,6 +47,7 @@ register_model(
             ModelGroup([
                 Model('moonshotai/Kimi-K2.5', 'moonshotai/Kimi-K2.5'),
                 Model('moonshotai/Kimi-K2.6', 'moonshotai/Kimi-K2.6'),
+                Model('moonshotai/Kimi-K2.7-Code', 'moonshotai/Kimi-K2.7-Code'),
             ])
         ],
         template=TemplateType.kimi_k25,
