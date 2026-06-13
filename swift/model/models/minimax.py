@@ -7,6 +7,7 @@ from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from swift.template import TemplateType
 from swift.utils import Processor, get_device, get_device_count, get_dist_setting, get_logger
 from ..constant import LLMModelType, MLLMModelType
+from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..patcher import patch_ignore_check_imports
 from ..register import ModelLoader, register_model
@@ -164,3 +165,27 @@ register_model(
         ],
         requires=['transformers==4.57.1'],
         architectures=['MiniMaxM2ForCausalLM']))
+
+
+class MiniMaxM3VLLoader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        return AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        with patch_ignore_check_imports():
+            return super().get_model(model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.minimax_m3_vl, [
+            ModelGroup([
+                Model('MiniMax/MiniMax-M3', 'MiniMaxAI/MiniMax-M3'),
+            ]),
+        ],
+        MiniMaxM3VLLoader,
+        template=TemplateType.minimax_m3_vl,
+        model_arch=ModelArch.minimax_m3_vl,
+        architectures=['MiniMaxM3SparseForConditionalGeneration'],
+        tags=['vision', 'video']))

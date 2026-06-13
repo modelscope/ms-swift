@@ -265,6 +265,7 @@ class MLLMTemplateType:
     paddle_ocr_1_5 = 'paddle_ocr_1_5'
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
+    minimax_m3_vl = 'minimax_m3_vl'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

@@ -2,12 +2,14 @@
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
+import torch
+
 from swift.utils import get_logger
 from ..base import Template
-from ..constant import LLMTemplateType
+from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Context, Prompt
+from ..utils import Context, Prompt, findall
 
 logger = get_logger()
 
@@ -155,3 +157,118 @@ register_template(
         LLMTemplateType.minimax_m2_7,
         default_system='You are a helpful assistant. Your name is MiniMax-M2.7 and is built by MiniMax.',
     ))
+
+
+# ===================== MiniMax-M3 VL =====================
+# Reference: tokenizer_config.jinja shipped with MiniMax/MiniMax-M3.
+# The chat template renders two system blocks:
+# 1) high-priority `system` block (static MiniMax model identity + thinking instructions)
+# 2) low-priority `developer` block (user-provided system text + tools)
+# In SWIFT we keep the high-priority block static inside prefix/system_prefix,
+# and route user-provided system / tools into the developer slot.
+_MINIMAX_M3_SYSTEM_BLOCK = (
+    'Your model version is MiniMax-M3, developed by MiniMax. Knowledge cutoff: January 2026. '
+    'Founded in early 2022, MiniMax is a global AI foundation model company committed to '
+    'advancing the frontiers of AI towards AGI.'
+    '\n\n<thinking_instructions>\n'
+    'You have a thinking capability that allows you to reason step by step before responding. '
+    'When thinking is enabled, wrap your reasoning in <mm:think></mm:think> tags before your '
+    'response. When thinking is disabled, begin your response directly after the </mm:think> '
+    'prefix. When thinking is adaptive, decide on your own whether to think for the current turn.'
+    '\n'
+    'Current thinking mode: adaptive. You are encouraged to think for complex decision-making, '
+    'multi-step reasoning, or when analyzing function/tool results.'
+    '\n</thinking_instructions>')
+
+_MINIMAX_M3_DEFAULT_DEVELOPER = 'You are a helpful assistant.'
+
+_MINIMAX_M3_SYSTEM_PREFIX = (f']~!b[]~b]system\n{_MINIMAX_M3_SYSTEM_BLOCK}[e~[\n'
+                             ']~b]developer\n')
+
+
+class MinimaxM3VLTemplate(Template):
+    image_token = ']<]image[>['
+    video_token = ']<]video[>['
+    placeholder_tokens = [']<]image[>[', ']<]video[>[']
+    use_model = True
+
+    def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
+                    inputs: StdTemplateInputs) -> List[Context]:
+        if media_type == 'image':
+            return [self.image_token]
+        elif media_type == 'video':
+            return [self.video_token]
+        else:
+            raise ValueError(f'Unsupported media type for MiniMax-M3 VL: {media_type}')
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        encoded = super()._encode(inputs)
+        if not inputs.images and not inputs.videos:
+            return encoded
+        # Render media placeholders through the official processor so that the
+        # vision_start / vision_end wrapping tokens (and per-frame timestamps for
+        # videos) are produced by the same code path used at inference time.
+        media_text_parts = ([self.image_token] * len(inputs.images)
+                            + [self.video_token] * len(inputs.videos))
+        media_inputs = self.processor(
+            text='\n'.join(media_text_parts),
+            images=inputs.images or None,
+            videos=inputs.videos or None,
+            return_tensors='pt',
+        )
+        split_token = self._tokenize('\n')
+        splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
+        media_inputs.pop('input_ids', None)
+        media_inputs.pop('attention_mask', None)
+
+        input_ids = encoded['input_ids']
+        labels = encoded['labels']
+        loss_scale = encoded.get('loss_scale', None)
+
+        image_token_id = self.tokenizer.convert_tokens_to_ids(self.image_token)
+        video_token_id = self.tokenizer.convert_tokens_to_ids(self.video_token)
+        idx_list = findall(input_ids, [image_token_id, video_token_id])
+
+        def _get_new_tokens(i):
+            return splited_tokens[i]
+
+        if idx_list:
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
+        for key in ['pixel_values', 'image_grid_thw', 'pixel_values_videos', 'video_grid_thw']:
+            if key in media_inputs:
+                value = media_inputs[key]
+                if key == 'pixel_values' or key == 'pixel_values_videos':
+                    value = value.to(self.model_info.torch_dtype)
+                encoded[key] = value
+        encoded['input_ids'] = input_ids
+        encoded['labels'] = labels
+        encoded['loss_scale'] = loss_scale
+        return encoded
+
+    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
+        res = super()._data_collator_mm_data(batch)
+        for key in ['image_grid_thw', 'video_grid_thw']:
+            value = [b[key] for b in batch if b.get(key) is not None]
+            if value:
+                res[key] = torch.concat(value)
+        return res
+
+
+@dataclass
+class MinimaxM3VLTemplateMeta(TemplateMeta):
+    prefix: Prompt = field(
+        default_factory=lambda: [_MINIMAX_M3_SYSTEM_PREFIX + _MINIMAX_M3_DEFAULT_DEVELOPER + '[e~[\n'])
+    prompt: Prompt = field(default_factory=lambda: [']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[e~[\n'])
+    suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
+    system_prefix: Optional[Prompt] = field(
+        default_factory=lambda: [_MINIMAX_M3_SYSTEM_PREFIX + '{{SYSTEM}}[e~[\n'])
+    agent_template: Optional[str] = 'minimax_m3'
+    is_thinking: bool = True
+    thinking_prefix: str = '<mm:think>'
+    non_thinking_prefix: str = '</mm:think>'
+    history_thinking_prefix: str = '</mm:think>'
+
+
+register_template(MinimaxM3VLTemplateMeta(MLLMTemplateType.minimax_m3_vl, template_cls=MinimaxM3VLTemplate))
