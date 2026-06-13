@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
-
-import torch
 
 from swift.utils import get_logger
 from ..base import Template
@@ -158,7 +157,6 @@ register_template(
         default_system='You are a helpful assistant. Your name is MiniMax-M2.7 and is built by MiniMax.',
     ))
 
-
 # ===================== MiniMax-M3 VL =====================
 # Reference: tokenizer_config.jinja shipped with MiniMax/MiniMax-M3.
 # The chat template renders two system blocks:
@@ -208,8 +206,7 @@ class MinimaxM3VLTemplate(Template):
         # Render media placeholders through the official processor so that the
         # vision_start / vision_end wrapping tokens (and per-frame timestamps for
         # videos) are produced by the same code path used at inference time.
-        media_text_parts = ([self.image_token] * len(inputs.images)
-                            + [self.video_token] * len(inputs.videos))
+        media_text_parts = ([self.image_token] * len(inputs.images) + [self.video_token] * len(inputs.videos))
         media_inputs = self.processor(
             text='\n'.join(media_text_parts),
             images=inputs.images or None,
@@ -262,8 +259,7 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
     prompt: Prompt = field(default_factory=lambda: [']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[e~[\n'])
     suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
-    system_prefix: Optional[Prompt] = field(
-        default_factory=lambda: [_MINIMAX_M3_SYSTEM_PREFIX + '{{SYSTEM}}[e~[\n'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: [_MINIMAX_M3_SYSTEM_PREFIX + '{{SYSTEM}}[e~[\n'])
     agent_template: Optional[str] = 'minimax_m3'
     is_thinking: bool = True
     thinking_prefix: str = '<mm:think>'

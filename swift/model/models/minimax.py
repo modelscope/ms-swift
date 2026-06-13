@@ -166,17 +166,6 @@ register_model(
         requires=['transformers==4.57.1'],
         architectures=['MiniMaxM2ForCausalLM']))
 
-
-class MiniMaxM3VLLoader(ModelLoader):
-
-    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
-        return AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
-
-    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        with patch_ignore_check_imports():
-            return super().get_model(model_dir, config, processor, model_kwargs)
-
-
 register_model(
     ModelMeta(
         MLLMModelType.minimax_m3_vl, [
@@ -184,7 +173,7 @@ register_model(
                 Model('MiniMax/MiniMax-M3', 'MiniMaxAI/MiniMax-M3'),
             ]),
         ],
-        MiniMaxM3VLLoader,
+        ModelLoader,
         template=TemplateType.minimax_m3_vl,
         model_arch=ModelArch.minimax_m3_vl,
         architectures=['MiniMaxM3SparseForConditionalGeneration'],

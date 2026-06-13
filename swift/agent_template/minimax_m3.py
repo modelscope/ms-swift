@@ -190,21 +190,20 @@ class MinimaxM3AgentTemplate(BaseAgentTemplate):
         tools_xml = '\n'.join(f'<tool>{schema}</tool>' for schema in tool_schemas)
         # Mirror the example block produced by chat_template.jinja so the
         # in-context format hint matches inference time exactly.
-        example = (
-            f'\n{TOOLCALL_BEGIN_TOKEN}\n'
-            f'{NS_TOKEN}<invoke name="tool-name-1">'
-            f'{NS_TOKEN}<param-1>value-1{NS_TOKEN}</param-1>'
-            f'{NS_TOKEN}<param-2>'
-            f'{NS_TOKEN}<item>'
-            f'{NS_TOKEN}<key-a>val-a{NS_TOKEN}</key-a>'
-            f'{NS_TOKEN}<key-b>val-b{NS_TOKEN}</key-b>'
-            f'{NS_TOKEN}</item>'
-            f'{NS_TOKEN}</param-2>'
-            f'{NS_TOKEN}</invoke>\n'
-            f'{NS_TOKEN}<invoke name="tool-name-2">'
-            f'{NS_TOKEN}<param-1>value-1{NS_TOKEN}</param-1>'
-            f'{NS_TOKEN}</invoke>\n'
-            f'{TOOLCALL_END_TOKEN}')
+        example = (f'\n{TOOLCALL_BEGIN_TOKEN}\n'
+                   f'{NS_TOKEN}<invoke name="tool-name-1">'
+                   f'{NS_TOKEN}<param-1>value-1{NS_TOKEN}</param-1>'
+                   f'{NS_TOKEN}<param-2>'
+                   f'{NS_TOKEN}<item>'
+                   f'{NS_TOKEN}<key-a>val-a{NS_TOKEN}</key-a>'
+                   f'{NS_TOKEN}<key-b>val-b{NS_TOKEN}</key-b>'
+                   f'{NS_TOKEN}</item>'
+                   f'{NS_TOKEN}</param-2>'
+                   f'{NS_TOKEN}</invoke>\n'
+                   f'{NS_TOKEN}<invoke name="tool-name-2">'
+                   f'{NS_TOKEN}<param-1>value-1{NS_TOKEN}</param-1>'
+                   f'{NS_TOKEN}</invoke>\n'
+                   f'{TOOLCALL_END_TOKEN}')
 
         return (f'{system}\n\n# Tools\n'
                 'You may call one or more tools to assist with the user query.\n'
