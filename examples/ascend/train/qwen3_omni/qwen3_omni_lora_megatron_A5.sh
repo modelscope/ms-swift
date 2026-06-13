@@ -50,6 +50,3 @@ megatron sft \
     --padding_free false \
     --model_author swift \
     --model_name swift-robot
-
-
-
