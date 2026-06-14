@@ -42,8 +42,8 @@ swift sft \
     --deepspeed zero2 \
     --dataloader_num_workers 4
 
-CUDA_VISIBLE_DEVICES=5 \
+CUDA_VISIBLE_DEVICES=0 \
 swift infer \
-    --adapters /mnt/data/jintao/llmscope/output/v32-20260614-215554/checkpoint-100 \
+    --adapters output/vx-xxx/checkpoint-xxx \
     --load_data_args true \
     --enable_thinking false
