@@ -368,7 +368,6 @@ class DiffusionGemmaTemplate(Gemma4Template):
     is_encoder_decoder = True
     skip_prompt = True
 
-    # Code reference: https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/DiffusionGemma_(26B-A4B)-Sudoku.ipynb  # noqa
     @property
     def loss_scale(self):
         loss_scale = super().loss_scale
@@ -384,13 +383,11 @@ class DiffusionGemmaTemplate(Gemma4Template):
             inputs = self._update_inputs(inputs)
         return inputs
 
+    # Code reference: https://colab.research.google.com/github/unslothai/notebooks/blob/main/nb/DiffusionGemma_(26B-A4B)-Sudoku.ipynb  # noqa
     def _update_inputs(self, inputs):
         canvas_length = self.config.canvas_length
         if inputs['labels'].shape[0] > 1:
             raise ValueError('per_device_train_batch_size must be 1 for diffusion gemma')
-        tokenizer = self.processor.tokenizer
-        pad_token_id = tokenizer.pad_token_id
-        eos_token_id = tokenizer.eos_token_id
         first_idx = (inputs['labels'] != -100).int().argmax().item()
         prompt_ids = inputs['input_ids'][:, :first_idx]
         # reserve one slot for the explicit <eos> appended at the end of the response
@@ -401,7 +398,10 @@ class DiffusionGemmaTemplate(Gemma4Template):
         canvas_content = inputs['input_ids'][:, first_idx:first_idx + canvas_length - 1]
         # x0: clean canvas padded to canvas_length; loss_mask: positions to supervise
         device = prompt_ids.device
-        x0 = torch.full((prompt_ids.shape[0], canvas_length), pad_token_id, dtype=torch.long, device=device)
+        x0 = torch.full((prompt_ids.shape[0], canvas_length),
+                        self.tokenizer.pad_token_id,
+                        dtype=torch.long,
+                        device=device)
         n = canvas_content.shape[1]
         x0[:, :n] = canvas_content
         # explicitly append <eos> as the canvas-end signal expected by the diffusion sampler

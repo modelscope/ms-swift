@@ -1,4 +1,7 @@
 # 2 * 60GiB
+# 这里只是 diffusiongemma 训练的demo
+# 目前只支持 batch_size=1，且只支持 response < 
+# 具体训练损失的自定义: https://github.com/Jintao-Huang/llmscope/blob/eda195f2a895287b9002dc60ae3e4fe0d43ca85a/swift/template/templates/gemma.py#L418-L426
 CUDA_VISIBLE_DEVICES=0,1 \
 MASTER_PORT=29605 \
 NPROC_PER_NODE=2 \
@@ -32,9 +35,8 @@ swift sft \
     --deepspeed zero2 \
     --dataloader_num_workers 4
 
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=5 \
 swift infer \
-    --adapters output/vx-xxx/checkpoint-xxx \
-    --stream true \
+    --adapters /mnt/data/jintao/llmscope/output/v32-20260614-215554/checkpoint-100 \
     --load_data_args true \
     --enable_thinking false
