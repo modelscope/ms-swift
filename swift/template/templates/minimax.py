@@ -3,7 +3,7 @@ import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_logger
+from swift.utils import get_env_args, get_logger
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -160,28 +160,42 @@ register_template(
 # ===================== MiniMax-M3 VL =====================
 # Reference: tokenizer_config.jinja shipped with MiniMax/MiniMax-M3.
 # The chat template renders two system blocks:
-# 1) high-priority `system` block (static MiniMax model identity + thinking instructions)
+# 1) high-priority `system` block (MiniMax model identity + thinking instructions)
 # 2) low-priority `developer` block (user-provided system text + tools)
-# In SWIFT we keep the high-priority block static inside prefix/system_prefix,
+# In SWIFT we keep the high-priority block inside prefix/system_prefix,
 # and route user-provided system / tools into the developer slot.
-_MINIMAX_M3_SYSTEM_BLOCK = (
-    'Your model version is MiniMax-M3, developed by MiniMax. Knowledge cutoff: January 2026. '
-    'Founded in early 2022, MiniMax is a global AI foundation model company committed to '
-    'advancing the frontiers of AI towards AGI.'
-    '\n\n<thinking_instructions>\n'
+# The thinking_mode is dynamic and controlled via chat_template_kwargs.
+
+_MINIMAX_M3_IDENTITY = ('Your model version is MiniMax-M3, developed by MiniMax. Knowledge cutoff: January 2026. '
+                        'Founded in early 2022, MiniMax is a global AI foundation model company committed to '
+                        'advancing the frontiers of AI towards AGI.')
+
+_MINIMAX_M3_THINKING_BASE = (
     'You have a thinking capability that allows you to reason step by step before responding. '
     'When thinking is enabled, wrap your reasoning in <mm:think></mm:think> tags before your '
     'response. When thinking is disabled, begin your response directly after the </mm:think> '
-    'prefix. When thinking is adaptive, decide on your own whether to think for the current turn.'
-    '\n'
-    'Current thinking mode: adaptive. You are encouraged to think for complex decision-making, '
-    'multi-step reasoning, or when analyzing function/tool results.'
-    '\n</thinking_instructions>')
+    'prefix. When thinking is adaptive, decide on your own whether to think for the current turn.')
+
+_MINIMAX_M3_THINKING_MODE_TEXT = {
+    'enabled': ('Current thinking mode: enabled. You MUST think step by step before every response, '
+                'including after receiving function/tool results.'),
+    'disabled':
+    'Current thinking mode: disabled. Do not output any thinking process.',
+    'adaptive': ('Current thinking mode: adaptive. You are encouraged to think for complex '
+                 'decision-making, multi-step reasoning, or when analyzing function/tool results.'),
+}
 
 _MINIMAX_M3_DEFAULT_DEVELOPER = 'You are a helpful assistant.'
 
-_MINIMAX_M3_SYSTEM_PREFIX = (f']~!b[]~b]system\n{_MINIMAX_M3_SYSTEM_BLOCK}[e~[\n'
-                             ']~b]developer\n')
+
+def _build_m3_system_block(thinking_mode: str = 'adaptive') -> str:
+    mode_text = _MINIMAX_M3_THINKING_MODE_TEXT.get(thinking_mode, _MINIMAX_M3_THINKING_MODE_TEXT['adaptive'])
+    return (f'{_MINIMAX_M3_IDENTITY}'
+            f'\n\n<thinking_instructions>\n{_MINIMAX_M3_THINKING_BASE}\n{mode_text}\n</thinking_instructions>')
+
+
+def _build_m3_system_prefix(thinking_mode: str = 'adaptive') -> str:
+    return f']~!b[]~b]system\n{_build_m3_system_block(thinking_mode)}[e~[\n]~b]developer\n'
 
 
 class MinimaxM3VLTemplate(Template):
@@ -189,6 +203,57 @@ class MinimaxM3VLTemplate(Template):
     video_token = ']<]video[>['
     placeholder_tokens = [']<]image[>[', ']<]video[>[']
     use_model = True
+
+    def init_env_args(self):
+        super().init_env_args()
+        # thinking_mode: "enabled" / "disabled" / "adaptive"
+        self.thinking_mode = get_env_args('thinking_mode', str, 'adaptive')
+        self.chat_template_kwargs['thinking_mode'] = self.thinking_mode
+        # Map thinking_mode to enable_thinking for the broader framework
+        if self.thinking_mode == 'disabled':
+            self.enable_thinking = False
+        else:
+            self.enable_thinking = True
+
+    def _get_thinking_mode(self, inputs=None) -> str:
+        thinking_mode = None if inputs is None else inputs.chat_template_kwargs.get('thinking_mode')
+        if thinking_mode is None:
+            thinking_mode = self.chat_template_kwargs.get('thinking_mode', 'adaptive')
+        return thinking_mode
+
+    def _get_enable_thinking(self, inputs=None):
+        thinking_mode = self._get_thinking_mode(inputs)
+        return thinking_mode != 'disabled'
+
+    def _get_response_prefix(self, inputs=None):
+        # Check explicit override first
+        response_prefix = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
+        if response_prefix is not None:
+            return response_prefix
+        if self.response_prefix is not None:
+            return self.response_prefix
+        thinking_mode = self._get_thinking_mode(inputs)
+        if thinking_mode == 'enabled':
+            return self.template_meta.thinking_prefix  # '<mm:think>'
+        elif thinking_mode == 'disabled':
+            return self.template_meta.non_thinking_prefix  # '</mm:think>'
+        else:  # adaptive
+            return ''  # No prefix, let model decide
+
+    def _swift_encode(self, inputs: StdTemplateInputs):
+        # Dynamically build prefix with the correct thinking_mode text
+        thinking_mode = self._get_thinking_mode(inputs)
+        system_prefix_str = _build_m3_system_prefix(thinking_mode)
+        # Temporarily patch template_meta prefix/system_prefix
+        orig_prefix = self.template_meta.prefix
+        orig_system_prefix = self.template_meta.system_prefix
+        self.template_meta.prefix = [system_prefix_str + _MINIMAX_M3_DEFAULT_DEVELOPER + '[e~[\n']
+        self.template_meta.system_prefix = [system_prefix_str + '{{SYSTEM}}[e~[\n']
+        try:
+            return super()._swift_encode(inputs)
+        finally:
+            self.template_meta.prefix = orig_prefix
+            self.template_meta.system_prefix = orig_system_prefix
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -255,11 +320,12 @@ class MinimaxM3VLTemplate(Template):
 @dataclass
 class MinimaxM3VLTemplateMeta(TemplateMeta):
     prefix: Prompt = field(
-        default_factory=lambda: [_MINIMAX_M3_SYSTEM_PREFIX + _MINIMAX_M3_DEFAULT_DEVELOPER + '[e~[\n'])
+        default_factory=lambda: [_build_m3_system_prefix('adaptive') + _MINIMAX_M3_DEFAULT_DEVELOPER + '[e~[\n'])
     prompt: Prompt = field(default_factory=lambda: [']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[e~[\n'])
     suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: [_MINIMAX_M3_SYSTEM_PREFIX + '{{SYSTEM}}[e~[\n'])
+    system_prefix: Optional[Prompt] = field(
+        default_factory=lambda: [_build_m3_system_prefix('adaptive') + '{{SYSTEM}}[e~[\n'])
     agent_template: Optional[str] = 'minimax_m3'
     is_thinking: bool = True
     thinking_prefix: str = '<mm:think>'
