@@ -488,6 +488,7 @@ class DiffusionGemmaLoader(ModelLoader):
         self.auto_model_cls = self.auto_model_cls or DiffusionGemmaForBlockDiffusion
         model = super().get_model(model_dir, config, processor, model_kwargs)
         model.prepare_inputs_for_generation = None
+        model.config.use_cache = True
         return model
 
 
