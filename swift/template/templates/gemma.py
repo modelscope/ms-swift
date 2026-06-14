@@ -390,12 +390,11 @@ class DiffusionGemmaTemplate(Gemma4Template):
             raise ValueError('per_device_train_batch_size must be 1 for diffusion gemma')
         first_idx = (inputs['labels'] != -100).int().argmax().item()
         prompt_ids = inputs['input_ids'][:, :first_idx]
-        # reserve one slot for the explicit <eos> appended at the end of the response
         response_length = inputs['input_ids'].shape[1] - first_idx
-        if response_length > canvas_length - 1:
-            raise ValueError(f'response length ({response_length}) exceeds canvas_length-1 ({canvas_length - 1}); '
+        if response_length > canvas_length:
+            raise ValueError(f'response length ({response_length}) exceeds canvas_length ({canvas_length}); '
                              'please use a shorter response or increase canvas_length.')
-        canvas_content = inputs['input_ids'][:, first_idx:first_idx + canvas_length - 1]
+        canvas_content = inputs['input_ids'][:, first_idx:first_idx + canvas_length]
         # x0: clean canvas padded to canvas_length; loss_mask: positions to supervise
         device = prompt_ids.device
         x0 = torch.full((prompt_ids.shape[0], canvas_length),
@@ -404,7 +403,6 @@ class DiffusionGemmaTemplate(Gemma4Template):
                         device=device)
         n = canvas_content.shape[1]
         x0[:, :n] = canvas_content
-        # explicitly append <eos> as the canvas-end signal expected by the diffusion sampler
         labels = x0.clone()
         labels[:, n:] = -100
 

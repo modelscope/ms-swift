@@ -1,7 +1,14 @@
 # 2 * 60GiB
-# 这里只是 diffusiongemma 训练的demo
-# 目前只支持 batch_size=1，且只支持 response < 
-# 具体训练损失的自定义: https://github.com/Jintao-Huang/llmscope/blob/eda195f2a895287b9002dc60ae3e4fe0d43ca85a/swift/template/templates/gemma.py#L418-L426
+# This is just a demo for DiffusionGemma training.
+# Notes: 
+# 1. Currently only --per_device_train_batch_size 1 is supported,
+# and the response length of a single sample must be less than or equal to
+# config.canvas_length, otherwise an error will be raised.
+# 2. --gradient_checkpointing false must be set. DiffusionGemma's encoder passes
+# KV to the decoder via DynamicCache, and gradient checkpointing causes errors
+# when recomputing the forward pass during backward.
+# 3. For customizing the specific training loss, refer to:
+# https://github.com/Jintao-Huang/llmscope/blob/eda195f2a895287b9002dc60ae3e4fe0d43ca85a/swift/template/templates/gemma.py#L418-L426
 CUDA_VISIBLE_DEVICES=0,1 \
 MASTER_PORT=29605 \
 NPROC_PER_NODE=2 \
