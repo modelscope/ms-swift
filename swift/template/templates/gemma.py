@@ -373,10 +373,8 @@ class DiffusionGemmaTemplate(Gemma4Template):
     def loss_scale(self):
         loss_scale = super().loss_scale
         if self.is_training and loss_scale.base_strategy != 'last_round':
-            logger.warning_once(
-                'DiffusionGemmaTemplate only supports the `last_round` base strategy for loss scaling. '
-                'Setting loss_scale.base_strategy to `last_round`.'
-            )
+            logger.warning_once('DiffusionGemmaTemplate only supports the `last_round` base strategy for loss scaling. '
+                                'Setting loss_scale.base_strategy to `last_round`.')
         loss_scale.base_strategy = 'last_round'
         return loss_scale
 
@@ -398,9 +396,8 @@ class DiffusionGemmaTemplate(Gemma4Template):
         # reserve one slot for the explicit <eos> appended at the end of the response
         response_length = inputs['input_ids'].shape[1] - first_idx
         if response_length > canvas_length - 1:
-            raise ValueError(
-                f'response length ({response_length}) exceeds canvas_length-1 ({canvas_length - 1}); '
-                'please use a shorter response or increase canvas_length.')
+            raise ValueError(f'response length ({response_length}) exceeds canvas_length-1 ({canvas_length - 1}); '
+                             'please use a shorter response or increase canvas_length.')
         canvas_content = inputs['input_ids'][:, first_idx:first_idx + canvas_length - 1]
         # x0: clean canvas padded to canvas_length; loss_mask: positions to supervise
         device = prompt_ids.device
@@ -408,9 +405,8 @@ class DiffusionGemmaTemplate(Gemma4Template):
         n = canvas_content.shape[1]
         x0[:, :n] = canvas_content
         # explicitly append <eos> as the canvas-end signal expected by the diffusion sampler
-        x0[:, n] = eos_token_id
         labels = x0.clone()
-        labels[:, n + 1:] = -100
+        labels[:, n:] = -100
 
         # forward diffusion: per-sample noise level t ∈ [min, max], replace tokens with random vocab ids
         t = torch.empty((), device=device).uniform_(0.1, 1.)
@@ -420,6 +416,8 @@ class DiffusionGemmaTemplate(Gemma4Template):
         return {'input_ids': prompt_ids, 'decoder_input_ids': decoder_input_ids, 'labels': labels}
 
     def compute_sft_loss(self, model, inputs: Dict[str, Any], num_items_in_batch: Optional[int] = None, trainer=None):
+        if trainer.args.gradient_checkpointing:
+            raise ValueError('Gradient checkpointing is not supported for diffusion gemma')
         outputs = model(**inputs)
         logits = outputs.logits.view(-1, outputs.logits.shape[-1])
         labels = inputs['labels'].view(-1)

@@ -935,7 +935,7 @@ register_dataset(
 
 class SudokuPreprocessor(ResponsePreprocessor):
     prompt = ('Solve the following 9x9 Sudoku puzzle. '
-              "Empty cells are marked with '.'. "
+              "Empty cells are marked with '0'. "
               'Provide the completed grid as your answer.\n\n'
               'Puzzle:\n{puzzle}')
 
@@ -944,7 +944,7 @@ class SudokuPreprocessor(ResponsePreprocessor):
         return '\n'.join(s[i:i + 9] for i in range(0, len(s), 9))
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        puzzle = row['query']
+        puzzle = row['query'].replace('.', '0')
         response = row['response']
         puzzle = self._format_grid(puzzle)
         response = self._format_grid(response)
