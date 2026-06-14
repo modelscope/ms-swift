@@ -7,7 +7,7 @@
 # KV to the decoder via DynamicCache, and gradient checkpointing causes errors
 # when recomputing the forward pass during backward.
 # 3. For customizing the specific training loss, refer to:
-# https://github.com/Jintao-Huang/llmscope/blob/722c7b7148ebb783de0e737e2b007673af1f23cf/swift/template/templates/gemma.py#L386-L424
+# https://github.com/Jintao-Huang/llmscope/blob/7549e98709cfe8a9d6866ccfa560975b2c7bd375/swift/template/templates/gemma.py#L386-L428
 CUDA_VISIBLE_DEVICES=0,1 \
 NPROC_PER_NODE=2 \
 swift sft \
