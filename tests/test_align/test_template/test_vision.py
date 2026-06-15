@@ -593,6 +593,7 @@ wait() #Sleep for 5s and take a screenshot to check for any changes.
 finished()
 call_user() # Submit the task and call the user when the task is unsolvable, or when you need the user's help.
 
+
 ## Note
 - Use Chinese in `Thought` part.
 - Summarize your next action (with its target element) in one sentence in `Thought` part.
