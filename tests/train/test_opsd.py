@@ -39,7 +39,6 @@ def train():
             gradient_checkpointing=True,
             deepspeed='zero0',
             attn_impl='flash_attn',
-            report_to=['tensorboard', 'swanlab'],
         ))
     return result
 
