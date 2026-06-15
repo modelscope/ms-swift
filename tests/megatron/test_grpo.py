@@ -17,6 +17,7 @@ if __name__ == '__main__':
             dataset=['AI-ModelScope/clevr_cogen_a_train#10000'],
             num_train_epochs=1,
             global_batch_size=128,
+            vllm_mm_processor_cache_gb=0,
             micro_batch_size=4,
             steps_per_generation=4,
             num_generations=8,
