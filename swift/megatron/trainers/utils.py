@@ -359,7 +359,13 @@ def prepare_batch(args, data, vp_stage=None):
     Extracted from BaseMegatronTrainer._prepare_batch for reuse in ray workers.
     """
     batch = get_batch_on_this_pp_rank(args, data, vp_stage=vp_stage)
-    seq_lens = batch.pop('seq_lens')
+    seq_lens = batch.pop('seq_lens', None)
+    num_samples = batch.pop('num_samples', None)
+    if seq_lens is not None:
+        if num_samples is not None:
+            assert num_samples == len(seq_lens), (
+                f"'num_samples' ({num_samples}) is inconsistent with len(seq_lens) ({len(seq_lens)}).")
+        num_samples = len(seq_lens)
     text_position_ids = batch.pop('text_position_ids', None)
     if text_position_ids is None:
         text_position_ids = batch.get('position_ids')
@@ -373,6 +379,8 @@ def prepare_batch(args, data, vp_stage=None):
         batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
         if seq_lens is not None:
             batch['packed_seq_params'].seq_lens = torch.tensor(seq_lens, device=text_position_ids.device)
+        if num_samples is not None:
+            batch['packed_seq_params'].num_samples = num_samples
     batch = get_batch_on_this_cp_rank(args, batch)
     return batch
 
