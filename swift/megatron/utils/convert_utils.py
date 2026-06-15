@@ -244,7 +244,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
         mg_inputs['packed_seq_params'] = get_packed_seq_params(text_position_ids)
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
-    for key in ['labels', 'num_samples', 'attention_mask_2d']:
+    for key in ['labels', 'seq_lens', 'attention_mask_2d']:
         mg_inputs.pop(key, None)
     mg_inputs = get_batch_on_this_cp_rank(args, mg_inputs)
     _param = next(mg_language_model.parameters())

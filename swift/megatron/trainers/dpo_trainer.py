@@ -35,23 +35,23 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         ref_output_tensor = output_tensor[:output_tensor.shape[0] // 2].detach()
         output_tensor = output_tensor[output_tensor.shape[0] // 2:]
         args = self.args
-        num_samples = labels.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
+        num_samples = labels.shape[0] if packed_seq_params is None else packed_seq_params.seq_lens.shape[0]
 
-        logps = self.get_logps(output_tensor, labels, packed_seq_params, num_samples * 2)
-        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params, num_samples * 2)
+        logps = self.get_logps(output_tensor, labels, packed_seq_params)
+        ref_logps = self.get_logps(ref_output_tensor, labels, packed_seq_params)
         loss, chosen_rewards, rejected_rewards = self.dummy_dpo_trainer.dpo_loss(
-            logps[:num_samples],
-            logps[num_samples:],
-            ref_logps[:num_samples],
-            ref_logps[num_samples:],
+            logps[:num_samples // 2],
+            logps[num_samples // 2:],
+            ref_logps[:num_samples // 2],
+            ref_logps[num_samples // 2:],
         )
         if args.rpo_alpha:
             loss_mask = labels != -100
             if args.padding_free:
-                num_tokens = packed_seq_params.cu_seqlens_q[num_samples] // args.context_parallel_size
+                num_tokens = packed_seq_params.cu_seqlens_q[num_samples // 2] // args.context_parallel_size
                 loss_mask[:, num_tokens:] = 0
             else:
-                loss_mask[num_samples:] = 0
+                loss_mask[num_samples // 2:] = 0
             nll_loss = torch.concat([torch.sum(output_tensor * loss_mask)[None], loss_mask.sum()[None]])
             if args.context_parallel_size > 1:
                 nll_loss = all_reduce(nll_loss, group=mpu.get_context_parallel_group())
@@ -60,8 +60,8 @@ class MegatronDPOTrainer(MegatronRLHFTrainer):
         loss = loss.mean()
         metric = {
             'loss': loss.detach().clone(),
-            'logps/chosen': logps[:num_samples].mean(),
-            'logps/rejected': logps[num_samples:].mean(),
+            'logps/chosen': logps[:num_samples // 2].mean(),
+            'logps/rejected': logps[num_samples // 2:].mean(),
             'rewards/chosen': chosen_rewards.mean(),
             'rewards/rejected': rejected_rewards.mean(),
             'rewards/accuracies': (chosen_rewards > rejected_rewards).float().mean(),

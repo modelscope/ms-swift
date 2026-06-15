@@ -41,11 +41,8 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
         self.dummy_kto_trainer = DummyKTOTrainer(args)
 
     def _kto_get_logps(self, output_tensor, data, is_KL: bool, is_ref: bool, length: int):
-        labels = data['labels']
-        packed_seq_params = data.get('packed_seq_params')
-        num_samples = output_tensor.shape[0] if packed_seq_params is None else packed_seq_params.num_samples
         output = self._get_input_tensor(output_tensor, is_KL, is_ref, length, dim=1)
-        return self.get_logps(output, labels, packed_seq_params, num_samples)
+        return self.get_logps(output, data['labels'], data.get('packed_seq_params'))
 
     def _get_kto_length(self, data: Dict[str, Any]) -> int:
         if 'packed_seq_params' in data:
@@ -150,15 +147,14 @@ class MegatronKTOTrainer(MegatronRLHFTrainer):
             res = torch.concat([output_tensor, ref_output_tensor], dim=dim)
         return res, partial(self.loss_func, data=data, kl_data=kl_data, label=label)
 
-    def _prepare_batch(self, data, vp_stage=None, num_samples=None):
+    def _prepare_batch(self, data, vp_stage=None):
         res = []
-        num_samples = data.pop('num_samples')
         for key in ['completion_', 'KL_completion_']:
             _data = {k[len(key):]: v for k, v in data.items() if k.startswith(key)}
             if not self.args.calculate_KL and key == 'KL_completion_':
                 _data = {}
             else:
-                _data = super()._prepare_batch(_data, vp_stage, num_samples)
+                _data = super()._prepare_batch(_data, vp_stage)
             res.append(_data)
         res[0]['label'] = data['label']
         return res
