@@ -63,7 +63,7 @@ from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, compute_chord_loss, get_even_process_data, get_non_thinking_prefix_ids,
                     identity_data_collator, load_pil_img, make_chord_sft_dataset, nanstd, pad_logps_back_to_batch,
                     patch_save_last_checkpoint, profiling_context, profiling_decorator,
-                    replace_assistant_response_with_ids)
+                    replace_assistant_response_with_ids, swanlab_get_run)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -2013,7 +2013,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 table.update({'entropy': list(self._logs['entropy'])[:seen_nums]})
 
             report_to_wandb = self.args.report_to and 'wandb' in self.args.report_to and wandb.run is not None
-            report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run(
+            report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab_get_run(
             ) is not None
 
             self.jsonl_writer.append(table)
