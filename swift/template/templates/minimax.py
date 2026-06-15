@@ -230,8 +230,7 @@ class MinimaxM3VLTemplate(Template):
         system = super()._get_system(inputs)
         thinking_mode = self._get_thinking_mode(inputs)
         system_block = _build_m3_system_block(thinking_mode)
-        developer_content = system if system else _MINIMAX_M3_DEFAULT_DEVELOPER
-        return f'{system_block}[e~[\n]~b]developer\n{developer_content}'
+        return f'{system_block}[e~[\n]~b]developer\n{system or ""}'
 
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
@@ -291,6 +290,7 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
     prompt: Prompt = field(default_factory=lambda: [']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[e~[\n'])
     suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
+    default_system: Optional[str] = _MINIMAX_M3_DEFAULT_DEVELOPER
     agent_template: Optional[str] = 'minimax_m3'
     is_thinking: bool = True
     thinking_prefix: str = '<mm:think>'

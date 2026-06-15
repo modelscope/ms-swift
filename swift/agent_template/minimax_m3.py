@@ -190,7 +190,9 @@ class MinimaxM3AgentTemplate(BaseAgentTemplate):
         tools_xml = '\n'.join(f'<tool>{schema}</tool>' for schema in tool_schemas)
         # Mirror the example block produced by chat_template.jinja so the
         # in-context format hint matches inference time exactly.
-        example = (f'\n{TOOLCALL_BEGIN_TOKEN}\n'
+        # Note: jinja emits 'Example:\n' then '\n' before the tool_call_begin
+        # token, which renders as two consecutive newlines.
+        example = (f'\n\n{TOOLCALL_BEGIN_TOKEN}\n'
                    f'{NS_TOKEN}<invoke name="tool-name-1">'
                    f'{NS_TOKEN}<param-1>value-1{NS_TOKEN}</param-1>'
                    f'{NS_TOKEN}<param-2>'
