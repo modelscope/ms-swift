@@ -1,9 +1,7 @@
 import os
 
-from swift.utils import select_device
-
-select_device('0')
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 kwargs = {
     'per_device_train_batch_size': 2,
     'save_steps': 50,
@@ -13,7 +11,8 @@ kwargs = {
 
 
 def test_sft():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
     sft_main(SftArguments(model='Qwen/Qwen2-7B-Instruct', dataset=['iic/ms_agent#2000'], loss_scale='react', **kwargs))
 

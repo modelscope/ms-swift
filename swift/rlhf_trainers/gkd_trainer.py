@@ -25,7 +25,7 @@ from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
-                         is_wandb_available, remove_response, to_device, unwrap_model_for_generation)
+                         is_wandb_available, remove_response, swanlab_get_run, to_device, unwrap_model_for_generation)
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import (get_gather_if_zero3_context, identity_data_collator, prepare_deepspeed, profiling_context,
                     profiling_decorator)
@@ -779,7 +779,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 wandb.log({'completions': wandb.Table(dataframe=df)})
 
             # Log to swanlab if enabled
-            report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab.get_run(
+            report_to_swanlab = self.args.report_to and 'swanlab' in self.args.report_to and swanlab_get_run(
             ) is not None
             if report_to_swanlab:
                 headers = list(table.keys())

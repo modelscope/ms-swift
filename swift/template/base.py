@@ -127,7 +127,7 @@ class Template(ProcessorMixin):
         if default_system is not None:
             template_meta.default_system = default_system
         if enable_thinking is None:
-            enable_thinking = template_meta.is_thinking
+            enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
         self.response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
@@ -151,8 +151,6 @@ class Template(ProcessorMixin):
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
         self.norm_bbox = norm_bbox or self.norm_bbox
-        if self.is_encoder_decoder:
-            self.skip_prompt = False
         self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
@@ -766,6 +764,17 @@ class Template(ProcessorMixin):
         if 'use_model_defaults' in signature.parameters and 'use_model_defaults' not in kwargs:
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
+
+    def compute_sft_loss(self, model, inputs: Dict[str, Any], num_items_in_batch: Optional[int] = None, trainer=None):
+        # Default SFT Loss Calculation Method
+        outputs = model(**inputs)
+        if 'labels' in inputs:
+            labels = inputs['labels']
+            outputs.loss = outputs.loss.to(labels.device)
+            # fix https://github.com/huggingface/transformers/issues/34263
+            if num_items_in_batch is not None:
+                outputs.loss = outputs.loss * ((labels[:, 1:] != -100).sum() / num_items_in_batch)
+        return outputs
 
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         # Do not print template_meta.suffix_stop and eos_token.

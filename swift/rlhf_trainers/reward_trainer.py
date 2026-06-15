@@ -12,7 +12,7 @@ from trl import RewardTrainer as HFRewardTrainer
 from typing import Any, Dict, Tuple, Union
 
 from swift.trainers import SwiftMixin
-from swift.utils import get_logger
+from swift.utils import get_logger, swanlab_get_run
 from .rlhf_mixin import RLHFTrainerMixin
 
 try:
@@ -109,7 +109,7 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
 
             if 'swanlab' in self.args.report_to:
                 import swanlab
-                if swanlab.get_run() is not None:
+                if swanlab_get_run() is not None:
                     swanlab_table = swanlab.echarts.Table()
                     swanlab_table.add(headers=df.columns.tolist(), rows=df.values.tolist())
                     swanlab.log({'completions': swanlab_table})

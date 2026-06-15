@@ -5,9 +5,10 @@ import unittest
 from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.model import get_processor
 from swift.template import get_template
-from swift.utils import get_logger, seed_everything, select_device
+from swift.utils import get_logger, seed_everything
 
-# select_device('0')
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 os.environ['SWIFT_DEBUG'] = '1'
 
 logger = get_logger()
