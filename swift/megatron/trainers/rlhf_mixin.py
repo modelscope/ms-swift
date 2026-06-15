@@ -75,7 +75,7 @@ class MegatronRLHFTrainer(BaseMegatronTrainer):
         per_token_logps = -output_tensor
         loss_mask = labels != -100
         per_token_logps = per_token_logps * loss_mask
-        num_samples = packed_seq_params.seq_lens.shape[0]
+        num_samples = packed_seq_params.seq_lens.shape[0] if packed_seq_params is not None else labels.shape[0]
         if per_token:
             if args.context_parallel_size > 1:
                 per_token_logps = reconstruct_tensor_cp(args.context_parallel_size, per_token_logps, packed_seq_params,
