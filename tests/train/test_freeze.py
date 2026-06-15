@@ -1,9 +1,7 @@
 import os
 
-from swift.utils import select_device
-
-select_device('0')
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 kwargs = {
     'per_device_train_batch_size': 2,
     'save_steps': 5,
@@ -15,7 +13,8 @@ kwargs = {
 def test_full_vit():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(
@@ -32,7 +31,8 @@ def test_full_vit():
 def test_full_aligner():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(
@@ -49,7 +49,8 @@ def test_full_aligner():
 def test_lora_vit():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(
@@ -66,7 +67,8 @@ def test_lora_vit():
 def test_lora_aligner():
     os.environ['MAX_PIXELS'] = '100352'
     os.environ['SIZE_FACTOR'] = '12'
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
     sft_main(
         SftArguments(

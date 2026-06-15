@@ -2,9 +2,8 @@ import json
 import os
 import torch
 
-from swift.utils import select_device
-
-select_device('0,1,2,3')
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1,2,3'
 os.environ['SWIFT_DEBUG'] = '1'
 
 
@@ -427,7 +426,8 @@ def test_minicpm():
 
 
 def test_minimax():
-    select_device('0,1,2,3,4,5,6,7')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
     from transformers import QuantoConfig
     quantization_config = QuantoConfig(weights='int8')
     messages = [{

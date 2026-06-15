@@ -1,9 +1,8 @@
 import os
 from pprint import pprint
 
-from swift.utils import select_device
-
-select_device('1')
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 kwargs = {
     'per_device_train_batch_size': 4,
     'per_device_eval_batch_size': 4,
