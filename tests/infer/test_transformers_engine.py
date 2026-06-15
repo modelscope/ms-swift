@@ -5,6 +5,7 @@ from swift.infer_engine import InferRequest, RequestConfig
 from swift.metrics import InferStats
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 engine = TransformersEngine('Qwen/Qwen2-0.5B', max_batch_size=4)
 
 

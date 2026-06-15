@@ -67,6 +67,7 @@ def _test(infer_backend, test_vlm: bool = False):
     import os
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
     import multiprocessing
 
     from swift import DeployArguments, deploy_main

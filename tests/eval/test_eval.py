@@ -1,6 +1,7 @@
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '3'
 infer_backend = 'transformers'
 
 

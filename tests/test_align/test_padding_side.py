@@ -2,6 +2,7 @@ import os
 from pprint import pprint
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '1'
 kwargs = {
     'per_device_train_batch_size': 4,
     'per_device_eval_batch_size': 4,

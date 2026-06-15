@@ -25,6 +25,7 @@ def _test(infer_backend):
     import os
 
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
     from swift.arguments import DeployArguments
     from swift.pipelines import run_deploy
     args = DeployArguments(model='Qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False)

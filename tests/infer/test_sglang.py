@@ -1,6 +1,7 @@
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 
 
 def test_engine():

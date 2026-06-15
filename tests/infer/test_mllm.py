@@ -3,6 +3,7 @@ import torch
 from typing import Literal
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 
 
 def _prepare(infer_backend: Literal['vllm', 'transformers', 'lmdeploy']):

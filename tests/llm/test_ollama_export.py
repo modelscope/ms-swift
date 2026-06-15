@@ -9,6 +9,7 @@ from swift import ExportArguments, export_main
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 
 
 class TestTemplate(unittest.TestCase):

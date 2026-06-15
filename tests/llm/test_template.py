@@ -8,6 +8,7 @@ from swift.template import get_template
 from swift.utils import get_logger, seed_everything
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 os.environ['SWIFT_DEBUG'] = '1'
 
 logger = get_logger()

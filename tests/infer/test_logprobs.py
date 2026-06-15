@@ -4,6 +4,7 @@ from typing import Literal
 
 if __name__ == '__main__':
     os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 
 
 def _prepare(infer_backend: Literal['vllm', 'transformers', 'lmdeploy']):

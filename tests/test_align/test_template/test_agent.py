@@ -2,6 +2,7 @@ import os
 
 os.environ['SWIFT_DEBUG'] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1,2,3'
 system = 'You are a helpful assistant.'
 
 tools = [{

@@ -1,6 +1,7 @@
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
 os.environ['MAX_PIXELS'] = '602112'
 
 if __name__ == '__main__':

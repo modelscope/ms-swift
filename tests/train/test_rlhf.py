@@ -1,6 +1,7 @@
 import os
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '1'
 kwargs = {
     'per_device_train_batch_size': 2,
     'save_steps': 5,
@@ -40,6 +41,7 @@ def test_mllm():
 
 def test_mllm_zero3():
     os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     os.environ['MAX_PIXLES'] = f'{1280 * 28 * 28}'
     from swift import InferArguments, RLHFArguments, infer_main, rlhf_main
     rlhf_main(
