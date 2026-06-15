@@ -14,8 +14,8 @@ class MegatronRewardTrainer(MegatronRLHFTrainer):
     def loss_func(self, output_tensor, *, data):
         packed_seq_params = data.get('packed_seq_params')
         margin = data.pop('margin', None)
-        num_samples = output_tensor.shape[0] // 2 if packed_seq_params is None else packed_seq_params.num_samples
-        rewards = self.get_last_tokens(output_tensor, packed_seq_params, data.get('attention_mask'), 2 * num_samples)
+        num_samples = output_tensor.shape[0] // 2 if packed_seq_params is None else packed_seq_params.seq_lens.shape[0] // 2
+        rewards = self.get_last_tokens(output_tensor, packed_seq_params, data.get('attention_mask'))
         rewards_chosen, rewards_rejected = torch.split(rewards, num_samples, dim=0)
         if margin is not None:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - margin).mean()
