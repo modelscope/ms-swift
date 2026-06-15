@@ -24,9 +24,7 @@ def _test_client(port=8000):
 def _test(infer_backend):
     import os
 
-    from swift.utils import select_device
-    select_device('0')
-
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     from swift.arguments import DeployArguments
     from swift.pipelines import run_deploy
     args = DeployArguments(model='Qwen/Qwen2-7B-Instruct', infer_backend=infer_backend, verbose=False)

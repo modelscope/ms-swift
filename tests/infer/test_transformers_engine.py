@@ -1,10 +1,10 @@
+import os
+
 from swift import TransformersEngine
 from swift.infer_engine import InferRequest, RequestConfig
 from swift.metrics import InferStats
-from swift.utils import select_device
 
-select_device('0')
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 engine = TransformersEngine('Qwen/Qwen2-0.5B', max_batch_size=4)
 
 

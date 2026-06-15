@@ -1,9 +1,8 @@
+import os
 import torch
 from typing import Literal
 
-from swift.utils import select_device
-
-select_device('0')
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 
 def _prepare(infer_backend: Literal['vllm', 'transformers', 'lmdeploy']):

@@ -1,7 +1,5 @@
 import os
 
-from swift.utils import select_device
-
 kwargs = {
     'per_device_train_batch_size': 5,
     'save_steps': 5,
@@ -11,7 +9,7 @@ kwargs = {
 
 
 def test_train_eval_loop():
-    select_device('1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
