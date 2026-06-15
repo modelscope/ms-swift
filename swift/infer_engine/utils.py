@@ -150,14 +150,14 @@ def prepare_generation_config(model_generation_config: Optional[GenerationConfig
     for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty', 'num_beams']:
         new_value = getattr(request_config, key)
         if new_value is None:
-            kwargs[key] = getattr(model_generation_config, key)
+            kwargs[key] = getattr(model_generation_config, key, None)
         else:
             kwargs[key] = new_value
 
     if kwargs.get('top_k') is not None and kwargs['top_k'] <= 0:
         kwargs['top_k'] = None
 
-    if not model_generation_config.do_sample and request_config.temperature in {0, None}:
+    if not getattr(model_generation_config, 'do_sample', False) and request_config.temperature in {0, None}:
         kwargs['temperature'] = 0
     if kwargs['temperature'] == 0:
         kwargs['do_sample'] = False

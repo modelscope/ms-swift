@@ -18,7 +18,7 @@ swift rlhf \
     --vllm_max_model_len 10240 \
     --vllm_enable_lora true \
     --sleep_level 1 \
-    --train_type lora \
+    --tuner_type lora \
     --quant_method bnb \
     --quant_bits 4 \
     --bnb_4bit_quant_type nf4 \
