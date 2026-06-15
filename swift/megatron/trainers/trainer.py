@@ -78,7 +78,7 @@ class MegatronTrainer(BaseMegatronTrainer):
         args = self.args
         metrics = defaultdict(lambda: torch.tensor([0.0, 0.0], dtype=torch.float32, device=torch.cuda.current_device()))
         if args.padding_free:
-            num_samples = packed_seq_params.num_samples
+            num_samples = packed_seq_params.seq_lens.shape[0]
             cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
             for i in range(cu_seqlens.shape[0] - 1):
                 channel = None if channels is None else channels[i]

@@ -1186,7 +1186,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 logits_packed, labels, compute_entropy=self.compute_entropy)
 
             if args.context_parallel_size > 1:
-                num_samples = packed_seq_params.num_samples if args.padding_free else micro_batch_size
+                num_samples = packed_seq_params.seq_lens.shape[0] if args.padding_free else micro_batch_size
                 cp_size = args.context_parallel_size
                 per_token_logps_packed = reconstruct_tensor_cp(cp_size, per_token_logps_packed, packed_seq_params,
                                                                num_samples)
