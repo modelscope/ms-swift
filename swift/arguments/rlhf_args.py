@@ -283,19 +283,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         self._check_grpo()
         self._check_gkd()
 
-        if self.loss_scale is None:
-            if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
-                # Avoid padding labels during the model's forward pass in multimodal models.
-                # Some multimodal models do not expand the image pad token.
-                self.loss_scale = 'default'
-            elif self.rlhf_type == 'grpo':
-                if self.loss_scale is None:
-                    if self.multi_turn_scheduler:
-                        self.loss_scale = 'default'
-                    else:
-                        self.loss_scale = 'last_round'
-            else:
-                self.loss_scale = 'last_round'
         if isinstance(self.ref_adapters, str):
             self.ref_adapters = [self.ref_adapters]
         if self.rlhf_type == 'grpo' and self.beta == 0.0:
@@ -306,6 +293,21 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             self.ref_model_revision = self.ref_model_revision or self.model_revision
         elif self.ref_model is not None:
             raise ValueError('CPO/ORPO or LoRA training does not require a ref_model to be passed in.')
+
+    def _set_loss_scale(self):
+        if self.loss_scale is None:
+            if self.rlhf_type == 'orpo' and not self.model_meta.is_multimodal:
+                # Avoid padding labels during the model's forward pass in multimodal models.
+                # Some multimodal models do not expand the image pad token.
+                self.loss_scale = 'default'
+            elif self.rlhf_type == 'grpo':
+                if self.multi_turn_scheduler:
+                    self.loss_scale = 'default'
+                else:
+                    self.loss_scale = 'last_round'
+            else:
+                self.loss_scale = 'last_round'
+        super()._set_loss_scale()
 
     def _process_loss_type(self):
         if self.loss_type is None:
