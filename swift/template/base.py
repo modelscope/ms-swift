@@ -201,12 +201,7 @@ class Template(ProcessorMixin):
         from swift.loss_scale import get_loss_scale
         if self._loss_scale not in self._loss_scale_cache:
             self._loss_scale_cache[self._loss_scale] = get_loss_scale(self._loss_scale)
-        loss_scale = self._loss_scale_cache[self._loss_scale]
-        if self.is_training and self.template_meta.is_thinking and self.template_meta.non_thinking_prefix and 'ignore_empty_think' not in self._loss_scale:
-            logger.warning_once(
-                'This model is a hybrid thinking model, but `ignore_empty_think` is not set during training. '
-                'Please check if the configuration is correct.')
-        return loss_scale
+        return self._loss_scale_cache[self._loss_scale]
 
     @property
     def agent_template(self):
