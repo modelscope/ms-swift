@@ -1,6 +1,6 @@
 # 2 * 60GiB
 # This is just a demo for DiffusionGemma training.
-# Notes: 
+# Notes:
 # 1. Currently only --per_device_train_batch_size 1 is supported,
 # and the response length of a single sample must be less than config.canvas_length.
 # 2. --gradient_checkpointing false must be set. DiffusionGemma's encoder passes
