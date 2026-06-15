@@ -144,6 +144,7 @@ class TemplateArguments:
     enable_thinking: Optional[bool] = None
     preserve_thinking: Optional[bool] = None
     add_non_thinking_prefix: bool = True
+    disable_ignore_empty_think: bool = False
 
     def __post_init__(self):
         if getattr(self, 'model_meta', None) is not None:
@@ -162,6 +163,17 @@ class TemplateArguments:
             self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
+        self._set_loss_scale()
+
+    def _set_loss_scale(self):
+        """For hybrid thinking models, automatically append '+ignore_empty_think' to loss_scale."""
+        if self.disable_ignore_empty_think:
+            return
+        template_meta = self.template_meta
+        if template_meta.is_thinking and template_meta.non_thinking_prefix:
+            # hybrid thinking model detected
+            if 'ignore_empty_think' not in self.loss_scale:
+                self.loss_scale = self.loss_scale + '+ignore_empty_think'
 
     def get_template_kwargs(self):
         truncation_strategy = self.truncation_strategy
