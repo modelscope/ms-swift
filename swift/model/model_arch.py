@@ -817,9 +817,9 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.minimax_m3_vl,
-        language_model=['language_model', 'lm_head'],
-        aligner='multi_modal_projector',
-        vision_tower='vision_tower',
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.multi_modal_projector',
+        vision_tower='model.vision_tower',
     ))
 
 

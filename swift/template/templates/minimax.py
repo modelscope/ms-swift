@@ -157,15 +157,6 @@ register_template(
         default_system='You are a helpful assistant. Your name is MiniMax-M2.7 and is built by MiniMax.',
     ))
 
-# ===================== MiniMax-M3 VL =====================
-# Reference: tokenizer_config.jinja shipped with MiniMax/MiniMax-M3.
-# The chat template renders two system blocks:
-# 1) high-priority `system` block (MiniMax model identity + thinking instructions)
-# 2) low-priority `developer` block (user-provided system text + tools)
-# In SWIFT we keep the high-priority block inside prefix/system_prefix,
-# and route user-provided system / tools into the developer slot.
-# The thinking_mode is dynamic and controlled via chat_template_kwargs.
-
 _MINIMAX_M3_IDENTITY = ('Your model version is MiniMax-M3, developed by MiniMax. Knowledge cutoff: January 2026. '
                         'Founded in early 2022, MiniMax is a global AI foundation model company committed to '
                         'advancing the frontiers of AI towards AGI.')
