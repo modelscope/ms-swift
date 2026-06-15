@@ -9,7 +9,7 @@ if __name__ == '__main__':
     megatron_rlhf_main(
         MegatronRLHFArguments(
             rlhf_type='grpo',
-            model='Qwen/Qwen2.5-VL-3B-Instruct',
+            model='Qwen/Qwen3.5-4B',
             save_safetensors=True,
             context_parallel_size=1,
             tuner_type='lora',

@@ -360,6 +360,7 @@ def prepare_batch(args, data, vp_stage=None):
     """
     batch = get_batch_on_this_pp_rank(args, data, vp_stage=vp_stage)
     seq_lens = batch.pop('seq_lens', None)
+    # Consider compatibility and security.
     num_samples = batch.pop('num_samples', None)
     if seq_lens is not None:
         if num_samples is not None:
