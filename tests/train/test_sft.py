@@ -336,8 +336,8 @@ def test_template():
 
 
 def test_emu3_gen():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
     os.environ['max_position_embeddings'] = '10240'
     os.environ['image_area'] = '518400'
     from swift import InferArguments, SftArguments, infer_main, sft_main

@@ -9,8 +9,8 @@ kwargs = {
 
 
 def test_train_eval_loop():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '1'
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
