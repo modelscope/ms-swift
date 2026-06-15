@@ -167,11 +167,11 @@ class TemplateArguments:
 
     def _set_loss_scale(self):
         """For hybrid thinking models, automatically append '+ignore_empty_think' to loss_scale."""
-        if not self.disable_ignore_empty_think:
+        if not self.disable_ignore_empty_think and getattr(self, 'template_meta', None) is not None:
             template_meta = self.template_meta
             if template_meta.is_thinking and template_meta.non_thinking_prefix:
                 # hybrid thinking model detected
-                if 'ignore_empty_think' not in self.loss_scale:
+                if self.loss_scale and 'ignore_empty_think' not in self.loss_scale:
                     self.loss_scale = self.loss_scale + '+ignore_empty_think'
 
     def get_template_kwargs(self):
