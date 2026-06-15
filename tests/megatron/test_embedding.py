@@ -1,8 +1,7 @@
 import os
 
-from swift.utils import select_device
-
-select_device('0,1')
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_embedding():

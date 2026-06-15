@@ -1,8 +1,7 @@
 import os
 
-from swift.utils import select_device
-
-select_device('0,1')
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
 os.environ['MAX_PIXELS'] = '602112'
 
 if __name__ == '__main__':
@@ -10,7 +9,7 @@ if __name__ == '__main__':
     megatron_rlhf_main(
         MegatronRLHFArguments(
             rlhf_type='grpo',
-            model='Qwen/Qwen2.5-VL-3B-Instruct',
+            model='Qwen/Qwen3.5-4B',
             save_safetensors=True,
             context_parallel_size=1,
             tuner_type='lora',
@@ -18,6 +17,7 @@ if __name__ == '__main__':
             dataset=['AI-ModelScope/clevr_cogen_a_train#10000'],
             num_train_epochs=1,
             global_batch_size=128,
+            vllm_mm_processor_cache_gb=0,
             micro_batch_size=4,
             steps_per_generation=4,
             num_generations=8,
