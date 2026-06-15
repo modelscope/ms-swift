@@ -194,20 +194,13 @@ def _build_m3_system_block(thinking_mode: str = 'adaptive') -> str:
             f'\n\n<thinking_instructions>\n{_MINIMAX_M3_THINKING_BASE}\n{mode_text}\n</thinking_instructions>')
 
 
-def _build_m3_system_prefix(thinking_mode: str = 'adaptive') -> str:
-    return f']~!b[]~b]system\n{_build_m3_system_block(thinking_mode)}[e~[\n]~b]developer\n'
-
-
 class MinimaxM3VLTemplate(Template):
-    image_token = ']<]image[>['
-    video_token = ']<]video[>['
     placeholder_tokens = [']<]image[>[', ']<]video[>[']
-    use_model = True
 
     def init_env_args(self):
         super().init_env_args()
         # thinking_mode: "enabled" / "disabled" / "adaptive"
-        self.thinking_mode = get_env_args('thinking_mode', str, 'adaptive')
+        self.thinking_mode = get_env_args('thinking_mode', str, 'disabled')
         self.chat_template_kwargs['thinking_mode'] = self.thinking_mode
         # Map thinking_mode to enable_thinking for the broader framework
         if self.thinking_mode == 'disabled':
@@ -260,17 +253,14 @@ class MinimaxM3VLTemplate(Template):
         encoded = super()._encode(inputs)
         if not inputs.images and not inputs.videos:
             return encoded
-        # Render media placeholders through the official processor so that the
-        # vision_start / vision_end wrapping tokens (and per-frame timestamps for
-        # videos) are produced by the same code path used at inference time.
         media_text_parts = ([self.image_token] * len(inputs.images) + [self.video_token] * len(inputs.videos))
         media_inputs = self.processor(
-            text='\n'.join(media_text_parts),
+            text=self.tokenizer.eos_token.join(media_text_parts),
             images=inputs.images or None,
             videos=inputs.videos or None,
             return_tensors='pt',
         )
-        split_token = self._tokenize('\n')
+        split_token = self._tokenize(self.tokenizer.eos_token)
         splited_tokens = self._split_list(media_inputs['input_ids'][0].tolist(), split_token)
         media_inputs.pop('input_ids', None)
         media_inputs.pop('attention_mask', None)
@@ -279,9 +269,15 @@ class MinimaxM3VLTemplate(Template):
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
 
-        image_token_id = self.tokenizer.convert_tokens_to_ids(self.image_token)
-        video_token_id = self.tokenizer.convert_tokens_to_ids(self.video_token)
-        idx_list = findall(input_ids, [image_token_id, video_token_id])
+        idx_list = []
+        for key in ['image', 'video']:
+            token_id = getattr(self.config, f'{key}_token_id', None)
+            if token_id is None:
+                continue
+            idx_list += findall(input_ids, token_id)
+        sorted_order = sorted(range(len(idx_list)), key=lambda i: idx_list[i])
+        idx_list = [idx_list[i] for i in sorted_order]
+        splited_tokens = [splited_tokens[i] for i in sorted_order]
 
         def _get_new_tokens(i):
             return splited_tokens[i]
@@ -289,12 +285,7 @@ class MinimaxM3VLTemplate(Template):
         if idx_list:
             input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
                                                                 _get_new_tokens)
-        for key in ['pixel_values', 'image_grid_thw', 'pixel_values_videos', 'video_grid_thw']:
-            if key in media_inputs:
-                value = media_inputs[key]
-                if key == 'pixel_values' or key == 'pixel_values_videos':
-                    value = value.to(self.model_info.torch_dtype)
-                encoded[key] = value
+        encoded.update(media_inputs)
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
@@ -315,7 +306,6 @@ class MinimaxM3VLTemplateMeta(TemplateMeta):
     prompt: Prompt = field(default_factory=lambda: [']~b]user\n{{QUERY}}[e~[\n]~b]ai\n'])
     chat_sep: Optional[Prompt] = field(default_factory=lambda: ['[e~[\n'])
     suffix: Prompt = field(default_factory=lambda: ['[e~[\n'])
-    system_prefix: Optional[Prompt] = field(default_factory=lambda: [']~!b[]~b]system\n{{SYSTEM}}[e~[\n'])
     agent_template: Optional[str] = 'minimax_m3'
     is_thinking: bool = True
     thinking_prefix: str = '<mm:think>'

@@ -166,6 +166,15 @@ register_model(
         requires=['transformers==4.57.1'],
         architectures=['MiniMaxM2ForCausalLM']))
 
+
+class MinimaxM3VLLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import AutoModelForImageTextToText
+        self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+
 register_model(
     ModelMeta(
         MLLMModelType.minimax_m3_vl, [
@@ -173,7 +182,7 @@ register_model(
                 Model('MiniMax/MiniMax-M3', 'MiniMaxAI/MiniMax-M3'),
             ]),
         ],
-        ModelLoader,
+        MinimaxM3VLLoader,
         template=TemplateType.minimax_m3_vl,
         model_arch=ModelArch.minimax_m3_vl,
         architectures=['MiniMaxM3SparseForConditionalGeneration'],
