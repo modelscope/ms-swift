@@ -1,6 +1,8 @@
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+from swift.utils import select_device
+
+select_device('0')
 
 
 def test_cli(infer_backend):
@@ -36,7 +38,7 @@ def test_mllm_dataset(infer_backend):
 
 
 def test_dataset_ddp():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    select_device('0,1,2,3')
     from swift import InferArguments, infer_main
     args = InferArguments(
         model='Qwen/Qwen2-7B-Instruct', max_batch_size=64, val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000'])
@@ -44,7 +46,7 @@ def test_dataset_ddp():
 
 
 def test_dataset_mp_ddp():
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    select_device('0,1,2,3')
     from swift import InferArguments, infer_main
     args = InferArguments(
         model='Qwen/Qwen2-7B-Instruct', max_batch_size=64, val_dataset=['AI-ModelScope/alpaca-gpt4-data-zh#1000'])

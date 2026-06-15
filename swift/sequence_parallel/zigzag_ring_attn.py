@@ -6,7 +6,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 from functools import cache
 
-from .utils import RingComm
+from .ring_utils import RingComm
 from .zigzag_ring_attn_npu import is_npu_tensor, npu_backward, npu_forward
 
 

@@ -86,6 +86,7 @@ class MLLMModelArch:
     valley = 'valley'
     gemma3n = 'gemma3n'
     gemma4_unified = 'gemma4_unified'
+    diffusion_gemma = 'diffusion_gemma'
     keye_vl = 'keye_vl'
 
     midashenglm = 'midashenglm'
@@ -757,6 +758,14 @@ register_model_arch(
         MLLMModelArch.gemma4_unified,
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.embed_vision', 'model.embed_audio'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.diffusion_gemma,
+        language_model=['model.encoder.language_model', 'model.decoder', 'lm_head'],
+        vision_tower=['model.encoder.vision_tower'],
+        aligner=['model.encoder.embed_vision'],
     ))
 
 register_model_arch(

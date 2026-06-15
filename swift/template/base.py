@@ -2,6 +2,7 @@
 import hashlib
 import inspect
 import math
+import numpy as np
 import os
 import random
 import re
@@ -67,6 +68,11 @@ class Template(ProcessorMixin):
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
     jinja_enable_thinking_key = 'enable_thinking'
+    # If True, only inject non_thinking_prefix when the previous turn is a 'user' turn.
+    # Set this in subclasses where thinking / tool_call / tool_response / follow-up
+    # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
+    # the assistant turn after a tool_response should NOT open a new thinking block.
+    non_thinking_prefix_only_after_user: bool = False
 
     is_encoder_decoder = False
 
@@ -145,8 +151,6 @@ class Template(ProcessorMixin):
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
         self.norm_bbox = norm_bbox or self.norm_bbox
-        if self.is_encoder_decoder:
-            self.skip_prompt = False
         self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
@@ -720,13 +724,13 @@ class Template(ProcessorMixin):
             logprobs = [self._get_seq_cls_logprobs(pred, logprobs[i], top_logprobs) for i, pred in enumerate(preds)]
         return preds, logprobs
 
-    def decode(self,
-               generate_ids: List[int],
-               *,
-               is_finished: bool = True,
-               first_token=True,
-               template_inputs=None,
-               **kwargs) -> Any:
+    def decode_generate_ids(self,
+                            generate_ids: List[int],
+                            *,
+                            is_finished: bool = True,
+                            first_token=True,
+                            template_inputs=None,
+                            **kwargs) -> Any:
         if kwargs.get('spaces_between_special_tokens') is None:
             kwargs['spaces_between_special_tokens'] = False
         generate_ids = self.skip_stop_tokens(generate_ids, is_finished)
@@ -760,6 +764,17 @@ class Template(ProcessorMixin):
         if 'use_model_defaults' in signature.parameters and 'use_model_defaults' not in kwargs:
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
+
+    def compute_sft_loss(self, model, inputs: Dict[str, Any], num_items_in_batch: Optional[int] = None, trainer=None):
+        # Default SFT Loss Calculation Method
+        outputs = model(**inputs)
+        if 'labels' in inputs:
+            labels = inputs['labels']
+            outputs.loss = outputs.loss.to(labels.device)
+            # fix https://github.com/huggingface/transformers/issues/34263
+            if num_items_in_batch is not None:
+                outputs.loss = outputs.loss * ((labels[:, 1:] != -100).sum() / num_items_in_batch)
+        return outputs
 
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         # Do not print template_meta.suffix_stop and eos_token.
@@ -1152,7 +1167,11 @@ class Template(ProcessorMixin):
 
     def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
         message = messages[i]
-        return i >= start_idx and message['role'] == 'assistant'
+        if not (i >= start_idx and message['role'] == 'assistant'):
+            return False
+        if self.non_thinking_prefix_only_after_user and not (i > 0 and messages[i - 1]['role'] == 'user'):
+            return False
+        return True
 
     def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think>') -> None:
         messages = inputs.messages
@@ -1503,7 +1522,8 @@ class Template(ProcessorMixin):
             input_ids = encoded['input_ids']
             padding_len = math.ceil(len(input_ids) / (cp_size * 2)) * (cp_size * 2) - len(input_ids)
             input_ids += [self.tokenizer.pad_token_id] * padding_len
-            encoded['labels'] += [-100] * padding_len
+            if encoded.get('labels') is not None:
+                encoded['labels'] += [-100] * padding_len
             if encoded.get('loss_scale') is not None:
                 encoded['loss_scale'] += [0] * padding_len
             if encoded.get('length') is not None:
@@ -1775,6 +1795,9 @@ class Template(ProcessorMixin):
                                 *,
                                 padding_to: Optional[int] = None) -> Dict[str, Any]:
         if self.is_training:
+            if not hasattr(self, 'random_state'):
+                # TODO: Move to `__init__`; kept here to avoid cache invalidation caused by template hash changes.
+                self.random_state = np.random.RandomState(42)
             max_positive_samples = int(os.environ.get('MAX_POSITIVE_SAMPLES', 1))
             max_negative_samples = int(os.environ.get('MAX_NEGATIVE_SAMPLES', 7))
             labels_list = []
@@ -1785,12 +1808,12 @@ class Template(ProcessorMixin):
                 negative_num = len(labels) - positive_num
                 max_positive = min(positive_num, max_positive_samples)
                 max_negative = min(negative_num, max_negative_samples)
-                for i in random.sample(range(positive_num), max_positive):
+                for i in self.random_state.choice(positive_num, max_positive, replace=False):
                     new_batch.append(
                         {key: b[key][i]
                          for key in b.keys() if isinstance(b[key], list) and b[key][i] is not None})
                     labels_list.append(1)
-                    for j in random.sample(range(negative_num), max_negative):
+                    for j in self.random_state.choice(negative_num, max_negative, replace=False):
                         new_batch.append({
                             key: b[key][j + positive_num]
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
@@ -1835,11 +1858,14 @@ class Template(ProcessorMixin):
         assert self.tokenizer.pad_token_id is not None
         padding_side = self.padding_side if self.is_training else 'left'
         padding_right = padding_side == 'right'
+        real_seq_lens = [len(b['input_ids']) for b in batch] if self.use_megatron else None
         self._handle_megatron_cp(batch)
         if self.padding_free:
             batch[:] = [self.packing_row(batch)]
             assert 'position_ids' in batch[0], f'batch[0]: {batch[0]}'
-        elif self.use_megatron:
+        elif self.use_megatron or self.sequence_parallel_size > 1:
+            assert padding_side == 'right', (
+                f'padding_side must be "right" when use_megatron or sequence_parallel_size > 1, got {padding_side!r}.')
             for encoded in batch:
                 val = encoded['input_ids'] if encoded.get('labels') is None else encoded['labels']
                 encoded['position_ids'] = list(range(len(val)))
@@ -1896,7 +1922,6 @@ class Template(ProcessorMixin):
                 res['position_ids'] = [torch.arange(seq_len, dtype=torch.int64) for seq_len in seq_lens]
 
         if self.use_megatron:
-            # For code simplicity, only the attention_backend 'flash' is supported here.
             if padding_to is not None:
                 padding_to = math.ceil(max(seq_lens) / padding_to) * padding_to
             if self.padding_free:
@@ -1914,7 +1939,7 @@ class Template(ProcessorMixin):
                 res['attention_mask'] = torch.tril(torch.ones(
                     (len(seq_lens), seq_len, seq_len), dtype=torch.bool)).view(len(seq_lens), 1, seq_len, seq_len)
                 assert res['attention_mask'].dtype is torch.bool, f'attention_mask.dtype: {res["attention_mask"].dtype}'
-                for i, seq_len in enumerate(seq_lens):
+                for i, seq_len in enumerate(real_seq_lens):
                     res['attention_mask'][i, :, :, seq_len:] = 0
                 res['attention_mask'] = ~res['attention_mask']
 
@@ -1936,9 +1961,8 @@ class Template(ProcessorMixin):
 
         # multimodal
         res.update(self._data_collator_mm_data(batch))
-        if not self.use_megatron and self.sequence_parallel_size > 1:
-            res = self._sp_data_collator(res, padding_to, self.tokenizer, padding_side)
-
+        if self.use_megatron:
+            res['seq_lens'] = real_seq_lens  # CP locates the last token.
         return res
 
     def _pad_3d_position_ids(self,
@@ -2009,26 +2033,6 @@ class Template(ProcessorMixin):
             grid_thw = self.concat_tensor(batch, f'{media_type}_grid_thw', 0)
             if grid_thw is not None:
                 res[f'{media_type}_grid_thw'] = grid_thw
-        return res
-
-    def _sp_data_collator(self, res, padding_to, tokenizer, padding_side):
-        input_ids = res.get('input_ids')
-        attention_mask = res.get('attention_mask')
-        labels = res.get('labels')
-        loss_scale = res.get('loss_scale')
-        if self.sequence_parallel_size > 1 and input_ids is not None:
-            bs, seq_len = input_ids.shape
-            if 'position_ids' not in res:
-                position_ids = torch.arange(seq_len).unsqueeze(0).long().repeat(bs, 1)
-            else:
-                position_ids = res['position_ids']
-            assert padding_side == 'right' or bs == 1, 'Sequence parallel only support padding_side=right'
-            res['position_ids'] = position_ids
-        _local_var = locals()
-        for key in ['input_ids', 'attention_mask', 'labels', 'loss_scale']:
-            value = _local_var[key]
-            if value is not None:
-                res[key] = value
         return res
 
     def print_inputs(self, inputs: Dict[str, Any]) -> None:

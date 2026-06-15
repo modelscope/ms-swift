@@ -183,6 +183,12 @@ def parse_args(class_type: Type[_T], argv: Optional[List[str]] = None) -> Tuple[
     return args, remaining_args
 
 
+def parse_args_from_dict(class_type: Type[_T], args: Dict[str, Any]) -> _T:
+    with _patch_get_type_hints():
+        parser = HfArgumentParser([class_type])
+    return parser.parse_dict(args, allow_extra_keys=True)[0]
+
+
 def lower_bound(lo: int, hi: int, cond: Callable[[int], bool]) -> int:
     # The lower bound satisfying the condition "cond".
     while lo < hi:
@@ -528,3 +534,11 @@ def to_abspath(path: Union[str, List[str], None], check_path_exist: bool = False
     for v in path:
         res.append(to_abspath(v, check_path_exist))
     return res
+
+
+def swanlab_get_run():
+    try:
+        import swanlab
+        return swanlab.get_run()
+    except (RuntimeError, ImportError):
+        return None

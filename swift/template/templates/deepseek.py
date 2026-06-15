@@ -186,9 +186,9 @@ class DeepseekVLTemplate(Template):
 
             return {'sequences': generated_tokens}
 
-    def decode(self, generate_ids: List[int], **kwargs) -> Any:
+    def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> Any:
         if 'template_inputs' not in kwargs or not kwargs['template_inputs'].generate_mode:
-            return super().decode(generate_ids, **kwargs)
+            return super().decode_generate_ids(generate_ids, **kwargs)
         else:
             img_size = get_env_args('img_size', int, 384)
             patch_size = 16
@@ -472,11 +472,7 @@ register_template(DeepseekV2_5TemplateMeta(LLMTemplateType.deepseek_r1, is_think
 
 class DeepseekV3_1Template(Template):
     jinja_enable_thinking_key = 'thinking'
-
-    def _is_add_non_thinking_round(self, messages, i, start_idx):
-        # Additional condition: the previous turn needs to be 'user'
-        return super()._is_add_non_thinking_round(messages, i,
-                                                  start_idx) and i > 0 and messages[i - 1]['role'] == 'user'
+    non_thinking_prefix_only_after_user = True
 
 
 register_template(

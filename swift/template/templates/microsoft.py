@@ -17,6 +17,7 @@ class FlorenceTemplate(Template):
     # If it's an encoder-decoder architecture, the default settings are
     # loss_scale: 'last_round' and skip_prompt: False.
     is_encoder_decoder = True
+    skip_prompt = False
 
     @staticmethod
     def _add_default_tags(inputs: StdTemplateInputs) -> None:
@@ -60,8 +61,8 @@ class FlorenceTemplate(Template):
                 image_features, inputs_embeds)
         return {'inputs_embeds': inputs_embeds}
 
-    def decode(self, generate_ids: List[int], **kwargs) -> Any:
-        response = super().decode(generate_ids, **kwargs)
+    def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> Any:
+        response = super().decode_generate_ids(generate_ids, **kwargs)
         template_inputs = kwargs.get('template_inputs')
         images = template_inputs.images
         image_size = None

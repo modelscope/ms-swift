@@ -65,7 +65,9 @@ def _test_client(port: int, print_logprobs: bool = False, test_vlm: bool = False
 
 def _test(infer_backend, test_vlm: bool = False):
     import os
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
+    from swift.utils import select_device
+    select_device('0')
 
     import multiprocessing
 

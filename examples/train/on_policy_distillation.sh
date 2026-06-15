@@ -1,4 +1,19 @@
 # On-Policy Distillation https://thinkingmachines.ai/blog/on-policy-distillation/
+#
+# NOTE: When the student is a base model and the teacher is an instruct model,
+# they use different EOS tokens (e.g. Qwen3-Base uses <|endoftext|> while
+# Qwen3-Instruct uses <|im_end|>). Training with reverse KL (beta=1) directly
+# will cause the student's EOS probability to drop, leading to length explosion.
+#
+# Following the blog's approach, you should SFT the base model first to teach it
+# the instruct format (including the correct EOS token), then run on-policy
+# distillation on the SFT checkpoint. For example:
+#
+#   swift sft --model Qwen/Qwen3-8B-Base \
+#       --dataset open-thoughts/OpenThoughts3-1.2M \
+#       --output_dir output/sft_checkpoint ...
+#
+# Then replace --model below with the SFT checkpoint path.
 
 # CUDA_VISIBLE_DEVICES=7 \
 # swift rollout \

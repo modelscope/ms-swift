@@ -6,9 +6,10 @@ import unittest
 from packaging import version
 
 from swift import ExportArguments, export_main
+from swift.utils import select_device
 
 if __name__ == '__main__':
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    select_device('0')
 
 
 class TestTemplate(unittest.TestCase):

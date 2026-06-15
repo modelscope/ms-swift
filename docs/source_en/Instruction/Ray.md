@@ -1,6 +1,95 @@
 # Ray Support
 
-SWIFT already supports using Ray for multi-GPU or multi-node training. The support status for Ray in existing features is as follows:
+## Megatron Ray
+
+The Megatron backend supports GRPO and GKD training via Ray:
+
+| Feature | Example | Assignable Roles |
+|---------|---------|------------------|
+| megatron grpo | https://github.com/modelscope/ms-swift/tree/main/examples/ray/grpo | train/rollout |
+| megatron gkd  | https://github.com/modelscope/ms-swift/tree/main/examples/ray/gkd  | train/rollout/teacher |
+
+### When to Use
+
+Non-Ray Megatron (`megatron rlhf`) and Ray Megatron (`megatron rlhf --use_ray true`) have identical training functionality.
+
+The core difference is in **deployment**:
+
+- **Non-Ray Megatron**: Launched via torchrun. Inference can use colocate (same process) or server (manually started vLLM server) mode. Multi-node requires manually configuring `MASTER_ADDR/PORT` on each node and separately launching torchrun and vLLM server.
+- **Ray Megatron**: A single YAML declares the GPU count for each role (`train.gpus`, `rollout.gpus`, `teacher.gpus`). Ray automatically handles process creation, GPU allocation, and cross-node scheduling — no manual multi-process management needed.
+
+Both support GPU isolation between training and inference (non-Ray via `vllm_mode=server`, Ray via YAML separate mode), making them functionally equivalent. Ray's advantage is automating multi-process orchestration — in multi-node scenarios, it eliminates the operational burden of manually launching torchrun and vLLM server on each node.
+
+**Selection guide:**
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Single-node training | **Non-Ray** — simpler |
+| Multi-node cluster | **Ray** — automatic cross-node scheduling, one YAML to launch |
+
+### Quick Start
+
+```bash
+# 1. Start Ray cluster (optional for single node)
+ray start --head                        # head node
+ray start --address=<head_ip>:6379      # worker nodes
+
+# 2. Submit training
+megatron rlhf --use_ray true --config examples/ray/grpo/ray_grpo_colocate.yaml
+```
+
+### GPU Allocation Modes
+
+**Colocate (shared GPU)** — Training and inference share the same GPUs, alternating usage via sleep/wake to free memory:
+
+```yaml
+colocate_groups: [[train, rollout]]
+offload_model: true
+offload_optimizer: true
+sleep_level: 1
+
+train:
+  gpus: 4
+rollout:
+  gpus: 4    # must match train
+```
+
+**Separate (dedicated GPU)** — Training and inference occupy separate GPUs with no memory contention:
+
+```yaml
+# do not set colocate_groups
+train:
+  gpus: 4
+rollout:
+  gpus: 4    # dedicated 4 GPUs
+```
+
+### GKD Teacher Modes
+
+| Mode | Configuration | top-k | full-vocab |
+|------|--------------|:-----:|:----------:|
+| Colocated teacher | Set `teacher_model` + `offload_teacher_model: true` | ✅ | ✅ |
+| Standalone teacher GPU group | Add `teacher:` group with `gpus`, `model` | ✅ | ❌ |
+
+- **Colocated teacher**: The teacher is a Megatron model sharing the same GPUs and parallel parameters as the student, with memory alternated via offload.
+- **Standalone teacher GPU group**: The teacher is an independent vLLM inference engine running on separate GPUs, with independently configured parallel parameters (`vllm_tensor_parallel_size`).
+- **top-k**: The distillation loss is computed only over the teacher's top-k highest-probability tokens (set via `gkd_logits_topk`). Lower memory usage, but discards long-tail distribution information.
+- **full-vocab**: The distillation loss is computed over the entire vocabulary, preserving the full distribution. Higher memory usage.
+
+### Related Documentation
+
+For more details, refer to:
+
+- **GRPO Training**: [Megatron GRPO docs](../Megatron-SWIFT/GRPO.md)
+- **GKD Training**: [GKD docs](../Megatron-SWIFT/GKD.md)
+- **Megatron Parameters**: [Command-line parameters](../Megatron-SWIFT/Command-line-parameters.md)
+- **Megatron Quick Start**: [Quick Start](../Megatron-SWIFT/Quick-start.md)
+
+For detailed configuration and examples, see [examples](https://github.com/modelscope/ms-swift/tree/main/examples/ray).
+
+## Swift Ray
+
+SWIFT's HF Trainer also supports using Ray for multi-GPU or multi-node training:
 
 | Feature  | Ray Support | Example                                                                        | Assignable Roles |
 |----------|-------------|--------------------------------------------------------------------------------|------------------|
@@ -8,11 +97,10 @@ SWIFT already supports using Ray for multi-GPU or multi-node training. The suppo
 | dpo      | ❎           |                                                                                |                  |
 | grpo     | ❎           |                                                                                |                  |
 | ppo      | ❎           |                                                                                |                  |
-| megatron | ❎           |                                                                                |                  |
 | sampling | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/distill      | sampler/prm/orm  |
 | distill  | ✅           | https://github.com/modelscope/ms-swift/tree/main/examples/sampler/sample       | sampler/prm/orm  |
 
-## Technical Details
+### Technical Details
 
 Before describing parameter settings, it's necessary to first explain the technical details. Since SWIFT currently uses many existing implementations from transformers and trl internally, decomposing into different Ray roles like veRL or ROLL is impractical, and decomposition would center around Ray, resulting in poor support for non-Ray scenarios.
 
@@ -120,7 +208,7 @@ The function annotation has several additional parameters:
             # Return in your desired format
     ```
 
-## Parameter Settings
+### Parameter Settings
 
 After explaining the technical details, we can configure the parameters. Developers can set different hardware configurations according to the role list in different processes. For example, in the sampling function, there are three roles: sampler, prm, orm. You can configure them like this:
 

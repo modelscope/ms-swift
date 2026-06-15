@@ -1,7 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 from .env import (get_dist_setting, get_hf_endpoint, get_node_setting, get_pai_tensorboard_dir, is_deepspeed_enabled,
-                  is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp, is_pai_training_job, use_hf_hub)
+                  is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp, is_pai_training_job,
+                  select_device, use_hf_hub)
 from .hf_config import HfConfigFactory
 from .hub_utils import download_ms_file, git_clone_github, patch_kernels, safe_snapshot_download
 from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
@@ -27,6 +28,6 @@ from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, f
                                  unwrap_model_for_generation)
 from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
                     find_node_ip, format_time, get_env_args, import_external_file, json_parse_to_dict, lower_bound,
-                    parse_args, patch_getattr, read_multi_line, remove_response, retry_decorator, seed_everything,
-                    shutdown_event_loop_in_daemon, split_list, start_event_loop_in_daemon, subprocess_run, test_time,
-                    to_abspath, upper_bound)
+                    parse_args, parse_args_from_dict, patch_getattr, read_multi_line, remove_response, retry_decorator,
+                    seed_everything, shutdown_event_loop_in_daemon, split_list, start_event_loop_in_daemon,
+                    subprocess_run, swanlab_get_run, test_time, to_abspath, upper_bound)

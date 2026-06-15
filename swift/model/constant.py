@@ -252,6 +252,7 @@ class MLLMModelType:
     gemma3n = 'gemma3n'
     gemma4 = 'gemma4'
     gemma4_unified = 'gemma4_unified'
+    diffusion_gemma = 'diffusion_gemma'
     mistral3 = 'mistral3'
     mistral3_2506 = 'mistral3_2506'
     paddle_ocr = 'paddle_ocr'

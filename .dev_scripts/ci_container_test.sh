@@ -207,6 +207,9 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     uv pip install diffusers
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         uv pip install math-verify -i "$NPU_PIP_INDEX"
+        uv pip install ray -i "$NPU_PIP_INDEX"
+        uv pip install msgspec -i "$NPU_PIP_INDEX"
+        uv pip install zmq -i "$NPU_PIP_INDEX"
     fi
     # pip install autoawq -U --no-deps
 
