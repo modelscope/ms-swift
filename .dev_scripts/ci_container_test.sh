@@ -215,11 +215,11 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
         uv pip install bitsandbytes deepspeed -U
+        if [ -f requirements/npu.txt ]; then
+            uv pip install -r requirements/npu.txt
+        fi
     else
         uv pip install auto_gptq bitsandbytes deepspeed -U
-    fi
-    if [ -f requirements/npu.txt ]; then
-        uv pip install -r requirements/npu.txt
     fi
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
