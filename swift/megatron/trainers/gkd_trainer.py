@@ -171,6 +171,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             padding_to = get_padding_to(args)
             encoded_batch = to_device(template.data_collator(encoded_list, padding_to=padding_to), self.device)
 
+        encoded_batch['num_samples'] = len(batch)
         return encoded_batch
 
     def _get_random_num(self) -> float:
