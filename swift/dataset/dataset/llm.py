@@ -931,3 +931,29 @@ register_dataset(
         hf_dataset_id='open-r1/DAPO-Math-17k-Processed',
         subsets=['all'],
         tags=['math', 'rlvr']))
+
+
+class SudokuPreprocessor(ResponsePreprocessor):
+    prompt = ('Solve the following 9x9 Sudoku puzzle. '
+              "Empty cells are marked with '0'. "
+              'Provide the completed grid as your answer.\n\n'
+              'Puzzle:\n{puzzle}')
+
+    @staticmethod
+    def _format_grid(s: str) -> str:
+        return '\n'.join(s[i:i + 9] for i in range(0, len(s), 9))
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        puzzle = row['query'].replace('.', '0')
+        response = row['response']
+        puzzle = self._format_grid(puzzle)
+        response = self._format_grid(response)
+        return super().preprocess({'query': self.prompt.format(puzzle=puzzle), 'response': response})
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='sapientinc/sudoku-extreme-1k',
+        hf_dataset_id='sapientinc/sudoku-extreme-1k',
+        preprocess_func=SudokuPreprocessor(),
+    ))
