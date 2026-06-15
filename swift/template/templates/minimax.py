@@ -195,6 +195,8 @@ def _build_m3_system_block(thinking_mode: str = 'adaptive') -> str:
 
 
 class MinimaxM3VLTemplate(Template):
+    image_token = ']<]image[>['
+    video_token = ']<]video[>['
     placeholder_tokens = [']<]image[>[', ']<]video[>[']
 
     def init_env_args(self):
@@ -290,14 +292,6 @@ class MinimaxM3VLTemplate(Template):
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
         return encoded
-
-    def _data_collator_mm_data(self, batch: List[Dict[str, Any]]) -> Dict[str, Any]:
-        res = super()._data_collator_mm_data(batch)
-        for key in ['image_grid_thw', 'video_grid_thw']:
-            value = [b[key] for b in batch if b.get(key) is not None]
-            if value:
-                res[key] = torch.concat(value)
-        return res
 
 
 @dataclass
