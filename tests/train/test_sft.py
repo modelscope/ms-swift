@@ -1,9 +1,7 @@
 import os
 
-from swift.utils import select_device
-
-select_device('0')
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
 kwargs = {
     'per_device_train_batch_size': 2,
     'per_device_eval_batch_size': 2,
@@ -14,7 +12,8 @@ kwargs = {
 
 
 def test_llm_ddp():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
         SftArguments(
@@ -48,7 +47,8 @@ def test_unsloth():
 
 def test_mllm_mp():
     os.environ['MAX_PIXELS'] = '100352'
-    select_device('0,1,2,3')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1,2,3'
     from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
         SftArguments(
@@ -88,7 +88,8 @@ def test_mllm_streaming():
 
 
 def test_mllm_zero3():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
@@ -100,7 +101,8 @@ def test_mllm_zero3():
 
 
 def test_qwen_vl():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
@@ -111,7 +113,8 @@ def test_qwen_vl():
 
 
 def test_qwen2_audio():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
@@ -149,7 +152,8 @@ def test_llm_awq():
 
 
 def test_mllm_streaming_zero3():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
@@ -162,7 +166,8 @@ def test_mllm_streaming_zero3():
 
 
 def test_mllm_streaming_mp_ddp():
-    select_device('0,1,2,3')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1,2,3'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
@@ -264,7 +269,8 @@ def test_resume_only_model():
 
 
 def test_llm_transformers_4_33():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
     sft_main(
         SftArguments(
@@ -276,7 +282,8 @@ def test_llm_transformers_4_33():
 
 def test_predict_with_generate():
     import os
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
 
     # 'modelscope/coco_2014_caption:validation#100',
@@ -295,7 +302,8 @@ def test_predict_with_generate():
 
 def test_predict_with_generate_zero3():
     import os
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import SftArguments, sft_main
 
     # 'modelscope/coco_2014_caption:validation#100',
@@ -328,7 +336,8 @@ def test_template():
 
 
 def test_emu3_gen():
-    select_device('1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0'
     os.environ['max_position_embeddings'] = '10240'
     os.environ['image_area'] = '518400'
     from swift import InferArguments, SftArguments, infer_main, sft_main
@@ -347,7 +356,8 @@ def test_emu3_gen():
 
 
 def test_eval_strategy():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
         SftArguments(
@@ -361,7 +371,8 @@ def test_eval_strategy():
 
 
 def test_epoch():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
 
     train_kwargs = kwargs.copy()
@@ -379,7 +390,8 @@ def test_epoch():
 
 
 def test_agent():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
 
     result = sft_main(
@@ -395,7 +407,8 @@ def test_agent():
 
 
 def test_grounding():
-    select_device('0,1')
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
     from swift import InferArguments, SftArguments, infer_main, sft_main
 
     result = sft_main(
