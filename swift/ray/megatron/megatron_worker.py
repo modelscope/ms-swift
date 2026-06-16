@@ -5,6 +5,7 @@ import os
 import torch
 from typing import Any, Dict, List, Optional, Sequence
 
+from swift.rl_core.data import GRPOBatch
 from swift.utils import gc_collect, get_current_device, get_logger, to_device
 from .checkpoint_engine import CheckpointEngineMixin
 from .inference_utils import split_micro_batches
@@ -338,14 +339,15 @@ class MegatronWorker(CheckpointEngineMixin):
             out = self._compute_logps(mb, model, output_key)
             if output_key not in out:
                 continue
-            completion_mask = mb.get('completion_mask') if with_completion_mask else None
+            grpo_batch = mb['grpo_batch']
+            completion_mask = grpo_batch.completion_mask if with_completion_mask else None
             rows.extend(
                 self._split_logps_rows(
                     out[output_key],
                     completion_mask,
                     output_key,
                     routed_experts=out.get('routed_experts'),
-                    seq_lengths=mb.get('seq_lengths')))
+                    seq_lengths=grpo_batch.seq_lengths))
         return rows
 
     @staticmethod
@@ -390,9 +392,10 @@ class MegatronWorker(CheckpointEngineMixin):
         megatron = self._megatron
         args = self._args
         temperature = getattr(args, 'temperature', 1.0)
-        seq_lengths = batch['seq_lengths']
+        grpo_batch = batch['grpo_batch']
+        seq_lengths = grpo_batch.seq_lengths
         batch_size = batch['num_samples']
-        max_seq_len = batch['completion_mask'].shape[1]
+        max_seq_len = grpo_batch.completion_mask.shape[1]
 
         excluded = GRPO_NON_MODEL_KEYS | FILTERED_KEYS
         model_inputs = {k: v for k, v in batch.items() if k not in excluded}
@@ -673,16 +676,16 @@ class MegatronWorker(CheckpointEngineMixin):
         so extract_active's label mask aligns; the padded tail has labels == -100 and
         is masked out, leaving the loss unchanged.
 
-        OPSD: when ``opsd_teacher_labels`` is present, the teacher scores a *different*
+        OPSD: when ``labels`` is present on the TeacherOutput, the teacher scores a *different*
         prompt (so its sequence length differs from the student) and extract_active
-        aligns by mask (``opsd_teacher_labels != -100``), not by position. In that case
+        aligns by mask (``labels != -100``), not by position. In that case
         the teacher keeps its own length (``target_seq_len`` is ignored).
         """
         from swift.rlhf_trainers.gkd_loss import TeacherOutput
-        opsd = any(getattr(t, 'opsd_teacher_labels', None) is not None for t in teacher_outputs)
+        opsd = any(getattr(t, 'labels', None) is not None for t in teacher_outputs)
         effective_target = None if opsd else target_seq_len
-        pad_vals = {'topk_logprobs': float('-inf'), 'opsd_teacher_labels': -100}
-        fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'opsd_teacher_labels')
+        pad_vals = {'topk_logprobs': float('-inf'), 'labels': -100}
+        fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'labels')
         kwargs = {}
         for field in fields:
             tensors = [getattr(t, field) for t in teacher_outputs]
@@ -700,7 +703,7 @@ class MegatronWorker(CheckpointEngineMixin):
                 max_len = effective_target or max(t.shape[1] for t in tensors)
                 padded = []
                 for t in tensors:
-                    # opsd_teacher_labels is 2D [1, S]; topk_*/full_logits are 3D [1, S, *].
+                    # labels is 2D [1, S]; topk_*/full_logits are 3D [1, S, *].
                     # Pad the sequence dim (dim=1) of either to max_len so torch.cat works
                     # even when per-sample teacher seq lengths differ within a micro-batch.
                     if t.dim() == 3 and t.shape[1] < max_len:
@@ -730,34 +733,33 @@ class MegatronWorker(CheckpointEngineMixin):
             encoded_batch=encoded_batch,
             device=device,
         )
-        rollout_logps = build_rollout_logps(samples, completion_mask, device)
+        rollout_logps = build_rollout_logps([s.get('rollout_logprobs') for s in samples], completion_mask, device)
         routed_experts = self._build_routed_experts_batch(
             samples, seq_lengths=seq_lengths, max_seq_len=max_seq_len, template=template, device=device)
-        encoded_batch.update({
-            'completion_mask':
-            completion_mask,
-            'truncated_mask':
-            torch.tensor([bool(s.get('is_truncated', False)) for s in samples], dtype=torch.bool, device=device),
-            'num_samples':
-            batch_size,
-            'seq_lengths':
-            seq_lengths,
-            'rollout_per_token_logps':
-            rollout_logps,
-        })
+        # RL signals are packed into GRPOBatch (mirrors main MegatronGRPOTrainer wire format:
+        # model_inputs + num_samples + grpo_batch), so model_inputs stays a clean whitelist and the
+        # reused forward_step / loss_func read everything from ``grpo_batch``.
+        grpo_batch = GRPOBatch(
+            completion_mask=completion_mask,
+            truncated_mask=torch.tensor([bool(s.get('is_truncated', False)) for s in samples],
+                                        dtype=torch.bool,
+                                        device=device),
+            seq_lengths=seq_lengths,
+            rollout_per_token_logps=rollout_logps,
+        )
+        encoded_batch['num_samples'] = batch_size
         if routed_experts is not None:
             encoded_batch['routed_experts'] = routed_experts
 
         if samples and samples[0].get('old_per_token_logps') is not None:
-            encoded_batch['old_per_token_logps'] = torch.stack([s['old_per_token_logps'].to(device) for s in samples],
-                                                               dim=0)
+            grpo_batch.old_per_token_logps = torch.stack([s['old_per_token_logps'].to(device) for s in samples], dim=0)
         if samples and samples[0].get('ref_per_token_logps') is not None:
-            encoded_batch['ref_per_token_logps'] = torch.stack([s['ref_per_token_logps'].to(device) for s in samples],
-                                                               dim=0)
+            grpo_batch.ref_per_token_logps = torch.stack([s['ref_per_token_logps'].to(device) for s in samples], dim=0)
         if samples and samples[0].get('advantage') is not None:
-            encoded_batch['advantages'] = torch.tensor([float(s.get('advantage', 0.0)) for s in samples],
-                                                       dtype=torch.float32,
-                                                       device=device)
+            grpo_batch.advantages = torch.tensor([float(s.get('advantage', 0.0)) for s in samples],
+                                                 dtype=torch.float32,
+                                                 device=device)
+        encoded_batch['grpo_batch'] = grpo_batch
         if samples and samples[0].get('teacher_output') is not None:
             cp_size = getattr(self._args, 'context_parallel_size', 1)
             if cp_size > 1:

@@ -17,6 +17,7 @@ from .base import Loss
 
 _NON_MODEL_KEYS = frozenset({
     'data_source',
+    'grpo_batch',
     'completion_mask',
     'truncated_mask',
     'seq_lengths',
@@ -114,9 +115,7 @@ class GKDLoss(Loss):
                                     opsd_label_i = sl
                             outputs.append(
                                 TeacherOutput(
-                                    topk_logprobs=topk_logits,
-                                    topk_indices=topk_indices,
-                                    opsd_teacher_labels=opsd_label_i))
+                                    topk_logprobs=topk_logits, topk_indices=topk_indices, labels=opsd_label_i))
                         else:
                             outputs.append(TeacherOutput(full_logits=teacher_logits[i:i + 1]))
                 else:

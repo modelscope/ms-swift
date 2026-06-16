@@ -10,11 +10,12 @@ import uuid
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dataset import RowPreprocessor
-from swift.infer_engine.protocol import RolloutInferRequest, RolloutOutput
+from swift.infer_engine.protocol import RolloutOutput
+from swift.rl_core.data import GRPOSample
 from swift.rlhf_trainers.utils import (compute_grpo_advantages, get_non_thinking_prefix_ids, make_reward_weights,
                                        replace_assistant_response_with_ids, resolve_reward_funcs)
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
-from swift.utils import get_logger
+from swift.utils import get_logger, remove_response
 from .base_trainer import BaseRayTrainer
 from .driver_utils import extract_iteration
 
@@ -220,7 +221,7 @@ class GRPOTrainer(BaseRayTrainer):
                 metrics[self.reward_func_names[i]] = val
         return metrics
 
-    def _generate(self, expanded_batch) -> List[RolloutOutput]:
+    def _generate(self, samples: List[GRPOSample]) -> List[RolloutOutput]:
         """Run a prompt batch through rollout replicas.
 
         Returns ``List[RolloutOutput]`` (one per request). For Mode A
@@ -228,12 +229,12 @@ class GRPOTrainer(BaseRayTrainer):
         ``response_loss_mask`` are accumulated inside each ``RolloutOutput``.
         """
         request_config = self._get_request_config()
-        prompt_batch = list(expanded_batch)
+        # Convert samples to RolloutInferRequest at the engine boundary.
+        requests = [s.to_infer_request() for s in samples]
 
         if self._multi_turn_scheduler is not None and not self._enable_server_multi_turn:
-            # Mode A: driver-side trainer loop. Convert dict prompts to
-            # RolloutInferRequest so the loop can mutate `messages` in place.
-            requests = self._inputs_to_requests(prompt_batch)
+            # Mode A: driver-side trainer loop. run_multi_turn mutates `messages`
+            # in place on RolloutInferRequest objects.
             invoke_async_hook(self._multi_turn_scheduler.on_trajectory_start(requests))
             first_turn = [
                 RolloutOutput(response=resp) for resp in self._distribute_to_replicas(requests, request_config)
@@ -249,139 +250,82 @@ class GRPOTrainer(BaseRayTrainer):
             )
 
         # Mode B (server-side multi-turn, currently disabled) + single-turn share this path.
-        completions = self._distribute_to_replicas(prompt_batch, request_config)
-        assert len(completions) == len(prompt_batch)
+        completions = self._distribute_to_replicas(requests, request_config)
+        assert len(completions) == len(requests)
         return [RolloutOutput(response=resp) for resp in completions]
 
-    def _inputs_to_requests(self, inputs: Sequence[Dict[str, Any]]) -> List[RolloutInferRequest]:
-        """Convert driver-side prompt dicts to ``RolloutInferRequest`` objects."""
-        from dacite import from_dict
-
-        REQUEST_METADATA_FIELDS = ('messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid')
-        requests: List[RolloutInferRequest] = []
-        for data in inputs:
-            if isinstance(data, RolloutInferRequest):
-                requests.append(data)
-                continue
-            payload = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
-            if 'uuid' not in payload:
-                payload['uuid'] = data.get('request_id') or uuid.uuid4().hex
-            requests.append(from_dict(RolloutInferRequest, payload))
-        return requests
-
-    def _postprocess_rollout(self, rollout_batch, outputs: List[RolloutOutput]):
+    def _postprocess_rollout(self, samples: List[GRPOSample], outputs: List[RolloutOutput]) -> List[GRPOSample]:
         """Merge ``RolloutOutput`` data back into each sample.
 
-        Mirrors ``MegatronRolloutMixin._postprocess_rollout_outputs`` — including
-        per-turn ``response_token_ids`` / ``response_loss_mask`` handling and the
-        multimodal pass-through from ``rollout_infos``.
+        Mirrors :meth:`RolloutTrainerMixin._postprocess_rollout_outputs` (HF side)
+        — single/multi-turn judged from ``rollout_output.messages``,
+        per-turn ``response_token_ids`` / ``response_loss_mask`` handling,
+        rollout_logprobs, multimodal pass-through from ``rollout_infos``.
         """
         if not outputs:
-            return list(rollout_batch)
-
-        if len(outputs) != len(rollout_batch):
+            return list(samples)
+        if len(outputs) != len(samples):
             raise RuntimeError(f'GRPOTrainer: rollout produced {len(outputs)} completions '
-                               f'for {len(rollout_batch)} samples; shapes mismatch.')
-
-        from swift.utils import remove_response
-
-        merged = []
-        for inp, output in zip(rollout_batch, outputs):
-            item = dict(inp)
+                               f'for {len(samples)} samples; shapes mismatch.')
+        for sample, output in zip(samples, outputs):
             if output is None:
-                merged.append(item)
                 continue
-            response = output.response
-            choice = response.choices[0]
-
-            if output.messages:
-                item['messages'] = output.messages
-            else:
-                messages = copy.deepcopy(item.get('messages') or [])
-                remove_response(messages)
-                messages.append({'role': 'assistant', 'content': choice.message.content or ''})
-                item['messages'] = messages
-
-            if output.response_token_ids:
-                item['response_token_ids'] = output.response_token_ids
-                if output.response_loss_mask:
-                    item['response_loss_mask'] = output.response_loss_mask
-            else:
-                item['response_token_ids'] = choice.token_ids or []
-
-            if output.rollout_infos:
-                item['rollout_infos'] = output.rollout_infos
-                # Multimodal pass-through: schedulers / envs may inject observation
-                # images / videos / audios mid-trajectory.
-                for key in ('images', 'videos', 'audios'):
-                    if key in output.rollout_infos:
-                        item[key] = output.rollout_infos[key]
-
-            item['finish_reason'] = choice.finish_reason or 'stop'
-            item['is_truncated'] = item['finish_reason'] == 'length'
-            item['add_eos'] = False
-
-            if output.rollout_logprobs:
-                item['rollout_logprobs'] = output.rollout_logprobs
-            elif choice.logprobs and 'content' in choice.logprobs:
-                item['rollout_logprobs'] = [[lp['logprob'] for lp in choice.logprobs['content']]]
-
-            if getattr(choice, 'routed_experts', None) is not None:
-                item['routed_experts'] = choice.routed_experts
-            merged.append(item)
-        return merged
+            sample.apply_rollout_output(rollout_output=output)
+        return samples
 
     def expand_for_generation(
         self,
         prompt_batch: Sequence[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+    ) -> List[GRPOSample]:
         """Repeat each prompt ``num_generations`` times before rollout.
 
-        Each item is passed directly to ``VllmEngine.infer_async`` which
-        handles encoding internally.
+        Each item starts as a dataloader dict and is converted to GRPOSample
+        here — from this point on all driver-side rollout / score / advantage
+        flows operate on per-sample objects. The worker boundary still consumes
+        ``List[Dict]`` (see :meth:`encode_rollout_batch`).
         """
-        from swift.utils import remove_response
-
         num_gen = self.num_generations
-        expanded = []
+        samples: List[GRPOSample] = []
         for item in prompt_batch:
-            copy0 = copy.deepcopy(item)
-            if 'messages' in copy0:
-                remove_response(copy0['messages'])
-            expanded.append(copy0)
+            base = GRPOSample.from_row(item)
+            if base.messages:
+                remove_response(base.messages)
+            base.request_id = uuid.uuid4().hex
+            samples.append(base)
             for _ in range(num_gen - 1):
-                dup = copy.deepcopy(copy0)
-                expanded.append(dup)
-        return expanded
+                dup = copy.deepcopy(base)
+                dup.request_id = uuid.uuid4().hex
+                samples.append(dup)
+        return samples
 
     def score_completions(
         self,
-        rollout_batch: Sequence[Dict[str, Any]],
+        samples: Sequence[GRPOSample],
     ) -> torch.Tensor:
         device = self.device
 
         # Gym path: pull `total_reward` from the multi-turn scheduler's rollout_infos and
         # append it as an extra column so reward_weights can blend it with reward_funcs.
         if self.use_gym_env:
-            gym_reward = torch.tensor([inp['rollout_infos']['total_reward'] for inp in rollout_batch],
+            gym_reward = torch.tensor([s.rollout_infos['total_reward'] for s in samples],
                                       dtype=torch.float32,
                                       device=device).unsqueeze(1)
             if not self.reward_funcs:
                 return gym_reward
-            func_rewards = self._compute_reward_funcs(rollout_batch)
+            func_rewards = self._compute_reward_funcs(samples)
             return torch.cat([func_rewards, gym_reward], dim=1)
 
-        return self._compute_reward_funcs(rollout_batch)
+        return self._compute_reward_funcs(samples)
 
     def _compute_reward_funcs(
         self,
-        rollout_batch: Sequence[Dict[str, Any]],
+        samples: Sequence[GRPOSample],
     ) -> torch.Tensor:
         device = self.device
-        rewards_per_func = torch.zeros((len(rollout_batch), len(self.reward_funcs)), device=device)
-        completions = [inp['messages'][-1]['content'] for inp in rollout_batch]
+        rewards_per_func = torch.zeros((len(samples), len(self.reward_funcs)), device=device)
+        completions = [s.messages[-1]['content'] for s in samples]
         reward_kwargs: Dict[str, Any] = {}
-        reward_kwargs.update(RowPreprocessor.rows_to_batched(list(rollout_batch)))
+        reward_kwargs.update(RowPreprocessor.rows_to_batched([s.to_reward_row() for s in samples]))
 
         def _as_tensor(values):
             return torch.tensor([torch.nan if v is None else v for v in values], dtype=torch.float32, device=device)
@@ -439,14 +383,14 @@ class GRPOTrainer(BaseRayTrainer):
 
     def _dynamic_sampling(
         self,
-        rollout_with_outputs: List[Dict[str, Any]],
+        samples: List[GRPOSample],
         rewards_per_func: torch.Tensor,
-    ) -> Tuple[List[Dict[str, Any]], torch.Tensor]:
+    ) -> Tuple[List[GRPOSample], torch.Tensor]:
         num_gen = self.num_generations
-        target = len(rollout_with_outputs)
-        valid_samples: List[Dict[str, Any]] = []
+        target = len(samples)
+        valid_samples: List[GRPOSample] = []
         valid_rewards: List[torch.Tensor] = []
-        cur_rollout, cur_rewards = rollout_with_outputs, rewards_per_func
+        cur_samples, cur_rewards = samples, rewards_per_func
 
         for resample_count in range(self.max_resample_times + 1):
             rewards = (cur_rewards * self.reward_weights.unsqueeze(0)).nansum(dim=1)
@@ -455,27 +399,27 @@ class GRPOTrainer(BaseRayTrainer):
             else:
                 grouped_std = torch.zeros_like(rewards)
             keep_mask = grouped_std > 0
-            for i in range(len(cur_rollout)):
+            for i in range(len(cur_samples)):
                 if keep_mask[i]:
-                    valid_samples.append(cur_rollout[i])
+                    valid_samples.append(cur_samples[i])
                     valid_rewards.append(cur_rewards[i])
             logger.info('dynamic_sample round %d: kept %d/%d (std>0), accumulated %d/%d', resample_count,
-                        int(keep_mask.sum().item()), len(cur_rollout), len(valid_samples), target)
+                        int(keep_mask.sum().item()), len(cur_samples), len(valid_samples), target)
             if len(valid_samples) >= target or resample_count >= self.max_resample_times:
                 break
             prompt_batch = next(self._resample_iter)
             if self.truncation_strategy == 'delete':
                 prompt_batch = self._resample_failed_prompts(prompt_batch)
-            rb = self.expand_for_generation(prompt_batch)
-            comp = self._generate(rb)
-            cur_rollout = self._postprocess_rollout(rb, comp)
-            cur_rewards = self.score_completions(cur_rollout)
+            cur_samples = self.expand_for_generation(prompt_batch)
+            comp = self._generate(cur_samples)
+            cur_samples = self._postprocess_rollout(cur_samples, comp)
+            cur_rewards = self.score_completions(cur_samples)
 
         if len(valid_samples) >= target:
             return valid_samples[:target], torch.stack(valid_rewards[:target])
         logger.warning('dynamic_sample: only %d/%d std>0 samples after %d retries; using original batch.',
                        len(valid_samples), target, self.max_resample_times)
-        return rollout_with_outputs, rewards_per_func
+        return samples, rewards_per_func
 
     def _batch_encode_parallel(self, infer_requests: Sequence[Dict[str, Any]], strict: bool):
         max_workers = max(min(32, os.cpu_count() or 1, len(infer_requests)), 1)
@@ -495,22 +439,29 @@ class GRPOTrainer(BaseRayTrainer):
 
     def encode_rollout_batch(
         self,
-        rollout_batch: Sequence[Dict[str, Any]],
+        samples: Sequence[GRPOSample],
     ) -> List[Dict[str, Any]]:
-        """Encode rollout samples and keep them as per-sample payloads."""
+        """Encode samples into per-sample worker payloads.
+
+        This is the driver → worker boundary: ``tg.compute_logps`` /
+        ``tg.train_step`` consume ``List[Dict]``. We use ``to_template_dict``
+        to drive ``template.encode``, then attach the per-sample payload
+        (encoded + is_truncated + rollout_logprobs + routed_experts) the
+        worker's collate path expects.
+        """
         non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
         rollout_for_encode: List[Dict[str, Any]] = []
-        for data in rollout_batch:
-            item = dict(data)
-            if 'messages' in item and item['messages'] is not None:
+        for sample in samples:
+            item = sample.to_template_dict()
+            # to_template_dict returns shallow copy of standard fields; deep-copy messages
+            # so replace_assistant_response_with_ids does not mutate the sample's history.
+            if item.get('messages') is not None:
                 item['messages'] = [m.copy() for m in item['messages']]
-            if 'response_token_ids' in item and item['response_token_ids']:
-                loss_mask = None
-                if 'response_loss_mask' in item and item['response_loss_mask']:
-                    loss_mask = item['response_loss_mask']
+            if sample.response_token_ids:
+                loss_mask = sample.response_loss_mask or None
                 item['messages'] = replace_assistant_response_with_ids(
                     item['messages'],
-                    item['response_token_ids'],
+                    sample.response_token_ids,
                     loss_mask,
                     non_thinking_prefix_ids=non_thinking_prefix_ids)
             rollout_for_encode.append(item)
@@ -518,17 +469,18 @@ class GRPOTrainer(BaseRayTrainer):
         encoded_list, error_list = self._batch_encode_parallel(rollout_for_encode, strict=True)
         if error_list:
             raise RuntimeError(f'GRPOTrainer: batch encode failed with errors={error_list}')
-        samples: List[Dict[str, Any]] = []
-        for encoded, rollout in zip(encoded_list, rollout_batch):
+        worker_samples: List[Dict[str, Any]] = []
+        for encoded, sample in zip(encoded_list, samples):
             encoded.pop('_extra_kwargs', None)
-            samples.append({
+            payload: Dict[str, Any] = {
                 'encoded': encoded,
-                'is_truncated': bool(rollout.get('is_truncated', False)),
-                'rollout_logprobs': rollout.get('rollout_logprobs'),
-            })
-            if rollout.get('routed_experts') is not None:
-                samples[-1]['routed_experts'] = rollout.get('routed_experts')
-        return samples
+                'is_truncated': sample.is_truncated,
+                'rollout_logprobs': sample.rollout_logprobs or None,
+            }
+            if sample.routed_experts is not None:
+                payload['routed_experts'] = sample.routed_experts
+            worker_samples.append(payload)
+        return worker_samples
 
     def _compute_kl_from_samples(self, samples: Sequence[Dict[str, Any]]) -> Optional[torch.Tensor]:
         if not (self.kl_in_reward and self.beta != 0.0):

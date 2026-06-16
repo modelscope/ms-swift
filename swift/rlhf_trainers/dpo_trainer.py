@@ -79,7 +79,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         self.f_divergence_type = getattr(args, 'f_divergence_type', 'reverse_kl')
         self.f_alpha_divergence_coef = getattr(args, 'f_alpha_divergence_coef', 0.5)
         self.f_divergence_params = {_ALPHA_DIVERGENCE_COEF_KEY: self.f_alpha_divergence_coef}
-        self.is_peft_model = isinstance(model, PeftModel)
 
         self.ref_adapter_name = getattr(args, 'ref_adapter_name', None)
         self.model_adapter_name = None
@@ -197,18 +196,6 @@ class DPOTrainer(RLHFTrainerMixin, SwiftMixin, DataLoaderMixin, HFDPOTrainer):
         if self.aux_loss_enabled:
             output['aux_loss'] = outputs.aux_loss
         return output
-
-    # some methods are removed in trl>=0.29, override them to compatible trl<0.29 and trl>=0.29
-    # consider abort to refactor these methods to follow trl>=0.29 in the future
-    @contextmanager
-    def null_ref_context(self):
-        with (self.accelerator.unwrap_model(self.model).disable_adapter()
-              if self.is_peft_model and not self.ref_adapter_name else nullcontext()):
-            if self.ref_adapter_name:
-                self.model.set_adapter(self.ref_adapter_name)
-            yield
-            if self.ref_adapter_name:
-                self.model.set_adapter(self.model_adapter_name or 'default')
 
     def compute_ref_log_probs(self, batch):
         compute_ref_context_manager = (

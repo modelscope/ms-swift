@@ -1,9 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+import torch
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
-
-import torch
 
 
 def compute_advantages(
@@ -76,8 +75,7 @@ def compute_advantages(
         if scale_rewards == 'batch':
             std = advantages.std().expand_as(advantages) if advantages.numel() > 1 else torch.zeros_like(advantages)
         elif scale_rewards == 'group':
-            std = (advantages.view(-1, K).std(dim=1).repeat_interleave(K)
-                   if K > 1 else torch.zeros_like(advantages))
+            std = (advantages.view(-1, K).std(dim=1).repeat_interleave(K) if K > 1 else torch.zeros_like(advantages))
     else:
         if scale_rewards == 'batch':
             std = rewards.std().expand_as(rewards) if rewards.numel() > 1 else torch.zeros_like(rewards)
@@ -190,8 +188,7 @@ def compute_advantages_dynamic(
     # Normalize
     if advantage_estimator == 'reinforce_plus_plus':
         if scale_rewards == 'batch':
-            adv_std = (request_advantages.std()
-                       if request_advantages.numel() > 1 else torch.tensor(0.0, device=device))
+            adv_std = (request_advantages.std() if request_advantages.numel() > 1 else torch.tensor(0.0, device=device))
             prompt_stds = torch.full_like(request_advantages, adv_std)
         elif scale_rewards == 'group':
             prompt_stds = torch.zeros(len(unique_rewards), device=device)

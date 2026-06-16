@@ -25,7 +25,8 @@ from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
 
-from swift.template import Messages
+from swift.rl_core.data import GRPOBatch, OnPolicySample
+from swift.template import Messages, Template
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
                          get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, synchronize,
@@ -728,6 +729,26 @@ def get_non_thinking_prefix_ids(template) -> Optional[List[int]]:
     return None
 
 
+def encode_sample(sample: 'OnPolicySample',
+                  template: 'Template',
+                  *,
+                  non_thinking_prefix_ids: Optional[List[int]] = None,
+                  encode_prompt_only: bool = False) -> Dict[str, Any]:
+    if sample.response_token_ids:
+        loss_mask = sample.response_loss_mask or None
+        sample.messages = replace_assistant_response_with_ids(
+            sample.messages, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=non_thinking_prefix_ids)
+
+    data = sample.to_template_dict()
+    if encode_prompt_only:
+        messages = data.get('messages', [])
+        if messages and messages[-1].get('role') == 'assistant':
+            data = {**data, 'messages': messages[:-1] + [{**messages[-1], 'content': None}]}
+
+    encoded = template.encode(data, return_length=True)
+    return encoded
+
+
 def replace_assistant_response_with_ids(messages: 'Messages',
                                         completion_ids: List[Union[int, List[int]]],
                                         loss_mask: Optional[List[List[int]]] = None,
@@ -826,47 +847,6 @@ def replace_assistant_response_with_ids(messages: 'Messages',
         completion_index += 1
 
     return messages
-
-
-def build_teacher_infer_request(data: Dict) -> 'RolloutInferRequest':
-    """Build a minimal RolloutInferRequest for the GKD teacher logprobs fetch.
-
-    Only `messages` + multimodal fields (`images` / `audios` / `videos`) are
-    forwarded. If `data['response_token_ids']` is present, the last assistant
-    content in messages is replaced with that token-id list, enabling
-    token-in-token-out so the teacher server avoids re-tokenizing the response.
-    """
-    import base64
-    import uuid as _uuid
-    from copy import deepcopy
-
-    from swift.infer_engine.protocol import RolloutInferRequest
-
-    def _process_image(img):
-        if isinstance(img, dict):
-            if img.get('bytes'):
-                return base64.b64encode(img['bytes']).decode('utf-8')
-            if img.get('path'):
-                return img['path']
-        return img
-
-    messages = deepcopy(data.get('messages', []))
-    if data.get('response_token_ids'):
-        messages = replace_assistant_response_with_ids(messages, data['response_token_ids'])
-
-    images = data.get('images')
-    if images:
-        if not isinstance(images, list):
-            images = [images]
-        images = [_process_image(img) for img in images]
-
-    return RolloutInferRequest(
-        messages=messages,
-        images=images or [],
-        audios=data.get('audios') or [],
-        videos=data.get('videos') or [],
-        uuid=str(_uuid.uuid4().hex),
-    )
 
 
 def parse_prompt_logprobs(response, topk: int) -> Tuple[List[List[float]], List[List[int]]]:
@@ -1794,20 +1774,31 @@ def build_completion_mask_and_seq_lengths(
     padding_free: bool = False,
     encoded_batch: Optional[dict] = None,
     device: Optional[torch.device] = None,
+    logits_to_keep: Optional[int] = None,
 ) -> Tuple[torch.Tensor, torch.Tensor, int]:
-    """Build completion_mask and seq_lengths from labels, shared by Ray and non-Ray GRPO paths.
+    """Build completion_mask and seq_lengths from labels, shared by HF / Megatron / Ray GRPO paths.
+
+    Two frame conventions, selected by ``logits_to_keep``:
+
+    - ``logits_to_keep is None`` -> full-sequence frame + roll (Megatron / Ray):
+      ``completion_mask = roll(labels,-1) != -100``, shape ``[B, T_full]``.
+    - ``logits_to_keep is int`` -> completion-region frame, no roll (HF):
+      ``completion_mask = labels[:, -ltk:] != -100``, shape ``[B, ltk]``; the per-sample
+      ``seq_lengths`` (padding_free) carries the first-sentence prompt adjustment so it
+      matches HF's ``num_logits_to_keep`` logps frame.
 
     Args:
         labels: Label tensor from data collator.
         batch_size: Number of samples in the batch.
         padding_free: Whether padding-free (rmpad) mode is used.
-        encoded_batch: The full encoded batch dict (needed for cu_seq_lens / attention_mask).
+        encoded_batch: The full encoded batch dict (needed for cu_seq_lens / attention_mask / position_ids).
         device: Target device for output tensors.
+        logits_to_keep: Region width for the HF frame; ``None`` selects the full-sequence frame.
 
     Returns:
         (completion_mask, seq_lengths, max_seq_len) where:
-        - completion_mask: [batch_size, max_seq_len] bool tensor
-        - seq_lengths: [batch_size] int tensor
+        - completion_mask: ``[B, max_seq_len]`` bool tensor
+        - seq_lengths: ``[B]`` int tensor of per-sample lengths
         - max_seq_len: int
     """
     if device is None:
@@ -1815,50 +1806,80 @@ def build_completion_mask_and_seq_lengths(
     if encoded_batch is None:
         encoded_batch = {}
 
-    rolled_labels = torch.roll(labels, shifts=-1, dims=-1)
-
-    if padding_free:
-        if 'cu_seq_lens_q' in encoded_batch:
-            cu = encoded_batch['cu_seq_lens_q']
+    if logits_to_keep is None:
+        # Full-sequence frame + roll (Megatron / Ray)
+        rolled_labels = torch.roll(labels, shifts=-1, dims=-1)
+        if padding_free:
+            if 'cu_seq_lens_q' in encoded_batch:
+                cu = encoded_batch['cu_seq_lens_q']
+            else:
+                cu = get_packed_seq_params(encoded_batch['position_ids'])['cu_seq_lens_q']
+            seq_lengths = cu[1:] - cu[:-1]
+            max_seq_len = int(seq_lengths.max().item())
+            completion_mask_rmpad = (rolled_labels != -100).float()
+            completion_mask, _ = pad_logps_back_to_batch(
+                logps_rmpad=completion_mask_rmpad,
+                logits_to_keep=max_seq_len,
+                batch_size=batch_size,
+                seq_lengths=seq_lengths,
+                pad_value=0.0)
+            completion_mask = completion_mask.bool()
         else:
-            cu = get_packed_seq_params(encoded_batch['position_ids'])['cu_seq_lens_q']
-        seq_lengths = cu[1:] - cu[:-1]
-        max_seq_len = int(seq_lengths.max().item())
-        completion_mask_rmpad = (rolled_labels != -100).float()
+            attention_mask = encoded_batch.get('attention_mask')
+            if attention_mask is not None:
+                if attention_mask.dim() == 4:
+                    attention_mask = attention_mask[:, 0, 0, :]
+                seq_lengths = attention_mask.sum(dim=-1).to(torch.int64)
+            else:
+                seq_lengths = torch.full((batch_size, ), labels.shape[-1], dtype=torch.int64, device=device)
+            max_seq_len = labels.shape[-1]
+            completion_mask = (rolled_labels != -100)
+        return completion_mask, seq_lengths, max_seq_len
+
+    # Completion-region frame, no roll (HF); aligns with num_logits_to_keep logps frame.
+    completion_mask_raw = labels[:, -logits_to_keep:] != -100
+    max_seq_len = logits_to_keep
+    if padding_free:
+        position_ids = encoded_batch.get('text_position_ids')
+        if position_ids is None:
+            position_ids = encoded_batch.get('position_ids')
+        position_ids = position_ids.squeeze()
+        lengths = torch.diff(
+            torch.cat([(position_ids == 0).nonzero(as_tuple=True)[0],
+                       torch.tensor([len(position_ids)]).to(position_ids.device)]))
+        total_lengths = lengths.sum()
+        # The first sentence has its prompt portion removed due to logits_to_keep
+        lengths[0] = lengths[0] - (total_lengths - logits_to_keep)
+        seq_lengths = lengths
         completion_mask, _ = pad_logps_back_to_batch(
-            logps_rmpad=completion_mask_rmpad,
-            logits_to_keep=max_seq_len,
+            logps_rmpad=completion_mask_raw.float(),
+            logits_to_keep=logits_to_keep,
             batch_size=batch_size,
-            seq_lengths=seq_lengths,
+            seq_lengths=lengths,
             pad_value=0.0)
         completion_mask = completion_mask.bool()
     else:
-        attention_mask = encoded_batch.get('attention_mask')
-        if attention_mask is not None:
-            if attention_mask.dim() == 4:
-                attention_mask = attention_mask[:, 0, 0, :]
-            seq_lengths = attention_mask.sum(dim=-1).to(torch.int64)
-        else:
-            seq_lengths = torch.full((batch_size, ), labels.shape[-1], dtype=torch.int64, device=device)
-        max_seq_len = labels.shape[-1]
-        completion_mask = (rolled_labels != -100)
-
+        completion_mask = completion_mask_raw
+        # Non-padding-free HF frame: every row spans the full region. Return real
+        # per-sample lengths (= region width) instead of an empty tensor, so callers
+        # can treat seq_lengths uniformly regardless of padding_free.
+        seq_lengths = torch.full((batch_size, ), logits_to_keep, dtype=torch.int64, device=device)
     return completion_mask, seq_lengths, max_seq_len
 
 
 def build_rollout_logps(
-    rollout_batch: 'Sequence[Dict[str, Any]]',
+    rollout_logprobs_list: 'Sequence[Optional[List[List[float]]]]',
     completion_mask: torch.Tensor,
     device: torch.device,
 ) -> Optional[torch.Tensor]:
     """Convert per-sample ``rollout_logprobs`` into a [B, T] tensor aligned with completion_mask.
 
-    Shared by Ray GRPOTrainer and non-Ray MegatronGRPOTrainer to avoid
-    duplicating the rollout logprob alignment logic.
+    Data-structure agnostic: callers pass a list of per-sample nested logprobs
+    (``List[List[float]]`` per sample, or ``None``).
 
     Returns None if logprobs are missing or counts don't match.
     """
-    lp_list = [data.get('rollout_logprobs') for data in rollout_batch]
+    lp_list = list(rollout_logprobs_list)
     if not all(lp is not None and lp for lp in lp_list):
         return None
 
@@ -1878,6 +1899,149 @@ def build_rollout_logps(
         completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
         rollout_per_token_logps[i, completion_indices] = torch.tensor(flat_lps, dtype=torch.float32, device=device)
     return rollout_per_token_logps
+
+
+def _normalize_routed_experts_tensor(value: Any) -> torch.Tensor:
+    routed = value.detach().cpu() if isinstance(value, torch.Tensor) else torch.as_tensor(value)
+    if routed.dim() >= 4 and routed.shape[0] == 1:
+        routed = routed.squeeze(0)
+    if routed.dim() < 2:
+        raise ValueError(f'Invalid routed_experts shape: {tuple(routed.shape)}')
+    return routed.to(dtype=torch.int64)
+
+
+def _pad_or_trim_routed_experts(routed: torch.Tensor, target_len: int, *, padding_right: bool) -> torch.Tensor:
+    current_len = int(routed.shape[0])
+    if current_len == target_len:
+        return routed
+    if current_len > target_len:
+        return routed[:target_len] if padding_right else routed[-target_len:]
+    pad_len = target_len - current_len
+    pad = [0] * (2 * routed.dim())
+    if padding_right:
+        pad[2 * (routed.dim() - 1) + 1] = pad_len
+    else:
+        pad[2 * (routed.dim() - 1)] = pad_len
+    return torch.nn.functional.pad(routed, tuple(pad), 'constant', 0)
+
+
+def build_routed_experts_batch(
+    samples: List[OnPolicySample],
+    *,
+    seq_lengths: torch.Tensor,
+    max_seq_len: int,
+    template: Template,
+    device: torch.device,
+    router_replay_mode: str = 'disabled',
+) -> Optional[torch.Tensor]:
+    """Build the batched ``routed_experts`` model input from per-sample R3 routing.
+
+    Shared by all backends. Each ``sample`` is an :class:`OnPolicySample` carrying
+    ``routed_experts`` (per-sample, seq-first) and ``encoded['length']``. Returns
+    ``None`` when no sample provides routing (and mode is not ``R3``).
+    """
+    if not samples or all(getattr(s, 'routed_experts', None) is None for s in samples):
+        return None
+
+    padding_right = template.padding_side == 'right'
+    n_samples = len(samples)
+    current_seq_lengths = seq_lengths
+    if seq_lengths.size(0) > n_samples:
+        current_seq_lengths = seq_lengths[:n_samples].clone()
+        current_seq_lengths[n_samples - 1] = seq_lengths[n_samples - 1:].sum()
+
+    routed_tensors: List[torch.Tensor] = []
+    for sample, cur_seq_len in zip(samples, current_seq_lengths):
+        routed_value = getattr(sample, 'routed_experts', None)
+        if routed_value is None:
+            if router_replay_mode == 'R3':
+                raise AssertionError('When router_replay_mode = R3, routed_experts must be in rollout data')
+            return None
+        routed = _normalize_routed_experts_tensor(routed_value)
+        expected_len = (sample.encoded or {}).get('length')
+        experts_seq_len = int(routed.shape[0])
+        if router_replay_mode == 'R3' and expected_len is not None:
+            if experts_seq_len not in (expected_len, expected_len - 1):
+                raise AssertionError(f'The seq_len of routed_experts({experts_seq_len}) does not match encoded length '
+                                     f'({expected_len}); expected same length or one less.')
+        target_len = int(cur_seq_len.item()) if template.padding_free else max_seq_len
+        routed = _pad_or_trim_routed_experts(routed, target_len, padding_right=padding_right)
+        routed_tensors.append(routed)
+
+    if template.padding_free:
+        return torch.cat(routed_tensors, dim=0).unsqueeze(0).to(device=device)
+    return torch.stack(routed_tensors).to(device=device)
+
+
+def collate_to_grpo_micro_batch(
+    samples: List[OnPolicySample],
+    template: Template,
+    *,
+    device: torch.device,
+    padding_to: Optional[int] = None,
+    router_replay_mode: str = 'disabled',
+    use_logits_to_keep: bool = False,
+) -> Tuple[Dict[str, Any], GRPOBatch]:
+    """Collate ``List[OnPolicySample]`` into ``(model_inputs, grpo_batch)``.
+
+    The single shared collate used by HF / Megatron / Megatron-Ray. Splits the
+    per-sample world into two batch-level halves:
+
+    - ``model_inputs`` (dict): ``data_collator([s.encoded ...])`` plus batch-computed
+      model extras (``routed_experts``). A clean whitelist — ``model(**model_inputs)``
+      needs no key filtering.
+    - ``grpo_batch`` (:class:`GRPOBatch`): ``completion_mask`` / ``truncated_mask`` /
+      ``seq_lengths`` / ``rollout_per_token_logps`` derived purely from the collated batch.
+
+    ``use_logits_to_keep`` selects the completion_mask frame (see
+    :func:`build_completion_mask_and_seq_lengths`):
+    - ``False`` -> full-sequence frame + roll (Megatron / Ray).
+    - ``True`` -> completion-region frame (HF); ``logits_to_keep`` is computed from
+      the collated labels and stored on ``grpo_batch`` for the HF logps path.
+
+    Backend-specific signals (``old_per_token_logps`` / ``ref_per_token_logps`` /
+    ``advantages`` / ``num_items_in_batch``) are filled by the caller afterwards —
+    non-Ray via batch forward, Ray by stacking per-sample remote results. No
+    distributed communication happens here.
+    """
+    encoded_list = [s.encoded for s in samples]
+    model_inputs = to_device(template.data_collator(encoded_list, padding_to=padding_to), device)
+
+    labels = model_inputs['labels']
+    batch_size = len(samples)
+    logits_to_keep = None
+    if use_logits_to_keep:
+        logits_to_keep = int((labels.shape[-1] - (torch.ne(labels, -100).int().argmax(-1))).max().item())
+    completion_mask, seq_lengths, max_seq_len = build_completion_mask_and_seq_lengths(
+        labels,
+        batch_size,
+        padding_free=template.padding_free,
+        encoded_batch=model_inputs,
+        device=device,
+        logits_to_keep=logits_to_keep,
+    )
+    truncated_mask = torch.tensor([bool(s.is_truncated) for s in samples], dtype=torch.bool, device=device)
+    rollout_per_token_logps = build_rollout_logps([s.rollout_logprobs for s in samples], completion_mask, device)
+
+    routed_experts = build_routed_experts_batch(
+        samples,
+        seq_lengths=seq_lengths,
+        max_seq_len=max_seq_len,
+        template=template,
+        device=device,
+        router_replay_mode=router_replay_mode,
+    )
+    if routed_experts is not None:
+        model_inputs['routed_experts'] = routed_experts
+
+    grpo_batch = GRPOBatch(
+        completion_mask=completion_mask,
+        truncated_mask=truncated_mask,
+        seq_lengths=seq_lengths,
+        rollout_per_token_logps=rollout_per_token_logps,
+        logits_to_keep=logits_to_keep,
+    )
+    return model_inputs, grpo_batch
 
 
 def resolve_reward_funcs(

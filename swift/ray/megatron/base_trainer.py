@@ -8,6 +8,7 @@ import torch
 from contextlib import contextmanager
 from typing import Any, Dict, List
 
+from swift.rl_core.data import OnPolicySample
 from swift.rlhf_trainers.utils import create_cyclic_iterator
 from swift.utils import JsonlWriter, get_logger
 from .driver_utils import compute_iter_params
@@ -193,7 +194,7 @@ class BaseRayTrainer:
             results = tg.finalize()
         return results
 
-    def _maybe_log_completions(self, rollout_with_outputs, rewards=None, gen_step=None) -> None:
+    def _maybe_log_completions(self, rollout_with_outputs: List[OnPolicySample], rewards=None, gen_step=None) -> None:
         """Driver-side ``log_completions``: dump prompt/completion (+reward) to
         ``output_dir/completions.jsonl``. No-op unless ``args.log_completions`` is set.
         Completions live on the driver (rollout side), so this is the right place to log them
@@ -206,7 +207,7 @@ class BaseRayTrainer:
             self._completions_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'))
         table = []
         for i, item in enumerate(rollout_with_outputs):
-            msgs = item.get('messages') or []
+            msgs = item.messages
             has_resp = bool(msgs) and msgs[-1].get('role') == 'assistant'
             completion = msgs[-1].get('content') or '' if has_resp else ''
             prompt_msgs = msgs[:-1] if has_resp else msgs
