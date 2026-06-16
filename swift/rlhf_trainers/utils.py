@@ -1114,6 +1114,51 @@ def finish_vllm_weight_reload(vllm_model, model_config, target_device):
         return
 
 
+_cached_reverse_renamings = None
+
+
+def _build_reverse_renamings(model):
+    """Build and cache reverse WeightRenaming rules for the given model.
+
+    Only one model type goes through weight sync per training run, so a single
+    module-level variable suffices. Returns None if no renamings apply.
+    """
+    global _cached_reverse_renamings
+    if _cached_reverse_renamings is not None:
+        return _cached_reverse_renamings
+
+    try:
+        from transformers.core_model_loading import WeightRenaming
+    except ImportError:
+        return None
+
+    weight_conversions = getattr(model, '_weight_conversions', None)
+    if weight_conversions is None:
+        try:
+            from transformers.conversion_mapping import get_model_conversion_mapping
+            weight_conversions = get_model_conversion_mapping(model, add_legacy=False)
+        except Exception:
+            return None
+    if not weight_conversions:
+        return None
+
+    renamings = [c for c in weight_conversions if isinstance(c, WeightRenaming)]
+    if not renamings:
+        return None
+
+    # Reverse order before inverting, matching transformers' own revert_weight_conversion
+    # (core_model_loading.py) which reverses the list so that chained renamings undo
+    # in the correct order.
+    try:
+        _cached_reverse_renamings = [c.reverse_transform() for c in renamings[::-1]]
+    except Exception as e:
+        logger = get_logger()
+        logger.warning(f'Failed to build reverse renamings for {type(model).__name__}: {e}')
+        return None
+
+    return _cached_reverse_renamings
+
+
 def revert_runtime_names_to_checkpoint(model, state_dict):
     """Map HF runtime param names back to HF checkpoint names before vLLM weight sync.
 
@@ -1134,11 +1179,6 @@ def revert_runtime_names_to_checkpoint(model, state_dict):
     checkpoint names still maps correctly. Any failure or absence of conversions
     is a no-op that returns the input unchanged.
     """
-    try:
-        from transformers.core_model_loading import WeightRenaming, rename_source_key
-    except ImportError:
-        return state_dict
-
     # Unwrap PEFT to reach the underlying transformers model that holds conversions.
     if hasattr(model, 'get_base_model'):
         try:
@@ -1146,22 +1186,13 @@ def revert_runtime_names_to_checkpoint(model, state_dict):
         except Exception:
             pass
 
-    weight_conversions = getattr(model, '_weight_conversions', None)
-    if weight_conversions is None:
-        try:
-            from transformers.conversion_mapping import get_model_conversion_mapping
-            weight_conversions = get_model_conversion_mapping(model, add_legacy=False)
-        except Exception:
-            return state_dict
-    if not weight_conversions:
+    reverse_renamings = _build_reverse_renamings(model)
+    if not reverse_renamings:
         return state_dict
 
-    renamings = [c for c in weight_conversions if isinstance(c, WeightRenaming)]
-    if not renamings:
-        return state_dict
     try:
-        reverse_renamings = [c.reverse_transform() for c in renamings]
-    except Exception:
+        from transformers.core_model_loading import rename_source_key
+    except ImportError:
         return state_dict
 
     new_state_dict = {}
