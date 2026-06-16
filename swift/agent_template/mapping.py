@@ -11,6 +11,7 @@ from .kimi_k25 import KimiK25AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minicpm5 import MiniCPM5AgentTemplate
 from .minimax_m2 import MinimaxM2AgentTemplate
+from .minimax_m3 import MinimaxM3AgentTemplate
 from .mistral import MistralAgentTemplate
 from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentTemplate, QwenZhParallelAgentTemplate
 from .qwen3_coder import Qwen3_5AgentTemplate, Qwen3CoderAgentTemplate
@@ -46,6 +47,7 @@ agent_template_map = {
     # ref: https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash
     'deepseek_v4': DeepSeekV4AgentTemplate,
     'minimax_m2': MinimaxM2AgentTemplate,
+    'minimax_m3': MinimaxM3AgentTemplate,
     'seed_oss': SeedAgentTemplate,
     # ref: https://modelscope.cn/models/google/gemma-4-12B-it
     'gemma4': Gemma4AgentTemplate,
