@@ -168,6 +168,10 @@ register_model(
 
 
 class MinimaxM3VLLoader(ModelLoader):
+    default_trust_remote_code = False
+
+    def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
+        return AutoProcessor.from_pretrained(model_dir, trust_remote_code=True)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
