@@ -1,13 +1,9 @@
-"""Tests for swift.grpo.advantage — advantage computation pure functions."""
+"""Tests for swift.rl_core.advantage — advantage computation pure functions."""
 import pytest
 import torch
 
-from swift.grpo.advantage import (
-    RewardMetrics,
-    compute_advantages,
-    compute_advantages_dynamic,
-    compute_reward_metrics,
-)
+from swift.rl_core.advantage import (RewardMetrics, compute_advantages, compute_advantages_dynamic,
+                                     compute_reward_metrics)
 
 DEVICE = 'cpu'
 
@@ -24,14 +20,14 @@ class TestComputeAdvantages:
     def test_estimator_shapes(self, estimator):
         rpf, rw = self._make_rewards()
         adv, rew = compute_advantages(rpf, rw, num_generations=4, advantage_estimator=estimator)
-        assert adv.shape == (8,)
-        assert rew.shape == (8,)
+        assert adv.shape == (8, )
+        assert rew.shape == (8, )
 
     @pytest.mark.parametrize('scale', ['group', 'batch', 'none', 'gdpo'])
     def test_scale_rewards(self, scale):
         rpf, rw = self._make_rewards()
         adv, rew = compute_advantages(rpf, rw, num_generations=4, scale_rewards=scale)
-        assert adv.shape == (8,)
+        assert adv.shape == (8, )
         assert torch.isfinite(adv).all()
 
     def test_grpo_group_advantages_sum_zero_per_group(self):
@@ -118,13 +114,16 @@ class TestTeacherKL:
         teacher_kl = torch.ones(8, device=DEVICE) * 0.1
 
         adv_both, _ = compute_advantages(
-            rpf, rw, num_generations=4,
-            kl_in_reward=True, beta=0.04, kl_values=ref_kl,
-            teacher_kl=teacher_kl, teacher_kl_coef=1.0)
+            rpf,
+            rw,
+            num_generations=4,
+            kl_in_reward=True,
+            beta=0.04,
+            kl_values=ref_kl,
+            teacher_kl=teacher_kl,
+            teacher_kl_coef=1.0)
 
-        adv_ref_only, _ = compute_advantages(
-            rpf, rw, num_generations=4,
-            kl_in_reward=True, beta=0.04, kl_values=ref_kl)
+        adv_ref_only, _ = compute_advantages(rpf, rw, num_generations=4, kl_in_reward=True, beta=0.04, kl_values=ref_kl)
 
         # Teacher KL is additive post-normalization
         torch.testing.assert_close(adv_both, adv_ref_only - 0.1, atol=1e-5, rtol=0)
@@ -134,9 +133,8 @@ class TestTeacherKL:
         rpf, rw = self._make_rewards()
         teacher_kl = torch.randn(8, device=DEVICE).abs()
         adv, _ = compute_advantages(
-            rpf, rw, num_generations=4, advantage_estimator=estimator,
-            teacher_kl=teacher_kl, teacher_kl_coef=0.5)
-        assert adv.shape == (8,)
+            rpf, rw, num_generations=4, advantage_estimator=estimator, teacher_kl=teacher_kl, teacher_kl_coef=0.5)
+        assert adv.shape == (8, )
         assert torch.isfinite(adv).all()
 
 
@@ -163,8 +161,7 @@ class TestTeacherKLDynamic:
         request_ids = ['r1', 'r2', 'r3', 'r4']
         teacher_kl = torch.tensor([0.1, 0.2, 0.3, 0.4], device=DEVICE)
         adv, _ = compute_advantages_dynamic(
-            rpf, rw, prompt_ids, request_ids,
-            teacher_kl=teacher_kl, teacher_kl_coef=2.0, opd_only_reward=True)
+            rpf, rw, prompt_ids, request_ids, teacher_kl=teacher_kl, teacher_kl_coef=2.0, opd_only_reward=True)
         expected = -2.0 * teacher_kl
         torch.testing.assert_close(adv, expected, atol=1e-5, rtol=0)
 
@@ -178,7 +175,7 @@ class TestComputeAdvantagesDynamic:
         prompt_ids = ['p1', 'p1', 'p1', 'p2', 'p2', 'p2']
         request_ids = ['r1', 'r2', 'r3', 'r4', 'r5', 'r6']
         adv, rew = compute_advantages_dynamic(rpf, rw, prompt_ids, request_ids)
-        assert adv.shape == (6,)
+        assert adv.shape == (6, )
 
     def test_duplicate_request_ids(self):
         torch.manual_seed(42)
@@ -187,7 +184,7 @@ class TestComputeAdvantagesDynamic:
         prompt_ids = ['p1', 'p1', 'p1', 'p1']
         request_ids = ['r1', 'r1', 'r2', 'r2']
         adv, rew = compute_advantages_dynamic(rpf, rw, prompt_ids, request_ids)
-        assert adv.shape == (4,)
+        assert adv.shape == (4, )
         assert adv[0] == adv[1]
         assert adv[2] == adv[3]
 
