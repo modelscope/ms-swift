@@ -71,6 +71,11 @@ class TemplateArguments:
             for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`.
             If no basic strategy is specified, it defaults to 'default',
             for example: 'hermes' is equivalent to 'default+hermes'.
+            Multiple non-base strategies can be chained together
+            (each strategy processes the output segments of the previous one, with weights
+            multiplied accordingly). For example: `'last_round+hermes+ignore_empty_think'`, where
+            `'last_round'` is the base strategy, and `'hermes+ignore_empty_think'` represents a
+            chain of multiple non-base strategies that share the same base strategy.
             - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss
             (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are
             not included in loss calculation**). (**Default value for SFT**)
@@ -139,6 +144,7 @@ class TemplateArguments:
     enable_thinking: Optional[bool] = None
     preserve_thinking: Optional[bool] = None
     add_non_thinking_prefix: bool = True
+    disable_ignore_empty_think: bool = False
 
     def __post_init__(self):
         if getattr(self, 'model_meta', None) is not None:
@@ -157,6 +163,16 @@ class TemplateArguments:
             self.response_prefix = self.response_prefix.replace('\\n', '\n')
         if self.truncation_strategy is None:
             self.truncation_strategy = 'delete'
+        self._set_loss_scale()
+
+    def _set_loss_scale(self):
+        """For hybrid thinking models, automatically append '+ignore_empty_think' to loss_scale."""
+        if not self.disable_ignore_empty_think and getattr(self, 'template_meta', None) is not None:
+            template_meta = self.template_meta
+            if template_meta.is_thinking and template_meta.non_thinking_prefix:
+                # hybrid thinking model detected
+                if self.loss_scale and 'ignore_empty_think' not in self.loss_scale:
+                    self.loss_scale = self.loss_scale + '+ignore_empty_think'
 
     def get_template_kwargs(self):
         truncation_strategy = self.truncation_strategy

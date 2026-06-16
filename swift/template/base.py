@@ -68,6 +68,11 @@ class Template(ProcessorMixin):
     # For pure text models, the default is True; for multimodal models, the default is False.
     support_padding_free = None
     jinja_enable_thinking_key = 'enable_thinking'
+    # If True, only inject non_thinking_prefix when the previous turn is a 'user' turn.
+    # Set this in subclasses where thinking / tool_call / tool_response / follow-up
+    # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
+    # the assistant turn after a tool_response should NOT open a new thinking block.
+    non_thinking_prefix_only_after_user: bool = False
 
     is_encoder_decoder = False
 
@@ -122,7 +127,7 @@ class Template(ProcessorMixin):
         if default_system is not None:
             template_meta.default_system = default_system
         if enable_thinking is None:
-            enable_thinking = template_meta.is_thinking
+            enable_thinking = template_meta.is_thinking and not template_meta.non_thinking_prefix
         self.response_prefix = response_prefix
         self.template_meta: 'TemplateMeta' = template_meta
         self.use_chat_template = use_chat_template
@@ -146,8 +151,6 @@ class Template(ProcessorMixin):
         agent_template = agent_template or template_meta.agent_template
         self._agent_template = agent_template
         self.norm_bbox = norm_bbox or self.norm_bbox
-        if self.is_encoder_decoder:
-            self.skip_prompt = False
         self.mode: Literal['transformers', 'vllm', 'lmdeploy', 'sglang', 'train', 'rlhf', 'kto'] = 'transformers'
         self.task_type: Literal['causal_lm', 'seq_cls', 'embedding', 'prm', 'reranker',
                                 'generative_reranker'] = 'causal_lm'
@@ -310,7 +313,7 @@ class Template(ProcessorMixin):
                 bbox[2 * i] = int(round(x / width * norm_width))
                 bbox[2 * i + 1] = int(round(y / height * norm_height))
 
-    def _preprocess_function_call(self, inputs: StdTemplateInputs) -> None:
+    def _preprocess_tools(self, inputs: StdTemplateInputs) -> None:
         if inputs.tools:
             agent_template = self.agent_template
             agent_template.template_meta = self.template_meta  # for hermes
@@ -324,6 +327,8 @@ class Template(ProcessorMixin):
                 raise ValueError(f'inputs.tools: {inputs.tools}')
             for i, tool in enumerate(inputs.tools):
                 inputs.tools[i] = agent_template.wrap_tool(tool)
+
+    def _preprocess_tool_call(self, inputs: StdTemplateInputs) -> None:
         i = 0
         messages = inputs.messages
         while i < len(messages):
@@ -359,7 +364,8 @@ class Template(ProcessorMixin):
         self,
         inputs: StdTemplateInputs,
     ) -> None:
-        self._preprocess_function_call(inputs)
+        self._preprocess_tools(inputs)
+        self._preprocess_tool_call(inputs)
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
@@ -762,6 +768,17 @@ class Template(ProcessorMixin):
             kwargs['use_model_defaults'] = False
         return model.generate(*args, **kwargs)
 
+    def compute_sft_loss(self, model, inputs: Dict[str, Any], num_items_in_batch: Optional[int] = None, trainer=None):
+        # Default SFT Loss Calculation Method
+        outputs = model(**inputs)
+        if 'labels' in inputs:
+            labels = inputs['labels']
+            outputs.loss = outputs.loss.to(labels.device)
+            # fix https://github.com/huggingface/transformers/issues/34263
+            if num_items_in_batch is not None:
+                outputs.loss = outputs.loss * ((labels[:, 1:] != -100).sum() / num_items_in_batch)
+        return outputs
+
     def skip_stop_tokens(self, generate_ids: List[int], is_finished: bool = True) -> List[int]:
         # Do not print template_meta.suffix_stop and eos_token.
         # However, other stop_words will be printed.
@@ -1153,7 +1170,11 @@ class Template(ProcessorMixin):
 
     def _is_add_non_thinking_round(self, messages, i: int, start_idx: int):
         message = messages[i]
-        return i >= start_idx and message['role'] == 'assistant'
+        if not (i >= start_idx and message['role'] == 'assistant'):
+            return False
+        if self.non_thinking_prefix_only_after_user and not (i > 0 and messages[i - 1]['role'] == 'user'):
+            return False
+        return True
 
     def _add_non_thinking_prefix(self, inputs, thinking_prefix='<think>') -> None:
         messages = inputs.messages
@@ -1630,7 +1651,6 @@ class Template(ProcessorMixin):
         from swift.dataset import RowPreprocessor
         if self.packing and isinstance(batch[0], list):
             batch = sum(batch, start=[])
-        num_samples = len(batch)
         if self.task_type == 'causal_lm':
             if self.mode in {'transformers', 'train'}:
                 res = self._data_collator(batch, padding_to=padding_to)
@@ -1655,10 +1675,6 @@ class Template(ProcessorMixin):
             extra_kwargs = [b['_extra_kwargs'] for b in batch if b.get('_extra_kwargs') is not None]
             extra_kwargs = RowPreprocessor.rows_to_batched(extra_kwargs)
             res.update({k: v for k, v in extra_kwargs.items() if k not in res})
-        if 'num_samples' in res:
-            num_samples = res.pop('num_samples')
-        if self.use_megatron:
-            res['num_samples'] = num_samples
         return res
 
     @staticmethod
@@ -1765,9 +1781,7 @@ class Template(ProcessorMixin):
                 for prefix in indexes:
                     new_batch += self._fetch_inputs_startswith([b], prefix)
             labels.extend(b.get('labels', []))
-        num_samples = len(new_batch)
         res = self._data_collator(new_batch, padding_to=padding_to)
-        res['num_samples'] = num_samples
         if labels:
             res['labels'] = torch.tensor(labels, dtype=torch.float32)
         return res
@@ -1801,9 +1815,7 @@ class Template(ProcessorMixin):
                             for key in b.keys() if isinstance(b[key], list) and b[key][j + positive_num] is not None
                         })
                         labels_list.append(0)
-            num_samples = len(new_batch)
             res = self._data_collator(new_batch, padding_to=padding_to)
-            res['num_samples'] = num_samples
             if labels_list:
                 res['labels'] = torch.tensor(labels_list, dtype=torch.long)
         else:

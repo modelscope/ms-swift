@@ -1,10 +1,8 @@
 import os
 
-from swift.utils import select_device
-
 os.environ['SWIFT_DEBUG'] = '1'
-select_device('0,1,2,3')
-
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1,2,3'
 system = 'You are a helpful assistant.'
 
 tools = [{

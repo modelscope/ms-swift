@@ -44,8 +44,8 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     add_base_layer_suffix_by_param_names, aggressive_empty_cache, check_vllm_version_ge,
                     expand_vllm_param_name_aliases, finish_vllm_weight_reload, get_even_process_data,
                     get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_vllm_load_adapter,
-                    patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator, set_expandable_segments,
-                    vllm_supports_lora_load_inplace)
+                    patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
+                    revert_runtime_names_to_checkpoint, set_expandable_segments, vllm_supports_lora_load_inplace)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -778,6 +778,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         if is_peft:
             assert len(state_dict) > 0 and all([state.shape != torch.Size([0]) for state in state_dict.values()])
+
+        # Revert transformers runtime param names back to checkpoint names so vLLM's
+        # hf_to_vllm_mapper (built for checkpoint names) maps them correctly. Fixes
+        # online weight sync for models like gemma4_unified where runtime names differ
+        # from checkpoint names (transformers>=5 conversion mapping). No-op otherwise.
+        state_dict = revert_runtime_names_to_checkpoint(self.accelerator.unwrap_model(self.model), state_dict)
 
         return state_dict
 

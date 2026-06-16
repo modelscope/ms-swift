@@ -86,6 +86,7 @@ class MLLMModelArch:
     valley = 'valley'
     gemma3n = 'gemma3n'
     gemma4_unified = 'gemma4_unified'
+    diffusion_gemma = 'diffusion_gemma'
     keye_vl = 'keye_vl'
 
     midashenglm = 'midashenglm'
@@ -93,6 +94,7 @@ class MLLMModelArch:
     hunyuan_vl = 'hunyuan_vl'
     step3_vl = 'step3_vl'
     paddleocr_vl = 'paddleocr_vl'
+    minimax_m3_vl = 'minimax_m3_vl'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -761,6 +763,14 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.diffusion_gemma,
+        language_model=['model.encoder.language_model', 'model.decoder', 'lm_head'],
+        vision_tower=['model.encoder.vision_tower'],
+        aligner=['model.encoder.embed_vision'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.keye_vl,
         language_model=['model', 'lm_head'],
         aligner='mlp_AR',
@@ -802,6 +812,14 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner='model.projector',
         vision_tower='model.visual',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.minimax_m3_vl,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.multi_modal_projector',
+        vision_tower='model.vision_tower',
     ))
 
 

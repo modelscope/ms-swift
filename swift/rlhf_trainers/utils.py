@@ -29,8 +29,8 @@ from swift.rl_core.data import GRPOBatch, OnPolicySample
 from swift.template import Messages, Template
 from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
-                         get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, synchronize,
-                         to_device)
+                         get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, swanlab_get_run,
+                         synchronize, to_device)
 
 if is_wandb_available():
     import wandb
@@ -608,7 +608,7 @@ def profiling_context(trainer, name: str):
     if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
         wandb.log(profiling_metrics, commit=False)
 
-    if 'swanlab' in trainer.args.report_to and swanlab.get_run() is not None and is_main_process:
+    if 'swanlab' in trainer.args.report_to and swanlab_get_run() is not None and is_main_process:
         swanlab.log(profiling_metrics)
 
 
@@ -1092,6 +1092,97 @@ def finish_vllm_weight_reload(vllm_model, model_config, target_device):
         process_weights_after_loading(vllm_model, model_config, target_device)
     except Exception:
         return
+
+
+_cached_reverse_renamings = None
+
+
+def _build_reverse_renamings(model):
+    """Build and cache reverse WeightRenaming rules for the given model.
+
+    Only one model type goes through weight sync per training run, so a single
+    module-level variable suffices. Returns None if no renamings apply.
+    """
+    global _cached_reverse_renamings
+    if _cached_reverse_renamings is not None:
+        return _cached_reverse_renamings
+
+    try:
+        from transformers.core_model_loading import WeightRenaming
+    except ImportError:
+        return None
+
+    weight_conversions = getattr(model, '_weight_conversions', None)
+    if weight_conversions is None:
+        try:
+            from transformers.conversion_mapping import get_model_conversion_mapping
+            weight_conversions = get_model_conversion_mapping(model, add_legacy=False)
+        except Exception:
+            return None
+    if not weight_conversions:
+        return None
+
+    renamings = [c for c in weight_conversions if isinstance(c, WeightRenaming)]
+    if not renamings:
+        return None
+
+    # Reverse order before inverting, matching transformers' own revert_weight_conversion
+    # (core_model_loading.py) which reverses the list so that chained renamings undo
+    # in the correct order.
+    try:
+        _cached_reverse_renamings = [c.reverse_transform() for c in renamings[::-1]]
+    except Exception as e:
+        logger = get_logger()
+        logger.warning(f'Failed to build reverse renamings for {type(model).__name__}: {e}')
+        return None
+
+    return _cached_reverse_renamings
+
+
+def revert_runtime_names_to_checkpoint(model, state_dict):
+    """Map HF runtime param names back to HF checkpoint names before vLLM weight sync.
+
+    transformers>=5 may rename checkpoint keys to different *runtime* module names
+    (e.g. gemma4_unified: checkpoint ``model.vision_embedder.*`` -> runtime
+    ``model.embed_vision.*``). vLLM's ``hf_to_vllm_mapper`` is built around the
+    checkpoint names (the same path used by ``vllm serve``), so online weight sync
+    that sends runtime names can land on the wrong vLLM module and raise
+    "There is no module or parameter named ...".
+
+    We revert only the *renaming* part (``WeightRenaming``). Tensor-level
+    ``WeightConverter`` ops (e.g. MoE fuse/split) are intentionally skipped and
+    left to the existing MoE weight-loader patch, which expects the fused runtime
+    layout.
+
+    Safe by construction: models whose vLLM mapper accepts runtime names also
+    carry the checkpoint-name rules (required by ``vllm serve``), so reverting to
+    checkpoint names still maps correctly. Any failure or absence of conversions
+    is a no-op that returns the input unchanged.
+    """
+    # Unwrap PEFT to reach the underlying transformers model that holds conversions.
+    if hasattr(model, 'get_base_model'):
+        try:
+            model = model.get_base_model()
+        except Exception:
+            pass
+
+    reverse_renamings = _build_reverse_renamings(model)
+    if not reverse_renamings:
+        return state_dict
+
+    try:
+        from transformers.core_model_loading import rename_source_key
+    except ImportError:
+        return state_dict
+
+    new_state_dict = {}
+    for name, param in state_dict.items():
+        try:
+            new_name, _ = rename_source_key(name, reverse_renamings, [])
+        except Exception:
+            new_name = name
+        new_state_dict[new_name] = param
+    return new_state_dict
 
 
 def patch_vllm_load_adapter():

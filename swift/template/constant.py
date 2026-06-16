@@ -257,6 +257,7 @@ class MLLMTemplateType:
     gemma3n = 'gemma3n'
     gemma4 = 'gemma4'
     gemma4_nothinking = 'gemma4_nothinking'
+    diffusion_gemma = 'diffusion_gemma'
     mistral_2503 = 'mistral_2503'
     mistral_2506 = 'mistral_2506'
     mistral_2512 = 'mistral_2512'
@@ -265,6 +266,7 @@ class MLLMTemplateType:
     paddle_ocr_1_5 = 'paddle_ocr_1_5'
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
+    minimax_m3_vl = 'minimax_m3_vl'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

@@ -44,7 +44,7 @@ def register_model(model_meta: ModelMeta, *, exist_ok: bool = False) -> None:
 
 def load_by_unsloth(args):
     """Load model by unsloth"""
-    assert is_unsloth_available(), 'please install unsloth if using `use_unsloth=True`: `pip install unsloth`'
+    assert is_unsloth_available(), 'please install unsloth if using `--tuner_backend unsloth`: `pip install unsloth`'
     os.environ['UNSLOTH_RETURN_LOGITS'] = '1'
     os.environ['UNSLOTH_DISABLE_STATISTICS'] = '1'
     model_info = args.model_info
@@ -457,7 +457,7 @@ class ModelLoader(BaseModelLoader):
             model.generation_config = GenerationConfig.from_pretrained(model_dir) if os.path.isfile(
                 generation_config_path) else None
         # fix llama2 warning
-        if getattr(model, 'generation_config', None):
+        if getattr(model, 'generation_config', None) and hasattr(model.generation_config, 'do_sample'):
             fix_do_sample_warning(model.generation_config)
 
     def _get_model_processor(self, model_dir, config):

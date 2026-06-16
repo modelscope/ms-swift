@@ -10,7 +10,7 @@ class AgentFlanLossScale(ConfigLossScale):
     is_binary = False
     loss_scale_config = 'agentflan.json'
 
-    def get_loss_scale(self, context: str, *, query: Optional[str] = None):
+    def get_loss_scale(self, context: str, *, query: Optional[str] = None, **kwargs):
         if isinstance(context, str):
             return calculate_loss_scale(query, context, self.loss_scale_map['response'], self.loss_scale_map['query'])
         return super().get_loss_scale(context)

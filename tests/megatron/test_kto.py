@@ -1,15 +1,14 @@
 import os
 
-from swift.utils import select_device
-
-select_device('0,1')
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
 
 
 def test_kto():
     from swift.megatron import MegatronRLHFArguments, megatron_rlhf_main
     megatron_rlhf_main(
         MegatronRLHFArguments(
-            mcore_model='Qwen2.5-7B-Instruct-mcore',
+            model='Qwen/Qwen2.5-7B-Instruct',
             rlhf_type='kto',
             tuner_type='lora',
             load_from_cache_file=True,

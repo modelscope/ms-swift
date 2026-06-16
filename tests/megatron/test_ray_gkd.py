@@ -3,7 +3,7 @@ import torch
 
 from swift.ray.megatron.gkd_trainer import GKDTrainer
 from swift.ray.megatron.megatron_worker import MegatronWorker
-from swift.rlhf_trainers.gkd_loss import TeacherOutput, build_opsd_teacher_data, extract_active
+from swift.rlhf_trainers.gkd_loss import TeacherOutput, extract_active
 
 _collate = MegatronWorker._collate_teacher_outputs
 
@@ -71,20 +71,20 @@ def test_collate_non_padding_free_stacks_on_batch_dim():
 def test_collate_opsd_keeps_teacher_length_not_student_target():
     """OPSD: teacher scores a different prompt, so its length differs from the
     student. The collation must KEEP the teacher length (ignore target_seq_len)
-    and concat opsd_teacher_labels (extract_active aligns by mask, not position)."""
+    and concat labels (extract_active aligns by mask, not position)."""
     k = 3
     t_total = 7  # teacher (opsd) sequence length
     full = TeacherOutput(
         topk_logprobs=torch.full((1, t_total, k), -1.0),
         topk_indices=torch.zeros((1, t_total, k), dtype=torch.long),
-        opsd_teacher_labels=torch.full((1, t_total), 5, dtype=torch.long),
+        labels=torch.full((1, t_total), 5, dtype=torch.long),
     )
     empty = TeacherOutput()  # padding_free placeholder for the rest of the micro-batch
     # target_seq_len is the *student* length (e.g. 12) — must be ignored for OPSD.
     out = _collate([full, empty], device='cpu', padding_free=True, target_seq_len=12)
     assert out.topk_logprobs.shape == (1, t_total, k), out.topk_logprobs.shape
-    assert out.opsd_teacher_labels.shape == (1, t_total)
-    assert (out.opsd_teacher_labels == 5).all()
+    assert out.labels.shape == (1, t_total)
+    assert (out.labels == 5).all()
 
 
 def test_build_per_sample_teacher_output_uses_raw_input_length():
@@ -102,47 +102,7 @@ def test_build_per_sample_teacher_output_uses_raw_input_length():
     out = GKDTrainer._build_per_sample_teacher_output((lps, ixs), encoded, topk=k)
     assert out.topk_logprobs.shape == (1, raw_len, k), out.topk_logprobs.shape
     assert out.topk_indices.shape == (1, raw_len, k)
-    assert out.opsd_teacher_labels is None
-
-
-def test_build_opsd_teacher_data_substitutes_teacher_prompt():
-    inputs = [{
-        'messages': [{
-            'role': 'user',
-            'content': 'student-prompt'
-        }, {
-            'role': 'assistant',
-            'content': 'resp'
-        }],
-        'teacher_prompt': 'teacher-prompt',
-    }]
-    out = build_opsd_teacher_data(inputs, strip_assistant=False)
-    assert out is not None
-    msgs = out[0]['messages']
-    assert msgs[0]['content'] == 'teacher-prompt'  # last user msg replaced
-    assert msgs[-1] == {'role': 'assistant', 'content': 'resp'}  # response kept
-    assert 'teacher_prompt' not in out[0]  # field stripped from item
-
-
-def test_build_opsd_teacher_data_strip_assistant():
-    inputs = [{
-        'messages': [{
-            'role': 'user',
-            'content': 'sp'
-        }, {
-            'role': 'assistant',
-            'content': 'resp'
-        }],
-        'teacher_prompt': 'tp',
-    }]
-    out = build_opsd_teacher_data(inputs, strip_assistant=True)
-    assert out[0]['messages'][-1]['role'] == 'user'  # trailing assistant removed
-    assert out[0]['messages'][-1]['content'] == 'tp'
-
-
-def test_build_opsd_teacher_data_none_without_teacher_prompt():
-    inputs = [{'messages': [{'role': 'user', 'content': 'x'}]}]  # no teacher_prompt
-    assert build_opsd_teacher_data(inputs, strip_assistant=False) is None
+    assert out.labels is None
 
 
 def test_extract_active_opsd_aligns_by_mask_across_lengths():
@@ -156,7 +116,7 @@ def test_extract_active_opsd_aligns_by_mask_across_lengths():
     t = TeacherOutput(
         topk_logprobs=torch.randn(1, 7, k),
         topk_indices=torch.zeros((1, 7, k), dtype=torch.long),
-        opsd_teacher_labels=torch.tensor([[-100, -100, -100, -100, -100, 1, 2]]),
+        labels=torch.tensor([[-100, -100, -100, -100, -100, 1, 2]]),
     )
     s_act, t_act, n = extract_active(s_logits, t, s_labels)
     assert int(n) == 2
@@ -170,7 +130,7 @@ def test_extract_active_opsd_count_mismatch_raises():
     t = TeacherOutput(
         topk_logprobs=torch.randn(1, 6, 3),
         topk_indices=torch.zeros((1, 6, 3), dtype=torch.long),
-        opsd_teacher_labels=torch.tensor([[-100, -100, -100, -100, -100, 9]]),  # 1 token
+        labels=torch.tensor([[-100, -100, -100, -100, -100, 9]]),  # 1 token
     )
     try:
         extract_active(s_logits, t, s_labels)
