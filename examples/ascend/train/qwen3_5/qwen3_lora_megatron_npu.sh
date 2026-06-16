@@ -42,7 +42,7 @@ megatron sft \
     --min_lr 1e-5 \
     --num_train_epochs 1 \
     \
-    --output_dir /Qwen3.5-35B-A3B \
+    --output_dir output/Qwen3.5-35B-A3B \
     --save_steps 100 \
     --max_length 1024 \
     --system 'You are a helpful assistant.' \
