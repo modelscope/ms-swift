@@ -16,6 +16,12 @@ def _raise_value_error(*args, **kwargs):
     raise ValueError('boom')
 
 
+def _big_payload(*args, **kwargs):
+    # ~1 MB, far above the ~64 KB OS pipe buffer that made a SimpleQueue worker block its put()
+    # while the parent waited in join() -- a deadlock that false-timed-out every real media clip.
+    return b'x' * (1024 * 1024)
+
+
 def test_decode_with_timeout_kills_hung_decode(monkeypatch):
     # A decode that never returns must be killed and surface a TimeoutError rather than hang.
     monkeypatch.setenv('MEDIA_DECODE_TIMEOUT', '2')
@@ -40,3 +46,10 @@ def test_decode_with_timeout_disabled_calls_directly(monkeypatch):
     # Default (unset / 0): no subprocess, original behavior and zero overhead.
     monkeypatch.delenv('MEDIA_DECODE_TIMEOUT', raising=False)
     assert _decode_with_timeout(_echo, 'direct') == 'direct'
+
+
+def test_decode_with_timeout_handles_large_payload(monkeypatch):
+    # A decoded payload larger than the OS pipe buffer must transfer without deadlocking the
+    # worker (regression: the previous SimpleQueue implementation false-timed-out here).
+    monkeypatch.setenv('MEDIA_DECODE_TIMEOUT', '10')
+    assert _decode_with_timeout(_big_payload) == b'x' * (1024 * 1024)

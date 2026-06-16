@@ -296,11 +296,13 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     return frames
 
 
-def _decode_worker(queue, func, args, kwargs):
+def _decode_worker(conn, func, args, kwargs):
     try:
-        queue.put((True, func(*args, **kwargs)))
+        conn.send((True, func(*args, **kwargs)))
     except Exception as e:
-        queue.put((False, e))
+        conn.send((False, e))
+    finally:
+        conn.close()
 
 
 def _decode_with_timeout(func: Callable[..., _T], *args, **kwargs) -> _T:
@@ -319,18 +321,29 @@ def _decode_with_timeout(func: Callable[..., _T], *args, **kwargs) -> _T:
         ctx = mp.get_context('fork')
     except ValueError:
         ctx = mp.get_context()
-    queue = ctx.SimpleQueue()
-    process = ctx.Process(target=_decode_worker, args=(queue, func, args, kwargs))
+    # Use a Pipe + poll() rather than a (Simple)Queue: a Queue is backed by an OS pipe, so the
+    # worker's send blocks once the decoded payload exceeds the pipe buffer (~64KB) until the parent
+    # reads -- but the parent would be in join(), so every real audio/video clip would deadlock and
+    # false-timeout. poll(timeout) waits for the decode to finish (the worker sends only after
+    # decoding); recv() then drains the payload, unblocking the worker as it writes.
+    recv_conn, send_conn = ctx.Pipe(duplex=False)
+    process = ctx.Process(target=_decode_worker, args=(send_conn, func, args, kwargs))
     process.start()
-    process.join(timeout)
-    if process.is_alive():
-        process.terminate()
-        process.join()
-        raise TimeoutError(f'Media decode exceeded MEDIA_DECODE_TIMEOUT={timeout}s and was killed '
-                           '(likely a corrupt or unsupported clip).')
-    if process.exitcode != 0:
-        raise RuntimeError(f'Media decode subprocess exited abnormally (exitcode={process.exitcode}).')
-    ok, payload = queue.get()
+    send_conn.close()  # parent only reads; closing its copy lets recv() see EOF if the worker dies
+    try:
+        if not recv_conn.poll(timeout):
+            process.terminate()
+            process.join()
+            raise TimeoutError(f'Media decode exceeded MEDIA_DECODE_TIMEOUT={timeout}s and was killed '
+                               '(likely a corrupt or unsupported clip).')
+        try:
+            ok, payload = recv_conn.recv()
+        except EOFError:
+            process.join()
+            raise RuntimeError(f'Media decode subprocess exited abnormally (exitcode={process.exitcode}).')
+    finally:
+        recv_conn.close()
+    process.join()
     if not ok:
         raise payload
     return payload
