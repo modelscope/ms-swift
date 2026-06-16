@@ -8,7 +8,6 @@ from transformers import PreTrainedTokenizer
 from types import SimpleNamespace
 from typing import Optional
 
-from swift.model import get_llm_model
 from swift.utils import HfConfigFactory, get_cu_seqlens_from_position_ids, get_device, get_dist_setting
 from .ulysses import DistributedAttention
 from .zigzag_ring_attn import zigzag_ring_flash_attn_varlen_func
@@ -275,6 +274,7 @@ class SequenceParallel:
         base_model.register_forward_hook(moe_aux_loss_hook, with_kwargs=True)
 
     def prepare(self, sp_size: int, model: torch.nn.Module, tokenizer: PreTrainedTokenizer, padding_free: bool):
+        from swift.model import get_llm_model
         self.num_heads = HfConfigFactory.get_config_attr(model.config, 'num_key_value_heads')
         if self.num_heads is None:
             self.num_heads = HfConfigFactory.get_config_attr(model.config, 'num_attention_heads')
@@ -612,6 +612,9 @@ class SequenceParallel:
     def sp_group(self):
         """Return the sequence parallel group"""
         return self._dim_group('sequence')
+
+    def enabled(self):
+        return self.world_size is not None and self.world_size > 1
 
     @property
     def sp_rank(self):
