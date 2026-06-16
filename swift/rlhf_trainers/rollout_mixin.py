@@ -44,8 +44,7 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     expand_vllm_param_name_aliases, finish_vllm_weight_reload, get_even_process_data,
                     get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_vllm_load_adapter,
                     patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                    revert_runtime_names_to_checkpoint, set_expandable_segments,
-                    vllm_supports_lora_load_inplace)
+                    revert_runtime_names_to_checkpoint, set_expandable_segments, vllm_supports_lora_load_inplace)
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
