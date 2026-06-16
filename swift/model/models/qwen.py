@@ -1158,7 +1158,7 @@ def head_to_seq_shard(input: torch.Tensor) -> torch.Tensor:
 
 
 def _get_local_padding_mask(attention_mask: torch.Tensor, local_seq_len: int):
-    if attention_mask.shape[1] == local_seq_len or not sequence_parallel.enabled():
+    if not sequence_parallel.enabled() or attention_mask.shape[1] == local_seq_len:
         return attention_mask
     real_position_ids = getattr(sequence_parallel, 'real_position_ids', None)
     return sequence_parallel.split(attention_mask, dim=1, position_ids=real_position_ids)
@@ -1168,7 +1168,7 @@ def _ensure_linear_attention_kernels(mod: torch.nn.Module) -> None:
     mod.causal_conv1d_fn = causal_conv1d
     mod.chunk_gated_delta_rule = getattr(mod, 'chunk_gated_delta_rule', None) or chunk_gated_delta_rule
     if mod.chunk_gated_delta_rule is None or mod.causal_conv1d_fn is None:
-        raise ImportError('Qwen3.5 linear attention sequence parallel requires flash-linear-attention. '
+        raise ImportError('Qwen3.5 linear attention padding free/sequence parallel requires flash-linear-attention. '
                           'Install: https://github.com/fla-org/flash-linear-attention#installation')
 
 
