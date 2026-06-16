@@ -94,6 +94,7 @@ class MLLMModelArch:
     hunyuan_vl = 'hunyuan_vl'
     step3_vl = 'step3_vl'
     paddleocr_vl = 'paddleocr_vl'
+    minimax_m3_vl = 'minimax_m3_vl'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -811,6 +812,14 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner='model.projector',
         vision_tower='model.visual',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.minimax_m3_vl,
+        language_model=['model.language_model', 'lm_head'],
+        aligner='model.multi_modal_projector',
+        vision_tower='model.vision_tower',
     ))
 
 

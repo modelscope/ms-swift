@@ -313,7 +313,7 @@ class Template(ProcessorMixin):
                 bbox[2 * i] = int(round(x / width * norm_width))
                 bbox[2 * i + 1] = int(round(y / height * norm_height))
 
-    def _preprocess_function_call(self, inputs: StdTemplateInputs) -> None:
+    def _preprocess_tools(self, inputs: StdTemplateInputs) -> None:
         if inputs.tools:
             agent_template = self.agent_template
             agent_template.template_meta = self.template_meta  # for hermes
@@ -327,6 +327,8 @@ class Template(ProcessorMixin):
                 raise ValueError(f'inputs.tools: {inputs.tools}')
             for i, tool in enumerate(inputs.tools):
                 inputs.tools[i] = agent_template.wrap_tool(tool)
+
+    def _preprocess_tool_call(self, inputs: StdTemplateInputs) -> None:
         i = 0
         messages = inputs.messages
         while i < len(messages):
@@ -362,7 +364,8 @@ class Template(ProcessorMixin):
         self,
         inputs: StdTemplateInputs,
     ) -> None:
-        self._preprocess_function_call(inputs)
+        self._preprocess_tools(inputs)
+        self._preprocess_tool_call(inputs)
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)

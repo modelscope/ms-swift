@@ -217,6 +217,7 @@ class MLLMModelType:
     minicpmo = 'minicpmo'
 
     minimax_vl = 'minimax_vl'
+    minimax_m3_vl = 'minimax_m3_vl'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl2_1 = 'mplug_owl2_1'
