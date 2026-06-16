@@ -170,11 +170,14 @@ PY
 }
 
 if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
-    pip install uv -i https://mirrors.aliyun.com/pypi/simple/
+    # NPU path uses uv for faster pip install; CPU path stays with pip to
+    # avoid uv's dependency resolution breaking the pre-built Docker image.
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        pip install uv -i https://mirrors.aliyun.com/pypi/simple/
         setup_npu_pip_constraints
     fi
-    uv pip install -r requirements/tests.txt
+
+    pip install -r requirements/tests.txt -i https://mirrors.aliyun.com/pypi/simple/
     git config --global --add safe.directory /ms-swift
     git config --global user.email tmp
     git config --global user.name tmp.com
@@ -196,37 +199,35 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
 
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
-    fi
-    uv pip install -r requirements/framework.txt -U "transformers<5.0" "peft<0.19" "modelscope==1.37.0"
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        uv pip install -r requirements/framework.txt -U "transformers<5.0" "peft<0.19" "modelscope==1.37.0"
         ensure_npu_runtime
-    fi
-    uv pip install decord einops -U
-    uv pip uninstall autoawq
-    uv pip install optimum
-    uv pip install diffusers
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        uv pip install decord einops -U
+        uv pip uninstall autoawq
+        uv pip install optimum
+        uv pip install diffusers
         uv pip install math-verify -i "$NPU_PIP_INDEX"
         uv pip install ray -i "$NPU_PIP_INDEX"
         uv pip install msgspec -i "$NPU_PIP_INDEX"
         uv pip install zmq -i "$NPU_PIP_INDEX"
-    fi
-    # pip install autoawq -U --no-deps
-
-    # test with install
-    uv pip install .
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        # test with install
+        uv pip install .
         echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
         uv pip install bitsandbytes deepspeed -U
         if [ -f requirements/npu.txt ]; then
             uv pip install -r requirements/npu.txt
         fi
-    else
-        uv pip install auto_gptq bitsandbytes deepspeed -U
-    fi
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
         report_npu_runtime
+    else
+        pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
+        pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
+        pip uninstall autoawq -y
+        pip install optimum
+        pip install diffusers
+        pip install "transformers<5.0" "peft<0.19"
+        # test with install
+        pip install .
+        pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
     fi
 else
     echo "Running case in release image, run case directly!"
