@@ -1114,6 +1114,66 @@ def finish_vllm_weight_reload(vllm_model, model_config, target_device):
         return
 
 
+def revert_runtime_names_to_checkpoint(model, state_dict):
+    """Map HF runtime param names back to HF checkpoint names before vLLM weight sync.
+
+    transformers>=5 may rename checkpoint keys to different *runtime* module names
+    (e.g. gemma4_unified: checkpoint ``model.vision_embedder.*`` -> runtime
+    ``model.embed_vision.*``). vLLM's ``hf_to_vllm_mapper`` is built around the
+    checkpoint names (the same path used by ``vllm serve``), so online weight sync
+    that sends runtime names can land on the wrong vLLM module and raise
+    "There is no module or parameter named ...".
+
+    We revert only the *renaming* part (``WeightRenaming``). Tensor-level
+    ``WeightConverter`` ops (e.g. MoE fuse/split) are intentionally skipped and
+    left to the existing MoE weight-loader patch, which expects the fused runtime
+    layout.
+
+    Safe by construction: models whose vLLM mapper accepts runtime names also
+    carry the checkpoint-name rules (required by ``vllm serve``), so reverting to
+    checkpoint names still maps correctly. Any failure or absence of conversions
+    is a no-op that returns the input unchanged.
+    """
+    try:
+        from transformers.core_model_loading import WeightRenaming, rename_source_key
+    except ImportError:
+        return state_dict
+
+    # Unwrap PEFT to reach the underlying transformers model that holds conversions.
+    if hasattr(model, 'get_base_model'):
+        try:
+            model = model.get_base_model()
+        except Exception:
+            pass
+
+    weight_conversions = getattr(model, '_weight_conversions', None)
+    if weight_conversions is None:
+        try:
+            from transformers.conversion_mapping import get_model_conversion_mapping
+            weight_conversions = get_model_conversion_mapping(model, add_legacy=False)
+        except Exception:
+            return state_dict
+    if not weight_conversions:
+        return state_dict
+
+    renamings = [c for c in weight_conversions if isinstance(c, WeightRenaming)]
+    if not renamings:
+        return state_dict
+    try:
+        reverse_renamings = [c.reverse_transform() for c in renamings]
+    except Exception:
+        return state_dict
+
+    new_state_dict = {}
+    for name, param in state_dict.items():
+        try:
+            new_name, _ = rename_source_key(name, reverse_renamings, [])
+        except Exception:
+            new_name = name
+        new_state_dict[new_name] = param
+    return new_state_dict
+
+
 def patch_vllm_load_adapter():
     from vllm.lora.worker_manager import LRUCacheWorkerLoRAManager
     try:
