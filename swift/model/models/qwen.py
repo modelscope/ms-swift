@@ -1278,8 +1278,6 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
 
     if sp_enabled:
         cu_seqlens = _get_qwen3_5_cu_seqlens_q()
-        if cu_seqlens is not None:
-            cu_seqlens = cu_seqlens.to(dtype=torch.int32, device=mixed_qkv.device)
     else:
         cu_seqlens = kwargs.get('cu_seq_lens_q')
 
