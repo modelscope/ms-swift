@@ -170,34 +170,22 @@ PY
 }
 
 if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
-    # NPU path uses uv for faster pip install; CPU path stays with pip to
-    # avoid uv's dependency resolution breaking the pre-built Docker image.
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         pip install uv -i https://mirrors.aliyun.com/pypi/simple/
         setup_npu_pip_constraints
-    fi
-
-    pip install -r requirements/tests.txt -i https://mirrors.aliyun.com/pypi/simple/
-    git config --global --add safe.directory /ms-swift
-    git config --global user.email tmp
-    git config --global user.name tmp.com
-
-    # linter test
-    # use internal project for pre-commit due to the network problem
-    if [ `git remote -v | grep alibaba  | wc -l` -gt 1 ]; then
-        pre-commit run -c .pre-commit-config_local.yaml --all-files
-        if [ $? -ne 0 ]; then
-            echo "linter test failed, please run 'pre-commit run --all-files' to check"
-            echo "From the repository folder"
-            echo "Run 'pip install -r requirements/tests.txt' install test dependencies."
-            echo "Run 'pre-commit install' install pre-commit hooks."
-            echo "Finally run linter with command: 'pre-commit run --all-files' to check."
-            echo "Ensure there is no failure!!!!!!!!"
-            exit -1
+        ensure_npu_runtime
+        uv pip install -r requirements/tests.txt
+        git config --global --add safe.directory /ms-swift
+        git config --global user.email tmp
+        git config --global user.name tmp.com
+        # linter test
+        if [ `git remote -v | grep alibaba  | wc -l` -gt 1 ]; then
+            pre-commit run -c .pre-commit-config_local.yaml --all-files
+            if [ $? -ne 0 ]; then
+                echo "linter test failed"
+                exit -1
+            fi
         fi
-    fi
-
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
         uv pip install -r requirements/framework.txt -U "transformers<5.0" "peft<0.19" "modelscope==1.37.0"
         ensure_npu_runtime
@@ -209,7 +197,6 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         uv pip install ray -i "$NPU_PIP_INDEX"
         uv pip install msgspec -i "$NPU_PIP_INDEX"
         uv pip install zmq -i "$NPU_PIP_INDEX"
-        # test with install
         uv pip install .
         echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
         uv pip install bitsandbytes deepspeed -U
@@ -219,13 +206,24 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         ensure_npu_runtime
         report_npu_runtime
     else
+        pip install -r requirements/tests.txt -i https://mirrors.aliyun.com/pypi/simple/
+        git config --global --add safe.directory /ms-swift
+        git config --global user.email tmp
+        git config --global user.name tmp.com
+        # linter test
+        if [ `git remote -v | grep alibaba  | wc -l` -gt 1 ]; then
+            pre-commit run -c .pre-commit-config_local.yaml --all-files
+            if [ $? -ne 0 ]; then
+                echo "linter test failed"
+                exit -1
+            fi
+        fi
         pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
         pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
         pip uninstall autoawq -y
         pip install optimum
         pip install diffusers
         pip install "transformers<5.0" "peft<0.19"
-        # test with install
         pip install .
         pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
     fi
