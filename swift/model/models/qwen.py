@@ -15,8 +15,8 @@ from typing import Optional, Tuple, Type, Union
 
 from swift.sequence_parallel import sequence_parallel
 from swift.template import TemplateType
-from swift.utils import (Processor, get_device_count, get_dist_setting, get_env_args, get_logger, is_deepspeed_enabled,
-                         to_device)
+from swift.utils import (Processor, get_cu_seqlens_from_position_ids, get_device_count, get_dist_setting, get_env_args,
+                         get_logger, is_deepspeed_enabled, to_device)
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -1203,7 +1203,6 @@ def _get_qwen3_5_cu_seqlens_q():
         return None
     real_position_ids = getattr(sequence_parallel, 'real_position_ids', None)
     if torch.is_tensor(real_position_ids) and real_position_ids.ndim == 2 and real_position_ids.shape[0] == 1:
-        from swift.utils import get_cu_seqlens_from_position_ids
         padded_position_ids = sequence_parallel.pad(real_position_ids, padding_value=-1, position_ids=real_position_ids)
         return get_cu_seqlens_from_position_ids(padded_position_ids)
     return None

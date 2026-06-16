@@ -135,7 +135,7 @@ class SequenceParallel:
                     value = value.transpose(1, 2)
                     if self.rp_world_size is not None and self.rp_world_size > 1:
                         position_ids = kwargs['position_ids']
-                        cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
+                        cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
                         max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
                         position_ids = self._split_packed(position_ids, cu_seqlens)
                         mask = position_ids != -1
@@ -166,7 +166,7 @@ class SequenceParallel:
                             if self.real_position_ids is not None:
                                 position_ids = self.real_position_ids
                             position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
-                            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids).to(torch.int32)
+                            cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
                             max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
                             assert query.shape[2] == cu_seqlens[-1]
                             kwargs['cu_seq_lens_q'] = cu_seqlens
