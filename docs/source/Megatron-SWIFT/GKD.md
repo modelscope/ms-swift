@@ -14,17 +14,6 @@ Megatron GKD 当前已支持以下功能：
 - **Teacher Offload**：支持将教师模型卸载到 CPU 以节省 GPU 显存
 - **在线生成**：支持使用 vLLM 进行学生模型的 on-policy 生成
 
-### 当前限制
-
-- **教师模型在线生成**（`seq_kd=True`）：当前 Sequential KD 模式下的教师模型生成暂不支持
-- **非vLLM生成**：On-policy 生成当前仅支持 vLLM
-- **教师模型使用与学生模型不同的并行参数**: 将在未来版本支持
-
-⚠️ 注意事项：
-- **On-policy 生成**：需要启用 vLLM（`--use_vllm true --vllm_mode colocate/server`）
-- 当 `lmbda > 0` 但未启用 vLLM 时，将自动回退到离线学习模式（使用数据集响应）
-- 当 `seq_kd=True` 时，由于教师生成暂不支持，将自动回退到离线学习模式，如需使用，请提前用[swift infer](../Instruction/Inference-and-deployment.md)推理数据集
-
 ## 参数说明
 
 ### GKD 特有参数
@@ -48,23 +37,7 @@ Megatron GKD 当前已支持以下功能：
 | 参数 | 说明 |
 |------|------|
 | `--micro_batch_size` | 每个DP组的训练批次大小 |
-| `--global_batch_size` | 全局批次大小：`micro_batch_size × dp_size × gradient_accumulation_steps` |
-
-## 三种训练模式
-
-GKD 支持三种训练模式，通过 `lmbda` 和 `seq_kd` 参数控制：
-
-### Mode 1: On-Policy 学习
-- 触发条件：`random() < lmbda` 且 `use_vllm=True`
-- 数据来源：学生模型生成的响应
-
-### Mode 2: Sequential KD（当前暂不支持）
-- 触发条件：`random() >= lmbda` 且 `seq_kd=True`
-- 数据来源：教师模型生成的响应
-
-### Mode 3: Off-Policy 学习
-- 触发条件：其他情况
-- 数据来源：数据集中的标注响应
+| `--global_batch_size` | 全局批次大小：`micro_batch_size × dp_size × gradient_accumulation_steps` |s
 
 ## 参考
 

@@ -86,7 +86,7 @@ By adjusting the $\beta$ parameter, interpolation can be performed between diffe
 
 ## Three Training Modes
 
-GKD training has three training modes, distinguished by the source of the output sequence $y$.
+GKD training has two training modes, distinguished by the source of the output sequence $y$.
 
 ### Mode Selection Logic
 
@@ -98,12 +98,8 @@ if random() < lmbda:
     # Mode 1: On-Policy learning, output sequence sampled by student model
     y = student.generate(x)
     source = "student"
-elif seq_kd:
-    # Mode 2: Sequential KD, output sequence sampled by teacher model
-    y = teacher.generate(x)
-    source = "teacher"
 else:
-    # Mode 3: Offline learning, use output sequence from dataset
+    # Mode 2: Offline learning, use output sequence from dataset
     y = y_ground_truth
     source = "dataset"
 
@@ -123,16 +119,13 @@ Set parameter `lambda`, triggered with probability $\lambda$, using student mode
 - The student model already has certain generation capabilities
 - Want to improve model performance in real inference scenarios
 
-### Mode 2: Sequential KD (`seq_kd=True` and on-policy not triggered)
-Set parameter `seq_kd=True`, when on-policy is not triggered, use teacher model sampling
-
-**Data Source**: $y \sim P_{\text{teacher}}(\cdot | x)$
-
-### Mode 3: Offline Learning (other cases)
+### Mode 2: Offline Learning (`lmbda=0` or on-policy not triggered)
 
 **Data Source**: $y = y^* \sim \text{Dataset}$
 
 - The student model learns from **annotated sequences in the dataset**
+
+> Note: Sequential KD (`seq_kd=True`, teacher-generated responses) is not currently supported.
 
 
 ## Parameter Settings

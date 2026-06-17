@@ -605,6 +605,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             if self.use_liger_kernel:
                 raise ValueError('Self-distillation mode with liger kernel GKD loss is not supported yet')
 
+        # seq_kd (teacher-generated responses) is not implemented; raise early.
+        if self.seq_kd:
+            raise NotImplementedError('seq_kd=True (Sequential KD with teacher generation) is deprecated.')
+
         # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
         if self.teacher_model_server is not None:
             if self.gkd_logits_topk is None:
@@ -616,6 +620,3 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.gkd_logits_topk is not None and self.use_liger_kernel:
             raise ValueError('gkd_logits_topk is not supported when using liger kernel')
-
-        if self.teacher_model_server and self.seq_kd:
-            raise NotImplementedError('Sequential KD is not supported when using teacher_model_server')

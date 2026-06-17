@@ -573,10 +573,8 @@ RLHF参数继承于[训练参数](#训练参数)。
 - top_p: rollout采样的top-p参数，1.0表示不进行top-p过滤。默认为1.0。
 
 #### GKD参数
-- lmbda: 默认为0.5。该参数在GKD中使用。控制学生数据比例的 lambda 参数（即策略内学生生成输出所占的比例）。若lmbda为0，则不使用学生生成数据。
+- lmbda: 默认为0.5。该参数在GKD中使用。控制 on-policy 学生生成的概率。以 `lmbda` 的概率由学生模型生成响应，否则使用数据集数据。设置 `lmbda=0` 为纯 off-policy（仅数据集），`lmbda=1` 为纯 on-policy。
 - sft_alpha: 默认为0。控制GKD中加入sft_loss的权重。最后的loss为`gkd_loss + sft_alpha * sft_loss`。
-- seq_kd: 默认为False。该参数在GKD中使用。控制是否执行序列级知识蒸馏（Sequence-Level KD）的 seq_kd 参数（可视为对教师模型生成输出的监督式微调）。
-  - 注意：你可以提前对数据集内容使用teacher模型进行推理（使用vllm/sglang/lmdeploy等推理引擎加速），并在训练时将`seq_kd`设置为False。或者将`seq_kd`设置为True，在训练时使用teacher模型生成序列（能保证多个epoch生成数据的不同，但效率较慢）。
 - gkd_logits_topk: 使用 Top-K logits 计算 KL 散度，默认为 None（即使用完整词表计算）。设置该参数可有效降低训练显存峰值；当配置 teacher_model_server 时，此参数为必填项。详见[GKD 文档](./GKD.md#top-k-kl-计算)。
 - offload_teacher_model: 卸载教师模型以节约显存，只在采样/计算logps时加载，默认为False。
 - truncation_strategy: 用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
