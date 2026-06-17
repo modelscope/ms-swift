@@ -1,32 +1,90 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from typing import TYPE_CHECKING
 
-from .env import (get_dist_setting, get_hf_endpoint, get_node_setting, get_pai_tensorboard_dir, is_deepspeed_enabled,
-                  is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp, is_pai_training_job, use_hf_hub)
-from .hf_config import HfConfigFactory
-from .hub_utils import download_ms_file, git_clone_github, patch_kernels, safe_snapshot_download
-from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
-                           is_lmdeploy_available, is_megatron_available, is_swanlab_available, is_trl_available,
-                           is_unsloth_available, is_vllm_ascend_available, is_vllm_available, is_vllm_metax_available,
-                           is_wandb_available)
-from .io_utils import JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_jsonl, write_to_jsonl
-from .logger import get_logger, ms_logger_context
-from .np_utils import get_seed, stat_array, transform_jsonl_to_df
-from .processor_utils import Processor, ProcessorMixin
-from .shutdown_manager import ShutdownManager
-from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
-from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_context_use_barrier, empty_cache, gc_collect,
-                          get_current_device, get_device, get_device_count, get_generative_reranker_logits,
-                          get_last_valid_indices, get_max_reserved_memory, get_torch_device, init_process_group,
-                          ipc_collect, safe_ddp_context, set_default_ddp_config, set_device, synchronize,
-                          time_synchronize, to_device, to_float_dtype)
-from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, find_all_linears, find_embedding,
-                                 find_layers, find_norm, find_sub_module, freeze_parameters,
-                                 get_cu_seqlens_from_position_ids, get_model_parameter_info, get_modules_to_not_convert,
-                                 get_multimodal_target_regex, get_n_params_grads, get_packed_seq_params,
-                                 get_position_ids_from_cu_seqlens, seed_worker, show_layers,
-                                 unwrap_model_for_generation)
-from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
-                    find_node_ip, format_time, get_env_args, import_external_file, json_parse_to_dict, lower_bound,
-                    parse_args, parse_args_from_dict, patch_getattr, read_multi_line, remove_response, retry_decorator,
-                    seed_everything, shutdown_event_loop_in_daemon, split_list, start_event_loop_in_daemon,
-                    subprocess_run, swanlab_get_run, test_time, to_abspath, upper_bound)
+from .import_utils import _LazyModule
+
+if TYPE_CHECKING:
+    from .env import (get_dist_setting, get_hf_endpoint, get_node_setting, get_pai_tensorboard_dir,
+                      is_deepspeed_enabled, is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp,
+                      is_pai_training_job, use_hf_hub)
+    from .hf_config import HfConfigFactory
+    from .hub_utils import download_ms_file, git_clone_github, patch_kernels, safe_snapshot_download
+    from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
+                               is_lmdeploy_available, is_megatron_available, is_swanlab_available, is_trl_available,
+                               is_unsloth_available, is_vllm_ascend_available, is_vllm_available,
+                               is_vllm_metax_available, is_wandb_available)
+    from .io_utils import JsonlWriter, append_to_jsonl, get_file_mm_type, read_from_jsonl, write_to_jsonl
+    from .logger import get_logger, ms_logger_context
+    from .np_utils import get_seed, stat_array, transform_jsonl_to_df
+    from .processor_utils import Processor, ProcessorMixin
+    from .shutdown_manager import ShutdownManager
+    from .tb_utils import TB_COLOR, TB_COLOR_SMOOTH, plot_images, read_tensorboard_file, tensorboard_smoothing
+    from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_context_use_barrier, empty_cache,
+                              gc_collect, get_current_device, get_device, get_device_count,
+                              get_generative_reranker_logits, get_last_valid_indices, get_max_reserved_memory,
+                              get_torch_device, init_process_group, ipc_collect, safe_ddp_context,
+                              set_default_ddp_config, set_device, synchronize, time_synchronize, to_device,
+                              to_float_dtype)
+    from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, find_all_linears, find_embedding,
+                                     find_layers, find_norm, find_sub_module, freeze_parameters,
+                                     get_cu_seqlens_from_position_ids, get_model_parameter_info,
+                                     get_modules_to_not_convert, get_multimodal_target_regex, get_n_params_grads,
+                                     get_packed_seq_params, get_position_ids_from_cu_seqlens, seed_worker, show_layers,
+                                     unwrap_model_for_generation)
+    from .utils import (add_version_to_work_dir, check_json_format, copy_files_by_pattern, deep_getattr, find_free_port,
+                        find_node_ip, format_time, get_env_args, import_external_file, json_parse_to_dict, lower_bound,
+                        parse_args, parse_args_from_dict, patch_getattr, read_multi_line, remove_response,
+                        retry_decorator, seed_everything, shutdown_event_loop_in_daemon, split_list,
+                        start_event_loop_in_daemon, subprocess_run, swanlab_get_run, test_time, to_abspath, upper_bound)
+else:
+    _import_structure = {
+        'env': [
+            'get_dist_setting', 'get_hf_endpoint', 'get_node_setting', 'get_pai_tensorboard_dir',
+            'is_deepspeed_enabled', 'is_dist', 'is_last_rank', 'is_local_master', 'is_master', 'is_mp', 'is_mp_ddp',
+            'is_pai_training_job', 'use_hf_hub'
+        ],
+        'hf_config': ['HfConfigFactory'],
+        'hub_utils': ['download_ms_file', 'git_clone_github', 'patch_kernels', 'safe_snapshot_download'],
+        'import_utils': [
+            'is_flash_attn_2_available', 'is_flash_attn_3_available', 'is_liger_available', 'is_lmdeploy_available',
+            'is_megatron_available', 'is_swanlab_available', 'is_trl_available', 'is_unsloth_available',
+            'is_vllm_ascend_available', 'is_vllm_available', 'is_vllm_metax_available', 'is_wandb_available'
+        ],
+        'io_utils': ['JsonlWriter', 'append_to_jsonl', 'get_file_mm_type', 'read_from_jsonl', 'write_to_jsonl'],
+        'logger': ['get_logger', 'ms_logger_context'],
+        'np_utils': ['get_seed', 'stat_array', 'transform_jsonl_to_df'],
+        'processor_utils': ['Processor', 'ProcessorMixin'],
+        'shutdown_manager': ['ShutdownManager'],
+        'tb_utils': ['TB_COLOR', 'TB_COLOR_SMOOTH', 'plot_images', 'read_tensorboard_file', 'tensorboard_smoothing'],
+        'torch_utils': [
+            'Serializer', 'check_shared_disk', 'disable_safe_ddp_context_use_barrier', 'empty_cache', 'gc_collect',
+            'get_current_device', 'get_device', 'get_device_count', 'get_generative_reranker_logits',
+            'get_last_valid_indices', 'get_max_reserved_memory', 'get_torch_device', 'init_process_group',
+            'ipc_collect', 'safe_ddp_context', 'set_default_ddp_config', 'set_device', 'synchronize',
+            'time_synchronize', 'to_device', 'to_float_dtype'
+        ],
+        'transformers_utils': [
+            'activate_parameters', 'disable_deepspeed_zero3', 'find_all_linears', 'find_embedding', 'find_layers',
+            'find_norm', 'find_sub_module', 'freeze_parameters', 'get_cu_seqlens_from_position_ids',
+            'get_model_parameter_info', 'get_modules_to_not_convert', 'get_multimodal_target_regex',
+            'get_n_params_grads', 'get_packed_seq_params', 'get_position_ids_from_cu_seqlens', 'seed_worker',
+            'show_layers', 'unwrap_model_for_generation'
+        ],
+        'utils': [
+            'add_version_to_work_dir', 'check_json_format', 'copy_files_by_pattern', 'deep_getattr', 'find_free_port',
+            'find_node_ip', 'format_time', 'get_env_args', 'import_external_file', 'json_parse_to_dict', 'lower_bound',
+            'parse_args', 'parse_args_from_dict', 'patch_getattr', 'read_multi_line', 'remove_response',
+            'retry_decorator', 'seed_everything', 'shutdown_event_loop_in_daemon', 'split_list',
+            'start_event_loop_in_daemon', 'subprocess_run', 'swanlab_get_run', 'test_time', 'to_abspath', 'upper_bound'
+        ],
+    }
+
+    import sys
+
+    sys.modules[__name__] = _LazyModule(
+        __name__,
+        globals()['__file__'],
+        _import_structure,
+        module_spec=__spec__,
+        extra_objects={},
+    )
