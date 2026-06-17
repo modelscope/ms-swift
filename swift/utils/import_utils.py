@@ -7,10 +7,6 @@ from itertools import chain
 from types import ModuleType
 from typing import Any
 
-from .logger import get_logger
-
-logger = get_logger()  # pylint: disable=invalid-name
-
 
 def is_vllm_available():
     return importlib.util.find_spec('vllm') is not None

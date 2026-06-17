@@ -18,9 +18,6 @@ from typing import Any, Mapping, Optional, Union
 
 from swift.utils import is_mp
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master
-from .logger import get_logger
-
-logger = get_logger()
 
 
 def _find_local_mac() -> str:
