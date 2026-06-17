@@ -7,6 +7,10 @@ import sys
 import yaml
 from typing import Dict, List, Optional
 
+from swift.utils import get_logger
+
+logger = get_logger()
+
 ROUTE_MAPPING: Dict[str, str] = {
     'pt': 'swift.cli.pt',
     'sft': 'swift.cli.sft',
