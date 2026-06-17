@@ -424,6 +424,8 @@ The table below introduces the models integrated with ms-swift:
 |[ZhipuAI/GLM-5](https://modelscope.cn/models/ZhipuAI/GLM-5)|glm_moe_dsa|glm4_7|glm4_7|transformers>=5.2.0|&#x2714;|-|[zai-org/GLM-5](https://huggingface.co/zai-org/GLM-5)|
 |[ZhipuAI/GLM-5.1](https://modelscope.cn/models/ZhipuAI/GLM-5.1)|glm_moe_dsa|glm5_1|glm5_1|transformers>=5.2.0|&#x2714;|-|[zai-org/GLM-5.1](https://huggingface.co/zai-org/GLM-5.1)|
 |[ZhipuAI/GLM-5.1-FP8](https://modelscope.cn/models/ZhipuAI/GLM-5.1-FP8)|glm_moe_dsa|glm5_1|glm5_1|transformers>=5.2.0|&#x2718;|-|[ZhipuAI/GLM-5.1-FP8](https://huggingface.co/ZhipuAI/GLM-5.1-FP8)|
+|[ZhipuAI/GLM-5.2](https://modelscope.cn/models/ZhipuAI/GLM-5.2)|glm_moe_dsa|glm5_2|glm5_1|transformers>=5.2.0|&#x2714;|-|[ZhipuAI/GLM-5.2](https://huggingface.co/ZhipuAI/GLM-5.2)|
+|[ZhipuAI/GLM-5.2-FP8](https://modelscope.cn/models/ZhipuAI/GLM-5.2-FP8)|glm_moe_dsa|glm5_2|glm5_1|transformers>=5.2.0|&#x2718;|-|[ZhipuAI/GLM-5.2-FP8](https://huggingface.co/ZhipuAI/GLM-5.2-FP8)|
 |[ZhipuAI/glm-edge-1.5b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-1.5b-chat)|glm_edge|chatglm4|chatglm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-1.5b-chat](https://huggingface.co/zai-org/glm-edge-1.5b-chat)|
 |[ZhipuAI/glm-edge-4b-chat](https://modelscope.cn/models/ZhipuAI/glm-edge-4b-chat)|glm_edge|chatglm4|chatglm4|transformers>=4.46|&#x2718;|-|[zai-org/glm-edge-4b-chat](https://huggingface.co/zai-org/glm-edge-4b-chat)|
 |[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://modelscope.cn/models/codefuse-ai/CodeFuse-CodeGeeX2-6B)|codefuse_codegeex2|codefuse||transformers<4.34|&#x2718;|coding|[codefuse-ai/CodeFuse-CodeGeeX2-6B](https://huggingface.co/codefuse-ai/CodeFuse-CodeGeeX2-6B)|

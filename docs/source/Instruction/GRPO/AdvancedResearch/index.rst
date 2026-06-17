@@ -12,6 +12,7 @@ Advanced Research
    CHORD.md
    RLOO.md
    REINFORCEPP.md
+   RouterReplay.md
    SAPO.md
    training_inference_mismatch.md
    treepo.md
