@@ -3,7 +3,6 @@
 import json
 import os.path
 import peft
-import re
 import torch
 import torch.nn
 from contextlib import contextmanager
@@ -321,112 +320,7 @@ def keep_device_forward(self, *args, **kwargs):
         return self.forward_origin(*args, **kwargs)
 
 
-def _names_to_set(names):
-    if names is None:
-        return set()
-    if isinstance(names, str):
-        return {names}
-    return set(names)
-
-
-def _patch_peft_moe_regex_target_modules():
-    """Keep regex target_modules intact during PEFT Transformers-v5 MoE conversion.
-
-    PEFT 0.19.x converts MoE target_modules with ``set(target_modules)``. For a
-    regex string this produces a set of characters and LoRA injection later fails.
-    When expert projections are fused in Transformers v5, resolve those fused
-    parameters from the regex and leave the regex itself for normal module match.
-    """
-    try:
-        from peft.utils import transformers_weight_conversion as weight_conversion
-    except ImportError:
-        return
-
-    origin_convert = getattr(weight_conversion, 'convert_peft_config_for_transformers', None)
-    if origin_convert is None or hasattr(origin_convert, '_swift_origin'):
-        return
-
-    def _swift_convert_peft_config_for_transformers(peft_config, model, conversions):
-        target_modules = getattr(peft_config, 'target_modules', None)
-        if not isinstance(target_modules, str):
-            return origin_convert(peft_config, model, conversions)
-        if str(getattr(peft_config, 'peft_type', '')).split('.')[-1] != 'LORA':
-            return origin_convert(peft_config, model, conversions)
-
-        model_type = getattr(getattr(model, 'config', None), 'model_type', None)
-        base_model_type = getattr(weight_conversion, '_MODEL_TO_CONVERSION_PATTERN', {}).get(model_type)
-        target_module_mapping = getattr(weight_conversion, '_MOE_TARGET_MODULE_MAPPING', {}).get(base_model_type)
-        fused_targets = getattr(weight_conversion, '_MOE_FUSED_TARGETS', {}).get(base_model_type, {})
-        if not target_module_mapping or not fused_targets:
-            return origin_convert(peft_config, model, conversions)
-
-        try:
-            re.compile(target_modules)
-        except re.error:
-            return
-
-        if target_modules == 'all-linear':
-            return
-
-        target_parameters = _names_to_set(getattr(peft_config, 'target_parameters', None))
-        original_target_parameters = target_parameters.copy()
-        old_names_by_new_name = {}
-        for old_name, new_name in target_module_mapping.items():
-            old_names_by_new_name.setdefault(new_name, set()).add(old_name)
-
-        matched_fused_targets = {new_name: set() for new_name in fused_targets}
-        for param_name, _ in model.named_parameters():
-            for new_name, old_names in old_names_by_new_name.items():
-                if not (param_name == new_name or param_name.endswith(f'.{new_name}')):
-                    continue
-                prefix = param_name[:-len(new_name)]
-                matched_old_names = {
-                    old_name
-                    for old_name in old_names if re.fullmatch(target_modules, f'{prefix}{old_name}')
-                }
-                if not matched_old_names:
-                    continue
-                if new_name in fused_targets:
-                    required_old_names = set(fused_targets[new_name])
-                    matched_required_names = matched_old_names & required_old_names
-                    if 0 < len(matched_required_names) < len(required_old_names):
-                        missing = ', '.join(sorted(required_old_names - matched_required_names))
-                        present = ', '.join(sorted(matched_required_names))
-                        raise ValueError(
-                            f'Cannot convert PEFT target(s) {present} without also targeting {missing} because they '
-                            f'are fused into {new_name}.')
-                    if len(matched_required_names) == len(required_old_names):
-                        target_parameters.add(param_name)
-                        matched_fused_targets[new_name].update(matched_required_names)
-                else:
-                    target_parameters.add(param_name)
-
-        if target_parameters != original_target_parameters and getattr(peft_config, 'lora_dropout', 0):
-            logger.warning(
-                'Skip PEFT Transformers-v5 MoE fused expert target_parameters because PEFT ParamWrapper does not '
-                'support lora_dropout != 0. Set lora_dropout=0 to enable fused expert LoRA.')
-            return
-
-        if not hasattr(peft_config, 'rank_pattern') or peft_config.rank_pattern is None:
-            peft_config.rank_pattern = {}
-        if not hasattr(peft_config, 'alpha_pattern') or peft_config.alpha_pattern is None:
-            peft_config.alpha_pattern = {}
-
-        for new_name, matched_old_names in matched_fused_targets.items():
-            required_old_names = fused_targets[new_name]
-            if len(matched_old_names) == len(required_old_names) and len(required_old_names) > 1:
-                pattern = rf'.*\.{re.escape(new_name)}'
-                peft_config.rank_pattern[pattern] = peft_config.r * len(required_old_names)
-                peft_config.alpha_pattern[pattern] = peft_config.lora_alpha * len(required_old_names)
-
-        peft_config.target_parameters = target_parameters
-
-    _swift_convert_peft_config_for_transformers._swift_origin = origin_convert
-    weight_conversion.convert_peft_config_for_transformers = _swift_convert_peft_config_for_transformers
-
-
 def hot_patch_peft_module():
-    _patch_peft_moe_regex_target_modules()
     from peft.tuners.lora import LoraLayer
     if hasattr(LoraModel, '_create_and_replace_origin'):
         return

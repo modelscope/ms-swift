@@ -88,6 +88,19 @@ For base environment setup, see the [Ascend PyTorch installation guide](https://
 | Using SGLang as the inference engine      |
 | Enabling ETP for LoRA training in Megatron |
 
+### PEFT Transformers 5 MoE Fused Expert LoRA Limitation
+
+When training Transformers 5 MoE models such as Qwen3.5-MoE and Qwen3-Omni-MoE with LoRA, some expert weights may be stored as fused `nn.Parameter` tensors instead of ordinary `nn.Linear` modules. Injecting LoRA into these parameters relies on PEFT's `target_parameters` path.
+
+This path is not fully stable yet with combinations such as `lora_dropout`, ZeRO-3/FSDP, and multiple adapters. Typical trigger conditions include:
+
+- using a MoE model;
+- using LoRA and trying to cover fused expert parameters;
+- triggering PEFT's Transformers 5 MoE target conversion path through the model config or the command-line `--model_type`;
+- using the default `lora_dropout != 0`, or using parameter-sharding backends such as ZeRO-3/FSDP.
+
+For regular Qwen3.5 GRPO/SFT LoRA training, avoid explicitly passing `--model_type` when it is not needed. If the model config itself already triggers this PEFT path, prefer full-parameter training or disable the affected LoRA combination. If fused expert LoRA is required, wait for the PEFT upstream support to stabilize, or use it only after validating the target model and training backend with `lora_dropout=0`.
+
 ## Choose Your Usage Path
 
 | Scenario                               | Recommended path                                      | Need MindSpeed |

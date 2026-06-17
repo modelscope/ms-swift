@@ -88,6 +88,19 @@
 | 使用sglang作为推理引擎            |
 | 使用megatron时开启ETP进行lora训练 |
 
+### PEFT Transformers 5 MoE fused expert LoRA 限制
+
+在使用 Qwen3.5-MoE、Qwen3-Omni-MoE 等 Transformers 5 MoE 结构模型进行 LoRA 训练时，部分 expert 权重可能不是普通 `nn.Linear` 模块，而是 fused `nn.Parameter`。这类参数需要依赖 PEFT 的 `target_parameters` 路径注入 LoRA。
+
+当前该路径在 `lora_dropout`、ZeRO-3/FSDP、多 adapter 等组合场景下仍未完全稳定。典型触发条件包括：
+
+- 使用 MoE 模型；
+- 使用 LoRA，并希望覆盖 fused expert 参数；
+- 模型配置或命令行 `--model_type` 触发 PEFT 的 Transformers 5 MoE target conversion 路径；
+- 使用默认 `lora_dropout != 0`，或使用 ZeRO-3/FSDP 等参数分片后端。
+
+如果只是进行常规 Qwen3.5 GRPO/SFT LoRA 训练，建议避免额外指定 `--model_type` 去扩大触发范围；若模型配置本身已经触发该路径，则优先使用 full 参数训练或关闭对应 LoRA 组合。若确实需要训练 fused expert 参数，建议等待 PEFT 上游能力稳定，或在 `lora_dropout=0` 且目标模型、训练后端已单独验证的前提下使用。
+
 ## 选择你的使用路线
 
 | 场景                         | 推荐路线                                      | 是否需要 MindSpeed |
