@@ -10,6 +10,7 @@ from packaging import version
 from pydantic import ValidationError
 from requests import ConnectionError
 from torch import nn
+from transformers.utils import is_torch_npu_available
 from typing import List, Optional, Union
 from urllib.parse import urlparse
 
@@ -35,6 +36,15 @@ if is_trl_available():
     trl_verison = version.parse(trl.__version__)
 
 logger = logging.getLogger(__name__)
+
+
+def _broadcast_tensor(communicator, tensor: torch.Tensor, src: int) -> None:
+    if is_torch_npu_available():
+        device_module = get_torch_device()
+        with device_module.device(communicator.device):
+            communicator.broadcast(tensor, src=src, stream=device_module.current_stream())
+    else:
+        communicator.broadcast(tensor, src=src, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
 
 
 class VLLMInferClient:
@@ -247,11 +257,7 @@ class VLLMClient(VLLMInferClient):
                     raise Exception(f'Server {i} update failed: {response.text}')
 
                 synchronize()
-                self.pynccl_comms[i].broadcast(
-                    weights,
-                    src=self.pynccl_comms[i].rank,
-                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
-
+                _broadcast_tensor(self.pynccl_comms[i], weights, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -296,10 +302,7 @@ class VLLMClient(VLLMInferClient):
                     raise Exception(f'Server {i} update adapter failed: {response.text}')
 
                 synchronize()
-                self.pynccl_comms[i].broadcast(
-                    flattened_tensor,
-                    src=self.pynccl_comms[i].rank,
-                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+                _broadcast_tensor(self.pynccl_comms[i], flattened_tensor, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -358,10 +361,7 @@ class VLLMClient(VLLMInferClient):
                 # Broadcast each tensor individually
                 synchronize()
                 for name, param in lora_params.items():
-                    self.pynccl_comms[i].broadcast(
-                        param,
-                        src=self.pynccl_comms[i].rank,
-                        stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+                    _broadcast_tensor(self.pynccl_comms[i], param, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -401,10 +401,7 @@ class VLLMClient(VLLMInferClient):
                     raise Exception(f'Server {i} update flattened params failed: {response.text}')
 
                 synchronize()
-                self.pynccl_comms[i].broadcast(
-                    flattened_tensor,
-                    src=self.pynccl_comms[i].rank,
-                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+                _broadcast_tensor(self.pynccl_comms[i], flattened_tensor, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:

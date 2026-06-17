@@ -147,6 +147,11 @@ def configure_vllm_ascend_moe_weight_sync(vllm_model, train_model, *, is_fsdp2: 
     setattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR, layout)
 
 
+def configure_vllm_ascend_moe_preprocessed_weight_sync(vllm_model) -> None:
+    """Record that reload writes the layout expected before vLLM-Ascend post-processing."""
+    setattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR, _VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT)
+
+
 def use_vllm_ascend_moe_preprocessed_weight(vllm_model) -> bool:
     """Return whether runtime sync should write the pre-process MoE layout."""
     return getattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR,
@@ -367,6 +372,7 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
 
 
 __all__ = [
+    'configure_vllm_ascend_moe_preprocessed_weight_sync',
     'configure_vllm_ascend_moe_weight_sync',
     'expand_fused_moe_expert_names_for_vllm_ascend',
     'expand_fused_moe_expert_weight_for_vllm_ascend',

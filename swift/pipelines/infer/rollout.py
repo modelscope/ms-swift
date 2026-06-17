@@ -102,6 +102,22 @@ def _set_death_signal():
         os.kill(os.getpid(), signal.SIGKILL)
 
 
+def _broadcast_tensor(communicator, tensor: torch.Tensor, src: int) -> None:
+    if is_torch_npu_available():
+        device_module = get_torch_device()
+        with device_module.device(communicator.device):
+            communicator.broadcast(tensor, src=src, stream=device_module.current_stream())
+    else:
+        communicator.broadcast(tensor, src=src, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+
+
+def _patch_full_weight_reload_loader(model) -> None:
+    if is_vllm_ascend_available():
+        from swift.model.npu_patch.vllm_ascend_moe import configure_vllm_ascend_moe_preprocessed_weight_sync
+        configure_vllm_ascend_moe_preprocessed_weight_sync(model)
+    patch_vllm_moe_model_weight_loader(model)
+
+
 class WeightSyncWorkerExtension:
 
     # The following attributes are initialized when `init_communicator` method is called.
@@ -181,8 +197,7 @@ class WeightSyncWorkerExtension:
         weight = torch.empty(shape, dtype=dtype, device=self.communicator.device)
 
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
-        self.communicator.broadcast(
-            weight, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        _broadcast_tensor(self.communicator, weight, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
@@ -202,8 +217,7 @@ class WeightSyncWorkerExtension:
 
         total_bytes = metadatas[-1].end_idx
         flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
-        self.communicator.broadcast(
-            flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        _broadcast_tensor(self.communicator, flatten_tensor, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
@@ -241,8 +255,7 @@ class WeightSyncWorkerExtension:
             dtype = getattr(torch, metadata['dtype'].split('.')[-1])
             shape = tuple(metadata['shape'])
             tensor = torch.empty(shape, dtype=dtype, device=self.communicator.device)
-            self.communicator.broadcast(
-                tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+            _broadcast_tensor(self.communicator, tensor, src=self.client_rank)
             named_params[name] = tensor
 
         synchronize()
@@ -276,14 +289,13 @@ class WeightSyncWorkerExtension:
         total_bytes = metadatas[-1].end_idx
         flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
 
-        self.communicator.broadcast(
-            flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        _broadcast_tensor(self.communicator, flatten_tensor, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
         named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
 
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+        _patch_full_weight_reload_loader(self.model_runner.model)
         self.model_runner.model.load_weights(weights=list(named_params.items()))
 
     def process_weights_after_loading(self) -> None:
@@ -474,7 +486,8 @@ class WeightSyncWorkerExtension:
         is_lora_sync = (peft_config is not None and base_sync_done)
         all_lora_weights: Dict[str, Any] = {} if is_lora_sync else None
 
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+        if not is_lora_sync:
+            _patch_full_weight_reload_loader(self.model_runner.model)
 
         while True:
             metadata = socket.recv_pyobj() if is_driver else None
