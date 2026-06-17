@@ -20,7 +20,7 @@ megatron sft \
     --num_train_epochs 1 \
     --finetune true \
     --cross_entropy_loss_fusion true \
-    --cross_entropy_fusion_impl te \
+    --cross_entropy_fusion_impl native \
     --lr 1e-5 \
     --lr_warmup_fraction 0.05 \
     --min_lr 1e-6 \
