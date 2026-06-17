@@ -52,6 +52,7 @@ except ImportError:
     RouterReplayAction = None
 
 mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
+mcore_019 = version.parse(megatron.core.__version__) >= version.parse('0.19.0rc0')
 
 logger = get_logger()
 
@@ -156,7 +157,12 @@ class BaseMegatronTrainer(ABC):
                 moe_layer_freq=config.moe_layer_freq,
                 mtp_num_layers=args.mtp_num_layers)
         if args.mtp_num_layers is not None:
-            mtp_loss_scale = 1 / args.num_microbatches / n_steps
+            # dev 0.19: tracker internally normalizes (loss_sums / num_tokens), no external scaling needed.
+            # main 0.19 / old: tracker stores normalized loss accumulated over microbatches, needs scaling.
+            if mcore_019 and not hasattr(MTPLossLoggingHelper, 'save_metrics_to_tracker'):
+                mtp_loss_scale = 1.0
+            else:
+                mtp_loss_scale = 1 / args.num_microbatches / n_steps
             mtp_logs = {}
             MTPLossLoggingHelper.track_mtp_metrics(mtp_loss_scale, self.state.iteration, None, None, mtp_logs)
             logs.update({k.replace(' ', '_'): v for k, v in mtp_logs.items()})
