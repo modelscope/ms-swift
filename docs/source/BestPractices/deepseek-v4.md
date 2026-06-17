@@ -11,17 +11,14 @@ pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
 
 # Megatron-LM在以下commit hash下进行测试
-# pip install git+https://github.com/NVIDIA/Megatron-LM.git@630956b357d4b2375e3fc5c7be8b8e429092866d
+# pip install git+https://github.com/NVIDIA/Megatron-LM.git@9af7c7937b6123bb0b22be4d8eb28a8ebf407d7d
 ```
 
 ## 精度对齐
 
-目前Megatron-Core对DeepSeek-V4的支持算子实现有误，存在精度误差（后续可能更新），具体查看[这个issue](https://github.com/NVIDIA/Megatron-LM/issues/4957)。你需要修改部分代码：
-- 修改[这行](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/hyper_connection.py#L76)，修改为`mixed = torch.bmm(h_res_batched.transpose(-1, -2), residual_batched).view(s, b, n, C)`
-- 修改[这行](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/hyper_connection.py#L386)，修改为`h_res_batched = h_res.transpose(-1, -2).contiguous().view(s * b, n, n)`
-- 此外为了支持精度对齐测试（FP32），你需注释掉[这几行](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/experimental_attention_variant/dsa.py#L41-L43)。
+- 为了支持精度对齐测试（FP32），你需注释掉[这几行](https://github.com/NVIDIA/Megatron-LM/blob/bd381ac364b5139840f0cba6389db54f2c092e90/megatron/core/transformer/experimental_attention_variant/dsa.py#L41-L43)。
 
-修改完代码后，测试以下代码，确认无实现错误（测试transformers/megatron forward对齐情况）：
+修改完代码后，测试以下代码，确认无精度对齐问题（测试transformers/megatron forward对齐情况）：
 
 创建mini版本的模型，我们将创建4层：
 

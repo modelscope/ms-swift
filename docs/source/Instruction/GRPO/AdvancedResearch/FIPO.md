@@ -1,5 +1,7 @@
 # FIPO: Future-KL Influenced Policy Optimization
 
+作者： [li2zhi](https://github.com/li2zhi)
+
 [FIPO](https://arxiv.org/abs/2603.19835) 是一种面向长链推理的 value-free RL 方法。它保留 GRPO/DAPO 的整体训练框架，但改变 token 级策略更新的加权方式：不再让一个序列级 advantage 均匀作用到所有 token，而是用折扣累积的 Future-KL 信号判断“从当前 token 开始的后续轨迹”整体是在被增强还是被削弱。
 
 ## 核心思想
