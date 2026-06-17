@@ -298,13 +298,18 @@ class GKDSample(OnPolicySample):
         ``response_token_ids`` (identical response positions). No-op (returns False) when
         ``teacher_prompt`` is unset.
         """
+        if self.teacher_messages is not None:
+            return True
+
         if not self.teacher_prompt:
             return False
+
         messages = [dict(m) for m in self.messages]
         for msg in reversed(messages):
             if msg['role'] == 'user':
                 msg['content'] = self.teacher_prompt
                 break
+
         self.teacher_messages = messages
         return True
 

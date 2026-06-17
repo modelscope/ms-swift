@@ -446,7 +446,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         student_encoded_list = []
         teacher_encoded_list = []
-        any_opsd = False
+        any_opsd = any(sample.build_teacher_view() for sample in samples)
 
         for s, orig_s in zip(samples, orig_samples):
             # Transfer teacher_prompt from original to encoding sample (generated sample has the response)
@@ -491,24 +491,16 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             requests.append(req)
         return requests
 
-    def _build_encoded_inputs(self, model: nn.Module, samples: List[GKDSample],
-                              data_source: DataSource) -> Dict[str, torch.Tensor]:
+    def _build_encoded_inputs(self, samples: List[GKDSample], data_source: DataSource) -> Dict[str, torch.Tensor]:
         """Build encoded training inputs for one micro-batch.
 
         Samples already have responses (from _generate_completions or dataset).
         Flow: encode → OPSD teacher → teacher_api
         """
-        # Step 1: Unified encode (student + OPSD teacher)
         encoded_inputs, opsd_teacher_encoded = self._encode_samples(samples)
-
-        # Step 2: Store OPSD teacher encoding for compute_loss
         if opsd_teacher_encoded is not None:
             encoded_inputs['_opsd_teacher_inputs'] = opsd_teacher_encoded
-
-        # Step 3: Mark data source
         encoded_inputs['_data_source'] = data_source
-
-        # Step 4: Teacher API — build requests
         if self.use_teacher_api:
             encoded_inputs['_teacher_requests'] = self._build_teacher_requests(samples)
 
@@ -536,8 +528,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
             sample_chunks = self.split_by_mini_batches(samples)
             results = [
-                self._build_encoded_inputs(model, chunk_samples, data_source=data_source)
-                for chunk_samples in sample_chunks
+                self._build_encoded_inputs(chunk_samples, data_source=data_source) for chunk_samples in sample_chunks
             ]
 
             if self.use_teacher_api:

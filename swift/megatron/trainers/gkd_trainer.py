@@ -213,7 +213,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         else:
             teacher_encoded = {k: v for k, v in encoded_batch.items() if isinstance(v, torch.Tensor)}
         encoded_batch['teacher_encoded'] = teacher_encoded
-        encoded_batch['num_samples'] = len(samples)
         return encoded_batch
 
     def _get_random_num(self) -> float:
