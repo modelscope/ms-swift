@@ -6,13 +6,14 @@ Advanced Research
    entropy_mask.md
    CISPO.md
    DAPO.md
-   FIPO.md
    deepeyes.md
+   FIPO.md
    GSPO.md
    CHORD.md
    RLOO.md
    REINFORCEPP.md
-   RouterReplay.md
+   REAL.md
+   router_replay.md
    SAPO.md
    training_inference_mismatch.md
    treepo.md
