@@ -127,7 +127,7 @@
   - 'all': 计算所有tokens的损失。（**`swift pt`默认为该值**）
   - 'ignore_empty_think': 忽略空的`'<think>\n\n</think>\n\n'`损失计算。（满足正则匹配`'<think>\\s*</think>\\s*'`即可）。
   - 'react', 'hermes', 'qwen': 将`tool_call`部分的loss权重调整为2。
-  - 注意：在"ms-swift>=4.4.0"，支持了多个非基本策略串联使用（依次处理上一个策略的输出片段，权重相乘），例如：`'last_round+hermes+ignore_empty_think'`，其中'last_round'为基础策略，'hermes+ignore_empty_think'为多个非基本策略的串联使用，共用基础策略。
+  - 注意：在"ms-swift>=4.3.1"，支持了多个非基本策略串联使用（依次处理上一个策略的输出片段，权重相乘），例如：`'last_round+hermes+ignore_empty_think'`，其中'last_round'为基础策略，'hermes+ignore_empty_think'为多个非基本策略的串联使用，共用基础策略。
 - disable_ignore_empty_think: 是否禁用对混合思考模型的loss_scale自动追加`ignore_empty_think`策略。默认为`False`，即对混合思考模型（如Qwen3.5-4B）自动在loss_scale后追加`+ignore_empty_think`，使空的`'<think>\n\n</think>\n\n'`不参与损失计算。若用户已手动在loss_scale中指定了`ignore_empty_think`，则不会重复追加。该参数仅在训练时生效，对纯思考模型和非思考模型无效。设置为`True`可关闭此默认行为。
   - 注意：该参数在"ms-swift>=4.3.1"增加。在"ms-swift<4.3.1"需手动添加`--loss_scale ignore_empty_think`。
 - is_binary_loss_scale: 当loss_scale只可能为0/1时，该语义可被labels替代，将loss_scale为0的部分的labels设置为-100，从而兼容liger_kernel降低显存。默认为None，进行自动设置。
