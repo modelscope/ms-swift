@@ -1,5 +1,7 @@
 # FIPO: Future-KL Influenced Policy Optimization
 
+Author: [li2zhi](https://github.com/li2zhi)
+
 [FIPO](https://arxiv.org/abs/2603.19835) is a value-free RL method for eliciting longer and deeper reasoning. It keeps the GRPO/DAPO training scaffold, but changes how token-level policy updates are weighted: instead of applying one sequence-level advantage uniformly to every token, FIPO uses a discounted Future-KL signal to estimate whether the future trajectory after each token is being reinforced or suppressed.
 
 ## Core Idea
