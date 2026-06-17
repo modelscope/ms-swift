@@ -4,7 +4,7 @@ import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_packed_seq_params
+from swift.utils import get_env_args, get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -346,6 +346,40 @@ register_template(GLM4_7TemplateMeta(
     template_cls=GLM4_5Template,
     agent_template='glm5_1',
 ))
+
+
+class GLM5_2Template(GLM4_5Template):
+
+    def init_env_args(self):
+        super().init_env_args()
+        # reasoning_effort: "max" or "high"
+        self.reasoning_effort = get_env_args('reasoning_effort', str, None)
+        if self.reasoning_effort is None:
+            self.reasoning_effort = 'max'
+        self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is None:
+            reasoning_effort = self.reasoning_effort
+        if self._get_enable_thinking(inputs):
+            effort_str = f'Reasoning Effort: {reasoning_effort.capitalize()}'
+            if system:
+                system = f'{effort_str}<|system|>{system}'
+            else:
+                system = effort_str
+        return system
+
+
+register_template(
+    GLM4_7TemplateMeta(
+        LLMTemplateType.glm5_2,
+        template_cls=GLM5_2Template,
+        agent_template='glm5_1',
+        non_thinking_prefix='<think></think>',
+        history_thinking_prefix='<think></think>',
+    ))
 
 
 class GLM4_5VTemplate(GLM4vPackingTemplateMixin, GLM4_5Template):
