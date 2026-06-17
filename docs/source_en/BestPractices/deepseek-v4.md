@@ -11,17 +11,14 @@ pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
 
 # Megatron-LM is tested under the following commit hash
-pip install git+https://github.com/NVIDIA/Megatron-LM.git@630956b357d4b2375e3fc5c7be8b8e429092866d
+# pip install git+https://github.com/NVIDIA/Megatron-LM.git@9af7c7937b6123bb0b22be4d8eb28a8ebf407d7d
 ```
 
 ## Precision Alignment
 
-Megatron-Core currently has a bug in its operator implementation for DeepSeek-V4, which causes precision errors (this may be fixed in the future). See [this issue](https://github.com/NVIDIA/Megatron-LM/issues/4957) for details. You need to apply the following code modifications:
-- Change [this line](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/hyper_connection.py#L76) to `mixed = torch.bmm(h_res_batched.transpose(-1, -2), residual_batched).view(s, b, n, C)`.
-- Change [this line](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/hyper_connection.py#L386) to `h_res_batched = h_res.transpose(-1, -2).contiguous().view(s * b, n, n)`.
-- In addition, to enable precision alignment testing (FP32), you also need to comment out [these lines](https://github.com/NVIDIA/Megatron-LM/blob/56481b0501cf7b3719e1869c495e2680ef0f3456/megatron/core/transformer/experimental_attention_variant/dsa.py#L41-L43).
+- To support precision alignment testing (FP32), you need to comment out [these lines](https://github.com/NVIDIA/Megatron-LM/blob/bd381ac364b5139840f0cba6389db54f2c092e90/megatron/core/transformer/experimental_attention_variant/dsa.py#L41-L43).
 
-After applying the changes above, run the following code to verify that the implementation is correct (it tests forward alignment between transformers and Megatron):
+After modifying the code, run the following tests to confirm there are no precision alignment issues (testing the forward alignment between transformers and megatron):
 
 First, create a mini version of the model with only 4 layers:
 
