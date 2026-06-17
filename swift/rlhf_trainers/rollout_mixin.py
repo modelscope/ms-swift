@@ -602,8 +602,10 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         processed = {}
         expand_fused_moe_expert_weight = None
         if is_torch_npu_available():
-            from swift.model.npu_patch.vllm_ascend_moe import expand_fused_moe_expert_weight_for_vllm_ascend
+            from swift.model.npu_patch.vllm_ascend_moe import (expand_fused_moe_expert_weight_for_vllm_ascend,
+                                                               should_keep_fused_moe_expert_for_vllm_ascend)
             expand_fused_moe_expert_weight = expand_fused_moe_expert_weight_for_vllm_ascend
+            keep_fused_moe_expert = should_keep_fused_moe_expert_for_vllm_ascend(self.model)
         for name, param in state_dict.items():
             # Clean up parameter name for PEFT models
             clean_name = name.removeprefix('base_model.model.')
@@ -631,7 +633,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 param = param.full_tensor()
 
             if expand_fused_moe_expert_weight is not None:
-                expanded_moe_weights = expand_fused_moe_expert_weight(clean_name, param)
+                expanded_moe_weights = expand_fused_moe_expert_weight(
+                    clean_name, param, keep_fused_expert=keep_fused_moe_expert)
                 if expanded_moe_weights is not None:
                     processed.update(expanded_moe_weights)
                     continue
@@ -758,9 +761,12 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
                 parameter_group_no_lora = [n.replace('base_model.model.', '') for n in parameter_group_no_lora]
             parameter_group_no_lora = set(parameter_group_no_lora)
             if is_torch_npu_available():
-                from swift.model.npu_patch.vllm_ascend_moe import expand_fused_moe_expert_names_for_vllm_ascend
+                from swift.model.npu_patch.vllm_ascend_moe import (expand_fused_moe_expert_names_for_vllm_ascend,
+                                                                   should_keep_fused_moe_expert_for_vllm_ascend)
+                keep_fused_moe_expert = should_keep_fused_moe_expert_for_vllm_ascend(self.model)
                 for name in tuple(parameter_group_no_lora):
-                    expanded_names = expand_fused_moe_expert_names_for_vllm_ascend(name)
+                    expanded_names = expand_fused_moe_expert_names_for_vllm_ascend(
+                        name, keep_fused_expert=keep_fused_moe_expert)
                     if expanded_names is not None:
                         parameter_group_no_lora.update(expanded_names)
             state_dict = {k: v for k, v in state_dict.items() if k in parameter_group_no_lora}
@@ -785,6 +791,8 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
 
         # Colocate: patch MoE weight_loader once before loading all groups
         if self.vllm_mode == 'colocate':
+            from swift.model.npu_patch.vllm_ascend_moe import configure_vllm_ascend_moe_weight_sync
+            configure_vllm_ascend_moe_weight_sync(self.engine.inner_model, self.model, is_fsdp2=self._is_fsdp2)
             patch_vllm_moe_model_weight_loader(self.engine.inner_model)
 
         for i, parameter_group in enumerate(self.parameter_groups):

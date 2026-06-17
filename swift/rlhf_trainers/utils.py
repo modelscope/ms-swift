@@ -1006,6 +1006,7 @@ def _get_moe_model_registry():
         ('vllm.model_executor.models.qwen2_moe', ('Qwen2MoeForCausalLM', ), 'mlp'),
         ('vllm.model_executor.models.qwen3_moe', ('Qwen3MoeForCausalLM', ), 'mlp'),
         ('vllm.model_executor.models.qwen3_vl_moe', ('Qwen3MoeLLMForCausalLM', ), 'mlp'),
+        ('vllm.model_executor.models.qwen3_5', ('Qwen3_5MoeForCausalLM', ), 'mlp'),
         ('vllm.model_executor.models.qwen3_next', ('Qwen3NextForCausalLM', ), 'mlp'),
         ('vllm.model_executor.models.kimi_vl', ('KimiVLForConditionalGeneration', ), 'mlp'),
     ]
@@ -1070,6 +1071,8 @@ def patch_vllm_moe_model_weight_loader(model):
     # Handle Qwen3-VL MoE structure
     if type(inner_model).__name__ == 'Qwen3MoeLLMForCausalLM':
         inner_model = inner_model.model
+    if type(inner_model).__name__ == 'Qwen3_5MoeForCausalLM':
+        inner_model = inner_model.model
 
     # Check if inner_model has layers attribute
     if not hasattr(inner_model, 'layers'):
@@ -1079,8 +1082,14 @@ def patch_vllm_moe_model_weight_loader(model):
         quant_method = getattr(experts, 'quant_method', None)
         if not is_torch_npu_available() or not type(quant_method).__module__.startswith('vllm_ascend'):
             return
-        from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_moe_expert_weight_loader
-        patch_vllm_ascend_moe_expert_weight_loader(experts, name, param)
+        from swift.model.npu_patch.vllm_ascend import (patch_vllm_ascend_moe_expert_weight_loader,
+                                                       use_vllm_ascend_moe_preprocessed_weight)
+        patch_vllm_ascend_moe_expert_weight_loader(
+            experts,
+            name,
+            param,
+            load_preprocessed_weight=use_vllm_ascend_moe_preprocessed_weight(original_model),
+        )
 
     for layer in inner_model.layers:
         mlp_attr = mlp_attr_mapping.get(original_model_type, 'mlp')
