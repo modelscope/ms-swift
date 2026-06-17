@@ -50,6 +50,7 @@ nvidia-nvtx-cu12<0
 EOF
     fi
     export PIP_CONSTRAINT="$NPU_CONSTRAINT_FILE"
+    export UV_CONSTRAINT="$NPU_CONSTRAINT_FILE"
     echo "Using NPU pip constraints: $PIP_CONSTRAINT"
     cat "$PIP_CONSTRAINT"
 }
@@ -229,7 +230,6 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     fi
 else
     echo "Running case in release image, run case directly!"
-    pip install -e .
 fi
 # remove torch_extensions folder to avoid ci hang.
 rm -rf ~/.cache/torch_extensions
