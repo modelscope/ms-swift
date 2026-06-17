@@ -62,30 +62,6 @@ $$
 g_{\text{replay},i} = \frac{I^{\mu}_{\text{old},i} \cdot \exp(s_{\text{train},i})}{\sum_j I^{\mu}_{\text{old},j} \cdot \exp(s_{\text{train},j})}
 $$
 
-### Properties
-
-| Scenario | Behavior |
-|----------|----------|
-| **All mini-batches** | $e^{\mu}_{\text{old},t} \neq e^{\pi}_t$, **target policy always changed** (always biased) |
-
-R3 **simultaneously addresses** two problems:
-- **Training-inference discrepancy**: The routing used on the training side = the routing from the inference side
-- **Policy staleness**: Routing is fixed and does not drift with $\theta$
-
-R3 reduces the MoE training-inference KL divergence to **near Dense model levels**. In mathematical reasoning RL tasks, training without R3 collapses after 60-120 steps, while R3 training remains stable throughout.
-
-## R2 vs R3: Recommendations
-
-The GSPO paper provides the following conclusions from large-scale controlled experiments (Qwen3-30B-A3B, hundreds of thousands of GPU hours):
-
-| Training Scenario | Recommendation | Reason |
-|-------------------|---------------|--------|
-| **On-policy** (gbs = mbs) | Neither needed | $\theta = \theta_{\text{old}}$, policy staleness ≈ 0, IS correction suffices |
-| **Mildly off-policy** (gbs = 2×mbs) | **R2** | No bias in the first mini-batch, sufficient to stabilize training |
-| **Heavily off-policy** (gbs ≥ 4×mbs) | **R3** | Staleness too large, must simultaneously correct training-inference mismatch |
-
-> **Core trade-off**: R2 is more conservative (only corrects intra-engine inconsistency, smaller bias); R3 is more aggressive (eliminates all routing inconsistency at the source, but always changes the target policy, introducing bias). When off-policiness is small, R3's bias cost outweighs its benefit; when off-policiness is large, the cost of not correcting training-inference mismatch far exceeds the bias.
-
 ### Compatibility with Other Methods
 
 - R3 is **orthogonal** to **GSPO** and can be combined for further improvement

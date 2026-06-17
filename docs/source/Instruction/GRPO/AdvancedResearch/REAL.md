@@ -1,6 +1,6 @@
 # Rewards as Labels: Revisiting RLVR from a Classification Perspective
 
-**版本依赖**：ms-swift>4.0
+作者： [li2zhi](https://github.com/li2zhi)
 
 [Rewards as Labels: Revisiting RLVR from a Classification Perspective](https://arxiv.org/abs/2602.05630) 针对GRPO提出把奖励视为标签，在group内分类而不是计算advantage，从而将策略优化问题转化为分类问题，以此解决GRPO Loss中存在的正样本**梯度错配**与负样本**梯度主导**问题。
 
