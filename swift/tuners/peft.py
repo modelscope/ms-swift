@@ -381,7 +381,8 @@ def _patch_peft_moe_regex_target_modules():
                     continue
                 prefix = param_name[:-len(new_name)]
                 matched_old_names = {
-                    old_name for old_name in old_names if re.fullmatch(target_modules, f'{prefix}{old_name}')
+                    old_name
+                    for old_name in old_names if re.fullmatch(target_modules, f'{prefix}{old_name}')
                 }
                 if not matched_old_names:
                     continue
