@@ -226,6 +226,7 @@ class GKDTrainer(BaseRayTrainer):
                     item['messages'] = replace_assistant_response_with_ids(
                         item['messages'], s.response_token_ids, non_thinking_prefix_ids=non_thinking_prefix_ids)
                 encoded = template.encode(item, return_length=True)
+                encoded.pop('_extra_kwargs', None)
                 payload = {'encoded': encoded}
 
                 # OPSD: encode teacher view (teacher_prompt + same response tokens)
@@ -238,7 +239,9 @@ class GKDTrainer(BaseRayTrainer):
                             teacher_item['messages'],
                             teacher_item['response_token_ids'],
                             non_thinking_prefix_ids=non_thinking_prefix_ids)
-                    payload['opsd_teacher_encoded'] = template.encode(teacher_item, return_length=True)
+                    teacher_encoded = template.encode(teacher_item, return_length=True)
+                    teacher_encoded.pop('_extra_kwargs', None)
+                    payload['opsd_teacher_encoded'] = teacher_encoded
                 result.append(payload)
         return result
 

@@ -23,7 +23,7 @@ from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
 from transformers.utils import is_torch_npu_available
 from types import MethodType
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
 from swift.rl_core.data import GRPOBatch, OnPolicySample
 from swift.template import Messages, Template
@@ -737,6 +737,12 @@ def encode_sample(sample: OnPolicySample,
                   *,
                   non_thinking_prefix_ids: Optional[List[int]] = None,
                   encode_prompt_only: bool = False) -> Dict[str, Any]:
+    """Encode one sample into model inputs.
+
+    Note: mutates ``sample.messages`` in place (response token-ids are injected
+    via ``replace_assistant_response_with_ids``). Callers must ensure the sample
+    owns its data (``OnPolicySample.from_row`` deep-copies for this reason).
+    """
     if sample.response_token_ids:
         loss_mask = sample.response_loss_mask or None
         sample.messages = replace_assistant_response_with_ids(
@@ -1962,7 +1968,7 @@ def build_completion_mask_and_seq_lengths(
 
 
 def build_rollout_logps(
-    rollout_logprobs_list: 'Sequence[Optional[List[List[float]]]]',
+    rollout_logprobs_list: List[Optional[List[List[float]]]],
     completion_mask: torch.Tensor,
     device: torch.device,
 ) -> Optional[torch.Tensor]:

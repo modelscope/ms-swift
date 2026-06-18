@@ -1,4 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+from __future__ import annotations
+
 import copy
 import torch
 from dacite import from_dict
@@ -92,7 +94,7 @@ class OnPolicySample:
         return row
 
     @classmethod
-    def from_row(cls, row: Dict[str, Any]) -> 'OnPolicySample':
+    def from_row(cls, row: Dict[str, Any]) -> OnPolicySample:
         """Build a sample from a dataloader / rollout dict row.
 
         Known keys are mapped to explicit dataclass fields via field-name
@@ -180,7 +182,7 @@ class OnPolicySample:
                 if key in rollout_output.rollout_infos:
                     setattr(self, key, rollout_output.rollout_infos[key])
 
-    def to_infer_request(self, include_extra: bool = False) -> 'RolloutInferRequest':
+    def to_infer_request(self, include_extra: bool = False) -> RolloutInferRequest:
         """Build the ``RolloutInferRequest`` consumed by the rollout engine.
 
         Maps messages + multimodal/standard columns (images/videos/audios/
@@ -317,10 +319,7 @@ class GKDBatch:
     - ``data_source``: STUDENT / TEACHER / DATASET for this micro-batch.
     - ``teacher_topk_logprobs`` / ``teacher_topk_indices``: assembled teacher
       top-k (teacher-API mode), batch tensors aligned to student tokens.
-    - ``opsd_teacher_inputs``: teacher model-forward inputs for OPSD (None when
-      non-OPSD; student encoding is reused for the teacher).
     """
     data_source: 'DataSource'
     teacher_topk_logprobs: Optional[torch.Tensor] = None
     teacher_topk_indices: Optional[torch.Tensor] = None
-    opsd_teacher_inputs: Optional[Dict[str, Any]] = None

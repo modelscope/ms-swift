@@ -154,31 +154,32 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
         model_inputs = inputs['model_inputs']
-        gkd_batch = inputs['gkd_batch']
+        gkd_batch: GKDBatch = inputs['gkd_batch']
         data_source = gkd_batch.data_source
-        opsd_teacher_inputs = gkd_batch.opsd_teacher_inputs
+        teacher_model_inputs = inputs['teacher_model_inputs']
 
-        # If generate is used, then use_logits_to_keep must be set to False.
+        # logits_to_keep trims each forward to its completion region. student and teacher
+        # are masked independently in the loss via their own labels (extract_active), so the
+        # two sides can be trimmed independently even when OPSD makes their lengths differ.
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
-        if self.use_teacher_api:
-            use_logits_to_keep = False
-        if opsd_teacher_inputs is not None:
-            # OPSD: student/teacher have different seq lengths, logits_to_keep is incompatible
-            use_logits_to_keep = False
         if use_logits_to_keep and not self.use_liger_gkd_loss:
             self.prepare_logits_to_keep(model_inputs)
+            # Trim the teacher only when it runs a forward. Teacher API does not (top-k is
+            # pre-assembled on the full sequence). For a local teacher forward, non-OPSD reuses
+            # the student encoding (separate dict) and OPSD has its own encoding — both are trimmed
+            # here so the teacher forward also benefits, while extract_active aligns each side via
+            # its own labels.
+            if not self.use_teacher_api:
+                self.prepare_logits_to_keep(teacher_model_inputs)
 
-        # Unified teacher labels: OPSD uses teacher encoding labels; non-OPSD uses student labels.
-        # Must be computed AFTER prepare_logits_to_keep which may truncate model_inputs['labels'].
-        teacher_labels = opsd_teacher_inputs['labels'] if opsd_teacher_inputs is not None else model_inputs['labels']
+        # Teacher labels come from the teacher-side encoding (== student encoding when non-OPSD).
+        # Must be read AFTER prepare_logits_to_keep which may truncate labels.
+        teacher_labels = teacher_model_inputs['labels']
 
         # model_inputs is clean from template.encode; exclude 'labels' for model forward.
         forward_inputs = {k: v for k, v in model_inputs.items() if k != 'labels'}
 
-        if opsd_teacher_inputs is not None:
-            teacher_fwd_inputs = {k: v for k, v in opsd_teacher_inputs.items() if k != 'labels'}
-        else:
-            teacher_fwd_inputs = None
+        teacher_fwd_inputs = {k: v for k, v in teacher_model_inputs.items() if k != 'labels'}
 
         if self.use_liger_gkd_loss:
             # Liger fused JSD loss for memory efficiency
@@ -259,10 +260,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                     labels=teacher_labels,
                 )
             else:
-                t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
-                    k: v
-                    for k, v in forward_inputs.items() if k != 'labels'
-                }
+                t_fwd = teacher_fwd_inputs
                 if self._is_self_distillation:
                     adapter_ctx = (
                         self.accelerator.unwrap_model(model).disable_adapter()
@@ -301,14 +299,15 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
         self._logs['completion'].extend(valid_completions)
 
-    def _encode_samples(self, samples: 'List[GKDSample]'):
+    def _encode_samples(self, samples: List[GKDSample]):
         """Encode student + teacher (OPSD-aware). Mirrors Megatron GKD _encode_samples.
 
         Args:
             samples: Samples to encode (may be generated samples for STUDENT mode).
 
         Returns:
-            (encoded_inputs, opsd_teacher_encoded_or_None)
+            (encoded_inputs, teacher_encoded_or_None) — ``teacher_encoded`` is non-None
+            only for OPSD; non-OPSD returns None (teacher reuses the student encoding).
         """
         template = self.template
 
@@ -318,69 +317,80 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             encoded_inputs = to_device(template.data_collator(student_encoded_list), self.model.device)
         if has_opsd:
             with self._template_context(template):
-                opsd_teacher_encoded = to_device(template.data_collator(teacher_encoded_list), self.model.device)
+                teacher_encoded = to_device(template.data_collator(teacher_encoded_list), self.model.device)
         else:
-            opsd_teacher_encoded = None
+            teacher_encoded = None
 
-        return encoded_inputs, opsd_teacher_encoded
+        return encoded_inputs, teacher_encoded
 
-    def _build_teacher_requests(self, samples: 'List[GKDSample]'):
+    def _build_teacher_requests(self, samples: List[GKDSample]):
         """Build teacher API requests from samples (mirrors Megatron GKD)."""
         return build_teacher_requests(samples)
 
-    def _build_encoded_inputs(self, samples: List[GKDSample], data_source: DataSource) -> Dict[str, Any]:
-        """Build encoded training inputs for one micro-batch.
+    def _rollout_samples(self, inputs: DataType) -> List[GKDSample]:
+        """Pick the data source, convert rows to samples, and generate for the STUDENT branch."""
+        if self._get_random_num() <= self.lmbda:
+            self._data_source = DataSource.STUDENT
+        else:
+            self._data_source = DataSource.DATASET
 
-        Samples already have responses (from _generate_completions or dataset).
-        Flow: encode → OPSD teacher → teacher_api
+        if self.template.truncation_strategy == 'raise':
+            inputs = self.resample_encode_failed_inputs(inputs, strip_response=self._data_source != DataSource.DATASET)
+        samples = self.to_samples(inputs)
 
-        Returns a wrapper dict with clean ``model_inputs`` and ``gkd_batch``.
+        if self._data_source == DataSource.STUDENT:
+            # Generation at full-batch level (uses _generate_completions from mixin)
+            samples = self._generate_completions(samples)
+            self._log_student_completions(samples)
+        return samples
+
+    def _score_completions(self, samples: List[GKDSample]) -> List[GKDSample]:
+        """GKD has no reward scoring; teacher signals are filled in ``_postprocess_batch``."""
+        return samples
+
+    @profiling_decorator
+    def _prepare_batch_inputs(self, samples: List[GKDSample]) -> List[Dict[str, Any]]:
+        """Encode + collate samples into per-micro-batch ``{model_inputs, gkd_batch}`` dicts.
+
+        Mirrors GRPO ``_prepare_batch_inputs``: takes all samples and splits internally.
         """
-        encoded_inputs, opsd_teacher_encoded = self._encode_samples(samples)
-        gkd_batch = GKDBatch(data_source=data_source, opsd_teacher_inputs=opsd_teacher_encoded)
-        result: Dict[str, Any] = {'model_inputs': encoded_inputs, 'gkd_batch': gkd_batch}
+        sample_chunks = self.split_by_mini_batches(samples)
+        ga_batch_encoded_inputs: List[Dict[str, Any]] = []
+        for chunk_samples in sample_chunks:
+            encoded_inputs, teacher_encoded = self._encode_samples(chunk_samples)
+            # teacher_encoded is non-None only for OPSD. Non-OPSD reuses the student encoding
+            # for the teacher, but as a separate dict so each side can run prepare_logits_to_keep
+            # independently without aliasing.
+            teacher_model_inputs = teacher_encoded or dict(encoded_inputs)
+            result: Dict[str, Any] = {
+                'model_inputs': encoded_inputs,
+                'gkd_batch': GKDBatch(data_source=self._data_source),
+                'teacher_model_inputs': teacher_model_inputs,
+            }
+            if self.use_teacher_api:
+                result['_teacher_requests'] = self._build_teacher_requests(chunk_samples)
+            ga_batch_encoded_inputs.append(result)
+        return ga_batch_encoded_inputs
+
+    def _postprocess_batch(self, samples: List[GKDSample], batch_encoded_inputs: List[Dict[str, Any]]) -> None:
+        """Fetch teacher logprobs via API and fill them into each ``gkd_batch``."""
         if self.use_teacher_api:
-            result['_teacher_requests'] = self._build_teacher_requests(samples)
-        return result
+            self._fetch_and_assemble_teacher_logprobs(batch_encoded_inputs)
+
+    def _log_rollout(self, samples: List[GKDSample]) -> None:
+        """Student completions are logged in ``_rollout_samples``; nothing extra here."""
 
     @profiling_decorator
     def _prepare_inputs(self, inputs: DataType) -> Dict[str, torch.Tensor]:
-        model = self.model
-
-        def _prepare_input(inputs):
-            if self._get_random_num() <= self.lmbda:
-                data_source = DataSource.STUDENT
-            else:
-                data_source = DataSource.DATASET
-
-            # Standardize: convert raw dicts to GKDSample early
-            if self.template.truncation_strategy == 'raise':
-                inputs = self.resample_encode_failed_inputs(inputs, strip_response=data_source != DataSource.DATASET)
-            samples = self.to_samples(inputs)
-
-            if data_source == DataSource.STUDENT:
-                # Generation at full-batch level (uses _generate_completions from mixin)
-                samples = self._generate_completions(samples)
-                self._log_student_completions(samples)
-
-            sample_chunks = self.split_by_mini_batches(samples)
-            results = [
-                self._build_encoded_inputs(chunk_samples, data_source=data_source) for chunk_samples in sample_chunks
-            ]
-
-            if self.use_teacher_api:
-                self._fetch_and_assemble_teacher_logprobs(results)
-            return results
-
-        mode = 'train' if model.training else 'eval'
+        mode = 'train' if self.model.training else 'eval'
         steps_per_generation = self.args.steps_per_generation
         if mode == 'train':
             if self._step % steps_per_generation == 0 or self._buffered_inputs is None:
-                self._buffered_inputs = _prepare_input(inputs)
+                self._buffered_inputs = self._generate_and_score_completions(inputs)
             inputs = self._buffered_inputs[self._step % steps_per_generation]
             self._step += 1
         else:
-            inputs = _prepare_input(inputs)[0]
+            inputs = self._generate_and_score_completions(inputs)[0]
         return inputs
 
     def _fetch_and_assemble_teacher_logprobs(self, chunks):
@@ -413,11 +423,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         for c, cs in zip(chunks, local_chunk_sizes):
             chunk_parsed = parsed_local[offset:offset + cs]
             offset += cs
-            gkd_batch = c['gkd_batch']
-            target = gkd_batch.opsd_teacher_inputs or c['model_inputs']
+            gkd_batch: GKDBatch = c['gkd_batch']
+            target = c['teacher_model_inputs']
             teacher_out = assemble_teacher_output(
                 chunk_parsed,
-                teacher_encoded=target,
+                teacher_model_inputs=target,
                 topk=self.gkd_logits_topk,
                 template_padding_free=self.template.padding_free,
                 device=target['input_ids'].device,

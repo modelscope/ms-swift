@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import os
 import torch
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from swift.rl_core.data import GRPOBatch
 from swift.utils import gc_collect, get_current_device, get_logger, to_device
@@ -327,7 +327,7 @@ class MegatronWorker(CheckpointEngineMixin):
 
     def _compute_logps_from_samples(
         self,
-        samples: Sequence[Dict[str, Any]],
+        samples: List[Dict[str, Any]],
         model,
         output_key: str,
         *,
@@ -387,18 +387,16 @@ class MegatronWorker(CheckpointEngineMixin):
 
     def _compute_logps(self, batch: Dict[str, Any], model, output_key: str) -> Dict[str, Any]:
         """Compute per-token logps for a single micro-batch."""
-        from swift.megatron.trainers.grpo_trainer import FILTERED_KEYS, GRPO_NON_MODEL_KEYS
         from swift.rlhf_trainers.utils import pad_logps_back_to_batch
         megatron = self._megatron
         args = self._args
         temperature = getattr(args, 'temperature', 1.0)
-        grpo_batch = batch['grpo_batch']
+        grpo_batch = batch.pop('grpo_batch')
         seq_lengths = grpo_batch.seq_lengths
-        batch_size = batch['num_samples']
+        batch_size = grpo_batch.completion_mask.shape[0]
         max_seq_len = grpo_batch.completion_mask.shape[1]
 
-        excluded = GRPO_NON_MODEL_KEYS | FILTERED_KEYS
-        model_inputs = {k: v for k, v in batch.items() if k not in excluded}
+        model_inputs = batch
         enable_routing_replay = bool(getattr(megatron, 'enable_routing_replay', False))
         router_mode = getattr(args, 'router_replay_mode', 'disabled')
 
@@ -575,11 +573,11 @@ class MegatronWorker(CheckpointEngineMixin):
         if self.teacher is not None and not getattr(self._args, 'offload_teacher_model', False):
             self.teacher.reload_to_gpu(load_grad=False)
 
-    def _split_sample_chunks(self, samples: Sequence[Dict[str, Any]]) -> List[Sequence[Dict[str, Any]]]:
+    def _split_sample_chunks(self, samples: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
         micro_batch_size = self._args.micro_batch_size
         return [samples[i:i + micro_batch_size] for i in range(0, len(samples), micro_batch_size)]
 
-    def _build_local_micro_batches(self, samples: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _build_local_micro_batches(self, samples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [self._collate_local_grpo_samples(chunk) for chunk in self._split_sample_chunks(samples)]
 
     @staticmethod
@@ -609,7 +607,7 @@ class MegatronWorker(CheckpointEngineMixin):
 
     def _build_routed_experts_batch(
         self,
-        samples: Sequence[Dict[str, Any]],
+        samples: List[Dict[str, Any]],
         *,
         seq_lengths: torch.Tensor,
         max_seq_len: int,
@@ -714,7 +712,7 @@ class MegatronWorker(CheckpointEngineMixin):
                 kwargs[field] = torch.cat(padded, dim=0).to(device)
         return TeacherOutput(**kwargs)
 
-    def _collate_local_grpo_samples(self, samples: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    def _collate_local_grpo_samples(self, samples: List[Dict[str, Any]]) -> Dict[str, Any]:
         from swift.megatron.utils import get_padding_to
         from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
 
@@ -737,7 +735,7 @@ class MegatronWorker(CheckpointEngineMixin):
         routed_experts = self._build_routed_experts_batch(
             samples, seq_lengths=seq_lengths, max_seq_len=max_seq_len, template=template, device=device)
         # RL signals are packed into GRPOBatch (mirrors main MegatronGRPOTrainer wire format:
-        # model_inputs + num_samples + grpo_batch), so model_inputs stays a clean whitelist and the
+        # model_inputs + grpo_batch), so model_inputs stays a clean whitelist and the
         # reused forward_step / loss_func read everything from ``grpo_batch``.
         grpo_batch = GRPOBatch(
             completion_mask=completion_mask,
@@ -747,7 +745,6 @@ class MegatronWorker(CheckpointEngineMixin):
             seq_lengths=seq_lengths,
             rollout_per_token_logps=rollout_logps,
         )
-        encoded_batch['num_samples'] = batch_size
         if routed_experts is not None:
             encoded_batch['routed_experts'] = routed_experts
 

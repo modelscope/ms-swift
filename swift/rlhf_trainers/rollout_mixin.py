@@ -114,6 +114,66 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         self._prepare_async_generate()
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
 
+    @profiling_decorator
+    def _generate_and_score_completions(self, inputs: DataType) -> List[Dict[str, Any]]:
+        """Unified rollout → score → batch pipeline shared by GRPO and GKD.
+
+        The skeleton fixes the stage order so both algorithms (and future ones)
+        read the same way; per-algorithm behavior lives in the hooks below:
+
+        1. ``_rollout_samples``      – raw rows → samples (+ generation).
+        2. ``_score_completions``    – attach the algorithm's per-sample training
+                                       signal (GRPO: rewards + dynamic sampling; GKD: noop).
+        3. ``_prepare_batch_inputs`` – encode + collate samples into per-micro-batch
+                                       ``{model_inputs, <algo>_batch}`` dicts.
+        4. ``_postprocess_batch``    – fill batch-level signals that depend on the
+                                       encoded batches (GRPO: advantages; GKD: teacher logprobs).
+        5. ``_log_rollout``          – log prompts/completions and extra metrics.
+
+        Returns the list of per-micro-batch encoded inputs.
+        """
+        samples = self._rollout_samples(inputs)
+        samples = self._score_completions(samples)
+        batch_encoded_inputs = self._prepare_batch_inputs(samples)
+        self._postprocess_batch(samples, batch_encoded_inputs)
+        self._log_rollout(samples)
+        return batch_encoded_inputs
+
+    def _rollout_samples(self, inputs: DataType) -> List[OnPolicySample]:
+        """Convert raw rows to samples and (optionally) generate completions.
+
+        Hook overridden by each trainer; GRPO always generates, GKD generates only
+        for the on-policy (STUDENT) branch.
+        """
+        raise NotImplementedError
+
+    def _score_completions(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
+        """Attach the algorithm's per-sample training signal and return the samples.
+
+        GRPO scores completions with reward functions (and runs DAPO dynamic sampling);
+        GKD has no reward scoring and returns the samples unchanged. Returns samples
+        (rather than a tensor) so the skeleton stays symmetric and resampling can
+        replace the sample set in place.
+        """
+        return samples
+
+    def _prepare_batch_inputs(self, samples: List[OnPolicySample]) -> List[Dict[str, Any]]:
+        """Encode + collate all samples into per-micro-batch ``{model_inputs, <algo>_batch}`` dicts.
+
+        Hook overridden by each trainer; takes all samples and splits internally via
+        ``split_by_mini_batches``.
+        """
+        raise NotImplementedError
+
+    def _postprocess_batch(self, samples: List[OnPolicySample], batch_encoded_inputs: List[Dict[str, Any]]) -> None:
+        """Fill batch-level training signals that depend on the encoded batches.
+
+        Default is a no-op. GRPO computes/writes advantages; GKD fetches/fills teacher logprobs.
+        """
+
+    def _log_rollout(self, samples: List[OnPolicySample]) -> None:
+        """Log prompts/completions and extra rollout metrics. Default no-op."""
+
     def split_by_mini_batches(self, samples: List[OnPolicySample]) -> List[List[OnPolicySample]]:
         """Split inputs into mini-batches based on steps_per_generation.
 

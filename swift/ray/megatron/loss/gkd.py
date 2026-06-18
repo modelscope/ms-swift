@@ -5,7 +5,7 @@ from __future__ import annotations
 import torch
 from functools import partial
 from megatron.core import mpu
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from swift.megatron.trainers.gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
 from swift.megatron.trainers.utils import prepare_batch
@@ -14,22 +14,6 @@ from swift.megatron.utils import forward_step_helper, get_padding_to
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.utils import gc_collect, get_current_device, to_device
 from .base import Loss
-
-_NON_MODEL_KEYS = frozenset({
-    'data_source',
-    'grpo_batch',
-    'completion_mask',
-    'truncated_mask',
-    'seq_lengths',
-    'rollout_per_token_logps',
-    'old_per_token_logps',
-    'ref_per_token_logps',
-    'advantages',
-    'num_samples',
-    'num_items_in_batch',
-    'logits_to_keep',
-    'routed_experts',
-})
 
 
 class GKDLoss(Loss):
@@ -45,16 +29,15 @@ class GKDLoss(Loss):
         data = next(data_iterator)
         teacher_output = data.pop('teacher_output', TeacherOutput())
         data_source = data.pop('data_source', None)
-        data.pop('opsd_teacher_batch', None)
-        data.pop('opsd_teacher_messages', None)
+        data.pop('grpo_batch', None)  # RL signals packed in GRPOBatch (not used by GKD loss)
         data = prepare_batch(self.args, data)
 
         data.pop('loss_scale', None)
+        data.pop('routed_experts', None)  # MoE routing replay data (not a model forward kwarg)
         labels = data.pop('labels', None)
 
-        inputs = {k: v for k, v in data.items() if k not in _NON_MODEL_KEYS}
-
-        student_output = model(**inputs)
+        # data is now clean model forward kwargs (template.encode guarantees this)
+        student_output = model(**data)
         return student_output, partial(
             self.loss_func,
             labels=labels,

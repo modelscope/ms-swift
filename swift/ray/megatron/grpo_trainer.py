@@ -6,7 +6,7 @@ import copy
 import os
 import torch
 import uuid
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutOutput
@@ -287,7 +287,7 @@ class GRPOTrainer(BaseRayTrainer):
 
     def expand_for_generation(
         self,
-        prompt_batch: Sequence[Dict[str, Any]],
+        prompt_batch: List[Dict[str, Any]],
     ) -> List[GRPOSample]:
         """Repeat each prompt ``num_generations`` times before rollout.
 
@@ -312,7 +312,7 @@ class GRPOTrainer(BaseRayTrainer):
 
     def score_completions(
         self,
-        samples: Sequence[GRPOSample],
+        samples: List[GRPOSample],
     ) -> torch.Tensor:
         """Score completions using the backend-agnostic shared helper.
 
@@ -398,7 +398,7 @@ class GRPOTrainer(BaseRayTrainer):
                        len(valid_samples), target, self.max_resample_times)
         return samples, rewards_per_func
 
-    def _batch_encode_parallel(self, infer_requests: Sequence[Dict[str, Any]], strict: bool):
+    def _batch_encode_parallel(self, infer_requests: List[Dict[str, Any]], strict: bool):
         max_workers = max(min(32, os.cpu_count() or 1, len(infer_requests)), 1)
         encoded: List[Dict[str, Any]] = []
         errors: List[Tuple[int, Exception]] = []
@@ -416,7 +416,7 @@ class GRPOTrainer(BaseRayTrainer):
 
     def encode_rollout_batch(
         self,
-        samples: Sequence[GRPOSample],
+        samples: List[GRPOSample],
     ) -> List[Dict[str, Any]]:
         """Encode samples into per-sample worker payloads.
 
@@ -459,7 +459,7 @@ class GRPOTrainer(BaseRayTrainer):
             worker_samples.append(payload)
         return worker_samples
 
-    def _compute_kl_from_samples(self, samples: Sequence[Dict[str, Any]]) -> Optional[torch.Tensor]:
+    def _compute_kl_from_samples(self, samples: List[Dict[str, Any]]) -> Optional[torch.Tensor]:
         if not (self.kl_in_reward and self.beta != 0.0):
             return None
         kl_values = []

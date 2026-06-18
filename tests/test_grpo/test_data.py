@@ -41,32 +41,6 @@ class TestGRPOBatch:
         assert rl.advantages.shape == (B, )
         assert rl.logits_to_keep == 6
 
-    def test_to_dict(self):
-        rl = _make_rl_batch(advantages=torch.randn(B))
-        d = rl.to_dict()
-        assert 'completion_mask' in d
-        assert 'advantages' in d
-        assert 'old_per_token_logps' not in d
-
-    def test_from_dict(self):
-        mixed = {
-            'input_ids': torch.randint(0, 100, (B, T)),
-            'attention_mask': torch.ones(B, T),
-            'completion_mask': torch.ones(B, T, dtype=torch.bool),
-            'truncated_mask': torch.zeros(B, dtype=torch.bool),
-            'seq_lengths': torch.full((B, ), T),
-            'old_per_token_logps': torch.randn(B, T),
-            'advantages': torch.randn(B),
-        }
-        rl, model_inputs = GRPOBatch.from_dict(mixed)
-        assert isinstance(rl, GRPOBatch)
-        assert rl.completion_mask.shape == (B, T)
-        assert rl.advantages.shape == (B, )
-        assert 'input_ids' in model_inputs
-        assert 'attention_mask' in model_inputs
-        assert 'completion_mask' not in model_inputs
-        assert 'advantages' not in model_inputs
-
     def test_mutable_after_creation(self):
         rl = _make_rl_batch()
         assert rl.advantages is None

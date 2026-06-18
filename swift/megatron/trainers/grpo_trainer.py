@@ -36,20 +36,6 @@ except ImportError:
 
 logger = get_logger()
 
-GRPO_NON_MODEL_KEYS = frozenset({
-    'grpo_batch',
-    'logits_to_keep',
-})
-
-FILTERED_KEYS = frozenset({
-    'prompt_id',
-    'request_id',
-    'response_token_ids',
-    'finish_reason',
-    'is_truncated',
-    'add_eos',
-})
-
 
 class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
@@ -300,6 +286,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         with self._template_context(template):
             for s in total_samples:
                 s.encoded = encode_sample(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
+                s.encoded.pop('_extra_kwargs', None)
 
             for idx in range(0, len(total_samples), self.micro_batch_size):
                 sample_slice = total_samples[idx:idx + self.micro_batch_size]
@@ -310,9 +297,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     padding_to=get_padding_to(self.args),
                     router_replay_mode=self.args.router_replay_mode,
                 )
-                # Wire format: model_inputs (dict) + num_samples + grpo_batch (consumed by forward_step)
+                # Wire format: model_inputs (dict) + grpo_batch (consumed by forward_step)
                 data = model_inputs
-                data['num_samples'] = len(sample_slice)
                 data['grpo_batch'] = grpo_batch
                 with profiling_context(self, 'compute_ref_old_logps'):
                     data = self._maybe_compute_logps(data)
@@ -330,7 +316,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Step 4: Add advantages to encoded batches
         for idx, micro_batch_encoded in enumerate(mini_batch_data):
             start_idx = idx * self.micro_batch_size
-            end_idx = start_idx + micro_batch_encoded['num_samples']
+            end_idx = start_idx + micro_batch_encoded['grpo_batch'].completion_mask.shape[0]
             micro_batch_advantages = total_advantages[start_idx:end_idx]
             micro_batch_encoded['grpo_batch'].advantages = micro_batch_advantages
 
@@ -617,12 +603,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return rollout_batch, rewards_per_func
 
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        grpo_batch: GRPOBatch = batch['grpo_batch']
+        grpo_batch: GRPOBatch = batch.pop('grpo_batch')
         seq_lengths = grpo_batch.seq_lengths
-        batch_size = batch['num_samples']
+        batch_size = grpo_batch.completion_mask.shape[0]
         max_seq_len = grpo_batch.completion_mask.shape[1]
 
-        inputs = self._prepare_model_inputs(batch)
+        # batch is now clean model forward kwargs (template.encode guarantees this)
+        inputs = batch
         if self.beta != 0.0:
             with self.null_ref_context() as ref_models:
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
@@ -662,6 +649,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             RouterReplay.clear_global_indices()
             RouterReplay.clear_global_router_replay_action()
 
+        batch['grpo_batch'] = grpo_batch
         return batch
 
     def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
@@ -717,7 +705,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         data = next(data_iterator)
         grpo_batch: GRPOBatch = data.pop('grpo_batch')
         data = self._prepare_batch(data)
-        data['grpo_batch'] = grpo_batch
         data.pop('loss_scale', None)
 
         if self.enable_routing_replay and RouterReplayHelper.is_replay_backward_action(model.config):
@@ -728,17 +715,15 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             layers_topk_idx = data.pop('routed_experts', None)
             set_router_replay_data(layers_topk_idx, model.config)
 
-        inputs = self._prepare_model_inputs(data)
-
-        labels = data['labels']
+        labels = data.pop('labels', None)
         packed_seq_params = data.get('packed_seq_params')
         max_seq_len = grpo_batch.completion_mask.shape[1]
         micro_batch_size = self.micro_batch_size
 
-        # Check if this is the PP last stage (only last stage has labels and computes loss)
+        # data is now clean model forward kwargs (template.encode guarantees this;
+        # grpo_batch / loss_scale / routed_experts / labels all popped above)
         is_pp_last_stage = mpu.is_pipeline_last_stage()
-        inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
-        output_tensor = model(**inputs_for_logits)
+        output_tensor = model(**data)
         if is_pp_last_stage and output_tensor is not None:
             logits_packed = output_tensor
             if self.temperature != 1.0:
@@ -783,6 +768,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             for router in router_instance_list:
                 router.set_router_replay_action(RouterReplayAction.REPLAY_BACKWARD)
 
+        data['grpo_batch'] = grpo_batch
+        data['labels'] = labels
         return output_tensor, partial(self.loss_func, data=data)
 
     @profiling_decorator
@@ -1494,12 +1481,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             metrics['clipped_frac'] = gather(clipped_frac.unsqueeze(0), group=dp_group).nanmean()
 
         return metrics
-
-    _MODEL_INPUT_EXCLUDED = GRPO_NON_MODEL_KEYS | FILTERED_KEYS | {'num_samples'}
-
-    def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
-        """Filters inputs to create model_inputs, removing GRPO-specific and template extra keys."""
-        return {k: v for k, v in inputs.items() if k not in self._MODEL_INPUT_EXCLUDED}
 
     def _collect_config_info(self) -> Dict[str, str]:
         config = {

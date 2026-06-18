@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 import torch.nn as nn
-from typing import Any, Callable, Dict, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional
 
 from swift.rl_core.data import GRPOSample
 from swift.utils import get_logger
@@ -15,9 +15,9 @@ def _is_async_reward(func: Callable) -> bool:
 
 
 def compute_rewards_per_func(
-    samples: Sequence[GRPOSample],
-    reward_funcs: Sequence[Callable],
-    reward_model_plugins: Sequence[Optional[Any]],
+    samples: List[GRPOSample],
+    reward_funcs: List[Callable],
+    reward_model_plugins: List[Optional[Any]],
     device: torch.device,
     trainer_state: Optional[Any] = None,
 ) -> torch.Tensor:
@@ -85,9 +85,9 @@ def compute_rewards_per_func(
 
 
 def score_completions(
-    samples: Sequence[GRPOSample],
-    reward_funcs: Sequence[Callable],
-    reward_model_plugins: Sequence[Optional[Any]],
+    samples: List[GRPOSample],
+    reward_funcs: List[Callable],
+    reward_model_plugins: List[Optional[Any]],
     use_gym_env: bool,
     device: torch.device,
     trainer_state: Optional[Any] = None,

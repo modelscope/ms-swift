@@ -6,7 +6,7 @@ methods.  Backend-specific rollout infrastructure (vLLM engine setup, weight
 sync, distributed groups) stays in the respective mixins.
 """
 import copy
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List
 
 from swift.rl_core.data import OnPolicySample
 
@@ -16,7 +16,7 @@ class BaseRolloutTrainerMixin:
 
     sample_cls = OnPolicySample
 
-    def to_samples(self, rows: Sequence[Any]) -> List[OnPolicySample]:
+    def to_samples(self, rows: List[Any]) -> List[OnPolicySample]:
         """Convert dataloader/rollout dict rows into per-sample objects.
 
         Rows that are already samples pass through unchanged.

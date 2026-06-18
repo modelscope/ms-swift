@@ -30,7 +30,6 @@ def split_micro_batches(batch, micro_batch_size: int) -> List[Dict[str, Any]]:
     if not (isinstance(t, torch.Tensor) and t.dim() > 0):
         t = next((v for v in batch.values() if isinstance(v, torch.Tensor) and v.dim() > 0), None)
     sample_size = t.shape[0] if t is not None else int(batch.get('num_samples', 1))
-    batch['num_samples'] = sample_size
 
     if micro_batch_size >= sample_size:
         return [batch]
