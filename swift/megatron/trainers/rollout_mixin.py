@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.rl_core.data import OnPolicySample
+from swift.rlhf_trainers.base_rollout_mixin import BaseRolloutTrainerMixin
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        TensorLoRARequest, add_base_layer_suffix_by_param_names, aggressive_empty_cache,
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
@@ -109,17 +110,10 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
     return trainer._rollout_group
 
 
-class MegatronRolloutMixin:
+class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
     # Per-sample container class; subclasses override (GRPOSample / GKDSample).
     sample_cls = OnPolicySample
-
-    def to_samples(self, rows: DataType) -> List[OnPolicySample]:
-        """Convert dataloader/rollout dict rows into per-sample objects.
-
-        Rows that are already samples pass through unchanged.
-        """
-        return [r if isinstance(r, OnPolicySample) else self.sample_cls.from_row(r) for r in rows]
 
     def _init_rollout_params(self):
         """Initialize rollout generation parameters."""
@@ -699,17 +693,6 @@ class MegatronRolloutMixin:
             remove_response(s.messages)
         return samples
 
-    def _set_inputs_system(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
-        """Insert default system message if not present."""
-        if not self.template.template_meta.default_system:
-            return samples
-        if all(s.messages[0]['role'] == 'system' for s in samples):
-            return samples
-        for s in samples:
-            if s.messages[0]['role'] != 'system':
-                s.messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
-        return samples
-
     def _inputs_to_requests(
             self, samples: Union[List[OnPolicySample], List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert samples into RolloutInferRequest objects.
@@ -727,14 +710,6 @@ class MegatronRolloutMixin:
             else:
                 requests_list.append(data.to_infer_request())
         return requests_list
-
-    def _postprocess_rollout_outputs(self, samples: List[OnPolicySample],
-                                     outputs: List[RolloutOutput]) -> List[OnPolicySample]:
-        """Merge rollout outputs back into the per-sample objects."""
-        assert len(samples) == len(outputs)
-        for s, out in zip(samples, outputs):
-            s.apply_rollout_output(rollout_output=out)
-        return samples
 
     def _log_rollout(self, samples: List[OnPolicySample], outputs: List[RolloutOutput]) -> None:
         """Log rollout prompts/completions. Collects into ``_logs`` for periodic flush."""

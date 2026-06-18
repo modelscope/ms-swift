@@ -38,6 +38,7 @@ from swift.tuners import Swift
 from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
                          to_device, unwrap_model_for_generation)
 from .arguments import RolloutTrainerArgumentsMixin
+from .base_rollout_mixin import BaseRolloutTrainerMixin
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
                     _create_parameter_buckets, _process_bucket_with_flattened_tensor,
@@ -82,7 +83,7 @@ class SyncRefModelCallback(TrainerCallback):
         self.trainer._sync_ref_model_weights(args.ref_model_mixup_alpha)
 
 
-class RolloutTrainerMixin(RLHFTrainerMixin):
+class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
     """
     Mixin for RLHF trainers that use rollout-based methods (e.g., GRPO, GKD).
 
@@ -94,16 +95,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
     """
 
     executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-
-    # Per-sample container class; subclasses override (GRPOSample / GKDSample).
-    sample_cls = OnPolicySample
-
-    def to_samples(self, rows: DataType) -> List[OnPolicySample]:
-        """Convert dataloader/rollout dict rows into per-sample objects.
-
-        Rows that are already samples pass through unchanged.
-        """
-        return [r if isinstance(r, OnPolicySample) else self.sample_cls.from_row(r) for r in rows]
 
     def __init__(self,
                  model: Optional[Union[PreTrainedModel, nn.Module]] = None,
@@ -122,23 +113,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
         self._prepare_vllm()
         self._prepare_async_generate()
         self.parameter_groups, self.parameter_groups_no_lora = self.split_batches()
-
-    @staticmethod
-    def _split_data_by_steps(samples: List[OnPolicySample], steps: int) -> List[List[OnPolicySample]]:
-        """Split a list of samples into `steps` chunks with balanced sizes."""
-        if steps <= 1:
-            return [samples]
-
-        chunk_size = len(samples) // steps
-        remainder = len(samples) % steps
-        chunks: List[List[OnPolicySample]] = []
-        start_idx = 0
-        for i in range(steps):
-            current_chunk_size = chunk_size + (1 if i < remainder else 0)
-            end_idx = start_idx + current_chunk_size
-            chunks.append(samples[start_idx:end_idx])
-            start_idx = end_idx
-        return chunks
 
     def split_by_mini_batches(self, samples: List[OnPolicySample]) -> List[List[OnPolicySample]]:
         """Split inputs into mini-batches based on steps_per_generation.
@@ -907,17 +881,6 @@ class RolloutTrainerMixin(RLHFTrainerMixin):
             request_config.seed = batch_size * (self.accelerator.process_index // self.vllm_tensor_parallel_size)
 
         return request_config
-
-    def _set_inputs_system(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
-        """Insert default system message if not present"""
-        if not self.template.template_meta.default_system:
-            return samples
-        if all(s.messages[0]['role'] == 'system' for s in samples):
-            return samples
-        for s in samples:
-            if s.messages[0]['role'] != 'system':
-                s.messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
-        return samples
 
     def _infer_single_or_multi_turn(self,
                                     samples: List[OnPolicySample],

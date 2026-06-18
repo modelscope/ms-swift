@@ -16,12 +16,12 @@ from swift.infer_engine.protocol import RequestConfig
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
 from swift.rl_core.data import GKDSample
+from swift.rlhf_trainers.gkd_helpers import assemble_teacher_output, build_teacher_requests, encode_gkd_samples
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
-from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, encode_sample, get_non_thinking_prefix_ids,
-                                       parse_prompt_logprobs, replace_assistant_response_with_ids)
+from swift.rlhf_trainers.utils import parse_prompt_logprobs
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import Template
-from swift.utils import get_cu_seqlens_from_position_ids, get_logger, is_last_rank, to_device
+from swift.utils import get_logger, is_last_rank, to_device
 from ..utils import forward_step_helper, get_padding_to
 from .gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer
@@ -164,13 +164,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """
         if not self.use_teacher_api:
             return []
-        requests = []
-        for s in samples:
-            req = s.to_infer_request()
-            if s.teacher_messages:
-                req.messages = s.teacher_messages
-            requests.append(req)
-        return requests
+        return build_teacher_requests(samples)
 
     def _encode_samples(self, samples: List[GKDSample]) -> Dict[str, torch.Tensor]:
         """Encode a batch of GKDSample into collated model inputs.
@@ -181,29 +175,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         template = self.template
         args = self.args
 
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
-
-        student_encoded_list = []
-        teacher_encoded_list = []
-        has_opsd = any(s.build_teacher_view() for s in samples)
-
         with self._template_context(template):
-            for s in samples:
-                # OPSD: build teacher view before encoding
-                encoded = encode_sample(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
-                student_encoded_list.append(encoded)
-
-                if has_opsd:
-                    teacher_row = s.to_teacher_template_dict()
-                    if teacher_row.get('response_token_ids'):
-                        teacher_row = {**teacher_row}
-                        teacher_row['messages'] = replace_assistant_response_with_ids(
-                            teacher_row['messages'],
-                            teacher_row['response_token_ids'],
-                            non_thinking_prefix_ids=non_thinking_prefix_ids)
-                    teacher_encoded_list.append(template.encode(teacher_row, return_length=True))
-                else:
-                    teacher_encoded_list.append(encoded.copy())
+            student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
 
         padding_to = get_padding_to(args)
         encoded_batch = to_device(template.data_collator(student_encoded_list, padding_to=padding_to), self.device)
@@ -366,41 +339,16 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Uses teacher_encoded (always present; equals student encoding when non-OPSD)
         for shape alignment and teacher labels.
         """
-        topk = self.gkd_logits_topk
-
         for encoded_batch in encoded_batches:
             parsed = encoded_batch.pop('_teacher_parsed')
             teacher_encoded = encoded_batch['teacher_encoded']
-            input_ids = teacher_encoded['input_ids']
-
-            # Shape-based packed detection: [1, T] with multiple seqs vs [B, S]
-            batch_size, seq_len = input_ids.shape
-            server_seq_lens = None
-            if self.template.padding_free:
-                server_seq_lens = [0]
-                for lps, ixs in parsed:
-                    server_seq_lens.append(server_seq_lens[-1] + len(lps) + 1)
-                trainer_seq_lens = encoded_batch.get('cu_seq_lens_q')
-                if trainer_seq_lens is None:
-                    position_ids = encoded_batch.get('text_position_ids')
-                    if position_ids is None:
-                        position_ids = encoded_batch.get('position_ids')
-                    if position_ids is not None:
-                        trainer_seq_lens = get_cu_seqlens_from_position_ids(position_ids)
-                if trainer_seq_lens is not None and server_seq_lens[-1] != int(trainer_seq_lens[-1]):
-                    logger.warning(
-                        'The number of tokens returned by the teacher server differs from that of the trainer. '
-                        'This may be caused by non-aligned processing')
-            topk_logprobs, topk_indices = assemble_teacher_topk_logprobs(
+            teacher_out = assemble_teacher_output(
                 parsed,
-                batch_size=batch_size,
-                seq_len=seq_len,
-                cu_seqlens=server_seq_lens,
-                topk=topk,
-                device=self.device)
-
-            teacher_out = TeacherOutput(topk_logprobs=topk_logprobs, topk_indices=topk_indices)
-            teacher_out.labels = torch.roll(teacher_encoded['labels'], shifts=-1, dims=-1)
+                teacher_encoded=teacher_encoded,
+                topk=self.gkd_logits_topk,
+                template_padding_free=self.template.padding_free,
+                device=self.device,
+            )
             encoded_batch['teacher_output'] = teacher_out
 
     def _compute_teacher_logits(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:

@@ -597,6 +597,9 @@ def profiling_context(trainer, name: str):
     end_time = time.perf_counter()
     duration = end_time - start_time
 
+    if trainer is None:
+        return
+
     profiling_metrics = {f'profiling/Time taken: {trainer.__class__.__name__}.{name}': duration}
 
     is_main_process = False
@@ -729,8 +732,8 @@ def get_non_thinking_prefix_ids(template) -> Optional[List[int]]:
     return None
 
 
-def encode_sample(sample: 'OnPolicySample',
-                  template: 'Template',
+def encode_sample(sample: OnPolicySample,
+                  template: Template,
                   *,
                   non_thinking_prefix_ids: Optional[List[int]] = None,
                   encode_prompt_only: bool = False) -> Dict[str, Any]:
@@ -2182,90 +2185,3 @@ def make_reward_weights(
                              f'match number of reward functions ({num_funcs})')
         return torch.tensor(reward_weights_cfg, dtype=torch.float32, device=device)
     return torch.ones(num_funcs, dtype=torch.float32, device=device)
-
-
-def detect_async_reward_indices(reward_funcs: list) -> List[int]:
-    import asyncio
-    import torch.nn as nn
-    indices = []
-    for i, func in enumerate(reward_funcs):
-        if not isinstance(func, nn.Module):
-            if asyncio.iscoroutinefunction(func) or asyncio.iscoroutinefunction(getattr(func, '__call__', None)):
-                indices.append(i)
-    return indices
-
-
-def compute_grpo_advantages(
-    rewards_per_func: torch.Tensor,
-    reward_weights: torch.Tensor,
-    num_generations: int,
-    advantage_estimator: str = 'grpo',
-    scale_rewards: str = 'group',
-    kl_in_reward: bool = False,
-    beta: float = 0.0,
-    kl_values: Optional[torch.Tensor] = None,
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Compute advantages from per-function rewards (pure function).
-
-    This implements GRPO / RLOO / REINFORCE++ advantage estimation and
-    normalization.  Both ``MegatronGRPOTrainer._compute_advantages`` and
-    ``GRPOTrainer.compute_advantages`` should delegate to this.
-
-    Args:
-        rewards_per_func: ``[N, n_funcs]`` per-function reward matrix.
-        reward_weights: ``[n_funcs]`` weighting tensor.
-        num_generations: ``K`` — how many completions per prompt.
-        advantage_estimator: ``'grpo'``, ``'rloo'``, or ``'reinforce_plus_plus'``.
-        scale_rewards: ``'batch'``, ``'group'``, ``'none'``, or ``'gdpo'``.
-        kl_in_reward: Whether to subtract KL penalty.
-        beta: KL penalty coefficient.
-        kl_values: ``[N]`` KL values (required if ``kl_in_reward``).
-
-    Returns:
-        ``(advantages, rewards)`` both ``[N]``.
-    """
-    rewards = (rewards_per_func * reward_weights.unsqueeze(0)).nansum(dim=1)
-
-    if kl_in_reward and beta != 0.0 and kl_values is not None:
-        rewards = rewards - beta * kl_values
-
-    K = num_generations
-    grouped = rewards.view(-1, K)
-    group_mean = grouped.mean(dim=1).repeat_interleave(K)
-
-    if advantage_estimator == 'rloo' and K > 1:
-        advantages = rewards * K / (K - 1) - group_mean * K / (K - 1)
-    else:
-        advantages = rewards - group_mean
-
-    std: Optional[torch.Tensor] = None
-    if advantage_estimator == 'reinforce_plus_plus':
-        if scale_rewards == 'batch':
-            std = advantages.std().expand_as(advantages) if advantages.numel() > 1 \
-                else torch.zeros_like(advantages)
-        elif scale_rewards == 'group':
-            std = advantages.view(-1, K).std(dim=1).repeat_interleave(K) if K > 1 \
-                else torch.zeros_like(advantages)
-    else:
-        if scale_rewards == 'batch':
-            std = rewards.std().expand_as(rewards) if rewards.numel() > 1 \
-                else torch.zeros_like(rewards)
-        elif scale_rewards == 'group':
-            std = grouped.std(dim=1).repeat_interleave(K) if K > 1 \
-                else torch.zeros_like(rewards)
-        elif scale_rewards == 'gdpo':
-            num_reward_funcs = rewards_per_func.shape[1]
-            normalized_list = []
-            for i in range(num_reward_funcs):
-                r_i = rewards_per_func[:, i].view(-1, K)
-                g_mean = r_i.mean(dim=1, keepdim=True)
-                g_std = r_i.std(dim=1, keepdim=True) + 1e-8
-                normalized_list.append(reward_weights[i] * ((r_i - g_mean) / g_std).view(-1))
-            summed = sum(normalized_list)
-            advantages = (summed - summed.mean()) / (summed.std() + 1e-8)
-            std = None
-
-    if std is not None and scale_rewards != 'none':
-        advantages = advantages / (std + 1e-4)
-
-    return advantages, rewards

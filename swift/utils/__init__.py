@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
+import importlib
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -157,7 +158,6 @@ __all__ = list(_ATTR_TO_MODULE.keys())
 
 def __getattr__(name):
     if name in _ATTR_TO_MODULE:
-        import importlib
         module = importlib.import_module('.' + _ATTR_TO_MODULE[name], __name__)
         value = getattr(module, name)
         globals()[name] = value

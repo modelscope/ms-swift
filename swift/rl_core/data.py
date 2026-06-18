@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import copy
 import torch
 from dacite import from_dict
 from dataclasses import dataclass, field, fields
@@ -58,7 +59,7 @@ class OnPolicySample:
     rollout_infos: Dict[str, Any] = field(default_factory=dict)
     routed_experts: Optional[Any] = None  # R3 router replay (per-sample, pre-collation)
 
-    # --- per-sample template.encode output (model fields only: input_ids/labels/length/...) ---
+    # --- per-sample template.encode output, used for model forward kwargs ---
     encoded: Optional[Dict[str, Any]] = None
 
     @property
@@ -110,11 +111,11 @@ class OnPolicySample:
         extra: Dict[str, Any] = {}
         for key, value in row.items():
             if key in field_names:
-                standard[key] = value
+                standard[key] = copy.deepcopy(value)
             elif key == 'is_truncated':
                 continue  # derived from finish_reason
             else:
-                extra[key] = value
+                extra[key] = copy.deepcopy(value)
         return cls(extra=extra, **standard)
 
     def to_template_dict(self) -> Dict[str, Any]:
@@ -235,7 +236,7 @@ class OnPolicySample:
 class GRPOSample(OnPolicySample):
     """On-policy sample with GRPO reward/advantage signals."""
     rewards: Optional[List[Optional[float]]] = None  # optional mirror; main path uses rewards_per_func tensor
-    advantages: Optional[float] = None  # filled after _compute_advantages
+    advantages: Optional[torch.Tensor] = None  # filled after _compute_advantages (0-dim tensor per sample)
 
 
 @dataclass
@@ -260,27 +261,6 @@ class GRPOBatch:
     advantages: Optional[torch.Tensor] = None  # [B]
     num_items_in_batch: Optional[torch.Tensor] = None  # scalar
     logits_to_keep: Optional[int] = None
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dict (for backward compat with code that expects dict)."""
-        return {f.name: getattr(self, f.name) for f in fields(self) if getattr(self, f.name) is not None}
-
-    @staticmethod
-    def from_dict(d: Dict[str, Any]) -> 'GRPOBatch':
-        """Extract RL fields from a mixed dict, leaving the rest untouched.
-
-        Returns ``(rl_batch, model_inputs)`` where ``model_inputs`` is the
-        dict with RL keys removed.
-        """
-        rl_field_names = {f.name for f in fields(GRPOBatch)}
-        rl_kwargs = {}
-        model_inputs = {}
-        for k, v in d.items():
-            if k in rl_field_names:
-                rl_kwargs[k] = v
-            else:
-                model_inputs[k] = v
-        return GRPOBatch(**rl_kwargs), model_inputs
 
 
 @dataclass
@@ -337,10 +317,10 @@ class GKDBatch:
     - ``data_source``: STUDENT / TEACHER / DATASET for this micro-batch.
     - ``teacher_topk_logprobs`` / ``teacher_topk_indices``: assembled teacher
       top-k (teacher-API mode), batch tensors aligned to student tokens.
-
-    Note: teacher-forward model inputs live in ``model_inputs['teacher_encoded']``
-    (always present; equals the student encoding when non-OPSD), not here.
+    - ``opsd_teacher_inputs``: teacher model-forward inputs for OPSD (None when
+      non-OPSD; student encoding is reused for the teacher).
     """
     data_source: 'DataSource'
     teacher_topk_logprobs: Optional[torch.Tensor] = None
     teacher_topk_indices: Optional[torch.Tensor] = None
+    opsd_teacher_inputs: Optional[Dict[str, Any]] = None

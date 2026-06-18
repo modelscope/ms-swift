@@ -1,40 +1,28 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import asyncio
-import atexit
-import base64
-import inspect
-import json
-import os
-import pandas as pd
 import torch
-import torch.nn as nn
-import uuid
 from accelerate.utils import broadcast_object_list
 from collections import defaultdict, deque
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from copy import copy, deepcopy
-from dacite import from_dict
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
-from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
+from swift.megatron.arguments import MegatronArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
+from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
 from swift.rl_core.data import GRPOBatch, GRPOSample
+from swift.rl_core.grpo_algorithm import score_completions
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, collate_to_grpo_micro_batch, detect_async_reward_indices,
-                                       encode_sample, get_non_thinking_prefix_ids, make_reward_weights, nanstd,
-                                       pad_logps_back_to_batch, profiling_context, profiling_decorator,
-                                       replace_assistant_response_with_ids, resolve_reward_funcs,
-                                       set_expandable_segments)
+from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, get_non_thinking_prefix_ids,
+                                       make_reward_weights, pad_logps_back_to_batch, profiling_context,
+                                       profiling_decorator, resolve_reward_funcs)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template
-from swift.utils import (get_logger, get_packed_seq_params, remove_response, shutdown_event_loop_in_daemon,
-                         start_event_loop_in_daemon, to_device)
+from swift.utils import get_logger, remove_response
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, reconstruct_tensor_cp
@@ -211,14 +199,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         assert self.reward_funcs or self.use_gym_env, \
             'reward_funcs is not set (or pass --use_gym_env true to use the env-provided total_reward)'
 
-        self._async_reward_func_indices = detect_async_reward_indices(self.reward_funcs)
-
-        if self._async_reward_func_indices:
-            self.async_reward_loop_thread, self.async_reward_loop, self.async_reward_loop_ready_event = (
-                start_event_loop_in_daemon(name='MegatronGRPOTrainer-AsyncRewardLoop'))
-            self.async_reward_loop_ready_event.wait()
-            atexit.register(shutdown_event_loop_in_daemon, self.async_reward_loop_thread, self.async_reward_loop)
-
     def _prepare_scheduler(self):
         """Prepare multi-turn scheduler"""
         args = self.args
@@ -332,9 +312,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 )
                 # Wire format: model_inputs (dict) + num_samples + grpo_batch (consumed by forward_step)
                 data = model_inputs
+                data['num_samples'] = len(sample_slice)
+                data['grpo_batch'] = grpo_batch
                 with profiling_context(self, 'compute_ref_old_logps'):
                     data = self._maybe_compute_logps(data)
-                data['grpo_batch'] = grpo_batch
                 mini_batch_data.append(data)
 
         # Step 2: Compute KL from logps if kl_in_reward is enabled
@@ -491,84 +472,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Returns:
             rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with local reward values
         """
-        # Gym path: pull `total_reward` from the multi-turn scheduler's rollout_infos and
-        # append it as an extra column so reward_weights can blend it with reward_funcs.
-        if self.use_gym_env:
-            gym_reward = torch.tensor([s.rollout_infos['total_reward'] for s in samples],
-                                      dtype=torch.float32,
-                                      device=self.device).unsqueeze(1)
-            if not self.reward_funcs:
-                return gym_reward
-            local_rewards_per_func = self._compute_rewards_per_func(samples)
-            return torch.cat([local_rewards_per_func, gym_reward], dim=1)
-
-        # Compute rewards using reward functions
-        return self._compute_rewards_per_func(samples)
-
-    def _compute_rewards_per_func(self, samples: List[GRPOSample]) -> torch.Tensor:
-        """Compute rewards using all reward functions"""
-        device = self.device
-        rewards_per_func = torch.zeros((len(samples), len(self.reward_funcs)), device=device)
-        completions = [s.messages[-1]['content'] for s in samples]
-        reward_rows = [s.to_reward_row() for s in samples]
-
-        # Common reward kwargs
-        reward_kwargs = {'trainer_state': self.state}
-        reward_kwargs.update(RowPreprocessor.rows_to_batched(reward_rows))
-
-        # Use pre-computed indices for async reward functions
-        async_indices_set = set(self._async_reward_func_indices)
-
-        for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
-                zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
-            with profiling_context(self, reward_func_name):
-                # Reward model (nn.Module)
-                if isinstance(reward_func, nn.Module):
-                    output_reward_func = reward_model_plugin(inputs=reward_rows, **reward_kwargs)
-                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
-                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-                # Async reward function - skip here, will be executed in parallel later
-                elif i in async_indices_set:
-                    pass
-                # Synchronous reward function
-                else:
-                    output_reward_func = reward_func(completions, **reward_kwargs)
-                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
-                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-
-        # Execute async reward functions in parallel using asyncio.gather
-        # Process in original order to maintain correspondence with reward_func_names
-        if self._async_reward_func_indices:
-
-            async def _invoke_async_reward(index):
-                func = self.reward_funcs[index]
-                func_name = self.reward_func_names[index]
-                with profiling_context(self, func_name):
-                    output = await func(completions, **reward_kwargs)
-                    output = [r if r is not None else torch.nan for r in output]
-                    return index, output
-
-            async def _run_async_funcs():
-                # Maintain order by processing indices in sequence
-                coros = [_invoke_async_reward(idx) for idx in self._async_reward_func_indices]
-                return await asyncio.gather(*coros)
-
-            async_results = asyncio.run_coroutine_threadsafe(_run_async_funcs(), self.async_reward_loop).result()
-            for idx, output_reward_func in async_results:
-                rewards_per_func[:, idx] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-
-        # If all reward functions return None for a given row, issue a detailed warning
-        if torch.isnan(rewards_per_func).all(dim=1).any():
-            nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
-            row_reward_kwargs = {
-                key: value[nan_row_idx]
-                for key, value in reward_kwargs.items() if key != 'trainer_state'
-            }
-            row_reward_kwargs['completion'] = completions[nan_row_idx]
-            logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
-                           'Please ensure that at least one reward function returns a valid reward.')
-
-        return rewards_per_func
+        return score_completions(
+            samples,
+            reward_funcs=self.reward_funcs,
+            reward_model_plugins=self.reward_model_plugins,
+            use_gym_env=self.use_gym_env,
+            device=self.device,
+            trainer_state=self.state,
+        )
 
     def _compute_advantages(self,
                             samples: List[GRPOSample],
@@ -576,11 +487,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                             kl_values: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Compute advantages for RL training.
-
-        Supports different advantage estimators:
-        - 'grpo': Group mean baseline
-        - 'rloo': Leave-One-Out baseline
-        - 'reinforce_plus_plus': Similar to grpo but normalizes advantages std
 
         Args:
             samples: Local on-policy samples (only the count is used for slicing)
@@ -590,145 +496,49 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Returns:
             advantages: Computed advantages for local batch, shape [local_batch_size]
         """
-
-        def normalize_advantages(advantages: torch.Tensor, std_values: torch.Tensor) -> torch.Tensor:
-            """Normalize advantages if configured; otherwise, return as-is."""
-            if self.scale_rewards != 'none':
-                return advantages / (std_values + 1e-4)
-            return advantages
-
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         assert len(samples) == rewards_per_func.shape[0]
-        total_rewards_per_func = gather(rewards_per_func)
-        # NOTE: In GDPO mode, this weighted sum is only used for logging metrics.
-        # GDPO advantages are computed separately in the scale_rewards=='gdpo' branch below.
-        rewards = (total_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-
-        # Apply KL penalty to rewards if kl_in_reward is enabled
-        if self.kl_in_reward and self.beta != 0.0 and kl_values is not None:
-            self._metrics[mode]['kl'].append(kl_values.nanmean().item())
-            rewards = rewards - self.beta * kl_values
-
-        # Use num_generations_eval in eval mode
         num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
-        grouped_rewards = rewards.view(-1, num_generations)
-        K = num_generations
 
-        # Compute group statistics
-        group_rewards_mean = grouped_rewards.mean(dim=1)
+        # Gather local rewards into a global tensor: GRPO group normalization needs every
+        # completion of the same prompt visible on one rank (groups span DP ranks).
+        # ``kl_values`` is already global (gathered in ``_compute_kl_from_batches``).
+        total_rewards_per_func = gather(rewards_per_func)
 
-        # Broadcast stats back to the original shape
-        group_rewards_mean = group_rewards_mean.repeat_interleave(K)
+        advantages, weighted_rewards = compute_advantages(
+            rewards_per_func=total_rewards_per_func,
+            reward_weights=self.reward_weights,
+            num_generations=num_generations,
+            advantage_estimator=self.advantage_estimator,
+            scale_rewards=self.scale_rewards,
+            kl_in_reward=self.kl_in_reward,
+            beta=self.beta,
+            kl_values=kl_values,
+        )
 
-        # Compute advantages based on estimation type
-        if self.advantage_estimator == 'rloo':
-            # RLOO: Leave-One-Out baseline
-            # A_i = r_i - mean(r_j for j != i)
-            # = r_i * K/(K-1) - mean_all * K/(K-1)
-            # Edge case: when K=1 (e.g., num_generations_eval=1), fall back to simple advantage
-            if K > 1:
-                advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
-            else:
-                advantages = rewards - group_rewards_mean
-        else:  # 'grpo' or 'reinforce_plus_plus'
-            # Both use group mean as baseline
-            advantages = rewards - group_rewards_mean
-
-        # Normalize advantages based on estimator and scale_rewards
-        if self.advantage_estimator == 'reinforce_plus_plus':
-            # REINFORCE++: Use std of advantages (not rewards)
-            if self.scale_rewards == 'batch':
-                # Global whitening: std computed on advantages
-                if advantages.numel() > 1:
-                    advantages_std = advantages.std().expand_as(advantages)
-                else:  # edge case: num_generations_eval=batch_size=1
-                    advantages_std = torch.zeros_like(advantages)
-            elif self.scale_rewards == 'group':
-                # Group-level whitening on advantages
-                advantages_grouped = advantages.view(-1, K)
-                if K > 1:
-                    advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
-                else:  # edge case: num_generations_eval=1
-                    advantages_std = torch.zeros_like(advantages)
-            else:  # 'none'
-                advantages_std = None
-            if advantages_std is not None:
-                advantages = normalize_advantages(advantages, advantages_std)
-        else:  # 'grpo' or 'rloo'
-            # GRPO/RLOO: Use std of original rewards
-            if self.scale_rewards == 'batch':
-                # Global batch-level normalization
-                if rewards.numel() > 1:
-                    rewards_std = rewards.std().expand_as(rewards)
-                else:  # edge case: num_generations_eval=batch_size=1
-                    rewards_std = torch.zeros_like(rewards)
-            elif self.scale_rewards == 'group':
-                # Group-level normalization (default)
-                if K > 1:
-                    rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
-                else:  # edge case: num_generations_eval=1
-                    rewards_std = torch.zeros_like(rewards)
-            elif self.scale_rewards == 'gdpo':
-                num_reward_funcs = total_rewards_per_func.shape[1]
-                normalized_advantages_list = []
-                for i in range(num_reward_funcs):
-                    reward_i = total_rewards_per_func[:, i]
-                    grouped_reward_i = reward_i.view(-1, K)
-                    group_mean = grouped_reward_i.mean(dim=1, keepdim=True)
-                    group_std = grouped_reward_i.std(dim=1, keepdim=True) + 1e-8
-                    normalized_i = (grouped_reward_i - group_mean) / group_std
-                    normalized_i = normalized_i.view(-1)
-                    normalized_advantages_list.append(self.reward_weights[i] * normalized_i)
-                summed_advantages = sum(normalized_advantages_list)
-                batch_mean = summed_advantages.mean()
-                batch_std = summed_advantages.std() + 1e-8
-                advantages = (summed_advantages - batch_mean) / batch_std
-                rewards_std = None
-            else:  # 'none'
-                rewards_std = None
-            if rewards_std is not None:
-                advantages = normalize_advantages(advantages, rewards_std)
-
-        def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
-            """Log reward statistics for monitoring. Only log once per unique request_id."""
-            # rewards: [prompt_batch_size, num_generations]
-            # rewards_per_func_for_metrics: [prompt_batch_size*num_generations, self.num_reward_funcs]
-            group_rewards = rewards.view(-1, num_generations)
-            rewards_mean = group_rewards.mean(-1).mean().item()
-            # Compute std based on scale_rewards setting for logging
-            if self.scale_rewards in ['group', 'none', 'gdpo']:
-                # Handle edge case when num_generations_eval=1
-                if num_generations > 1:
-                    rewards_std = group_rewards.std(-1).mean().item()
-                else:
-                    rewards_std = 0.0
-            elif self.scale_rewards == 'batch':
-                rewards_std = rewards.std().item() if rewards.numel() > 1 else 0.0
-            if num_generations > 1:
-                is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
-            else:
-                is_std_zero = torch.ones(group_rewards.size(0), dtype=torch.bool, device=group_rewards.device)
-
-            self._metrics[mode]['reward'].append(rewards_mean)
-            self._metrics[mode]['reward_std'].append(rewards_std)
-            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
-
-            # Log per-reward-function statistics using deduplicated rewards_per_func
-            for i, name in enumerate(self.reward_func_names):
-                col = rewards_per_func_for_metrics[:, i]
-                self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
-                self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
-
-        log_rewards_metrics(rewards=grouped_rewards, rewards_per_func_for_metrics=total_rewards_per_func)
+        reward_metrics = compute_reward_metrics(
+            rewards=weighted_rewards,
+            rewards_per_func=total_rewards_per_func,
+            reward_func_names=self.reward_func_names,
+            num_generations=num_generations,
+            scale_rewards=self.scale_rewards,
+        )
+        self._metrics[mode]['reward'].append(reward_metrics.reward_mean)
+        self._metrics[mode]['reward_std'].append(reward_metrics.reward_std)
+        self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
+        if kl_values is not None:
+            self._metrics[mode]['kl'].append(kl_values.nanmean().item())
+        for name in self.reward_func_names:
+            self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
+            self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
         self._logs['advantages'].extend(advantages.tolist())
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(total_rewards_per_func[:, i].tolist())
 
+        # Slice the global advantages back to this rank's local samples.
         slice_start = self.process_index * len(samples)
         slice_end = slice_start + len(samples)
-        advantages = advantages[slice_start:slice_end]
-
-        return advantages
+        return advantages[slice_start:slice_end]
 
     def _dynamic_sampling(self, rollout_batch: List[GRPOSample],
                           rewards_per_func: torch.Tensor) -> Tuple[List[GRPOSample], torch.Tensor]:
@@ -1284,10 +1094,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             avg_metric.update(addition_metrics)
 
         avg_metric = self._all_reduce_metric(avg_metric)
-
         reporting_metric = {**avg_metric, **custom_metrics}
 
-        # log_completions
         if (self._step - 1) % self.steps_per_generation == 0:
             self._flush_log_completions()
 
@@ -1687,9 +1495,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return metrics
 
+    _MODEL_INPUT_EXCLUDED = GRPO_NON_MODEL_KEYS | FILTERED_KEYS | {'num_samples'}
+
     def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
         """Filters inputs to create model_inputs, removing GRPO-specific and template extra keys."""
-        return {k: v for k, v in inputs.items() if k not in excluded}
+        return {k: v for k, v in inputs.items() if k not in self._MODEL_INPUT_EXCLUDED}
 
     def _collect_config_info(self) -> Dict[str, str]:
         config = {

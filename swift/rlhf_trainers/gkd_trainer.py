@@ -4,7 +4,6 @@ import os
 import random
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import trl
 from accelerate.utils import broadcast_object_list, gather_object, is_peft_model
 from collections import defaultdict, deque
@@ -14,21 +13,20 @@ from packaging import version
 from transformers import PreTrainedModel, Trainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from swift.infer_engine.protocol import RequestConfig
-from swift.rl_core.data import GKDSample
+from swift.rl_core.data import GKDBatch, GKDSample
+from swift.rlhf_trainers.gkd_helpers import assemble_teacher_output, build_teacher_requests, encode_gkd_samples
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
-from swift.rlhf_trainers.utils import (assemble_teacher_topk_logprobs, encode_sample, get_non_thinking_prefix_ids,
-                                       parse_prompt_logprobs, prepare_fsdp, replace_assistant_response_with_ids)
+from swift.rlhf_trainers.utils import parse_prompt_logprobs, prepare_fsdp
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
-from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
-                         is_wandb_available, remove_response, swanlab_get_run, to_device, unwrap_model_for_generation)
+from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
+                         swanlab_get_run, to_device)
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import (get_gather_if_zero3_context, identity_data_collator, prepare_deepspeed, profiling_context,
-                    profiling_decorator)
+from .utils import get_gather_if_zero3_context, identity_data_collator, prepare_deepspeed, profiling_decorator
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
@@ -68,8 +66,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         args = kwargs['args']
         self.lmbda = args.lmbda
         self.temperature = args.temperature
-        self.seq_kd = args.seq_kd
-        self.generation_config = model.generation_config
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
 
@@ -155,46 +151,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             return total * 0
         return total / num_valid
 
-    # Code borrowed from huggingface/trl
-    def generate_on_policy_outputs(self, model, inputs, generation_config, pad_token_id=None):
-        """Generate on-policy outputs using the model.
-
-        When encode_prompt_only=True, inputs['input_ids'] already contains only the prompt part.
-        """
-        assert not self.template.padding_free, 'generate not support padding_free/packing.'
-        prompt_input_ids = inputs['input_ids']
-        model_inputs = {k: v for k, v in inputs.items() if k != 'labels'}
-        model_inputs.pop('position_ids', None)
-        model_inputs.pop('text_position_ids', None)
-        with self.template.generate_context():
-            if self.model.model_meta.is_multimodal:
-                _, model_inputs = self.template.pre_forward_hook(model, None, model_inputs)
-            generated_outputs = self.template.generate(
-                model, **model_inputs, generation_config=generation_config, return_dict_in_generate=True)
-        # Get the generated token IDs
-        generated_tokens = generated_outputs.sequences
-        if not self.template.skip_prompt:
-            generated_tokens = torch.concat([prompt_input_ids, generated_tokens], dim=1)
-        # Calculate new attention mask
-        new_attention_mask = torch.ones_like(generated_tokens)
-        new_labels = generated_tokens.clone()
-        new_labels[:, :prompt_input_ids.shape[1]] = -100
-
-        # If there's pad_token_id, set attention mask to 0 for padding tokens
-        if pad_token_id is not None:
-            new_labels[new_labels == pad_token_id] = -100
-            new_attention_mask[generated_tokens == pad_token_id] = 0
-
-        new_position_ids = new_attention_mask.cumsum(dim=1) - 1
-        new_position_ids[new_position_ids < 0] = 0
-        inputs['position_ids'] = new_position_ids
-        return generated_tokens, new_attention_mask, new_labels
-
     @profiling_decorator
     def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
-        # Get data source: DataSource.STUDENT, DataSource.TEACHER, or DataSource.DATASET
-        data_source = inputs.pop('_data_source', DataSource.DATASET)
-        opsd_teacher_inputs = inputs.pop('_opsd_teacher_inputs', None)
+        model_inputs = inputs['model_inputs']
+        gkd_batch = inputs['gkd_batch']
+        data_source = gkd_batch.data_source
+        opsd_teacher_inputs = gkd_batch.opsd_teacher_inputs
 
         # If generate is used, then use_logits_to_keep must be set to False.
         use_logits_to_keep = self.get_use_logits_to_keep(self.template.sequence_parallel_size == 1)
@@ -204,13 +166,14 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             # OPSD: student/teacher have different seq lengths, logits_to_keep is incompatible
             use_logits_to_keep = False
         if use_logits_to_keep and not self.use_liger_gkd_loss:
-            self.prepare_logits_to_keep(inputs)
+            self.prepare_logits_to_keep(model_inputs)
 
         # Unified teacher labels: OPSD uses teacher encoding labels; non-OPSD uses student labels.
-        # Must be computed AFTER prepare_logits_to_keep which may truncate inputs['labels'].
-        teacher_labels = opsd_teacher_inputs['labels'] if opsd_teacher_inputs is not None else inputs['labels']
+        # Must be computed AFTER prepare_logits_to_keep which may truncate model_inputs['labels'].
+        teacher_labels = opsd_teacher_inputs['labels'] if opsd_teacher_inputs is not None else model_inputs['labels']
 
-        model_inputs = {k: v for k, v in inputs.items() if k not in {'prompt', 'labels'}}
+        # model_inputs is clean from template.encode; exclude 'labels' for model forward.
+        forward_inputs = {k: v for k, v in model_inputs.items() if k != 'labels'}
 
         if opsd_teacher_inputs is not None:
             teacher_fwd_inputs = {k: v for k, v in opsd_teacher_inputs.items() if k != 'labels'}
@@ -231,13 +194,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                                    unwrapped_teacher)
 
             # Forward through base models
-            student_outputs = base_student(**model_inputs, use_cache=False)
+            student_outputs = base_student(**forward_inputs, use_cache=False)
 
             load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
             with load_context:
                 with torch.no_grad(), disable_gradient_checkpointing(self.teacher_model,
                                                                      self.args.gradient_checkpointing_kwargs):
-                    teacher_outputs = base_teacher(**model_inputs, use_cache=False)
+                    teacher_outputs = base_teacher(**forward_inputs, use_cache=False)
 
                 # Get hidden states (shifted)
                 student_hidden = student_outputs.last_hidden_state[:, :-1]
@@ -247,9 +210,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 del student_outputs, teacher_outputs
 
                 # Prepare labels (shifted)
-                labels_mask = inputs['labels'] != -100
-                masked_input_ids = torch.where(labels_mask, inputs['input_ids'],
-                                               torch.full_like(inputs['input_ids'], -100))
+                labels_mask = model_inputs['labels'] != -100
+                masked_input_ids = torch.where(labels_mask, model_inputs['input_ids'],
+                                               torch.full_like(model_inputs['input_ids'], -100))
                 true_labels = masked_input_ids[:, 1:].contiguous()
 
                 # Release intermediate tensors
@@ -277,68 +240,46 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 # Release hidden states after loss computation
                 del student_hidden, teacher_hidden, true_labels
             outputs_student = None
-        # Self-distillation mode: student model doubles as teacher
-        elif self._is_self_distillation:
-            if self.args.sft_alpha > 0:
-                model_inputs['labels'] = inputs['labels']
-            outputs_student = model(**model_inputs)
-
-            t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
-                k: v
-                for k, v in model_inputs.items() if k != 'labels'
-            }
-
-            adapter_ctx = (
-                self.accelerator.unwrap_model(model).disable_adapter()
-                if self._teacher_use_disable_adapter else nullcontext())
-            with torch.no_grad(), adapter_ctx, \
-                    disable_gradient_checkpointing(model, self.args.gradient_checkpointing_kwargs):
-                outputs_teacher = model(**t_fwd)
-
-            teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, labels=teacher_labels)
-            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
-
-            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
-                loss = loss + self.args.sft_alpha * outputs_student.loss
-        # Teacher API: topk logprobs already fetched and assembled in _prepare_inputs.
-        elif self.use_teacher_api:
-            if self.args.sft_alpha > 0:
-                model_inputs['labels'] = inputs['labels']
-            outputs_student = model(**model_inputs)
-
-            teacher_topk_logprobs = inputs.pop('_teacher_topk_logprobs', None)
-            teacher_topk_indices = inputs.pop('_teacher_topk_indices', None)
-            assert teacher_topk_logprobs is not None and teacher_topk_indices is not None, (
-                '_teacher_topk_logprobs/_teacher_topk_indices missing on inputs; '
-                'ensure _prepare_inputs (or prediction_step) populated them.')
-            teacher_out = TeacherOutput(
-                topk_logprobs=teacher_topk_logprobs,
-                topk_indices=teacher_topk_indices,
-                labels=teacher_labels,
-            )
-            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
-
-            if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
-                loss = loss + self.args.sft_alpha * outputs_student.loss
-        # Separate teacher model provided
+        # Non-liger path: student forward + teacher output construction + JSD loss
         else:
-            assert self.teacher_model is not None
             if self.args.sft_alpha > 0:
-                model_inputs['labels'] = inputs['labels']
-            outputs_student = model(**model_inputs)
+                forward_inputs['labels'] = model_inputs['labels']
+            outputs_student = model(**forward_inputs)
 
-            t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
-                k: v
-                for k, v in model_inputs.items() if k != 'labels'
-            }
+            # Construct teacher_out — the only part that differs across modes
+            if self.use_teacher_api:
+                teacher_topk_logprobs = gkd_batch.teacher_topk_logprobs
+                teacher_topk_indices = gkd_batch.teacher_topk_indices
+                assert teacher_topk_logprobs is not None and teacher_topk_indices is not None, (
+                    'teacher_topk_logprobs/teacher_topk_indices missing on gkd_batch; '
+                    'ensure _prepare_inputs (or prediction_step) populated them.')
+                teacher_out = TeacherOutput(
+                    topk_logprobs=teacher_topk_logprobs,
+                    topk_indices=teacher_topk_indices,
+                    labels=teacher_labels,
+                )
+            else:
+                t_fwd = teacher_fwd_inputs if teacher_fwd_inputs is not None else {
+                    k: v
+                    for k, v in forward_inputs.items() if k != 'labels'
+                }
+                if self._is_self_distillation:
+                    adapter_ctx = (
+                        self.accelerator.unwrap_model(model).disable_adapter()
+                        if self._teacher_use_disable_adapter else nullcontext())
+                    with torch.no_grad(), adapter_ctx, \
+                            disable_gradient_checkpointing(model, self.args.gradient_checkpointing_kwargs):
+                        outputs_teacher = model(**t_fwd)
+                else:
+                    assert self.teacher_model is not None
+                    load_context = (
+                        self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext())
+                    with torch.no_grad(), load_context, disable_gradient_checkpointing(
+                            self.teacher_model, self.args.gradient_checkpointing_kwargs):
+                        outputs_teacher = self.teacher_model(**t_fwd)
+                teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, labels=teacher_labels)
 
-            load_context = self.load_teacher_model_context() if self.args.offload_teacher_model else nullcontext()
-            with torch.no_grad(), load_context, disable_gradient_checkpointing(self.teacher_model,
-                                                                               self.args.gradient_checkpointing_kwargs):
-                outputs_teacher = self.teacher_model(**t_fwd)
-
-            teacher_out = TeacherOutput(full_logits=outputs_teacher.logits, labels=teacher_labels)
-            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, inputs['labels'])
+            loss = self._compute_jsd_loss(outputs_student.logits, teacher_out, model_inputs['labels'])
 
             if self.args.sft_alpha > 0 and data_source != DataSource.STUDENT:
                 loss = loss + self.args.sft_alpha * outputs_student.loss
@@ -348,44 +289,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             return (loss, outputs_student)
         else:
             return loss
-
-    def _prepare_batch_inputs(self, inputs: list, encode_prompt_only: bool = False) -> Dict[str, torch.Tensor]:
-        """Prepare batch inputs for training.
-
-        Args:
-            inputs: List of input data dictionaries
-            encode_prompt_only: If True, only encode the prompt part (for on-policy generation).
-                               If False, encode the full messages including response (for offline dataset).
-        """
-        template = self.template
-        batch_encoded_inputs = []
-
-        # Use 'transformers' mode for prompt-only encoding, 'train' mode for full encoding
-        mode = 'transformers' if encode_prompt_only else 'train'
-        original_mode = template.mode
-        template.set_mode(mode)
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
-        try:
-            for data in inputs:
-                if 'response_token_ids' in data and data['response_token_ids']:
-                    data = {**data}
-                    data['messages'] = replace_assistant_response_with_ids(
-                        data['messages'], data['response_token_ids'], non_thinking_prefix_ids=non_thinking_prefix_ids)
-
-                if encode_prompt_only:
-                    # Remove response content for prompt-only encoding
-                    messages = data.get('messages', [])
-                    if messages and messages[-1].get('role') == 'assistant':
-                        data = {**data, 'messages': messages[:-1] + [{**messages[-1], 'content': None}]}
-
-                encoded = template.encode(data, return_length=True)
-                batch_encoded_inputs.append(encoded)
-
-            batch_encoded = to_device(template.data_collator(batch_encoded_inputs), self.model.device)
-        finally:
-            template.set_mode(original_mode)
-
-        return batch_encoded
 
     def _log_student_completions(self, generated_samples) -> None:
         """Log student completions from generated GKDSample list."""
@@ -398,82 +301,22 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(valid_messages))
         self._logs['completion'].extend(valid_completions)
 
-    def _generate_completions_gkd(self, model, samples: 'List[GKDSample]') -> 'List[GKDSample]':
-        """Generate completions for GKD (non-vLLM HF generate path).
-
-        Returns List[GKDSample] with response merged (same contract as _generate_completions).
-        Only used when use_vllm=False as fallback.
-        """
-        assert not self.template.padding_free, 'HF generate does not support padding_free/packing.'
-        inputs_dicts = [s.to_template_dict() for s in samples]
-        encoded_inputs = self._prepare_batch_inputs(inputs_dicts, encode_prompt_only=True)
-        with unwrap_model_for_generation(
-                model, self.accelerator,
-                gather_deepspeed3_params=self.args.ds3_gather_for_generation) as unwrapped_model:
-            was_training = unwrapped_model.training
-            unwrapped_model.eval()
-            generated_tokens, _, new_labels = self.generate_on_policy_outputs(unwrapped_model, encoded_inputs,
-                                                                              self.generation_config,
-                                                                              self.processing_class.pad_token_id)
-            if was_training:
-                unwrapped_model.train()
-        # Write generated tokens back to samples as response_token_ids
-        results = []
-        for i, s in enumerate(samples):
-            s = deepcopy(s)
-            resp_ids = new_labels[i][new_labels[i] != -100].tolist()
-            s.response_token_ids = resp_ids
-            s.add_eos = False
-            remove_response(s.messages)
-            decoded = self.processing_class.decode(resp_ids, skip_special_tokens=True)
-            s.messages.append({'role': 'assistant', 'content': decoded})
-            results.append(s)
-        return results
-
-    def _encode_samples(self, samples: 'List[GKDSample]', orig_samples: 'List[GKDSample]' = None):
+    def _encode_samples(self, samples: 'List[GKDSample]'):
         """Encode student + teacher (OPSD-aware). Mirrors Megatron GKD _encode_samples.
 
         Args:
             samples: Samples to encode (may be generated samples for STUDENT mode).
-            orig_samples: Original samples (for OPSD teacher_prompt). Defaults to samples.
 
         Returns:
             (encoded_inputs, opsd_teacher_encoded_or_None)
         """
         template = self.template
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
-        orig_samples = orig_samples or samples
 
-        student_encoded_list = []
-        teacher_encoded_list = []
-        any_opsd = any(sample.build_teacher_view() for sample in samples)
-
-        for s, orig_s in zip(samples, orig_samples):
-            # Transfer teacher_prompt from original to encoding sample (generated sample has the response)
-            if hasattr(orig_s, 'teacher_prompt') and orig_s.teacher_prompt and not s.teacher_prompt:
-                s.teacher_prompt = orig_s.teacher_prompt
-            has_opsd = s.build_teacher_view()
-            if has_opsd:
-                any_opsd = True
-
-            encoded = encode_sample(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
-            student_encoded_list.append(encoded)
-
-            if has_opsd:
-                teacher_row = s.to_teacher_template_dict()
-                if teacher_row.get('response_token_ids'):
-                    teacher_row = {**teacher_row}
-                    teacher_row['messages'] = replace_assistant_response_with_ids(
-                        teacher_row['messages'],
-                        teacher_row['response_token_ids'],
-                        non_thinking_prefix_ids=non_thinking_prefix_ids)
-                teacher_encoded_list.append(template.encode(teacher_row, return_length=True))
-            else:
-                teacher_encoded_list.append(encoded.copy())
+        student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
 
         with self._template_context(template):
             encoded_inputs = to_device(template.data_collator(student_encoded_list), self.model.device)
-        if any_opsd:
+        if has_opsd:
             with self._template_context(template):
                 opsd_teacher_encoded = to_device(template.data_collator(teacher_encoded_list), self.model.device)
         else:
@@ -483,28 +326,22 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def _build_teacher_requests(self, samples: 'List[GKDSample]'):
         """Build teacher API requests from samples (mirrors Megatron GKD)."""
-        requests = []
-        for s in samples:
-            req = s.to_infer_request()
-            if s.teacher_messages:
-                req.messages = s.teacher_messages
-            requests.append(req)
-        return requests
+        return build_teacher_requests(samples)
 
-    def _build_encoded_inputs(self, samples: List[GKDSample], data_source: DataSource) -> Dict[str, torch.Tensor]:
+    def _build_encoded_inputs(self, samples: List[GKDSample], data_source: DataSource) -> Dict[str, Any]:
         """Build encoded training inputs for one micro-batch.
 
         Samples already have responses (from _generate_completions or dataset).
         Flow: encode → OPSD teacher → teacher_api
+
+        Returns a wrapper dict with clean ``model_inputs`` and ``gkd_batch``.
         """
         encoded_inputs, opsd_teacher_encoded = self._encode_samples(samples)
-        if opsd_teacher_encoded is not None:
-            encoded_inputs['_opsd_teacher_inputs'] = opsd_teacher_encoded
-        encoded_inputs['_data_source'] = data_source
+        gkd_batch = GKDBatch(data_source=data_source, opsd_teacher_inputs=opsd_teacher_encoded)
+        result: Dict[str, Any] = {'model_inputs': encoded_inputs, 'gkd_batch': gkd_batch}
         if self.use_teacher_api:
-            encoded_inputs['_teacher_requests'] = self._build_teacher_requests(samples)
-
-        return encoded_inputs
+            result['_teacher_requests'] = self._build_teacher_requests(samples)
+        return result
 
     @profiling_decorator
     def _prepare_inputs(self, inputs: DataType) -> Dict[str, torch.Tensor]:
@@ -546,47 +383,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             inputs = _prepare_input(inputs)[0]
         return inputs
 
-    def _assemble_topk_for_chunk(self, parsed_chunk, encoded_chunk: Dict[str, torch.Tensor]):
-        """Assemble parsed teacher (logprobs, indices) into a chunk-aligned tensor.
-
-        Derives cu_seqlens from parsed lengths directly (avoids mrope position_ids issues).
-        """
-        input_ids = encoded_chunk['input_ids']
-        server_seq_lens = None
-        offsets = None
-        if self.template.padding_free:
-            server_seq_lens = [0]
-            for lps, ixs in parsed_chunk:
-                server_seq_lens.append(server_seq_lens[-1] + len(lps) + 1)
-            trainer_seq_lens = encoded_chunk.get('cu_seq_lens_q')
-            if trainer_seq_lens is None:
-                position_ids = encoded_chunk.get('text_position_ids')
-                if position_ids is None:
-                    position_ids = encoded_chunk.get('position_ids')
-                if position_ids is not None:
-                    trainer_seq_lens = get_cu_seqlens_from_position_ids(position_ids)
-            if trainer_seq_lens is not None and server_seq_lens[-1] != int(trainer_seq_lens[-1]):
-                logger.warning('The number of tokens returned by the teacher server differs from that of the trainer. '
-                               'This may be caused by non-aligned processing.')
-        else:
-            attention_mask = encoded_chunk.get('attention_mask')
-            if attention_mask is not None:
-                offsets = []
-                for i in range(attention_mask.shape[0]):
-                    nz = attention_mask[i].nonzero().flatten()
-                    offsets.append(int(nz[0]) if nz.numel() else 0)
-
-        batch_size, seq_len = input_ids.shape
-        return assemble_teacher_topk_logprobs(
-            parsed_chunk,
-            batch_size=batch_size,
-            seq_len=seq_len,
-            cu_seqlens=server_seq_lens,
-            topk=self.gkd_logits_topk,
-            device=input_ids.device,
-            offsets=offsets,
-        )
-
     def _fetch_and_assemble_teacher_logprobs(self, chunks):
         """Fetch teacher logprobs via API using sample-based _teacher_requests."""
         local_chunk_sizes = [len(c.get('_teacher_requests', [])) for c in chunks]
@@ -617,10 +413,17 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         for c, cs in zip(chunks, local_chunk_sizes):
             chunk_parsed = parsed_local[offset:offset + cs]
             offset += cs
-            target = c.get('_opsd_teacher_inputs') or c
-            topk_lp, topk_ix = self._assemble_topk_for_chunk(chunk_parsed, target)
-            c['_teacher_topk_logprobs'] = topk_lp
-            c['_teacher_topk_indices'] = topk_ix
+            gkd_batch = c['gkd_batch']
+            target = gkd_batch.opsd_teacher_inputs or c['model_inputs']
+            teacher_out = assemble_teacher_output(
+                chunk_parsed,
+                teacher_encoded=target,
+                topk=self.gkd_logits_topk,
+                template_padding_free=self.template.padding_free,
+                device=target['input_ids'].device,
+            )
+            gkd_batch.teacher_topk_logprobs = teacher_out.topk_logprobs
+            gkd_batch.teacher_topk_indices = teacher_out.topk_indices
 
     @profiling_decorator
     def training_step(self,

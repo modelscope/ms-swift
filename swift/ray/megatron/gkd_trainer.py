@@ -2,6 +2,7 @@
 """Driver-side GKD trainer for Ray-based Megatron training."""
 from __future__ import annotations
 
+import copy
 import random
 import ray
 import torch
@@ -181,11 +182,14 @@ class GKDTrainer(BaseRayTrainer):
         return [RolloutOutput(response=resp) for resp in completions]
 
     def _postprocess_rollout(self, samples, outputs):
-        """Merge rollout outputs back onto GKDSample (same contract as Ray GRPO)."""
+        """Merge rollout outputs back onto GKDSample (deepcopy to match HF path)."""
+        results = []
         for sample, output in zip(samples, outputs):
             if output is not None:
+                sample = copy.deepcopy(sample)
                 sample.apply_rollout_output(rollout_output=output)
-        return samples
+            results.append(sample)
+        return results
 
     @contextmanager
     def _extended_max_length(self):

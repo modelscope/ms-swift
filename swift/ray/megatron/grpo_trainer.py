@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-import asyncio
 import concurrent.futures
 import copy
 import os
@@ -11,8 +10,10 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutOutput
+from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
 from swift.rl_core.data import GRPOSample
-from swift.rlhf_trainers.utils import (compute_grpo_advantages, get_non_thinking_prefix_ids, make_reward_weights,
+from swift.rl_core.grpo_algorithm import compute_std_for_dynamic_sampling, score_completions
+from swift.rlhf_trainers.utils import (get_non_thinking_prefix_ids, make_reward_weights,
                                        replace_assistant_response_with_ids, resolve_reward_funcs)
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger, remove_response
@@ -109,6 +110,7 @@ class GRPOTrainer(BaseRayTrainer):
             self.reward_func_names.append('gym_reward')
 
         self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_func_names), self.device)
+        self.reward_model_plugins = [None] * len(self.reward_funcs)
 
         if not self.reward_funcs and not self.use_gym_env:
             raise ValueError('GRPOTrainer: no reward functions configured '
@@ -208,17 +210,23 @@ class GRPOTrainer(BaseRayTrainer):
     def _build_grpo_log_metrics(self, rewards, advantages, rewards_per_func) -> Dict[str, float]:
         """Driver-computed GRPO metrics (reward / reward_std / adv_nonzero / per-func),
         injected into the worker megatron on_log so all logging is unified there."""
-        K = self.num_generations
-        grouped = rewards.view(-1, K)
+        reward_metrics = compute_reward_metrics(
+            rewards=rewards,
+            rewards_per_func=rewards_per_func,
+            reward_func_names=self.reward_func_names,
+            num_generations=self.num_generations,
+            scale_rewards=self.scale_rewards,
+        )
         metrics = {
-            'reward': rewards.mean().item(),
-            'reward_std': grouped.std(dim=1).mean().item(),
+            'reward': reward_metrics.reward_mean,
+            'reward_std': reward_metrics.reward_std,
+            'frac_reward_zero_std': reward_metrics.frac_reward_zero_std,
             'adv_nonzero': (advantages.abs() > 1e-8).float().mean().item(),
         }
-        for i in range(rewards_per_func.shape[1]):
-            val = rewards_per_func[:, i].nanmean().item()
-            if val == val:  # skip NaN (a reward func produced no finite value this step)
-                metrics[self.reward_func_names[i]] = val
+        # Flatten per-function metrics into scalar values the worker can inject.
+        for name in self.reward_func_names:
+            metrics[name] = reward_metrics.per_func_mean[name]
+            metrics[f'rewards/{name}/std'] = reward_metrics.per_func_std[name]
         return metrics
 
     def _generate(self, samples: List[GRPOSample]) -> List[RolloutOutput]:
@@ -267,11 +275,15 @@ class GRPOTrainer(BaseRayTrainer):
         if len(outputs) != len(samples):
             raise RuntimeError(f'GRPOTrainer: rollout produced {len(outputs)} completions '
                                f'for {len(samples)} samples; shapes mismatch.')
+        results = []
         for sample, output in zip(samples, outputs):
             if output is None:
+                results.append(sample)
                 continue
+            sample = copy.deepcopy(sample)
             sample.apply_rollout_output(rollout_output=output)
-        return samples
+            results.append(sample)
+        return results
 
     def expand_for_generation(
         self,
@@ -302,65 +314,30 @@ class GRPOTrainer(BaseRayTrainer):
         self,
         samples: Sequence[GRPOSample],
     ) -> torch.Tensor:
-        device = self.device
+        """Score completions using the backend-agnostic shared helper.
 
-        # Gym path: pull `total_reward` from the multi-turn scheduler's rollout_infos and
-        # append it as an extra column so reward_weights can blend it with reward_funcs.
-        if self.use_gym_env:
-            gym_reward = torch.tensor([s.rollout_infos['total_reward'] for s in samples],
-                                      dtype=torch.float32,
-                                      device=device).unsqueeze(1)
-            if not self.reward_funcs:
-                return gym_reward
-            func_rewards = self._compute_reward_funcs(samples)
-            return torch.cat([func_rewards, gym_reward], dim=1)
-
-        return self._compute_reward_funcs(samples)
-
-    def _compute_reward_funcs(
-        self,
-        samples: Sequence[GRPOSample],
-    ) -> torch.Tensor:
-        device = self.device
-        rewards_per_func = torch.zeros((len(samples), len(self.reward_funcs)), device=device)
-        completions = [s.messages[-1]['content'] for s in samples]
-        reward_kwargs: Dict[str, Any] = {}
-        reward_kwargs.update(RowPreprocessor.rows_to_batched([s.to_reward_row() for s in samples]))
-
-        def _as_tensor(values):
-            return torch.tensor([torch.nan if v is None else v for v in values], dtype=torch.float32, device=device)
-
-        def _is_async(func):
-            return asyncio.iscoroutinefunction(func) or asyncio.iscoroutinefunction(getattr(func, '__call__', None))
-
-        sync_indices, async_indices = [], []
-        for i, func in enumerate(self.reward_funcs):
-            (async_indices if _is_async(func) else sync_indices).append(i)
-
-        for i in sync_indices:
-            rewards_per_func[:, i] = _as_tensor(self.reward_funcs[i](completions, **reward_kwargs))
-
-        if async_indices:
-
-            async def _run_all():
-                return await asyncio.gather(
-                    *[self.reward_funcs[i](completions, **reward_kwargs) for i in async_indices])
-
-            for idx, out in zip(async_indices, asyncio.run(_run_all())):
-                rewards_per_func[:, idx] = _as_tensor(out)
-
-        if torch.isnan(rewards_per_func).all(dim=1).any():
-            logger.warning('GRPOTrainer: some rows have NaN rewards for every reward function.')
-
-        return rewards_per_func
+        The driver-side Ray trainer already sees the global prompt/completion
+        batch, so no distributed gather is performed here.
+        """
+        return score_completions(
+            samples,
+            reward_funcs=self.reward_funcs,
+            reward_model_plugins=self.reward_model_plugins,
+            use_gym_env=self.use_gym_env,
+            device=self.device,
+        )
 
     def compute_advantages(
         self,
         rewards_per_func: torch.Tensor,
         kl_values: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Return (advantages, rewards) shaped [N] where N = B * num_gen."""
-        return compute_grpo_advantages(
+        """Return (advantages, rewards) shaped [N] where N = B * num_gen.
+
+        The driver already holds every completion of each group, so no gather is
+        needed before calling the pure advantage function.
+        """
+        return compute_advantages(
             rewards_per_func=rewards_per_func,
             reward_weights=self.reward_weights,
             num_generations=self.num_generations,
@@ -393,11 +370,11 @@ class GRPOTrainer(BaseRayTrainer):
         cur_samples, cur_rewards = samples, rewards_per_func
 
         for resample_count in range(self.max_resample_times + 1):
-            rewards = (cur_rewards * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-            if num_gen > 1:
-                grouped_std = rewards.view(-1, num_gen).std(dim=1).repeat_interleave(num_gen)
-            else:
-                grouped_std = torch.zeros_like(rewards)
+            grouped_std = compute_std_for_dynamic_sampling(
+                cur_rewards,
+                self.reward_weights,
+                num_gen,
+            )
             keep_mask = grouped_std > 0
             for i in range(len(cur_samples)):
                 if keep_mask[i]:
