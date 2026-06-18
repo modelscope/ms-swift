@@ -99,6 +99,7 @@
 - muon_use_nesterov: 是否在内部 SGD 中使用 Nesterov 风格的动量，默认为False。
 - muon_scale_mode: Muon 优化器的缩放模式。可选为'spectral', 'unit_rms_norm', 'shape_scaling'。默认为'spectral'。
 - muon_fp32_matmul_prec: Newton-Schulz 迭代的 FP32 矩阵乘法精度，可选为'low', 'medium', 'high'。默认为'medium'。
+- muon_coefficient_type: Muon 优化器 Newton-Schulz 迭代的系数类型，传递给 Megatron 的 `--muon-coefficient-type`。可选值取决于所安装的 emerging_optimizers 版本（如'quintic', 'polar_express', 'simple', 'cans', 'aol', 'deepseekv4', 'cubic5', 'custom'）。默认为'quintic'。
 - muon_num_ns_steps: Muon 优化器的 Newton-Schulz 步数。默认为5。
 - muon_tp_mode: 张量模型并行权重的 NS 计算方式。可选为'blockwise', 'duplicated', 'distributed'。默认为'blockwise'。
 - muon_extra_scale_factor: Muon 更新的额外缩放因子，默认为1。
