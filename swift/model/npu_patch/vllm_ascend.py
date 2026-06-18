@@ -15,8 +15,7 @@ import sys
 
 from swift.model.npu_patch.vllm_ascend_memory import patch_vllm_ascend_memory_runtime
 from swift.model.npu_patch.vllm_ascend_moe import (patch_vllm_ascend_moe_expert_weight_loader,
-                                                   patch_vllm_ascend_moe_runtime,
-                                                   should_skip_vllm_ascend_moe_post_load,
+                                                   patch_vllm_ascend_moe_runtime, should_skip_vllm_ascend_moe_post_load,
                                                    use_vllm_ascend_moe_preprocessed_weight)
 from swift.utils.logger import get_logger
 
