@@ -74,6 +74,10 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         packing (bool): Whether to enable packing of datasets. Default is False.
         packing_length (Optional[int]): Length of packing. Default is None.
         packing_num_proc (int): Number of processes used for packing, Default is 1.
+        packing_strategy (Literal['binpack', 'sequential']): Packing algorithm. 'binpack' (default) uses
+            best-fit-decreasing bin packing (reorders samples); 'sequential' uses order-preserving greedy
+            packing (next-fit: a single open pack, flushed when the next sample doesn't fit) so the sample
+            order / pack boundaries follow a sequential sampler (use packing_num_proc=1). Default is 'binpack'.
         lazy_tokenize (Optional[bool]): Whether to enable lazy tokenization. Default is None.
         use_hf (bool): Whether to use Hugging Face for downloading/uploading models and datasets. If False,
             ModelScope is used. Default is False.
@@ -101,6 +105,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
     packing: bool = False
     packing_length: Optional[int] = None
     packing_num_proc: int = 1
+    packing_strategy: Literal['binpack', 'sequential'] = 'binpack'
     lazy_tokenize: Optional[bool] = None
     # hub
     use_hf: bool = False
