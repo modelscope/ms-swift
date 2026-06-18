@@ -531,11 +531,6 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     kwargs['check_for_nan_in_grad'] = True
     ddp_config = DistributedDataParallelConfig(**kwargs)
 
-    # If num_buckets is set, compute bucket_size from total parameters.
-    num_parameters = sum(sum(p.nelement() for p in m.parameters()) for m in models)
-    if ddp_config.bucket_size is None and getattr(ddp_config, 'num_buckets', None) is not None:
-        ddp_config.bucket_size = num_parameters // ddp_config.num_buckets
-
     # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
     # If bucket_size is not provided as an input, use sane default.
     # If using very large dp_sizes, make buckets larger to ensure that chunks used in NCCL
