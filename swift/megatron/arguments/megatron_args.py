@@ -586,7 +586,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     accumulate_allreduce_grads_in_fp32: bool = False
 
     # moe
-    moe_router_load_balancing_type: Optional[List[str]] = None
+    moe_router_load_balancing_type: Optional[Literal['aux_loss', 'seq_aux_loss', 'global_aux_loss', 'sinkhorn',
+                                                     'none']] = None
     moe_router_dtype: Literal['none', 'fp32', 'fp64'] = 'fp32'
     moe_token_dispatcher_type: Literal['allgather', 'alltoall', 'flex'] = 'alltoall'
     moe_enable_deepep: bool = False
