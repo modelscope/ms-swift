@@ -522,6 +522,11 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     for f in dataclasses.fields(DistributedDataParallelConfig):
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
+
+    # compat: SWIFT keeps the user-facing Megatron-LM arg name, while MCore
+    # DistributedDataParallelConfig expects grad_reduce_in_fp32.
+    if hasattr(args, 'accumulate_allreduce_grads_in_fp32'):
+        kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
     kwargs['check_for_nan_in_grad'] = True
     ddp_config = DistributedDataParallelConfig(**kwargs)
 
