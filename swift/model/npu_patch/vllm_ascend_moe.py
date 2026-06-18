@@ -22,8 +22,10 @@ from swift.utils.logger import get_logger
 logger = get_logger()
 
 _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR = '_swift_vllm_ascend_moe_weight_sync_layout'
+_VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR = '_swift_vllm_ascend_moe_skip_post_load'
 _VLLM_ASCEND_MOE_PROCESSED_LAYOUT = 'megatron_processed'
 _VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT = 'fsdp2_preprocessed'
+_QWEN_MOE_MODEL_TYPES = {'qwen3_moe', 'qwen3_5_moe'}
 
 
 def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
@@ -130,32 +132,45 @@ def patch_vllm_ascend_moe_runtime() -> None:
     _patch_vllm_ascend_device_op_nonquant_routing()
 
 
-def _is_qwen3_5_moe_model(model) -> bool:
-    return getattr(getattr(model, 'config', None), 'model_type', None) == 'qwen3_5_moe'
+def _is_qwen_moe_model(model) -> bool:
+    return getattr(getattr(model, 'config', None), 'model_type', None) in _QWEN_MOE_MODEL_TYPES
 
 
 def should_keep_fused_moe_expert_for_vllm_ascend(model) -> bool:
     """Return whether fused expert names should be kept for vLLM-Ascend sync."""
-    return _is_qwen3_5_moe_model(model)
+    return False
 
 
 def configure_vllm_ascend_moe_weight_sync(vllm_model, train_model, *, is_fsdp2: bool) -> None:
     """Record the vLLM-Ascend MoE sync layout required by this training backend."""
-    layout = (
-        _VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT
-        if is_fsdp2 and _is_qwen3_5_moe_model(train_model) else _VLLM_ASCEND_MOE_PROCESSED_LAYOUT)
+    fsdp2_qwen_moe = is_fsdp2 and _is_qwen_moe_model(train_model)
+    layout = _VLLM_ASCEND_MOE_PROCESSED_LAYOUT
+    # Current vLLM-Ascend 0.18 non-quantized Qwen MoE forward keeps
+    # ``need_trans=False`` and feeds ``w13_weight`` directly to
+    # ``npu_grouped_matmul``.  After FSDP2 runtime sync, write Qwen MoE weights
+    # directly into the runtime [hidden, I_tp] direction and skip checkpoint
+    # post-load processing; otherwise post-load transposes them back to
+    # [I_tp, hidden] and the first rollout fails with a hidden-size mismatch
+    # such as 2048 vs 192/384.
     setattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR, layout)
+    setattr(vllm_model, _VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR, fsdp2_qwen_moe)
 
 
 def configure_vllm_ascend_moe_preprocessed_weight_sync(vllm_model) -> None:
     """Record that reload writes the layout expected before vLLM-Ascend post-processing."""
     setattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR, _VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT)
+    setattr(vllm_model, _VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR, False)
 
 
 def use_vllm_ascend_moe_preprocessed_weight(vllm_model) -> bool:
     """Return whether runtime sync should write the pre-process MoE layout."""
     return getattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR,
                    _VLLM_ASCEND_MOE_PROCESSED_LAYOUT) == _VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT
+
+
+def should_skip_vllm_ascend_moe_post_load(vllm_model) -> bool:
+    """Return whether vLLM post-load processing should be skipped after sync."""
+    return bool(getattr(vllm_model, _VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR, False))
 
 
 def expand_fused_moe_expert_names_for_vllm_ascend(name: str, *, keep_fused_expert: bool = False):
@@ -221,26 +236,30 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
         gate_proj/up_proj: [intermediate, hidden] -> w13_weight
         down_proj       : [hidden, intermediate] -> w2_weight
 
-    FSDP2 Qwen MoE may send the same weights as fused 3D tensors:
+    FSDP2 Qwen MoE may expose the same weights as fused 3D tensors.  SWIFT
+    expands those tensors to checkpoint-style gate/up/down names before calling
+    vLLM ``load_weights``:
 
         gate_proj/up_proj: [experts, intermediate, hidden]
         down_proj       : [experts, hidden, intermediate]
 
-    FSDP2 reloads all parameter groups and then calls
-    ``process_weights_after_loading`` once, so it can write the pre-processed
-    layout and let vLLM-Ascend transpose it afterwards:
+    Full-weight server reload still writes the pre-processed layout and then
+    calls ``process_weights_after_loading`` once, letting vLLM-Ascend transpose
+    complete weights afterwards:
 
         w13_weight before process: [local_experts, 2 * intermediate_per_tp, hidden]
         w2_weight before process : [local_experts, hidden, intermediate_per_tp]
 
-    The Megatron bridge path has historically loaded into the already-processed
-    runtime layout:
+    Megatron colocate runtime sync loads into the already-processed layout used
+    by the existing Megatron rollout path:
 
         w13_weight after process: [local_experts, hidden, 2 * intermediate_per_tp]
         w2_weight after process : [local_experts, intermediate_per_tp, hidden]
 
-    ``load_preprocessed_weight`` selects the FSDP2-style pre-process target.
-    The default keeps the processed target used by existing Megatron rollout.
+    ``load_preprocessed_weight`` selects the server full-reload target.  FSDP2
+    Qwen MoE colocate runtime sync keeps the processed target and deliberately
+    skips the post-load transpose because current vLLM-Ascend non-quantized
+    grouped matmul consumes the [hidden, I_tp] direction in this path.
 
     This wrapper keeps the normal vLLM loader for initial checkpoint load,
     quantized experts, and non-Ascend backends.  It only handles the 3D
@@ -379,5 +398,6 @@ __all__ = [
     'patch_vllm_ascend_moe_expert_weight_loader',
     'patch_vllm_ascend_moe_runtime',
     'should_keep_fused_moe_expert_for_vllm_ascend',
+    'should_skip_vllm_ascend_moe_post_load',
     'use_vllm_ascend_moe_preprocessed_weight',
 ]

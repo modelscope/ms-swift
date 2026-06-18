@@ -1116,6 +1116,10 @@ def patch_vllm_moe_model_weight_loader(model):
 def finish_vllm_weight_reload(vllm_model, model_config, target_device):
     if vllm_model is None or model_config is None or target_device is None:
         return
+    if is_torch_npu_available():
+        from swift.model.npu_patch.vllm_ascend import should_skip_vllm_ascend_moe_post_load
+        if should_skip_vllm_ascend_moe_post_load(vllm_model):
+            return
     try:
         from vllm.model_executor.model_loader.utils import process_weights_after_loading
         process_weights_after_loading(vllm_model, model_config, target_device)
