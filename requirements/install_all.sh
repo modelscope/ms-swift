@@ -16,5 +16,5 @@ pip install git+https://github.com/deepseek-ai/DeepGEMM.git@v2.1.1.post3 --no-bu
 pip install -U flash-linear-attention --no-build-isolation
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
 pip install git+https://github.com/Dao-AILab/fast-hadamard-transform --no-build-isolation
-pip install git+https://github.com/NVIDIA-NeMo/Emerging-Optimizers.git@v0.2.0
+pip install git+https://github.com/NVIDIA-NeMo/Emerging-Optimizers.git@v0.3.0
 # apex
