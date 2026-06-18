@@ -547,11 +547,6 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     if not ddp_config.overlap_grad_reduce:
         ddp_config.bucket_size = None
 
-    # For non-first pipeline-parallel ranks, disable bucket_size to avoid unnecessary overhead.
-    pp_rank = mpu.get_pipeline_model_parallel_rank()
-    if pp_rank > 0:
-        ddp_config.bucket_size = None
-
     # Setup stream for DDP initialization with proper synchronization.
     ddp_stream = torch.cuda.Stream()
     ddp_stream.wait_stream(torch.cuda.current_stream())
