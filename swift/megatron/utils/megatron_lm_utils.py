@@ -517,13 +517,19 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
 
     # DDP
     if not wrap_with_ddp:
-        return
+        return models
+
     kwargs = {}
     for f in dataclasses.fields(DistributedDataParallelConfig):
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
     kwargs['check_for_nan_in_grad'] = True
     ddp_config = DistributedDataParallelConfig(**kwargs)
+
+    # If num_buckets is set, compute bucket_size from total parameters.
+    num_parameters = sum(sum(p.nelement() for p in m.parameters()) for m in models)
+    if ddp_config.bucket_size is None and getattr(ddp_config, 'num_buckets', None) is not None:
+        ddp_config.bucket_size = num_parameters // ddp_config.num_buckets
 
     # In the Megatron FSDP and DDP use path, we need to initialize the bucket size.
     # If bucket_size is not provided as an input, use sane default.
@@ -536,7 +542,15 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     if not ddp_config.overlap_grad_reduce:
         ddp_config.bucket_size = None
 
-    with torch.cuda.stream(torch.cuda.Stream()):
+    # For non-first pipeline-parallel ranks, disable bucket_size to avoid unnecessary overhead.
+    pp_rank = mpu.get_pipeline_model_parallel_rank()
+    if pp_rank > 0:
+        ddp_config.bucket_size = None
+
+    # Setup stream for DDP initialization with proper synchronization.
+    ddp_stream = torch.cuda.Stream()
+    ddp_stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(ddp_stream):
         models = [
             DDP(
                 config=config,
@@ -547,6 +561,8 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
                 disable_bucketing=(model_chunk_idx > 0) or args.overlap_param_gather_with_optimizer_step,
             ) for (model_chunk_idx, model_chunk) in enumerate(models)
         ]
+    # Ensure DDP initialization completes before proceeding on the default stream.
+    torch.cuda.current_stream().wait_stream(ddp_stream)
 
     # Broadcast params from data parallel src rank to other data parallel ranks.
     if args.data_parallel_random_init:
