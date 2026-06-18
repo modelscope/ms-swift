@@ -592,7 +592,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     moe_enable_deepep: bool = False
     moe_grouped_gemm: bool = True
     moe_permute_fusion: bool = False
-    moe_aux_loss_coeff: float = 0.
+    moe_aux_loss_coeff: Union[List[float]] = 0.
     moe_z_loss_coeff: Optional[float] = None
     moe_shared_expert_overlap: bool = False
     moe_layer_recompute: bool = False  # compat mcore 0.12
