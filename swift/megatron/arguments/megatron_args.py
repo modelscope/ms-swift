@@ -501,6 +501,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     muon_num_ns_steps: int = 5
     muon_tp_mode: Literal['blockwise', 'duplicated', 'distributed'] = 'blockwise'
     muon_extra_scale_factor: float = 1.
+    muon_scalar_optimizer: str = 'adam'
 
     # checkpoint
     output_dir: Optional[str] = None
