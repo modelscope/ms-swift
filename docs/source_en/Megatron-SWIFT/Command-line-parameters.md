@@ -105,9 +105,11 @@
 - muon_use_nesterov: Whether to use Nesterov-style momentum in the internal SGD. Default is False.
 - muon_scale_mode: Scale mode for the Muon optimizer. Options include 'spectral', 'unit_rms_norm', and 'shape_scaling'. Default is 'spectral'.
 - muon_fp32_matmul_prec: FP32 matrix multiplication precision for Newton-Schulz iteration. Options include 'low', 'medium', and 'high'. Default is 'medium'.
+- muon_coefficient_type: Newton-Schulz coefficient type for the Muon optimizer, forwarded to Megatron's `--muon-coefficient-type`. Available options depend on the installed emerging_optimizers version (e.g. 'quintic', 'polar_express', 'simple', 'cans', 'aol', 'deepseekv4', 'cubic5', 'custom'). Default is 'quintic'.
 - muon_num_ns_steps: Number of Newton-Schulz steps for the Muon optimizer. Default is 5.
 - muon_tp_mode: NS calculation method for tensor model parallel weights. Options include 'blockwise', 'duplicated', and 'distributed'. Default is 'blockwise'.
 - muon_extra_scale_factor: Additional scale factor for Muon updates. Default is 1.
+- muon_scalar_optimizer: Optimizer for nonlinear parameters (embeddings, biases, norms) when using Muon. Options are 'adam' or 'lion'. Default is 'adam'.
 
 **Checkpoint Parameters**:
 

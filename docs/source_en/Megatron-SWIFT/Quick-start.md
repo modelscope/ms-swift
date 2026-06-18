@@ -63,9 +63,9 @@ modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py312-torch2.10.0-vllm0.19.1-modelscope1.35.4-swift4.1.3
 
 # cu130 (fp8 training)
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.21.0-modelscope1.36.3-swift4.2.3
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.21.0-modelscope1.36.3-swift4.2.3
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.21.0-modelscope1.36.3-swift4.2.3
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.37.1-swift4.3.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.37.1-swift4.3.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.37.1-swift4.3.1
 ```
 
 Recommended Operating Environment:
@@ -75,12 +75,12 @@ Recommended Operating Environment:
 | python       | >=3.10        | 3.12    |                    |
 | cuda         |              | cuda12.8/13.0   |                    |
 | torch        | >=2.0        | 2.8.0/2.11.0    |                    |
-| transformer-engine    | >=2.3       |  2.14.1  |                  |
+| transformer-engine    | >=2.3       |  2.16.0  |                  |
 | apex |   |  0.1 | |
-| megatron-core    |    >=0.16,<0.19    | 0.17.1      |                  |
-| mcore-bridge    |    >=1.3.0    |   1.4.2   |                  |
+| megatron-core    |    >=0.16,<0.20    | 0.17.1      |                  |
+| mcore-bridge    |    >=1.3.0    |   1.5.0   |                  |
 | flash-attn    |        | 2.8.3/4.0.0b15   |                  |
-| transformers | >=4.33       | 4.57.6/5.8.1    |                    |
+| transformers | >=4.33       | 4.57.6/5.12.1    |                    |
 | modelscope   | >=1.23       |             |                    |
 | peft         | >=0.11,<0.20 |             |      LoRA          |
 | trl          | >=0.15,<1.0 |       |      RLHF        |

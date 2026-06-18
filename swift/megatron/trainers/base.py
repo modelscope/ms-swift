@@ -215,10 +215,15 @@ class BaseMegatronTrainer(ABC):
         else:
             config_cls = OptimizerConfig
 
-        kwargs = {
-            f.name: getattr(args, f.name)
-            for f in dataclasses.fields(config_cls) if hasattr(args, f.name) and f.name != 'loss_scale'
-        }
+        # Some mcore versions renamed muon_use_nesterov -> muon_nesterov
+        _field_alias = {'muon_nesterov': 'muon_use_nesterov'}
+        kwargs = {}
+        for f in dataclasses.fields(config_cls):
+            if f.name == 'loss_scale':
+                continue
+            attr_name = _field_alias.get(f.name, f.name)
+            if hasattr(args, attr_name):
+                kwargs[f.name] = getattr(args, attr_name)
         config = config_cls(**kwargs)
 
         if args.apply_wd_to_qk_layernorm or self.args.vit_lr is not None or self.args.aligner_lr is not None:

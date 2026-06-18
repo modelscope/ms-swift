@@ -58,6 +58,11 @@ pip install -e .
 
 docker可以查看[这里](https://github.com/modelscope/modelscope/blob/build_swift_image/docker/build_image.py#L392)。
 ```
+# swift4.3.1
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.37.1-swift4.3.1
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.37.1-swift4.3.1
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.37.1-swift4.3.1
+
 # swift4.2.3
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.21.0-modelscope1.36.3-swift4.2.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.21.0-modelscope1.36.3-swift4.2.3
@@ -72,16 +77,16 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.1-modelscope1.34.0-swift4.0.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.1-modelscope1.34.0-swift4.0.3
 modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.10.0-vllm0.17.1-modelscope1.34.0-swift4.0.3
-
-# swift3.12.5
-modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
-modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
-modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
 ```
 
 <details><summary>历史镜像</summary>
 
 ```
+# swift3.12.5
+modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.8.1-py311-torch2.9.0-vllm0.13.0-modelscope1.33.0-swift3.12.5
+
 # swift3.11.3
 modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
 modelscope-registry.cn-beijing.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda12.9.1-py311-torch2.8.0-vllm0.11.0-modelscope1.32.0-swift3.11.3
@@ -152,14 +157,14 @@ modelscope-registry.us-west-1.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu2
 | python       | >=3.10        | 3.12            |                    |
 | cuda         |              | cuda12.8/13.0       | 使用cpu、npu、mps则无需安装 |
 | torch        | >=2.0        | 2.8.0/2.11.0         |                    |
-| transformers | >=4.33       | 4.57.6/5.8.1        |                    |
+| transformers | >=4.33       | 4.57.6/5.12.1        |                    |
 | modelscope   | >=1.23       |                     |                    |
 | datasets     | >=3.0,<4.8.5 | 3.6.0/4.8.4         |                    |
 | peft         | >=0.11,<0.20 |                     |                    |
 | flash_attn   |              | 2.8.3/4.0.0b15 |                    |
 | trl          | >=0.15,<1.0 | 0.29.1              | RLHF               |
 | deepspeed    | >=0.14       | 0.18.9              | 训练                 |
-| vllm         | >=0.5.1      | 0.11.0/0.21.0        | 推理/部署              |
+| vllm         | >=0.5.1      | 0.11.0/0.23.0        | 推理/部署              |
 | sglang       | >=0.4.6      |          | 推理/部署              |
 | evalscope    | >=1.0       |                     | 评测                 |
 | gradio       |              | 5.32.1              | Web-UI/App         |
