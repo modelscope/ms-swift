@@ -4,6 +4,7 @@ from .adalora import AdaloraCallback
 from .deepspeed_elastic import DeepspeedElasticCallback, GracefulExitCallback
 from .early_stop import EarlyStopCallback
 from .lisa import LISACallback
+from .mem_snapshot import MemorySnapshotCallback
 from .perf_log import PerfMetricsLogCallback
 
 callbacks_map = {
@@ -13,5 +14,6 @@ callbacks_map = {
     'early_stop': EarlyStopCallback,
     'graceful_exit': GracefulExitCallback,
     'lisa': LISACallback,
-    'perf_log': PerfMetricsLogCallback
+    'perf_log': PerfMetricsLogCallback,
+    'mem_snapshot': MemorySnapshotCallback
 }
