@@ -302,7 +302,7 @@ def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = F
         audio_io = load_file(audio)
         res = librosa.load(audio_io, sr=sampling_rate)
     except Exception:
-        if audio.startswith(('http://', 'https://')):
+        if isinstance(audio, str) and audio.startswith(('http://', 'https://')):
             import audioread
             audio_io = audioread.ffdec.FFmpegAudioFile(audio)
         else:
