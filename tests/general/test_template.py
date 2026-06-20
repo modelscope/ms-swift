@@ -157,13 +157,21 @@ def test_load_audio_bytes_input_does_not_crash_on_fallback(monkeypatch):
 
     fake_librosa.load = fake_load
     monkeypatch.setitem(sys.modules, 'librosa', fake_librosa)
-    monkeypatch.setattr(vision_utils, '_check_path', lambda p: None)
 
     # bytes audio (allowed by the Union[str, bytes] signature) must not raise a
-    # TypeError from `audio.startswith(...)` when the first decode fails.
+    # TypeError from `audio.startswith(...)` or from `_check_path(bytes)` when
+    # the first decode fails and the except branch runs.
     result = vision_utils.load_audio(b'\x00\x01raw-audio-bytes', sampling_rate=16000)
 
     assert result == [0.1, 0.2]
+
+
+def test_check_path_with_bytes_returns_none():
+    from swift.template.vision_utils import _check_path
+
+    # bytes input is not a path; it must return None instead of raising a
+    # TypeError from the str-only checks (len/os.path/startswith) below.
+    assert _check_path(b'\x00\x01raw-bytes') is None
 
 
 if __name__ == '__main__':
