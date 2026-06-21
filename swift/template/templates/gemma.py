@@ -268,7 +268,7 @@ class Gemma4Template(Template):
 
     def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
         system = super()._get_system(inputs)
-        if not self.is_training and self._get_enable_thinking(inputs):
+        if self._get_enable_thinking(inputs):
             system = '<|think|>\n' + (system or '')
         return system
 

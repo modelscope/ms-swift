@@ -1,6 +1,6 @@
 # Rewards as Labels: Revisiting RLVR from a Classification Perspective
 
-**Version Requirement**：ms-swift>4.0
+Author: [li2zhi](https://github.com/li2zhi)
 
 [Rewards as Labels: Revisiting RLVR from a Classification Perspective](https://arxiv.org/abs/2602.05630) proposes a reformulation of GRPO by treating rewards as labels and performing **in-group classification** instead of advantage estimation. This converts the policy optimization problem into a classification problem, thereby addressing two key issues in the GRPO loss:
 - **Gradient Misassignment** for positive samples

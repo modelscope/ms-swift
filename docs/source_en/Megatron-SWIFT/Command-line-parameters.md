@@ -28,7 +28,8 @@
 - apply_rope_fusion: Defaults to False. Used to enable RoPE fusion. This parameter is passed through from megatron-core. Note: RoPE fusion is not supported in all cases, for example: MLA, mrope, etc. are not supported.
 - gradient_accumulation_fusion: Defaults to True. Used to enable gradient accumulation fusion.
 - 🔥cross_entropy_loss_fusion: Enables cross-entropy loss computation fusion. Defaults to True.
-- cross_entropy_fusion_impl: Implementation for cross-entropy loss fusion. Options are 'native' and 'te'. Defaults to None. Automatically set to 'te' for CUDA and 'native' for NPU.
+- cross_entropy_fusion_impl: The implementation of cross-entropy loss fusion. Options are `'native'` and `'te'`. Defaults to `'native'`.
+  - **The default value in `ms-swift>=4.3.1` has been changed from `'te'` to `'native'`**, for the reason see [this PR](https://github.com/NVIDIA/Megatron-LM/pull/5115). This may result in higher GPU memory usage.
 - calculate_per_token_loss: Scales the cross-entropy loss according to the number of non-padding tokens in the global batch. Defaults to None. When `task_type` is 'causal_lm' and during pretraining/fine-tuning, it defaults to True; otherwise, it defaults to False.
 - 🔥attention_backend: The attention backend to use (flash, fused, unfused, local, auto, flash_2, flash_3, flash_4). Defaults to `flash`.
   - If `flash_attention_4/3` is installed, `--attention_backend flash` will prioritize fa4/fa3. To explicitly specify a version, you can set `--attention_backend flash_2/3/4`. For training script examples, refer to [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3). To use flash_attention_4/3 for the ViT part of multimodal models, please set `--attn_impl flash_attention_4/3`.
@@ -104,9 +105,11 @@
 - muon_use_nesterov: Whether to use Nesterov-style momentum in the internal SGD. Default is False.
 - muon_scale_mode: Scale mode for the Muon optimizer. Options include 'spectral', 'unit_rms_norm', and 'shape_scaling'. Default is 'spectral'.
 - muon_fp32_matmul_prec: FP32 matrix multiplication precision for Newton-Schulz iteration. Options include 'low', 'medium', and 'high'. Default is 'medium'.
+- muon_coefficient_type: Newton-Schulz coefficient type for the Muon optimizer, forwarded to Megatron's `--muon-coefficient-type`. Available options depend on the installed emerging_optimizers version (e.g. 'quintic', 'polar_express', 'simple', 'cans', 'aol', 'deepseekv4', 'cubic5', 'custom'). Default is 'quintic'.
 - muon_num_ns_steps: Number of Newton-Schulz steps for the Muon optimizer. Default is 5.
 - muon_tp_mode: NS calculation method for tensor model parallel weights. Options include 'blockwise', 'duplicated', and 'distributed'. Default is 'blockwise'.
 - muon_extra_scale_factor: Additional scale factor for Muon updates. Default is 1.
+- muon_scalar_optimizer: Optimizer for nonlinear parameters (embeddings, biases, norms) when using Muon. Options are 'adam' or 'lion'. Default is 'adam'.
 
 **Checkpoint Parameters**:
 

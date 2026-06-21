@@ -125,8 +125,6 @@ loss = D_JSD(P_teacher(·|x,y), P_student(·|x,y))
 
 - 学生模型从**数据集的标注序列**中学习
 
-> 注意：Sequential KD（`seq_kd=True`，教师生成响应）当前暂不支持。
-
 ## 参数设置
 
 我们可以通过设置以下参数进行 GKD 训练：

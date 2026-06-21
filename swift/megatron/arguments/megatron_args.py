@@ -445,7 +445,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     apply_rope_fusion: bool = False
     gradient_accumulation_fusion: bool = True
     cross_entropy_loss_fusion: bool = True
-    cross_entropy_fusion_impl: Optional[Literal['native', 'te']] = None
+    cross_entropy_fusion_impl: Literal['native', 'te'] = 'native'
     calculate_per_token_loss: Optional[bool] = None
     attention_backend: str = 'flash'  # flash, fused, unfused, local, auto
     optimizer: Literal['adam', 'sgd', 'muon', 'dist_muon'] = 'adam'
@@ -502,9 +502,11 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     muon_use_nesterov: bool = False
     muon_scale_mode: Literal['spectral', 'unit_rms_norm', 'shape_scaling'] = 'spectral'
     muon_fp32_matmul_prec: Literal['low', 'medium', 'high'] = 'medium'
+    muon_coefficient_type: str = 'quintic'
     muon_num_ns_steps: int = 5
     muon_tp_mode: Literal['blockwise', 'duplicated', 'distributed'] = 'blockwise'
     muon_extra_scale_factor: float = 1.
+    muon_scalar_optimizer: str = 'adam'
 
     # checkpoint
     output_dir: Optional[str] = None
@@ -725,15 +727,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._init_vpp_size()
         if self.vit_gradient_checkpointing is None:
             self.vit_gradient_checkpointing = not self.freeze_vit
-        if self.cross_entropy_fusion_impl is None:
-            if is_torch_npu_available():
-                self.cross_entropy_fusion_impl = 'native'
-            else:
-                import transformer_engine
-                if version.parse(transformer_engine.__version__) >= version.parse('2.8.0'):
-                    self.cross_entropy_fusion_impl = 'te'
-                else:
-                    self.cross_entropy_fusion_impl = 'native'
         if isinstance(self.report_to, str):
             self.report_to = [self.report_to]
         self.model_info, self.model_meta = get_model_info_meta(
@@ -876,6 +869,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                     'Muon optimizer does not support overlap param gather. Use dist_muon instead.')
             # Muon optimizer does not support distributed optimizer for now.
             self.use_distributed_optimizer = False
+            # compat mcore 0.17
+            self.muon_nesterov = self.muon_use_nesterov
 
     def _init_teacher_model(self):
         if self.teacher_model is None:

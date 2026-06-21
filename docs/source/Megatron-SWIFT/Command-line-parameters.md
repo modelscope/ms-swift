@@ -26,7 +26,8 @@
 - apply_rope_fusion: 默认为False。用于开启rope融合。该参数为megatron-core参数透传。注意：并不是所有情况都支持rope融合，例如：MLA、mrope等不支持。
 - gradient_accumulation_fusion: 默认为True。用于开启梯度累加融合。
 - 🔥cross_entropy_loss_fusion: 启动交叉熵损失计算融合。默认为True。
-- cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为None，如果是cuda设置为'te'，npu设置为'native'。
+- cross_entropy_fusion_impl: 交叉熵损失融合的实现。可选为'native'和'te'。默认为'native'。
+  - **"ms-swift>=4.3.1"默认值从"te"修改为"native"**，原因查看[这个PR](https://github.com/NVIDIA/Megatron-LM/pull/5115)，这可能会导致更多的显存占用。
 - calculate_per_token_loss: 根据全局批次中的非填充token数量来对交叉熵损失进行缩放。默认为None，`task_type`为'causal_lm'且为预训练/微调时，默认为True，否则默认为False。
 - 🔥attention_backend: 使用的注意力后端 (flash、fused、unfused、local、auto、flash_2、flash_3、flash_4)。默认为 flash。
   - 如果安装'flash_attention_4/3'，`--attention_backend flash`则优先使用fa4/fa3。如果要显式设置，你可以设置`--attention_backend flash_2/3/4`。训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/flash_attention_3)。多模态模型的vit部分要使用flash_attention_4/3，请设置`--attn_impl flash_attention_4/3`。
@@ -98,9 +99,11 @@
 - muon_use_nesterov: 是否在内部 SGD 中使用 Nesterov 风格的动量，默认为False。
 - muon_scale_mode: Muon 优化器的缩放模式。可选为'spectral', 'unit_rms_norm', 'shape_scaling'。默认为'spectral'。
 - muon_fp32_matmul_prec: Newton-Schulz 迭代的 FP32 矩阵乘法精度，可选为'low', 'medium', 'high'。默认为'medium'。
+- muon_coefficient_type: Muon 优化器 Newton-Schulz 迭代的系数类型，传递给 Megatron 的 `--muon-coefficient-type`。可选值取决于所安装的 emerging_optimizers 版本（如'quintic', 'polar_express', 'simple', 'cans', 'aol', 'deepseekv4', 'cubic5', 'custom'）。默认为'quintic'。
 - muon_num_ns_steps: Muon 优化器的 Newton-Schulz 步数。默认为5。
 - muon_tp_mode: 张量模型并行权重的 NS 计算方式。可选为'blockwise', 'duplicated', 'distributed'。默认为'blockwise'。
 - muon_extra_scale_factor: Muon 更新的额外缩放因子，默认为1。
+- muon_scalar_optimizer: 使用 Muon 时非线性参数（embeddings、biases、norms）的优化器，可选为'adam'或'lion'。默认为'adam'。
 
 
 **checkpoint参数**:
