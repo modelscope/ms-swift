@@ -304,14 +304,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Returns:
             rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with all reward values
         """
-        local_rewards_per_func = score_completions(
-            samples,
-            reward_funcs=self.reward_funcs,
-            reward_model_plugins=self.reward_model_plugins,
-            use_gym_env=self.use_gym_env,
-            device=self.accelerator.device,
-            trainer_state=self.state,
-        )
+        with self._disable_sp_context():
+            local_rewards_per_func = score_completions(
+                samples,
+                reward_funcs=self.reward_funcs,
+                reward_model_plugins=self.reward_model_plugins,
+                use_gym_env=self.use_gym_env,
+                device=self.accelerator.device,
+                trainer_state=self.state,
+            )
 
         # gather rewards
         if not self.dynamic_num_samples:
@@ -396,6 +397,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 kl = (per_token_kl * grpo_batch.completion_mask).sum(-1)
                 kl_list.append(kl)
             kl_values = torch.cat(kl_list, dim=0)
+            kl_values = gather(kl_values)
 
         # Keep weighted rewards for the request-aware (multi-turn) path below.
         rewards = (rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)

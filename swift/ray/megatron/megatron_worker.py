@@ -129,9 +129,6 @@ class MegatronWorker(CheckpointEngineMixin):
             with self.teacher.loaded_context():
                 self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
                                                                                    self._pipeline.template, self._args)
-        cached = getattr(self, '_cached_teacher_logits', None)
-        logger.info('compute_teacher_logits done: cached_len=%s, types=%s',
-                    len(cached) if cached else 0, [type(t).__name__ for t in cached] if cached else [])
         gc_collect()
 
     def get_parallel_info(self) -> Dict[str, Any]:
@@ -216,11 +213,9 @@ class MegatronWorker(CheckpointEngineMixin):
         cached = getattr(self, '_cached_teacher_logits', None)
         if not cached:
             return
-        injected = 0
         for sample, t_out in zip(batch, cached):
             if t_out is not None:
                 sample['teacher_output'] = t_out
-                injected += 1
         self._cached_teacher_logits = None
 
     def _inject_extra_metrics(self, extra_metrics) -> None:
@@ -396,7 +391,7 @@ class MegatronWorker(CheckpointEngineMixin):
         megatron = self._megatron
         args = self._args
         temperature = getattr(args, 'temperature', 1.0)
-        grpo_batch = batch.pop('grpo_batch')
+        grpo_batch: GRPOBatch = batch.pop('grpo_batch')
         seq_lengths = grpo_batch.seq_lengths
         batch_size = grpo_batch.completion_mask.shape[0]
         max_seq_len = grpo_batch.completion_mask.shape[1]
@@ -739,9 +734,6 @@ class MegatronWorker(CheckpointEngineMixin):
         rollout_logps = build_rollout_logps([s.get('rollout_logprobs') for s in samples], completion_mask, device)
         routed_experts = self._build_routed_experts_batch(
             samples, seq_lengths=seq_lengths, max_seq_len=max_seq_len, template=template, device=device)
-        # RL signals are packed into GRPOBatch (mirrors main MegatronGRPOTrainer wire format:
-        # model_inputs + grpo_batch), so model_inputs stays a clean whitelist and the
-        # reused forward_step / loss_func read everything from ``grpo_batch``.
         grpo_batch = GRPOBatch(
             completion_mask=completion_mask,
             truncated_mask=torch.tensor([bool(s.get('is_truncated', False)) for s in samples],
