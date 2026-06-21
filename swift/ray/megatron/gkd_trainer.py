@@ -57,10 +57,7 @@ class GKDTrainer(BaseRayTrainer):
         self._padding_to = info.get('_padding_to')
         self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
         self._teacher_model_server = args.teacher_model_server
-        self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
-        if not self._teacher_use_disable_adapter and args.teacher_model is not None \
-                and args.teacher_model == args.model:
-            self._teacher_use_disable_adapter = True
+        self._teacher_use_disable_adapter = args._teacher_use_disable_adapter
         if self._teacher_use_disable_adapter:
             self._teacher_model_dir = None
 
@@ -73,7 +70,7 @@ class GKDTrainer(BaseRayTrainer):
             'Ray GKD does not support VPP (virtual_pipeline_model_parallel_size > 1).'
 
         # truncation_strategy='delete': resample prompts whose encode fails (over max_length).
-        self.truncation_strategy = getattr(args, 'truncation_strategy', None)
+        self.truncation_strategy = args.truncation_strategy
         self.max_completion_length = args.max_completion_length
         self._max_resample_rounds = getattr(args, 'max_resample_times', 3)
         self._needs_resample_iterator = self.truncation_strategy == 'delete'
@@ -135,7 +132,6 @@ class GKDTrainer(BaseRayTrainer):
                     # Teacher outputs are cached worker-local and injected at train_step via
                     # _inject_cached_teacher_logits (required for CP per-rank slice alignment).
                     tg.compute_teacher_logits(samples)
-
                 # Tag each sample with the step's data_source so the worker can gate the SFT
                 # loss in loss_func (SFT only on dataset responses, not on-policy generations).
                 for s in samples:
@@ -167,7 +163,7 @@ class GKDTrainer(BaseRayTrainer):
             remove_response(s.messages)
         return samples
 
-    def _generate(self, batch) -> List[RolloutOutput]:
+    def _generate(self, batch: List[GKDSample]) -> List[RolloutOutput]:
         args = self.args
         request_config = RequestConfig(
             n=1,
@@ -178,7 +174,10 @@ class GKDTrainer(BaseRayTrainer):
             stop=args.stop_words or None,
             return_details=True,
         )
-        completions = self._distribute_to_replicas(list(batch), request_config)
+        # Convert samples to RolloutInferRequest at the engine boundary
+        # (same pattern as GRPO Ray trainer).
+        requests = [s.to_infer_request() for s in batch]
+        completions = self._distribute_to_replicas(requests, request_config)
         return [RolloutOutput(response=resp) for resp in completions]
 
     def _postprocess_rollout(self, samples, outputs):

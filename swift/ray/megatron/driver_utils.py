@@ -172,10 +172,6 @@ def estimate_dp_size(cfg: Dict[str, Any], gpus: int) -> int:
 
 def build_dataset_from_dict(cfg: Dict[str, Any]):
     """Build dataset on the driver without instantiating a Megatron pipeline.
-
-    Uses only ``BaseArguments`` methods (``get_model_processor``,
-    ``get_template``, ``get_dataset_kwargs``) so no distributed init
-    or Megatron-specific ``__post_init__`` logic is triggered.
     """
     from swift.megatron.arguments import MegatronRLHFArguments
     from swift.rlhf_trainers.utils import identity_data_collator

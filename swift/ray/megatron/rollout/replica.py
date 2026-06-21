@@ -189,6 +189,10 @@ class RolloutReplica:
                 'RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES': '1',
                 'NCCL_CUMEM_ENABLE': '0',
                 visible_key: cvd,
+                # Override torchelastic env var inherited from torchrun driver;
+                # if TORCHELASTIC_USE_AGENT_STORE=True leaks into vLLM workers,
+                # init_process_group deadlocks (same issue as MegatronWorker).
+                'TORCHELASTIC_USE_AGENT_STORE': 'False',
             }
             handle = actor_cls.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(node_id=node_id, soft=False),

@@ -581,6 +581,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if self.truncation_strategy == 'delete':
                 next_rollout_prompt_batch = self.resample_encode_failed_inputs(next_rollout_prompt_batch)
 
+            # Convert dict rows to per-sample objects before rollout
+            next_rollout_prompt_batch = self.to_samples(next_rollout_prompt_batch)
+
             # Repeat num_generations times and get local slice
             rollout_batch = self.get_local_rollout_batch(next_rollout_prompt_batch)
 

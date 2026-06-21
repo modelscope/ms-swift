@@ -737,12 +737,6 @@ def encode_sample(sample: OnPolicySample,
                   *,
                   non_thinking_prefix_ids: Optional[List[int]] = None,
                   encode_prompt_only: bool = False) -> Dict[str, Any]:
-    """Encode one sample into model inputs.
-
-    Note: mutates ``sample.messages`` in place (response token-ids are injected
-    via ``replace_assistant_response_with_ids``). Callers must ensure the sample
-    owns its data (``OnPolicySample.from_row`` deep-copies for this reason).
-    """
     if sample.response_token_ids:
         loss_mask = sample.response_loss_mask or None
         sample.messages = replace_assistant_response_with_ids(

@@ -401,6 +401,11 @@ class WorkerGroup:
                     'RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES': '1',
                     'NCCL_CUMEM_ENABLE': '0',
                     'RAY_SWIFT_GROUP': f'default,{name}',
+                    # Override torchelastic env vars inherited from torchrun driver;
+                    # if TORCHELASTIC_USE_AGENT_STORE=True leaks into Ray workers, all ranks
+                    # create TCPStore clients (is_master=False) and no server is started,
+                    # causing init_process_group to deadlock.
+                    'TORCHELASTIC_USE_AGENT_STORE': 'False',
                 }
                 w = worker_cls.options(
                     num_gpus=0,

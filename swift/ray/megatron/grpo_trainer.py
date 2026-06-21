@@ -59,7 +59,7 @@ class GRPOTrainer(BaseRayTrainer):
         # DAPO dynamic_sample + truncation_strategy='delete' resampling (driver-side).
         self.dynamic_sample = getattr(args, 'dynamic_sample', False)
         self.max_resample_times = getattr(args, 'max_resample_times', 3)
-        self.truncation_strategy = getattr(args, 'truncation_strategy', None)
+        self.truncation_strategy = args.truncation_strategy
         self._max_resample_rounds = getattr(args, 'max_resample_times', 10)
         self._needs_resample_iterator = self.dynamic_sample or self.truncation_strategy == 'delete'
 

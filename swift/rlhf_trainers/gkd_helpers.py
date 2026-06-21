@@ -30,7 +30,12 @@ def encode_gkd_samples(
 
     student_encoded_list: List[Dict[str, Any]] = []
     teacher_encoded_list: List[Dict[str, Any]] = []
-    has_opsd = any(s.build_teacher_view() for s in samples)
+    # Cannot use any() here because it short-circuits: build_teacher_view()
+    # must be called for ALL samples to populate teacher_messages on each.
+    has_opsd = False
+    for s in samples:
+        if s.build_teacher_view():
+            has_opsd = True
 
     for s in samples:
         encoded = encode_sample(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)

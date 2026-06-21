@@ -129,6 +129,9 @@ class MegatronWorker(CheckpointEngineMixin):
             with self.teacher.loaded_context():
                 self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
                                                                                    self._pipeline.template, self._args)
+        cached = getattr(self, '_cached_teacher_logits', None)
+        logger.info('compute_teacher_logits done: cached_len=%s, types=%s',
+                    len(cached) if cached else 0, [type(t).__name__ for t in cached] if cached else [])
         gc_collect()
 
     def get_parallel_info(self) -> Dict[str, Any]:
@@ -213,9 +216,11 @@ class MegatronWorker(CheckpointEngineMixin):
         cached = getattr(self, '_cached_teacher_logits', None)
         if not cached:
             return
+        injected = 0
         for sample, t_out in zip(batch, cached):
             if t_out is not None:
                 sample['teacher_output'] = t_out
+                injected += 1
         self._cached_teacher_logits = None
 
     def _inject_extra_metrics(self, extra_metrics) -> None:
@@ -336,10 +341,10 @@ class MegatronWorker(CheckpointEngineMixin):
         rows: List[Dict[str, torch.Tensor]] = []
         for sample_chunk in self._split_sample_chunks(samples):
             mb = self._collate_local_grpo_samples(sample_chunk)
+            grpo_batch = mb['grpo_batch']
             out = self._compute_logps(mb, model, output_key)
             if output_key not in out:
                 continue
-            grpo_batch = mb['grpo_batch']
             completion_mask = grpo_batch.completion_mask if with_completion_mask else None
             rows.extend(
                 self._split_logps_rows(
