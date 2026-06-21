@@ -57,13 +57,14 @@ from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
-                         is_wandb_available, remove_response, seed_worker, to_device, unwrap_model_for_generation)
+                         is_wandb_available, nanstd, remove_response, seed_worker, to_device,
+                         unwrap_model_for_generation)
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
                     get_even_process_data, get_non_thinking_prefix_ids, identity_data_collator, load_pil_img,
-                    make_chord_sft_dataset, nanstd, pad_logps_back_to_batch, patch_save_last_checkpoint,
-                    profiling_context, profiling_decorator, replace_assistant_response_with_ids, swanlab_get_run)
+                    make_chord_sft_dataset, pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context,
+                    profiling_decorator, replace_assistant_response_with_ids, swanlab_get_run)
 
 try:
     from trl.trainer.utils import entropy_from_logits

@@ -581,79 +581,6 @@ class MegatronWorker(CheckpointEngineMixin):
         return [self._collate_local_grpo_samples(chunk) for chunk in self._split_sample_chunks(samples)]
 
     @staticmethod
-    def _normalize_routed_experts_tensor(value: Any) -> torch.Tensor:
-        routed = value.detach().cpu() if isinstance(value, torch.Tensor) else torch.as_tensor(value)
-        if routed.dim() >= 4 and routed.shape[0] == 1:
-            routed = routed.squeeze(0)
-        if routed.dim() < 2:
-            raise ValueError(f'Invalid routed_experts shape: {tuple(routed.shape)}')
-        return routed.to(dtype=torch.int64)
-
-    @staticmethod
-    def _pad_or_trim_routed_experts(routed: torch.Tensor, target_len: int, *, padding_right: bool) -> torch.Tensor:
-        current_len = int(routed.shape[0])
-        if current_len == target_len:
-            return routed
-        if current_len > target_len:
-            return routed[:target_len] if padding_right else routed[-target_len:]
-
-        pad_len = target_len - current_len
-        pad = [0] * (2 * routed.dim())
-        if padding_right:
-            pad[2 * (routed.dim() - 1) + 1] = pad_len
-        else:
-            pad[2 * (routed.dim() - 1)] = pad_len
-        return torch.nn.functional.pad(routed, tuple(pad), 'constant', 0)
-
-    def _build_routed_experts_batch(
-        self,
-        samples: List[Dict[str, Any]],
-        *,
-        seq_lengths: torch.Tensor,
-        max_seq_len: int,
-        template,
-        device: torch.device,
-    ) -> Optional[torch.Tensor]:
-        if not samples:
-            return None
-        if all(sample.get('routed_experts') is None for sample in samples):
-            return None
-
-        router_mode = getattr(self._args, 'router_replay_mode', 'disabled')
-        padding_right = template.padding_side == 'right'
-        n_samples = len(samples)
-
-        current_seq_lengths = seq_lengths
-        if seq_lengths.size(0) > n_samples:
-            current_seq_lengths = seq_lengths[:n_samples].clone()
-            current_seq_lengths[n_samples - 1] = seq_lengths[n_samples - 1:].sum()
-
-        routed_tensors: List[torch.Tensor] = []
-        for sample, cur_seq_len in zip(samples, current_seq_lengths):
-            routed_value = sample.get('routed_experts')
-            if routed_value is None:
-                if router_mode == 'R3':
-                    raise AssertionError('When router_replay_mode = R3, routed_experts must be in rollout data')
-                return None
-
-            routed = self._normalize_routed_experts_tensor(routed_value)
-
-            expected_len = sample.get('encoded', {}).get('length')
-            experts_seq_len = int(routed.shape[0])
-            if router_mode == 'R3' and expected_len is not None:
-                if experts_seq_len not in (expected_len, expected_len - 1):
-                    raise AssertionError(
-                        f'The seq_len of routed_experts({experts_seq_len}) does not match encoded length '
-                        f'({expected_len}); expected same length or one less.')
-            target_len = int(cur_seq_len.item()) if template.padding_free else max_seq_len
-            routed = self._pad_or_trim_routed_experts(routed, target_len, padding_right=padding_right)
-            routed_tensors.append(routed)
-
-        if template.padding_free:
-            return torch.cat(routed_tensors, dim=0).unsqueeze(0).to(device=device)
-        return torch.stack(routed_tensors).to(device=device)
-
-    @staticmethod
     def _collate_teacher_outputs(teacher_outputs, device, padding_free=False, target_seq_len=None):
         """Collate per-sample TeacherOutputs into a batched one.
 
@@ -714,37 +641,32 @@ class MegatronWorker(CheckpointEngineMixin):
 
     def _collate_local_grpo_samples(self, samples: List[Dict[str, Any]]) -> Dict[str, Any]:
         from swift.megatron.utils import get_padding_to
-        from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
+        from swift.rl_core.data import OnPolicySample
+        from swift.rlhf_trainers.utils import collate_to_grpo_micro_batch
 
         template = self._pipeline.template
         device = get_current_device()
-        encoded_list = [sample['encoded'] for sample in samples]
-        encoded_batch = template.data_collator(encoded_list, padding_to=get_padding_to(self._args))
-        encoded_batch = to_device(encoded_batch, device)
 
-        labels = encoded_batch['labels']
-        batch_size = len(samples)
-        completion_mask, seq_lengths, max_seq_len = build_completion_mask_and_seq_lengths(
-            labels,
-            batch_size,
-            padding_free=template.padding_free,
-            encoded_batch=encoded_batch,
+        # Wrap worker-side dicts as minimal OnPolicySample for unified collate
+        sample_objs: List[OnPolicySample] = []
+        for s in samples:
+            obj = OnPolicySample(messages=[])  # messages not used by collate
+            obj.encoded = s.get('encoded')
+            obj.rollout_logprobs = s.get('rollout_logprobs') or []
+            obj.routed_experts = s.get('routed_experts')
+            if s.get('is_truncated'):
+                obj.finish_reason = 'length'
+            sample_objs.append(obj)
+
+        model_inputs, grpo_batch = collate_to_grpo_micro_batch(
+            sample_objs,
+            template,
             device=device,
+            padding_to=get_padding_to(self._args),
+            router_replay_mode=getattr(self._args, 'router_replay_mode', 'disabled'),
         )
-        rollout_logps = build_rollout_logps([s.get('rollout_logprobs') for s in samples], completion_mask, device)
-        routed_experts = self._build_routed_experts_batch(
-            samples, seq_lengths=seq_lengths, max_seq_len=max_seq_len, template=template, device=device)
-        grpo_batch = GRPOBatch(
-            completion_mask=completion_mask,
-            truncated_mask=torch.tensor([bool(s.get('is_truncated', False)) for s in samples],
-                                        dtype=torch.bool,
-                                        device=device),
-            seq_lengths=seq_lengths,
-            rollout_per_token_logps=rollout_logps,
-        )
-        if routed_experts is not None:
-            encoded_batch['routed_experts'] = routed_experts
 
+        # Fill in signals computed by the worker (logps, advantages)
         if samples and samples[0].get('old_per_token_logps') is not None:
             grpo_batch.old_per_token_logps = torch.stack([s['old_per_token_logps'].to(device) for s in samples], dim=0)
         if samples and samples[0].get('ref_per_token_logps') is not None:
@@ -753,7 +675,7 @@ class MegatronWorker(CheckpointEngineMixin):
             grpo_batch.advantages = torch.tensor([float(s.get('advantage', 0.0)) for s in samples],
                                                  dtype=torch.float32,
                                                  device=device)
-        encoded_batch['grpo_batch'] = grpo_batch
+        model_inputs['grpo_batch'] = grpo_batch
         if samples and samples[0].get('teacher_output') is not None:
             cp_size = getattr(self._args, 'context_parallel_size', 1)
             if cp_size > 1:
@@ -761,13 +683,14 @@ class MegatronWorker(CheckpointEngineMixin):
                                  'context_parallel_size > 1: per-sample teacher token-logprobs are built from '
                                  'raw sequence lengths and cannot be CP-sharded to align with the student. '
                                  'Use a colocated teacher_model for CP>1.')
-            encoded_batch['teacher_output'] = self._collate_teacher_outputs([s['teacher_output'] for s in samples],
-                                                                            device,
-                                                                            padding_free=template.padding_free,
-                                                                            target_seq_len=labels.shape[-1])
+            model_inputs['teacher_output'] = self._collate_teacher_outputs(
+                [s['teacher_output'] for s in samples],
+                device,
+                padding_free=template.padding_free,
+                target_seq_len=model_inputs['labels'].shape[-1])
         if samples and samples[0].get('data_source') is not None:
-            encoded_batch['data_source'] = samples[0]['data_source']
-        return encoded_batch
+            model_inputs['data_source'] = samples[0]['data_source']
+        return model_inputs
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:
         """Export and send model weights via NCCL checkpoint engine."""

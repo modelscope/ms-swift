@@ -4,6 +4,8 @@ import torch
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+from swift.utils import nanstd
+
 
 def compute_advantages(
     rewards_per_func: torch.Tensor,
@@ -86,9 +88,10 @@ def compute_advantages(
             normalized_list = []
             for i in range(n_funcs):
                 r_i = rewards_per_func[:, i].view(-1, K)
-                g_mean = r_i.mean(dim=1, keepdim=True)
-                g_std = r_i.std(dim=1, keepdim=True) + 1e-8
-                normalized_list.append(reward_weights[i] * ((r_i - g_mean) / g_std).view(-1))
+                g_mean = torch.nanmean(r_i, dim=1, keepdim=True)
+                g_std = nanstd(r_i, dim=1, keepdim=True) + 1e-8
+                norm_i = torch.nan_to_num((r_i - g_mean) / g_std, nan=0.0)
+                normalized_list.append(reward_weights[i] * norm_i.view(-1))
             summed = sum(normalized_list)
             advantages = (summed - summed.mean()) / (summed.std() + 1e-8)
             std = None

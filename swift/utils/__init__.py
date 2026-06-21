@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from .torch_utils import (Serializer, check_shared_disk, disable_safe_ddp_context_use_barrier, empty_cache,
                               gc_collect, get_current_device, get_device, get_device_count,
                               get_generative_reranker_logits, get_last_valid_indices, get_max_reserved_memory,
-                              get_torch_device, init_process_group, ipc_collect, safe_ddp_context,
+                              get_torch_device, init_process_group, ipc_collect, nanstd, safe_ddp_context,
                               set_default_ddp_config, set_device, synchronize, time_synchronize, to_device,
                               to_float_dtype)
     from .transformers_utils import (activate_parameters, disable_deepspeed_zero3, find_all_linears, find_embedding,
@@ -61,7 +61,7 @@ else:
             'get_current_device', 'get_device', 'get_device_count', 'get_generative_reranker_logits',
             'get_last_valid_indices', 'get_max_reserved_memory', 'get_torch_device', 'init_process_group',
             'ipc_collect', 'safe_ddp_context', 'set_default_ddp_config', 'set_device', 'synchronize',
-            'time_synchronize', 'to_device', 'to_float_dtype'
+            'time_synchronize', 'to_device', 'to_float_dtype', 'nanstd'
         ],
         'transformers_utils': [
             'activate_parameters', 'disable_deepspeed_zero3', 'find_all_linears', 'find_embedding', 'find_layers',

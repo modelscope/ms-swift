@@ -43,7 +43,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.beta = args.beta  # JSD interpolation coefficient
         self.temperature = args.temperature
         self.lmbda = args.lmbda  # On-policy probability
-        self.seq_kd = args.seq_kd  # Sequential KD: use teacher-generated responses
         self.offload_teacher_model = args.offload_teacher_model  # Offload teacher to CPU
         self.teacher_model_server = getattr(args, 'teacher_model_server', None)
         self.use_teacher_api = self.teacher_model_server is not None
@@ -207,8 +206,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         GKD training mode selection logic:
         1. With probability lmbda: On-Policy (student generates)
-        2. If seq_kd=True and not on-policy: Sequential KD (teacher generates)
-        3. Otherwise: Off-Policy (use dataset responses)
+        2. Otherwise: Off-Policy (use dataset responses)
 
         Returns:
             DataSource enum indicating which source to use.
@@ -224,14 +222,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 logger.warning_once('On-policy mode triggered but use_vllm=False. '
                                     'Falling back to dataset responses. Enable vLLM for on-policy generation.')
                 return DataSource.DATASET
-        elif self.seq_kd:
-            # Mode 2: Sequential KD, teacher model generates responses
-            # Note: Teacher generation is not implemented yet, use dataset
-            logger.warning_once('seq_kd=True but teacher generation is not implemented in Megatron GKD yet. '
-                                'Falling back to dataset responses.')
-            return DataSource.DATASET
         else:
-            # Mode 3: Off-Policy learning, use dataset responses
+            # Mode 2: Off-Policy learning, use dataset responses
             return DataSource.DATASET
 
     def _init_resample_data_iterator(self, train_dataset):

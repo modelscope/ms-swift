@@ -473,7 +473,7 @@ class GRPOTrainer(BaseRayTrainer):
             ref_lp = ref_lp.to(self.device)
             mask = mask.to(self.device)
             width = min(old_lp.shape[-1], ref_lp.shape[-1], mask.shape[-1])
-            kl_values.append(((old_lp[:width] - ref_lp[:width]) * mask[:width].to(old_lp.dtype)).sum())
+            kl_values.append(((old_lp[..., :width] - ref_lp[..., :width]) * mask[..., :width].to(old_lp.dtype)).sum())
         if not kl_values:
             return None
         return torch.stack(kl_values)

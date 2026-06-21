@@ -39,7 +39,6 @@ class GKDTrainer(BaseRayTrainer):
         # GKD on-policy schedule: each step is on-policy (student generates) with
         # probability ``lmbda``; otherwise off-policy (distill on dataset responses).
         self.lmbda = args.lmbda
-        self.seq_kd = args.seq_kd
         self._data_source_rng = random.Random(getattr(args, 'seed', 42))
 
         # steps_per_generation>1: one generation (one data_source) feeds spg training steps,
@@ -146,14 +145,10 @@ class GKDTrainer(BaseRayTrainer):
 
         With probability ``lmbda`` the step is on-policy (the student generates the
         response); otherwise it is off-policy and we distill on the dataset's
-        ground-truth response. ``seq_kd`` (teacher-generated responses) is not
-        implemented in the Ray pipeline and falls back to dataset responses.
+        ground-truth response.
         """
         if self._data_source_rng.random() < self.lmbda:
             return DataSource.STUDENT
-        if self.seq_kd:
-            logger.warning_once('seq_kd=True but teacher generation is not implemented in Ray GKD; '
-                                'using dataset responses for off-policy steps.')
         return DataSource.DATASET
 
     def _expand_for_generation(self, prompt_batch):

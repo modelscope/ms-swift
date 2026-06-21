@@ -19,6 +19,42 @@ from typing import Any, Mapping, Optional, Union
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master, is_mp
 
 
+def nanstd(tensor: torch.Tensor, dim: Optional[Union[int, tuple]] = None, keepdim: bool = False) -> torch.Tensor:
+    """Compute the standard deviation of a tensor, ignoring NaNs.
+
+    Refer: trl/trainer/utils.py
+
+    Args:
+        tensor (`torch.Tensor`):
+            Input tensor.
+        dim (`int` or `tuple[int, ...]`, *optional*):
+            Dimension to reduce. Defaults to all dimensions.
+        keepdim (`bool`, *optional*, defaults to `False`):
+            Whether to keep reduced dimensions.
+
+    Returns:
+        `torch.Tensor`:
+            Standard deviation of the tensor, ignoring NaNs.
+    """
+    mean = torch.nanmean(tensor, dim=dim, keepdim=True)
+    variance = torch.nanmean((tensor - mean)**2, dim=dim, keepdim=True)
+    count = torch.sum(~torch.isnan(tensor), dim=dim, keepdim=True)
+    correction = count / (count - 1)
+    correction = torch.where(count > 1, correction, torch.full_like(correction, float('nan')))
+    variance *= correction  # Bessel's correction
+    std = torch.sqrt(variance)
+    if keepdim:
+        return std
+    if dim is None:
+        return std.squeeze()
+    if isinstance(dim, int):
+        return std.squeeze(dim)
+    dims = [(d if d >= 0 else d + std.ndim) for d in dim]
+    for d in sorted(dims, reverse=True):
+        std = std.squeeze(d)
+    return std
+
+
 def _find_local_mac() -> str:
     mac = uuid.getnode()
     mac_address = ':'.join(('%012x' % mac)[i:i + 2] for i in range(0, 12, 2))
