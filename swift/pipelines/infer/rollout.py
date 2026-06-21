@@ -201,8 +201,10 @@ class WeightSyncWorkerExtension:
         synchronize()
         self.communicator.group.barrier()
 
-        # Patch MoE weight_loader if needed
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+        # Patch MoE weight_loader if needed. This endpoint updates base weights
+        # one by one, so use the same full-reload layout setup as flattened
+        # base-weight sync before the final post-load processing request.
+        _patch_full_weight_reload_loader(self.model_runner.model)
 
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])

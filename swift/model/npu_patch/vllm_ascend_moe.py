@@ -136,11 +136,6 @@ def _is_qwen_moe_model(model) -> bool:
     return getattr(getattr(model, 'config', None), 'model_type', None) in _QWEN_MOE_MODEL_TYPES
 
 
-def should_keep_fused_moe_expert_for_vllm_ascend(model) -> bool:
-    """Return whether fused expert names should be kept for vLLM-Ascend sync."""
-    return False
-
-
 def configure_vllm_ascend_moe_weight_sync(vllm_model, train_model, *, is_fsdp2: bool) -> None:
     """Record the vLLM-Ascend MoE sync layout required by this training backend."""
     fsdp2_qwen_moe = is_fsdp2 and _is_qwen_moe_model(train_model)
@@ -173,7 +168,7 @@ def should_skip_vllm_ascend_moe_post_load(vllm_model) -> bool:
     return bool(getattr(vllm_model, _VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR, False))
 
 
-def expand_fused_moe_expert_names_for_vllm_ascend(name: str, *, keep_fused_expert: bool = False):
+def expand_fused_moe_expert_names_for_vllm_ascend(name: str):
     """Map Transformers fused Qwen MoE expert names to vLLM checkpoint names.
 
     FSDP2 can expose Qwen-style MoE expert weights as fused tensors:
@@ -187,9 +182,6 @@ def expand_fused_moe_expert_names_for_vllm_ascend(name: str, *, keep_fused_exper
     Use expert 0 only as a name anchor; the paired vLLM-Ascend weight-loader
     patch below copies all local experts from the full 3D tensor.
     """
-    if keep_fused_expert:
-        return None
-
     gate_up_suffix = '.mlp.experts.gate_up_proj'
     down_suffix = '.mlp.experts.down_proj'
     if name.endswith(gate_up_suffix):
@@ -204,11 +196,11 @@ def expand_fused_moe_expert_names_for_vllm_ascend(name: str, *, keep_fused_exper
     return None
 
 
-def expand_fused_moe_expert_weight_for_vllm_ascend(name: str, param, *, keep_fused_expert: bool = False):
+def expand_fused_moe_expert_weight_for_vllm_ascend(name: str, param):
     """Expand one FSDP2 fused Qwen MoE expert tensor for vLLM-Ascend weight sync."""
     if not isinstance(param, torch.Tensor) or param.dim() != 3:
         return None
-    expanded_names = expand_fused_moe_expert_names_for_vllm_ascend(name, keep_fused_expert=keep_fused_expert)
+    expanded_names = expand_fused_moe_expert_names_for_vllm_ascend(name)
     if expanded_names is None:
         return None
     if name.endswith('.mlp.experts.gate_up_proj'):
@@ -397,7 +389,6 @@ __all__ = [
     'expand_fused_moe_expert_weight_for_vllm_ascend',
     'patch_vllm_ascend_moe_expert_weight_loader',
     'patch_vllm_ascend_moe_runtime',
-    'should_keep_fused_moe_expert_for_vllm_ascend',
     'should_skip_vllm_ascend_moe_post_load',
     'use_vllm_ascend_moe_preprocessed_weight',
 ]

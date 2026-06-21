@@ -101,7 +101,10 @@ def _patch_rope_validation_ignore_keys():
     """
     from transformers import PretrainedConfig
 
-    origin_convert = PretrainedConfig.convert_rope_params_to_dict
+    origin_convert = getattr(PretrainedConfig, 'convert_rope_params_to_dict', None)
+    if origin_convert is None:
+        yield
+        return
 
     def convert_rope_params_to_dict(self, ignore_keys_at_rope_validation=None, **kwargs):
         if isinstance(ignore_keys_at_rope_validation, list):
