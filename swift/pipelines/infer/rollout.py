@@ -42,11 +42,11 @@ from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig,
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        FlattenedTensorMetadata, TensorLoRARequest, UpdateAdapterRequest,
                                        UpdateFlattenedAdapterRequest, UpdateFlattenedParamsRequest,
-                                       check_vllm_version_ge, chunk_list, finish_vllm_weight_reload,
-                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader,
-                                       vllm_supports_lora_load_inplace)
+                                       broadcast_tensor_for_vllm_weight_sync, check_vllm_version_ge, chunk_list,
+                                       finish_vllm_weight_reload, patch_vllm_load_adapter,
+                                       patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
-from swift.utils import (gc_collect, get_logger, get_seed, get_torch_device, ipc_collect, is_vllm_ascend_available,
+from swift.utils import (gc_collect, get_logger, get_seed, ipc_collect, is_vllm_ascend_available,
                          is_vllm_metax_available, synchronize)
 from ..base import SwiftPipeline
 
@@ -100,15 +100,6 @@ def _set_death_signal():
     libc.prctl(1, signal.SIGKILL)
     if os.getppid() == 1:
         os.kill(os.getpid(), signal.SIGKILL)
-
-
-def _broadcast_tensor(communicator, tensor: torch.Tensor, src: int) -> None:
-    if is_torch_npu_available():
-        device_module = get_torch_device()
-        with device_module.device(communicator.device):
-            communicator.broadcast(tensor, src=src, stream=device_module.current_stream())
-    else:
-        communicator.broadcast(tensor, src=src, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
 
 
 def _patch_full_weight_reload_loader(model) -> None:
@@ -197,7 +188,7 @@ class WeightSyncWorkerExtension:
         weight = torch.empty(shape, dtype=dtype, device=self.communicator.device)
 
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
-        _broadcast_tensor(self.communicator, weight, src=self.client_rank)
+        broadcast_tensor_for_vllm_weight_sync(self.communicator, weight, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
@@ -219,7 +210,7 @@ class WeightSyncWorkerExtension:
 
         total_bytes = metadatas[-1].end_idx
         flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
-        _broadcast_tensor(self.communicator, flatten_tensor, src=self.client_rank)
+        broadcast_tensor_for_vllm_weight_sync(self.communicator, flatten_tensor, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
@@ -257,7 +248,7 @@ class WeightSyncWorkerExtension:
             dtype = getattr(torch, metadata['dtype'].split('.')[-1])
             shape = tuple(metadata['shape'])
             tensor = torch.empty(shape, dtype=dtype, device=self.communicator.device)
-            _broadcast_tensor(self.communicator, tensor, src=self.client_rank)
+            broadcast_tensor_for_vllm_weight_sync(self.communicator, tensor, src=self.client_rank)
             named_params[name] = tensor
 
         synchronize()
@@ -291,7 +282,7 @@ class WeightSyncWorkerExtension:
         total_bytes = metadatas[-1].end_idx
         flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
 
-        _broadcast_tensor(self.communicator, flatten_tensor, src=self.client_rank)
+        broadcast_tensor_for_vllm_weight_sync(self.communicator, flatten_tensor, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 

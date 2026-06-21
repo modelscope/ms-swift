@@ -45,6 +45,16 @@ VLLM_LORA_INT_ID = 111
 VLLM_LORA_NAME = 'swift_lora'
 VLLM_LORA_PATH = 'swift_dummy_lora_path'
 
+
+def broadcast_tensor_for_vllm_weight_sync(communicator, tensor: torch.Tensor, src: int) -> None:
+    if is_torch_npu_available():
+        device_module = get_torch_device()
+        with device_module.device(communicator.device):
+            communicator.broadcast(tensor, src=src, stream=device_module.current_stream())
+    else:
+        communicator.broadcast(tensor, src=src, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+
+
 if is_vllm_available():
     from vllm.lora.request import LoRARequest
 
