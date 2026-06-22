@@ -514,7 +514,7 @@ class MessagesPreprocessor(RowPreprocessor):
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if 'rejected_messages' in row:
             row['rejected_messages'] = MessagesPreprocessor.preprocess(
-                self, {'messages': row['rejected_messages']})['messages']
+                self, {'messages': row['rejected_messages'], 'system': row.get('system')})['messages']
         messages = row['messages']
         if self.inner_key is not None:
             messages = messages[self.inner_key]
