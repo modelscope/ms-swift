@@ -525,7 +525,6 @@ swift rlhf \
     --sleep_level 0 \
     --dataset 'modelscope/gsm8k' \
     --lmbda 1 \
-    --seq_kd false \
     --beta 0.5 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 2 \

@@ -88,6 +88,7 @@ class OnPolicySample:
             'finish_reason': self.finish_reason,
             'is_truncated': self.is_truncated,
             'rollout_infos': self.rollout_infos,
+            'response_token_ids': self.response_token_ids,
         }
         row.update(self._standard_fields())
         row.update(self.extra)

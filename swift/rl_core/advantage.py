@@ -16,9 +16,6 @@ def compute_advantages(
     kl_in_reward: bool = False,
     beta: float = 0.0,
     kl_values: Optional[torch.Tensor] = None,
-    teacher_kl: Optional[torch.Tensor] = None,
-    teacher_kl_coef: float = 0.0,
-    opd_only_reward: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """Compute advantages from per-function rewards.
 
@@ -49,11 +46,6 @@ def compute_advantages(
         kl_in_reward: Subtract ref model KL from rewards (pre-normalization).
         beta: Ref model KL penalty coefficient.
         kl_values: ``[N]`` ref model KL values (required when ``kl_in_reward=True``).
-        teacher_kl: ``[N]`` per-sample teacher KL (e.g. ``student_logp - teacher_logp``),
-            injected post-normalization. ``None`` to skip.
-        teacher_kl_coef: Coefficient for teacher KL injection.
-        opd_only_reward: If ``True``, zero out base advantages before injecting
-            teacher KL (pure distillation mode).
 
     Returns:
         ``(advantages, rewards)`` both ``[N]``.
@@ -98,12 +90,6 @@ def compute_advantages(
 
     if std is not None and scale_rewards != 'none':
         advantages = advantages / (std + 1e-4)
-
-    # --- Teacher KL injection (post-normalization, orthogonal to base advantages) ---
-    if teacher_kl is not None and teacher_kl_coef != 0.0:
-        if opd_only_reward:
-            advantages = torch.zeros_like(advantages)
-        advantages = advantages - teacher_kl_coef * teacher_kl
 
     return advantages, rewards
 

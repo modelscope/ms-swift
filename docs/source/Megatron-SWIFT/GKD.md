@@ -25,7 +25,6 @@ Megatron GKD 当前已支持以下功能：
 | `--gkd_logits_topk` | int | None | Top-K logits 数量，使用外部教师 API 时必须设置 |
 | `--beta` | float | 0.5 | JSD 散度插值系数：<br>• 0.0: Forward KL<br>• 0.5: 对称 JSD<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | On-Policy 学习触发概率：<br>• 0.0: 纯 Off-Policy<br>• 1.0: 纯 On-Policy |
-| `--seq_kd` | bool | False | 是否使用教师生成的响应（当前暂不支持） |
 | `--temperature` | float | 0.9 | 温度参数，用于采样和损失计算 |
 | `--sft_alpha` | float | 0 | 混合一定比例的sft loss，对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | 生成时的最大 token 数 |

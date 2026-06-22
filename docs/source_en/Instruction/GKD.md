@@ -125,8 +125,6 @@ Set parameter `lambda`, triggered with probability $\lambda$, using student mode
 
 - The student model learns from **annotated sequences in the dataset**
 
-> Note: Sequential KD (`seq_kd=True`, teacher-generated responses) is not currently supported.
-
 
 ## Parameter Settings
 
@@ -264,7 +262,6 @@ swift rlhf \
     --model OpenGVLab/InternVL3-2B-Pretrained \
     --teacher_model $teacher_model \
     --dataset 'teacher_generated_data.jsonl' \
-    --seq_kd false \
     ...
 ```
 

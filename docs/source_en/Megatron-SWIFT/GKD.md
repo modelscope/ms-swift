@@ -25,7 +25,6 @@ Megatron GKD currently supports the following features:
 | `--gkd_logits_topk` | int | None | Number of Top-K logits; required when using external API |
 | `--beta` | float | 0.5 | JSD divergence interpolation coefficient:<br>• 0.0: Forward KL<br>• 0.5: Symmetric JSD<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | On-Policy learning probability:<br>• 0.0: Pure Off-Policy<br>• 1.0: Pure On-Policy |
-| `--seq_kd` | bool | False | Use teacher-generated responses (not yet supported) |
 | `--temperature` | float | 0.9 | Temperature for sampling and loss computation |
 | `--sft_alpha` | float | 0 | Mix in a  proportion of SFT loss; applied to non-student-generated completions |
 | `--max_completion_length` | int | 512 | Maximum tokens for generation |
