@@ -9,7 +9,7 @@ from torch.utils.data import Dataset
 from typing import Any, Callable, Dict, Optional, Union
 
 from swift.template import MaxLengthError, Template
-from swift.utils import get_logger
+from swift.utils import get_logger  # noqa
 from .preprocessor import RowPreprocessor
 
 logger = get_logger()
