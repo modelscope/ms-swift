@@ -217,8 +217,12 @@ class GKDTrainer(BaseRayTrainer):
                 if item.get('messages') is not None:
                     item['messages'] = [m.copy() for m in item['messages']]
                 if s.response_token_ids:
+                    loss_mask = s.response_loss_mask or None
                     item['messages'] = replace_assistant_response_with_ids(
-                        item['messages'], s.response_token_ids, non_thinking_prefix_ids=non_thinking_prefix_ids)
+                        item['messages'],
+                        s.response_token_ids,
+                        loss_mask=loss_mask,
+                        non_thinking_prefix_ids=non_thinking_prefix_ids)
                 encoded = template.encode(item, return_length=True)
                 encoded.pop('_extra_kwargs', None)
                 payload = {'encoded': encoded}
@@ -229,9 +233,11 @@ class GKDTrainer(BaseRayTrainer):
                     if teacher_item.get('messages') is not None:
                         teacher_item['messages'] = [m.copy() for m in teacher_item['messages']]
                     if teacher_item.get('response_token_ids'):
+                        teacher_loss_mask = teacher_item.get('response_loss_mask') or None
                         teacher_item['messages'] = replace_assistant_response_with_ids(
                             teacher_item['messages'],
                             teacher_item['response_token_ids'],
+                            loss_mask=teacher_loss_mask,
                             non_thinking_prefix_ids=non_thinking_prefix_ids)
                     teacher_encoded = template.encode(teacher_item, return_length=True)
                     teacher_encoded.pop('_extra_kwargs', None)
@@ -288,7 +294,11 @@ class GKDTrainer(BaseRayTrainer):
 
         For OPSD, ``encoded`` is the teacher-side encoding and ``labels`` are
         its labels; together they let ``extract_active`` mask-align the shared response.
+        For non-OPSD, teacher and student share the same encoding, so we fall
+        back to ``encoded['labels']`` when ``labels`` is not provided.
         """
+        if labels is None:
+            labels = encoded.get('labels')
         lps, ixs = parsed
         input_ids = encoded['input_ids']
         seq_len = len(input_ids) if isinstance(input_ids, list) else input_ids.shape[-1]

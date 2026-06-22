@@ -276,6 +276,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.dynamic_sample:
             samples, rewards_per_func = self._dynamic_sampling(samples, rewards_per_func)
 
+        # Log completions after all filtering so they align with rewards/advantages (issue #9533).
+        self._log_completions_from_samples(samples)
+
         # Gather rollout data across rollout group
         total_samples = gather_object(samples, group=rollout_group)
         mini_batch_data = []

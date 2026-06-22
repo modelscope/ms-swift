@@ -554,11 +554,9 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                     max_turns=self.args.max_turns,
                     gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
                 )
-                self._log_rollout(samples, outputs)
             else:
                 # Single-turn rollout (or server multi-turn handled by the engine).
                 outputs: List[RolloutOutput] = self._rollout(samples)
-                self._log_rollout(samples, outputs)
 
             # Sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
@@ -711,12 +709,28 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 requests_list.append(data.to_infer_request())
         return requests_list
 
-    def _log_rollout(self, samples: List[OnPolicySample], outputs: List[RolloutOutput]) -> None:
-        """Log rollout prompts/completions. Collects into ``_logs`` for periodic flush."""
+    def _log_completions_from_samples(self, samples: List[OnPolicySample]) -> None:
+        """Log prompts/completions from sample messages (post-filtering).
+
+        Unlike ``_log_rollout`` (which needs raw RolloutOutput objects), this
+        method reads completions directly from ``sample.messages[-1]['content']``,
+        so it works after ``_dynamic_sampling`` has filtered / resampled samples.
+        """
         if not self.log_completions:
             return
         messages = gather_object([s.messages for s in samples])
-        completions = gather_object([out.response.choices[0].message.content for out in outputs])
+        completions = []
+        for s in samples:
+            content = s.messages[-1]['content'] if s.messages else ''
+            if isinstance(content, str):
+                completions.append(content)
+            elif isinstance(content, list):
+                completions.append(self.template.safe_decode(content))
+            elif isinstance(content, dict) and 'input_ids' in content:
+                completions.append(self.template.safe_decode(content['input_ids']))
+            else:
+                completions.append(str(content))
+        completions = gather_object(completions)
         self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
         self._logs['completion'].extend(completions)
 

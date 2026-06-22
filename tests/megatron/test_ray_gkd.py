@@ -139,6 +139,48 @@ def test_extract_active_opsd_count_mismatch_raises():
         assert 'OPSD' in str(e) or 'mismatch' in str(e) or 'count' in str(e).lower()
 
 
+def test_extract_active_non_opsd_uses_student_labels():
+    """Non-OPSD: teacher_output.labels is None (Ray GKD non-OPSD path).
+
+    The student label mask should apply to both student and teacher.
+    This is the Critical #1 regression test: before the fix, extract_active
+    crashed with TypeError on ``None != -100``.
+    """
+    V, k = 8, 3
+    # student: length 5, 3 response positions (indices 2,3,4)
+    s_logits = torch.randn(1, 5, V)
+    s_labels = torch.tensor([[-100, -100, 1, 2, 3]])
+    # teacher (non-OPSD): same length, labels=None
+    t = TeacherOutput(
+        topk_logprobs=torch.randn(1, 5, k),
+        topk_indices=torch.zeros((1, 5, k), dtype=torch.long),
+        labels=None,
+    )
+    s_act, t_act, n = extract_active(s_logits, t, s_labels)
+    assert int(n) == 3
+    assert s_act.shape == (3, V)
+    assert t_act.topk_logprobs.shape == (3, k)
+
+
+def test_extract_active_non_opsd_full_logits():
+    """Non-OPSD with full-vocab teacher (no topk): labels=None path.
+
+    Verifies that the student mask is used for both student and teacher
+    when teacher_output.labels is None.
+    """
+    V = 8
+    s_logits = torch.randn(1, 4, V)
+    s_labels = torch.tensor([[-100, 1, 2, 3]])
+    t = TeacherOutput(
+        full_logits=torch.randn(1, 4, V),
+        labels=None,
+    )
+    s_act, t_act, n = extract_active(s_logits, t, s_labels)
+    assert int(n) == 3
+    assert s_act.shape == (3, V)
+    assert t_act.full_logits.shape == (3, V)
+
+
 def test_example_yaml_config_contracts():
     """Config-contract regression for the standardized example yamls.
 

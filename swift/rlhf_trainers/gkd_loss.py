@@ -43,6 +43,7 @@ class TeacherOutput:
             full_logits=self.full_logits[mask] if self.full_logits is not None else None,
             topk_logprobs=self.topk_logprobs[mask] if self.topk_logprobs is not None else None,
             topk_indices=self.topk_indices[mask] if self.topk_indices is not None else None,
+            labels=self.labels[mask] if self.labels is not None else None,
         )
 
     def to_topk(self, k: int, topk_fn=None) -> 'TeacherOutput':
@@ -183,10 +184,17 @@ def extract_active(
     """
     t_labels = teacher_output.labels
     s_mask = labels != -100
-    t_mask = t_labels != -100
-    assert s_mask.sum() == t_mask.sum(), (f'OPSD label count mismatch: student={s_mask.sum().item()}, '
-                                          f'teacher={t_mask.sum().item()}. '
-                                          'Student and teacher must share the same response tokens.')
+    if t_labels is not None:
+        # OPSD: teacher scores a different prompt, so its label mask differs.
+        t_mask = t_labels != -100
+        assert s_mask.sum() == t_mask.sum(), (f'OPSD label count mismatch: student={s_mask.sum().item()}, '
+                                              f'teacher={t_mask.sum().item()}. '
+                                              'Student and teacher must share the same response tokens.')
+    else:
+        # Non-OPSD: teacher uses the same input as the student, so the student
+        # label mask applies to both.  This covers the Ray GKD path where
+        # compute_teacher_logits does not attach labels in non-OPSD mode.
+        t_mask = s_mask
     s_active = student_logits[s_mask]
     t_active = teacher_output.select(t_mask)
     if t_active.is_topk_mode:

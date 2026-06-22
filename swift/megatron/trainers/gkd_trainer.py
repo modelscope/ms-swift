@@ -12,7 +12,7 @@ from transformers import AutoConfig
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
-from swift.infer_engine.protocol import RequestConfig
+from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
 from swift.rl_core.data import GKDSample
@@ -156,22 +156,11 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             template.max_length = original_max_length
 
     def _build_teacher_requests(self, samples: List[GKDSample]):
-        """Build teacher API requests from samples (shared with HF GKD).
-
-        Always produces RolloutInferRequest objects. For OPSD (teacher_messages set),
-        the request's messages are replaced with the teacher view.
-        """
         if not self.use_teacher_api:
             return []
         return build_teacher_requests(samples)
 
     def _encode_samples(self, samples: List[GKDSample]) -> Dict[str, torch.Tensor]:
-        """Encode a batch of GKDSample into collated model inputs.
-
-        Produces teacher_model_inputs (always present; equals student encoding
-        when non-OPSD) alongside student encoding, mirroring HF GKD's
-        _prepare_batch_inputs.
-        """
         template = self.template
         args = self.args
 
@@ -293,7 +282,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return valid_samples[:required_count]
 
-    def _fetch_teacher_parsed_logprobs(self, requests):
+    def _fetch_teacher_parsed_logprobs(self, requests: List[RolloutInferRequest]):
         """Fetch teacher logprobs from the teacher API server.
 
         Args:
@@ -413,6 +402,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             local_batch = self._get_local_rollout_batch(samples)
             local_batch = self._generate_completions(local_batch)
             samples = self._gather_rollout_results(local_batch)
+            self._log_completions_from_samples(samples)
         elif data_source == DataSource.TEACHER:
             logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
                                 'Falling back to dataset responses.')

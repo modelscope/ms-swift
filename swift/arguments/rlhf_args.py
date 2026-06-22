@@ -215,7 +215,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         sft_alpha (float): The weight for the SFT loss component in GKD. The final loss is calculated as
             gkd_loss + sft_alpha * sft_loss`. Defaults to 0.
         lmbda (float): The lambda parameter for GKD, balancing policy and value losses. Defaults to 0.5.
-        seq_kd (bool): Whether to use sequence-level knowledge distillation for GKD. Defaults to False.
+        seq_kd (bool): Deprecated. Sequential KD (teacher-generated responses) is not implemented.
         gkd_logits_topk (Optional[int]): The number of top-k logits to use for KL divergence computation in GKD.
             If None, uses full vocabulary for KL computation (more accurate but memory-intensive).
             If set to a positive integer, only top-k teacher logits are used (more efficient).
@@ -257,7 +257,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     # GKD
     sft_alpha: float = 0
     lmbda: float = 0.5
-    seq_kd: bool = False
+    seq_kd: bool = False  # Deprecated
     gkd_logits_topk: Optional[int] = None
     offload_teacher_model: bool = False
     # compat
