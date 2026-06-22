@@ -69,7 +69,7 @@ class TemplateMeta:
 
     @staticmethod
     def _replace_system(prefix: Prompt) -> Prompt:
-        return [p.replace('{{SYSTEM}}', '') for p in prefix if isinstance(p, str)]
+        return [p.replace('{{SYSTEM}}', '') if isinstance(p, str) else p for p in prefix]
 
     def _check_template_meta(self):
         # check
