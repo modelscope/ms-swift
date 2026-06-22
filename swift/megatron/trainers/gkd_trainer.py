@@ -316,11 +316,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return parsed_global[dp_rank * n:(dp_rank + 1) * n]
 
     def _assemble_teacher_outputs(self, encoded_batches: List[Dict]) -> None:
-        """Build TeacherOutput from `_teacher_parsed` for each micro-batch.
-
-        Uses teacher_model_inputs (always present; equals student encoding when non-OPSD)
-        for shape alignment and teacher labels.
-        """
         for encoded_batch in encoded_batches:
             parsed = encoded_batch.pop('_teacher_parsed')
             teacher_model_inputs = encoded_batch['teacher_model_inputs']
@@ -331,6 +326,8 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 template_padding_free=self.template.padding_free,
                 device=self.device,
             )
+            if teacher_out.labels is not None:
+                teacher_out.labels = torch.roll(teacher_out.labels, shifts=-1, dims=-1)
             encoded_batch['teacher_output'] = teacher_out
 
     def _compute_teacher_logits(self, encoded_batches: List[Dict], vp_stage: Optional[int] = None) -> None:
