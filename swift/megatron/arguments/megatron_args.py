@@ -234,14 +234,9 @@ class RLHFMegatronArgumentsMixin:
                     # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
                     pass
 
-            # Self-distillation: no teacher_model → use base model (disable_adapter) as teacher
+            # Self-distillation: no teacher_model → dynamic teacher (current student weights)
             if self.teacher_model is None and self.teacher_model_server is None:
-                if self.tuner_type == 'lora':
-                    logger.info('No teacher_model specified. Using self-distillation mode '
-                                '(teacher = base model via disable_adapter).')
-                    self._teacher_use_disable_adapter = True
-                else:
-                    logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
+                logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
 
             # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
             if self.teacher_model_server is not None:

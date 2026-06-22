@@ -96,8 +96,6 @@ class MegatronRayPipeline:
     def _build_dataset(self) -> Dict[str, Any]:
         cfg = dict(self.shared_cfg)
         data_info = build_dataset_from_dict(cfg)
-        train_cfg = self.group_cfgs.get('train', {})
-        data_info['tuner_type'] = train_cfg.get('tuner_type', 'full')
         return data_info
 
     def _compute_train_iters(self):
