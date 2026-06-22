@@ -137,11 +137,14 @@ class BaseMegatronTrainer(ABC):
         if config.num_moe_experts is not None:
             moe_loss_scale = 1 / args.num_microbatches / n_steps
             track_names = []
-            if config.moe_router_load_balancing_type == 'aux_loss':
+            load_balancing_type = config.moe_router_load_balancing_type
+            if isinstance(load_balancing_type, str):
+                load_balancing_type = [load_balancing_type]
+            if 'aux_loss' in load_balancing_type:
                 track_names.append('load_balancing_loss')
-            elif config.moe_router_load_balancing_type == 'seq_aux_loss':
+            if 'seq_aux_loss' in load_balancing_type:
                 track_names.append('seq_load_balancing_loss')
-            elif config.moe_router_load_balancing_type == 'global_aux_loss':
+            if 'global_aux_loss' in load_balancing_type:
                 track_names.append('global_load_balancing_loss')
             if config.moe_z_loss_coeff is not None:
                 track_names.append('z_loss')
