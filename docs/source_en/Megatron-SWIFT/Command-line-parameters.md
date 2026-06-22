@@ -109,6 +109,7 @@
 - muon_num_ns_steps: Number of Newton-Schulz steps for the Muon optimizer. Default is 5.
 - muon_tp_mode: NS calculation method for tensor model parallel weights. Options include 'blockwise', 'duplicated', and 'distributed'. Default is 'blockwise'.
 - muon_extra_scale_factor: Additional scale factor for Muon updates. Default is 1.
+- muon_scalar_optimizer: Optimizer for nonlinear parameters (embeddings, biases, norms) when using Muon. Options are 'adam' or 'lion'. Default is 'adam'.
 
 **Checkpoint Parameters**:
 
