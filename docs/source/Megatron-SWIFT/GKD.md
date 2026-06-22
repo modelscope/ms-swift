@@ -37,7 +37,7 @@ Megatron GKD 当前已支持以下功能：
 | 参数 | 说明 |
 |------|------|
 | `--micro_batch_size` | 每个DP组的训练批次大小 |
-| `--global_batch_size` | 全局批次大小：`micro_batch_size × dp_size × gradient_accumulation_steps` |s
+| `--global_batch_size` | 全局批次大小：`micro_batch_size × dp_size × gradient_accumulation_steps` |
 
 ## 参考
 
