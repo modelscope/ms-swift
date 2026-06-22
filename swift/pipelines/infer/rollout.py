@@ -42,11 +42,11 @@ from swift.infer_engine.protocol import (InitCommunicatorRequest, RequestConfig,
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        FlattenedTensorMetadata, TensorLoRARequest, UpdateAdapterRequest,
                                        UpdateFlattenedAdapterRequest, UpdateFlattenedParamsRequest,
-                                       check_vllm_version_ge, chunk_list, finish_vllm_weight_reload,
-                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader,
-                                       vllm_supports_lora_load_inplace)
+                                       broadcast_tensor_for_vllm_weight_sync, check_vllm_version_ge, chunk_list,
+                                       finish_vllm_weight_reload, patch_vllm_load_adapter,
+                                       patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
-from swift.utils import (gc_collect, get_logger, get_seed, get_torch_device, ipc_collect, is_vllm_ascend_available,
+from swift.utils import (gc_collect, get_logger, get_seed, ipc_collect, is_vllm_ascend_available,
                          is_vllm_metax_available, synchronize)
 from ..base import SwiftPipeline
 
@@ -100,6 +100,13 @@ def _set_death_signal():
     libc.prctl(1, signal.SIGKILL)
     if os.getppid() == 1:
         os.kill(os.getpid(), signal.SIGKILL)
+
+
+def _patch_full_weight_reload_loader(model) -> None:
+    if is_vllm_ascend_available():
+        from swift.model.npu_patch.vllm_ascend_moe import configure_vllm_ascend_moe_preprocessed_weight_sync
+        configure_vllm_ascend_moe_preprocessed_weight_sync(model)
+    patch_vllm_moe_model_weight_loader(model)
 
 
 class WeightSyncWorkerExtension:
@@ -181,13 +188,14 @@ class WeightSyncWorkerExtension:
         weight = torch.empty(shape, dtype=dtype, device=self.communicator.device)
 
         # Use NCCL to broadcast the updated weights from the client (src) to all workers.
-        self.communicator.broadcast(
-            weight, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        broadcast_tensor_for_vllm_weight_sync(self.communicator, weight, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
-        # Patch MoE weight_loader if needed
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+        # Patch MoE weight_loader if needed. This endpoint updates base weights
+        # one by one, so use the same full-reload layout setup as flattened
+        # base-weight sync before the final post-load processing request.
+        _patch_full_weight_reload_loader(self.model_runner.model)
 
         # Load the received weights into the model.
         self.model_runner.model.load_weights(weights=[(name, weight)])
@@ -202,8 +210,7 @@ class WeightSyncWorkerExtension:
 
         total_bytes = metadatas[-1].end_idx
         flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
-        self.communicator.broadcast(
-            flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        broadcast_tensor_for_vllm_weight_sync(self.communicator, flatten_tensor, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
@@ -241,8 +248,7 @@ class WeightSyncWorkerExtension:
             dtype = getattr(torch, metadata['dtype'].split('.')[-1])
             shape = tuple(metadata['shape'])
             tensor = torch.empty(shape, dtype=dtype, device=self.communicator.device)
-            self.communicator.broadcast(
-                tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+            broadcast_tensor_for_vllm_weight_sync(self.communicator, tensor, src=self.client_rank)
             named_params[name] = tensor
 
         synchronize()
@@ -276,14 +282,13 @@ class WeightSyncWorkerExtension:
         total_bytes = metadatas[-1].end_idx
         flatten_tensor = torch.empty(total_bytes, dtype=torch.uint8, device=self.communicator.device)
 
-        self.communicator.broadcast(
-            flatten_tensor, src=self.client_rank, stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+        broadcast_tensor_for_vllm_weight_sync(self.communicator, flatten_tensor, src=self.client_rank)
         synchronize()
         self.communicator.group.barrier()
 
         named_params = FlattenedTensorBucket(metadata=metadatas, flattened_tensor=flatten_tensor).reconstruct_tensors()
 
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+        _patch_full_weight_reload_loader(self.model_runner.model)
         self.model_runner.model.load_weights(weights=list(named_params.items()))
 
     def process_weights_after_loading(self) -> None:
@@ -474,7 +479,8 @@ class WeightSyncWorkerExtension:
         is_lora_sync = (peft_config is not None and base_sync_done)
         all_lora_weights: Dict[str, Any] = {} if is_lora_sync else None
 
-        patch_vllm_moe_model_weight_loader(self.model_runner.model)
+        if not is_lora_sync:
+            _patch_full_weight_reload_loader(self.model_runner.model)
 
         while True:
             metadata = socket.recv_pyobj() if is_driver else None
