@@ -9,6 +9,7 @@ import torch
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.rl_core.data import GKDSample
+from swift.template.base import Template
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger
 from .gkd_loss import TeacherOutput
 from .utils import (assemble_teacher_topk_logprobs, encode_sample, get_non_thinking_prefix_ids,
@@ -17,9 +18,37 @@ from .utils import (assemble_teacher_topk_logprobs, encode_sample, get_non_think
 logger = get_logger()
 
 
+def encode_teacher_view(
+    sample: GKDSample,
+    template: Template,
+    *,
+    non_thinking_prefix_ids: Optional[List[int]] = None,
+) -> Dict[str, Any]:
+    """Encode the OPSD teacher view (teacher_prompt + the shared on-policy response).
+
+    Does NOT mutate ``sample.teacher_messages`` — works on copied message dicts
+    so the sample's teacher view can be re-encoded across steps_per_generation.
+    Caller must have invoked ``sample.build_teacher_view()`` first.
+    """
+    teacher_row = sample.to_teacher_template_dict()
+    msgs = teacher_row.get('messages')
+    if msgs is not None:
+        teacher_row['messages'] = [m.copy() for m in msgs]
+    if teacher_row.get('response_token_ids'):
+        loss_mask = teacher_row.get('response_loss_mask') or None
+        teacher_row['messages'] = replace_assistant_response_with_ids(
+            teacher_row['messages'],
+            teacher_row['response_token_ids'],
+            loss_mask=loss_mask,
+            non_thinking_prefix_ids=non_thinking_prefix_ids)
+    teacher_encoded = template.encode(teacher_row, return_length=True)
+    teacher_encoded.pop('_extra_kwargs', None)
+    return teacher_encoded
+
+
 def encode_gkd_samples(
     samples: List[GKDSample],
-    template: Any,
+    template: Template,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], bool]:
     """Encode student and (OPSD) teacher views for a list of GKDSample objects.
 
@@ -43,15 +72,7 @@ def encode_gkd_samples(
         student_encoded_list.append(encoded)
 
         if has_opsd:
-            teacher_row = s.to_teacher_template_dict()
-            if teacher_row.get('response_token_ids'):
-                teacher_row = {**teacher_row}
-                teacher_row['messages'] = replace_assistant_response_with_ids(
-                    teacher_row['messages'],
-                    teacher_row['response_token_ids'],
-                    non_thinking_prefix_ids=non_thinking_prefix_ids)
-            teacher_encoded = template.encode(teacher_row, return_length=True)
-            teacher_encoded.pop('_extra_kwargs', None)
+            teacher_encoded = encode_teacher_view(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
             teacher_encoded_list.append(teacher_encoded)
         else:
             teacher_encoded_list.append(encoded.copy())
@@ -126,5 +147,5 @@ def assemble_teacher_output(
 
     teacher_out = TeacherOutput(topk_logprobs=topk_logprobs, topk_indices=topk_indices)
     if 'labels' in teacher_model_inputs:
-        teacher_out.labels = torch.roll(teacher_model_inputs['labels'], shifts=-1, dims=-1)
+        teacher_out.labels = teacher_model_inputs['labels']
     return teacher_out

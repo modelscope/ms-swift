@@ -15,7 +15,7 @@ class DataSource(str, Enum):
     """Data source for GKD training."""
     DATASET = 'dataset'
     STUDENT = 'student'
-    TEACHER = 'teacher'
+    TEACHER = 'teacher'  # deprecated, pre-sample before training
 
 
 @dataclass
@@ -185,15 +185,16 @@ def extract_active(
     t_labels = teacher_output.labels
     s_mask = labels != -100
     if t_labels is not None:
-        # OPSD: teacher scores a different prompt, so its label mask differs.
+        # Teacher labels are always set (equals student labels when non-OPSD).
+        # OPSD: teacher scores a different prompt, so its label mask differs in
+        # position but must have the same count of valid response tokens.
+        # Non-OPSD: teacher labels == student labels, so masks are identical.
         t_mask = t_labels != -100
-        assert s_mask.sum() == t_mask.sum(), (f'OPSD label count mismatch: student={s_mask.sum().item()}, '
+        assert s_mask.sum() == t_mask.sum(), (f'Label count mismatch: student={s_mask.sum().item()}, '
                                               f'teacher={t_mask.sum().item()}. '
                                               'Student and teacher must share the same response tokens.')
     else:
-        # Non-OPSD: teacher uses the same input as the student, so the student
-        # label mask applies to both.  This covers the Ray GKD path where
-        # compute_teacher_logits does not attach labels in non-OPSD mode.
+        # Fallback for PP non-last stage placeholders (TeacherOutput() with all None).
         t_mask = s_mask
     s_active = student_logits[s_mask]
     t_active = teacher_output.select(t_mask)

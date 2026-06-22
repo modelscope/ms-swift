@@ -14,7 +14,7 @@ import time
 import torch
 import uuid
 from accelerate.utils import broadcast_object_list
-from collections import OrderedDict, deque
+from collections import OrderedDict, defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import copy
 from dacite import from_dict
@@ -756,8 +756,12 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
         table = self._build_log_table()
         self.jsonl_writer.append(table)
-        self._logs['prompt'].clear()
-        self._logs['completion'].clear()
+        for val in self._logs.values():
+            if isinstance(val, deque):
+                val.clear()
+            elif isinstance(val, defaultdict):
+                for d in val.values():
+                    d.clear()
 
         args = self.args
         if 'wandb' in args.report_to:

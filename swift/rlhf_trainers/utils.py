@@ -698,12 +698,21 @@ def encode_sample(sample: OnPolicySample,
                   *,
                   non_thinking_prefix_ids: Optional[List[int]] = None,
                   encode_prompt_only: bool = False) -> Dict[str, Any]:
+    """Encode a sample into a template.encode output dict.
+
+    Does NOT mutate ``sample.messages`` — works on a copy from
+    ``to_template_dict()`` so the sample's original messages are preserved
+    for logging / reward computation / reuse across steps_per_generation.
+    """
+    data = sample.to_template_dict()
     if sample.response_token_ids:
         loss_mask = sample.response_loss_mask or None
-        sample.messages = replace_assistant_response_with_ids(
-            sample.messages, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=non_thinking_prefix_ids)
+        msgs = data.get('messages')
+        if msgs is not None:
+            msgs = [m.copy() for m in msgs]
+        data['messages'] = replace_assistant_response_with_ids(
+            msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=non_thinking_prefix_ids)
 
-    data = sample.to_template_dict()
     if encode_prompt_only:
         messages = data.get('messages', [])
         if messages and messages[-1].get('role') == 'assistant':

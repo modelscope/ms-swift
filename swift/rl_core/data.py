@@ -175,6 +175,11 @@ class OnPolicySample:
         self.finish_reason = choice.finish_reason
         self.add_eos = False
 
+        # R3 router replay: transfer routed_experts from the rollout choice
+        routed_experts = getattr(choice, 'routed_experts', None)
+        if routed_experts is not None:
+            self.routed_experts = routed_experts
+
         # rollout_infos may carry scheduler-overridden multi-modal data
         if rollout_output.rollout_infos:
             self.rollout_infos = rollout_output.rollout_infos

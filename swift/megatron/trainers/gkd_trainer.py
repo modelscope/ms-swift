@@ -400,9 +400,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             local_batch = self._generate_completions(local_batch)
             samples = self._gather_rollout_results(local_batch)
             self._log_completions_from_samples(samples)
-        elif data_source == DataSource.TEACHER:
-            logger.warning_once('Teacher mode triggered but teacher generation is not implemented in Megatron GKD yet. '
-                                'Falling back to dataset responses.')
 
         # Teacher API: build requests from samples, fetch logprobs
         local_parsed = None
