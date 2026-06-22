@@ -983,8 +983,11 @@ class BaseMegatronTrainer(ABC):
         pass
 
     def _should_use_npu_generated_attention_mask(self, args) -> bool:
-        return (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
-                and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False))
+        if not (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
+                and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False)):
+            return False
+        gdn_model_types = {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}
+        return getattr(args, 'model_type', None) in gdn_model_types
 
     def _prepare_batch(self, data, vp_stage=None):
         return prepare_batch(self.args, data, vp_stage=vp_stage)
