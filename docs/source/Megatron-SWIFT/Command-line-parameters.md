@@ -215,6 +215,7 @@
 **DSA参数**
 - dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为`0.`。
 - dsa_indexer_use_sparse_loss: 是否使用稀疏 DSA 索引器损失。如果为 True，索引器损失将使用 top-k 索引进行计算。默认为False。
+- apply_dsa_kernel_fusion: 是否启用融合 DSA 稀疏注意力内核（FlashMLA + cuDNN DSA）。设为 False 将回退到未融合的 PyTorch 实现。需要安装 flash_mla 和 nvidia-cudnn-frontend >= 1.24.0。默认为False。
 
 **Deepseek-V4**
 - csa_dense_mode: 是否对压缩稀疏注意力使用密集模式。若为 `True`，CSA 索引器将被禁用。默认为False。
