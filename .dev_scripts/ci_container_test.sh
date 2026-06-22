@@ -50,6 +50,7 @@ nvidia-nvtx-cu12<0
 EOF
     fi
     export PIP_CONSTRAINT="$NPU_CONSTRAINT_FILE"
+    export UV_CONSTRAINT="$NPU_CONSTRAINT_FILE"
     echo "Using NPU pip constraints: $PIP_CONSTRAINT"
     cat "$PIP_CONSTRAINT"
 }
@@ -171,61 +172,61 @@ PY
 
 if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
     if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        pip install uv -i https://mirrors.aliyun.com/pypi/simple/
         setup_npu_pip_constraints
-    fi
-
-    # pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
-    pip install -r requirements/tests.txt -i https://mirrors.aliyun.com/pypi/simple/
-    git config --global --add safe.directory /ms-swift
-    git config --global user.email tmp
-    git config --global user.name tmp.com
-
-    # linter test
-    # use internal project for pre-commit due to the network problem
-    if [ `git remote -v | grep alibaba  | wc -l` -gt 1 ]; then
-        pre-commit run -c .pre-commit-config_local.yaml --all-files
-        if [ $? -ne 0 ]; then
-            echo "linter test failed, please run 'pre-commit run --all-files' to check"
-            echo "From the repository folder"
-            echo "Run 'pip install -r requirements/tests.txt' install test dependencies."
-            echo "Run 'pre-commit install' install pre-commit hooks."
-            echo "Finally run linter with command: 'pre-commit run --all-files' to check."
-            echo "Ensure there is no failure!!!!!!!!"
-            exit -1
+        ensure_npu_runtime
+        uv pip install -r requirements/tests.txt
+        git config --global --add safe.directory /ms-swift
+        git config --global user.email tmp
+        git config --global user.name tmp.com
+        # linter test
+        if [ `git remote -v | grep alibaba  | wc -l` -gt 1 ]; then
+            pre-commit run -c .pre-commit-config_local.yaml --all-files
+            if [ $? -ne 0 ]; then
+                echo "linter test failed"
+                exit -1
+            fi
         fi
-    fi
-
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
         ensure_npu_runtime
-    fi
-    pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        uv pip install -r requirements/framework.txt -U "transformers<5.0" "peft<0.19" "modelscope==1.37.0"
         ensure_npu_runtime
-    fi
-    pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
-    pip uninstall autoawq -y
-    pip install optimum
-    pip install diffusers
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
-        pip install math-verify -i "$NPU_PIP_INDEX"
-        pip install ray -i "$NPU_PIP_INDEX"
-        pip install msgspec -i "$NPU_PIP_INDEX"
-        pip install zmq -i "$NPU_PIP_INDEX"
-    fi
-    pip install "transformers<5.0" "peft<0.19"
-    # pip install autoawq -U --no-deps
-
-    # test with install
-    pip install .
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        uv pip install decord einops -U
+        uv pip uninstall autoawq
+        uv pip install optimum
+        uv pip install diffusers
+        uv pip install math-verify -i "$NPU_PIP_INDEX"
+        uv pip install ray -i "$NPU_PIP_INDEX"
+        uv pip install msgspec -i "$NPU_PIP_INDEX"
+        uv pip install zmq -i "$NPU_PIP_INDEX"
+        uv pip install .
         echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
-        pip install bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
-    else
-        pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
-    fi
-    if [ "$SWIFT_CI_USE_NPU" == "True" ]; then
+        uv pip install bitsandbytes deepspeed -U
+        if [ -f requirements/npu.txt ]; then
+            uv pip install -r requirements/npu.txt
+        fi
         ensure_npu_runtime
         report_npu_runtime
+    else
+        pip install -r requirements/tests.txt -i https://mirrors.aliyun.com/pypi/simple/
+        git config --global --add safe.directory /ms-swift
+        git config --global user.email tmp
+        git config --global user.name tmp.com
+        # linter test
+        if [ `git remote -v | grep alibaba  | wc -l` -gt 1 ]; then
+            pre-commit run -c .pre-commit-config_local.yaml --all-files
+            if [ $? -ne 0 ]; then
+                echo "linter test failed"
+                exit -1
+            fi
+        fi
+        pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
+        pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
+        pip uninstall autoawq -y
+        pip install optimum
+        pip install diffusers
+        pip install "transformers<5.0" "peft<0.19"
+        pip install .
+        pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
     fi
 else
     echo "Running case in release image, run case directly!"
