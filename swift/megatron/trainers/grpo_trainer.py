@@ -423,7 +423,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                         request_config: RequestConfig,
                         is_global_inputs: bool = False) -> List[RolloutOutput]:
         # TODO: async generate
-        infer_requests = self.inputs2requests(inputs)
+        infer_requests = self.samples2requests(inputs)
 
         if is_global_inputs:
             per_device_size = len(infer_requests) // self.world_size
@@ -1094,27 +1094,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             self._flush_log_completions()
 
         return loss, reporting_metric
-
-    def inputs2requests(self, inputs: Union[List[GRPOSample], List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
-        """Convert samples into RolloutInferRequest objects.
-
-        Already-built ``RolloutInferRequest`` (multi-turn continuation) pass through
-        unchanged. Dataset passthrough columns (``extra``) are forwarded via
-        ``data_dict`` when running server mode with ``vllm_server_pass_dataset`` or
-        under a multi-turn scheduler (mirrors HF ``samples2requests``). The per-sample
-        mapping lives in ``OnPolicySample.to_infer_request``.
-        """
-        if not inputs:
-            return []
-        include_extra = bool(getattr(self.args, 'vllm_server_pass_dataset', False)) or bool(
-            getattr(self, 'multi_turn_scheduler', None))
-        requests_list = []
-        for data in inputs:
-            if isinstance(data, RolloutInferRequest):
-                requests_list.append(data)
-            else:
-                requests_list.append(data.to_infer_request(include_extra=include_extra))
-        return requests_list
 
     @profiling_decorator
     def resample_encode_failed_inputs(self, inputs: DataType, max_resample_rounds: int = 10) -> DataType:

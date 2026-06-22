@@ -227,9 +227,6 @@ class OnPolicySample:
                 pass
 
         if include_extra and self.extra:
-            # Forward dataset passthrough columns via data_dict. A nested
-            # ``data_dict`` column (if present) takes precedence on key clash,
-            # mirroring the legacy samples2requests merge semantics.
             base_data_dict = self.extra.get('data_dict')
             if base_data_dict is not None and not isinstance(base_data_dict, dict):
                 raise ValueError('data_dict exists but is not a dictionary')

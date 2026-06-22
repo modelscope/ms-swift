@@ -947,13 +947,6 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                                     samples: List[OnPolicySample],
                                     request_config: RequestConfig,
                                     is_global_inputs: bool = False) -> List[OnPolicySample]:
-        """Run inference for single-turn or multi-turn dialogue.
-
-        ``samples`` are per-sample objects that flow through the whole rollout
-        path. They are converted to ``RolloutInferRequest`` only at the engine
-        boundary (``samples2requests``); outputs are merged back onto the samples
-        via ``apply_rollout_output``.
-        """
         rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
 
         if not self.multi_turn_scheduler or self.enable_server_multi_turn:

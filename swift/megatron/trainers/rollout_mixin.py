@@ -541,7 +541,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
 
             if colocate_multi_turn:
-                requests = self._inputs_to_requests(samples)
+                requests = self.samples2requests(samples)
                 invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
                 request_config = self._get_request_config()
                 outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
@@ -606,7 +606,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
     def _server_rollout(self, samples: Union[List[OnPolicySample], List[RolloutInferRequest]],
                         request_config: RequestConfig) -> List[RolloutOutput]:
         """Perform rollout using vLLM server mode."""
-        infer_requests = self._inputs_to_requests(samples)
+        infer_requests = self.samples2requests(samples)
 
         all_requests = gather_object(infer_requests)
         all_requests_lengths = gather_object([len(infer_requests)])
@@ -639,7 +639,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         """Perform co-located rollout with vLLM engine."""
         # Normalize samples (first turn) / RolloutInferRequest (continuation turns)
         # into engine-ready requests.
-        samples = self._inputs_to_requests(samples)
+        samples = self.samples2requests(samples)
         start_idx = 0
         end_idx = len(samples)
 
@@ -691,8 +691,8 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
             remove_response(s.messages)
         return samples
 
-    def _inputs_to_requests(
-            self, samples: Union[List[OnPolicySample], List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
+    def samples2requests(self, samples: Union[List[OnPolicySample],
+                                              List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
         """Convert samples into RolloutInferRequest objects.
 
         Already-built ``RolloutInferRequest`` (multi-turn continuation) pass
