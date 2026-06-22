@@ -16,13 +16,14 @@ from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_
 from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
+from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, get_non_thinking_prefix_ids,
                                        make_reward_weights, pad_logps_back_to_batch, profiling_context,
                                        profiling_decorator, resolve_reward_funcs)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template
-from swift.utils import get_logger, remove_response
+from swift.utils import get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, reconstruct_tensor_cp
@@ -1136,41 +1137,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Raises:
             RuntimeError: If we cannot collect enough valid samples after max_resample_rounds.
         """
-        template = self.template
-        required_count = len(inputs)
-        valid_samples = []
-
-        pending_samples = list(inputs)
-        for _ in range(max_resample_rounds + 1):
-            # Calculate how many more samples we need
-            still_needed = required_count - len(valid_samples)
-            if still_needed <= 0:
-                break
-
-            # Ensure pending_samples has enough samples to try
-            while len(pending_samples) < still_needed:
-                # Fetch a new batch of samples (micro_batch_size samples)
-                pending_samples.extend(next(self.resample_data_iterator))
-
-            # Try to encode samples from pending_samples until we have enough valid ones
-            while pending_samples and len(valid_samples) < required_count:
-                data = pending_samples.pop(0)
-                try:
-                    remove_response(data['messages'])
-                    template.encode(data)
-                    # Encoding succeeded, add to valid samples
-                    valid_samples.append(data)
-                except Exception as e:
-                    # Encoding failed, skip this sample
-                    logger.info(f'Encoding failed for one sample; will resample. {e}')
-
-        if len(valid_samples) < required_count:
-            raise RuntimeError(
-                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
-                f'Only collected {len(valid_samples)} valid samples. '
-                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
-
-        return valid_samples[:required_count]
+        return resample_encode_failed_inputs(
+            self.template,
+            self.resample_data_iterator,
+            inputs,
+            max_resample_rounds=max_resample_rounds,
+            strip_response=True,
+        )
 
     def get_num_iters_per_step(self):
         mode = 'train' if self.unwrapped_models[0].training else 'eval'

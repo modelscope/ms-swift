@@ -3,15 +3,30 @@ from __future__ import annotations
 
 import os
 import torch
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from swift.rl_core.data import GRPOBatch
-from swift.utils import gc_collect, get_current_device, get_logger, to_device
+from swift.utils import gc_collect, get_current_device, get_logger
 from .checkpoint_engine import CheckpointEngineMixin
-from .inference_utils import split_micro_batches
 from .worker_group import dispatch_collect
 
+if TYPE_CHECKING:
+    from swift.rlhf_trainers.gkd_loss import TeacherOutput
+
 logger = get_logger()
+
+# --- worker-side data-flow types ------------------------------------------
+# Since collation moved to the driver, the worker consumes already-collated
+# micro-batches and returns per-sample logps:
+#
+# ModelInputs: a collated micro-batch (driver-side ``collate_to_grpo_micro_batch``)
+#   fed to ``model(**model_inputs)``. Carries the model-forward tensors plus
+#   ``grpo_batch`` (GRPOBatch) and optional ``teacher_output`` / ``teacher_model_inputs``
+#   / ``data_source``.
+# LogpsRow: one per-sample logps result returned worker→driver (collected via
+#   ``collect='dp_flat'``), e.g. ``{'per_token_logps': ..., 'completion_mask': ...}``.
+ModelInputs = Dict[str, Any]
+LogpsRow = Dict[str, torch.Tensor]
 
 
 def _import_class(dotted_path: str):
@@ -106,14 +121,16 @@ class MegatronWorker(CheckpointEngineMixin):
         if getattr(self._args, 'offload_teacher_model', False):
             self.teacher.offload_to_cpu()
 
-    @dispatch_collect(dispatch='dp_split', collect='dp_flat')
-    def compute_teacher_logits(self, batch) -> None:
-        """Forward the teacher and cache per-sample TeacherOutput locally on this worker.
+    @dispatch_collect(dispatch='dp', collect='first')
+    def compute_teacher_logits(self, micro_batches: List[ModelInputs]) -> None:
+        """Forward the teacher on each driver-collated micro-batch's ``teacher_model_inputs``
+        and cache one batched ``TeacherOutput`` per micro-batch (worker-local).
 
-        Core logic lives in GKDLoss.compute_teacher_logits. The result is ALWAYS cached
-        worker-local (never returned to the driver): for context parallel each rank must
-        inject its own sequence shard at train_step via _inject_cached_teacher_logits.
+        Cached (never returned to the driver): for context parallel each rank forwards its
+        own sequence shard, so the cache is already the correct local slice. ``train_step``
+        attaches it to the matching micro-batch (same dispatch dict ⇒ same order).
         """
+        teacher_inputs = [mi['teacher_model_inputs'] for mi in micro_batches]
         if getattr(self._args, '_teacher_use_disable_adapter', False):
             # Self-distillation (LoRA): teacher = student base model with the LoRA adapter
             # disabled — no separate teacher loaded.
@@ -122,13 +139,13 @@ class MegatronWorker(CheckpointEngineMixin):
             with ExitStack() as stack:
                 for m in megatron.peft_models:
                     stack.enter_context(m.disable_adapter())
-                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(megatron.unwrapped_models[0], batch,
-                                                                                   self._pipeline.template, self._args)
+                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(megatron.unwrapped_models[0],
+                                                                                   teacher_inputs, self._args)
         else:
             assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
             with self.teacher.loaded_context():
-                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(self.teacher.models[0], batch,
-                                                                                   self._pipeline.template, self._args)
+                self._cached_teacher_logits = self._loss_fn.compute_teacher_logits(self.teacher.models[0],
+                                                                                   teacher_inputs, self._args)
         gc_collect()
 
     def get_parallel_info(self) -> Dict[str, Any]:
@@ -167,14 +184,38 @@ class MegatronWorker(CheckpointEngineMixin):
             'iteration': megatron.state.iteration,
         }
 
-    @dispatch_collect(dispatch='dp_split', collect='all')
-    def train_step(self, batch, extra_metrics=None) -> Dict[str, Any]:
+    @dispatch_collect(dispatch='dp', collect='all')
+    def train_step(self,
+                   micro_batches: List[ModelInputs],
+                   extra_metrics: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        from swift.utils import to_device
         megatron = self._megatron
         args = megatron.args
-        assert isinstance(batch, list), f'train_step expects List[Dict], got {type(batch).__name__}'
-        self._inject_cached_teacher_logits(batch)
+        assert isinstance(micro_batches, list), \
+            f'train_step expects List[ModelInputs], got {type(micro_batches).__name__}'
         self._inject_extra_metrics(extra_metrics)
-        micro_batches = self._build_local_micro_batches(batch)
+        # GKD colocated teacher: attach the per-micro-batch TeacherOutput cached by
+        # compute_teacher_logits (worker-local, already CP-correct), aligned by order.
+        cached_teacher = getattr(self, '_cached_teacher_logits', None)
+        if cached_teacher is not None:
+            for mi, t_out in zip(micro_batches, cached_teacher):
+                if t_out is not None:
+                    mi['teacher_output'] = t_out
+            self._cached_teacher_logits = None
+        # Driver-side collate produces CPU tensors; move each micro-batch to the GPU.
+        device = get_current_device()
+        moved: List[ModelInputs] = []
+        for mi in micro_batches:
+            mi.pop('teacher_model_inputs', None)  # consumed by compute_teacher_logits
+            grpo_batch = mi.pop('grpo_batch', None)
+            teacher_output = mi.pop('teacher_output', None)  # GPU (cache) or CPU (replicas)
+            mi = to_device(mi, device)
+            if grpo_batch is not None:
+                mi['grpo_batch'] = grpo_batch.to_device(device)
+            if teacher_output is not None:
+                mi['teacher_output'] = teacher_output.to_device(device)
+            moved.append(mi)
+        micro_batches = moved
         data_iterator = iter(micro_batches)
         assert len(micro_batches) == args.num_microbatches, (
             f'Worker got {len(micro_batches)} micro-batches but args.num_microbatches='
@@ -198,25 +239,6 @@ class MegatronWorker(CheckpointEngineMixin):
         del data_iterator
         gc_collect()
         return self._extract_step_metrics(megatron)
-
-    def _inject_cached_teacher_logits(self, batch: list) -> None:
-        """Inject worker-local cached teacher outputs into samples.
-
-        The colocated teacher always caches its per-sample ``TeacherOutput``
-        (top-k or full-vocab) on the worker's own GPU and returns an empty list
-        to the driver — avoiding a driver round-trip. This is REQUIRED for
-        context parallel (CP): each CP rank computes and keeps its own sequence
-        shard, so injecting the local shard keeps teacher/student CP slices
-        aligned (a driver round-trip would only collect the cp-rank-0 shard and
-        broadcast it to all ranks, corrupting the alignment).
-        """
-        cached = getattr(self, '_cached_teacher_logits', None)
-        if not cached:
-            return
-        for sample, t_out in zip(batch, cached):
-            if t_out is not None:
-                sample['teacher_output'] = t_out
-        self._cached_teacher_logits = None
 
     def _inject_extra_metrics(self, extra_metrics) -> None:
         """Inject driver-computed metrics (reward, MathAccuracy, data_source, ...) into
@@ -263,88 +285,43 @@ class MegatronWorker(CheckpointEngineMixin):
             result['lr'] = result.pop('learning_rate')
         return result
 
-    @dispatch_collect(dispatch='dp_split', collect='dp_flat')
-    def compute_logps(self, batch) -> Any:
+    @dispatch_collect(dispatch='dp', collect='dp_flat')
+    def compute_logps(self, micro_batches: List[ModelInputs]) -> List[LogpsRow]:
         """Compute per-token logps under the current policy model.
 
-        Receives a local sample shard from DP dispatch and performs
-        collate locally before logp computation.
+        Receives this dp_rank's collated micro-batches (driver-side collate, CPU)
+        and runs the rank-local forward; returns one row per sample.
         """
         model = self._megatron.unwrapped_models[0]
-        if isinstance(batch, list):
-            return self._compute_logps_from_samples(batch, model, 'per_token_logps', with_completion_mask=True)
-        result = self._compute_logps_batched(batch, model, 'per_token_logps')
-        return self._split_logps_rows(
-            result.get('per_token_logps'),
-            batch.get('completion_mask'),
-            'per_token_logps',
-            routed_experts=result.get('routed_experts'),
-            seq_lengths=batch.get('seq_lengths'))
+        return self._compute_logps_micro_batches(micro_batches, model, 'per_token_logps')
 
-    @dispatch_collect(dispatch='dp_split', collect='dp_flat')
-    def compute_ref_logps(self, batch) -> Any:
+    @dispatch_collect(dispatch='dp', collect='dp_flat')
+    def compute_ref_logps(self, micro_batches: List[ModelInputs]) -> List[LogpsRow]:
         """Compute per-token logps under the frozen reference model."""
         if self.ref is not None:
-            model = self.ref.models[0]
-            if isinstance(batch, list):
-                return self._compute_logps_from_samples(batch, model, 'ref_per_token_logps', with_completion_mask=False)
-            result = self._compute_logps_batched(batch, model, 'ref_per_token_logps')
-            return self._split_logps_rows(
-                result.get('ref_per_token_logps'), None, 'ref_per_token_logps', seq_lengths=batch.get('seq_lengths'))
+            return self._compute_logps_micro_batches(micro_batches, self.ref.models[0], 'ref_per_token_logps')
         with self.actor.null_ref_context() as ref_models:
-            if isinstance(batch, list):
-                return self._compute_logps_from_samples(
-                    batch, ref_models[0], 'ref_per_token_logps', with_completion_mask=False)
-            result = self._compute_logps_batched(batch, ref_models[0], 'ref_per_token_logps')
-        return self._split_logps_rows(
-            result.get('ref_per_token_logps'), None, 'ref_per_token_logps', seq_lengths=batch.get('seq_lengths'))
+            return self._compute_logps_micro_batches(micro_batches, ref_models[0], 'ref_per_token_logps')
 
-    def _compute_logps_batched(self, batch, model, output_key: str) -> Dict[str, Any]:
-        """Split a DP shard into micro-batches, compute logps, concatenate."""
-        micro_batches = split_micro_batches(batch, self._args.micro_batch_size)
-        parts = []
-        routed_parts = []
-        for mb in micro_batches:
-            mb_gpu = to_device(mb, get_current_device())
-            result = self._compute_logps(mb_gpu, model, output_key)
-            del mb_gpu
-            if output_key in result:
-                parts.append(result[output_key])
-            if result.get('routed_experts') is not None:
-                routed_parts.append(result['routed_experts'])
-        if not parts:
-            return {}
-        out = {output_key: torch.cat(parts, dim=0) if len(parts) > 1 else parts[0]}
-        if routed_parts:
-            if all(r.dim() > 0 and r.shape[0] == 1 for r in routed_parts):
-                out['routed_experts'] = torch.cat(routed_parts, dim=1)
-            else:
-                out['routed_experts'] = torch.cat(routed_parts, dim=0) if len(routed_parts) > 1 else routed_parts[0]
-        del parts
-        del routed_parts
-        gc_collect()
-        return out
-
-    def _compute_logps_from_samples(
+    def _compute_logps_micro_batches(
         self,
-        samples: List[Dict[str, Any]],
+        micro_batches: List[ModelInputs],
         model,
         output_key: str,
-        *,
-        with_completion_mask: bool,
-    ) -> List[Dict[str, torch.Tensor]]:
-        rows: List[Dict[str, torch.Tensor]] = []
-        for sample_chunk in self._split_sample_chunks(samples):
-            mb = self._collate_local_grpo_samples(sample_chunk)
-            grpo_batch = mb['grpo_batch']
-            out = self._compute_logps(mb, model, output_key)
+    ) -> List[LogpsRow]:
+        from swift.utils import to_device
+        device = get_current_device()
+        rows: List[LogpsRow] = []
+        for model_inputs in micro_batches:
+            grpo_batch = model_inputs.pop('grpo_batch').to_device(device)
+            model_inputs = to_device(model_inputs, device)
+            model_inputs['grpo_batch'] = grpo_batch  # _compute_logps pops it again
+            out = self._compute_logps(model_inputs, model, output_key)
             if output_key not in out:
                 continue
-            completion_mask = grpo_batch.completion_mask if with_completion_mask else None
             rows.extend(
                 self._split_logps_rows(
                     out[output_key],
-                    completion_mask,
                     output_key,
                     routed_experts=out.get('routed_experts'),
                     seq_lengths=grpo_batch.seq_lengths))
@@ -353,12 +330,11 @@ class MegatronWorker(CheckpointEngineMixin):
     @staticmethod
     def _split_logps_rows(
         logps: Optional[torch.Tensor],
-        completion_mask: Optional[torch.Tensor],
         key: str,
         *,
         routed_experts: Optional[torch.Tensor] = None,
         seq_lengths: Optional[torch.Tensor] = None,
-    ) -> List[Dict[str, torch.Tensor]]:
+    ) -> List[LogpsRow]:
         if logps is None:
             return []
         routed_rows: List[Optional[torch.Tensor]] = [None] * int(logps.shape[0])
@@ -375,28 +351,27 @@ class MegatronWorker(CheckpointEngineMixin):
                     end = start + seq_len
                     routed_rows[i] = routed[0, start:end]
                     start = end
-        rows = []
+        rows: List[LogpsRow] = []
         for i in range(logps.shape[0]):
-            item: Dict[str, torch.Tensor] = {key: logps[i].detach().cpu()}
-            if completion_mask is not None:
-                item['completion_mask'] = completion_mask[i].detach().cpu()
+            item: LogpsRow = {key: logps[i].detach().cpu()}
             if routed_rows[i] is not None:
                 item['routed_experts'] = routed_rows[i].detach().cpu()
             rows.append(item)
         return rows
 
-    def _compute_logps(self, batch: Dict[str, Any], model, output_key: str) -> Dict[str, Any]:
-        """Compute per-token logps for a single micro-batch."""
+    def _compute_logps(self, model_inputs: ModelInputs, model, output_key: str) -> Dict[str, torch.Tensor]:
+        """Compute per-token logps for a single collated micro-batch."""
         from swift.rlhf_trainers.utils import pad_logps_back_to_batch
         megatron = self._megatron
         args = self._args
         temperature = getattr(args, 'temperature', 1.0)
-        grpo_batch: GRPOBatch = batch.pop('grpo_batch')
+        # grpo_batch carries the per-batch masks/seq_lengths; pop it so what
+        # remains is the pure ``model(**model_inputs)`` forward kwargs.
+        grpo_batch: GRPOBatch = model_inputs.pop('grpo_batch')
         seq_lengths = grpo_batch.seq_lengths
         batch_size = grpo_batch.completion_mask.shape[0]
         max_seq_len = grpo_batch.completion_mask.shape[1]
 
-        model_inputs = batch
         enable_routing_replay = bool(getattr(megatron, 'enable_routing_replay', False))
         router_mode = getattr(args, 'router_replay_mode', 'disabled')
 
@@ -423,7 +398,7 @@ class MegatronWorker(CheckpointEngineMixin):
                 RouterReplay.clear_global_indices()
                 RouterReplay.clear_global_router_replay_action()
 
-        out = {}
+        out: Dict[str, torch.Tensor] = {}
         if logps_packed is not None:
             if args.padding_free:
                 logps, _ = pad_logps_back_to_batch(
@@ -573,25 +548,26 @@ class MegatronWorker(CheckpointEngineMixin):
         if self.teacher is not None and not getattr(self._args, 'offload_teacher_model', False):
             self.teacher.reload_to_gpu(load_grad=False)
 
-    def _split_sample_chunks(self, samples: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
-        micro_batch_size = self._args.micro_batch_size
-        return [samples[i:i + micro_batch_size] for i in range(0, len(samples), micro_batch_size)]
-
-    def _build_local_micro_batches(self, samples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return [self._collate_local_grpo_samples(chunk) for chunk in self._split_sample_chunks(samples)]
-
     @staticmethod
-    def _collate_teacher_outputs(teacher_outputs, device, padding_free=False, target_seq_len=None):
-        """Collate per-sample TeacherOutputs into a batched one.
+    def _collate_teacher_outputs(
+        teacher_outputs: List['TeacherOutput'],
+        device: torch.device,
+        padding_free: bool = False,
+        target_seq_len: Optional[int] = None,
+        is_opsd: bool = False,
+    ) -> 'TeacherOutput':
+        """Collate per-sample TeacherOutputs into a batched one (driver-side).
 
-        Only used for topk mode; full_logits mode uses _cached_teacher_logits
-        (kept on-GPU per TP rank) and bypasses this path entirely.
+        Used by the teacher-REPLICAS path only: the driver builds a ``[1, S, K]``
+        top-k TeacherOutput per sample from the replica's prompt-logprobs, then
+        collates them here to match the collated student batch. (The colocated /
+        self-distillation path forwards the teacher on the worker and produces a
+        batched TeacherOutput directly, bypassing this function.)
 
         Layout must match the student labels:
         - padding_free: student labels are [1, total_tokens] (samples concatenated
           along the sequence dim), so concatenate per-sample teacher tensors along
-          dim=1. Empty placeholders ([0, ...], emitted by the colocated path for all
-          but the first sample of a micro-batch) are dropped first.
+          dim=1. Empty placeholders ([0, ...]) are dropped first.
         - otherwise: stack per-sample tensors along the batch dim (dim=0).
 
         ``target_seq_len`` is the student's collated sequence length. The student
@@ -601,14 +577,13 @@ class MegatronWorker(CheckpointEngineMixin):
         so extract_active's label mask aligns; the padded tail has labels == -100 and
         is masked out, leaving the loss unchanged.
 
-        OPSD: when ``labels`` is present on the TeacherOutput, the teacher scores a *different*
-        prompt (so its sequence length differs from the student) and extract_active
-        aligns by mask (``labels != -100``), not by position. In that case
-        the teacher keeps its own length (``target_seq_len`` is ignored).
+        OPSD (``is_opsd=True``): the teacher scores a *different* prompt (so its sequence
+        length differs from the student) and extract_active aligns by mask
+        (``labels != -100``), not by position. The teacher keeps its own length
+        (``target_seq_len`` is ignored).
         """
         from swift.rlhf_trainers.gkd_loss import TeacherOutput
-        opsd = any(getattr(t, 'labels', None) is not None for t in teacher_outputs)
-        effective_target = None if opsd else target_seq_len
+        effective_target = None if is_opsd else target_seq_len
         pad_vals = {'topk_logprobs': float('-inf'), 'labels': -100}
         fields = ('full_logits', 'topk_logprobs', 'topk_indices', 'labels')
         kwargs = {}
@@ -638,59 +613,6 @@ class MegatronWorker(CheckpointEngineMixin):
                     padded.append(t)
                 kwargs[field] = torch.cat(padded, dim=0).to(device)
         return TeacherOutput(**kwargs)
-
-    def _collate_local_grpo_samples(self, samples: List[Dict[str, Any]]) -> Dict[str, Any]:
-        from swift.megatron.utils import get_padding_to
-        from swift.rl_core.data import OnPolicySample
-        from swift.rlhf_trainers.utils import collate_to_grpo_micro_batch
-
-        template = self._pipeline.template
-        device = get_current_device()
-
-        # Wrap worker-side dicts as minimal OnPolicySample for unified collate
-        sample_objs: List[OnPolicySample] = []
-        for s in samples:
-            obj = OnPolicySample(messages=[])  # messages not used by collate
-            obj.encoded = s.get('encoded')
-            obj.rollout_logprobs = s.get('rollout_logprobs') or []
-            obj.routed_experts = s.get('routed_experts')
-            if s.get('is_truncated'):
-                obj.finish_reason = 'length'
-            sample_objs.append(obj)
-
-        model_inputs, grpo_batch = collate_to_grpo_micro_batch(
-            sample_objs,
-            template,
-            device=device,
-            padding_to=get_padding_to(self._args),
-            router_replay_mode=getattr(self._args, 'router_replay_mode', 'disabled'),
-        )
-
-        # Fill in signals computed by the worker (logps, advantages)
-        if samples and samples[0].get('old_per_token_logps') is not None:
-            grpo_batch.old_per_token_logps = torch.stack([s['old_per_token_logps'].to(device) for s in samples], dim=0)
-        if samples and samples[0].get('ref_per_token_logps') is not None:
-            grpo_batch.ref_per_token_logps = torch.stack([s['ref_per_token_logps'].to(device) for s in samples], dim=0)
-        if samples and samples[0].get('advantage') is not None:
-            grpo_batch.advantages = torch.tensor([float(s.get('advantage', 0.0)) for s in samples],
-                                                 dtype=torch.float32,
-                                                 device=device)
-        model_inputs['grpo_batch'] = grpo_batch
-        if samples and samples[0].get('teacher_output') is not None:
-            cp_size = getattr(self._args, 'context_parallel_size', 1)
-            if cp_size > 1:
-                raise ValueError('Standalone teacher replicas (teacher.gpus > 0) do not support '
-                                 'context_parallel_size > 1: per-sample teacher token-logprobs are built from '
-                                 'raw sequence lengths and cannot be CP-sharded to align with the student. '
-                                 'Use a colocated teacher_model for CP>1.')
-            model_inputs['teacher_output'] = self._collate_teacher_outputs(
-                [s['teacher_output'] for s in samples],
-                device,
-                padding_free=template.padding_free,
-                target_seq_len=model_inputs['labels'].shape[-1])
-        if samples and samples[0].get('data_source') is not None:
-            model_inputs['data_source'] = samples[0]['data_source']
-        return model_inputs
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:
         """Export and send model weights via NCCL checkpoint engine."""

@@ -6,6 +6,7 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 from swift.utils import get_logger
+from .base_trainer import BaseRayTrainer
 from .driver_utils import (build_dataset_from_dict, compute_iter_params, estimate_dp_size, merge_group_dict,
                            parse_ray_yaml)
 
@@ -75,7 +76,7 @@ class MegatronRayPipeline:
         with self._colocate_offload_ctx():
             self._init_rollout_replicas()
         self._init_teacher_replicas()
-        self._driver_trainer = self._create_trainer()
+        self._driver_trainer: BaseRayTrainer = self._create_trainer()
         self._driver_trainer.set_data_info(self._data_info)
 
     def train(self) -> Any:

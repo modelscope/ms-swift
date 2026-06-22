@@ -12,11 +12,11 @@ from typing import List
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.rl_core.data import GKDSample
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput
-from swift.rlhf_trainers.utils import (get_non_thinking_prefix_ids, parse_prompt_logprobs,
-                                       replace_assistant_response_with_ids)
+from swift.rlhf_trainers.utils import get_non_thinking_prefix_ids, parse_prompt_logprobs
 from swift.utils import get_logger, remove_response
 from .base_trainer import BaseRayTrainer
 from .driver_utils import extract_iteration
+from .worker_group import DPDispatchedDict
 
 logger = get_logger()
 
@@ -24,16 +24,9 @@ logger = get_logger()
 class GKDTrainer(BaseRayTrainer):
 
     def _prepare_state(self) -> None:
-        info = self._data_info
-        args = info['_driver_args']
-        template = info['template']
-        self.args = args
-        self.template = template
-        self.device = torch.device('cpu')
+        super()._prepare_state()
+        args = self.args
 
-        self.global_batch_size = int(args.global_batch_size)
-        self.temperature = args.temperature
-        self.beta = args.beta
         self.sft_alpha = args.sft_alpha
         self.gkd_logits_topk = args.gkd_logits_topk
         # GKD on-policy schedule: each step is on-policy (student generates) with
@@ -41,19 +34,9 @@ class GKDTrainer(BaseRayTrainer):
         self.lmbda = args.lmbda
         self._data_source_rng = random.Random(getattr(args, 'seed', 42))
 
-        # steps_per_generation>1: one generation (one data_source) feeds spg training steps,
-        gen_bs = getattr(args, 'generation_batch_size', None)
-        spg = getattr(args, 'steps_per_generation', None)
-        if gen_bs is not None:
-            self._steps_per_generation = max(int(gen_bs) // self.global_batch_size, 1)
-        elif spg is not None:
-            self._steps_per_generation = int(spg)
-        else:
-            self._steps_per_generation = 1
         # GKD generates exactly one completion per prompt (on-policy student generation),
         # so num_generations is always 1 here regardless of the (GRPO-oriented) default.
-        info['num_generations'] = 1
-        self._padding_to = info.get('_padding_to')
+        self._data_info['num_generations'] = 1
         self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
         self._teacher_model_server = args.teacher_model_server
         self._teacher_use_disable_adapter = args._teacher_use_disable_adapter
@@ -87,7 +70,7 @@ class GKDTrainer(BaseRayTrainer):
             # One generation (a single data_source) feeds ``spg`` training steps.
             prompt_batch = next(self._data_iter)
             if self.truncation_strategy == 'delete':
-                prompt_batch = self._resample_failed_prompts(prompt_batch)
+                prompt_batch = self._resample_failed_prompts(prompt_batch, strip_response=False)
             data_source = self._determine_data_source()
 
             if data_source == DataSource.STUDENT:
@@ -122,20 +105,22 @@ class GKDTrainer(BaseRayTrainer):
                     break
                 samples = self._encode_rollout_batch(chunk)
 
+                use_colocated_teacher = self._teacher_use_disable_adapter or (self._teacher_model_dir
+                                                                              and not self._teacher_model_server)
                 if self.teacher_replicas:
                     if data_source != DataSource.STUDENT:
                         raise NotImplementedError('Teacher replicas currently require on-policy generation (lmbda=1). '
                                                   'Use a colocated teacher_model for lmbda<1 (off-policy) training.')
                     self._fetch_teacher_from_replicas(chunk, samples)
-                elif self._teacher_use_disable_adapter or (self._teacher_model_dir and not self._teacher_model_server):
-                    # Teacher outputs are cached worker-local and injected at train_step via
-                    # _inject_cached_teacher_logits (required for CP per-rank slice alignment).
-                    tg.compute_teacher_logits(samples)
-                # Tag each sample with the step's data_source so the worker can gate the SFT
-                # loss in loss_func (SFT only on dataset responses, not on-policy generations).
-                for s in samples:
-                    s['data_source'] = data_source
-                results = tg.train_step(samples)
+
+                # Driver collates the student (and, for the colocated path, the teacher view)
+                # micro-batches; the worker only runs prepare_batch (PP/CP slice) + forward.
+                dispatch = self._collate_for_workers_gkd(tg, samples, data_source, with_teacher=use_colocated_teacher)
+                if use_colocated_teacher:
+                    # Teacher forwards on the worker (CP slicing keeps each rank's shard
+                    # aligned) and caches per-micro-batch; train_step attaches the cache.
+                    tg.compute_teacher_logits(dispatch)
+                results = tg.train_step(dispatch)
                 iteration = extract_iteration(results)
 
         return iteration
@@ -198,52 +183,81 @@ class GKDTrainer(BaseRayTrainer):
         finally:
             template.max_length = original
 
-    def _encode_rollout_batch(self, samples_or_dicts):
+    def _encode_rollout_batch(self, samples: List[GKDSample]):
         """Encode samples into per-sample worker payloads.
 
-        Handles both GKDSample (on-policy) and dict (off-policy) inputs.
-        Deep-copies messages to avoid mutating the sample's history (driver may
-        reuse samples across steps_per_generation).
-        For OPSD, also encodes the teacher view (teacher_prompt + same response).
+        Uses the shared ``encode_gkd_samples`` helper (same as HF / Megatron GKD)
+        so OPSD logic is fully encapsulated. Returns per-sample payloads with
+        ``encoded`` (student) and optionally ``teacher_encoded`` (OPSD teacher view).
         """
-        samples = [GKDSample.from_row(d) if isinstance(d, dict) else d for d in samples_or_dicts]
+        from swift.rlhf_trainers.gkd_helpers import encode_gkd_samples
         template = self.template
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
-        result = []
         with self._extended_max_length():
-            for s in samples:
-                # Student encode (deep-copy messages to avoid in-place mutation)
-                item = s.to_template_dict()
-                if item.get('messages') is not None:
-                    item['messages'] = [m.copy() for m in item['messages']]
-                if s.response_token_ids:
-                    loss_mask = s.response_loss_mask or None
-                    item['messages'] = replace_assistant_response_with_ids(
-                        item['messages'],
-                        s.response_token_ids,
-                        loss_mask=loss_mask,
-                        non_thinking_prefix_ids=non_thinking_prefix_ids)
-                encoded = template.encode(item, return_length=True)
-                encoded.pop('_extra_kwargs', None)
-                payload = {'encoded': encoded}
-
-                # OPSD: encode teacher view (teacher_prompt + same response tokens)
-                if s.build_teacher_view():
-                    teacher_item = s.to_teacher_template_dict()
-                    if teacher_item.get('messages') is not None:
-                        teacher_item['messages'] = [m.copy() for m in teacher_item['messages']]
-                    if teacher_item.get('response_token_ids'):
-                        teacher_loss_mask = teacher_item.get('response_loss_mask') or None
-                        teacher_item['messages'] = replace_assistant_response_with_ids(
-                            teacher_item['messages'],
-                            teacher_item['response_token_ids'],
-                            loss_mask=teacher_loss_mask,
-                            non_thinking_prefix_ids=non_thinking_prefix_ids)
-                    teacher_encoded = template.encode(teacher_item, return_length=True)
-                    teacher_encoded.pop('_extra_kwargs', None)
-                    payload['opsd_teacher_encoded'] = teacher_encoded
-                result.append(payload)
+            student_list, teacher_list, has_opsd = encode_gkd_samples(samples, template)
+        result = []
+        for i in range(len(samples)):
+            payload = {'encoded': student_list[i]}
+            if has_opsd:
+                payload['teacher_encoded'] = teacher_list[i]
+            result.append(payload)
         return result
+
+    def _collate_for_workers_gkd(self, tg, samples: List[dict], data_source, *, with_teacher: bool):
+        """Driver-side GKD collate: ``List[payload-dict]`` -> ``{dp_rank: [model_inputs]}``.
+
+        Mirrors the non-Ray GKD ``_encode_samples`` (data_collator on the rank, teacher
+        forward later via prepare_batch). Each micro-batch ``model_inputs`` carries:
+        - student forward tensors (``template.data_collator`` of ``encoded``),
+        - ``data_source`` (SFT gating in loss_func),
+        - ``teacher_model_inputs`` (colocated path): the collated teacher VIEW for the
+          worker teacher forward — OPSD uses ``teacher_encoded``, else ``encoded``,
+        - ``teacher_output`` (teacher-replicas path): the per-sample TeacherOutputs
+          (already on each sample) collated into one batched TeacherOutput.
+        """
+        from swift.megatron.utils import get_padding_to
+        from .megatron_worker import MegatronWorker
+
+        template = self.template
+        padding_to = self._padding_to if self._padding_to is not None else get_padding_to(self.args)
+        dp_size = tg.dp_size
+        mbs = int(self.args.micro_batch_size)
+        n = len(samples)
+        if n % dp_size != 0:
+            raise ValueError(f'_collate_for_workers_gkd: batch size {n} not divisible by dp_size {dp_size}.')
+        shard_size = n // dp_size
+
+        dispatch = DPDispatchedDict()
+        for dp_rank in range(dp_size):
+            shard = samples[dp_rank * shard_size:(dp_rank + 1) * shard_size]
+            micro_batches = []
+            for i in range(0, len(shard), mbs):
+                chunk = shard[i:i + mbs]
+                model_inputs = template.data_collator([s['encoded'] for s in chunk], padding_to=padding_to)
+                model_inputs['data_source'] = data_source
+                if with_teacher:
+                    has_opsd = chunk[0].get('teacher_encoded') is not None
+                    key = 'teacher_encoded' if has_opsd else 'encoded'
+                    model_inputs['teacher_model_inputs'] = template.data_collator(
+                        batch=[s[key] for s in chunk], padding_to=padding_to)
+                elif chunk[0].get('teacher_output') is not None:
+                    # Teacher-replicas path: per-sample TeacherOutputs collated on the driver
+                    # (pure tensor ops). The teacher seq length differs from the student under
+                    # OPSD, so align by mask (is_opsd) rather than padding to the student length.
+                    if getattr(self.args, 'context_parallel_size', 1) > 1:
+                        raise ValueError('Standalone teacher replicas (teacher.gpus > 0) do not support '
+                                         'context_parallel_size > 1: per-sample teacher token-logprobs are built '
+                                         'from raw sequence lengths and cannot be CP-sharded to align with the '
+                                         'student. Use a colocated teacher_model for CP>1.')
+                    has_opsd = any(s.get('teacher_encoded') is not None for s in chunk)
+                    model_inputs['teacher_output'] = MegatronWorker._collate_teacher_outputs(
+                        [s['teacher_output'] for s in chunk],
+                        self.device,
+                        padding_free=template.padding_free,
+                        target_seq_len=model_inputs['labels'].shape[-1],
+                        is_opsd=has_opsd)
+                micro_batches.append(model_inputs)
+            dispatch[dp_rank] = micro_batches
+        return dispatch
 
     def _fetch_teacher_from_replicas(self, gkd_samples: List[GKDSample], samples):
         """Fetch teacher logprobs from Ray teacher replicas.
@@ -258,10 +272,10 @@ class GKDTrainer(BaseRayTrainer):
         teacher_encodeds = []  # teacher-side encoded (OPSD) or None (non-OPSD)
         for s, sample in zip(gkd_samples, samples):
             req = s.to_infer_request()
-            opsd_encoded = sample.get('opsd_teacher_encoded')
+            teacher_encoded = sample.get('teacher_encoded')
             if s.teacher_messages:
                 req.messages = s.teacher_messages
-                teacher_encodeds.append(opsd_encoded)
+                teacher_encodeds.append(teacher_encoded)
             else:
                 teacher_encodeds.append(None)
             requests.append(req)
@@ -285,8 +299,8 @@ class GKDTrainer(BaseRayTrainer):
         for sample, response, t_encoded in zip(samples, responses, teacher_encodeds):
             parsed = parse_prompt_logprobs(response, topk=topk)
             encoded = t_encoded if t_encoded is not None else sample['encoded']
-            opsd_labels = t_encoded.get('labels') if t_encoded is not None else None
-            sample['teacher_output'] = self._build_per_sample_teacher_output(parsed, encoded, topk, opsd_labels)
+            teacher_labels = t_encoded.get('labels') if t_encoded is not None else None
+            sample['teacher_output'] = self._build_per_sample_teacher_output(parsed, encoded, topk, teacher_labels)
 
     @staticmethod
     def _build_per_sample_teacher_output(parsed, encoded, topk, labels=None):

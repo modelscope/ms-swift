@@ -32,6 +32,15 @@ class TeacherOutput:
     def is_topk_mode(self) -> bool:
         return self.topk_logprobs is not None and self.topk_indices is not None
 
+    def to_device(self, device) -> 'TeacherOutput':
+        """Move all tensor fields to ``device`` in place (Ray: teacher_output is
+        collated on the CPU driver, moved to the GPU worker before forward)."""
+        for name in ('full_logits', 'topk_logprobs', 'topk_indices', 'labels'):
+            v = getattr(self, name)
+            if isinstance(v, torch.Tensor):
+                setattr(self, name, v.to(device))
+        return self
+
     def validate(self):
         if self.full_logits is None and not self.is_topk_mode:
             raise ValueError('TeacherOutput must provide either full_logits or '

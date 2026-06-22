@@ -16,6 +16,7 @@ from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.model import get_mcore_model
 from swift.rl_core.data import GKDSample
+from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.gkd_helpers import assemble_teacher_output, build_teacher_requests, encode_gkd_samples
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.rlhf_trainers.utils import parse_prompt_logprobs
@@ -253,34 +254,13 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Returns:
             List of successfully encoded input samples with the same length as inputs
         """
-        template = self.template
-        required_count = len(inputs)
-        valid_samples = []
-        pending_samples = list(inputs)
-
-        for _ in range(max_resample_rounds + 1):
-            still_needed = required_count - len(valid_samples)
-            if still_needed <= 0:
-                break
-
-            while len(pending_samples) < still_needed:
-                pending_samples.extend(next(self.resample_data_iterator))
-
-            while pending_samples and len(valid_samples) < required_count:
-                data = pending_samples.pop(0)
-                try:
-                    template.encode(data)
-                    valid_samples.append(data)
-                except Exception as e:
-                    logger.info(f'Encoding failed for one sample; will resample. {e}')
-
-        if len(valid_samples) < required_count:
-            raise RuntimeError(
-                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
-                f'Only collected {len(valid_samples)} valid samples. '
-                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
-
-        return valid_samples[:required_count]
+        return resample_encode_failed_inputs(
+            self.template,
+            self.resample_data_iterator,
+            inputs,
+            max_resample_rounds=max_resample_rounds,
+            strip_response=False,
+        )
 
     def _fetch_teacher_parsed_logprobs(self, requests: List[RolloutInferRequest]):
         """Fetch teacher logprobs from the teacher API server.

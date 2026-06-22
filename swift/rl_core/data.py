@@ -269,6 +269,15 @@ class GRPOBatch:
     num_items_in_batch: Optional[torch.Tensor] = None  # scalar
     logits_to_keep: Optional[int] = None
 
+    def to_device(self, device) -> 'GRPOBatch':
+        """Move all tensor fields to ``device`` in place (Ray: collated on the CPU
+        driver, moved to the GPU worker before forward). Returns self."""
+        for f in fields(self):
+            v = getattr(self, f.name)
+            if isinstance(v, torch.Tensor):
+                setattr(self, f.name, v.to(device))
+        return self
+
 
 @dataclass
 class GKDSample(OnPolicySample):

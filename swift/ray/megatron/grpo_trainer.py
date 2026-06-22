@@ -11,10 +11,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutOutput
 from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
-from swift.rl_core.data import GRPOSample
+from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import compute_std_for_dynamic_sampling, score_completions
-from swift.rlhf_trainers.utils import (get_non_thinking_prefix_ids, make_reward_weights,
-                                       replace_assistant_response_with_ids, resolve_reward_funcs)
+from swift.rlhf_trainers.utils import (encode_sample, get_non_thinking_prefix_ids, make_reward_weights,
+                                       resolve_reward_funcs)
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger, remove_response
 from .base_trainer import BaseRayTrainer
@@ -27,34 +27,25 @@ class GRPOTrainer(BaseRayTrainer):
     """Driver-side GRPO trainer."""
 
     def _prepare_state(self) -> None:
-        assert hasattr(self, '_data_info'), 'call set_data_info() before train()'
-        info = self._data_info
-        args = info['_driver_args']
-        template = info['template']
-        self.args = args
-        self.template = template
-        self.device = torch.device('cpu')
+        super()._prepare_state()
+        args = self.args
 
         self.num_generations = args.num_generations
-        self.global_batch_size = int(args.global_batch_size)
-        self.temperature = args.temperature
         self.advantage_estimator = args.advantage_estimator
         self.scale_rewards = args.scale_rewards
-        self.beta = args.beta
         self.kl_in_reward = args.kl_in_reward
 
-        generation_batch_size = getattr(args, 'generation_batch_size', None)
-        steps_per_generation = getattr(args, 'steps_per_generation', None)
-        if generation_batch_size is not None:
-            self._steps_per_generation = generation_batch_size // self.global_batch_size
-        elif steps_per_generation is not None:
-            self._steps_per_generation = int(steps_per_generation)
-        else:
-            self._steps_per_generation = 1
-
-        self._padding_to = info.get('_padding_to')
         self._prepare_rewards()
         self._prepare_multi_turn()
+
+        # Ray supports router replay only in R3 (rollout records routed_experts, the driver
+        # collates them into the train micro-batch). R2 records during the policy logps
+        # forward, which — with driver-side collation — would not flow back into the train
+        # batch; reject it explicitly (mirrors pipeline.py's R3-only rollout wiring).
+        router_mode = getattr(args, 'router_replay_mode', 'disabled')
+        if router_mode not in ('disabled', 'R3'):
+            raise ValueError(f"Ray Megatron GRPO supports router_replay_mode in {{'disabled', 'R3'}}, "
+                             f'got {router_mode!r}. Use R3 (rollout-recorded routing) for the Ray pipeline.')
 
         # DAPO dynamic_sample + truncation_strategy='delete' resampling (driver-side).
         self.dynamic_sample = getattr(args, 'dynamic_sample', False)
@@ -160,52 +151,66 @@ class GRPOTrainer(BaseRayTrainer):
             n_samples = len(rollout_with_outputs)
             chunk_size = n_samples // spg
 
-            all_chunk_samples = []
+            all_chunks = []  # per spg step: (dispatch, flat_grpo_batches)
             for step_idx in range(spg):
                 chunk_start = step_idx * chunk_size
                 chunk_end = chunk_start + chunk_size
                 chunk_rollout = rollout_with_outputs[chunk_start:chunk_end]
                 chunk_samples = self.encode_rollout_batch(chunk_rollout)
 
-                logps_results = tg.compute_logps(chunk_samples)
-                for sample, result in zip(chunk_samples, logps_results):
-                    sample['old_per_token_logps'] = result['per_token_logps']
-                    sample['completion_mask'] = result['completion_mask']
-                    if result.get('routed_experts') is not None:
-                        sample['routed_experts'] = result['routed_experts']
-
+                dispatch, grpo_batches = self._collate_for_workers(tg, chunk_samples)
+                logps_rows = tg.compute_logps(dispatch)
+                self._scatter_logps(grpo_batches, logps_rows, 'old_per_token_logps')
                 if self.beta != 0.0:
-                    ref_results = tg.compute_ref_logps(chunk_samples)
-                    for sample, result in zip(chunk_samples, ref_results):
-                        sample['ref_per_token_logps'] = result['ref_per_token_logps']
-
-                all_chunk_samples.append(chunk_samples)
+                    ref_rows = tg.compute_ref_logps(dispatch)
+                    self._scatter_logps(grpo_batches, ref_rows, 'ref_per_token_logps')
+                all_chunks.append((dispatch, grpo_batches))
 
             for step_idx in range(spg):
                 if iteration >= train_iters:
                     break
-                chunk_samples = all_chunk_samples[step_idx]
+                dispatch, grpo_batches = all_chunks[step_idx]
                 chunk_start = step_idx * chunk_size
                 chunk_end = chunk_start + chunk_size
                 chunk_rewards_pf = rewards_per_func[chunk_start:chunk_end]
 
-                if self.beta != 0.0:
-                    kl_values = self._compute_kl_from_samples(chunk_samples)
-                else:
-                    kl_values = None
+                kl_values = self._compute_kl_from_batches(grpo_batches) if self.beta != 0.0 else None
 
                 chunk_advantages, rewards = self.compute_advantages(chunk_rewards_pf, kl_values=kl_values)
-                for i, sample in enumerate(chunk_samples):
-                    sample['advantage'] = float(chunk_advantages[i].item())
-                for sample in chunk_samples:
-                    sample.pop('completion_mask', None)
+                self._scatter_advantages(grpo_batches, chunk_advantages)
 
                 results = tg.train_step(
-                    chunk_samples,
-                    extra_metrics=self._build_grpo_log_metrics(rewards, chunk_advantages, chunk_rewards_pf))
+                    dispatch, extra_metrics=self._build_grpo_log_metrics(rewards, chunk_advantages, chunk_rewards_pf))
                 iteration = extract_iteration(results)
 
         return iteration
+
+    @staticmethod
+    def _scatter_logps(grpo_batches: List[GRPOBatch], rows: List[Dict[str, torch.Tensor]], key: str) -> None:
+        """Stack the flat per-sample logps rows (dp_flat, sample order) back onto each
+        micro-batch's GRPOBatch as ``[B, T]`` — the same carrier non-Ray Megatron uses.
+
+        ``completion_mask`` is NOT touched here: it was built by the driver collate and the
+        worker only forwards logps, so the existing ``gb.completion_mask`` is already correct.
+        """
+        src_key = 'per_token_logps' if key == 'old_per_token_logps' else 'ref_per_token_logps'
+        pos = 0
+        for gb in grpo_batches:
+            b = gb.completion_mask.shape[0]
+            chunk = rows[pos:pos + b]
+            pos += b
+            setattr(gb, key, torch.stack([r[src_key] for r in chunk], dim=0))
+        assert pos == len(rows), f'_scatter_logps: consumed {pos} rows but got {len(rows)}'
+
+    @staticmethod
+    def _scatter_advantages(grpo_batches: List[GRPOBatch], advantages: torch.Tensor) -> None:
+        """Write the [N] advantages (sample order) onto each micro-batch's GRPOBatch."""
+        pos = 0
+        for gb in grpo_batches:
+            b = gb.completion_mask.shape[0]
+            gb.advantages = advantages[pos:pos + b]
+            pos += b
+        assert pos == advantages.shape[0], f'_scatter_advantages: wrote {pos} but got {advantages.shape[0]}'
 
     def _build_grpo_log_metrics(self, rewards, advantages, rewards_per_func) -> Dict[str, float]:
         """Driver-computed GRPO metrics (reward / reward_std / adv_nonzero / per-func),
@@ -263,13 +268,6 @@ class GRPOTrainer(BaseRayTrainer):
         return [RolloutOutput(response=resp) for resp in completions]
 
     def _postprocess_rollout(self, samples: List[GRPOSample], outputs: List[RolloutOutput]) -> List[GRPOSample]:
-        """Merge ``RolloutOutput`` data back into each sample.
-
-        Mirrors :meth:`RolloutTrainerMixin._postprocess_rollout_outputs` (HF side)
-        — single/multi-turn judged from ``rollout_output.messages``,
-        per-turn ``response_token_ids`` / ``response_loss_mask`` handling,
-        rollout_logprobs, multimodal pass-through from ``rollout_infos``.
-        """
         if not outputs:
             return list(samples)
         if len(outputs) != len(samples):
@@ -289,13 +287,6 @@ class GRPOTrainer(BaseRayTrainer):
         self,
         prompt_batch: List[Dict[str, Any]],
     ) -> List[GRPOSample]:
-        """Repeat each prompt ``num_generations`` times before rollout.
-
-        Each item starts as a dataloader dict and is converted to GRPOSample
-        here — from this point on all driver-side rollout / score / advantage
-        flows operate on per-sample objects. The worker boundary still consumes
-        ``List[Dict]`` (see :meth:`encode_rollout_batch`).
-        """
         num_gen = self.num_generations
         samples: List[GRPOSample] = []
         for item in prompt_batch:
@@ -347,16 +338,6 @@ class GRPOTrainer(BaseRayTrainer):
             beta=self.beta,
             kl_values=kl_values,
         )
-
-    def _encode_check(self, item) -> None:
-        """Detect over-length / encode failures for a GRPO prompt. The response is
-        removed first (GRPO encodes prompt-only at rollout time). Raises on failure."""
-        from swift.utils import remove_response
-        probe = dict(item)
-        if probe.get('messages'):
-            probe['messages'] = [m.copy() for m in probe['messages']]
-            remove_response(probe['messages'])
-        self.template.encode(probe)
 
     def _dynamic_sampling(
         self,
@@ -417,63 +398,41 @@ class GRPOTrainer(BaseRayTrainer):
     def encode_rollout_batch(
         self,
         samples: List[GRPOSample],
-    ) -> List[Dict[str, Any]]:
-        """Encode samples into per-sample worker payloads.
+    ) -> List[GRPOSample]:
+        """Encode each sample in place and return the samples.
 
-        This is the driver → worker boundary: ``tg.compute_logps`` /
-        ``tg.train_step`` consume ``List[Dict]``. We use ``to_template_dict``
-        to drive ``template.encode``, then attach the per-sample payload
-        (encoded + is_truncated + rollout_logprobs + routed_experts) the
-        worker's collate path expects.
+        This is the driver → worker boundary: the same ``GRPOSample`` objects
+        cross the RPC (``tg.compute_logps`` / ``tg.train_step``) — the worker
+        feeds them straight to ``collate_to_grpo_micro_batch`` (the shared collate
+        used by HF / Megatron). Uses the shared ``encode_sample`` helper so bug
+        fixes to loss_mask / non_thinking_prefix propagate across all backends.
         """
         non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
-        rollout_for_encode: List[Dict[str, Any]] = []
         for sample in samples:
-            item = sample.to_template_dict()
-            # to_template_dict returns shallow copy of standard fields; deep-copy messages
-            # so replace_assistant_response_with_ids does not mutate the sample's history.
-            if item.get('messages') is not None:
-                item['messages'] = [m.copy() for m in item['messages']]
-            if sample.response_token_ids:
-                loss_mask = sample.response_loss_mask or None
-                item['messages'] = replace_assistant_response_with_ids(
-                    item['messages'],
-                    sample.response_token_ids,
-                    loss_mask,
-                    non_thinking_prefix_ids=non_thinking_prefix_ids)
-            rollout_for_encode.append(item)
-
-        encoded_list, error_list = self._batch_encode_parallel(rollout_for_encode, strict=True)
-        if error_list:
-            raise RuntimeError(f'GRPOTrainer: batch encode failed with errors={error_list}')
-        worker_samples: List[Dict[str, Any]] = []
-        for encoded, sample in zip(encoded_list, samples):
+            encoded = encode_sample(sample, self.template, non_thinking_prefix_ids=non_thinking_prefix_ids)
             encoded.pop('_extra_kwargs', None)
-            payload: Dict[str, Any] = {
-                'encoded': encoded,
-                'is_truncated': sample.is_truncated,
-                'rollout_logprobs': sample.rollout_logprobs or None,
-            }
-            if sample.routed_experts is not None:
-                payload['routed_experts'] = sample.routed_experts
-            worker_samples.append(payload)
-        return worker_samples
+            sample.encoded = encoded
+        return samples
 
-    def _compute_kl_from_samples(self, samples: List[Dict[str, Any]]) -> Optional[torch.Tensor]:
+    def _compute_kl_from_batches(self, grpo_batches: List[GRPOBatch]) -> Optional[torch.Tensor]:
+        """Per-sample KL = sum_t (old_lp - ref_lp) * completion_mask, in sample order.
+
+        Reads the [B, T] logps/mask off each micro-batch GRPOBatch (the unified logps
+        carrier), so the driver-side DAPO ``kl_in_reward`` penalty matches non-Ray.
+        """
         if not (self.kl_in_reward and self.beta != 0.0):
             return None
         kl_values = []
-        for sample in samples:
-            old_lp = sample.get('old_per_token_logps')
-            ref_lp = sample.get('ref_per_token_logps')
-            mask = sample.get('completion_mask')
+        for gb in grpo_batches:
+            old_lp, ref_lp, mask = gb.old_per_token_logps, gb.ref_per_token_logps, gb.completion_mask
             if old_lp is None or ref_lp is None or mask is None:
                 return None
             old_lp = old_lp.to(self.device)
             ref_lp = ref_lp.to(self.device)
             mask = mask.to(self.device)
             width = min(old_lp.shape[-1], ref_lp.shape[-1], mask.shape[-1])
-            kl_values.append(((old_lp[..., :width] - ref_lp[..., :width]) * mask[..., :width].to(old_lp.dtype)).sum())
+            per_token_kl = (old_lp[..., :width] - ref_lp[..., :width]) * mask[..., :width].to(old_lp.dtype)
+            kl_values.append(per_token_kl.sum(dim=-1))  # [B] per-sample
         if not kl_values:
             return None
-        return torch.stack(kl_values)
+        return torch.cat(kl_values, dim=0)

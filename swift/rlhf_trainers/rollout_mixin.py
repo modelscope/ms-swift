@@ -31,6 +31,7 @@ from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.model import MultiModelKeys
 from swift.rl_core.data import OnPolicySample
+from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.sequence_parallel import sequence_parallel
 from swift.template import Template
@@ -1602,41 +1603,10 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         assert getattr(self, 'truncated_resample_iterator',
                        None) is not None, 'Resample data iterator is not initialized'
 
-        template = self.template
-        required_count = len(inputs)
-        valid_samples = []
-
-        # Buffer for samples waiting to be validated
-        pending_samples = list(inputs)
-
-        for _ in range(max_resample_rounds + 1):
-            # Calculate how many more samples we need
-            still_needed = required_count - len(valid_samples)
-            if still_needed <= 0:
-                break
-
-            # Ensure pending_samples has enough samples to try
-            while len(pending_samples) < still_needed:
-                # Fetch a new batch of samples (uses the entire batch, not just [0])
-                pending_samples.extend(next(self.truncated_resample_iterator))
-
-            # Try to encode samples from pending_samples until we have enough valid ones
-            while pending_samples and len(valid_samples) < required_count:
-                data = pending_samples.pop(0)
-                try:
-                    if strip_response:
-                        remove_response(data['messages'])
-                    template.encode(data)
-                    # Encoding succeeded, add to valid samples
-                    valid_samples.append(data)
-                except Exception as e:
-                    # Encoding failed, skip this sample
-                    logger.info(f'Encoding failed for one sample; will resample. {e}')
-
-        if len(valid_samples) < required_count:
-            raise RuntimeError(
-                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
-                f'Only collected {len(valid_samples)} valid samples. '
-                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
-
-        return valid_samples[:required_count]
+        return resample_encode_failed_inputs(
+            self.template,
+            self.truncated_resample_iterator,
+            inputs,
+            max_resample_rounds=max_resample_rounds,
+            strip_response=strip_response,
+        )
