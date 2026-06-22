@@ -88,6 +88,36 @@ def _patch_vllm_dp_coordinator_timeout():
 _patch_vllm_dp_coordinator_timeout()
 
 
+@contextmanager
+def _patch_rope_validation_ignore_keys():
+    """Accept list-style RoPE validation ignore keys from older vLLM configs.
+
+    vLLM 0.18.x Qwen3.5 configs may pass ``ignore_keys_at_rope_validation``
+    as a list, while Transformers 5.x treats it as a set and performs a set
+    union during RoPE validation. vLLM release tags from 0.19.0 onward changed
+    the Qwen3.5 configs to set literals, but 0.18-based vLLM/vLLM-Ascend stacks
+    still need this compatibility layer. See vLLM PR:
+    https://github.com/vllm-project/vllm/pull/37338
+    """
+    from transformers import PretrainedConfig
+
+    origin_convert = getattr(PretrainedConfig, 'convert_rope_params_to_dict', None)
+    if origin_convert is None:
+        yield
+        return
+
+    def convert_rope_params_to_dict(self, ignore_keys_at_rope_validation=None, **kwargs):
+        if isinstance(ignore_keys_at_rope_validation, list):
+            ignore_keys_at_rope_validation = set(ignore_keys_at_rope_validation)
+        return origin_convert(self, ignore_keys_at_rope_validation=ignore_keys_at_rope_validation, **kwargs)
+
+    PretrainedConfig.convert_rope_params_to_dict = convert_rope_params_to_dict
+    try:
+        yield
+    finally:
+        PretrainedConfig.convert_rope_params_to_dict = origin_convert
+
+
 class VllmEngine(InferEngine):
 
     def __init__(
@@ -224,7 +254,7 @@ class VllmEngine(InferEngine):
 
     def _prepare_engine(self) -> None:
         with patch_auto_tokenizer(self.tokenizer), self._patch_auto_config(), \
-                disable_deepspeed_zero3():
+                _patch_rope_validation_ignore_keys(), disable_deepspeed_zero3():
             llm_engine_cls = AsyncLLMEngine if self.use_async_engine else LLMEngine
             engine = llm_engine_cls.from_engine_args(self.engine_args)
         self.engine = engine

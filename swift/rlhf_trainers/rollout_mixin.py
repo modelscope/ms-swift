@@ -837,6 +837,8 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         # Colocate: patch MoE weight_loader once before loading all groups
         if self.vllm_mode == 'colocate':
+            from swift.model.npu_patch.vllm_ascend_moe import configure_vllm_ascend_moe_weight_sync
+            configure_vllm_ascend_moe_weight_sync(self.engine.inner_model, self.model, is_fsdp2=self._is_fsdp2)
             patch_vllm_moe_model_weight_loader(self.engine.inner_model)
 
         for i, parameter_group in enumerate(self.parameter_groups):
