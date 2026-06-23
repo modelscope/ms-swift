@@ -146,7 +146,7 @@ def _make_hints(board_str: str, successful_moves: list, failed_moves: list, diff
     parts = []
     all_tried = successful_moves + failed_moves
     if all_tried:
-        parts.append(f"\nMOVES ALREADY TRIED (do not repeat): {', '.join(all_tried[:10])}")
+        parts.append(f'\nMOVES ALREADY TRIED (do not repeat): {", ".join(all_tried[:10])}')
     if not board_str or not _is_valid_board_state(board_str):
         return '\n'.join(parts)
 
@@ -156,14 +156,14 @@ def _make_hints(board_str: str, successful_moves: list, failed_moves: list, diff
         other = []
         for r, c, candidates in cells[:10]:
             if len(candidates) == 1:
-                guaranteed.append(f"[{r} {c} {list(candidates)[0]}]")
+                guaranteed.append(f'[{r} {c} {list(candidates)[0]}]')
             elif len(candidates) <= 3:
                 nums = ','.join(str(n) for n in sorted(candidates))
-                other.append(f"({r},{c})->{nums}")
+                other.append(f'({r},{c})->{nums}')
         if guaranteed:
-            parts.append(f"\nGUARANTEED MOVES (only one option): {', '.join(guaranteed[:5])}")
+            parts.append(f'\nGUARANTEED MOVES (only one option): {", ".join(guaranteed[:5])}')
         if other:
-            parts.append(f"Other options: {' | '.join(other[:5])}")
+            parts.append(f'Other options: {" | ".join(other[:5])}')
 
     return '\n'.join(parts)
 
@@ -235,7 +235,7 @@ class SudokuScheduler(OpenEnvScheduler):
 
                 # Build initial message with board + hints
                 hints = _make_hints(self._board_states[uuid], [], [])
-                user_content = f"{board}{hints}" if board else content
+                user_content = f'{board}{hints}' if board else content
 
                 from swift.rollout.multi_turn import Messages
                 messages = []
@@ -385,7 +385,7 @@ class SudokuScheduler(OpenEnvScheduler):
                 self._failed_moves[uuid],
             )
             step_num = len(self._successful_moves[uuid])
-            next_obs = f"Step {step_num}. Progress: {step_num} cells filled.\n\nBoard:\n{board}{hints}"
+            next_obs = f'Step {step_num}. Progress: {step_num} cells filled.\n\nBoard:\n{board}{hints}'
         else:
             next_obs = None
 
@@ -411,11 +411,11 @@ class SudokuScheduler(OpenEnvScheduler):
         match = re.search(r'\[\s*(\d+)\s+(\d+)\s+(\d+)\s*\]', text)
         if match:
             row, col, num = match.groups()
-            return {'message': f"[{row} {col} {num}]"}
+            return {'message': f'[{row} {col} {num}]'}
 
         numbers = re.findall(r'\d+', text)
         if len(numbers) >= 3:
-            return {'message': f"[{numbers[0]} {numbers[1]} {numbers[2]}]"}
+            return {'message': f'[{numbers[0]} {numbers[1]} {numbers[2]}]'}
 
         return None
 

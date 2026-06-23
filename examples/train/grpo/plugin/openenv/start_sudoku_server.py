@@ -43,5 +43,5 @@ app = create_app(
 
 if __name__ == '__main__':
     env_id = os.getenv('TEXTARENA_ENV_ID', 'Sudoku-v0')
-    print(f"Starting server: env={env_id}, max_concurrent_envs={max_concurrent_envs}")
+    print(f'Starting server: env={env_id}, max_concurrent_envs={max_concurrent_envs}')
     uvicorn.run(app, host=host, port=port)

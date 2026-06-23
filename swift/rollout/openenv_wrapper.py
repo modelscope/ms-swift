@@ -7,7 +7,7 @@ to the server.  Action parsing (LLM text → dict) and observation formatting
 not here.
 
 env_config keys consumed:
-    base_url (str): OpenEnv server URL (e.g. "http://localhost:8000").
+    base_url (str): OpenEnv server URL (e.g. 'http://localhost:8000').
     reset_kwargs (dict, optional): Extra kwargs passed to client.reset().
 """
 import time
@@ -71,7 +71,7 @@ class OpenEnvWrapper:
                 return getattr(client, fn_name)(*args, **kwargs)
             except Exception as e:
                 last_exc = e
-                logger.warning(f"OpenEnv {fn_name} failed (attempt {attempt + 1}/{_MAX_RETRIES}): {e}")
+                logger.warning(f'OpenEnv {fn_name} failed (attempt {attempt + 1}/{_MAX_RETRIES}): {e}')
                 if attempt < _MAX_RETRIES - 1:
                     time.sleep(_RETRY_DELAY * (attempt + 1))
                     self._reconnect_client()
@@ -95,7 +95,7 @@ class OpenEnvWrapper:
         """Execute one step in the OpenEnv environment.
 
         Args:
-            action_dict: Pre-parsed action dict (e.g. ``{"answer": "7"}``).
+            action_dict: Pre-parsed action dict (e.g. ``{'answer': '7'}``).
 
         Returns:
             (raw_observation, reward, done, metadata) — unformatted.
