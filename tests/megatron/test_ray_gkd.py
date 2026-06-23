@@ -1,9 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
+from types import SimpleNamespace
 
 from swift.ray.megatron.gkd_trainer import GKDTrainer
 from swift.ray.megatron.megatron_worker import MegatronWorker
-from swift.rlhf_trainers.gkd_loss import TeacherOutput, build_opsd_teacher_data, extract_active
+from swift.rlhf_trainers.gkd_loss import TeacherOutput, extract_active
 
 _collate = MegatronWorker._collate_teacher_outputs
 
@@ -71,27 +72,27 @@ def test_collate_non_padding_free_stacks_on_batch_dim():
 def test_collate_opsd_keeps_teacher_length_not_student_target():
     """OPSD: teacher scores a different prompt, so its length differs from the
     student. The collation must KEEP the teacher length (ignore target_seq_len)
-    and concat opsd_teacher_labels (extract_active aligns by mask, not position)."""
+    and concat labels (extract_active aligns by mask, not position)."""
     k = 3
     t_total = 7  # teacher (opsd) sequence length
     full = TeacherOutput(
         topk_logprobs=torch.full((1, t_total, k), -1.0),
         topk_indices=torch.zeros((1, t_total, k), dtype=torch.long),
-        opsd_teacher_labels=torch.full((1, t_total), 5, dtype=torch.long),
+        labels=torch.full((1, t_total), 5, dtype=torch.long),
     )
     empty = TeacherOutput()  # padding_free placeholder for the rest of the micro-batch
     # target_seq_len is the *student* length (e.g. 12) — must be ignored for OPSD.
-    out = _collate([full, empty], device='cpu', padding_free=True, target_seq_len=12)
+    out = _collate([full, empty], device='cpu', padding_free=True, target_seq_len=12, is_opsd=True)
     assert out.topk_logprobs.shape == (1, t_total, k), out.topk_logprobs.shape
-    assert out.opsd_teacher_labels.shape == (1, t_total)
-    assert (out.opsd_teacher_labels == 5).all()
+    assert out.labels.shape == (1, t_total)
+    assert (out.labels == 5).all()
 
 
 def test_build_per_sample_teacher_output_uses_raw_input_length():
     """Standalone teacher outputs are built from each sample's RAW (un-CP-padded) input
     length. Because these raw per-sample token-logprobs cannot be CP-sharded to match the
     student, CP>1 with standalone teacher replicas is rejected by a fail-fast in
-    MegatronWorker._collate_local_grpo_samples (use a colocated teacher_model for CP>1).
+    GKDTrainer._collate_for_workers_gkd (use a colocated teacher_model for CP>1).
     This test guards the raw-length contract that the CP>1 fail-fast depends on.
     """
     k = 3
@@ -102,47 +103,7 @@ def test_build_per_sample_teacher_output_uses_raw_input_length():
     out = GKDTrainer._build_per_sample_teacher_output((lps, ixs), encoded, topk=k)
     assert out.topk_logprobs.shape == (1, raw_len, k), out.topk_logprobs.shape
     assert out.topk_indices.shape == (1, raw_len, k)
-    assert out.opsd_teacher_labels is None
-
-
-def test_build_opsd_teacher_data_substitutes_teacher_prompt():
-    inputs = [{
-        'messages': [{
-            'role': 'user',
-            'content': 'student-prompt'
-        }, {
-            'role': 'assistant',
-            'content': 'resp'
-        }],
-        'teacher_prompt': 'teacher-prompt',
-    }]
-    out = build_opsd_teacher_data(inputs, strip_assistant=False)
-    assert out is not None
-    msgs = out[0]['messages']
-    assert msgs[0]['content'] == 'teacher-prompt'  # last user msg replaced
-    assert msgs[-1] == {'role': 'assistant', 'content': 'resp'}  # response kept
-    assert 'teacher_prompt' not in out[0]  # field stripped from item
-
-
-def test_build_opsd_teacher_data_strip_assistant():
-    inputs = [{
-        'messages': [{
-            'role': 'user',
-            'content': 'sp'
-        }, {
-            'role': 'assistant',
-            'content': 'resp'
-        }],
-        'teacher_prompt': 'tp',
-    }]
-    out = build_opsd_teacher_data(inputs, strip_assistant=True)
-    assert out[0]['messages'][-1]['role'] == 'user'  # trailing assistant removed
-    assert out[0]['messages'][-1]['content'] == 'tp'
-
-
-def test_build_opsd_teacher_data_none_without_teacher_prompt():
-    inputs = [{'messages': [{'role': 'user', 'content': 'x'}]}]  # no teacher_prompt
-    assert build_opsd_teacher_data(inputs, strip_assistant=False) is None
+    assert out.labels is None
 
 
 def test_extract_active_opsd_aligns_by_mask_across_lengths():
@@ -156,7 +117,7 @@ def test_extract_active_opsd_aligns_by_mask_across_lengths():
     t = TeacherOutput(
         topk_logprobs=torch.randn(1, 7, k),
         topk_indices=torch.zeros((1, 7, k), dtype=torch.long),
-        opsd_teacher_labels=torch.tensor([[-100, -100, -100, -100, -100, 1, 2]]),
+        labels=torch.tensor([[-100, -100, -100, -100, -100, 1, 2]]),
     )
     s_act, t_act, n = extract_active(s_logits, t, s_labels)
     assert int(n) == 2
@@ -170,13 +131,97 @@ def test_extract_active_opsd_count_mismatch_raises():
     t = TeacherOutput(
         topk_logprobs=torch.randn(1, 6, 3),
         topk_indices=torch.zeros((1, 6, 3), dtype=torch.long),
-        opsd_teacher_labels=torch.tensor([[-100, -100, -100, -100, -100, 9]]),  # 1 token
+        labels=torch.tensor([[-100, -100, -100, -100, -100, 9]]),  # 1 token
     )
     try:
         extract_active(s_logits, t, s_labels)
         raise AssertionError('expected an assertion on OPSD count mismatch')
     except AssertionError as e:
         assert 'OPSD' in str(e) or 'mismatch' in str(e) or 'count' in str(e).lower()
+
+
+def test_extract_active_non_opsd_uses_student_labels():
+    """Non-OPSD: teacher_output.labels is None (Ray GKD non-OPSD path).
+
+    The student label mask should apply to both student and teacher.
+    This is the Critical #1 regression test: before the fix, extract_active
+    crashed with TypeError on ``None != -100``.
+    """
+    V, k = 8, 3
+    # student: length 5, 3 response positions (indices 2,3,4)
+    s_logits = torch.randn(1, 5, V)
+    s_labels = torch.tensor([[-100, -100, 1, 2, 3]])
+    # teacher (non-OPSD): same length, labels=None
+    t = TeacherOutput(
+        topk_logprobs=torch.randn(1, 5, k),
+        topk_indices=torch.zeros((1, 5, k), dtype=torch.long),
+        labels=None,
+    )
+    s_act, t_act, n = extract_active(s_logits, t, s_labels)
+    assert int(n) == 3
+    assert s_act.shape == (3, V)
+    assert t_act.topk_logprobs.shape == (3, k)
+
+
+def test_extract_active_non_opsd_full_logits():
+    """Non-OPSD with full-vocab teacher (no topk): labels=None path.
+
+    Verifies that the student mask is used for both student and teacher
+    when teacher_output.labels is None.
+    """
+    V = 8
+    s_logits = torch.randn(1, 4, V)
+    s_labels = torch.tensor([[-100, 1, 2, 3]])
+    t = TeacherOutput(
+        full_logits=torch.randn(1, 4, V),
+        labels=None,
+    )
+    s_act, t_act, n = extract_active(s_logits, t, s_labels)
+    assert int(n) == 3
+    assert s_act.shape == (3, V)
+    assert t_act.full_logits.shape == (3, V)
+
+
+def test_megatron_assemble_teacher_outputs_api_topk_rolls_labels():
+    """Megatron Teacher API + topk: ``_assemble_teacher_outputs`` must roll teacher
+    labels by -1 so the invariant 'teacher_output.labels is pre-shifted before
+    extract_active' holds on the API path too (the local-teacher path gets shifted
+    labels from _prepare_batch). assemble_teacher_output returns the RAW labels, so
+    the trainer applies the shift; without it the API path would feed unshifted
+    teacher labels against shifted student labels -> silent KL/JSD misalignment.
+    """
+    try:
+        from swift.megatron.trainers.gkd_trainer import MegatronGKDTrainer
+    except Exception as e:  # noqa: megatron-core not installed in this env
+        print(f'SKIP test_megatron_assemble_teacher_outputs_api_topk_rolls_labels: {e}')
+        return
+
+    k = 3
+    # raw (unshifted) labels: prompt=-100, response at positions 2,3,4
+    raw_labels = torch.tensor([[-100, -100, 11, 22, 33]])
+    seq_len = raw_labels.shape[-1]
+    # parsed teacher topk: one (logprobs, indices) row per response token (len+1 cu)
+    parsed = [([[-1.0] * k] * (seq_len - 1), [[0] * k] * (seq_len - 1))]
+    teacher_model_inputs = {
+        'input_ids': torch.zeros((1, seq_len), dtype=torch.long),
+        'labels': raw_labels.clone(),
+        'attention_mask': torch.ones((1, seq_len), dtype=torch.long),
+    }
+    encoded_batch = {'_teacher_parsed': parsed, 'teacher_model_inputs': teacher_model_inputs}
+
+    stub = SimpleNamespace(gkd_logits_topk=k, template=SimpleNamespace(padding_free=False), device=torch.device('cpu'))
+    MegatronGKDTrainer._assemble_teacher_outputs(stub, [encoded_batch])
+
+    teacher_out = encoded_batch['teacher_output']
+    assert torch.equal(teacher_out.labels, torch.roll(raw_labels, shifts=-1, dims=-1))
+    assert teacher_out.topk_logprobs.shape == (1, seq_len, k)
+
+    # The shifted teacher labels must align with shifted student labels in extract_active.
+    s_labels = torch.roll(raw_labels, shifts=-1, dims=-1)
+    s_logits = torch.randn(1, seq_len, 8)
+    s_act, t_act, n = extract_active(s_logits, teacher_out, s_labels)
+    assert int(n) == 3
+    assert t_act.topk_logprobs.shape == (3, k)
 
 
 def test_example_yaml_config_contracts():

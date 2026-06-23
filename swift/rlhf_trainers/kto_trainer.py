@@ -33,7 +33,6 @@ class KTOTrainer(RLHFTrainerMixin, SwiftMixin, HFKTOTrainer):
         self.desirable_weight = args.desirable_weight
         self.undesirable_weight = args.undesirable_weight
         self.precompute_ref_log_probs = args.precompute_ref_log_probs
-        self.is_peft_model = isinstance(model, PeftModel)
         if hasattr(args, 'loss_type'):
             self.loss_type = args.loss_type
         else:
