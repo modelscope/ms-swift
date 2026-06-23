@@ -46,9 +46,8 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        finish_vllm_weight_reload, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
-from swift.utils import (gc_collect, get_logger, get_seed, ipc_collect, is_vllm_ascend_available,
-                         is_torch_rocm, get_physical_device_count,
-                         is_vllm_metax_available, synchronize)
+from swift.utils import (gc_collect, get_logger, get_physical_device_count, get_seed, ipc_collect, is_torch_rocm,
+                         is_vllm_ascend_available, is_vllm_metax_available, synchronize)
 from ..base import SwiftPipeline
 
 try:

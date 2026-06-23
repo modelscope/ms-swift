@@ -233,7 +233,8 @@ def get_physical_device_count() -> int:
         try:
             import subprocess
             out = subprocess.check_output(['nvidia-smi', '--query-gpu=index', '--format=csv,noheader'],
-                                          stderr=subprocess.DEVNULL, timeout=5)
+                                          stderr=subprocess.DEVNULL,
+                                          timeout=5)
             count = len([line for line in out.decode().splitlines() if line.strip()])
             if count > 0:
                 return count
