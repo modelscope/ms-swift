@@ -138,6 +138,76 @@ def get_device_count() -> int:
         return 0
 
 
+def is_torch_rocm() -> bool:
+    """True on an AMD ROCm/HIP torch build.
+
+    PyTorch on ROCm exposes devices through the ``torch.cuda.*`` API (hipify), so
+    ``is_torch_cuda_available()`` is True on ROCm too; the distinguishing signal is
+    a non-None ``torch.version.hip``.
+    """
+    return is_torch_cuda_available() and getattr(torch.version, 'hip', None) is not None
+
+
+def get_physical_device_count() -> int:
+    """Number of physical accelerators, ignoring ``*_VISIBLE_DEVICES`` masks.
+
+    Unlike :func:`get_device_count` (which honors CUDA/HIP_VISIBLE_DEVICES via the
+    runtime), this queries the driver/topology layer, so a process that inherited a
+    restricted mask can still discover the full device set. It still respects the
+    container's device exposure (``--gpus`` / ``NVIDIA_VISIBLE_DEVICES`` / passed
+    ``/dev/dri`` + ``/dev/kfd``). Falls back to the mask-dependent runtime count if
+    the driver query is unavailable.
+    """
+    import glob
+
+    if is_torch_rocm():
+        # ROCm: the kfd topology lists one node per device; GPU nodes have
+        # ``simd_count > 0`` (CPU/host nodes have 0). Reading sysfs neither
+        # initializes HIP nor is affected by the visibility mask.
+        count = 0
+        for prop in glob.glob('/sys/class/kfd/kfd/topology/nodes/*/properties'):
+            try:
+                with open(prop) as f:
+                    for line in f:
+                        if line.startswith('simd_count'):
+                            if int(line.split()[1]) > 0:
+                                count += 1
+                            break
+            except Exception:
+                continue
+        if count > 0:
+            return count
+    elif is_torch_cuda_available():
+        # NVIDIA: NVML/procfs/nvidia-smi enumerate at the driver level and are not
+        # filtered by CUDA_VISIBLE_DEVICES (only by container-level exposure).
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            try:
+                count = pynvml.nvmlDeviceGetCount()
+            finally:
+                pynvml.nvmlShutdown()
+            if count > 0:
+                return count
+        except Exception:
+            pass
+        count = len(glob.glob('/proc/driver/nvidia/gpus/*'))
+        if count > 0:
+            return count
+        try:
+            import subprocess
+            out = subprocess.check_output(['nvidia-smi', '--query-gpu=index', '--format=csv,noheader'],
+                                          stderr=subprocess.DEVNULL,
+                                          timeout=5)
+            count = len([line for line in out.decode().splitlines() if line.strip()])
+            if count > 0:
+                return count
+        except Exception:
+            pass
+
+    return get_device_count()
+
+
 def empty_cache():
     if is_torch_npu_available():
         torch.npu.empty_cache()
