@@ -47,6 +47,7 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        patch_vllm_moe_model_weight_loader, vllm_supports_lora_load_inplace)
 from swift.rollout import RolloutScheduler, multi_turns
 from swift.utils import (gc_collect, get_logger, get_seed, ipc_collect, is_vllm_ascend_available,
+                         is_torch_rocm, get_physical_device_count,
                          is_vllm_metax_available, synchronize)
 from ..base import SwiftPipeline
 
@@ -613,6 +614,32 @@ def _set_visible_devices_for_dp_rank(data_parallel_rank: int, tensor_parallel_si
     start = data_parallel_rank * tensor_parallel_size
     end = start + tensor_parallel_size
     selected = all_devices[start:end]
+
+    # ROCm: do NOT shrink the visibility mask to ``selected``. Restricting
+    # CUDA_VISIBLE_DEVICES (e.g. to "6,7") makes vLLM renumber those GPUs locally
+    # as cuda:0,1, so the device ids the rollout uses/reports diverge from the
+    # trainer's global numbering, and the cross-process RCCL weight-sync fails on
+    # ROCm with "invalid device ordinal" (the trainer can't resolve the rollout's
+    # GPUs). Instead keep EVERY physical GPU visible and only reorder the mask so
+    # the selected devices come first: vLLM still lands on the intended physical
+    # GPUs (cuda:0..tp-1 -> selected), while RCCL can resolve all peers (incl. the
+    # trainer's GPUs) by PCI bus id, so train<->rollout communication works.
+    if env_var == 'CUDA_VISIBLE_DEVICES' and is_torch_rocm():
+        total = get_physical_device_count()
+        sel_ints = []
+        for x in selected:
+            try:
+                sel_ints.append(int(x))
+            except ValueError:
+                sel_ints = []
+                break
+        if sel_ints and all(0 <= i < total for i in sel_ints):
+            rest = [i for i in range(total) if i not in sel_ints]
+            reordered = ','.join(str(i) for i in (sel_ints + rest))
+            os.environ['CUDA_VISIBLE_DEVICES'] = reordered
+            os.environ['HIP_VISIBLE_DEVICES'] = reordered
+            return
+
     os.environ[env_var] = ','.join(selected)
 
 
