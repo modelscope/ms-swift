@@ -203,3 +203,159 @@ References:
 
 - https://gymnasium.farama.org/environments/toy_text/frozen_lake/
 - https://github.com/alibaba/ROLL/tree/main/roll/pipeline/agentic/env/frozen_lake
+- [OpenEnv](https://github.com/huggingface/openenv)
+- [TRL Sudoku GRPO Example](https://github.com/huggingface/trl/blob/main/examples/notebooks/openenv_sudoku_grpo.ipynb)
+
+## OpenEnv Environment Training
+
+[OpenEnv](https://github.com/huggingface/openenv) is an open-source Agentic RL environment framework by HuggingFace that communicates with environment servers via WebSocket. Unlike the local `Env` interface used by FrozenLake above, OpenEnv places environment logic in a separate server process, and swift communicates with it through `OpenEnvScheduler` + `OpenEnvWrapper`.
+
+### Architecture Comparison
+
+| Feature | Built-in Gym (`GYMScheduler`) | OpenEnv (`OpenEnvScheduler`) |
+|---------|------------------------------|------------------------------|
+| Environment location | In-process (Python object) | Standalone server (WebSocket) |
+| Environment interface | Subclass `Env`, implement `reset/step/close` | Server provides HTTP/WebSocket API |
+| Registration | `--external_plugins` + `envs` registry | `--external_plugins` + `multi_turns` registry |
+| Use case | Lightweight local envs (FrozenLake, etc.) | Complex server envs (TextArena, CARLA, etc.) |
+| Concurrency control | Not needed | Built-in Semaphore for connection limiting |
+
+### OpenEnvScheduler
+
+`OpenEnvScheduler` extends `GYMScheduler`, replacing the local `Env` with `OpenEnvWrapper` (a WebSocket client). Key design:
+
+- **`_create_env`**: Creates an `OpenEnvWrapper` connected to the OpenEnv server
+- **`on_trajectory_start`**: Creates a wrapper per request, calls `reset()`, uses Semaphore to limit concurrency (default 4)
+- **`on_turn_end`**: Parses model output, calls `wrapper.step()`, accumulates reward
+- **`parse_action`** (overridable): Converts model text to action dict, default `json.loads`
+- **`format_observation`** (overridable): Converts server observation to string, default `json.dumps`
+
+Users subclass `OpenEnvScheduler` and override `parse_action`, `format_observation`, `on_trajectory_start`, and `on_turn_end` to adapt to specific environments.
+
+### Example: Sudoku Environment
+
+Using TextArena Sudoku as an example, the model places numbers on a 9x9 Sudoku grid via `[row col number]` format. Full code: [sudoku_scheduler.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/sudoku_scheduler.py).
+
+**1. Start OpenEnv Server**
+
+Install OpenEnv and the Sudoku environment package (textarena and nltk are installed automatically as dependencies):
+
+```bash
+pip install openenv
+pip install git+https://huggingface.co/spaces/openenv/sudoku
+```
+
+Use the provided startup script to start the local server (default port 8000). `MAX_CONCURRENT_ENVS` must be ≥ `num_generations` used in training:
+
+```bash
+TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/train/grpo/plugin/openenv/start_sudoku_server.py
+```
+
+> The default `python -m textarena_env.server.app` only supports 1 concurrent session, which is insufficient for GRPO's parallel multi-generation sampling. `start_sudoku_server.py` lifts this restriction by setting `SUPPORTS_CONCURRENT_SESSIONS`.
+
+Point `base_url` to the local server in your dataset:
+
+```json
+{"messages":[{"role":"user","content":"Play"}],"env_config":{"name":"openenv","base_url":"http://127.0.0.1:8000"}}
+```
+
+**2. Custom Scheduler**
+
+Subclass `OpenEnvScheduler` to implement Sudoku-specific action parsing, observation formatting, and multi-component rewards:
+
+```python
+from swift.rollout.multi_turn import OpenEnvScheduler
+
+class SudokuScheduler(OpenEnvScheduler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_content_len = {}  # Content diff tracking
+
+    async def on_trajectory_start(self, requests):
+        # Create env, parse board, generate hints
+        # hints include 'guaranteed moves' and candidate numbers
+        ...
+
+    async def on_turn_end(self, infer_request, response_choice, current_turn):
+        # Parse [row col number], step env
+        # Compute 5-component reward: empty_cell / valid_move / repetition / progress / correct
+        # Return updated board + hints as next observation
+        ...
+
+    def parse_action(self, text):
+        import re
+        match = re.search(r'\[\s*(\d+)\s+(\d+)\s+(\d+)\s*\]', text)
+        if match:
+            row, col, num = match.groups()
+            return {"message": f"[{row} {col} {num}]"}
+        return {"message": "[1 1 1]"}
+```
+
+**Multi-component reward system** (adapted from [TRL Sudoku example](https://github.com/huggingface/trl/blob/main/examples/notebooks/openenv_sudoku_grpo.ipynb)):
+
+| Reward component | Calculation | Purpose |
+|-----------------|-------------|---------|
+| `empty_cell_reward` | Targets empty cell +1 / overwrites -1 | Guide model to valid positions |
+| `valid_move_reward` | Valid new move +1 / warning -0.5 / invalid 0 | Encourage legal moves |
+| `repetition_reward` | Exponential penalty for repeats (-2^n, cap -10) | Avoid repetition |
+| `progress_reward` | (filled - initial) / (81 - initial) | Measure solving progress |
+| `correct_reward` | Binary reward from environment | Puzzle fully solved |
+
+Combined reward = sum of component averages, providing denser learning signal than a single binary reward.
+
+**3. Hints System**
+
+At each turn, the scheduler parses the current board state and provides hints to the model:
+
+- **GUARANTEED MOVES**: Cells with only one candidate (can be filled directly)
+- **Other options**: Cells with 2-3 candidates
+- **MOVES ALREADY TRIED**: Previously attempted moves (to avoid repetition)
+
+This significantly reduces exploration difficulty and enables the model to make more valid moves.
+
+**4. Prepare Dataset**
+
+The dataset serves as a placeholder; actual boards are generated by the environment server. Point `base_url` to the OpenEnv hosted address:
+
+```json
+{"messages":[{"role":"user","content":"Play"}],"env_config":{"name":"openenv","base_url":"http://127.0.0.1:8000"}}
+```
+
+**5. Register Scheduler**
+
+`sudoku_scheduler.py` includes registration code at the end, loaded via `--external_plugins`:
+
+```python
+# End of sudoku_scheduler.py
+from swift.rollout.multi_turn import multi_turns
+multi_turns['sudoku_scheduler'] = SudokuScheduler
+```
+
+**6. Start Training**
+
+```bash
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl \
+    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
+    --enable_thinking false \
+    --max_completion_length 256 \
+    --use_gym_env true \
+    --multi_turn_scheduler sudoku_scheduler \
+    --max_turns 20 \
+    --use_vllm true \
+    --vllm_mode colocate \
+    ...
+```
+
+Runnable script: [`examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh)
+
+### Notes
+
+1. **vLLM mode**: The example above uses `--vllm_mode colocate`, where vLLM and training share the same GPUs. If using `--vllm_mode server`, you need to start `swift rollout` separately as the vLLM server, and `--multi_turn_scheduler` / `--max_turns` should be passed to `swift rlhf`, not `swift rollout`.
+2. **Server concurrency**: `start_sudoku_server.py`'s `MAX_CONCURRENT_ENVS` must be ≥ `num_generations` used in training. The default `python -m textarena_env.server.app` only supports 1 concurrent session.
+3. **Content diff**: Environments like TextArena return cumulative messages (full history each turn). The scheduler tracks `_last_content_len` to return only the new portion, preventing context length explosion.
+4. **First-turn timing**: `on_trajectory_start` is called BEFORE the first rollout, ensuring the model sees the actual environment observation (e.g., Sudoku board) rather than the placeholder text from the dataset.
+5. **enable_thinking**: When using Qwen3.5 series models, set `--enable_thinking false` to skip `<think>` block generation.
+6. **Sync I/O**: `OpenEnvWrapper`'s `reset()`/`step()` are synchronous WebSocket calls. `OpenEnvScheduler` subclasses should wrap these calls with `asyncio.to_thread()` to avoid blocking the event loop.
