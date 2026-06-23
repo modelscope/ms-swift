@@ -6,6 +6,7 @@ Key features:
 2. Hints system: parse board, provide guaranteed moves and candidates
 3. Board state tracking with content diff for bounded context
 """
+import asyncio
 import re
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
@@ -106,21 +107,9 @@ def _extract_empty_cells_with_candidates(board_str: str, sort_by_difficulty: boo
 
 
 def _extract_empty_cells(board_str: str) -> list:
-    empty_cells = []
-    if not _is_valid_board_state(board_str):
-        return empty_cells
-    for line in board_str.split('\n'):
-        line_stripped = line.strip()
-        if line_stripped and line_stripped[0] == 'R' and len(line_stripped) > 1 and line_stripped[1].isdigit():
-            row = int(line_stripped[1])
-            col = 0
-            for char in line_stripped[2:]:
-                if char == '.':
-                    col += 1
-                    empty_cells.append((row, col))
-                elif char.isdigit():
-                    col += 1
-    return empty_cells
+    """Return list of (row, col) tuples for empty cells, 0-indexed."""
+    grid = _parse_board(board_str)
+    return [(r, c) for r in range(9) for c in range(9) if grid[r][c] == 0]
 
 
 def _extract_board_only(text: str) -> str:
@@ -146,7 +135,7 @@ def _make_hints(board_str: str, successful_moves: list, failed_moves: list, diff
     parts = []
     all_tried = successful_moves + failed_moves
     if all_tried:
-        parts.append(f'\nMOVES ALREADY TRIED (do not repeat): {", ".join(all_tried[:10])}')
+        parts.append(f"\nMOVES ALREADY TRIED (do not repeat): {', '.join(all_tried[:10])}")
     if not board_str or not _is_valid_board_state(board_str):
         return '\n'.join(parts)
 
@@ -161,9 +150,9 @@ def _make_hints(board_str: str, successful_moves: list, failed_moves: list, diff
                 nums = ','.join(str(n) for n in sorted(candidates))
                 other.append(f'({r},{c})->{nums}')
         if guaranteed:
-            parts.append(f'\nGUARANTEED MOVES (only one option): {", ".join(guaranteed[:5])}')
+            parts.append(f"\nGUARANTEED MOVES (only one option): {', '.join(guaranteed[:5])}")
         if other:
-            parts.append(f'Other options: {" | ".join(other[:5])}')
+            parts.append(f"Other options: {' | '.join(other[:5])}")
 
     return '\n'.join(parts)
 
@@ -198,7 +187,6 @@ class SudokuScheduler(OpenEnvScheduler):
 
     async def on_trajectory_start(self, requests):
         """Initialize env, parse board, compute hints."""
-        import asyncio
         semaphore = asyncio.Semaphore(getattr(self, 'max_concurrent_envs', 4))
 
         async def _init_single(req):
@@ -318,9 +306,11 @@ class SudokuScheduler(OpenEnvScheduler):
         # Check if move targets an empty cell
         if self._board_states.get(uuid):
             empty_cells = _extract_empty_cells(self._board_states[uuid])
+            # Convert move coords (1-indexed from model) to 0-indexed for comparison
+            move_nums = re.findall(r'\d+', move)
             targets_empty = tuple(
-                int(x)
-                for x in re.findall(r'\d+', move)[:2]) in empty_cells if len(re.findall(r'\d+', move)) >= 3 else True
+                int(x) - 1
+                for x in move_nums[:2]) in empty_cells if len(move_nums) >= 3 else True
         else:
             targets_empty = True
 
