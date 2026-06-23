@@ -39,8 +39,6 @@ if is_swanlab_available():
 
 T = TypeVar('T')
 
-logger = get_logger()
-
 _ipv6_patch_applied = False
 
 # Constants for the RL training LoRA adapter identity.
@@ -726,9 +724,6 @@ def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_o
         ctk = sample.extra.get('chat_template_kwargs') or {}
         sample_et = ctk.get('enable_thinking')
         prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
-        logger.debug(f'[encode_sample] uuid={sample.request_id} '
-                     f'sample_enable_thinking={sample_et} global={template.enable_thinking} '
-                     f'prefix_ids={prefix_ids}')
         data['messages'] = replace_assistant_response_with_ids(
             msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=prefix_ids)
 
