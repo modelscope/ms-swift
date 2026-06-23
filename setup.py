@@ -122,6 +122,7 @@ if __name__ == '__main__':
     all_requires = []
     extra_requires['megatron'], _ = parse_requirements('requirements/megatron.txt')
     extra_requires['eval'], _ = parse_requirements('requirements/eval.txt')
+    extra_requires['npu'], _ = parse_requirements('requirements/npu.txt')
     extra_requires['swanlab'], _ = parse_requirements('requirements/swanlab.txt')
     extra_requires['ray'], _ = parse_requirements('requirements/ray.txt')
     all_requires.extend(install_requires)

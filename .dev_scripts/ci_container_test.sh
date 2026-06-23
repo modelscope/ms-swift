@@ -201,8 +201,8 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         uv pip install .
         echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
         uv pip install bitsandbytes deepspeed -U
-        if [ -f requirements/npu.txt ]; then
-            uv pip install -r requirements/npu.txt
+        if [ -f requirements/npu_ci.txt ]; then
+            uv pip install -r requirements/npu_ci.txt
         fi
         ensure_npu_runtime
         report_npu_runtime

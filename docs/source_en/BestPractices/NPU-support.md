@@ -176,15 +176,22 @@ source /usr/local/Ascend/ascend-toolkit/set_env.sh
 
 # Set the global pip mirror (optional, speeds up downloads)
 pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-pip install ms-swift -U
+
+# Install the ms-swift NPU extra (choose one)
+# aarch64 Ascend
+pip install "ms-swift[npu]"
+
+# On x86_64, use PyTorch CPU wheels to avoid CUDA-related nvidia-* dependencies
+# pip install "ms-swift[npu]" --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Install from source
 git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
-pip install -e .
+pip install -e ".[npu]"
 
-# Install torch_npu
-pip install torch_npu==2.9.0 decorator
+# On x86_64 source installs, use PyTorch CPU wheels as well
+# pip install -e ".[npu]" --extra-index-url https://download.pytorch.org/whl/cpu
+
 # If you want to use deepspeed (to reduce memory usage, with some speed overhead)
 pip install deepspeed
 
