@@ -361,16 +361,12 @@ def _should_use_npu_generated_attention_mask(args) -> bool:
     return bool(getattr(args, 'use_flash_attn', False))
 
 
-def _should_keep_npu_attention_mask_2d(args) -> bool:
-    return getattr(args, 'model_type', None) in _NPU_ATTENTION_MASK_2D_MODEL_TYPES
-
-
-def _prepare_npu_generated_attention_mask(args, batch) -> None:
-    keep_attention_mask_2d = _should_keep_npu_attention_mask_2d(args)
-    attention_mask = batch.get('attention_mask')
-    if keep_attention_mask_2d and 'attention_mask_2d' not in batch and attention_mask is not None:
-        batch['attention_mask_2d'] = (~attention_mask).sum(dim=(1, 2)) > 0
-    elif not keep_attention_mask_2d:
+def _prepare_npu_generated_attention_mask(batch, *, keep_attention_mask_2d: bool) -> None:
+    if keep_attention_mask_2d:
+        attention_mask = batch.get('attention_mask')
+        if 'attention_mask_2d' not in batch and attention_mask is not None:
+            batch['attention_mask_2d'] = (~attention_mask).sum(dim=(1, 2)) > 0
+    else:
         batch.pop('attention_mask_2d', None)
     batch['attention_mask'] = None
 
@@ -393,7 +389,8 @@ def prepare_batch(args, data, vp_stage=None):
     if text_position_ids is None:
         text_position_ids = batch.get('position_ids')
     if _should_use_npu_generated_attention_mask(args):
-        _prepare_npu_generated_attention_mask(args, batch)
+        _prepare_npu_generated_attention_mask(
+            batch, keep_attention_mask_2d=getattr(args, 'model_type', None) in _NPU_ATTENTION_MASK_2D_MODEL_TYPES)
     else:
         batch.pop('attention_mask_2d', None)
     if args.padding_free and text_position_ids is not None:
