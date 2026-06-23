@@ -231,7 +231,7 @@ megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 
 
 ### 示例：Sudoku 环境
 
-以 [TextArena Sudoku](https://huggingface.co/spaces/openenv/sudoku) 为例，模型需要通过 `[row col number]` 格式下棋，在 9x9 数独棋盘上填入数字。完整代码参考：[sudoku_scheduler.py](https://github.com/modelscope/ms-swift/blob/main/examples/openenv/sudoku_scheduler.py)。
+以 TextArena Sudoku 为例，模型需要通过 `[row col number]` 格式下棋，在 9x9 数独棋盘上填入数字。完整代码参考：[sudoku_scheduler.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/sudoku_scheduler.py)。
 
 **1. 启动 OpenEnv 服务器**
 
@@ -245,7 +245,7 @@ pip install git+https://huggingface.co/spaces/openenv/sudoku
 使用提供的启动脚本启动本地服务器（默认端口 8000）。`MAX_CONCURRENT_ENVS` 需 ≥ 训练时的 `num_generations`：
 
 ```bash
-TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/openenv/start_sudoku_server.py
+TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/train/grpo/plugin/openenv/start_sudoku_server.py
 ```
 
 数据集中将 `base_url` 指向本地服务器地址：
@@ -330,8 +330,8 @@ multi_turns['sudoku_scheduler'] = SudokuScheduler
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --dataset examples/openenv/sudoku.jsonl \
-    --external_plugins examples/openenv/sudoku_scheduler.py \
+    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl \
+    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
     --enable_thinking false \
     --max_completion_length 256 \
     --use_gym_env true \
@@ -342,7 +342,7 @@ swift rlhf \
     ...
 ```
 
-运行脚本参考：[`examples/openenv/run_grpo_sudoku.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/openenv/run_grpo_sudoku.sh)
+运行脚本参考：[`examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh)
 
 
 参考资料:

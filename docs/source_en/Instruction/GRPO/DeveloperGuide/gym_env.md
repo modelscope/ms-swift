@@ -234,7 +234,7 @@ Users subclass `OpenEnvScheduler` and override `parse_action`, `format_observati
 
 ### Example: Sudoku Environment
 
-Using [TextArena Sudoku](https://huggingface.co/spaces/openenv/sudoku) as an example, the model places numbers on a 9x9 Sudoku grid via `[row col number]` format. Full code: [sudoku_scheduler.py](https://github.com/modelscope/ms-swift/blob/main/examples/openenv/sudoku_scheduler.py).
+Using TextArena Sudoku as an example, the model places numbers on a 9x9 Sudoku grid via `[row col number]` format. Full code: [sudoku_scheduler.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/sudoku_scheduler.py).
 
 **1. Start OpenEnv Server**
 
@@ -248,7 +248,7 @@ pip install git+https://huggingface.co/spaces/openenv/sudoku
 Use the provided startup script to start the local server (default port 8000). `MAX_CONCURRENT_ENVS` must be ≥ `num_generations` used in training:
 
 ```bash
-TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/openenv/start_sudoku_server.py
+TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/train/grpo/plugin/openenv/start_sudoku_server.py
 ```
 
 > The default `python -m textarena_env.server.app` only supports 1 concurrent session, which is insufficient for GRPO's parallel multi-generation sampling. `start_sudoku_server.py` lifts this restriction by setting `SUPPORTS_CONCURRENT_SESSIONS`.
@@ -337,8 +337,8 @@ multi_turns['sudoku_scheduler'] = SudokuScheduler
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --dataset examples/openenv/sudoku.jsonl \
-    --external_plugins examples/openenv/sudoku_scheduler.py \
+    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl \
+    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
     --enable_thinking false \
     --max_completion_length 256 \
     --use_gym_env true \
@@ -349,7 +349,7 @@ swift rlhf \
     ...
 ```
 
-Runnable script: [`examples/openenv/run_grpo_sudoku.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/openenv/run_grpo_sudoku.sh)
+Runnable script: [`examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh)
 
 ### Notes
 

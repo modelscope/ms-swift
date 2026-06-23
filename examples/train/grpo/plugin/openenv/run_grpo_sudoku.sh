@@ -6,7 +6,7 @@
 #  Prerequisites:
 #    1. Start Sudoku server (separate terminal):
 #       TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 \
-#         python examples/openenv/start_sudoku_server.py
+#         python examples/train/grpo/plugin/openenv/start_sudoku_server.py
 #
 #    2. This script uses colocate mode (single GPU):
 #       - vLLM and training share the same GPU
@@ -26,8 +26,8 @@ NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --dataset examples/openenv/sudoku.jsonl#1000 \
-    --external_plugins examples/openenv/sudoku_scheduler.py \
+    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl#1000 \
+    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
     --enable_thinking false \
     --torch_dtype bfloat16 \
     --max_completion_length 256 \
