@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -ex
 
 # ============================================================
 #  Swift GRPO training with OpenEnv TextArena Sudoku
@@ -22,15 +21,12 @@ set -ex
 #
 # ============================================================
 
-WORK_DIR="/mnt/nas2/hujinghan.hjh/workspace/swift"
-cd "${WORK_DIR}"
-
-CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-5} \
-NPROC_PER_NODE=1 \
+CUDA_VISIBLE_DEVICES=0,1,2,3\
+NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \
     --model Qwen/Qwen3.5-4B \
-    --dataset examples/openenv/sudoku.jsonl \
+    --dataset examples/openenv/sudoku.jsonl#1000 \
     --external_plugins examples/openenv/sudoku_scheduler.py \
     --enable_thinking false \
     --torch_dtype bfloat16 \
