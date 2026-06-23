@@ -949,16 +949,29 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                                     samples: List[OnPolicySample],
                                     request_config: RequestConfig,
                                     is_global_inputs: bool = False) -> List[OnPolicySample]:
-        rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
-
         if not self.multi_turn_scheduler or self.enable_server_multi_turn:
+            rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
             return self._postprocess_rollout_outputs(samples, rollout_outputs)
-        return self._colocate_multi_turn_infer(samples, rollout_outputs, request_config)
 
-    def _colocate_multi_turn_infer(self, samples: List[OnPolicySample], first_turn_rollout_outputs: List[RolloutOutput],
-                                   request_config: RequestConfig) -> List[OnPolicySample]:
+        # Multi-turn: call on_trajectory_start BEFORE first turn generation
+        # so the model sees the actual environment question, not the placeholder.
         requests = self.samples2requests(samples)
         invoke_async_hook(self.multi_turn_scheduler.on_trajectory_start(requests))
+
+        # Update inputs with actual messages from requests (e.g. env question)
+        for req, sample in zip(requests, samples):
+            sample.messages = req.messages
+
+        # Generate first turn with actual questions
+        first_turn_rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
+
+        return self._colocate_multi_turn_infer(samples, first_turn_rollout_outputs, request_config, requests)
+
+    def _colocate_multi_turn_infer(self, samples: List[OnPolicySample], first_turn_rollout_outputs: List[RolloutOutput],
+                                   request_config: RequestConfig,
+                                   requests: Optional[List] = None) -> List[OnPolicySample]:
+        if requests is None:
+            requests = self.samples2requests(samples)
         rollout_outputs = run_multi_turn(
             requests=requests,
             first_turn_outputs=first_turn_rollout_outputs,

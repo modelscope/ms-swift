@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Multi-turn Rollout Schedulers for GRPO training.
+import json
 import asyncio
 from abc import ABC
 from copy import deepcopy
@@ -825,8 +826,127 @@ class GYMScheduler(MultiTurnScheduler):
         return envs[env_name](env_config)
 
 
+class OpenEnvScheduler(GYMScheduler):
+    """GYMScheduler specialised for OpenEnv environments.
+
+    Action parsing (LLM text → dict) and observation formatting (dict → str)
+    are handled by overridable :meth:`parse_action` and :meth:`format_observation`
+    methods, eliminating the need for ``openenv_*`` command-line parameters.
+
+    All OpenEnv configuration (``base_url``, ``system_message``, ``reset_kwargs`` …)
+    comes from the dataset's per-row ``env_config``.
+    """
+
+    def _create_env(self, env_config: Dict) -> Any:
+        """Create an :class:`OpenEnvWrapper` (not an ``Env`` subclass)."""
+        from .openenv_wrapper import OpenEnvWrapper
+        return OpenEnvWrapper(env_config)
+
+    async def _close_and_remove(self, uuid: str) -> None:
+        """Close wrapper for a given uuid and remove all associated state."""
+        wrapper = self._envs.pop(uuid, None)
+        if wrapper is not None:
+            try:
+                wrapper.close()
+            except Exception:
+                pass
+        self._total_rewards.pop(uuid, None)
+        self._step_rewards.pop(uuid, None)
+        self._pending_obs.pop(uuid, None)
+
+    async def on_trajectory_start(self, requests: List['RolloutInferRequest']) -> None:
+        """Create one wrapper per request, call ``reset()``, seed messages.
+
+        Uses a semaphore to limit concurrent environment creations (default 4)
+        to avoid overwhelming the OpenEnv server with simultaneous WebSocket connections.
+        """
+        semaphore = asyncio.Semaphore(getattr(self, 'max_concurrent_envs', 4))
+
+        async def _init_single(req: 'RolloutInferRequest') -> None:
+            async with semaphore:
+                uuid = req.uuid
+                if uuid in self._envs:
+                    await self._close_and_remove(uuid)
+
+                row_env_config = (req.data_dict or {}).get('env_config', {}) if hasattr(req, 'data_dict') else {}
+                env_config = {**getattr(self, 'env_config_defaults', {}), **row_env_config}
+                wrapper = self._create_env(env_config)
+
+                obs, metadata = wrapper.reset()
+                system_message = env_config.get('system_message', '')
+
+                messages: Messages = []
+                if system_message:
+                    messages.append({'role': 'system', 'content': system_message})
+                messages.append({'role': 'user', 'content': self.format_observation(obs)})
+                req.messages = messages
+
+                self._envs[uuid] = wrapper
+                self._total_rewards[uuid] = 0.0
+                self._step_rewards[uuid] = []
+                self._pending_obs[uuid] = None
+
+        await asyncio.gather(*[_init_single(req) for req in requests])
+
+    async def on_turn_end(self, infer_request: 'RolloutInferRequest',
+                          response_choice: 'ChatCompletionResponseChoice',
+                          current_turn: int) -> Dict[str, Any]:
+        """Parse LLM response, call ``wrapper.step()``, accumulate reward."""
+        uuid = infer_request.uuid
+        wrapper = self._envs.get(uuid)
+        if wrapper is None:
+            return {'done': True, 'rollout_infos': {}}
+
+        action_text = response_choice.message.content
+        action_dict = self.parse_action(action_text)
+        obs, reward, done, metadata = wrapper.step(action_dict)
+
+        self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) + float(reward)
+        self._step_rewards.setdefault(uuid, []).append(float(reward))
+
+        next_obs = None if done else self.format_observation(obs)
+        self._pending_obs[uuid] = next_obs
+
+        rollout_infos: Dict[str, Any] = {
+            'total_reward': self._total_rewards[uuid],
+            'step_rewards': list(self._step_rewards.get(uuid, [])),
+            'gym_done': done,
+        }
+        if done:
+            await self._close_and_remove(uuid)
+
+        return {'done': done, 'rollout_infos': rollout_infos}
+
+    def parse_action(self, text: str) -> Dict[str, Any]:
+        """Parse LLM response text into an OpenEnv action dict.
+
+        Default: try ``json.loads``, fall back to ``{"message": text}``.
+        """
+        text = text.strip()
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+            return {"message": str(parsed)}
+        except (json.JSONDecodeError, ValueError):
+            return {"message": text}
+
+    def format_observation(self, observation: Any) -> str:
+        """Format OpenEnv observation into a string for the LLM.
+
+        Default: ``json.dumps``.  Override in subclasses for environment-specific
+        formatting (e.g. extract a ``"question"`` field).
+        """
+        try:
+            return json.dumps(observation, ensure_ascii=False, default=str)
+        except (TypeError, ValueError):
+            return str(observation)
+
+
+
 multi_turns = {
     'math_tip_trick': MathTipsScheduler,
     'gym_scheduler': GYMScheduler,
+    'openenv_scheduler': OpenEnvScheduler,
     'thinking_tips_scheduler': ThinkingModelTipsScheduler,
 }
