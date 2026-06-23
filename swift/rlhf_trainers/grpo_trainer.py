@@ -62,9 +62,9 @@ from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logg
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
-                    get_even_process_data, get_non_thinking_prefix_ids, identity_data_collator, load_pil_img,
-                    make_chord_sft_dataset, pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context,
-                    profiling_decorator, replace_assistant_response_with_ids, swanlab_get_run)
+                    get_even_process_data, identity_data_collator, load_pil_img, make_chord_sft_dataset,
+                    pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context, profiling_decorator,
+                    replace_assistant_response_with_ids, swanlab_get_run)
 
 try:
     from trl.trainer.utils import entropy_from_logits
@@ -581,12 +581,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """
         template = self.template
         gas_chunks = self.split_by_mini_batches(samples)
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
         ga_batch_encoded_inputs: List[Dict[str, Any]] = []
         for batch in gas_chunks:
             with self._template_context(template):
                 for s in batch:
-                    encoded_inputs = encode_sample(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
+                    encoded_inputs = encode_sample(s, template)
                     encoded_inputs.pop('_extra_kwargs', None)  # pop add_eos
                     s.encoded = encoded_inputs
                 model_inputs, grpo_batch = collate_to_grpo_micro_batch(

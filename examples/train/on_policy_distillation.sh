@@ -29,7 +29,6 @@ swift rlhf \
     --teacher_model Qwen/Qwen3-32B \
     --tuner_type full \
     --dataset open-thoughts/OpenThoughts3-1.2M#10000 \
-    --seq_kd false \
     --lmbda 1 \
     --beta 1 \
     --torch_dtype bfloat16 \

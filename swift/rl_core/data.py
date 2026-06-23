@@ -215,6 +215,10 @@ class OnPolicySample:
         request_data: Dict[str, Any] = {'uuid': self.request_id}
         request_data.update(self._standard_fields())
 
+        chat_template_kwargs = self.extra.get('chat_template_kwargs')
+        if chat_template_kwargs:
+            request_data['chat_template_kwargs'] = chat_template_kwargs
+
         if request_data.get('images'):
             imgs = request_data['images']
             if not isinstance(imgs, list):

@@ -18,9 +18,9 @@ from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, get_non_thinking_prefix_ids,
-                                       make_reward_weights, pad_logps_back_to_batch, profiling_context,
-                                       profiling_decorator, resolve_reward_funcs)
+from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, make_reward_weights,
+                                       pad_logps_back_to_batch, profiling_context, profiling_decorator,
+                                       resolve_reward_funcs)
 from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template
 from swift.utils import get_logger
@@ -284,12 +284,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         total_samples = gather_object(samples, group=rollout_group)
         mini_batch_data = []
         template = self.template
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
 
         # Step 1: Encode batches and compute logps first (unified flow like GRPOTrainer)
         with self._template_context(template):
             for s in total_samples:
-                s.encoded = encode_sample(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
+                s.encoded = encode_sample(s, template)
                 s.encoded.pop('_extra_kwargs', None)
 
             for idx in range(0, len(total_samples), self.micro_batch_size):

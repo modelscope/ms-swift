@@ -12,7 +12,7 @@ from typing import List
 from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.rl_core.data import GKDSample
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput
-from swift.rlhf_trainers.utils import get_non_thinking_prefix_ids, parse_prompt_logprobs
+from swift.rlhf_trainers.utils import parse_prompt_logprobs
 from swift.utils import get_logger, remove_response
 from .base_trainer import BaseRayTrainer
 from .driver_utils import extract_iteration

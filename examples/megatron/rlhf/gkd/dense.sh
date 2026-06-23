@@ -11,7 +11,6 @@ megatron rlhf \
     --expert_model_parallel_size 1 \
     --pipeline_model_parallel_size 2 \
     --context_parallel_size 2 \
-    --seq_kd false \
     --lmbda 1 \
     --beta 1 \
     --torch_dtype bfloat16 \
