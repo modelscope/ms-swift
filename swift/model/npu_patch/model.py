@@ -243,18 +243,34 @@ def npu_apply_rotary_pos_emb_qwen3_5(q, k, cos, sin, position_ids=None, unsqueez
     return q_embed, k_embed
 
 
-def _patch_transformers_flash_linear_attention_available() -> None:
+_MISSING = object()
+_TRANSFORMERS_FLA_PROBE_MODULES = ('transformers.utils', 'transformers.utils.import_utils')
+
+
+def _patch_transformers_flash_linear_attention_available(available: bool) -> dict[str, object]:
 
     def _is_flash_linear_attention_available() -> bool:
-        return True
+        return available
 
-    transformers_utils = import_optional_module('transformers.utils')
-    if transformers_utils is not None:
-        setattr(transformers_utils, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
+    originals = {}
+    for module_name in _TRANSFORMERS_FLA_PROBE_MODULES:
+        module = import_optional_module(module_name)
+        if module is None:
+            continue
+        originals[module_name] = getattr(module, 'is_flash_linear_attention_available', _MISSING)
+        setattr(module, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
+    return originals
 
-    transformers_import_utils = import_optional_module('transformers.utils.import_utils')
-    if transformers_import_utils is not None:
-        setattr(transformers_import_utils, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
+
+def _restore_transformers_flash_linear_attention_available(originals: dict[str, object]) -> None:
+    for module_name, original in originals.items():
+        module = import_optional_module(module_name)
+        if module is None:
+            continue
+        if original is _MISSING:
+            delattr(module, 'is_flash_linear_attention_available')
+        else:
+            setattr(module, 'is_flash_linear_attention_available', original)
 
 
 def patch_qwen3_5_chunk_gated_delta_rule_with_mindspeed() -> None:
@@ -513,10 +529,15 @@ def apply_patch() -> None:
         ('qwen3_vl_moe', modeling_qwen3_vl_moe, QWEN3_VL_MOE_PATCHES, {}),
     ]
 
-    modeling_qwen3_5 = import_optional_module('transformers.models.qwen3_5.modeling_qwen3_5')
-    modeling_qwen3_5_moe = import_optional_module('transformers.models.qwen3_5_moe.modeling_qwen3_5_moe')
+    # Qwen3.5 GDN is patched to swift's embedded MindSpeed implementation below.
+    # Skip Transformers' import-time FLA probe so FLA is not a hard dependency.
+    fla_probe_originals = _patch_transformers_flash_linear_attention_available(False)
+    try:
+        modeling_qwen3_5 = import_optional_module('transformers.models.qwen3_5.modeling_qwen3_5')
+        modeling_qwen3_5_moe = import_optional_module('transformers.models.qwen3_5_moe.modeling_qwen3_5_moe')
+    finally:
+        _restore_transformers_flash_linear_attention_available(fla_probe_originals)
     if modeling_qwen3_5 is not None:
-        _patch_transformers_flash_linear_attention_available()
         patch_qwen3_5_chunk_gated_delta_rule_with_mindspeed()
 
     if modeling_qwen3_5 is not None:
