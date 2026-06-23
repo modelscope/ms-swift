@@ -8,10 +8,9 @@ Key features:
 """
 import re
 from collections import defaultdict
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
-from swift.rollout.multi_turn import OpenEnvScheduler
-
+from swift.rollout.multi_turn import OpenEnvScheduler, multi_turns
 
 SUDOKU_SYSTEM_PROMPT = """You are an expert Sudoku player with deep knowledge of logical deduction strategies.
 
@@ -45,23 +44,23 @@ You may reason before your move, but always end with [row col number].
 - Empty cells shown as '.'"""
 
 
-# ── Board parsing utilities (from TRL example) ──
-
 def _is_valid_board_state(board_str: str) -> bool:
-    return "R1" in board_str and "R9" in board_str and "|" in board_str
+    return 'R1' in board_str and 'R9' in board_str and '|' in board_str
 
 
 def _parse_board(board_str: str) -> list:
     grid = [[0] * 9 for _ in range(9)]
     if not _is_valid_board_state(board_str):
         return grid
-    for line in board_str.split("\n"):
+    for line in board_str.split('\n'):
         line_stripped = line.strip()
-        if line_stripped and line_stripped[0] == "R" and len(line_stripped) > 1 and line_stripped[1].isdigit():
+        if line_stripped and line_stripped[0] == 'R' and len(line_stripped) > 1 and line_stripped[1].isdigit():
             row = int(line_stripped[1]) - 1
             col = 0
             for char in line_stripped[2:]:
-                if char == ".":
+                if col >= 9:
+                    break
+                if char == '.':
                     grid[row][col] = 0
                     col += 1
                 elif char.isdigit():
@@ -110,13 +109,13 @@ def _extract_empty_cells(board_str: str) -> list:
     empty_cells = []
     if not _is_valid_board_state(board_str):
         return empty_cells
-    for line in board_str.split("\n"):
+    for line in board_str.split('\n'):
         line_stripped = line.strip()
-        if line_stripped and line_stripped[0] == "R" and len(line_stripped) > 1 and line_stripped[1].isdigit():
+        if line_stripped and line_stripped[0] == 'R' and len(line_stripped) > 1 and line_stripped[1].isdigit():
             row = int(line_stripped[1])
             col = 0
             for char in line_stripped[2:]:
-                if char == ".":
+                if char == '.':
                     col += 1
                     empty_cells.append((row, col))
                 elif char.isdigit():
@@ -126,36 +125,30 @@ def _extract_empty_cells(board_str: str) -> list:
 
 def _extract_board_only(text: str) -> str:
     if not text:
-        return ""
-    lines = text.split("\n")
+        return ''
+    lines = text.split('\n')
     board_lines = []
     in_board = False
     for line in lines:
         stripped = line.strip()
-        if stripped.startswith("C1") or (
-            stripped and stripped[0] == "R" and len(stripped) > 1 and stripped[1].isdigit()
-        ):
+        if stripped.startswith('C1') or (stripped and stripped[0] == 'R' and len(stripped) > 1
+                                         and stripped[1].isdigit()):
             in_board = True
-        if in_board and (stripped.startswith("-") or stripped.startswith("R") or stripped.startswith("C1")):
+        if in_board and (stripped.startswith('-') or stripped.startswith('R') or stripped.startswith('C1')):
             board_lines.append(line)
-        elif (
-            in_board
-            and stripped
-            and not stripped.startswith("-")
-            and not (stripped[0] == "R" and len(stripped) > 1 and stripped[1].isdigit())
-        ):
+        elif (in_board and stripped and not stripped.startswith('-')
+              and not (stripped[0] == 'R' and len(stripped) > 1 and stripped[1].isdigit())):
             break
-    return "\n".join(board_lines) if board_lines else ""
+    return '\n'.join(board_lines) if board_lines else ''
 
 
-def _make_hints(board_str: str, successful_moves: list, failed_moves: list, difficulty: str = "easy") -> str:
-    """Generate hint text for the model (from TRL example)."""
+def _make_hints(board_str: str, successful_moves: list, failed_moves: list, difficulty: str = 'easy') -> str:
     parts = []
     all_tried = successful_moves + failed_moves
     if all_tried:
         parts.append(f"\nMOVES ALREADY TRIED (do not repeat): {', '.join(all_tried[:10])}")
     if not board_str or not _is_valid_board_state(board_str):
-        return "\n".join(parts)
+        return '\n'.join(parts)
 
     cells = _extract_empty_cells_with_candidates(board_str, sort_by_difficulty=True)
     if cells:
@@ -165,14 +158,14 @@ def _make_hints(board_str: str, successful_moves: list, failed_moves: list, diff
             if len(candidates) == 1:
                 guaranteed.append(f"[{r} {c} {list(candidates)[0]}]")
             elif len(candidates) <= 3:
-                nums = ",".join(str(n) for n in sorted(candidates))
+                nums = ','.join(str(n) for n in sorted(candidates))
                 other.append(f"({r},{c})->{nums}")
         if guaranteed:
             parts.append(f"\nGUARANTEED MOVES (only one option): {', '.join(guaranteed[:5])}")
         if other:
             parts.append(f"Other options: {' | '.join(other[:5])}")
 
-    return "\n".join(parts)
+    return '\n'.join(parts)
 
 
 class SudokuScheduler(OpenEnvScheduler):
@@ -218,7 +211,7 @@ class SudokuScheduler(OpenEnvScheduler):
                 env_config = {**getattr(self, 'env_config_defaults', {}), **row_env_config}
                 wrapper = self._create_env(env_config)
 
-                obs, metadata = wrapper.reset()
+                obs, metadata = await asyncio.to_thread(wrapper.reset)
                 system_message = env_config.get('system_message', SUDOKU_SYSTEM_PROMPT)
 
                 content = self._extract_content(obs)
@@ -226,7 +219,7 @@ class SudokuScheduler(OpenEnvScheduler):
 
                 # Parse initial board state
                 board = _extract_board_only(content) if _is_valid_board_state(content) else content
-                self._board_states[uuid] = content if _is_valid_board_state(content) else ""
+                self._board_states[uuid] = content if _is_valid_board_state(content) else ''
                 initial_filled = _count_filled_cells(self._board_states[uuid]) if self._board_states[uuid] else 0
 
                 # Initialize tracking state
@@ -292,10 +285,23 @@ class SudokuScheduler(OpenEnvScheduler):
 
         action_text = response_choice.message.content
         action_dict = self.parse_action(action_text)
-        move = action_dict.get('message', '[1 1 1]')
+        if action_dict is None:
+            # Parse failed: end trajectory with penalty instead of polluting env
+            self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) - 1.0
+            self._step_rewards.setdefault(uuid, []).append(-1.0)
+            await self._close_and_remove(uuid)
+            return {
+                'done': True,
+                'rollout_infos': {
+                    'total_reward': self._total_rewards[uuid],
+                    'step_rewards': list(self._step_rewards.get(uuid, [])),
+                    'gym_done': True,
+                }
+            }
+        move = action_dict.get('message', '')
 
         # Step environment
-        obs, env_reward, done, metadata = wrapper.step(action_dict)
+        obs, env_reward, done, metadata = await asyncio.to_thread(wrapper.step, action_dict)
         correct_score = float(env_reward or 0.0)
 
         # Extract new content (diff from last seen)
@@ -304,18 +310,17 @@ class SudokuScheduler(OpenEnvScheduler):
         new_content = full_content[last_len:] if len(full_content) > last_len else full_content
         self._last_content_len[uuid] = len(full_content)
 
-        # ── Compute reward components (from TRL example) ──
-
         # Check if env says invalid
         new_content_lower = new_content.lower()
-        env_says_invalid = any(
-            kw in new_content_lower for kw in ["invalid", "error", "cannot", "already", "violation", "lost"]
-        )
+        env_says_invalid = any(kw in new_content_lower
+                               for kw in ['invalid', 'error', 'cannot', 'already', 'violation', 'lost'])
 
         # Check if move targets an empty cell
         if self._board_states.get(uuid):
             empty_cells = _extract_empty_cells(self._board_states[uuid])
-            targets_empty = tuple(int(x) for x in re.findall(r'\d+', move)[:3]) in [(r, c) for r, c in empty_cells] if len(re.findall(r'\d+', move)) >= 3 else True
+            targets_empty = tuple(
+                int(x)
+                for x in re.findall(r'\d+', move)[:2]) in empty_cells if len(re.findall(r'\d+', move)) >= 3 else True
         else:
             targets_empty = True
 
@@ -326,14 +331,14 @@ class SudokuScheduler(OpenEnvScheduler):
         is_new_move = self._move_counts[uuid][move] == 0
         repetition_count = self._move_counts[uuid][move]
         self._move_counts[uuid][move] += 1
-        repetition_score = -min(2 ** repetition_count, 10.0) if repetition_count > 0 else 0.0
+        repetition_score = -min(2**repetition_count, 10.0) if repetition_count > 0 else 0.0
 
         # Valid move score
         is_valid = not env_says_invalid and targets_empty
         if is_valid and is_new_move:
             valid_move_score = 1.0
             self._successful_moves[uuid].append(move)
-        elif "please resubmit" in new_content_lower or "avoid penalties" in new_content_lower:
+        elif 'please resubmit' in new_content_lower or 'avoid penalties' in new_content_lower:
             valid_move_score = -0.5
             self._failed_moves[uuid].append(move)
         else:
@@ -361,22 +366,19 @@ class SudokuScheduler(OpenEnvScheduler):
         self._correct_scores[uuid].append(correct_score)
         self._repetition_scores[uuid].append(repetition_score)
 
-        # Combined reward (sum of all components, matching TRL's nansum approach)
         combined_reward = (
             sum(self._empty_cell_scores[uuid]) / max(len(self._empty_cell_scores[uuid]), 1)
             + sum(self._valid_move_scores[uuid]) / max(len(self._valid_move_scores[uuid]), 1)
-            + sum(self._repetition_scores[uuid]) / max(len(self._repetition_scores[uuid]), 1)
-            + progress_score
-            + correct_score
-        )
+            + sum(self._repetition_scores[uuid]) / max(len(self._repetition_scores[uuid]), 1) + progress_score
+            + correct_score)
 
         self._total_rewards[uuid] = combined_reward
         self._step_rewards.setdefault(uuid, []).append(combined_reward)
 
         # Build next observation with board + hints
         if not done:
-            board_str = self._board_states.get(uuid, "")
-            board = _extract_board_only(board_str) if board_str else ""
+            board_str = self._board_states.get(uuid, '')
+            board = _extract_board_only(board_str) if board_str else ''
             hints = _make_hints(
                 board_str,
                 self._successful_moves[uuid],
@@ -404,163 +406,23 @@ class SudokuScheduler(OpenEnvScheduler):
 
         return {'done': done, 'rollout_infos': rollout_infos}
 
-    def parse_action(self, text: str) -> Dict[str, Any]:
-        """Extract [row col number] from model output."""
+    def parse_action(self, text: str) -> Optional[Dict[str, Any]]:
+        """Extract [row col number] from model output. Returns None if parse fails."""
         match = re.search(r'\[\s*(\d+)\s+(\d+)\s+(\d+)\s*\]', text)
         if match:
             row, col, num = match.groups()
-            return {"message": f"[{row} {col} {num}]"}
+            return {'message': f"[{row} {col} {num}]"}
 
         numbers = re.findall(r'\d+', text)
         if len(numbers) >= 3:
-            return {"message": f"[{numbers[0]} {numbers[1]} {numbers[2]}]"}
+            return {'message': f"[{numbers[0]} {numbers[1]} {numbers[2]}]"}
 
-        return {"message": "[1 1 1]"}
-
-    def format_observation(self, observation: Any) -> Union[str, List[Dict]]:
-        return self._extract_content(observation)
-"""Sudoku scheduler for OpenEnv TextArena sudoku environment.
-
-The model sees the Sudoku board and outputs moves in [row col number] format.
-Multi-turn: each turn the model places one number on the board.
-
-Optimization: only sends the latest board state + feedback to the model,
-not the full cumulative history, to keep context length manageable.
-"""
-import re
-from typing import Any, Dict, Union, List
-
-from swift.rollout.multi_turn import OpenEnvScheduler
-
-
-SUDOKU_SYSTEM_PROMPT = """You are an expert Sudoku solver. You play Sudoku by placing numbers on the board.
-
-Rules:
-- The board is a 9x9 grid. Rows 1-9, Columns 1-9.
-- Empty cells are '.', filled cells contain digits 1-9.
-- Each row, column, and 3x3 box must contain digits 1-9 without repetition.
-
-To make a move, output ONLY the move in this exact format:
-[row col number]
-
-Example: [3 5 7] means place 7 at row 3, column 5.
-Do not output anything else. Just the move in brackets."""
-
-
-class SudokuScheduler(OpenEnvScheduler):
-    """Scheduler for OpenEnv TextArena Sudoku environment.
-
-    Tracks the last seen content length per uuid to extract only new feedback
-    from the cumulative messages, keeping context length bounded.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._last_content_len: Dict[str, int] = {}
-
-    async def on_trajectory_start(self, requests):
-        """Reset tracking state for each trajectory."""
-        import asyncio
-        semaphore = asyncio.Semaphore(getattr(self, 'max_concurrent_envs', 4))
-
-        async def _init_single(req):
-            async with semaphore:
-                uuid = req.uuid
-                if uuid in self._envs:
-                    await self._close_and_remove(uuid)
-
-                row_env_config = (req.data_dict or {}).get('env_config', {}) if hasattr(req, 'data_dict') else {}
-                env_config = {**getattr(self, 'env_config_defaults', {}), **row_env_config}
-                wrapper = self._create_env(env_config)
-
-                obs, metadata = wrapper.reset()
-                system_message = env_config.get('system_message', '')
-
-                # Track initial content length
-                content = self._extract_content(obs)
-                self._last_content_len[uuid] = len(content)
-
-                from swift.rollout.multi_turn import Messages
-                messages = []
-                if system_message:
-                    messages.append({'role': 'system', 'content': system_message})
-                messages.append({'role': 'user', 'content': content})
-                req.messages = messages
-
-                self._envs[uuid] = wrapper
-                self._total_rewards[uuid] = 0.0
-                self._step_rewards[uuid] = []
-                self._pending_obs[uuid] = None
-
-        await asyncio.gather(*[_init_single(req) for req in requests])
-
-    async def _close_and_remove(self, uuid):
-        """Override to also clean up tracking state."""
-        await super()._close_and_remove(uuid)
-        self._last_content_len.pop(uuid, None)
-
-    def _extract_content(self, observation: Any) -> str:
-        """Extract the text content from a TextArena observation."""
-        if isinstance(observation, dict):
-            messages = observation.get('messages', [])
-            if messages:
-                return messages[0].get('content', '')
-            prompt = observation.get('prompt', '')
-            if prompt:
-                return prompt
-        return str(observation)
-
-    async def on_turn_end(self, infer_request, response_choice, current_turn):
-        """Parse model output, step env, and track content for diff."""
-        uuid = infer_request.uuid
-        wrapper = self._envs.get(uuid)
-        if wrapper is None:
-            return {'done': True, 'rollout_infos': {}}
-
-        action_text = response_choice.message.content
-        action_dict = self.parse_action(action_text)
-        obs, reward, done, metadata = wrapper.step(action_dict)
-
-        self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) + float(reward)
-        self._step_rewards.setdefault(uuid, []).append(float(reward))
-
-        # Extract only NEW content (diff from last seen)
-        full_content = self._extract_content(obs)
-        last_len = self._last_content_len.get(uuid, 0)
-        new_content = full_content[last_len:] if len(full_content) > last_len else full_content
-        self._last_content_len[uuid] = len(full_content)
-
-        next_obs = None if done else new_content
-        self._pending_obs[uuid] = next_obs
-
-        rollout_infos = {
-            'total_reward': self._total_rewards[uuid],
-            'step_rewards': list(self._step_rewards.get(uuid, [])),
-            'gym_done': done,
-        }
-        if done:
-            await self._close_and_remove(uuid)
-
-        return {'done': done, 'rollout_infos': rollout_infos}
-
-    def parse_action(self, text: str) -> Dict[str, Any]:
-        """Extract [row col number] from model output."""
-        match = re.search(r'\[\s*(\d+)\s+(\d+)\s+(\d+)\s*\]', text)
-        if match:
-            row, col, num = match.groups()
-            return {"message": f"[{row} {col} {num}]"}
-
-        numbers = re.findall(r'\d+', text)
-        if len(numbers) >= 3:
-            return {"message": f"[{numbers[0]} {numbers[1]} {numbers[2]}]"}
-
-        return {"message": "[1 1 1]"}
+        return None
 
     def format_observation(self, observation: Any) -> Union[str, List[Dict]]:
-        """Format observation (used only for initial state in on_trajectory_start)."""
         return self._extract_content(observation)
 
 
 # Register scheduler so --external_plugins can load it
-from swift.rollout.multi_turn import multi_turns
+
 multi_turns['sudoku_scheduler'] = SudokuScheduler

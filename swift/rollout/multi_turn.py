@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 # Multi-turn Rollout Schedulers for GRPO training.
-import json
 import asyncio
+import json
 from abc import ABC
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
@@ -829,6 +829,12 @@ class GYMScheduler(MultiTurnScheduler):
 class OpenEnvScheduler(GYMScheduler):
     """GYMScheduler specialised for OpenEnv environments.
 
+    Unlike GYMScheduler which uses async ``Env`` instances, OpenEnvScheduler
+    uses :class:`OpenEnvWrapper` whose ``reset()`` / ``step()`` / ``close()``
+    are **synchronous** (blocking WebSocket I/O).  Subclasses that override
+    ``on_trajectory_start`` / ``on_turn_end`` should wrap sync wrapper calls
+    with ``asyncio.to_thread()`` to avoid blocking the event loop.
+
     Action parsing (LLM text → dict) and observation formatting (dict → str)
     are handled by overridable :meth:`parse_action` and :meth:`format_observation`
     methods, eliminating the need for ``openenv_*`` command-line parameters.
@@ -843,11 +849,16 @@ class OpenEnvScheduler(GYMScheduler):
         return OpenEnvWrapper(env_config)
 
     async def _close_and_remove(self, uuid: str) -> None:
-        """Close wrapper for a given uuid and remove all associated state."""
+        """Close wrapper for a given uuid and remove all associated state.
+
+        Wrapper.close() is synchronous; use ``asyncio.to_thread`` to avoid
+        blocking the event loop.
+        """
+        import asyncio
         wrapper = self._envs.pop(uuid, None)
         if wrapper is not None:
             try:
-                wrapper.close()
+                await asyncio.to_thread(wrapper.close)
             except Exception:
                 pass
         self._total_rewards.pop(uuid, None)
@@ -888,8 +899,7 @@ class OpenEnvScheduler(GYMScheduler):
 
         await asyncio.gather(*[_init_single(req) for req in requests])
 
-    async def on_turn_end(self, infer_request: 'RolloutInferRequest',
-                          response_choice: 'ChatCompletionResponseChoice',
+    async def on_turn_end(self, infer_request: 'RolloutInferRequest', response_choice: 'ChatCompletionResponseChoice',
                           current_turn: int) -> Dict[str, Any]:
         """Parse LLM response, call ``wrapper.step()``, accumulate reward."""
         uuid = infer_request.uuid
@@ -923,13 +933,18 @@ class OpenEnvScheduler(GYMScheduler):
         Default: try ``json.loads``, fall back to ``{"message": text}``.
         """
         text = text.strip()
+        # Strip markdown code blocks (e.g. ```json ... ```)
+        if text.startswith('```'):
+            lines = text.splitlines()
+            if len(lines) >= 2 and lines[0].startswith('```') and lines[-1].strip().startswith('```'):
+                text = '\n'.join(lines[1:-1]).strip()
         try:
             parsed = json.loads(text)
             if isinstance(parsed, dict):
                 return parsed
-            return {"message": str(parsed)}
+            return {'message': str(parsed)}
         except (json.JSONDecodeError, ValueError):
-            return {"message": text}
+            return {'message': text}
 
     def format_observation(self, observation: Any) -> str:
         """Format OpenEnv observation into a string for the LLM.
@@ -941,7 +956,6 @@ class OpenEnvScheduler(GYMScheduler):
             return json.dumps(observation, ensure_ascii=False, default=str)
         except (TypeError, ValueError):
             return str(observation)
-
 
 
 multi_turns = {

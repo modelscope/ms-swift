@@ -8,8 +8,8 @@
 #       TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 \
 #         python examples/train/grpo/plugin/openenv/start_sudoku_server.py
 #
-#    2. This script uses colocate mode (single GPU):
-#       - vLLM and training share the same GPU
+#    2. This script uses colocate mode:
+#       - vLLM and training share the same GPUs
 #       - No separate rollout server needed
 #
 #  Environment:  TextArena Sudoku (local server, port 8000)
@@ -21,7 +21,7 @@
 #
 # ============================================================
 
-CUDA_VISIBLE_DEVICES=0,1,2,3\
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 NPROC_PER_NODE=4 \
 swift rlhf \
     --rlhf_type grpo \

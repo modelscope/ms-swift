@@ -353,7 +353,9 @@ Runnable script: [`examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh`](https
 
 ### Notes
 
-1. **Server concurrency**: OpenEnv servers typically have concurrent session limits. `OpenEnvScheduler` includes a built-in `Semaphore(4)` to limit simultaneous environment connections, adjustable via the `max_concurrent_envs` attribute.
-2. **Content diff**: Environments like TextArena return cumulative messages (full history each turn). The scheduler tracks `_last_content_len` to return only the new portion, preventing context length explosion.
-3. **First-turn timing**: `on_trajectory_start` is called BEFORE the first rollout, ensuring the model sees the actual environment observation (e.g., Sudoku board) rather than the placeholder text from the dataset. This timing is critical for tasks like Sudoku where the model must observe the board before making decisions.
-4. **enable_thinking**: When using Qwen3.5 series models, it is recommended to set `--enable_thinking false` to skip `<think>` block generation. The model can still reason within the completion (since `max_completion_length` is set to 256), just without thinking tags.
+1. **vLLM mode**: The example above uses `--vllm_mode colocate`, where vLLM and training share the same GPUs. If using `--vllm_mode server`, you need to start `swift rollout` separately as the vLLM server, and `--multi_turn_scheduler` / `--max_turns` should be passed to `swift rlhf`, not `swift rollout`.
+2. **Server concurrency**: `start_sudoku_server.py`'s `MAX_CONCURRENT_ENVS` must be ≥ `num_generations` used in training. The default `python -m textarena_env.server.app` only supports 1 concurrent session.
+3. **Content diff**: Environments like TextArena return cumulative messages (full history each turn). The scheduler tracks `_last_content_len` to return only the new portion, preventing context length explosion.
+4. **First-turn timing**: `on_trajectory_start` is called BEFORE the first rollout, ensuring the model sees the actual environment observation (e.g., Sudoku board) rather than the placeholder text from the dataset.
+5. **enable_thinking**: When using Qwen3.5 series models, set `--enable_thinking false` to skip `<think>` block generation.
+6. **Sync I/O**: `OpenEnvWrapper`'s `reset()`/`step()` are synchronous WebSocket calls. `OpenEnvScheduler` subclasses should wrap these calls with `asyncio.to_thread()` to avoid blocking the event loop.

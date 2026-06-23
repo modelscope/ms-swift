@@ -31,8 +31,8 @@ class OpenEnvWrapper:
     """
 
     def __init__(self, env_config: Dict[str, Any]):
-        self.base_url = env_config.get("base_url", "http://localhost:8000")
-        self.reset_kwargs = env_config.get("reset_kwargs", {})
+        self.base_url = env_config.get('base_url', 'http://localhost:8000')
+        self.reset_kwargs = env_config.get('reset_kwargs', {})
         self._client = None
 
     # ------------------------------------------------------------------
@@ -45,19 +45,22 @@ class OpenEnvWrapper:
             from openenv.core.generic_client import GenericEnvClient
 
             client = GenericEnvClient(base_url=self.base_url)
-            self._client = client.sync()
-            self._client.__enter__()
+            sync_client = client.sync()
+            sync_client.__enter__()
+            self._client = sync_client
         return self._client
 
     def _reconnect_client(self):
-        """Close old client and create a new one (recover from connection loss)."""
+        """Close old client (recover from connection loss).
+
+        Only cleans up; the next _ensure_client() call will create a new connection.
+        """
         if self._client is not None:
             try:
                 self._client.__exit__(None, None, None)
             except Exception:
                 pass
             self._client = None
-        self._ensure_client()
 
     def _call_with_retry(self, fn_name: str, *args, **kwargs):
         """Call a client method with retry on connection failure."""
@@ -108,5 +111,5 @@ class OpenEnvWrapper:
             try:
                 self._client.__exit__(None, None, None)
             except Exception:
-                logger.debug("OpenEnv client close failed", exc_info=True)
+                logger.debug('OpenEnv client close failed', exc_info=True)
             self._client = None

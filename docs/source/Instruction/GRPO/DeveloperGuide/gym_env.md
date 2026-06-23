@@ -344,6 +344,13 @@ swift rlhf \
 
 运行脚本参考：[`examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh)
 
+### 注意事项
+
+- **vLLM 模式**：以上示例使用 `--vllm_mode colocate`，vLLM 与训练共享 GPU。若使用 `--vllm_mode server`，需额外启动 `swift rollout` 作为 vLLM 服务器，且 `--multi_turn_scheduler` 和 `--max_turns` 参数应传给 `swift rlhf` 而非 `swift rollout`。
+- **并发会话数**：`start_sudoku_server.py` 的 `MAX_CONCURRENT_ENVS` 需 ≥ 训练时的 `num_generations`。默认的 `python -m textarena_env.server.app` 只支持 1 个并发会话。
+- **enable_thinking**：Sudoku 等环境不需要 CoT 推理，建议设置 `--enable_thinking false` 以减少 token 消耗。
+- **同步 I/O**：`OpenEnvWrapper` 的 `reset()`/`step()` 是同步 WebSocket 调用。`OpenEnvScheduler` 的子类应使用 `asyncio.to_thread()` 包装这些调用以避免阻塞事件循环。
+
 
 参考资料:
 

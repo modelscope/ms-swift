@@ -967,7 +967,9 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         return self._colocate_multi_turn_infer(samples, first_turn_rollout_outputs, request_config, requests)
 
-    def _colocate_multi_turn_infer(self, samples: List[OnPolicySample], first_turn_rollout_outputs: List[RolloutOutput],
+    def _colocate_multi_turn_infer(self,
+                                   samples: List[OnPolicySample],
+                                   first_turn_rollout_outputs: List[RolloutOutput],
                                    request_config: RequestConfig,
                                    requests: Optional[List] = None) -> List[OnPolicySample]:
         if requests is None:
