@@ -13,8 +13,7 @@ from swift.infer_engine.protocol import RolloutOutput
 from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import compute_std_for_dynamic_sampling, score_completions
-from swift.rlhf_trainers.utils import (encode_sample, get_non_thinking_prefix_ids, make_reward_weights,
-                                       resolve_reward_funcs)
+from swift.rlhf_trainers.utils import encode_sample, make_reward_weights, resolve_reward_funcs
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger, remove_response
 from .base_trainer import BaseRayTrainer
@@ -407,9 +406,8 @@ class GRPOTrainer(BaseRayTrainer):
         used by HF / Megatron). Uses the shared ``encode_sample`` helper so bug
         fixes to loss_mask / non_thinking_prefix propagate across all backends.
         """
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
         for sample in samples:
-            encoded = encode_sample(sample, self.template, non_thinking_prefix_ids=non_thinking_prefix_ids)
+            encoded = encode_sample(sample, self.template)
             encoded.pop('_extra_kwargs', None)
             sample.encoded = encoded
         return samples

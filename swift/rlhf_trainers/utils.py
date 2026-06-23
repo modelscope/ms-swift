@@ -39,6 +39,8 @@ if is_swanlab_available():
 
 T = TypeVar('T')
 
+logger = get_logger()
+
 _ipv6_patch_applied = False
 
 # Constants for the RL training LoRA adapter identity.
@@ -688,31 +690,32 @@ def load_pil_img(img) -> Image:
         raise ValueError("Image dictionary must contain either 'bytes' or 'path' key.")
 
 
-def get_non_thinking_prefix_ids(template) -> Optional[List[int]]:
-    """Return the token ids of the non-thinking prefix (e.g. '<think>\n\n</think>\n\n').
-
-    When enable_thinking=False, the rollout engine injects this prefix into the prompt, so it
-    is part of the forwarded sequence (and routed_experts), but the generated response_token_ids
-    do NOT contain it. Token-in-token-out re-encoding must re-add it (masked out of the loss) to
-    keep the trainer/teacher sequence aligned with the rollout sequence. Returns None when the
-    prefix is not applicable (thinking enabled, or template has no non_thinking_prefix).
-    """
-    non_thinking_prefix = template.template_meta.non_thinking_prefix
-    if template.enable_thinking is False and non_thinking_prefix:
-        return template.tokenizer.encode(non_thinking_prefix, add_special_tokens=False)
+def get_response_prefix_ids(template: Template, sample_enable_thinking: Optional[bool] = None) -> Optional[List[int]]:
+    effective = sample_enable_thinking if sample_enable_thinking is not None else template.enable_thinking
+    if effective is True:
+        prefix_str = template.template_meta.thinking_prefix
+    elif effective is False:
+        prefix_str = template.template_meta.non_thinking_prefix
+    else:
+        return None
+    if prefix_str:
+        return template.tokenizer.encode(prefix_str, add_special_tokens=False)
     return None
 
 
-def encode_sample(sample: OnPolicySample,
-                  template: Template,
-                  *,
-                  non_thinking_prefix_ids: Optional[List[int]] = None,
-                  encode_prompt_only: bool = False) -> Dict[str, Any]:
+def encode_sample(sample: OnPolicySample, template: Template, *, encode_prompt_only: bool = False) -> Dict[str, Any]:
     """Encode a sample into a template.encode output dict.
 
     Does NOT mutate ``sample.messages`` — works on a copy from
     ``to_template_dict()`` so the sample's original messages are preserved
     for logging / reward computation / reuse across steps_per_generation.
+
+    Per-sample ``enable_thinking``: the response prefix (thinking or
+    non-thinking) is computed per-sample from
+    ``sample.extra['chat_template_kwargs']['enable_thinking']``, falling back
+    to the template's global setting.  This keeps the trainer sequence
+    aligned with the rollout sequence for both thinking and non-thinking
+    prefixes.
     """
     data = sample.to_template_dict()
     if sample.response_token_ids:
@@ -720,8 +723,14 @@ def encode_sample(sample: OnPolicySample,
         msgs = data.get('messages')
         if msgs is not None:
             msgs = [m.copy() for m in msgs]
+        ctk = sample.extra.get('chat_template_kwargs') or {}
+        sample_et = ctk.get('enable_thinking')
+        prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
+        logger.debug(f'[encode_sample] uuid={sample.request_id} '
+                     f'sample_enable_thinking={sample_et} global={template.enable_thinking} '
+                     f'prefix_ids={prefix_ids}')
         data['messages'] = replace_assistant_response_with_ids(
-            msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=non_thinking_prefix_ids)
+            msgs, sample.response_token_ids, loss_mask, non_thinking_prefix_ids=prefix_ids)
 
     if encode_prompt_only:
         messages = data.get('messages', [])

@@ -12,7 +12,7 @@ from swift.rl_core.data import GKDSample
 from swift.template.base import Template
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger
 from .gkd_loss import TeacherOutput
-from .utils import (assemble_teacher_topk_logprobs, encode_sample, get_non_thinking_prefix_ids,
+from .utils import (assemble_teacher_topk_logprobs, encode_sample, get_response_prefix_ids,
                     replace_assistant_response_with_ids)
 
 logger = get_logger()
@@ -21,8 +21,6 @@ logger = get_logger()
 def encode_teacher_view(
     sample: GKDSample,
     template: Template,
-    *,
-    non_thinking_prefix_ids: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
     """Encode the OPSD teacher view (teacher_prompt + the shared on-policy response).
 
@@ -36,11 +34,14 @@ def encode_teacher_view(
         teacher_row['messages'] = [m.copy() for m in msgs]
     if teacher_row.get('response_token_ids'):
         loss_mask = teacher_row.get('response_loss_mask') or None
+        ctk = sample.extra.get('chat_template_kwargs') or {}
+        sample_et = ctk.get('enable_thinking')
+        prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=sample_et)
         teacher_row['messages'] = replace_assistant_response_with_ids(
             teacher_row['messages'],
             teacher_row['response_token_ids'],
             loss_mask=loss_mask,
-            non_thinking_prefix_ids=non_thinking_prefix_ids)
+            non_thinking_prefix_ids=prefix_ids)
     teacher_encoded = template.encode(teacher_row, return_length=True)
     teacher_encoded.pop('_extra_kwargs', None)
     return teacher_encoded
@@ -55,8 +56,6 @@ def encode_gkd_samples(
     Returns ``(student_encoded_list, teacher_encoded_list, has_opsd)``.
     Trainers are responsible for collation and device placement.
     """
-    non_thinking_prefix_ids = get_non_thinking_prefix_ids(template)
-
     student_encoded_list: List[Dict[str, Any]] = []
     teacher_encoded_list: List[Dict[str, Any]] = []
     # Cannot use any() here because it short-circuits: build_teacher_view()
@@ -67,12 +66,12 @@ def encode_gkd_samples(
             has_opsd = True
 
     for s in samples:
-        encoded = encode_sample(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
+        encoded = encode_sample(s, template)
         encoded.pop('_extra_kwargs', None)
         student_encoded_list.append(encoded)
 
         if has_opsd:
-            teacher_encoded = encode_teacher_view(s, template, non_thinking_prefix_ids=non_thinking_prefix_ids)
+            teacher_encoded = encode_teacher_view(s, template)
             teacher_encoded_list.append(teacher_encoded)
         else:
             teacher_encoded_list.append(encoded.copy())
