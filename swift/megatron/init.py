@@ -177,12 +177,16 @@ def _patch_mcore_bridge():
                     else:
                         llm_config.num_nextn_predict_layers = config.mtp_num_layers
                 HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
+                expert_dtype = None
                 if config.fp8 is not None and config.fp8_recipe == 'blockwise' and config.fp8_param:
                     from transformers.utils.quantization_config import FineGrainedFP8Config
                     modules_to_not_convert = get_modules_to_not_convert(self.hf_model)
                     if hasattr(self, '_fp8_skip_modules'):
                         modules_to_not_convert = (modules_to_not_convert or []) + list(self._fp8_skip_modules)
                     hf_config.quantization_config = FineGrainedFP8Config(modules_to_not_convert=modules_to_not_convert)
+                    expert_dtype = 'fp8'
+                if args.model_type == 'deepseek_v4':
+                    HfConfigFactory.set_config_attr(hf_config, 'expert_dtype', expert_dtype)
                 hf_config.save_pretrained(output_dir)
                 if getattr(self.hf_model, '_auto_class') is not None:
                     try:

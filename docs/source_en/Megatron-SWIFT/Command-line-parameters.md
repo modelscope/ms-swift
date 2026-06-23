@@ -226,6 +226,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 - dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is `0.`.
 - dsa_indexer_use_sparse_loss: Whether to use sparse DSA indexer loss. If True, the indexer loss will be computed using the top-k indices. Default is False.
+- apply_dsa_kernel_fusion: Whether to enable fused DSA sparse-attention kernels (FlashMLA + cuDNN DSA). Set to False to fall back to unfused PyTorch implementations. Requires flash_mla and nvidia-cudnn-frontend >= 1.24.0. Default is False. (Requires the Megatron-LM dev branch)
 
 **Deepseek-V4**
 
