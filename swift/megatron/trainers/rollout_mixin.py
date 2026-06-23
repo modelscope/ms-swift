@@ -706,7 +706,9 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
             if isinstance(data, RolloutInferRequest):
                 requests_list.append(data)
             else:
-                requests_list.append(data.to_infer_request())
+                include_extra = bool(getattr(self.args, 'vllm_server_pass_dataset', False)) or bool(
+                    getattr(self, 'multi_turn_scheduler', None))
+                requests_list.append(data.to_infer_request(include_extra=include_extra))
         return requests_list
 
     def _log_completions_from_samples(self, samples: List[OnPolicySample]) -> None:
@@ -766,7 +768,6 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         args = self.args
         if 'wandb' in args.report_to:
             import pandas as pd
-
             import wandb
             df = pd.DataFrame(table)
             if self.wandb_log_unique_prompts:
