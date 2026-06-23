@@ -308,9 +308,7 @@ class SudokuScheduler(OpenEnvScheduler):
             empty_cells = _extract_empty_cells(self._board_states[uuid])
             # Convert move coords (1-indexed from model) to 0-indexed for comparison
             move_nums = re.findall(r'\d+', move)
-            targets_empty = tuple(
-                int(x) - 1
-                for x in move_nums[:2]) in empty_cells if len(move_nums) >= 3 else True
+            targets_empty = tuple(int(x) - 1 for x in move_nums[:2]) in empty_cells if len(move_nums) >= 3 else True
         else:
             targets_empty = True
 
