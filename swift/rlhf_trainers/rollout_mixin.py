@@ -45,9 +45,11 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     _create_parameter_buckets, _process_bucket_with_flattened_tensor,
                     add_base_layer_suffix_by_param_names, aggressive_empty_cache, check_vllm_version_ge,
                     expand_vllm_param_name_aliases, finish_vllm_weight_reload, get_even_process_data,
-                    get_gather_if_zero3_context, patch_lora_merge, patch_lora_unmerge, patch_vllm_load_adapter,
-                    patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                    revert_runtime_names_to_checkpoint, set_expandable_segments, vllm_supports_lora_load_inplace)
+                    get_gather_if_zero3_context, parse_prompt_logprobs, patch_lora_merge, patch_lora_unmerge,
+                    patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp,
+                    profiling_context, profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments,
+                    vllm_supports_lora_load_inplace)
+from .vllm_client import VLLMInferClient
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
@@ -174,6 +176,107 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
     def _log_rollout(self, samples: List[OnPolicySample]) -> None:
         """Log prompts/completions and extra rollout metrics. Default no-op."""
+
+    # ------------------------------------------------------------------
+    # Teacher infrastructure shared by GKD and GRPO (OPD-RL).
+    #
+    # A teacher is configured via ``teacher_model`` (local forward), ``teacher_model_server``
+    # (vLLM API), or ``teacher_use_disable_adapter`` (same-model LoRA self-distillation).
+    # GKD back-propagates a JSD/KL loss; GRPO injects the per-token teacher KL as an advantage.
+    # Both share the teacher setup, local-model offload context, and API logprob fetch below.
+    # ------------------------------------------------------------------
+    def _pop_teacher_kwargs(self, kwargs: Dict[str, Any]) -> None:
+        """Stash teacher kwargs before ``super().__init__`` consumes them.
+
+        The actual setup (model prepare / API client) runs in ``_setup_teacher`` after the
+        accelerator is ready. ``gkd_logits_topk`` is GKD-only and popped by the GKD trainer.
+        """
+        self._teacher_model = kwargs.pop('teacher_model', None)
+        self._teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
+        self.teacher_model_server = kwargs.pop('teacher_model_server', None)
+        self._teacher_use_disable_adapter = kwargs.pop('teacher_use_disable_adapter', False)
+
+    def _setup_teacher(self) -> None:
+        """Resolve the teacher mode and prepare the local model / API client.
+
+        Sets ``use_teacher_api`` / ``_is_self_distillation`` / ``_has_teacher`` /
+        ``teacher_model`` / ``teacher_client`` / ``is_teacher_ds3``. Must be called after
+        ``super().__init__`` (needs ``self.accelerator``). No-op teacher branches leave
+        ``teacher_model = None`` (API / self-distillation reuse the student weights or server).
+        """
+        teacher_model = getattr(self, '_teacher_model', None)
+        teacher_model_server = getattr(self, 'teacher_model_server', None)
+        self.use_teacher_api = teacher_model_server is not None
+        self._teacher_use_disable_adapter = getattr(self, '_teacher_use_disable_adapter', False)
+        self._is_self_distillation = (teacher_model is None and teacher_model_server is None)
+        self._has_teacher = (
+            teacher_model is not None or teacher_model_server is not None or self._teacher_use_disable_adapter)
+
+        self.teacher_client = None
+        if self.use_teacher_api:
+            self.teacher_client = (
+                VLLMInferClient(base_urls=[teacher_model_server]) if self.accelerator.is_main_process else None)
+
+        self.teacher_ds3_gather_for_generation = getattr(self.args, 'ds3_gather_for_generation', False)
+        self.is_teacher_ds3 = None
+        self.teacher_model = None
+        if teacher_model is not None:
+            teacher_deepspeed_config = getattr(self, '_teacher_deepspeed_config', None)
+            if self.is_deepspeed_enabled:
+                if teacher_deepspeed_config is not None:
+                    self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
+                    if not self.is_teacher_ds3:
+                        self.teacher_ds3_gather_for_generation = False
+                    self.teacher_model = prepare_deepspeed(
+                        teacher_model,
+                        self.accelerator,
+                        deepspeed_config=teacher_deepspeed_config,
+                        training_args=self.args)
+                else:
+                    self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
+            elif self.is_fsdp_enabled:
+                self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
+            else:
+                self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
+            self.teacher_model.eval()
+            if self.args.offload_teacher_model:
+                self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+
+    @contextmanager
+    def load_teacher_model_context(self):
+        """Load the local teacher to GPU for a forward and offload afterwards (when offloading is on)."""
+        if not self.args.offload_teacher_model:
+            yield
+            return
+        self.load_model(self.accelerator.unwrap_model(self.teacher_model))
+        try:
+            yield
+        finally:
+            self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
+
+    def _fetch_teacher_logprobs(self, requests: List[Any], topk: int):
+        """Query the teacher vLLM API for prompt logprobs; return this rank's parsed slice.
+
+        ``topk == 0`` -> the sampled token's logp (OPD-RL); ``topk > 0`` -> top-k (GKD).
+        Gathers requests across DP (accelerate semantics: every rank gets the full list),
+        infers once on the main process, broadcasts, and slices back this rank's segment.
+        """
+        n_local = len(requests)
+        all_requests = gather_object(requests)
+
+        if self.accelerator.is_main_process:
+            request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
+            responses = self.teacher_client.infer(all_requests, request_config=request_config, use_tqdm=False)
+            parsed_global = [parse_prompt_logprobs(r, topk=topk) for r in responses]
+        else:
+            parsed_global = None
+
+        container = [parsed_global]
+        broadcast_object_list(container, from_process=0)
+        parsed_global = container[0]
+
+        rank = self.accelerator.process_index
+        return parsed_global[rank * n_local:(rank + 1) * n_local]
 
     def split_by_mini_batches(self, samples: List[OnPolicySample]) -> List[List[OnPolicySample]]:
         """Split inputs into mini-batches based on steps_per_generation.
@@ -949,16 +1052,31 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                                     samples: List[OnPolicySample],
                                     request_config: RequestConfig,
                                     is_global_inputs: bool = False) -> List[OnPolicySample]:
-        rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
-
         if not self.multi_turn_scheduler or self.enable_server_multi_turn:
+            rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
             return self._postprocess_rollout_outputs(samples, rollout_outputs)
-        return self._colocate_multi_turn_infer(samples, rollout_outputs, request_config)
 
-    def _colocate_multi_turn_infer(self, samples: List[OnPolicySample], first_turn_rollout_outputs: List[RolloutOutput],
-                                   request_config: RequestConfig) -> List[OnPolicySample]:
+        # Multi-turn: call on_trajectory_start BEFORE first turn generation
+        # so the model sees the actual environment question, not the placeholder.
         requests = self.samples2requests(samples)
         invoke_async_hook(self.multi_turn_scheduler.on_trajectory_start(requests))
+
+        # Update inputs with actual messages from requests (e.g. env question)
+        for req, sample in zip(requests, samples):
+            sample.messages = req.messages
+
+        # Generate first turn with actual questions
+        first_turn_rollout_outputs: List[RolloutOutput] = self._rollout(samples, request_config, is_global_inputs)
+
+        return self._colocate_multi_turn_infer(samples, first_turn_rollout_outputs, request_config, requests)
+
+    def _colocate_multi_turn_infer(self,
+                                   samples: List[OnPolicySample],
+                                   first_turn_rollout_outputs: List[RolloutOutput],
+                                   request_config: RequestConfig,
+                                   requests: Optional[List] = None) -> List[OnPolicySample]:
+        if requests is None:
+            requests = self.samples2requests(samples)
         rollout_outputs = run_multi_turn(
             requests=requests,
             first_turn_outputs=first_turn_rollout_outputs,

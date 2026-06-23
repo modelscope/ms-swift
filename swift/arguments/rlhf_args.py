@@ -280,6 +280,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         GRPOArguments.__post_init__(self)
         SftArguments.__post_init__(self)
         self._check_sequence_parallel()
+        self._check_teacher()
         self._check_grpo()
         self._check_gkd()
 
@@ -387,6 +388,33 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 self.scale_rewards = 'batch'
             else:
                 raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
+    def _check_teacher(self):
+        if self.rlhf_type not in ['grpo', 'gkd']:
+            return
+        teacher_set = self.teacher_model is not None or self.teacher_model_server is not None
+        if not teacher_set:
+            return
+        if self.teacher_model is not None and self.teacher_model_server is not None:
+            raise ValueError('setting both `teacher_model` and `teacher_model_server` is not supported.')
+
+        # Self-distillation: teacher_model == student model
+        self._teacher_use_disable_adapter = False
+        if self.teacher_model is not None and self.teacher_model == self.model:
+            if self.tuner_type == 'lora':
+                logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
+                self._teacher_use_disable_adapter = True
+                self.teacher_model = None
+            else:
+                # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
+                pass
+
+        # Self-distillation: no teacher_model → dynamic teacher (current student weights)
+        if self.teacher_model is None and self.teacher_model_server is None:
+            logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
+
+            if self.use_liger_kernel:
+                raise ValueError('Self-distillation mode with liger kernel loss is not supported yet')
 
     def _init_rollout(self):
         if self.rlhf_type not in rlhf_support_vllm_types:
@@ -580,30 +608,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.async_generate:
             raise NotImplementedError('Currently, async_generate is not supported for GKD.')
-
-        if self.teacher_model is not None and self.teacher_model_server is not None:
-            raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
-
-        # Self-distillation: teacher_model == student model
-        self._teacher_use_disable_adapter = False
-        if self.teacher_model is not None and self.teacher_model == self.model:
-            if self.tuner_type == 'lora':
-                logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
-                self._teacher_use_disable_adapter = True
-                self.teacher_model = None
-            else:
-                # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
-                pass
-
-        # Self-distillation: no teacher_model → dynamic teacher (current student weights)
-        if self.teacher_model is None and self.teacher_model_server is None:
-            logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
-
-            if self.seq_kd:
-                raise ValueError(
-                    'Self-distillation mode with seq_kd is not supported yet, please specify a teacher_model.')
-            if self.use_liger_kernel:
-                raise ValueError('Self-distillation mode with liger kernel GKD loss is not supported yet')
 
         # seq_kd (teacher-generated responses) is not implemented; raise early.
         if self.seq_kd:

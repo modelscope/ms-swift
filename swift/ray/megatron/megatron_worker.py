@@ -303,6 +303,25 @@ class MegatronWorker(CheckpointEngineMixin):
         with self.actor.null_ref_context() as ref_models:
             return self._compute_logps_micro_batches(micro_batches, ref_models[0], 'ref_per_token_logps')
 
+    @dispatch_collect(dispatch='dp', collect='dp_flat')
+    def compute_teacher_logps(self, micro_batches: List[ModelInputs]) -> List[LogpsRow]:
+        """OPD-RL: per-token teacher logp on the sampled tokens (token-in-token-out).
+
+        Same forward/frame as ``compute_logps`` so the teacher logp aligns with the policy's;
+        same-model LoRA self-distillation disables the student's adapter, otherwise the colocated
+        teacher (loaded via ``init_teacher_model``) is used.
+        """
+        if getattr(self._args, '_teacher_use_disable_adapter', False):
+            from contextlib import ExitStack
+            with ExitStack() as stack:
+                for m in self._megatron.peft_models:
+                    stack.enter_context(m.disable_adapter())
+                return self._compute_logps_micro_batches(micro_batches, self._megatron.unwrapped_models[0],
+                                                         'teacher_per_token_logps')
+        assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
+        with self.teacher.loaded_context():
+            return self._compute_logps_micro_batches(micro_batches, self.teacher.models[0], 'teacher_per_token_logps')
+
     def _compute_logps_micro_batches(
         self,
         micro_batches: List[ModelInputs],

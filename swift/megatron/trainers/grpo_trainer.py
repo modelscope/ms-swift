@@ -13,10 +13,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
-from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
+from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics, compute_teacher_kl_per_token,
+                                     expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rl_core.resample import resample_encode_failed_inputs
+from swift.rlhf_trainers.gkd_helpers import assemble_teacher_completion_logprobs, build_teacher_requests
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, make_reward_weights,
                                        pad_logps_back_to_batch, profiling_context, profiling_decorator,
@@ -26,6 +28,7 @@ from swift.template import Template
 from swift.utils import get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
+from .teacher_mixin import MegatronTeacherMixin
 from .utils import gather, gather_object, reconstruct_tensor_cp
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
@@ -38,23 +41,34 @@ except ImportError:
 logger = get_logger()
 
 
-class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
+class MegatronGRPOTrainer(MegatronTeacherMixin, MegatronRolloutMixin, MegatronRLHFTrainer):
 
     # Per-sample container class used by MegatronRolloutMixin.to_samples.
     sample_cls = GRPOSample
 
     def __init__(self, args: MegatronArguments, template: Template, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client')
+        # A teacher on a GRPO run turns it into OPD-RL (teacher KL as advantage). Resolve the
+        # teacher (separate model / API / self-distillation) before super().__init__ runs
+        # prepare_model(); both _setup_teacher and _load_teacher_model read self.args.
+        self.args = args
+        self._setup_teacher()
         super().__init__(args, template)
         self.args = args
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
+        self.teacher_kl_coef = args.teacher_kl_coef
         self._prepare_metrics()
         self._init_grpo_params()
         self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
         self.resample_data_iterator = None
+
+    def prepare_model(self):
+        super().prepare_model()
+        # OPD-RL: load the separate local teacher (no-op for API / self-distillation / disable_adapter).
+        self._load_teacher_model()
 
     def train(self, train_dataset, val_dataset):
         if self.dynamic_sample or self.truncation_strategy == 'delete':
@@ -183,8 +197,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
-        assert self.reward_funcs or self.use_gym_env, \
-            'reward_funcs is not set (or pass --use_gym_env true to use the env-provided total_reward)'
+        # OPD-RL: a teacher alone is a valid (pure-distillation) signal, no reward_funcs needed.
+        assert self.reward_funcs or self.use_gym_env or self._has_teacher, \
+            'reward_funcs is not set (or pass --use_gym_env true / a teacher for OPD-RL)'
 
     def _prepare_scheduler(self):
         """Prepare multi-turn scheduler"""
@@ -307,21 +322,36 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     data = self._maybe_compute_logps(data)
                 mini_batch_data.append(data)
 
+        # OPD-RL teacher API: fill teacher_per_token_logps from the server (local-teacher
+        # path already filled it inside _maybe_compute_logps).
+        if self._has_teacher and self.use_teacher_api:
+            self._assemble_teacher_api_logps(total_samples, mini_batch_data)
+
         # Step 2: Compute KL from logps if kl_in_reward is enabled
         kl_values = None
         if self.kl_in_reward and self.beta != 0.0:
             kl_values = self._compute_kl_from_batches(mini_batch_data)
 
-        # Step 3: Compute advantages (with KL penalty if kl_in_reward is enabled)
+        # Step 3: Compute the per-sequence base advantage (with ref-KL penalty if kl_in_reward).
         advantages = self._compute_advantages(samples, rewards_per_func, kl_values=kl_values)
         total_advantages = gather(advantages, group=rollout_group)
 
-        # Step 4: Add advantages to encoded batches
+        # Step 4: Write the advantage onto each batch, expanding the per-sequence base advantage to
+        # per-token [B, T] here so the OPD-RL teacher KL is subtracted per token (adv_t = base - coef * k3_t).
         for idx, micro_batch_encoded in enumerate(mini_batch_data):
+            grpo_batch = micro_batch_encoded['grpo_batch']
             start_idx = idx * self.micro_batch_size
-            end_idx = start_idx + micro_batch_encoded['grpo_batch'].completion_mask.shape[0]
+            end_idx = start_idx + grpo_batch.completion_mask.shape[0]
             micro_batch_advantages = total_advantages[start_idx:end_idx]
-            micro_batch_encoded['grpo_batch'].advantages = micro_batch_advantages
+            grpo_batch.advantages = expand_advantage_to_per_token(
+                micro_batch_advantages,
+                grpo_batch.completion_mask,
+                teacher_per_token_logps=grpo_batch.teacher_per_token_logps if self._has_teacher else None,
+                policy_per_token_logps=grpo_batch.old_per_token_logps if self._has_teacher else None,
+                teacher_kl_coef=self.teacher_kl_coef if self._has_teacher else 0.0,
+            )
+        if self._has_teacher:
+            self._log_teacher_kl_metric(mini_batch_data)
 
         if self.loss_type in ['cispo', 'dapo', 'fipo']:
             # Calculate num_items_in_batch
@@ -381,7 +411,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         safety_mask = torch.ones_like(completion_mask, dtype=torch.bool)
         if self.fipo_safety_threshold is not None:
-            negative_advantage = advantages.unsqueeze(1) < 0
+            negative_advantage = advantages < 0
             high_is_ratio = coef_1 > self.fipo_safety_threshold
             safety_mask = ~(negative_advantage & high_is_ratio)
             influence_weight = torch.where(safety_mask, influence_weight,
@@ -475,7 +505,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                             rewards_per_func: torch.Tensor,
                             kl_values: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Compute advantages for RL training.
+        Compute the per-sequence base advantage for RL training.
+
+        The OPD-RL teacher KL is not injected here; it is applied per-token when the base
+        advantage is expanded to ``[B, T]`` onto each batch (see ``expand_advantage_to_per_token``).
 
         Args:
             samples: Local on-policy samples (only the count is used for slicing)
@@ -632,6 +665,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     ref_per_token_logps = ref_per_token_logps_packed
                 grpo_batch.ref_per_token_logps = ref_per_token_logps
 
+        # OPD-RL: local teacher logp on the sampled tokens (a frozen model like ref, so compute
+        # on clean inputs before routing replay). API path is filled later in
+        # _generate_and_score_completions (needs all samples).
+        if self._has_teacher and not self.use_teacher_api:
+            grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(inputs, grpo_batch)
+
         if self.enable_routing_replay:
             if self.args.router_replay_mode == 'R2':
                 RouterReplay.set_global_router_replay_action(RouterReplayAction.RECORD)
@@ -657,6 +696,68 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         batch['grpo_batch'] = grpo_batch
         return batch
+
+    def _compute_teacher_logps(self, inputs: Dict[str, Any], grpo_batch: GRPOBatch) -> torch.Tensor:
+        """OPD-RL: per-token teacher logp on the sampled tokens via a local teacher forward.
+
+        Reuses ``compute_per_token_logps`` (same path as old/ref logps) so the teacher logp
+        frame matches the policy's (token-in-token-out). Same-model LoRA self-distillation runs
+        the student under ``disable_adapter``; otherwise the separate teacher model is used.
+        """
+        seq_lengths = grpo_batch.seq_lengths
+        batch_size = grpo_batch.completion_mask.shape[0]
+        max_seq_len = grpo_batch.completion_mask.shape[1]
+
+        if self._teacher_use_disable_adapter:
+            from contextlib import ExitStack
+            with ExitStack() as stack:
+                for m in self.peft_models:
+                    stack.enter_context(m.disable_adapter())
+                teacher_logps_packed, _ = self.compute_per_token_logps(
+                    self.unwrapped_models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
+        else:
+            with self.load_teacher_model_context():
+                teacher_logps_packed, _ = self.compute_per_token_logps(
+                    self.teacher_models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
+
+        if self.template.padding_free:
+            teacher_per_token_logps, _ = pad_logps_back_to_batch(
+                logps_rmpad=teacher_logps_packed,
+                logits_to_keep=max_seq_len,
+                batch_size=batch_size,
+                seq_lengths=seq_lengths)
+        else:
+            teacher_per_token_logps = teacher_logps_packed
+        return teacher_per_token_logps
+
+    def _assemble_teacher_api_logps(self, total_samples: List[GRPOSample], mini_batch_data: List[Dict[str,
+                                                                                                      Any]]) -> None:
+        """OPD-RL teacher API: fetch the sampled token's logp per response position
+        (``prompt_logprobs=0``) and write it as ``teacher_per_token_logps`` (completion frame)
+        on each micro-batch's GRPOBatch. Same sampled-token semantics as HF/Ray OPD-RL."""
+        requests = build_teacher_requests(total_samples)
+        parsed = self._fetch_teacher_parsed_logprobs(requests, topk=0)
+        offset = 0
+        for data in mini_batch_data:
+            grpo_batch: GRPOBatch = data['grpo_batch']
+            n = grpo_batch.completion_mask.shape[0]
+            teacher_out = assemble_teacher_completion_logprobs(parsed[offset:offset + n], grpo_batch.completion_mask,
+                                                               grpo_batch.completion_mask.device)
+            grpo_batch.teacher_per_token_logps = teacher_out.topk_logprobs[..., 0]
+            offset += n
+
+    def _log_teacher_kl_metric(self, mini_batch_data: List[Dict[str, Any]]) -> None:
+        """OPD-RL: log the per-token teacher KL (k3) averaged over response tokens (monitoring only;
+        the signal is applied per-token in ``expand_advantage_to_per_token``)."""
+        mode = 'train' if self.unwrapped_models[0].training else 'eval'
+        kl_sum, tok_sum = 0.0, 0.0
+        for data in mini_batch_data:
+            grpo_batch: GRPOBatch = data['grpo_batch']
+            k3 = compute_teacher_kl_per_token(grpo_batch.teacher_per_token_logps, grpo_batch.old_per_token_logps,
+                                              grpo_batch.completion_mask)
+            kl_sum += k3.sum().item()
+            tok_sum += grpo_batch.completion_mask.sum().item()
+        self._metrics[mode]['teacher_kl'].append(kl_sum / max(tok_sum, 1.0))
 
     def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
         """
@@ -782,7 +883,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
         grpo_batch: GRPOBatch = data['grpo_batch']
         # Get pre-padded data in batch format [batch_size, max_seq_len]
-        advantages = grpo_batch.advantages  # [batch_size]
+        advantages = grpo_batch.advantages  # [batch_size, max_seq_len] (per-token, expanded at batch construction)
         completion_mask = grpo_batch.completion_mask  # [batch_size, max_seq_len]
         truncated_mask = grpo_batch.truncated_mask  # [batch_size]
         micro_batch_size = self.micro_batch_size
@@ -868,16 +969,24 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         coef_1 = torch.exp(log_importance_weights)
 
+        # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL teacher KL is
+        # subtracted per token). Edge loss types that need a per-sequence advantage (real / fipo /
+        # off_policy_sequence_mask) are not supported with a teacher.
+        if self._has_teacher and (self.loss_type in ['real', 'fipo']
+                                  or self.off_policy_sequence_mask_delta is not None):
+            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} / '
+                             'off_policy_sequence_mask. Use grpo/bnpo/dr_grpo/dapo/cispo/sapo.')
+
         fipo_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
-            per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
+            per_token_loss = -clamped_ratios * advantages * per_token_logps
         elif self.loss_type == 'sapo':
             gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1)) * (4.0 / self.tau_pos)
             gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1)) * (4.0 / self.tau_neg)
-            is_positive = advantages.unsqueeze(1) > 0
+            is_positive = advantages > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
-            per_token_loss = -soft_gate * advantages.unsqueeze(1)
+            per_token_loss = -soft_gate * advantages
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
             if self.loss_type == 'fipo':
                 fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
@@ -886,8 +995,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if self.args.delta is not None:
                 coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            per_token_loss1 = coef_1 * advantages
+            per_token_loss2 = coef_2 * advantages
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
             if self.loss_type == 'fipo':
                 per_token_loss = per_token_loss * fipo_weight
@@ -944,8 +1053,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.off_policy_sequence_mask_delta is not None:
             old_policy_per_token_logps = rollout_per_token_logps if rollout_per_token_logps is not None \
                 else old_per_token_logps
+            # advantages is per-token [B, T]; the mask needs a per-sequence scalar.
+            seq_advantages = (advantages * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
             off_policy_seq_mask = self._compute_off_policy_sequence_mask(per_token_logps, old_policy_per_token_logps,
-                                                                         completion_mask, advantages)
+                                                                         completion_mask, seq_advantages)
             # Expand sequence mask to token level and apply to completion_mask
             off_policy_seq_mask_expanded = off_policy_seq_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & off_policy_seq_mask_expanded
@@ -967,7 +1078,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             global_scores = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
 
             group_scores = global_scores.view(-1, self.num_generations)
-            group_rewards = advantages.view(-1, self.num_generations)
+            # advantages is per-token [B, T] (constant across tokens without a teacher); reduce
+            # to a per-sequence scalar for the group pos/neg split.
+            seq_advantages = (advantages * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            group_rewards = seq_advantages.view(-1, self.num_generations)
 
             pos_mask = (group_rewards > 0)
             neg_mask = (group_rewards <= 0)
@@ -1038,7 +1152,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
             # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level
-            is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages > 0)
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
             self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
@@ -1049,8 +1163,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level
             # Use exp(log_importance_weights) to get the original ratios before clamping
             coef_1_for_metrics = torch.exp(log_importance_weights)
-            is_low_clipped = (coef_1_for_metrics < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
-            is_high_clipped = (coef_1_for_metrics > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            is_low_clipped = (coef_1_for_metrics < 1 - self.epsilon_low) & (advantages < 0)
+            is_high_clipped = (coef_1_for_metrics > 1 + self.epsilon_high) & (advantages > 0)
             low_clip = (is_low_clipped.float() * completion_mask).sum() / completion_token_count
             high_clip = (is_high_clipped.float() * completion_mask).sum() / completion_token_count
             is_region_clipped = is_low_clipped | is_high_clipped

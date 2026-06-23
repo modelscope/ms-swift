@@ -10,7 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RolloutOutput
-from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
+from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics, compute_teacher_kl_per_token,
+                                     expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import compute_std_for_dynamic_sampling, score_completions
 from swift.rlhf_trainers.utils import encode_sample, make_reward_weights, resolve_reward_funcs
@@ -33,6 +34,21 @@ class GRPOTrainer(BaseRayTrainer):
         self.advantage_estimator = args.advantage_estimator
         self.scale_rewards = args.scale_rewards
         self.kl_in_reward = args.kl_in_reward
+
+        # OPD-RL: a teacher on a GRPO run injects teacher KL as the advantage. Ray supports a
+        # colocated teacher (teacher_model) or same-model LoRA self-distillation; the API server
+        # path is not wired in the Ray pipeline yet (mirrors Ray GKD).
+        self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
+        self._teacher_model_server = getattr(args, 'teacher_model_server', None)
+        self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
+        if self._teacher_use_disable_adapter:
+            self._teacher_model_dir = None
+        self._has_teacher = bool(self._teacher_model_dir or self._teacher_model_server
+                                 or self._teacher_use_disable_adapter)
+        self.teacher_kl_coef = getattr(args, 'teacher_kl_coef', 1.0)
+        if self._teacher_model_server:
+            raise NotImplementedError('teacher_model_server is not yet supported in the Ray pipeline. '
+                                      'Use teacher_model (colocated) for OPD-RL instead.')
 
         self._prepare_rewards()
         self._prepare_multi_turn()
@@ -102,9 +118,10 @@ class GRPOTrainer(BaseRayTrainer):
         self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_func_names), self.device)
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
-        if not self.reward_funcs and not self.use_gym_env:
+        # OPD-RL: a teacher alone is a valid (pure-distillation) signal, no reward_funcs needed.
+        if not self.reward_funcs and not self.use_gym_env and not getattr(self, '_has_teacher', False):
             raise ValueError('GRPOTrainer: no reward functions configured '
-                             '(or pass use_gym_env: true to use the env-provided total_reward)')
+                             '(or pass use_gym_env: true / a teacher for OPD-RL)')
 
     def _get_request_config(self):
         """Build a RequestConfig for rollout generation."""
@@ -126,6 +143,11 @@ class GRPOTrainer(BaseRayTrainer):
         ckpt = self.ckpt_manager
         merge_and_sync = not self.args.vllm_enable_lora
         spg = self._steps_per_generation
+
+        # OPD-RL: load the colocated teacher once (disable_adapter self-distillation needs none).
+        if self._teacher_model_dir and not self._teacher_use_disable_adapter:
+            tg.execute('init_teacher_model', self._teacher_model_dir)
+            logger.info('OPD-RL colocated teacher model initialized from %s', self._teacher_model_dir)
 
         while iteration < train_iters:
             ckpt.sync_weights(merge_and_sync=merge_and_sync)
@@ -163,6 +185,10 @@ class GRPOTrainer(BaseRayTrainer):
                 if self.beta != 0.0:
                     ref_rows = tg.compute_ref_logps(dispatch)
                     self._scatter_logps(grpo_batches, ref_rows, 'ref_per_token_logps')
+                # OPD-RL: teacher logp on the sampled tokens (same frame as old/ref logps).
+                if self._has_teacher:
+                    teacher_rows = tg.compute_teacher_logps(dispatch)
+                    self._scatter_logps(grpo_batches, teacher_rows, 'teacher_per_token_logps')
                 all_chunks.append((dispatch, grpo_batches))
 
             for step_idx in range(spg):
@@ -192,7 +218,9 @@ class GRPOTrainer(BaseRayTrainer):
         ``completion_mask`` is NOT touched here: it was built by the driver collate and the
         worker only forwards logps, so the existing ``gb.completion_mask`` is already correct.
         """
-        src_key = 'per_token_logps' if key == 'old_per_token_logps' else 'ref_per_token_logps'
+        # The worker keys ``old_per_token_logps`` rows as ``per_token_logps``; ref / teacher
+        # rows carry their destination key verbatim.
+        src_key = 'per_token_logps' if key == 'old_per_token_logps' else key
         pos = 0
         for gb in grpo_batches:
             b = gb.completion_mask.shape[0]
@@ -202,14 +230,46 @@ class GRPOTrainer(BaseRayTrainer):
         assert pos == len(rows), f'_scatter_logps: consumed {pos} rows but got {len(rows)}'
 
     @staticmethod
-    def _scatter_advantages(grpo_batches: List[GRPOBatch], advantages: torch.Tensor) -> None:
-        """Write the [N] advantages (sample order) onto each micro-batch's GRPOBatch."""
+    def _align_width(x: torch.Tensor, width: int) -> torch.Tensor:
+        """Truncate or right-pad the last (token) dim of ``x`` to ``width``."""
+        cur = x.shape[-1]
+        if cur == width:
+            return x
+        if cur > width:
+            return x[..., :width]
+        return torch.nn.functional.pad(x, (0, width - cur))
+
+    def _scatter_advantages(self, grpo_batches: List[GRPOBatch], advantages: torch.Tensor) -> None:
+        """Write the advantage onto each micro-batch's GRPOBatch, expanding the per-sequence base
+        advantage to per-token ``[B, T]`` so the OPD-RL teacher KL is subtracted per token
+        (``adv_t = base - coef * k3_t``). ``advantages`` is ``[N]`` in sample order."""
         pos = 0
+        kl_sum, tok_sum = 0.0, 0.0
         for gb in grpo_batches:
             b = gb.completion_mask.shape[0]
-            gb.advantages = advantages[pos:pos + b]
+            base = advantages[pos:pos + b].to(gb.completion_mask.device)
             pos += b
+            teacher_lp = policy_lp = None
+            if self._has_teacher and gb.teacher_per_token_logps is not None and gb.old_per_token_logps is not None:
+                # teacher / old logps share the completion_mask frame (worker forwards them on the
+                # driver-collated batch); align widths defensively to the mask before computing k3.
+                T = gb.completion_mask.shape[-1]
+                teacher_lp = self._align_width(gb.teacher_per_token_logps, T).to(gb.completion_mask.device)
+                policy_lp = self._align_width(gb.old_per_token_logps, T).to(gb.completion_mask.device)
+                k3 = compute_teacher_kl_per_token(teacher_lp, policy_lp, gb.completion_mask.to(teacher_lp.dtype))
+                kl_sum += k3.sum().item()
+                tok_sum += gb.completion_mask.sum().item()
+            gb.advantages = expand_advantage_to_per_token(
+                base,
+                gb.completion_mask,
+                teacher_per_token_logps=teacher_lp,
+                policy_per_token_logps=policy_lp,
+                teacher_kl_coef=self.teacher_kl_coef if self._has_teacher else 0.0,
+            )
         assert pos == advantages.shape[0], f'_scatter_advantages: wrote {pos} but got {advantages.shape[0]}'
+        # Per-token teacher KL averaged over response tokens (monitoring only; the signal is applied
+        # per-token above). Surfaced via _build_grpo_log_metrics -> worker on_log.
+        self._last_teacher_kl = (kl_sum / tok_sum) if (self._has_teacher and tok_sum > 0) else None
 
     def _build_grpo_log_metrics(self, rewards, advantages, rewards_per_func) -> Dict[str, float]:
         """Driver-computed GRPO metrics (reward / reward_std / adv_nonzero / per-func),
@@ -227,6 +287,8 @@ class GRPOTrainer(BaseRayTrainer):
             'frac_reward_zero_std': reward_metrics.frac_reward_zero_std,
             'adv_nonzero': (advantages.abs() > 1e-8).float().mean().item(),
         }
+        if getattr(self, '_last_teacher_kl', None) is not None:
+            metrics['teacher_kl'] = self._last_teacher_kl
         # Flatten per-function metrics into scalar values the worker can inject.
         for name in self.reward_func_names:
             metrics[name] = reward_metrics.per_func_mean[name]
@@ -322,10 +384,11 @@ class GRPOTrainer(BaseRayTrainer):
         rewards_per_func: torch.Tensor,
         kl_values: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Return (advantages, rewards) shaped [N] where N = B * num_gen.
+        """Return the per-sequence base advantage and rewards, both shaped [N] (N = B * num_gen).
 
-        The driver already holds every completion of each group, so no gather is
-        needed before calling the pure advantage function.
+        The driver already holds every completion of each group, so no gather is needed before
+        calling the pure advantage function. The OPD-RL teacher KL is applied per-token later in
+        ``_scatter_advantages`` (see ``expand_advantage_to_per_token``).
         """
         return compute_advantages(
             rewards_per_func=rewards_per_func,

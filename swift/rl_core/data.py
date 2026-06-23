@@ -267,7 +267,8 @@ class GRPOBatch:
     old_per_token_logps: Optional[torch.Tensor] = None  # [B, T]
     ref_per_token_logps: Optional[torch.Tensor] = None  # [B, T]
     rollout_per_token_logps: Optional[torch.Tensor] = None  # [B, T]
-    advantages: Optional[torch.Tensor] = None  # [B]
+    teacher_per_token_logps: Optional[torch.Tensor] = None  # [B, T], OPD-RL teacher logp on sampled tokens
+    advantages: Optional[torch.Tensor] = None  # [B, T] per-token (base broadcast minus per-token teacher KL)
     num_items_in_batch: Optional[torch.Tensor] = None  # scalar
     logits_to_keep: Optional[int] = None
 
