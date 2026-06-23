@@ -365,7 +365,7 @@ def _prepare_npu_generated_attention_mask(batch, *, keep_attention_mask_2d: bool
     if keep_attention_mask_2d:
         attention_mask = batch.get('attention_mask')
         if 'attention_mask_2d' not in batch and attention_mask is not None:
-            batch['attention_mask_2d'] = (~attention_mask).sum(dim=(1, 2)) > 0
+            batch['attention_mask_2d'] = (attention_mask == 0).sum(dim=(1, 2)) > 0
     else:
         batch.pop('attention_mask_2d', None)
     batch['attention_mask'] = None
