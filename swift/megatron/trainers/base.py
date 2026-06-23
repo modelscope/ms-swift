@@ -22,7 +22,6 @@ from megatron.core.transformer.multi_token_prediction import MTPLossLoggingHelpe
 from modelscope import check_local_model_is_latest
 from packaging import version
 from pathlib import Path
-from transformers.utils import is_torch_npu_available
 from typing import Callable, Dict, List, Optional
 
 from swift.dataset import RowPreprocessor
@@ -981,13 +980,6 @@ class BaseMegatronTrainer(ABC):
     @abstractmethod
     def forward_step(self, data_iterator, model):
         pass
-
-    def _should_use_npu_generated_attention_mask(self, args) -> bool:
-        if not (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
-                and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False)):
-            return False
-        gdn_model_types = {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}
-        return getattr(args, 'model_type', None) in gdn_model_types
 
     def _prepare_batch(self, data, vp_stage=None):
         return prepare_batch(self.args, data, vp_stage=vp_stage)

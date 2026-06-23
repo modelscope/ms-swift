@@ -347,13 +347,32 @@ def build_streaming_dataloader(args, dataset, collate_fn):
     return MegatronDataLoaderDispatcher(base_dataloader)
 
 
-def _should_use_npu_attention_mask(args) -> bool:
+_NPU_ATTENTION_MASK_2D_MODEL_TYPES = {'qwen3_5', 'qwen3_5_moe'}
+
+
+def _should_use_npu_generated_attention_mask(args) -> bool:
     from transformers.utils import is_torch_npu_available
-    if not (is_torch_npu_available() and args.task_type == 'causal_lm' and not args.padding_free
-            and getattr(args, 'attention_backend', None) != 'local' and getattr(args, 'use_flash_attn', False)):
+    if not is_torch_npu_available():
         return False
-    gdn_model_types = {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}
-    return getattr(args, 'model_type', None) in gdn_model_types
+    if args.task_type != 'causal_lm' or args.padding_free:
+        return False
+    if getattr(args, 'attention_backend', None) == 'local':
+        return False
+    return bool(getattr(args, 'use_flash_attn', False))
+
+
+def _should_keep_npu_attention_mask_2d(args) -> bool:
+    return getattr(args, 'model_type', None) in _NPU_ATTENTION_MASK_2D_MODEL_TYPES
+
+
+def _prepare_npu_generated_attention_mask(args, batch) -> None:
+    keep_attention_mask_2d = _should_keep_npu_attention_mask_2d(args)
+    attention_mask = batch.get('attention_mask')
+    if keep_attention_mask_2d and 'attention_mask_2d' not in batch and attention_mask is not None:
+        batch['attention_mask_2d'] = (~attention_mask).sum(dim=(1, 2)) > 0
+    elif not keep_attention_mask_2d:
+        batch.pop('attention_mask_2d', None)
+    batch['attention_mask'] = None
 
 
 def prepare_batch(args, data, vp_stage=None):
@@ -373,10 +392,8 @@ def prepare_batch(args, data, vp_stage=None):
     text_position_ids = batch.pop('text_position_ids', None)
     if text_position_ids is None:
         text_position_ids = batch.get('position_ids')
-    if _should_use_npu_attention_mask(args):
-        if 'attention_mask_2d' not in batch and batch.get('attention_mask') is not None:
-            batch['attention_mask_2d'] = (~batch['attention_mask']).sum(dim=(1, 2)) > 0
-        batch['attention_mask'] = None
+    if _should_use_npu_generated_attention_mask(args):
+        _prepare_npu_generated_attention_mask(args, batch)
     else:
         batch.pop('attention_mask_2d', None)
     if args.padding_free and text_position_ids is not None:
