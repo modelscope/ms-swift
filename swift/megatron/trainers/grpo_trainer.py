@@ -1,39 +1,29 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import asyncio
-import atexit
-import base64
-import concurrent.futures
-import inspect
-import json
-import os
-import pandas as pd
 import torch
-import torch.nn as nn
-import uuid
 from accelerate.utils import broadcast_object_list
 from collections import defaultdict, deque
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from copy import copy, deepcopy
-from dacite import from_dict
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from swift.dataset import RowPreprocessor
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
-from swift.megatron.arguments import MegatronArguments, MegatronRLHFArguments
+from swift.megatron.arguments import MegatronArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
+from swift.rl_core.advantage import compute_advantages, compute_reward_metrics
+from swift.rl_core.data import GRPOBatch, GRPOSample
+from swift.rl_core.grpo_algorithm import score_completions
+from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.grpo_trainer import DataType
-from swift.rlhf_trainers.utils import (aggressive_empty_cache, detect_async_reward_indices, get_non_thinking_prefix_ids,
-                                       make_reward_weights, nanstd, pad_logps_back_to_batch, profiling_context,
-                                       profiling_decorator, replace_assistant_response_with_ids, resolve_reward_funcs,
-                                       set_expandable_segments)
+from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, make_reward_weights,
+                                       pad_logps_back_to_batch, profiling_context, profiling_decorator,
+                                       resolve_reward_funcs)
 from swift.rollout import MultiTurnScheduler, multi_turns
-from swift.template import Template, TemplateInputs
-from swift.utils import (JsonlWriter, get_logger, get_packed_seq_params, remove_response, shutdown_event_loop_in_daemon,
-                         start_event_loop_in_daemon, to_device)
+from swift.template import Template
+from swift.utils import get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
 from .utils import gather, gather_object, reconstruct_tensor_cp
@@ -47,29 +37,11 @@ except ImportError:
 
 logger = get_logger()
 
-GRPO_NON_MODEL_KEYS = frozenset({
-    'logits_to_keep',
-    'completion_mask',
-    'ref_per_token_logps',
-    'advantages',
-    'old_per_token_logps',
-    'truncated_mask',
-    'seq_lengths',
-    'num_items_in_batch',
-    'rollout_per_token_logps',
-})
-
-FILTERED_KEYS = frozenset({
-    'prompt_id',
-    'request_id',
-    'response_token_ids',
-    'finish_reason',
-    'is_truncated',
-    'add_eos',
-})
-
 
 class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
+
+    # Per-sample container class used by MegatronRolloutMixin.to_samples.
+    sample_cls = GRPOSample
 
     def __init__(self, args: MegatronArguments, template: Template, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client')
@@ -214,14 +186,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         assert self.reward_funcs or self.use_gym_env, \
             'reward_funcs is not set (or pass --use_gym_env true to use the env-provided total_reward)'
 
-        self._async_reward_func_indices = detect_async_reward_indices(self.reward_funcs)
-
-        if self._async_reward_func_indices:
-            self.async_reward_loop_thread, self.async_reward_loop, self.async_reward_loop_ready_event = (
-                start_event_loop_in_daemon(name='MegatronGRPOTrainer-AsyncRewardLoop'))
-            self.async_reward_loop_ready_event.wait()
-            atexit.register(shutdown_event_loop_in_daemon, self.async_reward_loop_thread, self.async_reward_loop)
-
     def _prepare_scheduler(self):
         """Prepare multi-turn scheduler"""
         args = self.args
@@ -289,135 +253,59 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._step += 1
         return RerunDataIterator(iter(inputs))
 
-    def _batch_encode(self, infer_requests: List[Dict], template: Template, strict: bool, **kwargs):
-        # borrowed from swift/infer_engine/infer_engine.py
-        max_workers = max(min(32, os.cpu_count(), len(infer_requests)), 1)
-        error_list = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(template.encode, infer_request, **kwargs) for infer_request in infer_requests]
-            concurrent.futures.wait(futures)
-            batched_inputs = []
-            for i, future in enumerate(futures):
-                try:
-                    encoded = future.result()
-                    extra_kwargs = encoded.get('_extra_kwargs') or {}
-                    for k in list(extra_kwargs.keys()):
-                        if k not in FILTERED_KEYS:
-                            extra_kwargs.pop(k)
-                    batched_inputs.append(encoded)
-                except Exception as e:
-                    if strict:
-                        raise
-                    error_list.append((i, e))
-                    continue
-        return batched_inputs, error_list
-
-    def _get_encoded_batch(self, encoded_list, rollout_batch, template):
-        original_seq_lengths = [item['length'] for item in encoded_list]
-
-        from swift.rlhf_trainers.utils import build_completion_mask_and_seq_lengths, build_rollout_logps
-
-        args = self.args
-        encoded_batch = to_device(template.data_collator(encoded_list, padding_to=get_padding_to(args)), self.device)
-
-        labels = encoded_batch['labels']
-        batch_size = len(rollout_batch)
-
-        truncated_mask = torch.tensor([b['is_truncated'] for b in rollout_batch], dtype=torch.bool, device=self.device)
-
-        completion_mask, seq_lengths, max_seq_len = build_completion_mask_and_seq_lengths(
-            labels,
-            batch_size,
-            padding_free=template.padding_free,
-            encoded_batch=encoded_batch,
-            device=self.device,
-        )
-
-        encoded_batch.update({
-            'completion_mask': completion_mask,
-            'truncated_mask': truncated_mask,
-            'num_samples': batch_size,
-            'seq_lengths': seq_lengths,
-        })
-
-        encoded_batch['rollout_per_token_logps'] = build_rollout_logps(rollout_batch, completion_mask, self.device)
-
-        # Validating and processing routed_experts data in R3 mode
-        if self.args.router_replay_mode == 'R3':
-            routed_experts_list = []
-            cur_seq_lengths = seq_lengths
-            if (seq_lengths.size(0) > batch_size):
-                cur_seq_lengths = seq_lengths[:batch_size].clone()
-                cur_seq_lengths[batch_size - 1] = seq_lengths[batch_size - 1:].sum()
-            for data, original_seq_len, cur_seq_len in zip(rollout_batch, original_seq_lengths, cur_seq_lengths):
-                routed_experts = data.get('routed_experts')
-                assert routed_experts is not None, (
-                    'When router_replay_mode = R3, routed_experts must be in rollout data')
-                routed_experts = torch.tensor(routed_experts)
-                # The number of experts in the output can be 1 less than (prompt_length + response_token_count)
-                # This gap of 1 is expected
-                # For more details, please refer PR https://github.com/vllm-project/vllm/pull/28284
-                experts_seq_len = routed_experts.shape[0]
-                assert (experts_seq_len == original_seq_len or experts_seq_len + 1
-                        == original_seq_len), (f'The seq_len of routed_experts({experts_seq_len}) in output ',
-                                               f'does not match the seq_len of data({original_seq_len}), '
-                                               'should be equal to or 1 less than the seq_len of data')
-                # Padding routed_experts(seq_len, layer_num, topk) seq_len to match the seq_len of the input_ids
-                padding_routed_experts = routed_experts
-                padding_to = cur_seq_len if template.padding_free else max_seq_len
-                padding_len = padding_to - experts_seq_len
-                if padding_len > 0:
-                    padding_right = template.padding_side == 'right'
-                    padding_routed_experts = nn.functional.pad(routed_experts,
-                                                               (0, 0, 0, 0, 0, padding_len) if padding_right else
-                                                               (0, 0, 0, 0, padding_len, 0), 'constant', 0)
-                routed_experts_list.append(padding_routed_experts)
-            if template.padding_free:
-                global_routed_experts = torch.cat(routed_experts_list, dim=0).unsqueeze(0)
-            else:
-                global_routed_experts = torch.stack(routed_experts_list)
-            encoded_batch['routed_experts'] = global_routed_experts.to(device=self.device)
-
-        return encoded_batch
-
-    def _generate_and_score_completions(self, batch):
+    def _generate_and_score_completions(self, inputs: DataType):
         # Get or create the rollout group (TP×PP×CP)
 
         rollout_group = self._get_rollout_group()
 
         # Resample for encoding failed data when truncation_strategy is 'delete'
         # This handles: (1) prompt length exceeds max_length, (2) multimodal encoding failures
-        # Do this before get_local_rollout_batch to process prompt-level data
+        # Do this before get_local_rollout_batch to process prompt-level data.
+        # Resample operates on dict rows; build per-sample objects only once the
+        # training data is finalized (mirrors HF / Ray GRPO).
         if self.truncation_strategy == 'delete':
-            batch = self.resample_encode_failed_inputs(batch)
+            inputs = self.resample_encode_failed_inputs(inputs)
+        samples = self.to_samples(inputs)
 
-        rollout_batch = self.get_local_rollout_batch(batch)
+        samples = self.get_local_rollout_batch(samples)
 
-        rollout_batch = self._generate_completions(rollout_batch)
+        samples = self._generate_completions(samples)
 
-        rewards_per_func = self._score_completions(rollout_batch)
+        rewards_per_func = self._score_completions(samples)
 
         # Dynamic sampling for std=0 groups (DAPO)
         if self.dynamic_sample:
-            rollout_batch, rewards_per_func = self._dynamic_sampling(rollout_batch, rewards_per_func)
+            samples, rewards_per_func = self._dynamic_sampling(samples, rewards_per_func)
+
+        # Log completions after all filtering so they align with rewards/advantages (issue #9533).
+        self._log_completions_from_samples(samples)
 
         # Gather rollout data across rollout group
-        total_batch = gather_object(rollout_batch, group=rollout_group)
-        total_batch = self._maybe_replace_response_token(total_batch)
+        total_samples = gather_object(samples, group=rollout_group)
         mini_batch_data = []
         template = self.template
 
         # Step 1: Encode batches and compute logps first (unified flow like GRPOTrainer)
         with self._template_context(template):
-            encoded_list, error_list = self._batch_encode(total_batch, template, strict=True, return_length=True)
+            for s in total_samples:
+                s.encoded = encode_sample(s, template)
+                s.encoded.pop('_extra_kwargs', None)
 
-            for idx in range(0, len(encoded_list), self.micro_batch_size):
-                encoded_batch_data = encoded_list[idx:idx + self.micro_batch_size]
-                micro_batch_data = total_batch[idx:idx + self.micro_batch_size]
-                encoded_batch_data = self._get_encoded_batch(encoded_batch_data, micro_batch_data, template)
+            for idx in range(0, len(total_samples), self.micro_batch_size):
+                sample_slice = total_samples[idx:idx + self.micro_batch_size]
+                model_inputs, grpo_batch = collate_to_grpo_micro_batch(
+                    sample_slice,
+                    template,
+                    device=self.device,
+                    padding_to=get_padding_to(self.args),
+                    router_replay_mode=self.args.router_replay_mode,
+                )
+                # Wire format: model_inputs (dict) + grpo_batch (consumed by forward_step)
+                data = model_inputs
+                data['grpo_batch'] = grpo_batch
                 with profiling_context(self, 'compute_ref_old_logps'):
-                    encoded_batch_data = self._maybe_compute_logps(encoded_batch_data)
-                mini_batch_data.append(encoded_batch_data)
+                    data = self._maybe_compute_logps(data)
+                mini_batch_data.append(data)
 
         # Step 2: Compute KL from logps if kl_in_reward is enabled
         kl_values = None
@@ -425,22 +313,23 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             kl_values = self._compute_kl_from_batches(mini_batch_data)
 
         # Step 3: Compute advantages (with KL penalty if kl_in_reward is enabled)
-        advantages = self._compute_advantages(rollout_batch, rewards_per_func, kl_values=kl_values)
+        advantages = self._compute_advantages(samples, rewards_per_func, kl_values=kl_values)
         total_advantages = gather(advantages, group=rollout_group)
 
         # Step 4: Add advantages to encoded batches
         for idx, micro_batch_encoded in enumerate(mini_batch_data):
             start_idx = idx * self.micro_batch_size
-            end_idx = start_idx + micro_batch_encoded['num_samples']
+            end_idx = start_idx + micro_batch_encoded['grpo_batch'].completion_mask.shape[0]
             micro_batch_advantages = total_advantages[start_idx:end_idx]
-            micro_batch_encoded['advantages'] = micro_batch_advantages
+            micro_batch_encoded['grpo_batch'].advantages = micro_batch_advantages
 
         if self.loss_type in ['cispo', 'dapo', 'fipo']:
             # Calculate num_items_in_batch
             # Count completion tokens from all mini_batch_data (this includes gathered data from rollout_group)
             # Use completion_mask.sum() for both padding_free and non-padding_free modes
             # since we want the count of actual completion tokens, not sequence lengths
-            total_token_count = sum(batch_data['completion_mask'].sum().item() for batch_data in mini_batch_data)
+            total_token_count = sum(batch_data['grpo_batch'].completion_mask.sum().item()
+                                    for batch_data in mini_batch_data)
 
             # All-reduce across all ranks
             total_token_count_tensor = torch.tensor(total_token_count, dtype=torch.int, device=self.device)
@@ -454,7 +343,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             num_items_in_batch = total_token_count_tensor / rollout_group_size
             # Store num_items_in_batch in each mini_batch_data for token-normalized losses
             for batch_data in mini_batch_data:
-                batch_data['num_items_in_batch'] = num_items_in_batch
+                batch_data['grpo_batch'].num_items_in_batch = num_items_in_batch
 
         return mini_batch_data
 
@@ -505,156 +394,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         }
         return influence_weight, metrics
 
-    @profiling_decorator
-    def _generate_completions(self, batch):
-        """
-        Generate completions for a batch of rollout data using vLLM engine.
-
-        This method processes rollout data for the current process, generates completions
-        using the vLLM engine, and merges the results back into the original batch.
-
-        Args:
-            batch: Rollout data assigned to the current process.
-
-        Returns:
-            batch: The input batch with rollout completion results merged in.
-        """
-        # add prompt ids and system prompts
-        batch = self._preprocess_inputs(batch)
-        # Step 1: Wake up the engine if it's sleeping (vLLM colocate mode)
-        if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
-            wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
-            # Load weights only (faster and reduces memory peak)
-            kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
-            aggressive_empty_cache()
-            self.engine.engine.wake_up(**kwargs)
-
-        # Step 2: Load model weights
-        if self._step != self._last_loaded_step or self.args.sleep_level == 2:
-            self._move_model_to_vllm()
-            self._last_loaded_step = self._step
-
-        context = self.offload_context if self.enable_offload else nullcontext
-        with context():
-            if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
-                    and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
-                aggressive_empty_cache()
-                set_expandable_segments(False)
-                self.engine.engine.wake_up(tags=['kv_cache'])
-
-            multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
-            colocate_multi_turn = (
-                multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
-
-            if colocate_multi_turn:
-                from swift.rollout import invoke_async_hook, run_multi_turn
-                requests = self._inputs_to_requests(self._set_inputs_system(batch))
-                invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
-                request_config = self._get_request_config()
-                outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
-                outputs = run_multi_turn(
-                    requests=requests,
-                    first_turn_outputs=outputs,
-                    scheduler=multi_turn_scheduler,
-                    rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
-                    request_config=request_config,
-                    max_turns=self.args.max_turns,
-                    gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
-                )
-                # log prompts/completions to mirror ``_rollout``'s side-effects
-                messages = gather_object([req.messages for req in requests])
-                completions = gather_object([out.response.choices[0].message.content for out in outputs])
-                self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
-                self._logs['completion'].extend(completions)
-            else:
-                # Step3: Rollout
-                outputs: List[RolloutOutput] = self._rollout(batch)
-
-            # Step4: Sleep to release memory
-            if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
-                self.engine.engine.reset_prefix_cache()
-                self.engine.engine.sleep(level=self.args.sleep_level)
-                aggressive_empty_cache()
-                set_expandable_segments(True)
-            batch = self.postprocess_rollout_data(batch, outputs)
-
-        return batch
-
-    def _rollout(self, batch) -> List[RolloutOutput]:
-        batch = self._set_inputs_system(batch)
-        request_config = self._get_request_config()
-        if self.vllm_mode == 'server':
-            rollout_outputs = self._server_rollout(batch, request_config)
-        elif self.vllm_mode == 'colocate':
-            rollout_outputs = self._colocate_rollout(batch, request_config)
-        # log prompt and completions
-        messages = gather_object([data['messages'] for data in batch])
-        completions = gather_object([data.response.choices[0].message.content for data in rollout_outputs])
-        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
-        self._logs['completion'].extend(completions)
-
-        return rollout_outputs
-
-    def postprocess_rollout_data(self, batch, outputs):
-        """
-        Post-process the raw vLLM generation outputs and merge them back into the
-        original input batch.
-
-        Args:
-            batch (List[Dict[str, Any]]):
-                Original rollout samples.
-            outputs (List[RolloutOutput]):
-                outputs from vLLM from vLLM TP group
-
-        Returns:
-            List[Dict[str, Any]]:
-                Updated samples with rollout results merged in.
-        """
-
-        def merge_output_input_data(input_data: Dict[str, Union[torch.Tensor, Any]], output: RolloutOutput):
-            response = output.response
-            choice = response.choices[0]
-
-            # Step 1: Update or append assistant message
-            if output.messages:
-                input_data['messages'] = output.messages  # Override full message history
-            else:
-                # not provided, append
-                messages = input_data['messages']
-                remove_response(messages)
-                messages.append({'role': 'assistant', 'content': choice.message.content})
-            # Step 2: Add token IDs and loss mask
-            if output.response_token_ids:
-                input_data['response_token_ids'] = output.response_token_ids
-                if output.response_loss_mask:
-                    input_data['response_loss_mask'] = output.response_loss_mask
-            else:
-                # for single turn, skip tokenizer response
-                input_data['response_token_ids'] = output.response.choices[0].token_ids
-
-            # Step 3: Attach rollout extra info
-            if output.rollout_infos:
-                input_data['rollout_infos'] = output.rollout_infos
-
-            # Step 4: Store finish reason (used for truncation filters etc.)
-            input_data['finish_reason'] = choice.finish_reason
-            input_data['is_truncated'] = choice.finish_reason == 'length'
-            input_data['add_eos'] = False
-
-            # Step 5: Store rollout logprobs for importance sampling correction
-            if output.rollout_logprobs:
-                input_data['rollout_logprobs'] = output.rollout_logprobs
-            elif choice.logprobs is not None:
-                if 'content' in choice.logprobs:
-                    rollout_logprobs = [item['logprob'] for item in choice.logprobs['content']]
-                    input_data['rollout_logprobs'] = [rollout_logprobs]
-
-            # Step 6: Store rollout routed_experts for routing replay
-            input_data['routed_experts'] = choice.routed_experts
-            return input_data
-
-        assert len(batch) == len(outputs)
-        return [merge_output_input_data(input_data, output) for input_data, output in zip(batch, outputs)]
+    def _build_log_table(self) -> Dict[str, list]:
+        """Extend base table with GRPO-specific rewards and advantages."""
+        table = super()._build_log_table()
+        table.update({k: list(v) for k, v in self._logs['rewards'].items()})
+        table['advantages'] = list(self._logs['advantages'])
+        return table
 
     def _get_request_config(self) -> RequestConfig:
         request_config = copy(self.request_config)
@@ -677,7 +422,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                         request_config: RequestConfig,
                         is_global_inputs: bool = False) -> List[RolloutOutput]:
         # TODO: async generate
-        infer_requests = self.inputs2requests(inputs)
+        infer_requests = self.samples2requests(inputs)
 
         if is_global_inputs:
             per_device_size = len(infer_requests) // self.world_size
@@ -707,255 +452,85 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return outputs
 
     @profiling_decorator
-    def _score_completions(self, inputs: DataType) -> torch.Tensor:
+    def _score_completions(self, samples: List[GRPOSample]) -> torch.Tensor:
         """Score completions using all reward functions.
 
         Args:
-            inputs: List of input examples, each containing a 'messages' list with conversation history
+            samples: List of on-policy samples carrying messages + rollout fields.
 
         Returns:
             rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with local reward values
         """
-        # Gym path: pull `total_reward` from the multi-turn scheduler's rollout_infos and
-        # append it as an extra column so reward_weights can blend it with reward_funcs.
-        if self.use_gym_env:
-            gym_reward = torch.tensor([inp['rollout_infos']['total_reward'] for inp in inputs],
-                                      dtype=torch.float32,
-                                      device=self.device).unsqueeze(1)
-            if not self.reward_funcs:
-                return gym_reward
-            local_rewards_per_func = self._compute_rewards_per_func(inputs)
-            return torch.cat([local_rewards_per_func, gym_reward], dim=1)
-
-        # Compute rewards using reward functions
-        return self._compute_rewards_per_func(inputs)
-
-    def _compute_rewards_per_func(self, batch: DataType) -> torch.Tensor:
-        """Compute rewards using all reward functions"""
-        device = self.device
-        rewards_per_func = torch.zeros((len(batch), len(self.reward_funcs)), device=device)
-        completions = [inp['messages'][-1]['content'] for inp in batch]
-
-        # Common reward kwargs
-        reward_kwargs = {'trainer_state': self.state}
-        reward_kwargs.update(RowPreprocessor.rows_to_batched(batch))
-
-        # Use pre-computed indices for async reward functions
-        async_indices_set = set(self._async_reward_func_indices)
-
-        for i, (reward_func, reward_model_plugin, reward_func_name) in enumerate(
-                zip(self.reward_funcs, self.reward_model_plugins, self.reward_func_names)):
-            with profiling_context(self, reward_func_name):
-                # Reward model (nn.Module)
-                if isinstance(reward_func, nn.Module):
-                    output_reward_func = reward_model_plugin(inputs=batch, **reward_kwargs)
-                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
-                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-                # Async reward function - skip here, will be executed in parallel later
-                elif i in async_indices_set:
-                    pass
-                # Synchronous reward function
-                else:
-                    output_reward_func = reward_func(completions, **reward_kwargs)
-                    output_reward_func = [reward if reward is not None else torch.nan for reward in output_reward_func]
-                    rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-
-        # Execute async reward functions in parallel using asyncio.gather
-        # Process in original order to maintain correspondence with reward_func_names
-        if self._async_reward_func_indices:
-
-            async def _invoke_async_reward(index):
-                func = self.reward_funcs[index]
-                func_name = self.reward_func_names[index]
-                with profiling_context(self, func_name):
-                    output = await func(completions, **reward_kwargs)
-                    output = [r if r is not None else torch.nan for r in output]
-                    return index, output
-
-            async def _run_async_funcs():
-                # Maintain order by processing indices in sequence
-                coros = [_invoke_async_reward(idx) for idx in self._async_reward_func_indices]
-                return await asyncio.gather(*coros)
-
-            async_results = asyncio.run_coroutine_threadsafe(_run_async_funcs(), self.async_reward_loop).result()
-            for idx, output_reward_func in async_results:
-                rewards_per_func[:, idx] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
-
-        # If all reward functions return None for a given row, issue a detailed warning
-        if torch.isnan(rewards_per_func).all(dim=1).any():
-            nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
-            row_reward_kwargs = {
-                key: value[nan_row_idx]
-                for key, value in reward_kwargs.items() if key != 'trainer_state'
-            }
-            row_reward_kwargs['completion'] = completions[nan_row_idx]
-            logger.warning(f'All reward functions returned None for the following kwargs: {row_reward_kwargs}. '
-                           'Please ensure that at least one reward function returns a valid reward.')
-
-        return rewards_per_func
+        return score_completions(
+            samples,
+            reward_funcs=self.reward_funcs,
+            reward_model_plugins=self.reward_model_plugins,
+            use_gym_env=self.use_gym_env,
+            device=self.device,
+            trainer_state=self.state,
+        )
 
     def _compute_advantages(self,
-                            batch: DataType,
+                            samples: List[GRPOSample],
                             rewards_per_func: torch.Tensor,
                             kl_values: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Compute advantages for RL training.
 
-        Supports different advantage estimators:
-        - 'grpo': Group mean baseline
-        - 'rloo': Leave-One-Out baseline
-        - 'reinforce_plus_plus': Similar to grpo but normalizes advantages std
-
         Args:
-            batch: Local batch data samples
+            samples: Local on-policy samples (only the count is used for slicing)
             rewards_per_func: Reward per function for local data samples
             kl_values: Optional KL values for kl_in_reward mode, shape [total_samples]
 
         Returns:
             advantages: Computed advantages for local batch, shape [local_batch_size]
         """
-
-        def normalize_advantages(advantages: torch.Tensor, std_values: torch.Tensor) -> torch.Tensor:
-            """Normalize advantages if configured; otherwise, return as-is."""
-            if self.scale_rewards != 'none':
-                return advantages / (std_values + 1e-4)
-            return advantages
-
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
-        assert len(batch) == rewards_per_func.shape[0]
-        total_rewards_per_func = gather(rewards_per_func)
-        # NOTE: In GDPO mode, this weighted sum is only used for logging metrics.
-        # GDPO advantages are computed separately in the scale_rewards=='gdpo' branch below.
-        rewards = (total_rewards_per_func * self.reward_weights.unsqueeze(0)).nansum(dim=1)
-
-        # Apply KL penalty to rewards if kl_in_reward is enabled
-        if self.kl_in_reward and self.beta != 0.0 and kl_values is not None:
-            self._metrics[mode]['kl'].append(kl_values.nanmean().item())
-            rewards = rewards - self.beta * kl_values
-
-        # Use num_generations_eval in eval mode
+        assert len(samples) == rewards_per_func.shape[0]
         num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
-        grouped_rewards = rewards.view(-1, num_generations)
-        K = num_generations
 
-        # Compute group statistics
-        group_rewards_mean = grouped_rewards.mean(dim=1)
+        # Gather local rewards into a global tensor: GRPO group normalization needs every
+        # completion of the same prompt visible on one rank (groups span DP ranks).
+        # ``kl_values`` is already global (gathered in ``_compute_kl_from_batches``).
+        total_rewards_per_func = gather(rewards_per_func)
 
-        # Broadcast stats back to the original shape
-        group_rewards_mean = group_rewards_mean.repeat_interleave(K)
+        advantages, weighted_rewards = compute_advantages(
+            rewards_per_func=total_rewards_per_func,
+            reward_weights=self.reward_weights,
+            num_generations=num_generations,
+            advantage_estimator=self.advantage_estimator,
+            scale_rewards=self.scale_rewards,
+            kl_in_reward=self.kl_in_reward,
+            beta=self.beta,
+            kl_values=kl_values,
+        )
 
-        # Compute advantages based on estimation type
-        if self.advantage_estimator == 'rloo':
-            # RLOO: Leave-One-Out baseline
-            # A_i = r_i - mean(r_j for j != i)
-            # = r_i * K/(K-1) - mean_all * K/(K-1)
-            # Edge case: when K=1 (e.g., num_generations_eval=1), fall back to simple advantage
-            if K > 1:
-                advantages = rewards * K / (K - 1) - group_rewards_mean * K / (K - 1)
-            else:
-                advantages = rewards - group_rewards_mean
-        else:  # 'grpo' or 'reinforce_plus_plus'
-            # Both use group mean as baseline
-            advantages = rewards - group_rewards_mean
-
-        # Normalize advantages based on estimator and scale_rewards
-        if self.advantage_estimator == 'reinforce_plus_plus':
-            # REINFORCE++: Use std of advantages (not rewards)
-            if self.scale_rewards == 'batch':
-                # Global whitening: std computed on advantages
-                if advantages.numel() > 1:
-                    advantages_std = advantages.std().expand_as(advantages)
-                else:  # edge case: num_generations_eval=batch_size=1
-                    advantages_std = torch.zeros_like(advantages)
-            elif self.scale_rewards == 'group':
-                # Group-level whitening on advantages
-                advantages_grouped = advantages.view(-1, K)
-                if K > 1:
-                    advantages_std = advantages_grouped.std(dim=1).repeat_interleave(K)
-                else:  # edge case: num_generations_eval=1
-                    advantages_std = torch.zeros_like(advantages)
-            else:  # 'none'
-                advantages_std = None
-            if advantages_std is not None:
-                advantages = normalize_advantages(advantages, advantages_std)
-        else:  # 'grpo' or 'rloo'
-            # GRPO/RLOO: Use std of original rewards
-            if self.scale_rewards == 'batch':
-                # Global batch-level normalization
-                if rewards.numel() > 1:
-                    rewards_std = rewards.std().expand_as(rewards)
-                else:  # edge case: num_generations_eval=batch_size=1
-                    rewards_std = torch.zeros_like(rewards)
-            elif self.scale_rewards == 'group':
-                # Group-level normalization (default)
-                if K > 1:
-                    rewards_std = grouped_rewards.std(dim=1).repeat_interleave(K)
-                else:  # edge case: num_generations_eval=1
-                    rewards_std = torch.zeros_like(rewards)
-            elif self.scale_rewards == 'gdpo':
-                num_reward_funcs = total_rewards_per_func.shape[1]
-                normalized_advantages_list = []
-                for i in range(num_reward_funcs):
-                    reward_i = total_rewards_per_func[:, i]
-                    grouped_reward_i = reward_i.view(-1, K)
-                    group_mean = grouped_reward_i.mean(dim=1, keepdim=True)
-                    group_std = grouped_reward_i.std(dim=1, keepdim=True) + 1e-8
-                    normalized_i = (grouped_reward_i - group_mean) / group_std
-                    normalized_i = normalized_i.view(-1)
-                    normalized_advantages_list.append(self.reward_weights[i] * normalized_i)
-                summed_advantages = sum(normalized_advantages_list)
-                batch_mean = summed_advantages.mean()
-                batch_std = summed_advantages.std() + 1e-8
-                advantages = (summed_advantages - batch_mean) / batch_std
-                rewards_std = None
-            else:  # 'none'
-                rewards_std = None
-            if rewards_std is not None:
-                advantages = normalize_advantages(advantages, rewards_std)
-
-        def log_rewards_metrics(rewards: torch.Tensor, rewards_per_func_for_metrics: torch.Tensor):
-            """Log reward statistics for monitoring. Only log once per unique request_id."""
-            # rewards: [prompt_batch_size, num_generations]
-            # rewards_per_func_for_metrics: [prompt_batch_size*num_generations, self.num_reward_funcs]
-            group_rewards = rewards.view(-1, num_generations)
-            rewards_mean = group_rewards.mean(-1).mean().item()
-            # Compute std based on scale_rewards setting for logging
-            if self.scale_rewards in ['group', 'none', 'gdpo']:
-                # Handle edge case when num_generations_eval=1
-                if num_generations > 1:
-                    rewards_std = group_rewards.std(-1).mean().item()
-                else:
-                    rewards_std = 0.0
-            elif self.scale_rewards == 'batch':
-                rewards_std = rewards.std().item() if rewards.numel() > 1 else 0.0
-            if num_generations > 1:
-                is_std_zero = torch.isclose(group_rewards.std(dim=1), torch.zeros_like(group_rewards.std(dim=1)))
-            else:
-                is_std_zero = torch.ones(group_rewards.size(0), dtype=torch.bool, device=group_rewards.device)
-
-            self._metrics[mode]['reward'].append(rewards_mean)
-            self._metrics[mode]['reward_std'].append(rewards_std)
-            self._metrics[mode]['frac_reward_zero_std'].append(is_std_zero.float().mean().item())
-
-            # Log per-reward-function statistics using deduplicated rewards_per_func
-            for i, name in enumerate(self.reward_func_names):
-                col = rewards_per_func_for_metrics[:, i]
-                self._metrics[mode][f'rewards/{name}/mean'].append(torch.nanmean(col).item())
-                self._metrics[mode][f'rewards/{name}/std'].append(nanstd(col).item())
-
-        log_rewards_metrics(rewards=grouped_rewards, rewards_per_func_for_metrics=total_rewards_per_func)
+        reward_metrics = compute_reward_metrics(
+            rewards=weighted_rewards,
+            rewards_per_func=total_rewards_per_func,
+            reward_func_names=self.reward_func_names,
+            num_generations=num_generations,
+            scale_rewards=self.scale_rewards,
+        )
+        self._metrics[mode]['reward'].append(reward_metrics.reward_mean)
+        self._metrics[mode]['reward_std'].append(reward_metrics.reward_std)
+        self._metrics[mode]['frac_reward_zero_std'].append(reward_metrics.frac_reward_zero_std)
+        if kl_values is not None:
+            self._metrics[mode]['kl'].append(kl_values.nanmean().item())
+        for name in self.reward_func_names:
+            self._metrics[mode][f'rewards/{name}/mean'].append(reward_metrics.per_func_mean[name])
+            self._metrics[mode][f'rewards/{name}/std'].append(reward_metrics.per_func_std[name])
         self._logs['advantages'].extend(advantages.tolist())
         for i, name in enumerate(self.reward_func_names):
             self._logs['rewards'][name].extend(total_rewards_per_func[:, i].tolist())
 
-        slice_start = self.process_index * len(batch)
-        slice_end = slice_start + len(batch)
-        advantages = advantages[slice_start:slice_end]
+        # Slice the global advantages back to this rank's local samples.
+        slice_start = self.process_index * len(samples)
+        slice_end = slice_start + len(samples)
+        return advantages[slice_start:slice_end]
 
-        return advantages
-
-    def _dynamic_sampling(self, rollout_batch: DataType,
-                          rewards_per_func: torch.Tensor) -> Tuple[DataType, torch.Tensor]:
+    def _dynamic_sampling(self, rollout_batch: List[GRPOSample],
+                          rewards_per_func: torch.Tensor) -> Tuple[List[GRPOSample], torch.Tensor]:
         """
         Perform dynamic sampling to replace samples with zero-reward-variance groups.
 
@@ -1009,6 +584,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             if self.truncation_strategy == 'delete':
                 next_rollout_prompt_batch = self.resample_encode_failed_inputs(next_rollout_prompt_batch)
 
+            # Convert dict rows to per-sample objects before rollout
+            next_rollout_prompt_batch = self.to_samples(next_rollout_prompt_batch)
+
             # Repeat num_generations times and get local slice
             rollout_batch = self.get_local_rollout_batch(next_rollout_prompt_batch)
 
@@ -1031,11 +609,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         return rollout_batch, rewards_per_func
 
     def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        seq_lengths = batch['seq_lengths']
-        batch_size = batch['num_samples']
-        max_seq_len = batch['completion_mask'].shape[1]
+        grpo_batch: GRPOBatch = batch.pop('grpo_batch')
+        seq_lengths = grpo_batch.seq_lengths
+        batch_size = grpo_batch.completion_mask.shape[0]
+        max_seq_len = grpo_batch.completion_mask.shape[1]
 
-        inputs = self._prepare_model_inputs(batch)
+        # batch is now clean model forward kwargs (template.encode guarantees this)
+        inputs = batch
         if self.beta != 0.0:
             with self.null_ref_context() as ref_models:
                 assert len(ref_models) == 1, 'GRPO currently does not support VPP.'
@@ -1050,7 +630,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                         seq_lengths=seq_lengths)
                 else:
                     ref_per_token_logps = ref_per_token_logps_packed
-                batch['ref_per_token_logps'] = ref_per_token_logps
+                grpo_batch.ref_per_token_logps = ref_per_token_logps
 
         if self.enable_routing_replay:
             if self.args.router_replay_mode == 'R2':
@@ -1068,13 +648,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 seq_lengths=seq_lengths)
         else:
             old_per_token_logps = old_per_token_logps_packed
-        batch['old_per_token_logps'] = old_per_token_logps
+        grpo_batch.old_per_token_logps = old_per_token_logps
 
         if self.enable_routing_replay:
             batch['routed_experts'] = routing_topk_idx
             RouterReplay.clear_global_indices()
             RouterReplay.clear_global_router_replay_action()
 
+        batch['grpo_batch'] = grpo_batch
         return batch
 
     def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
@@ -1096,15 +677,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         assert self.beta != 0.0
 
         for batch in mini_batch_data:
-            old_per_token_logps = batch['old_per_token_logps']  # [batch_size, max_seq_len]
-            ref_per_token_logps = batch['ref_per_token_logps']  # [batch_size, max_seq_len]
-            completion_mask = batch['completion_mask']  # [batch_size, max_seq_len]
-
+            grpo_batch = batch['grpo_batch']
             # Compute per-token KL: old_logp - ref_logp
-            per_token_kl = old_per_token_logps - ref_per_token_logps  # [batch_size, max_seq_len]
+            per_token_kl = grpo_batch.old_per_token_logps - grpo_batch.ref_per_token_logps  # [batch_size, max_seq_len]
 
             # Compute per-sample KL by summing over completion tokens
-            sample_kl = (per_token_kl * completion_mask).sum(-1)  # [batch_size]
+            sample_kl = (per_token_kl * grpo_batch.completion_mask).sum(-1)  # [batch_size]
             kl_list.append(sample_kl)
 
         # Concatenate all KL values and gather across ranks
@@ -1123,23 +701,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         finally:
             template.max_length = max_length
 
-    def _maybe_replace_response_token(self, batch):
-        # maybe replace the response token with the response token ids to avoid repetitive tokenize
-        non_thinking_prefix_ids = get_non_thinking_prefix_ids(self.template)
-
-        for data in batch:
-            if 'response_token_ids' in data and data['response_token_ids']:
-                loss_mask = None
-                if 'response_loss_mask' in data and data['response_loss_mask']:
-                    loss_mask = data['response_loss_mask']
-                # token in token out
-                data['messages'] = replace_assistant_response_with_ids(
-                    data['messages'],
-                    data['response_token_ids'],
-                    loss_mask,
-                    non_thinking_prefix_ids=non_thinking_prefix_ids)
-        return batch
-
     @property
     def on_policy(self):
         return self.steps_per_generation == 1
@@ -1148,15 +709,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
     def forward_step(self, data_iterator, model):
         args = self.args
         data = next(data_iterator)
-        advantages = data.pop('advantages')
-        truncated_mask = data.pop('truncated_mask')
-        seq_lengths = data.pop('seq_lengths')
+        grpo_batch: GRPOBatch = data.pop('grpo_batch')
         data = self._prepare_batch(data)
-        data.update({
-            'advantages': advantages,
-            'truncated_mask': truncated_mask,
-            'seq_lengths': seq_lengths,
-        })
         data.pop('loss_scale', None)
 
         if self.enable_routing_replay and RouterReplayHelper.is_replay_backward_action(model.config):
@@ -1167,17 +721,15 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             layers_topk_idx = data.pop('routed_experts', None)
             set_router_replay_data(layers_topk_idx, model.config)
 
-        inputs = self._prepare_model_inputs(data)
-
-        labels = data['labels']
+        labels = data.pop('labels', None)
         packed_seq_params = data.get('packed_seq_params')
-        max_seq_len = data['completion_mask'].shape[1]
+        max_seq_len = grpo_batch.completion_mask.shape[1]
         micro_batch_size = self.micro_batch_size
 
-        # Check if this is the PP last stage (only last stage has labels and computes loss)
+        # data is now clean model forward kwargs (template.encode guarantees this;
+        # grpo_batch / loss_scale / routed_experts / labels all popped above)
         is_pp_last_stage = mpu.is_pipeline_last_stage()
-        inputs_for_logits = {k: v for k, v in inputs.items() if k != 'labels'}
-        output_tensor = model(**inputs_for_logits)
+        output_tensor = model(**data)
         if is_pp_last_stage and output_tensor is not None:
             logits_packed = output_tensor
             if self.temperature != 1.0:
@@ -1200,13 +752,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     logps_rmpad=per_token_logps_packed,
                     logits_to_keep=max_seq_len,
                     batch_size=micro_batch_size,
-                    seq_lengths=seq_lengths)
+                    seq_lengths=grpo_batch.seq_lengths)
                 if per_token_entropy_packed is not None:
                     per_token_entropy, _ = pad_logps_back_to_batch(
                         logps_rmpad=per_token_entropy_packed,
                         logits_to_keep=max_seq_len,
                         batch_size=micro_batch_size,
-                        seq_lengths=seq_lengths,
+                        seq_lengths=grpo_batch.seq_lengths,
                         pad_value=float('nan'))
                 else:
                     per_token_entropy = None
@@ -1222,15 +774,17 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             for router in router_instance_list:
                 router.set_router_replay_action(RouterReplayAction.REPLAY_BACKWARD)
 
+        data['grpo_batch'] = grpo_batch
+        data['labels'] = labels
         return output_tensor, partial(self.loss_func, data=data)
 
     @profiling_decorator
     def loss_func(self, output_tensor: torch.Tensor, data: Dict[str, Any]):
-        args = self.args
+        grpo_batch: GRPOBatch = data['grpo_batch']
         # Get pre-padded data in batch format [batch_size, max_seq_len]
-        advantages = data['advantages']  # [batch_size]
-        completion_mask = data['completion_mask']  # [batch_size, max_seq_len]
-        truncated_mask = data['truncated_mask']  # [batch_size]
+        advantages = grpo_batch.advantages  # [batch_size]
+        completion_mask = grpo_batch.completion_mask  # [batch_size, max_seq_len]
+        truncated_mask = grpo_batch.truncated_mask  # [batch_size]
         micro_batch_size = self.micro_batch_size
 
         # Get pre-computed per_token_logps and per_token_entropy from forward_step
@@ -1238,10 +792,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         per_token_logps = output_tensor
         per_token_entropy = data.get('per_token_entropy')
 
-        # Get pre-padded ref/old/rollout logps from data
-        ref_per_token_logps = data.get('ref_per_token_logps')  # [batch_size, max_seq_len] or None
-        old_per_token_logps = data.get('old_per_token_logps')  # [batch_size, max_seq_len]
-        rollout_per_token_logps = data.get('rollout_per_token_logps')  # [batch_size, max_seq_len] or None
+        # Get pre-padded ref/old/rollout logps from grpo_batch
+        ref_per_token_logps = grpo_batch.ref_per_token_logps  # [batch_size, max_seq_len] or None
+        old_per_token_logps = grpo_batch.old_per_token_logps  # [batch_size, max_seq_len]
+        rollout_per_token_logps = grpo_batch.rollout_per_token_logps  # [batch_size, max_seq_len] or None
 
         # Rollout importance sampling correction
         rollout_correction_metrics = {}
@@ -1405,7 +959,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)
         elif self.loss_type in ['cispo', 'dapo', 'fipo']:
             # CISPO, DAPO, and FIPO: Normalize by total completion tokens across all processes
-            num_items_in_batch = data['num_items_in_batch']
+            num_items_in_batch = grpo_batch.num_items_in_batch
             dp_size = mpu.get_data_parallel_world_size()
             normalizer = num_items_in_batch / dp_size
             loss = (per_token_loss * completion_mask).sum() / normalizer.clamp(min=1.0)
@@ -1533,117 +1087,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             avg_metric.update(addition_metrics)
 
         avg_metric = self._all_reduce_metric(avg_metric)
-
         reporting_metric = {**avg_metric, **custom_metrics}
 
-        # log_completions
-        if (self.log_completions and self.is_main_process and (self._step - 1) % self.steps_per_generation == 0
-                and self._step != self._last_logged_step):
-            table = {
-                'gen_step': [self._step - 1] * len(self._logs['prompt']),
-                'prompt': list(self._logs['prompt']),
-                'completion': list(self._logs['completion']),
-                **{
-                    k: list(v)
-                    for k, v in self._logs['rewards'].items()
-                },
-                'advantages': list(self._logs['advantages']),
-            }
-            self.jsonl_writer.append(table)
-            args = self.args
-            if 'wandb' in args.report_to:
-                import wandb
-                df = pd.DataFrame(table)
-                if self.wandb_log_unique_prompts:
-                    df = df.drop_duplicates(subset=['prompt'])
-                wandb.log({'completions': wandb.Table(dataframe=df)}, commit=False)
-            if 'swanlab' in args.report_to:
-                import swanlab
-                headers = list(table.keys())
-                rows = []
-                for i in range(len(table['gen_step'])):
-                    row = [table[header][i] for header in headers]
-                    rows.append(row)
-                swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
-
-            self._last_logged_step = self._step
+        if (self._step - 1) % self.steps_per_generation == 0:
+            self._flush_log_completions()
 
         return loss, reporting_metric
-
-    def inputs2requests(self, inputs: Union[DataType, List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
-        """Convert raw input data into RolloutInferRequest objects"""
-
-        def _process_image_data(image_data: Union[dict, str]) -> str:
-            if isinstance(image_data, dict):
-                if image_data.get('bytes'):
-                    return base64.b64encode(image_data['bytes']).decode('utf-8')
-                if image_data.get('path'):
-                    return image_data['path']
-            return image_data
-
-        if not inputs:
-            return []
-
-        args = self.args
-
-        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
-        requests_list = []
-
-        for data in inputs:
-            if isinstance(data, RolloutInferRequest):
-                request_obj = data
-            else:
-                request_data = {
-                    key: data[key]
-                    for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None
-                }
-                if 'uuid' not in request_data:
-                    request_data['uuid'] = data['request_id']
-                if hasattr(args, 'vllm_server_pass_dataset') and args.vllm_server_pass_dataset:
-                    extra_fields = {
-                        k: v
-                        for k, v in data.items() if k not in REQUEST_METADATA_FIELDS and data[k] is not None
-                    }
-                    if extra_fields:
-                        request_data['data_dict'] = extra_fields
-                elif self.multi_turn_scheduler:
-                    base_data_dict = {}
-                    if 'data_dict' in data:
-                        if isinstance(data['data_dict'], dict):
-                            base_data_dict = data['data_dict']
-                        else:
-                            raise ValueError('data_dict exists but is not a dictionary')
-                    extra_data = {
-                        k: v
-                        for k, v in data.items()
-                        if k not in REQUEST_METADATA_FIELDS and k != 'data_dict' and data[k] is not None
-                    }
-                    final_data_dict = {**extra_data, **base_data_dict}
-                    request_data['data_dict'] = final_data_dict if final_data_dict else {}
-
-                if 'images' in request_data and request_data['images']:
-                    imgs = request_data['images']
-                    if not isinstance(imgs, list):
-                        imgs = [imgs]
-                    request_data['images'] = [_process_image_data(img) for img in imgs]
-
-                if 'tools' in request_data and isinstance(request_data['tools'], str):
-                    try:
-                        request_data['tools'] = json.loads(request_data['tools'])
-                    except json.JSONDecodeError:
-                        pass
-
-                request_obj = from_dict(RolloutInferRequest, request_data)
-            requests_list.append(request_obj)
-
-        return requests_list
-
-    def _preprocess_inputs(self, inputs: DataType) -> DataType:
-        """Preprocess inputs before inference"""
-        processed_inputs = self._add_request_id_to_inputs(inputs)
-        for input_item in processed_inputs:
-            remove_response(input_item['messages'])
-        return processed_inputs
 
     @profiling_decorator
     def resample_encode_failed_inputs(self, inputs: DataType, max_resample_rounds: int = 10) -> DataType:
@@ -1654,10 +1103,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         This method handles two cases:
         1. Prompt length exceeds max_length
         2. Encoding failures (e.g., multimodal data processing errors)
-
-        Unlike GRPOTrainer which fetches one sample at a time, this method accumulates
-        successfully encoded samples from each resample batch (micro_batch_size samples per fetch)
-        to avoid wasting data.
 
         Args:
             inputs (DataType): A list of input data samples, each containing a `messages` field.
@@ -1670,51 +1115,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         Raises:
             RuntimeError: If we cannot collect enough valid samples after max_resample_rounds.
         """
-        template = self.template
-        required_count = len(inputs)
-        valid_samples = []
-
-        pending_samples = list(inputs)
-        for _ in range(max_resample_rounds + 1):
-            # Calculate how many more samples we need
-            still_needed = required_count - len(valid_samples)
-            if still_needed <= 0:
-                break
-
-            # Ensure pending_samples has enough samples to try
-            while len(pending_samples) < still_needed:
-                # Fetch a new batch of samples (micro_batch_size samples)
-                pending_samples.extend(next(self.resample_data_iterator))
-
-            # Try to encode samples from pending_samples until we have enough valid ones
-            while pending_samples and len(valid_samples) < required_count:
-                data = pending_samples.pop(0)
-                try:
-                    remove_response(data['messages'])
-                    template.encode(data)
-                    # Encoding succeeded, add to valid samples
-                    valid_samples.append(data)
-                except Exception as e:
-                    # Encoding failed, skip this sample
-                    logger.info(f'Encoding failed for one sample; will resample. {e}')
-
-        if len(valid_samples) < required_count:
-            raise RuntimeError(
-                f'Failed to collect {required_count} valid samples after {max_resample_rounds} resample rounds. '
-                f'Only collected {len(valid_samples)} valid samples. '
-                'Consider increasing `max_length` or adjusting the `truncation_strategy`.')
-
-        return valid_samples[:required_count]
-
-    def _add_request_id_to_inputs(self, inputs: DataType) -> DataType:
-        """Add unique request_id to each input"""
-        if not inputs:
-            return inputs
-
-        for input_item in inputs:
-            input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
-
-        return inputs
+        return resample_encode_failed_inputs(
+            self.template,
+            self.resample_data_iterator,
+            inputs,
+            max_resample_rounds=max_resample_rounds,
+            strip_response=True,
+        )
 
     def get_num_iters_per_step(self):
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
@@ -1742,7 +1149,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         setattr(self, cache_key, num_iters_per_step)
         return num_iters_per_step
 
-    def get_local_rollout_batch(self, batch):
+    def get_local_rollout_batch(self, batch: List[GRPOSample]) -> List[GRPOSample]:
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
         # repeat num_generations times
@@ -1769,67 +1176,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             template.max_length = max_length
 
     def _prepare_metrics(self):
-        args = self.args
+        # Shared logging infrastructure (prompt/completion/jsonl/wandb/swanlab)
+        self._prepare_logging()
+        # GRPO-specific: add rewards and advantages columns
+        self._logs['rewards'] = defaultdict(lambda: deque(maxlen=self.args.generation_batch_size))
+        self._logs['advantages'] = deque(maxlen=self.args.generation_batch_size)
 
-        self.log_completions = args.log_completions
-        self.wandb_log_unique_prompts = args.wandb_log_unique_prompts
-        self.jsonl_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'), write_on_rank='last')
         self.init_custom_metric = False
-        self._last_logged_step = -1
-        self._logs = {
-            'prompt': deque(maxlen=args.generation_batch_size),
-            'completion': deque(maxlen=args.generation_batch_size),
-            'rewards': defaultdict(lambda: deque(maxlen=args.generation_batch_size)),
-            'advantages': deque(maxlen=args.generation_batch_size),
-        }
-
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
-
-    def _apply_chat_template_to_messages_list(self, messages_list: DataType):
-        prompts_text = []
-        for messages in messages_list:
-            remove_response(messages)
-            template_inputs = TemplateInputs.from_dict({'messages': messages})
-            res = self.template.encode(template_inputs)
-            prompts_text.append(self.template.safe_decode(res['input_ids']))
-        return prompts_text
-
-    def _set_inputs_system(self, batch: DataType) -> DataType:
-        """
-        Ensures the system message is consistently set for all conversations in the batch.
-
-        The template handles the user-defined system message. However, in server mode,
-        tokenization occurs on the rollout side. To prevent a mismatch where the system
-        message is set only during training but missing during rollout, this method
-        injects the default system message into each conversation if not already present.
-
-        Args:
-            batch: A list of data items, each containing a 'messages' list.
-
-        Returns:
-            The updated batch with the default system message inserted at the beginning
-            of each conversation that lacks one.
-        """
-
-        if self.vllm_mode != 'server':
-            return batch
-
-        # Return early if no default system message is defined
-        if not self.template.template_meta.default_system:
-            return batch
-
-        # Return early if all conversations already start with a system message
-        if all(data['messages'][0]['role'] == 'system' for data in batch):
-            return batch
-
-        # Insert the default system message at the beginning of each conversation
-        # that doesn't already have one
-        for data in batch:
-            messages = data['messages']
-            if messages[0]['role'] != 'system':
-                messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
-
-        return batch
 
     def _compute_sequence_level_ratios(self, is_ratio: torch.Tensor, completion_mask: torch.Tensor) -> torch.Tensor:
         """
@@ -2084,11 +1438,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             metrics['clipped_frac'] = gather(clipped_frac.unsqueeze(0), group=dp_group).nanmean()
 
         return metrics
-
-    def _prepare_model_inputs(self, inputs: 'DataType') -> Dict[str, Any]:
-        """Filters inputs to create model_inputs, removing GRPO-specific and template extra keys."""
-        excluded = GRPO_NON_MODEL_KEYS | FILTERED_KEYS
-        return {k: v for k, v in inputs.items() if k not in excluded}
 
     def _collect_config_info(self) -> Dict[str, str]:
         config = {

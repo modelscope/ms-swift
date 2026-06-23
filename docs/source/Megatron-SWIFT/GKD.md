@@ -14,17 +14,6 @@ Megatron GKD 当前已支持以下功能：
 - **Teacher Offload**：支持将教师模型卸载到 CPU 以节省 GPU 显存
 - **在线生成**：支持使用 vLLM 进行学生模型的 on-policy 生成
 
-### 当前限制
-
-- **教师模型在线生成**（`seq_kd=True`）：当前 Sequential KD 模式下的教师模型生成暂不支持
-- **非vLLM生成**：On-policy 生成当前仅支持 vLLM
-- **教师模型使用与学生模型不同的并行参数**: 将在未来版本支持
-
-⚠️ 注意事项：
-- **On-policy 生成**：需要启用 vLLM（`--use_vllm true --vllm_mode colocate/server`）
-- 当 `lmbda > 0` 但未启用 vLLM 时，将自动回退到离线学习模式（使用数据集响应）
-- 当 `seq_kd=True` 时，由于教师生成暂不支持，将自动回退到离线学习模式，如需使用，请提前用[swift infer](../Instruction/Inference-and-deployment.md)推理数据集
-
 ## 参数说明
 
 ### GKD 特有参数
@@ -36,7 +25,6 @@ Megatron GKD 当前已支持以下功能：
 | `--gkd_logits_topk` | int | None | Top-K logits 数量，使用外部教师 API 时必须设置 |
 | `--beta` | float | 0.5 | JSD 散度插值系数：<br>• 0.0: Forward KL<br>• 0.5: 对称 JSD<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | On-Policy 学习触发概率：<br>• 0.0: 纯 Off-Policy<br>• 1.0: 纯 On-Policy |
-| `--seq_kd` | bool | False | 是否使用教师生成的响应（当前暂不支持） |
 | `--temperature` | float | 0.9 | 温度参数，用于采样和损失计算 |
 | `--sft_alpha` | float | 0 | 混合一定比例的sft loss，对非student生成结果生效 |
 | `--max_completion_length` | int | 512 | 生成时的最大 token 数 |
@@ -49,22 +37,6 @@ Megatron GKD 当前已支持以下功能：
 |------|------|
 | `--micro_batch_size` | 每个DP组的训练批次大小 |
 | `--global_batch_size` | 全局批次大小：`micro_batch_size × dp_size × gradient_accumulation_steps` |
-
-## 三种训练模式
-
-GKD 支持三种训练模式，通过 `lmbda` 和 `seq_kd` 参数控制：
-
-### Mode 1: On-Policy 学习
-- 触发条件：`random() < lmbda` 且 `use_vllm=True`
-- 数据来源：学生模型生成的响应
-
-### Mode 2: Sequential KD（当前暂不支持）
-- 触发条件：`random() >= lmbda` 且 `seq_kd=True`
-- 数据来源：教师模型生成的响应
-
-### Mode 3: Off-Policy 学习
-- 触发条件：其他情况
-- 数据来源：数据集中的标注响应
 
 ## 参考
 

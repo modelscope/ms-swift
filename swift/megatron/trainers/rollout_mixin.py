@@ -14,7 +14,7 @@ import time
 import torch
 import uuid
 from accelerate.utils import broadcast_object_list
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import copy
 from dacite import from_dict
@@ -23,14 +23,16 @@ from megatron.core import mpu
 from typing import Any, Dict, List, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
+from swift.rl_core.data import OnPolicySample
+from swift.rlhf_trainers.base_rollout_mixin import BaseRolloutTrainerMixin
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        TensorLoRARequest, add_base_layer_suffix_by_param_names, aggressive_empty_cache,
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
                                        patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
                                        profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
 from swift.rollout import invoke_async_hook, run_multi_turn
-from swift.utils import (get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response, synchronize,
-                         to_device)
+from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
+                         synchronize, to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
                     offload_megatron_optimizer)
 
@@ -108,7 +110,10 @@ def create_rollout_group(trainer) -> torch.distributed.ProcessGroup:
     return trainer._rollout_group
 
 
-class MegatronRolloutMixin:
+class MegatronRolloutMixin(BaseRolloutTrainerMixin):
+
+    # Per-sample container class; subclasses override (GRPOSample / GKDSample).
+    sample_cls = OnPolicySample
 
     def _init_rollout_params(self):
         """Initialize rollout generation parameters."""
@@ -146,7 +151,7 @@ class MegatronRolloutMixin:
         """Get or create the rollout process group (TP×PP×CP)."""
         return create_rollout_group(self)
 
-    def _get_local_rollout_batch(self, batch: List[Dict]) -> List[Dict]:
+    def _get_local_rollout_batch(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
         """Split batch within rollout group for distributed vLLM generation.
 
         The batch is evenly split across the rollout group (TP×PP×CP ranks with
@@ -161,16 +166,16 @@ class MegatronRolloutMixin:
         where rollout_group_size = tp_size * pp_size * cp_size, and world_size = dp_size * rollout_group_size.
 
         Args:
-            batch: Full batch of data samples
+            samples: Full batch of data samples
 
         Returns:
-            Local slice of batch for this rank to process
+            Local slice of samples for this rank to process
         """
         rollout_group = self._get_rollout_group()
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
         rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
 
-        total_batch_size = len(batch)
+        total_batch_size = len(samples)
         assert total_batch_size % rollout_group_size == 0, \
             f'Batch size ({total_batch_size}) must be divisible by rollout group size ({rollout_group_size})'
 
@@ -178,19 +183,19 @@ class MegatronRolloutMixin:
         start_idx = rollout_rank * per_device_batch_size
         end_idx = start_idx + per_device_batch_size
 
-        return batch[start_idx:end_idx]
+        return samples[start_idx:end_idx]
 
-    def _gather_rollout_results(self, local_batch: List[Dict]) -> List[Dict]:
+    def _gather_rollout_results(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
         """Gather rollout results from all ranks in the rollout group.
 
         Args:
-            local_batch: Local rollout results from this rank
+            samples: Local rollout results from this rank
 
         Returns:
             Gathered results from all ranks in the rollout group
         """
         rollout_group = self._get_rollout_group()
-        return gather_object(local_batch, group=rollout_group)
+        return gather_object(samples, group=rollout_group)
 
     def _init_rollout_engine(self):
         """Initialize vLLM engine for rollout generation."""
@@ -500,22 +505,22 @@ class MegatronRolloutMixin:
         del bucket, metadatas, flattened_tensor
 
     @profiling_decorator
-    def _generate_completions(self, batch: DataType) -> DataType:
+    def _generate_completions(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
         """Generate completions for a batch using vLLM engine.
 
         Args:
-            batch: List of input data with 'messages' field
-            step: Current training step (for weight sync tracking)
+            samples: List of OnPolicySample carrying messages + rollout fields
 
         Returns:
             Batch with rollout completion results merged in
         """
-        batch = self._preprocess_rollout_inputs(batch)
+        samples = self._preprocess_inputs(samples)
 
         # Wake up engine if sleeping (colocate mode)
         if self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping:
             wake_up_params = inspect.signature(self.engine.engine.wake_up).parameters
             kwargs = {'tags': ['weights']} if 'tags' in wake_up_params else {}
+            aggressive_empty_cache()
             self.engine.engine.wake_up(**kwargs)
 
         # Load model weights if needed
@@ -532,10 +537,11 @@ class MegatronRolloutMixin:
                 self.engine.engine.wake_up(tags=['kv_cache'])
 
             multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
-            colocate_multi_turn = (multi_turn_scheduler is not None and not self.enable_server_multi_turn)
+            colocate_multi_turn = (
+                multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
 
             if colocate_multi_turn:
-                requests = self._inputs_to_requests(self._set_inputs_system(batch))
+                requests = self.samples2requests(samples)
                 invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
                 request_config = self._get_request_config()
                 outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
@@ -549,8 +555,8 @@ class MegatronRolloutMixin:
                     gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
                 )
             else:
-                # First-turn rollout (or only turn for single-turn / server multi-turn).
-                outputs: List[RolloutOutput] = self._rollout(batch)
+                # Single-turn rollout (or server multi-turn handled by the engine).
+                outputs: List[RolloutOutput] = self._rollout(samples)
 
             # Sleep to release memory
             if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
@@ -559,9 +565,9 @@ class MegatronRolloutMixin:
                 aggressive_empty_cache()
                 set_expandable_segments(True)
 
-            batch = self._postprocess_rollout_outputs(batch, outputs)
+            samples = self._postprocess_rollout_outputs(samples, outputs)
 
-        return batch
+        return samples
 
     def _rollout_requests(self, requests: List[RolloutInferRequest],
                           request_config: RequestConfig) -> List[RolloutOutput]:
@@ -577,15 +583,14 @@ class MegatronRolloutMixin:
             return self._colocate_rollout(requests, request_config)
         raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
 
-    def _rollout(self, batch: DataType) -> List[RolloutOutput]:
-        """Execute rollout using vLLM engine."""
-        batch = self._set_inputs_system(batch)
+    def _rollout(self, samples: List[OnPolicySample]) -> List[RolloutOutput]:
+        """Execute rollout using vLLM engine (system already injected by _preprocess_inputs)."""
         request_config = self._get_request_config()
 
         if self.vllm_mode == 'server':
-            return self._server_rollout(batch, request_config)
+            return self._server_rollout(samples, request_config)
         elif self.vllm_mode == 'colocate':
-            return self._colocate_rollout(batch, request_config)
+            return self._colocate_rollout(samples, request_config)
 
     def _get_request_config(self) -> RequestConfig:
         """Get request config with proper seed for distributed TP groups."""
@@ -598,9 +603,10 @@ class MegatronRolloutMixin:
 
         return request_config
 
-    def _server_rollout(self, inputs: DataType, request_config: RequestConfig) -> List[RolloutOutput]:
+    def _server_rollout(self, samples: Union[List[OnPolicySample], List[RolloutInferRequest]],
+                        request_config: RequestConfig) -> List[RolloutOutput]:
         """Perform rollout using vLLM server mode."""
-        infer_requests = self._inputs_to_requests(inputs)
+        infer_requests = self.samples2requests(samples)
 
         all_requests = gather_object(infer_requests)
         all_requests_lengths = gather_object([len(infer_requests)])
@@ -628,27 +634,31 @@ class MegatronRolloutMixin:
 
         return outputs
 
-    def _colocate_rollout(self, batch: DataType, request_config: RequestConfig) -> List[RolloutOutput]:
+    def _colocate_rollout(self, samples: Union[List[OnPolicySample], List[RolloutInferRequest]],
+                          request_config: RequestConfig) -> List[RolloutOutput]:
         """Perform co-located rollout with vLLM engine."""
+        # Normalize samples (first turn) / RolloutInferRequest (continuation turns)
+        # into engine-ready requests.
+        samples = self.samples2requests(samples)
         start_idx = 0
-        end_idx = len(batch)
+        end_idx = len(samples)
 
         # Handle vLLM tensor parallelism
         if self.vllm_tensor_parallel_size > 1:
             local_rank_in_group = torch.distributed.get_rank(group=self.vllm_tp_group)
-            local_input_length = len(batch)
+            local_input_length = len(samples)
             all_input_lengths = [None] * self.vllm_tensor_parallel_size
             torch.distributed.all_gather_object(all_input_lengths, local_input_length, group=self.vllm_tp_group)
 
             start_idx = sum(all_input_lengths[:local_rank_in_group])
             end_idx = start_idx + all_input_lengths[local_rank_in_group]
 
-            gathered_batch = [None for _ in range(self.vllm_tensor_parallel_size)]
-            torch.distributed.all_gather_object(gathered_batch, batch, group=self.vllm_tp_group)
-            batch = [p for sublist in gathered_batch for p in sublist]
+            gathered = [None for _ in range(self.vllm_tensor_parallel_size)]
+            torch.distributed.all_gather_object(gathered, samples, group=self.vllm_tp_group)
+            samples = [p for sublist in gathered for p in sublist]
 
         outputs: List[RolloutOutput] = self.engine.infer(
-            infer_requests=batch, request_config=request_config, use_tqdm=False)
+            infer_requests=samples, request_config=request_config, use_tqdm=False)
 
         if self.vllm_tensor_parallel_size > 1:
             # R3 router replay: vLLM's routing capturer host cache only exists on
@@ -666,113 +676,127 @@ class MegatronRolloutMixin:
 
         return outputs
 
-    def _preprocess_rollout_inputs(self, inputs: DataType) -> DataType:
-        """Preprocess inputs before rollout inference."""
-        # Add unique request_id
-        for input_item in inputs:
-            if 'request_id' not in input_item:
-                input_item['request_id'] = f'chatcmpl-{str(uuid.uuid4().hex)}'
-            remove_response(input_item['messages'])
-        return inputs
+    def _preprocess_inputs(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
+        """Preprocess samples before rollout inference.
 
-    def _set_inputs_system(self, inputs: DataType) -> DataType:
-        """Insert default system message if not present."""
-        if not self.template.template_meta.default_system:
-            return inputs
-        if all(inp['messages'][0]['role'] == 'system' for inp in inputs):
-            return inputs
-        for inp in inputs:
-            messages = inp['messages']
-            if messages[0]['role'] != 'system':
-                messages.insert(0, {'role': 'system', 'content': self.template.template_meta.default_system})
-        return inputs
+        Unified pre-processing (mirrors HF RolloutTrainerMixin._preprocess_inputs):
+        1. Insert default system message if absent
+        2. Assign unique request_id (for rollout tracking)
+        3. Strip any prior assistant response (prompt-only for generation)
+        """
+        samples = self._set_inputs_system(samples)
+        for s in samples:
+            if not s.request_id:
+                s.request_id = f'chatcmpl-{str(uuid.uuid4().hex)}'
+            remove_response(s.messages)
+        return samples
 
-    def _inputs_to_requests(self, inputs: DataType) -> List[RolloutInferRequest]:
-        """Convert raw input data into RolloutInferRequest objects."""
+    def samples2requests(self, samples: Union[List[OnPolicySample],
+                                              List[RolloutInferRequest]]) -> List[RolloutInferRequest]:
+        """Convert samples into RolloutInferRequest objects.
 
-        def _process_image_data(image_data: Union[dict, str]) -> str:
-            if isinstance(image_data, dict):
-                if image_data.get('bytes'):
-                    return base64.b64encode(image_data['bytes']).decode('utf-8')
-                if image_data.get('path'):
-                    return image_data['path']
-            return image_data
-
-        if not inputs:
+        Already-built ``RolloutInferRequest`` (multi-turn continuation) pass
+        through unchanged. The per-sample mapping lives in
+        ``OnPolicySample.to_infer_request``.
+        """
+        if not samples:
             return []
-
-        REQUEST_METADATA_FIELDS = ['messages', 'images', 'audios', 'videos', 'tools', 'objects', 'uuid']
         requests_list = []
-
-        for data in inputs:
+        for data in samples:
             if isinstance(data, RolloutInferRequest):
                 requests_list.append(data)
-                continue
-
-            request_data = {key: data[key] for key in REQUEST_METADATA_FIELDS if key in data and data[key] is not None}
-            if 'uuid' not in request_data:
-                request_data['uuid'] = data.get('request_id', str(uuid.uuid4().hex))
-
-            if 'images' in request_data and request_data['images']:
-                imgs = request_data['images']
-                if not isinstance(imgs, list):
-                    imgs = [imgs]
-                request_data['images'] = [_process_image_data(img) for img in imgs]
-
-            if 'tools' in request_data and isinstance(request_data['tools'], str):
-                try:
-                    request_data['tools'] = json.loads(request_data['tools'])
-                except json.JSONDecodeError:
-                    pass
-
-            request_obj = from_dict(RolloutInferRequest, request_data)
-            requests_list.append(request_obj)
-
+            else:
+                include_extra = bool(getattr(self.args, 'vllm_server_pass_dataset', False)) or bool(
+                    getattr(self, 'multi_turn_scheduler', None))
+                requests_list.append(data.to_infer_request(include_extra=include_extra))
         return requests_list
 
-    def _postprocess_rollout_outputs(self, inputs: DataType, outputs: List[RolloutOutput]) -> DataType:
-        """Post-process rollout outputs and merge into inputs."""
+    def _log_completions_from_samples(self, samples: List[OnPolicySample]) -> None:
+        """Log prompts/completions from sample messages (post-filtering).
 
-        def merge_output(input_data: Dict, output: RolloutOutput) -> Dict:
-            response = output.response
-            choice = response.choices[0]
-
-            if output.messages:
-                input_data['messages'] = output.messages
+        Unlike ``_log_rollout`` (which needs raw RolloutOutput objects), this
+        method reads completions directly from ``sample.messages[-1]['content']``,
+        so it works after ``_dynamic_sampling`` has filtered / resampled samples.
+        """
+        if not self.log_completions:
+            return
+        messages = gather_object([s.messages for s in samples])
+        completions = []
+        for s in samples:
+            content = s.messages[-1]['content'] if s.messages else ''
+            if isinstance(content, str):
+                completions.append(content)
+            elif isinstance(content, list):
+                completions.append(self.template.safe_decode(content))
+            elif isinstance(content, dict) and 'input_ids' in content:
+                completions.append(self.template.safe_decode(content['input_ids']))
             else:
-                messages = input_data['messages']
-                remove_response(messages)
-                messages.append({'role': 'assistant', 'content': choice.message.content})
+                completions.append(str(content))
+        completions = gather_object(completions)
+        self._logs['prompt'].extend(self._apply_chat_template_to_messages_list(messages))
+        self._logs['completion'].extend(completions)
 
-            if output.response_token_ids:
-                input_data['response_token_ids'] = output.response_token_ids
-                if output.response_loss_mask:
-                    input_data['response_loss_mask'] = output.response_loss_mask
-            else:
-                input_data['response_token_ids'] = choice.token_ids
+    def _prepare_logging(self):
+        """Initialize logging infrastructure (shared by GRPO and GKD)."""
+        args = self.args
+        self.log_completions = getattr(args, 'log_completions', False)
+        self.wandb_log_unique_prompts = getattr(args, 'wandb_log_unique_prompts', False)
+        self.jsonl_writer = JsonlWriter(os.path.join(args.output_dir, 'completions.jsonl'), write_on_rank='last')
+        self._last_logged_step = -1
+        self._logs = {
+            'prompt': deque(),
+            'completion': deque(),
+        }
 
-            if output.rollout_infos:
-                input_data['rollout_infos'] = output.rollout_infos
-                # Multimodal pass-through: schedulers / envs may inject observation
-                # images / videos / audios mid-trajectory. override here
-                for key in ('images', 'videos', 'audios'):
-                    if key in output.rollout_infos:
-                        input_data[key] = output.rollout_infos[key]
+    def _flush_log_completions(self):
+        """Flush accumulated completion logs to jsonl/wandb/swanlab."""
+        if not (self.log_completions and self.is_main_process and len(self._logs['prompt']) > 0):
+            return
+        if self._step == self._last_logged_step:
+            return
+        self._last_logged_step = self._step
 
-            input_data['finish_reason'] = choice.finish_reason
-            input_data['is_truncated'] = choice.finish_reason == 'length'
-            input_data['add_eos'] = False
+        table = self._build_log_table()
+        self.jsonl_writer.append(table)
+        for val in self._logs.values():
+            if isinstance(val, deque):
+                val.clear()
+            elif isinstance(val, defaultdict):
+                for d in val.values():
+                    d.clear()
 
-            if output.rollout_logprobs:
-                input_data['rollout_logprobs'] = output.rollout_logprobs
-            elif choice.logprobs is not None and 'content' in choice.logprobs:
-                rollout_logprobs = [item['logprob'] for item in choice.logprobs['content']]
-                input_data['rollout_logprobs'] = [rollout_logprobs]
+        args = self.args
+        if 'wandb' in args.report_to:
+            import pandas as pd
+            import wandb
+            df = pd.DataFrame(table)
+            if self.wandb_log_unique_prompts:
+                df = df.drop_duplicates(subset=['prompt'])
+            wandb.log({'completions': wandb.Table(dataframe=df)}, commit=False)
+        if 'swanlab' in args.report_to:
+            import swanlab
+            headers = list(table.keys())
+            rows = [[table[h][i] for h in headers] for i in range(len(table.get('gen_step', table['prompt'])))]
+            swanlab.log({'completions': swanlab.echarts.Table().add(headers, rows)})
 
-            return input_data
+    def _build_log_table(self) -> Dict[str, list]:
+        """Build the completion log table. Subclasses extend with extra columns (rewards/advantages)."""
+        return {
+            'gen_step': [self._step - 1] * len(self._logs['prompt']),
+            'prompt': list(self._logs['prompt']),
+            'completion': list(self._logs['completion']),
+        }
 
-        assert len(inputs) == len(outputs)
-        return [merge_output(inp, out) for inp, out in zip(inputs, outputs)]
+    def _apply_chat_template_to_messages_list(self, messages_list):
+        """Convert messages list to prompt text using template."""
+        from swift.template import TemplateInputs
+        prompts_text = []
+        for messages in messages_list:
+            remove_response(messages)
+            template_inputs = TemplateInputs.from_dict({'messages': messages})
+            res = self.template.encode(template_inputs)
+            prompts_text.append(self.template.safe_decode(res['input_ids']))
+        return prompts_text
 
     @contextmanager
     def offload_context(self):

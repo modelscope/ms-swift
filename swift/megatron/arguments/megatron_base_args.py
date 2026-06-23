@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from swift.arguments import BaseArguments
 from swift.utils import get_logger
-from .megatron_args import MegatronArguments
+from .megatron_args import MegatronArguments, RLHFMegatronArgumentsMixin
 
 logger = get_logger()
 
@@ -28,11 +28,6 @@ class MegatronBaseArguments(MegatronArguments, BaseArguments):
             return
         super()._init_output_dir()
 
-    def _init_grpo(self):
-        if self.skip_megatron_init:
-            return
-        super()._init_grpo()
-
     def _init_megatron_args(self):
         MegatronArguments.__post_init__(self)
 
@@ -42,7 +37,9 @@ class MegatronBaseArguments(MegatronArguments, BaseArguments):
             self.padding_free = True
         BaseArguments.__post_init__(self)
         self.seq_length = self.packing_length or self.max_length
-        if not self.skip_megatron_init:
+        if self.skip_megatron_init:
+            RLHFMegatronArgumentsMixin.__post_init__(self)
+        else:
             self._init_megatron_args()
         if self.streaming:
             if self.dataloader_num_workers > 1:

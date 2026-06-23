@@ -30,7 +30,6 @@ megatron rlhf \
     --context_parallel_size 1 \
     --expert_model_parallel_size 1 \
     --lmbda 1 \
-    --seq_kd false \
     --beta 0.5 \
     --torch_dtype bfloat16 \
     --micro_batch_size 2 \
