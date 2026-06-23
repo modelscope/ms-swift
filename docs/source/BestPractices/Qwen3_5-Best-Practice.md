@@ -6,9 +6,7 @@ ms-swift 支持使用transformers/Megatron后端对[Qwen3.5](https://github.com/
 ## 环境设置
 ```shell
 pip install -U ms-swift
-# "transformers==5.2.*" 会遇到与vllm的兼容问题，参考这个issue: https://github.com/modelscope/ms-swift/issues/8254
-# "transformers==5.3.*" 会遇到视频训练问题，参考这个issue: https://github.com/modelscope/ms-swift/issues/8362
-pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
+pip install -U "transformers>=5.9" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # 若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
@@ -26,8 +24,6 @@ pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
 pip install -U "vllm>=0.17.0"
-# 对于强化学习（RL）训练，需要覆盖 vLLM 的默认安装版本
-pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
