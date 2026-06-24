@@ -50,7 +50,7 @@ Before submitting the PR, please ensure that your development code is protected 
 
 ## ✅ Hardware support
 
-ModelScope provides developers with free A10 GPU computing resources. For more details, please refer to [here](https://modelscope.cn/my/mynotebook).
+ModelScope provides developers with free A10 GPU computing resources. For more details, please refer to the [ModelScope Notebook](https://modelscope.cn/my/mynotebook).
 
 ms-swift Training WeChat Group:
 

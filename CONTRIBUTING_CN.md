@@ -66,7 +66,7 @@ SWIFT在PR提交后会进行两类测试：
 
 ## ✅ 资源支持
 
-魔搭为开发者提供了免费的A10 GPU算力支持，具体参考[这里](https://modelscope.cn/my/mynotebook)。
+魔搭为开发者提供了免费的A10 GPU算力支持，具体参考[魔搭 Notebook](https://modelscope.cn/my/mynotebook)。
 
 ms-swift训练微信群：
 
