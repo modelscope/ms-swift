@@ -203,7 +203,158 @@ megatron rlhf ... --use_gym_env true --reward_funcs format --reward_weights 0.2 
 运行脚本参考：[`examples/megatron/grpo/multi_turn/frozen_lake.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/grpo/multi_turn/frozen_lake.sh)
 
 
+## OpenEnv 环境训练
+
+[OpenEnv](https://github.com/huggingface/openenv) 是 HuggingFace 开源的 Agentic RL 环境框架，通过 WebSocket 与环境服务器交互。与上文 FrozenLake 的本地 `Env` 接口不同，OpenEnv 将环境逻辑放在独立的服务进程中，swift 通过 `OpenEnvScheduler` + `OpenEnvWrapper` 与之通信。
+
+### 架构对比
+
+| 特性 | 内置 Gym (`GYMScheduler`) | OpenEnv (`OpenEnvScheduler`) |
+|------|--------------------------|------------------------------|
+| 环境运行位置 | 训练进程内（Python 对象） | 独立服务器（WebSocket 通信） |
+| 环境接口 | 继承 `Env`，实现 `reset/step/close` | 服务器提供 HTTP/WebSocket API |
+| 注册方式 | `--external_plugins` + `envs` 注册表 | `--external_plugins` + `multi_turns` 注册表 |
+| 适用场景 | 轻量本地环境（FrozenLake 等） | 复杂服务端环境（TextArena、CARLA 等） |
+| 并发控制 | 无需 | 内置 Semaphore 限制并发连接 |
+
+### OpenEnvScheduler
+
+`OpenEnvScheduler` 继承 `GYMScheduler`，将本地 `Env` 替换为 `OpenEnvWrapper`（WebSocket 客户端）。核心设计：
+
+- **`_create_env`**：创建 `OpenEnvWrapper`，连接 OpenEnv 服务器
+- **`on_trajectory_start`**：为每个请求创建 wrapper，调用 `reset()`，用 Semaphore 限制并发（默认 4）
+- **`on_turn_end`**：解析模型输出，调用 `wrapper.step()`，累积奖励
+- **`parse_action`**（可覆盖）：将模型文本解析为 action dict，默认 `json.loads`
+- **`format_observation`**（可覆盖）：将服务器返回的 observation 格式化为字符串，默认 `json.dumps`
+
+用户通过继承 `OpenEnvScheduler` 并覆盖 `parse_action`、`format_observation`、`on_trajectory_start`、`on_turn_end` 来适配具体环境。
+
+### 示例：Sudoku 环境
+
+以 TextArena Sudoku 为例，模型需要通过 `[row col number]` 格式下棋，在 9x9 数独棋盘上填入数字。完整代码参考：[sudoku_scheduler.py](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/sudoku_scheduler.py)。
+
+**1. 启动 OpenEnv 服务器**
+
+安装 OpenEnv 和 Sudoku 环境包（textarena 和 nltk 会作为依赖自动安装）：
+
+```bash
+pip install openenv
+pip install git+https://huggingface.co/spaces/openenv/sudoku
+```
+
+使用提供的启动脚本启动本地服务器（默认端口 8000）。`MAX_CONCURRENT_ENVS` 需 ≥ 训练时的 `num_generations`：
+
+```bash
+TEXTARENA_ENV_ID=Sudoku-v0 MAX_CONCURRENT_ENVS=8 python examples/train/grpo/plugin/openenv/start_sudoku_server.py
+```
+
+数据集中将 `base_url` 指向本地服务器地址：
+
+```json
+{"messages":[{"role":"user","content":"Play"}],"env_config":{"name":"openenv","base_url":"http://127.0.0.1:8000"}}
+```
+
+**2. 自定义 Scheduler**
+
+继承 `OpenEnvScheduler`，实现 Sudoku 专用的动作解析、观察格式化和多组件奖励：
+
+```python
+from swift.rollout.multi_turn import OpenEnvScheduler
+
+class SudokuScheduler(OpenEnvScheduler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._last_content_len = {}  # 内容差分跟踪
+
+    async def on_trajectory_start(self, requests):
+        # 创建环境、解析棋盘、生成 hints
+        # hints 包括「保证正确的走法」和候选数字列表
+        ...
+
+    async def on_turn_end(self, infer_request, response_choice, current_turn):
+        # 解析 [row col number]，step 环境
+        # 计算 5 路奖励：空格选择 / 合法移动 / 重复惩罚 / 进度 / 正确
+        # 返回更新后的棋盘 + hints 作为下一轮观察
+        ...
+
+    def parse_action(self, text):
+        import re
+        match = re.search(r'\[\s*(\d+)\s+(\d+)\s+(\d+)\s*\]', text)
+        if match:
+            row, col, num = match.groups()
+            return {"message": f"[{row} {col} {num}]"}
+        return {"message": "[1 1 1]"}
+```
+
+**多组件奖励系统**（参考 [TRL Sudoku 示例](https://github.com/huggingface/trl/blob/main/examples/notebooks/openenv_sudoku_grpo.ipynb)）：
+
+| 奖励组件 | 计算方式 | 作用 |
+|---------|---------|------|
+| `empty_cell_reward` | 目标是空格 +1 / 覆盖已有 -1 | 引导模型选择合法位置 |
+| `valid_move_reward` | 合法新走法 +1 / 警告 -0.5 / 无效 0 | 鼓励合法操作 |
+| `repetition_reward` | 重复走法指数惩罚（-2^n，上限 -10） | 避免重复 |
+| `progress_reward` | (已填充 - 初始) / (81 - 初始) | 衡量解题进度 |
+| `correct_reward` | 环境返回的二值奖励 | 完全解出 |
+
+组合奖励 = 各组件均值之和，提供比单一二值奖励更密集的学习信号。
+
+**3. Hints 系统**
+
+每轮交互中，scheduler 解析当前棋盘状态，为模型提供提示：
+
+- **GUARANTEED MOVES**：只有一个候选数字的空格（可直接填入）
+- **Other options**：2-3 个候选数字的空格
+- **MOVES ALREADY TRIED**：已尝试过的走法（避免重复）
+
+**4. 准备数据集**
+
+数据集仅作占位符，实际棋盘由环境服务器生成。`base_url` 指向 OpenEnv 托管地址：
+
+```json
+{"messages":[{"role":"user","content":"Play"}],"env_config":{"name":"openenv","base_url":"http://127.0.0.1:8000"}}
+```
+
+**5. 注册 Scheduler**
+
+`sudoku_scheduler.py` 末尾已包含注册代码，通过 `--external_plugins` 加载即可：
+
+```python
+# sudoku_scheduler.py 末尾
+from swift.rollout.multi_turn import multi_turns
+multi_turns['sudoku_scheduler'] = SudokuScheduler
+```
+
+**6. 启动训练**
+
+```bash
+swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-4B \
+    --dataset examples/train/grpo/plugin/openenv/sudoku.jsonl \
+    --external_plugins examples/train/grpo/plugin/openenv/sudoku_scheduler.py \
+    --enable_thinking false \
+    --max_completion_length 256 \
+    --use_gym_env true \
+    --multi_turn_scheduler sudoku_scheduler \
+    --max_turns 20 \
+    --use_vllm true \
+    --vllm_mode colocate \
+    ...
+```
+
+运行脚本参考：[`examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh`](https://github.com/modelscope/ms-swift/blob/main/examples/train/grpo/plugin/openenv/run_grpo_sudoku.sh)
+
+### 注意事项
+
+- **vLLM 模式**：以上示例使用 `--vllm_mode colocate`，vLLM 与训练共享 GPU。若使用 `--vllm_mode server`，需额外启动 `swift rollout` 作为 vLLM 服务器，且 `--multi_turn_scheduler` 和 `--max_turns` 参数应传给 `swift rlhf` 而非 `swift rollout`。
+- **并发会话数**：`start_sudoku_server.py` 的 `MAX_CONCURRENT_ENVS` 需 ≥ 训练时的 `num_generations`。默认的 `python -m textarena_env.server.app` 只支持 1 个并发会话。
+- **enable_thinking**：Sudoku 等环境不需要 CoT 推理，建议设置 `--enable_thinking false` 以减少 token 消耗。
+- **同步 I/O**：`OpenEnvWrapper` 的 `reset()`/`step()` 是同步 WebSocket 调用。`OpenEnvScheduler` 的子类应使用 `asyncio.to_thread()` 包装这些调用以避免阻塞事件循环。
+
+
 参考资料:
 
 - https://gymnasium.farama.org/environments/toy_text/frozen_lake/
 - https://github.com/alibaba/ROLL/tree/main/roll/pipeline/agentic/env/frozen_lake
+- https://github.com/huggingface/openenv
+- https://github.com/huggingface/trl/blob/main/examples/notebooks/openenv_sudoku_grpo.ipynb

@@ -215,7 +215,7 @@
 **DSA参数**
 - dsa_indexer_loss_coeff: DSA 索引器 KL 散度损失的系数。设置为 0 可禁用索引器损失。默认为`0.`。
 - dsa_indexer_use_sparse_loss: 是否使用稀疏 DSA 索引器损失。如果为 True，索引器损失将使用 top-k 索引进行计算。默认为False。
-- apply_dsa_kernel_fusion: 是否启用融合 DSA 稀疏注意力内核（FlashMLA + cuDNN DSA）。设为 False 将回退到未融合的 PyTorch 实现。需要安装 flash_mla 和 nvidia-cudnn-frontend >= 1.24.0。默认为False。
+- apply_dsa_kernel_fusion: 是否启用融合 DSA 稀疏注意力内核（FlashMLA + cuDNN DSA）。设为 False 将回退到未融合的 PyTorch 实现。需要安装 flash_mla 和 nvidia-cudnn-frontend >= 1.24.0。默认为False。（需使用Megatron-LM dev分支）
 
 **Deepseek-V4**
 - csa_dense_mode: 是否对压缩稀疏注意力使用密集模式。若为 `True`，CSA 索引器将被禁用。默认为False。
@@ -406,7 +406,6 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - teacher_model_revision: 教师模型版本，默认为None。
 - beta: JSD 散度插值系数。0.0 代表 Forward KL，0.5 代表对称 JSD，1.0 代表 Reverse KL。默认为0.5。
 - lmbda: On-Policy 学习触发概率。0.0 代表纯 Off-Policy，1.0 代表纯 On-Policy。默认为0.5。
-- seq_kd: 是否使用教师生成的响应（Sequential KD），当前暂不支持。默认为False。
 - temperature: 用于采样和损失计算的温度参数。默认为0.9。
 - offload_teacher_model: 是否将教师模型卸载到 CPU 以节省 GPU 显存。默认为False。
 - sft_alpha: SFT 损失的混合系数，`loss = jsd_loss + sft_alpha * sft_loss`。当使用数据集响应（Off-Policy）时生效。默认为0。

@@ -37,10 +37,10 @@ completions = rollout_function(
 )
 """
 completions = [
-    (completion 1) "The larger number is 9.11...",
-    (completion 2) "9.9 is bigger than...",
+    (completion 1) "The larger number is 9.9...",
+    (completion 2) "9.11 is bigger than...",
     ...
-    (completion 8) "After calculation, 9.11..."
+    (completion 8) "After calculation, 9.9..."
 ]
 """
 
@@ -48,7 +48,7 @@ completions = [
 # Evaluate generated completions using reward model
 rewards = reward_function(
     completions=completions,
-    ground_truth="9.11"  # Expected correct answer
+    ground_truth="9.9"  # Expected correct answer
 )
 """
 rewards = [

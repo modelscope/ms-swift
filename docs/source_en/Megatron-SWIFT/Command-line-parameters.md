@@ -226,7 +226,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 
 - dsa_indexer_loss_coeff: Coefficient for the DSA indexer KL divergence loss. Set to 0 to disable indexer loss. Default is `0.`.
 - dsa_indexer_use_sparse_loss: Whether to use sparse DSA indexer loss. If True, the indexer loss will be computed using the top-k indices. Default is False.
-- apply_dsa_kernel_fusion: Whether to enable fused DSA sparse-attention kernels (FlashMLA + cuDNN DSA). Set to False to fall back to unfused PyTorch implementations. Requires flash_mla and nvidia-cudnn-frontend >= 1.24.0. Default is False.
+- apply_dsa_kernel_fusion: Whether to enable fused DSA sparse-attention kernels (FlashMLA + cuDNN DSA). Set to False to fall back to unfused PyTorch implementations. Requires flash_mla and nvidia-cudnn-frontend >= 1.24.0. Default is False. (Requires the Megatron-LM dev branch)
 
 **Deepseek-V4**
 
@@ -430,7 +430,6 @@ Built-in reward function parameters refer to the [documentation](../Instruction/
 - teacher_model_revision: Teacher model version. Default is None.
 - beta: JSD divergence interpolation coefficient. 0.0 means Forward KL, 0.5 means symmetric JSD, 1.0 means Reverse KL. Default is 0.5.
 - lmbda: On-Policy learning probability. 0.0 means pure Off-Policy, 1.0 means pure On-Policy. Default is 0.5.
-- seq_kd: Whether to use teacher-generated responses (Sequential KD), not yet supported. Default is False.
 - temperature: Temperature for sampling and loss computation. Default is 0.9.
 - offload_teacher_model: Whether to offload teacher model to CPU to save GPU memory. Default is False.
 - sft_alpha: Mixing coefficient for SFT loss, `loss = jsd_loss + sft_alpha * sft_loss`. Takes effect when using dataset responses (Off-Policy). Default is 0.

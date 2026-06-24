@@ -16,7 +16,6 @@ swift rlhf \
     --tuner_type full \
     --dataset 'AI-ModelScope/alpaca-gpt4-data-en#2000' 'AI-ModelScope/alpaca-gpt4-data-zh#2000' \
     --split_dataset_ratio 0.01 \
-    --seq_kd false \
     --lmbda 0.5 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \

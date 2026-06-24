@@ -2,6 +2,7 @@
 import inspect
 import torch
 import torch.nn as nn
+from accelerate.utils import is_peft_model
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from functools import partial
@@ -180,3 +181,14 @@ class RLHFTrainerMixin:
                 total_mean_logits = total_mean_logits.unsqueeze(0)
                 total_loss_mask = total_loss_mask.unsqueeze(0)
             return total_per_token_logps, total_mean_logits, total_loss_mask
+
+    @contextmanager
+    def null_ref_context(self):
+        """Context manager for handling null reference model (that is, peft adapter manipulation)."""
+        with self.accelerator.unwrap_model(self.model).disable_adapter() if is_peft_model(
+                self.model) and not self.ref_adapter_name else nullcontext():
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.ref_adapter_name)
+            yield
+            if self.ref_adapter_name:
+                self.model.set_adapter(self.model_adapter_name or 'default')
