@@ -16,9 +16,10 @@ from urllib.parse import urlparse
 from swift.infer_engine import AdapterRequest, RequestConfig
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.metrics import Metric
-from swift.utils import (get_torch_device, is_trl_available, is_vllm_ascend_available, is_vllm_available,
-                         is_vllm_metax_available, synchronize)
-from .utils import format_host_for_url, is_valid_ipv6_address, peft_config_to_dict, resolve_hostname
+from swift.utils import (is_trl_available, is_vllm_ascend_available, is_vllm_available, is_vllm_metax_available,
+                         synchronize)
+from .utils import (broadcast_tensor_for_vllm_weight_sync, format_host_for_url, is_valid_ipv6_address,
+                    peft_config_to_dict, resolve_hostname)
 
 if is_vllm_available():
     from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
@@ -247,11 +248,7 @@ class VLLMClient(VLLMInferClient):
                     raise Exception(f'Server {i} update failed: {response.text}')
 
                 synchronize()
-                self.pynccl_comms[i].broadcast(
-                    weights,
-                    src=self.pynccl_comms[i].rank,
-                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
-
+                broadcast_tensor_for_vllm_weight_sync(self.pynccl_comms[i], weights, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -296,10 +293,8 @@ class VLLMClient(VLLMInferClient):
                     raise Exception(f'Server {i} update adapter failed: {response.text}')
 
                 synchronize()
-                self.pynccl_comms[i].broadcast(
-                    flattened_tensor,
-                    src=self.pynccl_comms[i].rank,
-                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+                broadcast_tensor_for_vllm_weight_sync(
+                    self.pynccl_comms[i], flattened_tensor, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -358,10 +353,7 @@ class VLLMClient(VLLMInferClient):
                 # Broadcast each tensor individually
                 synchronize()
                 for name, param in lora_params.items():
-                    self.pynccl_comms[i].broadcast(
-                        param,
-                        src=self.pynccl_comms[i].rank,
-                        stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+                    broadcast_tensor_for_vllm_weight_sync(self.pynccl_comms[i], param, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:
@@ -401,10 +393,8 @@ class VLLMClient(VLLMInferClient):
                     raise Exception(f'Server {i} update flattened params failed: {response.text}')
 
                 synchronize()
-                self.pynccl_comms[i].broadcast(
-                    flattened_tensor,
-                    src=self.pynccl_comms[i].rank,
-                    stream=getattr(get_torch_device(), 'current_stream', lambda: None)())
+                broadcast_tensor_for_vllm_weight_sync(
+                    self.pynccl_comms[i], flattened_tensor, src=self.pynccl_comms[i].rank)
                 synchronize()
                 self.pynccl_comms[i].group.barrier()
             except Exception as e:

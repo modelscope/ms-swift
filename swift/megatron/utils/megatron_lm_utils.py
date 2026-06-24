@@ -523,6 +523,11 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     for f in dataclasses.fields(DistributedDataParallelConfig):
         if hasattr(args, f.name):
             kwargs[f.name] = getattr(args, f.name)
+
+    # compat: SWIFT keeps the user-facing Megatron-LM arg name, while MCore
+    # DistributedDataParallelConfig expects grad_reduce_in_fp32.
+    if hasattr(args, 'accumulate_allreduce_grads_in_fp32'):
+        kwargs['grad_reduce_in_fp32'] = args.accumulate_allreduce_grads_in_fp32
     kwargs['check_for_nan_in_grad'] = True
     ddp_config = DistributedDataParallelConfig(**kwargs)
 
@@ -540,11 +545,6 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
         ddp_config.bucket_size = max(40000000, 1000000 * mpu.get_data_parallel_world_size(with_context_parallel=True))
     # Set bucket_size to infinity if overlap_grad_reduce is False.
     if not ddp_config.overlap_grad_reduce:
-        ddp_config.bucket_size = None
-
-    # For non-first pipeline-parallel ranks, disable bucket_size to avoid unnecessary overhead.
-    pp_rank = mpu.get_pipeline_model_parallel_rank()
-    if pp_rank > 0:
         ddp_config.bucket_size = None
 
     # Setup stream for DDP initialization with proper synchronization.
@@ -736,5 +736,9 @@ def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
                 continue
             if val is not None:
                 batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
+        attention_mask = batch.get('attention_mask')
+        if is_torch_npu_available() and attention_mask is not None and attention_mask.ndim >= 4:
+            batch['attention_mask'] = split_cp_inputs(attention_mask, getattr(packed_seq_params, 'cu_seqlens_q', None),
+                                                      -2)
 
     return batch

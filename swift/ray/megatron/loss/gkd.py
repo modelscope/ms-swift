@@ -5,30 +5,15 @@ from __future__ import annotations
 import torch
 from functools import partial
 from megatron.core import mpu
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional
 
 from swift.megatron.trainers.gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
 from swift.megatron.trainers.utils import prepare_batch
 from swift.megatron.trainers.vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
-from swift.megatron.utils import forward_step_helper, get_padding_to
+from swift.megatron.utils import forward_step_helper
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
-from swift.utils import gc_collect, get_current_device, to_device
+from swift.utils import get_current_device, to_device
 from .base import Loss
-
-_NON_MODEL_KEYS = frozenset({
-    'data_source',
-    'completion_mask',
-    'truncated_mask',
-    'seq_lengths',
-    'rollout_per_token_logps',
-    'old_per_token_logps',
-    'ref_per_token_logps',
-    'advantages',
-    'num_samples',
-    'num_items_in_batch',
-    'logits_to_keep',
-    'routed_experts',
-})
 
 
 class GKDLoss(Loss):
@@ -44,16 +29,15 @@ class GKDLoss(Loss):
         data = next(data_iterator)
         teacher_output = data.pop('teacher_output', TeacherOutput())
         data_source = data.pop('data_source', None)
-        data.pop('opsd_teacher_batch', None)
-        data.pop('opsd_teacher_messages', None)
+        data.pop('grpo_batch', None)  # RL signals packed in GRPOBatch (not used by GKD loss)
         data = prepare_batch(self.args, data)
 
         data.pop('loss_scale', None)
+        data.pop('routed_experts', None)  # MoE routing replay data (not a model forward kwarg)
         labels = data.pop('labels', None)
 
-        inputs = {k: v for k, v in data.items() if k not in _NON_MODEL_KEYS}
-
-        student_output = model(**inputs)
+        # data is now clean model forward kwargs (template.encode guarantees this)
+        student_output = model(**data)
         return student_output, partial(
             self.loss_func,
             labels=labels,
@@ -69,61 +53,32 @@ class GKDLoss(Loss):
     def compute_teacher_logits(
         self,
         teacher_model: torch.nn.Module,
-        batch: List[Dict[str, Any]],
-        template,
+        teacher_micro_batches: List[Dict[str, Any]],
         args,
-    ):
-        """Forward the teacher model on the encoded batch.
-
-        Returns a per-sample list of ``TeacherOutput`` (top-k or full-vocab), kept on the
-        worker's GPU. The caller caches it locally and injects it at train_step — required
-        for context parallel, where each CP rank must use its own sequence shard.
-        """
+    ) -> List[TeacherOutput]:
         gkd_logits_topk = getattr(args, 'gkd_logits_topk', None)
         device = get_current_device()
-        micro_batch_size = getattr(args, 'micro_batch_size', len(batch))
-        sample_chunks = [batch[i:i + micro_batch_size] for i in range(0, len(batch), micro_batch_size)]
-
-        outputs: list = []
+        outputs: List[TeacherOutput] = []
         with torch.no_grad():
-            for chunk in sample_chunks:
-                # OPSD: score the teacher on its own (teacher_prompt) sequence and keep
-                # the teacher labels so extract_active can mask-align the shared response.
-                is_opsd = chunk[0].get('opsd_teacher_encoded') is not None
-                if is_opsd and gkd_logits_topk is None:
-                    raise NotImplementedError('OPSD with full-vocab teacher is not supported in the Ray pipeline yet; '
-                                              'set gkd_logits_topk (top-k) for OPSD.')
-                key = 'opsd_teacher_encoded' if is_opsd else 'encoded'
-                encoded_list = [s[key] for s in chunk]
-                collated = template.data_collator(encoded_list, padding_to=get_padding_to(args))
-                collated = to_device(collated, device)
+            for teacher_model_inputs in teacher_micro_batches:
+                collated = to_device(dict(teacher_model_inputs), device)
                 teacher_data = prepare_batch(args, collated)
                 teacher_data.pop('loss_scale', None)
-                labels_t = teacher_data.pop('labels', None)
-                opsd_labels_full = labels_t if is_opsd else None
+                # Labels are the teacher's (OPSD) or == student's (non-OPSD); prepare_batch
+                # shifts them so extract_active mask-aligns the shared response.
+                labels = teacher_data.pop('labels', None)
                 teacher_logits = forward_step_helper(teacher_model, teacher_data)
-                if teacher_logits is not None:
-                    teacher_logits = teacher_logits.detach()
-                    for i in range(len(chunk)):
-                        if gkd_logits_topk is not None:
-                            topk_logits, topk_indices = vocab_parallel_topk(teacher_logits[i:i + 1], k=gkd_logits_topk)
-                            opsd_label_i = None
-                            if opsd_labels_full is not None:
-                                sl = opsd_labels_full[i:i + 1]
-                                if sl.shape[0] > 0:
-                                    opsd_label_i = sl
-                            outputs.append(
-                                TeacherOutput(
-                                    topk_logprobs=topk_logits,
-                                    topk_indices=topk_indices,
-                                    opsd_teacher_labels=opsd_label_i))
-                        else:
-                            outputs.append(TeacherOutput(full_logits=teacher_logits[i:i + 1]))
+                if teacher_logits is None:
+                    # PP non-last stage: no logits; placeholder keeps micro-batch alignment.
+                    outputs.append(TeacherOutput())
+                    continue
+                teacher_logits = teacher_logits.detach()
+                if gkd_logits_topk is not None:
+                    topk_logits, topk_indices = vocab_parallel_topk(teacher_logits, k=gkd_logits_topk)
+                    outputs.append(TeacherOutput(topk_logprobs=topk_logits, topk_indices=topk_indices, labels=labels))
                 else:
-                    # PP non-last stage: no logits produced, placeholder for batch alignment
-                    outputs.extend(TeacherOutput() for _ in chunk)
+                    outputs.append(TeacherOutput(full_logits=teacher_logits, labels=labels))
                 del collated
-
         return outputs
 
     # ------------------------------------------------------------------

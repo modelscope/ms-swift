@@ -6,9 +6,7 @@ ms-swift supports training [Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/Mo
 
 ```shell
 pip install -U ms-swift
-# "transformers==5.2.*" encounters compatibility issues with vllm. See this issue: https://github.com/modelscope/ms-swift/issues/8254
-# "transformers==5.3.*" encounters video training issues. See this issue: https://github.com/modelscope/ms-swift/issues/8362
-pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
+pip install -U "transformers>=5.9" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
@@ -26,8 +24,6 @@ pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
 pip install -U "vllm>=0.17.0"
-# For RL training, need to override vllm's default installation version
-pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
@@ -105,7 +101,7 @@ Qwen3.5's bbox output uses normalized relative coordinates with a scale of 1000.
 
 ### Dense Models
 
-Below is a fine-tuning script for the Qwen3.5-4B model. This example script is for demonstration purposes only. Training memory usage is 4 × 20GiB, with a training time of 12 minutes. Since transformers' GatedDeltaNet does not support packing/padding_free (Megatron does support it, see below), we use the `group_by_length` parameter to accelerate training, ensuring load balancing across data parallelism (DP) and reducing zero-padding in micro batches. However, this may cause fluctuations in the loss curve due to insufficient data shuffling. You can also remove this parameter if preferred.
+Below is a fine-tuning script for the Qwen3.5-4B model. This example script is for demonstration purposes only. Training memory usage is 4 × 20GiB, with a training time of 12 minutes. Qwen3.5 supports packing/padding_free in transformers (requires "ms-swift>=4.3.1"; Megatron has no such version restriction). Below we use the `group_by_length` parameter to accelerate training, ensuring load balancing across data parallelism (DP) and reducing zero-padding in micro batches. However, this may cause fluctuations in the loss curve due to insufficient data shuffling. You can also remove this parameter and use `--packing true` instead.
 - Regarding data preprocessing: When using the packing / group_by_length parameters, all data must be preprocessed in advance to obtain the input_ids length of each sample, which takes additional time. If you prefer to process data on-the-fly during training, you can remove these two parameters.
 - Reduce memory consumption: You can enable `--deepspeed zero2/zero3`, turn on sequence parallelism via `--sequence_parallel_size`, or use `--use_liger_kernel true`.
 - Training acceleration: You can enable `--attn_impl flash_attention_2`, and for MoE models, it is recommended to enable `--experts_impl grouped_mm`.
@@ -522,7 +518,6 @@ swift rlhf \
     --sleep_level 0 \
     --dataset 'modelscope/gsm8k' \
     --lmbda 1 \
-    --seq_kd false \
     --beta 0.5 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 2 \

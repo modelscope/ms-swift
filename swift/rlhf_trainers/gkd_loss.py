@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 # ---------------------------------------------------------------------------
 # Data types — shared across all backends
@@ -15,7 +15,7 @@ class DataSource(str, Enum):
     """Data source for GKD training."""
     DATASET = 'dataset'
     STUDENT = 'student'
-    TEACHER = 'teacher'
+    TEACHER = 'teacher'  # deprecated, pre-sample before training
 
 
 @dataclass
@@ -26,11 +26,20 @@ class TeacherOutput:
     full_logits: Optional[torch.Tensor] = None
     topk_logprobs: Optional[torch.Tensor] = None
     topk_indices: Optional[torch.Tensor] = None
-    opsd_teacher_labels: Optional[torch.Tensor] = None
+    labels: Optional[torch.Tensor] = None
 
     @property
     def is_topk_mode(self) -> bool:
         return self.topk_logprobs is not None and self.topk_indices is not None
+
+    def to_device(self, device) -> 'TeacherOutput':
+        """Move all tensor fields to ``device`` in place (Ray: teacher_output is
+        collated on the CPU driver, moved to the GPU worker before forward)."""
+        for name in ('full_logits', 'topk_logprobs', 'topk_indices', 'labels'):
+            v = getattr(self, name)
+            if isinstance(v, torch.Tensor):
+                setattr(self, name, v.to(device))
+        return self
 
     def validate(self):
         if self.full_logits is None and not self.is_topk_mode:
@@ -43,6 +52,7 @@ class TeacherOutput:
             full_logits=self.full_logits[mask] if self.full_logits is not None else None,
             topk_logprobs=self.topk_logprobs[mask] if self.topk_logprobs is not None else None,
             topk_indices=self.topk_indices[mask] if self.topk_indices is not None else None,
+            labels=self.labels[mask] if self.labels is not None else None,
         )
 
     def to_topk(self, k: int, topk_fn=None) -> 'TeacherOutput':
@@ -54,7 +64,7 @@ class TeacherOutput:
         return TeacherOutput(
             topk_logprobs=vals,
             topk_indices=ids,
-            opsd_teacher_labels=self.opsd_teacher_labels,
+            labels=self.labels,
         )
 
 
@@ -96,7 +106,7 @@ def jsd_loss(
 
     Args:
         s_logits: [N, D] student logits (temperature-scaled)
-        t_logits: [N, D] teacher logits (temperature-scaled)
+        t_logits: [N, D] teacher logits/logps (temperature-scaled)
         beta: JSD interpolation (0=forward KL, 1=reverse KL, 0<beta<1=JSD)
         log_softmax_fn: (logits [C, D]) -> log_probs [C, D]
         kl_div_fn: (input_log [C, D], target_log [C, D]) -> per_position [C]
@@ -169,6 +179,10 @@ def extract_active(
 ) -> Tuple[torch.Tensor, TeacherOutput, torch.Tensor]:
     """Extract active positions from student logits and teacher output.
 
+    Uses ``teacher_output.labels`` (always present) to derive the
+    teacher mask, and ``labels`` for the student mask. When non-OPSD the two are
+    identical so the result is equivalent to masking by student labels alone.
+
     Args:
         student_logits: [B, S, V] or [1, T, V]
         teacher_output: TeacherOutput with same leading dims
@@ -177,29 +191,29 @@ def extract_active(
     Returns:
         (student_active [N, V], teacher_active TeacherOutput [N, ...], num_valid tensor)
     """
-    opsd_labels = teacher_output.opsd_teacher_labels
-    if opsd_labels is not None:
-        s_mask = labels != -100
-        t_mask = opsd_labels != -100
-        assert s_mask.sum() == t_mask.sum(), (f'OPSD label count mismatch: student={s_mask.sum().item()}, '
+    t_labels = teacher_output.labels
+    s_mask = labels != -100
+    if t_labels is not None:
+        # Teacher labels are always set (equals student labels when non-OPSD).
+        # OPSD: teacher scores a different prompt, so its label mask differs in
+        # position but must have the same count of valid response tokens.
+        # Non-OPSD: teacher labels == student labels, so masks are identical.
+        t_mask = t_labels != -100
+        assert s_mask.sum() == t_mask.sum(), (f'Label count mismatch: student={s_mask.sum().item()}, '
                                               f'teacher={t_mask.sum().item()}. '
                                               'Student and teacher must share the same response tokens.')
-        s_active = student_logits[s_mask]
-        t_active = teacher_output.select(t_mask)
-        if t_active.is_topk_mode:
-            uncovered = torch.isinf(t_active.topk_logprobs).all(dim=-1)
-            if uncovered.any():
-                keep = ~uncovered
-                s_active = s_active[keep]
-                t_active = t_active.select(keep)
-        return s_active, t_active, torch.tensor(int(s_active.shape[0]), device=labels.device)
-
-    mask = labels != -100
-    if teacher_output.is_topk_mode:
-        uncovered = torch.isinf(teacher_output.topk_logprobs).all(dim=-1)
+    else:
+        # Fallback for PP non-last stage placeholders (TeacherOutput() with all None).
+        t_mask = s_mask
+    s_active = student_logits[s_mask]
+    t_active = teacher_output.select(t_mask)
+    if t_active.is_topk_mode:
+        uncovered = torch.isinf(t_active.topk_logprobs).all(dim=-1)
         if uncovered.any():
-            mask = mask & ~uncovered
-    return student_logits[mask], teacher_output.select(mask), mask.sum()
+            keep = ~uncovered
+            s_active = s_active[keep]
+            t_active = t_active.select(keep)
+    return s_active, t_active, torch.tensor(int(s_active.shape[0]), device=labels.device)
 
 
 # ---------------------------------------------------------------------------
@@ -255,35 +269,3 @@ def gkd_loss(
 
     total = jsd_loss(s_logits, t_logits, beta, lsf, kdf, chunk_size)
     return total, num_valid
-
-
-# ---------------------------------------------------------------------------
-# build_opsd_teacher_data — shared OPSD teacher data construction
-# ---------------------------------------------------------------------------
-
-
-def build_opsd_teacher_data(inputs, strip_assistant=False):
-    """Build teacher data for OPSD by replacing the last user message with teacher_prompt.
-
-    Args:
-        inputs: list of data dicts, each may contain 'teacher_prompt'
-        strip_assistant: if True, remove trailing assistant message before replacement
-
-    Returns:
-        List of teacher data dicts, or None if teacher_prompt is not in all inputs.
-    """
-    if not all('teacher_prompt' in d and d['teacher_prompt'] for d in inputs):
-        return None
-    result = []
-    for data in inputs:
-        item = {k: v for k, v in data.items() if k != 'teacher_prompt'}
-        messages = [dict(m) for m in data.get('messages', [])]
-        if strip_assistant and messages and messages[-1]['role'] == 'assistant':
-            messages.pop()
-        for msg in reversed(messages):
-            if msg['role'] == 'user':
-                msg['content'] = data['teacher_prompt']
-                break
-        item['messages'] = messages
-        result.append(item)
-    return result

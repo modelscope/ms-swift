@@ -6,9 +6,7 @@ ms-swift 支持使用transformers/Megatron后端对[Qwen3.5](https://github.com/
 ## 环境设置
 ```shell
 pip install -U ms-swift
-# "transformers==5.2.*" 会遇到与vllm的兼容问题，参考这个issue: https://github.com/modelscope/ms-swift/issues/8254
-# "transformers==5.3.*" 会遇到视频训练问题，参考这个issue: https://github.com/modelscope/ms-swift/issues/8362
-pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
+pip install -U "transformers>=5.9" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # 若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
@@ -26,8 +24,6 @@ pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
 pip install -U "vllm>=0.17.0"
-# 对于强化学习（RL）训练，需要覆盖 vLLM 的默认安装版本
-pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
@@ -108,7 +104,7 @@ Qwen3.5的bbox输出采用归一化1000的相对坐标。你可以使用 ms-swif
 
 ### Dense模型
 
-以下提供对Qwen3.5-4B模型的微调脚本，该示例脚本仅作为演示用途。训练显存为 4 * 20GiB，训练时间为12分钟。由于transformers的GatedDeltaNet不支持packing/padding_free（megatron支持，见下文），因此我们使用group_by_length参数来加速训练，保证DP的负载均衡并减少micro batch中的零填充，但这会导致loss曲线跳动（因数据随机不充分），当然你也可以去掉此参数。
+以下提供对Qwen3.5-4B模型的微调脚本，该示例脚本仅作为演示用途。训练显存为 4 * 20GiB，训练时间为12分钟。Qwen3.5已支持在transformers中使用packing/padding_free（需"ms-swift>=4.3.1"，megatron无此版本限制）。下面我们使用group_by_length参数来加速训练，保证DP的负载均衡并减少micro batch中的零填充，但这会导致loss曲线跳动（因数据随机不充分），你也可以去掉此参数并使用`--packing true`代替。
 - 关于数据预处理：若使用packing/group_by_length参数，则需要对所有数据做提前预处理，获取数据input_ids长度，这需要消耗一定时间。若你希望在训练时处理数据，你可以去除这个两个参数。
 - 降低显存消耗：可以通过`--deepspeed zero2/zero3`, 开启序列并行`--sequence_parallel_size`，或者使用`--use_liger_kernel true`。
 - 训练加速：可以开启`--attn_impl flash_attention_2`，MoE模型建议开启`--experts_impl grouped_mm`。
@@ -525,7 +521,6 @@ swift rlhf \
     --sleep_level 0 \
     --dataset 'modelscope/gsm8k' \
     --lmbda 1 \
-    --seq_kd false \
     --beta 0.5 \
     --torch_dtype bfloat16 \
     --per_device_train_batch_size 2 \
