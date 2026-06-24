@@ -66,7 +66,9 @@ SWIFT在PR提交后会进行两类测试：
 
 ## ✅ 资源支持
 
-SWIFT会为开发者提供资源支持，包括免费的GPU算力。如果需要请邮件联系我们（[contact@modelscope.cn](mailto:contact@modelscope.cn)）或加入我们的微信群：
+魔搭为开发者提供了免费的A10 GPU算力支持，具体参考[魔搭 Notebook](https://modelscope.cn/my/mynotebook)。
+
+ms-swift训练微信群：
 
 <p align="left">
 <img src="asset/wechat.png" width="250" style="display: inline-block;">
