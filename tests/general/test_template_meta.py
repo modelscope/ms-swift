@@ -18,7 +18,5 @@ def test_replace_system_preserves_non_string_elements():
     )
     # __post_init__ moves prefix to system_prefix and builds a no-system prefix
     # via _replace_system.  The list element must survive.
-    assert any(isinstance(p, list) for p in meta.prefix), (
-        f'_replace_system dropped the bos_token_id list; '
-        f'meta.prefix={meta.prefix!r}'
-    )
+    assert any(isinstance(p, list) for p in meta.prefix), (f'_replace_system dropped the bos_token_id list; '
+                                                           f'meta.prefix={meta.prefix!r}')
