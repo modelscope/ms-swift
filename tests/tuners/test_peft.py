@@ -13,6 +13,7 @@ from peft.tuners.lora import Linear
 from peft.utils import WEIGHTS_NAME
 from torch import nn
 
+from swift.trainers.mixin import _get_peft_selected_adapters
 from swift.tuners import AdaLoraConfig, LoraConfig, LoRAConfig, Swift, get_peft_model
 
 
@@ -157,3 +158,37 @@ class TestPeft(unittest.TestCase):
         self.assertTrue(model3.base_model.model.bert.encoder.layer[0].attention.self.key.lora_A.default.weight.dtype ==
                         torch.float32)
         self.assertTrue(isinstance(model3.peft_config['default'], peft.LoraConfig))
+
+    def test_get_peft_selected_adapters_custom_name(self):
+        """Check selected_adapters respects custom adapter_name (gh#8336)."""
+        model = SbertForSequenceClassification(SbertConfig())
+        lora_config = LoraConfig(target_modules=['query', 'key', 'value'])
+        model = Swift.prepare_model(model, lora_config, adapter_name='vision_only_lora')
+        # SwiftModel wraps base_model; trainer unwraps to PeftModel for save.
+        inner = getattr(model, 'base_model', model)
+        self.assertEqual(_get_peft_selected_adapters(inner), ['vision_only_lora'])
+
+    def test_get_peft_selected_adapters_default(self):
+        """Check selected_adapters falls back to default when no custom name."""
+        model = SbertForSequenceClassification(SbertConfig())
+        lora_config = LoraConfig(target_modules=['query', 'key', 'value'])
+        model = Swift.prepare_model(model, lora_config)
+        inner = getattr(model, 'base_model', model)
+        self.assertEqual(_get_peft_selected_adapters(inner), ['default'])
+
+    def test_get_peft_selected_adapters_mock(self):
+        """Check _get_peft_selected_adapters with active_adapter/active_adapters (gh#8336)."""
+        class MockPeft:
+            pass
+        # None -> default
+        m = MockPeft()
+        m.active_adapter = None
+        m.active_adapters = None
+        self.assertEqual(_get_peft_selected_adapters(m), ['default'])
+        # str
+        m.active_adapter = 'my_lora'
+        self.assertEqual(_get_peft_selected_adapters(m), ['my_lora'])
+        # list (active_adapters takes precedence when active_adapter is None)
+        m.active_adapter = None
+        m.active_adapters = ['a', 'b']
+        self.assertEqual(_get_peft_selected_adapters(m), ['a', 'b'])
