@@ -1163,6 +1163,10 @@ class Qwen3TTSTemplate(Template):
         ).transpose(1, 2)  # [1, mel_len, 128]
         return mels
 
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        """Override to skip _add_default_tags since audios here are targets, not inputs."""
+        pass
+
     def encode(
         self,
         inputs,
@@ -1170,21 +1174,22 @@ class Qwen3TTSTemplate(Template):
         return_template_inputs: bool = False,
         return_length: bool = False,
     ) -> Dict[str, Any]:
-        # Convert raw TTS JSONL format (text/audio/ref_audio) to messages format
-        if isinstance(inputs, dict) and 'messages' not in inputs and 'text' in inputs:
-            inputs = dict(inputs)
-            text = inputs.get('text', '')
-            inputs['messages'] = [
-                {'role': 'user', 'content': ''},
-                {'role': 'assistant', 'content': text},
-            ]
+        # Ensure messages format is valid for TTS processing.
+        if isinstance(inputs, dict):
+            messages = inputs.get('messages', [])
+            if not messages or not any(m.get('content') for m in messages):
+                inputs = dict(inputs)
+                text = inputs.get('text', '')
+                inputs['messages'] = [
+                    {'role': 'assistant', 'content': text or ''},
+                ]
         return super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        # Get text from extra_kwargs or messages
-        text = inputs.extra_kwargs.get('text')
-        if text is None:
-            text = inputs.messages[-1]['content']
+        # Get text from messages (assistant content)
+        text = inputs.messages[-1]['content'] if inputs.messages else ''
+        if not text:
+            text = inputs.extra_kwargs.get('text', '')
 
         # Build TTS text with assistant markers
         tts_text = f'<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n'
@@ -1194,17 +1199,18 @@ class Qwen3TTSTemplate(Template):
         # Get audio codes (pre-extracted or online)
         audio_codes = inputs.extra_kwargs.get('audio_codes')
         if audio_codes is None:
-            audio_path = inputs.extra_kwargs.get('audio')
+            audio_path = inputs.audios[0] if inputs.audios else None
             if audio_path:
                 tts_tokenizer = self._get_tts_tokenizer()
                 enc_res = tts_tokenizer.encode([audio_path])
                 audio_codes = enc_res.audio_codes[0].cpu().tolist()
-        assert audio_codes is not None, "Either 'audio_codes' or 'audio' must be provided in the dataset."
+        assert audio_codes is not None, "Either 'audio_codes' or 'audio'/'audios' must be provided in the dataset."
         audio_codes = torch.tensor(audio_codes, dtype=torch.long)  # [t, 16]
 
         # Extract mel spectrogram from reference audio
-        ref_audio_path = inputs.extra_kwargs.get('ref_audio')
-        assert ref_audio_path is not None, "'ref_audio' must be provided in the dataset."
+        ref_audios = inputs.extra_kwargs.get('ref_audios')
+        ref_audio_path = ref_audios[0] if ref_audios else inputs.extra_kwargs.get('ref_audio')
+        assert ref_audio_path is not None, "'ref_audio' or 'ref_audios' must be provided in the dataset."
         ref_mel = self._extract_ref_mel(ref_audio_path)  # [1, mel_len, 128]
 
         # Compute total sequence length for framework length tracking

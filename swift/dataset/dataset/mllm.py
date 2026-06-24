@@ -1344,3 +1344,35 @@ register_dataset(
         ],
         preprocess_func=Geometry3KPreprocessor(),
         tags=['multi-modal', 'en', 'math']))
+
+
+class Qwen3TTSPreprocessor(RowPreprocessor):
+    """Preprocessor for Qwen3-TTS SFT datasets.
+
+    Input format:
+        {'audio': 'path.wav', 'text': '...', 'ref_audio': 'ref.wav'}
+    Output format:
+        {'messages': [{'role': 'assistant', 'content': '...'}],
+         'audios': ['path.wav'], 'ref_audios': ['ref.wav']}
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.columns['ref_audio'] = 'ref_audios'
+        self.columns['ref_audios'] = 'ref_audios'
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        text = row.pop('text', '')
+        ref_audios = row.get('ref_audios')
+        if isinstance(ref_audios, str):
+            row['ref_audios'] = [ref_audios]
+        row['messages'] = [{'role': 'assistant', 'content': text}]
+        return row
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='qsdong/Qwen3-1.7-TTS-SFT-Furina',
+        preprocess_func=Qwen3TTSPreprocessor(),
+        tags=['chat', 'multi-modal', 'audio', 'tts'],
+    ))
