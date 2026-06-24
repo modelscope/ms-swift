@@ -52,6 +52,8 @@ Before submitting the PR, please ensure that your development code is protected 
 
 ModelScope provides developers with free A10 GPU computing resources. For more details, please refer to [here](https://modelscope.cn/my/mynotebook).
 
+ms-swift Training WeChat Group:
+
 <p align="left">
 <img src="asset/wechat.png" width="250" style="display: inline-block;">
 </p>

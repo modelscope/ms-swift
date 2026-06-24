@@ -68,6 +68,8 @@ SWIFT在PR提交后会进行两类测试：
 
 魔搭为开发者提供了免费的A10 GPU算力支持，具体参考[这里](https://modelscope.cn/my/mynotebook)。
 
+ms-swift训练微信群：
+
 <p align="left">
 <img src="asset/wechat.png" width="250" style="display: inline-block;">
 </p>
