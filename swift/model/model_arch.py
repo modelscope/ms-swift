@@ -33,6 +33,7 @@ class MLLMModelArch:
     qwen3_vl = 'qwen3_vl'
     qwen3_omni = 'qwen3_omni'
     qwen3_asr = 'qwen3_asr'
+    qwen3_tts = 'qwen3_tts'
 
     cogvlm = 'cogvlm'
     chatglm4v = 'chatglm4v'
@@ -614,6 +615,13 @@ register_model_arch(
         language_model=['thinker.model', 'thinker.lm_head'],
         vision_tower='thinker.audio_tower',
         aligner=['thinker.audio_tower.proj1', 'thinker.audio_tower.proj2'],
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.qwen3_tts,
+        language_model='talker',
+        vision_tower='speaker_encoder',
     ))
 
 register_model_arch(

@@ -1101,6 +1101,209 @@ register_template(
         prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
 
 
+class Qwen3TTSTemplate(Template):
+    """Template for Qwen3-TTS SFT training with dual-channel architecture.
+
+    Supports JSONL data format:
+        {"text": "...", "audio": "path.wav", "ref_audio": "ref.wav"}
+    or:
+        {"text": "...", "audio_codes": [[...], ...], "ref_audio": "ref.wav"}
+    """
+    use_model = True
+    skip_prompt = True
+    support_padding_free = False
+
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        self._tts_tokenizer = None
+        # Cache TTS config values for data collation
+        config = self.config
+        self._tts_pad_token_id = config.tts_pad_token_id
+        self._tts_bos_token_id = config.tts_bos_token_id
+        self._tts_eos_token_id = config.tts_eos_token_id
+        talker_config = config.talker_config
+        if isinstance(talker_config, dict):
+            self._codec_nothink_id = talker_config['codec_nothink_id']
+            self._codec_think_bos_id = talker_config['codec_think_bos_id']
+            self._codec_think_eos_id = talker_config['codec_think_eos_id']
+            self._codec_pad_id = talker_config['codec_pad_id']
+            self._codec_bos_id = talker_config['codec_bos_id']
+            self._codec_eos_token_id = talker_config['codec_eos_token_id']
+        else:
+            self._codec_nothink_id = talker_config.codec_nothink_id
+            self._codec_think_bos_id = talker_config.codec_think_bos_id
+            self._codec_think_eos_id = talker_config.codec_think_eos_id
+            self._codec_pad_id = talker_config.codec_pad_id
+            self._codec_bos_id = talker_config.codec_bos_id
+            self._codec_eos_token_id = talker_config.codec_eos_token_id
+
+    def _get_tts_tokenizer(self):
+        """Lazy-load Qwen3TTSTokenizer for online audio code extraction."""
+        if self._tts_tokenizer is None:
+            from qwen_tts import Qwen3TTSTokenizer
+            tokenizer_path = get_env_args('tts_tokenizer_path', str, 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
+            self._tts_tokenizer = Qwen3TTSTokenizer.from_pretrained(tokenizer_path, device_map='cpu')
+        return self._tts_tokenizer
+
+    @staticmethod
+    def _extract_ref_mel(ref_audio_path: str) -> torch.Tensor:
+        """Extract mel spectrogram from reference audio for speaker embedding."""
+        import librosa
+        import numpy as np
+        from qwen_tts.core.models.modeling_qwen3_tts import mel_spectrogram
+        audio, sr = librosa.load(ref_audio_path, sr=None, mono=True)
+        if audio.ndim > 1:
+            audio = np.mean(audio, axis=-1)
+        if sr != 24000:
+            audio = librosa.resample(audio, orig_sr=sr, target_sr=24000)
+        mels = mel_spectrogram(
+            torch.from_numpy(audio.astype(np.float32)).unsqueeze(0),
+            n_fft=1024, num_mels=128, sampling_rate=24000,
+            hop_size=256, win_size=1024, fmin=0, fmax=12000
+        ).transpose(1, 2)  # [1, mel_len, 128]
+        return mels
+
+    def encode(
+        self,
+        inputs,
+        *,
+        return_template_inputs: bool = False,
+        return_length: bool = False,
+    ) -> Dict[str, Any]:
+        # Convert raw TTS JSONL format (text/audio/ref_audio) to messages format
+        if isinstance(inputs, dict) and 'messages' not in inputs and 'text' in inputs:
+            inputs = dict(inputs)
+            text = inputs.get('text', '')
+            inputs['messages'] = [
+                {'role': 'user', 'content': ''},
+                {'role': 'assistant', 'content': text},
+            ]
+        return super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        # Get text from extra_kwargs or messages
+        text = inputs.extra_kwargs.get('text')
+        if text is None:
+            text = inputs.messages[-1]['content']
+
+        # Build TTS text with assistant markers
+        tts_text = f'<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n'
+        text_ids = self._tokenize(tts_text)
+        text_ids = text_ids[:-5]  # Remove trailing '<|im_start|>assistant\n'
+
+        # Get audio codes (pre-extracted or online)
+        audio_codes = inputs.extra_kwargs.get('audio_codes')
+        if audio_codes is None:
+            audio_path = inputs.extra_kwargs.get('audio')
+            if audio_path:
+                tts_tokenizer = self._get_tts_tokenizer()
+                enc_res = tts_tokenizer.encode([audio_path])
+                audio_codes = enc_res.audio_codes[0].cpu().tolist()
+        assert audio_codes is not None, "Either 'audio_codes' or 'audio' must be provided in the dataset."
+        audio_codes = torch.tensor(audio_codes, dtype=torch.long)  # [t, 16]
+
+        # Extract mel spectrogram from reference audio
+        ref_audio_path = inputs.extra_kwargs.get('ref_audio')
+        assert ref_audio_path is not None, "'ref_audio' must be provided in the dataset."
+        ref_mel = self._extract_ref_mel(ref_audio_path)  # [1, mel_len, 128]
+
+        # Compute total sequence length for framework length tracking
+        total_len = len(text_ids) + audio_codes.shape[0] + 8
+
+        return {
+            'input_ids': list(range(total_len)),  # dummy for length tracking
+            'labels': None,
+            'tts_text_ids': torch.tensor(text_ids, dtype=torch.long).unsqueeze(0),  # [1, text_len]
+            'tts_audio_codes': audio_codes,  # [codec_len, 16]
+            'tts_ref_mel': ref_mel,  # [1, mel_len, 128]
+        }
+
+    def compute_sft_loss(self, model, inputs, num_items_in_batch=None, trainer=None):
+        """Override to bypass standard label adjustment - TTS loss is computed in forward."""
+        outputs = model(**inputs)
+        return outputs
+
+    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to=None) -> Dict[str, Any]:
+        """Custom TTS data collation - builds dual-channel input format."""
+        item_length = [b['tts_text_ids'].shape[1] + b['tts_audio_codes'].shape[0] for b in batch]
+        max_length = max(item_length) + 8
+        b_size, t = len(batch), max_length
+
+        input_ids = torch.zeros((b_size, t, 2), dtype=torch.long)
+        codec_ids = torch.zeros((b_size, t, 16), dtype=torch.long)
+        text_embedding_mask = torch.zeros((b_size, t), dtype=torch.bool)
+        codec_embedding_mask = torch.zeros((b_size, t), dtype=torch.bool)
+        codec_mask = torch.zeros((b_size, t), dtype=torch.bool)
+        attention_mask = torch.zeros((b_size, t), dtype=torch.long)
+        codec_0_labels = torch.full((b_size, t), -100, dtype=torch.long)
+
+        for i, data in enumerate(batch):
+            text_ids = data['tts_text_ids']  # [1, text_len]
+            audio_codes = data['tts_audio_codes']  # [codec_len, 16]
+            audio_codec_0 = audio_codes[:, 0]
+
+            text_ids_len = text_ids.shape[1]
+            codec_ids_len = audio_codec_0.shape[0]
+
+            # === Text channel ===
+            input_ids[i, :3, 0] = text_ids[0, :3]
+            input_ids[i, 3:7, 0] = self._tts_pad_token_id
+            input_ids[i, 7, 0] = self._tts_bos_token_id
+            input_ids[i, 8:8 + text_ids_len - 3, 0] = text_ids[0, 3:]
+            input_ids[i, 8 + text_ids_len - 3, 0] = self._tts_eos_token_id
+            input_ids[i, 8 + text_ids_len - 2:8 + text_ids_len + codec_ids_len, 0] = self._tts_pad_token_id
+            text_embedding_mask[i, :8 + text_ids_len + codec_ids_len] = True
+
+            # === Codec channel ===
+            input_ids[i, 3:8, 1] = torch.tensor([
+                self._codec_nothink_id,
+                self._codec_think_bos_id,
+                self._codec_think_eos_id,
+                0,  # placeholder for speaker embedding
+                self._codec_pad_id,
+            ])
+            input_ids[i, 8:8 + text_ids_len - 3, 1] = self._codec_pad_id
+            input_ids[i, 8 + text_ids_len - 3, 1] = self._codec_pad_id
+            input_ids[i, 8 + text_ids_len - 2, 1] = self._codec_bos_id
+            input_ids[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len, 1] = audio_codec_0
+            input_ids[i, 8 + text_ids_len - 1 + codec_ids_len, 1] = self._codec_eos_token_id
+
+            # === Labels (codec layer 0) ===
+            codec_0_labels[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len] = audio_codec_0
+            codec_0_labels[i, 8 + text_ids_len - 1 + codec_ids_len] = self._codec_eos_token_id
+
+            # === Sub-talker codec IDs ===
+            codec_ids[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len, :] = audio_codes
+
+            # === Masks ===
+            codec_embedding_mask[i, 3:8 + text_ids_len + codec_ids_len] = True
+            codec_embedding_mask[i, 6] = False  # speaker embedding position
+            codec_mask[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len] = True
+            attention_mask[i, :8 + text_ids_len + codec_ids_len] = True
+
+        ref_mels = torch.cat([data['tts_ref_mel'] for data in batch], dim=0)
+
+        return {
+            'input_ids': input_ids,
+            'ref_mels': ref_mels,
+            'attention_mask': attention_mask,
+            'text_embedding_mask': text_embedding_mask.unsqueeze(-1),
+            'codec_embedding_mask': codec_embedding_mask.unsqueeze(-1),
+            'labels': codec_0_labels,  # popped by trainer, passed to loss_func
+            'codec_0_labels': codec_0_labels,  # stays in inputs for model forward
+            'codec_ids': codec_ids,
+            'codec_mask': codec_mask,
+        }
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_tts,
+        template_cls=Qwen3TTSTemplate,
+        default_system=None,
+    ))
+
+
 class Ovis1_6Template(Template):
     skip_prompt = False
     use_model = True
