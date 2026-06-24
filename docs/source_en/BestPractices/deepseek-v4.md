@@ -214,3 +214,41 @@ swift infer \
 Inference result:
 
 ![result](../../resources/deepseek_v4/infer_result.png)
+
+Running vLLM inference:
+
+- If you want to use vLLM for inference, you can refer to [this documentation](https://recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash). You need FP4/FP8 precision weights.
+- Additionally, you need to copy the original 'config.json' file and modify 'expert_dtype' (consistent with the config.json after training). This is because the file saved by transformers' `config.save_pretrained` differs from the original file, and vLLM is not compatible with the saved file.
+- If you encounter tilelang issues, you can check [this issue](https://github.com/modelscope/ms-swift/issues/9494).
+- mcore-bridge DeepSeek-V4 FP8 fix: [PR](https://github.com/modelscope/mcore-bridge/pull/133).
+
+First perform quantization (note: this quantization will cause LoRA incremental information loss; this is only an example. It is recommended to use FP8 full-parameter training and export FP8 weights):
+
+```shell
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+megatron export \
+    --model megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged \
+    --output_dir megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged-FP8 \
+    --to_hf true \
+    --fp8_recipe blockwise \
+    --fp8_format e4m3 \
+    --fp8_param_gather true \
+    --mtp_num_layers 1 \
+    --expert_model_parallel_size 8
+```
+
+vLLM launch command:
+```shell
+vllm serve megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged-FP8 \
+    --trust-remote-code \
+    --kv-cache-dtype fp8 \
+    --block-size 256 \
+    --enable-expert-parallel \
+    --tensor-parallel-size 8 \
+    --max-model-len 8192 \
+    --tokenizer-mode deepseek_v4 \
+    --tool-call-parser deepseek_v4 \
+    --enable-auto-tool-choice \
+    --reasoning-parser deepseek_v4
+```
