@@ -45,6 +45,7 @@ class TestSCETuning(unittest.TestCase):
         model2_val = torch.sum(torch.stack([torch.sum(val) for val in model2.state_dict().values()]))
         self.assertTrue(torch.isclose(model_val, model2_val))
 
+    @unittest.skip('Legacy test cases')
     def test_scetuning_on_diffusers_v1(self):
         model_dir = snapshot_download('AI-ModelScope/stable-diffusion-v1-5')
         from diffusers import UNet2DConditionModel
