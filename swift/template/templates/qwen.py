@@ -1117,7 +1117,6 @@ class Qwen3TTSTemplate(Template):
         super().init_env_args()
         self._config_initialized = False
         self.target_speaker_embedding = None
-        self._tts_tokenizer = None
         # Cache TTS config values for data collation
         config = self.config
         self._tts_pad_token_id = config.tts_pad_token_id
@@ -1138,14 +1137,6 @@ class Qwen3TTSTemplate(Template):
             self._codec_pad_id = talker_config.codec_pad_id
             self._codec_bos_id = talker_config.codec_bos_id
             self._codec_eos_token_id = talker_config.codec_eos_token_id
-
-    def _get_tts_tokenizer(self):
-        """Lazy-load Qwen3TTSTokenizer for online audio code extraction."""
-        if self._tts_tokenizer is None:
-            from qwen_tts import Qwen3TTSTokenizer
-            tokenizer_path = get_env_args('tts_tokenizer_path', str, 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
-            self._tts_tokenizer = Qwen3TTSTokenizer.from_pretrained(tokenizer_path, device_map='cpu')
-        return self._tts_tokenizer
 
     @staticmethod
     def _extract_ref_mel(ref_audio_path: str) -> torch.Tensor:
@@ -1210,7 +1201,7 @@ class Qwen3TTSTemplate(Template):
         if audio_codes is None:
             audio_path = inputs.audios[0] if inputs.audios else None
             if audio_path:
-                tts_tokenizer = self._get_tts_tokenizer()
+                tts_tokenizer = self.processor.tts_tokenizer
                 enc_res = tts_tokenizer.encode([audio_path])
                 audio_codes = enc_res.audio_codes[0].cpu().tolist()
         assert audio_codes is not None, "Either 'audio_codes' or 'audio'/'audios' must be provided in the dataset."
