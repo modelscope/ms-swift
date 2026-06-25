@@ -731,5 +731,9 @@ def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
                 continue
             if val is not None:
                 batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
+        attention_mask = batch.get('attention_mask')
+        if is_torch_npu_available() and attention_mask is not None and attention_mask.ndim >= 4:
+            batch['attention_mask'] = split_cp_inputs(attention_mask, getattr(packed_seq_params, 'cu_seqlens_q', None),
+                                                      -2)
 
     return batch

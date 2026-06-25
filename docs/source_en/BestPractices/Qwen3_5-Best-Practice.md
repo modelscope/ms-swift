@@ -6,9 +6,7 @@ ms-swift supports training [Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/Mo
 
 ```shell
 pip install -U ms-swift
-# "transformers==5.2.*" encounters compatibility issues with vllm. See this issue: https://github.com/modelscope/ms-swift/issues/8254
-# "transformers==5.3.*" encounters video training issues. See this issue: https://github.com/modelscope/ms-swift/issues/8362
-pip install -U "transformers==5.2.*" "qwen_vl_utils>=0.0.14" peft liger-kernel
+pip install -U "transformers>=5.9" "qwen_vl_utils>=0.0.14" peft liger-kernel
 
 # flash-linear-attention
 # If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
@@ -26,8 +24,6 @@ pip install deepspeed
 
 # vllm (torch2.10) for inference/deployment/RL
 pip install -U "vllm>=0.17.0"
-# For RL training, need to override vllm's default installation version
-pip install -U "transformers==5.2.*"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.

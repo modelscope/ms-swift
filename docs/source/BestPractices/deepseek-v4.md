@@ -214,3 +214,41 @@ swift infer \
 推理结果：
 
 ![result](../../resources/deepseek_v4/infer_result.png)
+
+跑通vLLM推理：
+
+- 如果要使用vllm推理，你可以参考[这里的文档](https://recipes.vllm.ai/deepseek-ai/DeepSeek-V4-Flash)。你需要FP4/FP8精度的权重。
+- 此外你需要copy原始的'config.json'文件，并修改'expert_dtype'（与训练后的config.json一致）。因为，使用transformers的`config.save_pretrained`保存的文件与原始文件不同，vllm不兼容保存后的文件。
+- 如果遇到tilelang问题，可以查看[这个issue](https://github.com/modelscope/ms-swift/issues/9494)。
+- mcore-bridge DeepSeek-V4 Fp8修复：[PR](https://github.com/modelscope/mcore-bridge/pull/133)。
+
+这里先做量化（这里的量化会导致LoRA增量信息丢失，这里只作为例子，建议使用FP8全参数训练并导出FP8权重）：
+
+```shell
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+NPROC_PER_NODE=8 \
+megatron export \
+    --model megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged \
+    --output_dir megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged-FP8 \
+    --to_hf true \
+    --fp8_recipe blockwise \
+    --fp8_format e4m3 \
+    --fp8_param_gather true \
+    --mtp_num_layers 1 \
+    --expert_model_parallel_size 8
+```
+
+vLLM启动命令：
+```shell
+vllm serve megatron_output/DeepSeek-V4-Flash/vx-xxx/checkpoint-xxx-merged-FP8 \
+    --trust-remote-code \
+    --kv-cache-dtype fp8 \
+    --block-size 256 \
+    --enable-expert-parallel \
+    --tensor-parallel-size 8 \
+    --max-model-len 8192 \
+    --tokenizer-mode deepseek_v4 \
+    --tool-call-parser deepseek_v4 \
+    --enable-auto-tool-choice \
+    --reasoning-parser deepseek_v4
+```

@@ -50,7 +50,9 @@ Before submitting the PR, please ensure that your development code is protected 
 
 ## ✅ Hardware support
 
-SWIFT will provide hardware support for developers, including free GPUs. If needed, please email us ([contact@modelscope.cn](mailto:contact@modelscope.cn)) or join our WeChat group:
+ModelScope provides developers with free A10 GPU computing resources. For more details, please refer to the [ModelScope Notebook](https://modelscope.cn/my/mynotebook).
+
+ms-swift Training WeChat Group:
 
 <p align="left">
 <img src="asset/wechat.png" width="250" style="display: inline-block;">
