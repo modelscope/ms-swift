@@ -177,14 +177,6 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
     def _log_rollout(self, samples: List[OnPolicySample]) -> None:
         """Log prompts/completions and extra rollout metrics. Default no-op."""
 
-    # ------------------------------------------------------------------
-    # Teacher infrastructure shared by GKD and GRPO (OPD-RL).
-    #
-    # A teacher is configured via ``teacher_model`` (local forward), ``teacher_model_server``
-    # (vLLM API), or ``teacher_use_disable_adapter`` (same-model LoRA self-distillation).
-    # GKD back-propagates a JSD/KL loss; GRPO injects the per-token teacher KL as an advantage.
-    # Both share the teacher setup, local-model offload context, and API logprob fetch below.
-    # ------------------------------------------------------------------
     def _pop_teacher_kwargs(self, kwargs: Dict[str, Any]) -> None:
         """Stash teacher kwargs before ``super().__init__`` consumes them.
 
