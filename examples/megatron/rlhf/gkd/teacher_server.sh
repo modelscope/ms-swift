@@ -44,11 +44,10 @@ megatron rlhf \
     --max_completion_length $max_completion_length \
     --attention_backend flash \
     --use_vllm true \
-    --vllm_mode colocate \
-    --vllm_gpu_memory_utilization 0.5 \
-    --vllm_tensor_parallel_size 1 \
-    --vllm_max_model_len $max_total_length \
-    --sleep_level 1 \
+    --vllm_mode server \
+    --vllm_server_host 127.0.0.1 \
+    --vllm_server_port 8000 \
+    --vllm_server_timeout 600 \
     --finetune \
     --no_save_optim \
     --no_save_rng \
