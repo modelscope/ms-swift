@@ -234,8 +234,15 @@ def download_file(url: str) -> str:
     file_name = url.rsplit('/', 1)[-1]
     cache_dir = os.path.join(get_cache_dir(), 'files')
     os.makedirs(cache_dir, exist_ok=True)
-    req = requests.get(url)
     file_path = os.path.join(cache_dir, file_name)
-    with open(file_path, 'wb') as f:
-        f.write(req.content)
+    if os.path.exists(file_path):
+        return file_path
+    resp = requests.get(url, stream=True)
+    resp.raise_for_status()
+    total_size = int(resp.headers.get('content-length', 0))
+    with open(file_path, 'wb') as f, tqdm(
+            total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=file_name) as pbar:
+        for chunk in resp.iter_content(chunk_size=8192):
+            f.write(chunk)
+            pbar.update(len(chunk))
     return file_path

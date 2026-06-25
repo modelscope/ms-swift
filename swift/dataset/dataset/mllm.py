@@ -1356,12 +1356,29 @@ class Qwen3TTSPreprocessor(ResponsePreprocessor):
          'audios': ['path.wav'], 'ref_audios': ['ref.wav']}
     """
 
+    data_dir: Optional[str] = None
+
     def prepare_dataset(self, dataset):
+        import zipfile
+
         from swift.utils import download_file
         url = 'https://modelscope.cn/datasets/qsdong/Qwen3-1.7-TTS-SFT-Furina/resolve/master/Furina.zip'
         file_path = download_file(url)
+        extract_dir = file_path.rsplit('.', 1)[0]
+        if not os.path.exists(extract_dir):
+            with zipfile.ZipFile(file_path, 'r') as zf:
+                zf.extractall(extract_dir)
+        self.data_dir = extract_dir
+        return super().prepare_dataset(dataset)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if self.data_dir:
+            audios = row.get('audios')
+            if isinstance(audios, str) and not os.path.isabs(audios):
+                row['audios'] = os.path.join(self.data_dir, audios)
+            ref_audios = row.get('ref_audios')
+            if isinstance(ref_audios, str) and not os.path.isabs(ref_audios):
+                row['ref_audios'] = os.path.join(self.data_dir, ref_audios)
         ref_audios = row.get('ref_audios')
         if isinstance(ref_audios, str):
             row['ref_audios'] = [ref_audios]
