@@ -12,6 +12,28 @@
 4. 使用“快速跑通”完成一次 ModelScope 模型 LoRA 训练、合并、推理和部署。
 5. 需要更大规模训练时，再阅读 DDP、DeepSpeed 和 MindSpeed/Megatron-SWIFT 相关章节。
 
+## 硬件配套和支持的操作系统
+
+**表 1**  产品硬件支持列表
+
+|产品|是否支持|
+|--|:-:|
+|<term>Ascend 950 系列产品</term>|√|
+|<term>Atlas A3 训练系列产品</term>|√|
+|<term>Atlas A3 推理系列产品</term>|x|
+|<term>Atlas A2 训练系列产品</term>|√|
+|<term>Atlas A2 推理系列产品</term>|x|
+|<term>Atlas 200I/500 A2 推理产品</term>|x|
+|<term>Atlas 推理系列产品</term>|x|
+|<term>Atlas 训练系列产品</term>|x|
+
+> [!NOTE]
+>
+> 本节表格中“√”代表支持，“x”代表不支持。
+
+- 各硬件产品对应物理机部署场景支持的操作系统请参考[兼容性查询助手](https://www.hiascend.com/hardware/compatibility)。
+- 各硬件产品对应虚拟机及容器部署场景支持的操作系统请参考《CANN 软件安装》的“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0101.html?OS=openEuler&InstallType=netyum)”章节（商用版）或“[操作系统兼容性说明](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/softwareinst/instg/instg_0101.html?OS=openEuler&InstallType=netyum)”章节（社区版）。
+
 ## 支持范围速览
 
 推荐基础环境版本：
@@ -113,9 +135,17 @@
 ## 环境准备
 
 ### 镜像/容器环境安装
-官方 NPU 镜像仍在发布流程中。在镜像正式发布前，推荐使用项目提供的 Dockerfile 自行构建一个包含 CANN、PyTorch、torch_npu 与 ms-swift 依赖的容器环境。容器方式的优势是依赖版本更容易固化，也便于在多台昇腾机器之间复现实验环境。
+官方 NPU 镜像已发布在 [quay.io/ascend/ms-swift](https://quay.io/repository/ascend/ms-swift?tab=tags)。推荐优先根据设备代际、Python、CANN 和系统版本选择匹配的镜像标签；如需锁定分支或定制依赖，再使用项目提供的 Dockerfile 自行构建。容器方式的优势是依赖版本更容易固化，也便于在多台昇腾机器之间复现实验环境。
 
-先 clone modelscope 仓库，然后使用仓库中的 [Dockerfile.ascend](https://github.com/modelscope/modelscope/blob/master/docker/Dockerfile.ascend) 和 [build_image.py](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py) 构建镜像：
+下面以 A2、Python 3.11、CANN 9.0.0、Ubuntu 22.04 标签为例，实际使用时请以 Quay 标签页中适配当前机器和软件栈的最新标签为准：
+
+```shell
+docker pull quay.io/ascend/ms-swift:v4.3.0-A2-py311-CANN9.0.0-ubuntu22.04
+export IMAGE_NAME=quay.io/ascend/ms-swift:v4.3.0-A2-py311-CANN9.0.0-ubuntu22.04
+export WORKSPACE=/path/to/workspace
+```
+
+如果需要自行构建镜像，先 clone modelscope 仓库，然后使用仓库中的 [Dockerfile.ascend](https://github.com/modelscope/modelscope/blob/master/docker/Dockerfile.ascend) 和 [build_image.py](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py)：
 
 ```shell
 git clone https://github.com/modelscope/modelscope.git
@@ -127,11 +157,10 @@ DOCKER_REGISTRY=ms-swift python docker/build_image.py \
   --arch arm
 ```
 
-当前 `build_image.py` 生成的 Ascend 镜像名格式为 `{DOCKER_REGISTRY}:{swift_branch}-{atlas_hardware}-{python_tag}-{arch}`。以上命令以 ARM 架构的 Atlas 900 A2 PODc 为例，通常会生成 `ms-swift:main-A2-py311-arm`。下面用变量保存镜像名和工作目录，实际使用时请按构建日志中的镜像名替换：
+当前 `build_image.py` 生成的 Ascend 镜像名格式为 `{DOCKER_REGISTRY}:{swift_branch}-{atlas_hardware}-{python_tag}-{arch}`。以上命令以 ARM 架构的 Atlas 900 A2 PODc 为例，通常会生成 `ms-swift:main-A2-py311-arm`。如果使用自行构建的镜像，请按构建日志中的镜像名替换上面的 `IMAGE_NAME`：
 
 ```shell
 export IMAGE_NAME=ms-swift:main-A2-py311-arm
-export WORKSPACE=/path/to/workspace
 ```
 
 启动容器前建议先确认宿主机暴露的 NPU 设备：
