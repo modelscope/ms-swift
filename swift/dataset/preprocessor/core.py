@@ -21,12 +21,11 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
-_pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
-_extra_media_keys = ['ref_audios']
+_pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects', 'ref_audios']
 
 
 class RowPreprocessor:
-    standard_keys = _pair_keys + _extra_media_keys + list(
+    standard_keys = _pair_keys + list(
         chain.from_iterable([f'{prefix}_{k}' for k in _pair_keys]
                             for prefix in ['rejected', 'positive', 'negative'])) + [
                                 'rejected_response',

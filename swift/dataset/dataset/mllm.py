@@ -1346,7 +1346,7 @@ register_dataset(
         tags=['multi-modal', 'en', 'math']))
 
 
-class Qwen3TTSPreprocessor(RowPreprocessor):
+class Qwen3TTSPreprocessor(ResponsePreprocessor):
     """Preprocessor for Qwen3-TTS SFT datasets.
 
     Input format:
@@ -1356,23 +1356,21 @@ class Qwen3TTSPreprocessor(RowPreprocessor):
          'audios': ['path.wav'], 'ref_audios': ['ref.wav']}
     """
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.columns['ref_audio'] = 'ref_audios'
-        self.columns['ref_audios'] = 'ref_audios'
+    def prepare_dataset(self, dataset):
+        from swift.utils import download_file
+        url = 'https://modelscope.cn/datasets/qsdong/Qwen3-1.7-TTS-SFT-Furina/resolve/master/Furina.zip'
+        file_path = download_file(url)
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        text = row.pop('text', '')
         ref_audios = row.get('ref_audios')
         if isinstance(ref_audios, str):
             row['ref_audios'] = [ref_audios]
-        row['messages'] = [{'role': 'assistant', 'content': text}]
-        return row
+        return super().preprocess(row)
 
 
 register_dataset(
     DatasetMeta(
         ms_dataset_id='qsdong/Qwen3-1.7-TTS-SFT-Furina',
-        preprocess_func=Qwen3TTSPreprocessor(),
+        preprocess_func=Qwen3TTSPreprocessor(columns={'ref_audio': 'ref_audios'}),
         tags=['chat', 'multi-modal', 'audio', 'tts'],
     ))
