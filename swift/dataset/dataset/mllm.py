@@ -2,12 +2,13 @@
 import ast
 import numpy as np
 import os
+import zipfile
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 from typing import Any, Dict, List, Optional
 
-from swift.utils import get_hf_endpoint, use_hf_hub
+from swift.utils import download_file, get_hf_endpoint, use_hf_hub
 from ..media import MediaResource
 from ..preprocessor import GroundingMixin, MessagesPreprocessor, ResponsePreprocessor, RowPreprocessor
 from ..register import DatasetMeta, SubsetDataset, register_dataset
@@ -1359,9 +1360,6 @@ class Qwen3TTSPreprocessor(ResponsePreprocessor):
     data_dir: Optional[str] = None
 
     def prepare_dataset(self, dataset):
-        import zipfile
-
-        from swift.utils import download_file
         url = 'https://modelscope.cn/datasets/qsdong/Qwen3-1.7-TTS-SFT-Furina/resolve/master/Furina.zip'
         file_path = download_file(url)
         extract_dir = file_path.rsplit('.', 1)[0]
