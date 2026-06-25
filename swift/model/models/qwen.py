@@ -1165,9 +1165,9 @@ def _get_local_padding_mask(attention_mask: torch.Tensor, local_seq_len: int):
 
 
 def _ensure_linear_attention_kernels(mod: torch.nn.Module) -> None:
-    mod.causal_conv1d_fn = causal_conv1d
+    mod._swift_fla_causal_conv1d_fn = causal_conv1d
     mod.chunk_gated_delta_rule = getattr(mod, 'chunk_gated_delta_rule', None) or chunk_gated_delta_rule
-    if mod.chunk_gated_delta_rule is None or mod.causal_conv1d_fn is None:
+    if mod.chunk_gated_delta_rule is None or mod._swift_fla_causal_conv1d_fn is None:
         raise ImportError('Qwen3.5 linear attention padding free/sequence parallel requires flash-linear-attention. '
                           'Install: https://github.com/fla-org/flash-linear-attention#installation')
 
@@ -1283,7 +1283,7 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     if cache_params is not None:
         cache_params.conv_states[mod.layer_idx] = F.pad(
             mixed_qkv.transpose(1, 2).contiguous(), (mod.conv_kernel_size - mixed_qkv.shape[1], 0))
-    mixed_qkv, _ = mod.causal_conv1d_fn(
+    mixed_qkv, _ = mod._swift_fla_causal_conv1d_fn(
         x=mixed_qkv,
         weight=conv_weight,
         bias=conv_bias,
