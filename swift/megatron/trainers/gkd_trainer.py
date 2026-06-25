@@ -22,14 +22,13 @@ from ..utils import forward_step_helper, get_padding_to
 from .gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
-from .teacher_mixin import MegatronTeacherMixin
 from .utils import gather_object
 from .vocab_parallel_utils import vocab_parallel_kl_div, vocab_parallel_log_softmax
 
 logger = get_logger()
 
 
-class MegatronGKDTrainer(MegatronTeacherMixin, MegatronRolloutMixin, MegatronRLHFTrainer):
+class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     sample_cls = GKDSample
 

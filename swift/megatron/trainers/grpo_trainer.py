@@ -28,7 +28,6 @@ from swift.template import Template
 from swift.utils import get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
 from .rollout_mixin import MegatronRolloutMixin
-from .teacher_mixin import MegatronTeacherMixin
 from .utils import gather, gather_object, reconstruct_tensor_cp
 from .vocab_parallel_utils import compute_logps_and_entropy_from_logits
 
@@ -41,7 +40,7 @@ except ImportError:
 logger = get_logger()
 
 
-class MegatronGRPOTrainer(MegatronTeacherMixin, MegatronRolloutMixin, MegatronRLHFTrainer):
+class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     # Per-sample container class used by MegatronRolloutMixin.to_samples.
     sample_cls = GRPOSample
