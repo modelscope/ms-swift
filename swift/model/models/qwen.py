@@ -1762,13 +1762,18 @@ register_model(
 def _patch_qwen3_tts_forward(model):
     """Patch model.forward to implement Qwen3-TTS dual-channel training logic."""
 
-    def tts_forward(self, input_ids=None, attention_mask=None, ref_mels=None,
-                    text_embedding_mask=None, codec_embedding_mask=None,
-                    codec_0_labels=None, codec_ids=None, codec_mask=None, **kwargs):
+    def tts_forward(self,
+                    input_ids=None,
+                    attention_mask=None,
+                    ref_mels=None,
+                    text_embedding_mask=None,
+                    codec_embedding_mask=None,
+                    codec_0_labels=None,
+                    codec_ids=None,
+                    codec_mask=None,
+                    **kwargs):
         # Extract speaker embedding from reference audio mel
-        speaker_embedding = self.speaker_encoder(
-            ref_mels.to(device=self.device, dtype=self.dtype)
-        ).detach()
+        speaker_embedding = self.speaker_encoder(ref_mels.to(device=self.device, dtype=self.dtype)).detach()
 
         # Separate dual-channel input_ids
         input_text_ids = input_ids[:, :, 0]
@@ -1802,9 +1807,7 @@ def _patch_qwen3_tts_forward(model):
         talker_hidden_states = hidden_states[codec_mask[:, :-1]]
         talker_codec_ids = codec_ids[codec_mask]
 
-        _, sub_talker_loss = self.talker.forward_sub_talker_finetune(
-            talker_codec_ids, talker_hidden_states
-        )
+        _, sub_talker_loss = self.talker.forward_sub_talker_finetune(talker_codec_ids, talker_hidden_states)
 
         # Attach sub_talker_loss to outputs for the custom loss function
         outputs.sub_talker_loss = sub_talker_loss

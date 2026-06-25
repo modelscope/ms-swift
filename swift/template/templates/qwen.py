@@ -1158,9 +1158,13 @@ class Qwen3TTSTemplate(Template):
             audio = librosa.resample(audio, orig_sr=sr, target_sr=24000)
         mels = mel_spectrogram(
             torch.from_numpy(audio.astype(np.float32)).unsqueeze(0),
-            n_fft=1024, num_mels=128, sampling_rate=24000,
-            hop_size=256, win_size=1024, fmin=0, fmax=12000
-        ).transpose(1, 2)  # [1, mel_len, 128]
+            n_fft=1024,
+            num_mels=128,
+            sampling_rate=24000,
+            hop_size=256,
+            win_size=1024,
+            fmin=0,
+            fmax=12000).transpose(1, 2)  # [1, mel_len, 128]
         return mels
 
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
@@ -1181,7 +1185,10 @@ class Qwen3TTSTemplate(Template):
                 inputs = dict(inputs)
                 text = inputs.get('text', '')
                 inputs['messages'] = [
-                    {'role': 'assistant', 'content': text or ''},
+                    {
+                        'role': 'assistant',
+                        'content': text or ''
+                    },
                 ]
         return super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
 
@@ -1302,12 +1309,11 @@ class Qwen3TTSTemplate(Template):
         }
 
 
-register_template(
-    QwenTemplateMeta(
-        MLLMTemplateType.qwen3_tts,
-        template_cls=Qwen3TTSTemplate,
-        default_system=None,
-    ))
+register_template(QwenTemplateMeta(
+    MLLMTemplateType.qwen3_tts,
+    template_cls=Qwen3TTSTemplate,
+    default_system=None,
+))
 
 
 class Ovis1_6Template(Template):
