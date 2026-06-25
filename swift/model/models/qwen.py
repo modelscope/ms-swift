@@ -1833,9 +1833,10 @@ class Qwen3TTSLoader(ModelLoader):
         model = super().get_model(model_dir, config, processor, model_kwargs)
         # Redirect gradient_checkpointing and get_input_embeddings to talker
         use_submodel_func(model, 'talker', func_list=['get_input_embeddings', 'gradient_checkpointing_enable'])
-        # Freeze speaker_encoder (only talker is trained)
-        for param in model.speaker_encoder.parameters():
-            param.requires_grad = False
+        if model.speaker_encoder is not None:
+            # Freeze speaker_encoder (only talker is trained)
+            for param in model.speaker_encoder.parameters():
+                param.requires_grad = False
         # Patch forward for TTS dual-channel training
         _patch_qwen3_tts_forward(model)
         return model
@@ -1847,14 +1848,16 @@ register_model(
         [
             ModelGroup([
                 Model('Qwen/Qwen3-TTS-12Hz-1.7B-Base', 'Qwen/Qwen3-TTS-12Hz-1.7B-Base'),
+                Model('Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice', 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'),
                 Model('Qwen/Qwen3-TTS-12Hz-0.6B-Base', 'Qwen/Qwen3-TTS-12Hz-0.6B-Base'),
+                Model('Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice', 'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice'),
             ], TemplateType.qwen3_tts)
         ],
         Qwen3TTSLoader,
         model_arch=ModelArch.qwen3_tts,
         architectures=['Qwen3TTSForConditionalGeneration'],
         requires=['qwen-tts'],
-        tags=['audio'],
+        tags=['audio', 'tts'],
     ))
 
 
