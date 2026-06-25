@@ -6,6 +6,7 @@ import transformers
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
+import numpy as np
 from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -1102,16 +1103,9 @@ register_template(
 
 
 class Qwen3TTSTemplate(Template):
-    """Template for Qwen3-TTS SFT training with dual-channel architecture.
-
-    Supports JSONL data format:
-        {"text": "...", "audio": "path.wav", "ref_audio": "ref.wav"}
-    or:
-        {"text": "...", "audio_codes": [[...], ...], "ref_audio": "ref.wav"}
-    """
-    use_model = True
-    skip_prompt = True
+    # ref: https://github.com/QwenLM/Qwen3-TTS/tree/main/finetuning
     support_padding_free = False
+    use_model = True
 
     def init_env_args(self) -> None:
         super().init_env_args()
@@ -1123,26 +1117,17 @@ class Qwen3TTSTemplate(Template):
         self._tts_bos_token_id = config.tts_bos_token_id
         self._tts_eos_token_id = config.tts_eos_token_id
         talker_config = config.talker_config
-        if isinstance(talker_config, dict):
-            self._codec_nothink_id = talker_config['codec_nothink_id']
-            self._codec_think_bos_id = talker_config['codec_think_bos_id']
-            self._codec_think_eos_id = talker_config['codec_think_eos_id']
-            self._codec_pad_id = talker_config['codec_pad_id']
-            self._codec_bos_id = talker_config['codec_bos_id']
-            self._codec_eos_token_id = talker_config['codec_eos_token_id']
-        else:
-            self._codec_nothink_id = talker_config.codec_nothink_id
-            self._codec_think_bos_id = talker_config.codec_think_bos_id
-            self._codec_think_eos_id = talker_config.codec_think_eos_id
-            self._codec_pad_id = talker_config.codec_pad_id
-            self._codec_bos_id = talker_config.codec_bos_id
-            self._codec_eos_token_id = talker_config.codec_eos_token_id
+        self._codec_nothink_id = talker_config.codec_nothink_id
+        self._codec_think_bos_id = talker_config.codec_think_bos_id
+        self._codec_think_eos_id = talker_config.codec_think_eos_id
+        self._codec_pad_id = talker_config.codec_pad_id
+        self._codec_bos_id = talker_config.codec_bos_id
+        self._codec_eos_token_id = talker_config.codec_eos_token_id
 
     @staticmethod
     def _extract_ref_mel(ref_audio_path: str) -> torch.Tensor:
         """Extract mel spectrogram from reference audio for speaker embedding."""
         import librosa
-        import numpy as np
         from qwen_tts.core.models.modeling_qwen3_tts import mel_spectrogram
         audio, sr = librosa.load(ref_audio_path, sr=None, mono=True)
         if audio.ndim > 1:
@@ -1163,27 +1148,6 @@ class Qwen3TTSTemplate(Template):
     def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
         """Override to skip _add_default_tags since audios here are targets, not inputs."""
         pass
-
-    def encode(
-        self,
-        inputs,
-        *,
-        return_template_inputs: bool = False,
-        return_length: bool = False,
-    ) -> Dict[str, Any]:
-        # Ensure messages format is valid for TTS processing.
-        if isinstance(inputs, dict):
-            messages = inputs.get('messages', [])
-            if not messages or not any(m.get('content') for m in messages):
-                inputs = dict(inputs)
-                text = inputs.get('text', '')
-                inputs['messages'] = [
-                    {
-                        'role': 'assistant',
-                        'content': text or ''
-                    },
-                ]
-        return super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
 
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         # Get text from messages (assistant content)
@@ -1347,8 +1311,8 @@ class Qwen3TTSTemplate(Template):
             'attention_mask': attention_mask,
             'text_embedding_mask': text_embedding_mask.unsqueeze(-1),
             'codec_embedding_mask': codec_embedding_mask.unsqueeze(-1),
-            'labels': codec_0_labels,  # popped by trainer, passed to loss_func
-            'codec_0_labels': codec_0_labels,  # stays in inputs for model forward
+            'labels': codec_0_labels,
+            'codec_0_labels': codec_0_labels,
             'codec_ids': codec_ids,
             'codec_mask': codec_mask,
         }

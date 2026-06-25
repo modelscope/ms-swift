@@ -1839,7 +1839,8 @@ class Qwen3TTSLoader(ModelLoader):
         from qwen_tts import Qwen3TTSTokenizer
         tokenizer_path = get_env_args('tts_tokenizer_path', str, 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
         tokenizer_path = safe_snapshot_download(tokenizer_path)
-        processor.tts_tokenizer = Qwen3TTSTokenizer.from_pretrained(tokenizer_path, device_map='cpu')
+        processor.tts_tokenizer = Qwen3TTSTokenizer.from_pretrained(tokenizer_path, device_map=model_kwargs.get('device_map'))
+        model.config = config
         return model
 
 
