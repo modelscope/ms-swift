@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from .causal_lm import CustomCrossEntropyLoss
 from .embedding import ContrastiveLoss, CosineSimilarityLoss, InfonceLoss, OnlineContrastiveLoss
-from .qwen3_tts import Qwen3TTSLoss
 from .reranker import ListwiseRerankerLoss, PointwiseRerankerLoss
 
 loss_map = {
@@ -14,6 +13,4 @@ loss_map = {
     # # reranker
     'pointwise_reranker': PointwiseRerankerLoss,
     'listwise_reranker': ListwiseRerankerLoss,
-    # tts
-    'qwen3_tts': Qwen3TTSLoss,
 }

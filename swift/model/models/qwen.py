@@ -1820,7 +1820,15 @@ class Qwen3TTSLoader(ModelLoader):
 
     def get_config(self, model_dir: str):
         import qwen_tts
-        return super().get_config(model_dir)
+        config = super().get_config(model_dir)
+        speaker_name = get_env_args('speaker_name', str, None)
+        if speaker_name is not None:
+            config.tts_model_type = 'custom_voice'
+            if not hasattr(config, 'talker_config') or config.talker_config is None:
+                config.talker_config = {}
+            config.talker_config['spk_id'] = {speaker_name: 3000}
+            config.talker_config['spk_is_dialect'] = {speaker_name: False}
+        return config
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import AutoModel

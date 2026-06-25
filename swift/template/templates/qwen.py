@@ -1232,8 +1232,16 @@ class Qwen3TTSTemplate(Template):
         }
 
     def compute_sft_loss(self, model, inputs, num_items_in_batch=None, trainer=None):
-        """Override to bypass standard label adjustment - TTS loss is computed in forward."""
+        """Override to bypass standard label adjustment - TTS loss is computed in forward.
+
+        Combines the talker codec_0 cross-entropy loss with the sub-talker loss
+        using a fixed weighting factor of 0.3.
+        """
         outputs = model(**inputs)
+        talker_loss = outputs.loss
+        sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
+        if sub_talker_loss is not None:
+            outputs.loss = talker_loss + 0.3 * sub_talker_loss
         return outputs
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to=None) -> Dict[str, Any]:
