@@ -6,7 +6,9 @@ import torch
 import torch.nn.functional as F
 from packaging import version
 from PIL import Image
-from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (
+    AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase, AutoConfig
+)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
@@ -1735,7 +1737,6 @@ class Qwen3ASRLoader(ModelLoader):
         return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import AutoModel
         self.auto_model_cls = self.auto_model_cls or AutoModel
         model = super().get_model(model_dir, config, processor, model_kwargs)
         use_submodel_func(model, 'thinker')
@@ -1819,19 +1820,15 @@ def _patch_qwen3_tts_forward(model):
 class Qwen3TTSLoader(ModelLoader):
 
     def get_config(self, model_dir: str):
-        import qwen_tts
-        config = super().get_config(model_dir)
-        speaker_name = get_env_args('speaker_name', str, None)
-        if speaker_name is not None:
-            config.tts_model_type = 'custom_voice'
-            if not hasattr(config, 'talker_config') or config.talker_config is None:
-                config.talker_config = {}
-            config.talker_config['spk_id'] = {speaker_name: 3000}
-            config.talker_config['spk_is_dialect'] = {speaker_name: False}
-        return config
+        from qwen_tts.core.models import Qwen3TTSConfig, Qwen3TTSForConditionalGeneration, Qwen3TTSProcessor
+        from transformers import AutoProcessor
+        AutoConfig.register("qwen3_tts", Qwen3TTSConfig)
+        AutoModel.register(Qwen3TTSConfig, Qwen3TTSForConditionalGeneration)
+        AutoProcessor.register(Qwen3TTSConfig, Qwen3TTSProcessor)
+
+        return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import AutoModel
         self.auto_model_cls = self.auto_model_cls or AutoModel
         model = super().get_model(model_dir, config, processor, model_kwargs)
         # Redirect gradient_checkpointing and get_input_embeddings to talker

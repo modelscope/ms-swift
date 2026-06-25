@@ -1237,6 +1237,13 @@ class Qwen3TTSTemplate(Template):
         Combines the talker codec_0 cross-entropy loss with the sub-talker loss
         using a fixed weighting factor of 0.3.
         """
+        # speaker_name = get_env_args('speaker_name', str, None)
+        # if speaker_name is not None:
+        #     config.tts_model_type = 'custom_voice'
+        #     if not hasattr(config, 'talker_config') or config.talker_config is None:
+        #         config.talker_config = {}
+        #     config.talker_config['spk_id'] = {speaker_name: 3000}
+        #     config.talker_config['spk_is_dialect'] = {speaker_name: False}
         outputs = model(**inputs)
         talker_loss = outputs.loss
         sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
