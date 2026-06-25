@@ -100,7 +100,7 @@ class MegatronGKDTrainer(MegatronTeacherMixin, MegatronRolloutMixin, MegatronRLH
     def _build_teacher_requests(self, samples: List[GKDSample]):
         if not self.use_teacher_api:
             return []
-        return build_teacher_requests(samples)
+        return build_teacher_requests(samples, self.template)
 
     def _encode_samples(self, samples: List[GKDSample]) -> Dict[str, torch.Tensor]:
         template = self.template

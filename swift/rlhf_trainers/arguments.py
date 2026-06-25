@@ -100,7 +100,9 @@ class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
         require_version('trl>=0.26')
         GRPOArgumentsMixin.__post_init__(self)
         TrainArgumentsMixin.__post_init__(self)
-        HfGRPOConfig.__post_init__(self)
+        # Skip trl GRPOConfig.__post_init__ (it hard-requires num_generations>=2).
+        super(HfGRPOConfig, self).__post_init__()
+
         if self.vllm_reasoning_parser is not None:
             raise ValueError('vllm_reasoning_parser is not supported for GRPO Training, please unset it.')
 
@@ -116,8 +118,10 @@ class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
         # https://github.com/modelscope/ms-swift/issues/3863
         self.dataloader_drop_last = True
 
-        if self.num_generations < 2:
-            raise ValueError(
-                'GRPO requires at least 2 generations per prompt to calculate the advantages. You provided '
-                f'{self.num_generations}, which is less than the minimum required.')
+        if self.num_generations < 1:
+            raise ValueError(f'num_generations must be >= 1, got {self.num_generations}.')
+
+        if self.delta is not None and self.use_liger_kernel:
+            raise ValueError('Liger kernel does not support two-sided GRPO loss yet.')
+
         self._init_generation_batch_params()

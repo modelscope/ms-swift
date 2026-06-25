@@ -286,7 +286,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def _build_teacher_requests(self, samples: List[GKDSample]):
         """Build teacher API requests from samples (mirrors Megatron GKD)."""
-        return build_teacher_requests(samples)
+        return build_teacher_requests(samples, self.template)
 
     def _rollout_samples(self, inputs: DataType) -> List[GKDSample]:
         """Pick the data source, convert rows to samples, and generate for the STUDENT branch."""

@@ -735,14 +735,18 @@ class MegatronGRPOTrainer(MegatronTeacherMixin, MegatronRolloutMixin, MegatronRL
         """OPD-RL teacher API: fetch the sampled token's logp per response position
         (``prompt_logprobs=0``) and write it as ``teacher_per_token_logps`` (completion frame)
         on each micro-batch's GRPOBatch. Same sampled-token semantics as HF/Ray OPD-RL."""
-        requests = build_teacher_requests(total_samples)
+        requests = build_teacher_requests(total_samples, self.template)
+        all_rti = [s.response_token_ids for s in total_samples]
         parsed = self._fetch_teacher_parsed_logprobs(requests, topk=0)
         offset = 0
         for data in mini_batch_data:
             grpo_batch: GRPOBatch = data['grpo_batch']
             n = grpo_batch.completion_mask.shape[0]
-            teacher_out = assemble_teacher_completion_logprobs(parsed[offset:offset + n], grpo_batch.completion_mask,
-                                                               grpo_batch.completion_mask.device)
+            teacher_out = assemble_teacher_completion_logprobs(
+                parsed[offset:offset + n],
+                grpo_batch.completion_mask,
+                grpo_batch.completion_mask.device,
+                response_token_ids=all_rti[offset:offset + n])
             grpo_batch.teacher_per_token_logps = teacher_out.topk_logprobs[..., 0]
             offset += n
 

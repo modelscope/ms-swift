@@ -79,11 +79,18 @@ def encode_gkd_samples(
     return student_encoded_list, teacher_encoded_list, has_opsd
 
 
-def build_teacher_requests(samples: List[OnPolicySample]) -> List[Any]:
+def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Template] = None) -> List[Any]:
     """Build teacher API requests from samples (GKD or GRPO/OPD-RL).
 
     For GKD OPSD samples, ``teacher_messages`` replaces the request messages;
     GRPO samples have no OPSD view, so the on-policy request is used as-is.
+
+    When ``template`` is given and the sample carries ``response_token_ids``, the assistant
+    response is sent as raw token ids (mirroring :func:`encode_sample`) so the teacher server
+    forwards the *same* tokens the student sampled instead of re-tokenizing the decoded text.
+    Re-tokenization can split the response into a different number of tokens, breaking the
+    token-in-token-out alignment the teacher KL relies on. Teacher and student must share the
+    tokenizer/vocabulary (a prerequisite of distillation) for the ids to be meaningful.
     """
     requests = []
     for s in samples:
@@ -91,6 +98,15 @@ def build_teacher_requests(samples: List[OnPolicySample]) -> List[Any]:
         teacher_messages = getattr(s, 'teacher_messages', None)
         if teacher_messages:
             req.messages = teacher_messages
+        # DEBUG: check if response_token_ids is populated
+        if template is not None and s.response_token_ids:
+            loss_mask = s.response_loss_mask or None
+            ctk = s.extra.get('chat_template_kwargs') or {}
+            prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=ctk.get('enable_thinking'))
+            req.messages = replace_assistant_response_with_ids([m.copy() for m in req.messages],
+                                                               s.response_token_ids,
+                                                               loss_mask,
+                                                               non_thinking_prefix_ids=prefix_ids)
         requests.append(req)
     return requests
 
@@ -159,18 +175,21 @@ def assemble_teacher_completion_logprobs(
     parsed: List[Tuple],
     completion_mask: torch.Tensor,
     device: torch.device,
+    response_token_ids: Optional[List[List[int]]] = None,
 ) -> TeacherOutput:
     """Align parsed teacher *sampled-token* prompt logprobs to a ``[B, T, 1]`` completion frame (GRPO/OPD-RL).
 
     ``parsed[i] = (lps, ixs)`` come from :func:`parse_prompt_logprobs` with ``topk=0``,
-    i.e. the sampled token's logp/id at each response position (token-in-token-out). They
-    are placed on ``completion_mask``'s response region (trailing ``completion_count``
-    positions; mirrors :func:`build_rollout_logps`, incl. the ``count+1`` off-by-one), so
-    the frame matches the policy's ``old_per_token_logps``. The single ``K=1`` column keeps
-    the same ``TeacherOutput`` representation as GKD top-k for future top-k RL.
+    i.e. the sampled token's logp/id at each position. They are placed on
+    ``completion_mask``'s response region.
+
+    When the teacher API returns logprobs for the **full sequence** (prompt + response
+    + end tokens), ``response_token_ids`` is used to locate the response portion by
+    matching token IDs from the end of the sequence (the response is the last
+    ``count`` tokens before the end tokens).
     """
     batch_size, seq_len = completion_mask.shape
-    out_lp = torch.full((batch_size, seq_len, 1), float('-inf'), dtype=torch.float32, device=device)
+    out_lp = torch.zeros(batch_size, seq_len, 1, dtype=torch.float32, device=device)
     out_ix = torch.zeros(batch_size, seq_len, 1, dtype=torch.long, device=device)
     for i, (lps, ixs) in enumerate(parsed):
         completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
@@ -179,6 +198,30 @@ def assemble_teacher_completion_logprobs(
             continue
         if len(lps) == count + 1:
             lps, ixs = lps[:count], ixs[:count]
+        elif len(lps) > count + 1 and response_token_ids is not None:
+            # Teacher returned logprobs for the full sequence (prompt + response + end tokens).
+            # Locate the response portion by matching token IDs from the end.
+            rti = response_token_ids[i]
+            if isinstance(rti[0], list):
+                rti = rti[0]  # flatten [[1,2,3]] -> [1,2,3]
+            flat_ixs = [ix[0] for ix in ixs]  # each ix is a single-element list [token_id]
+            # Search from the end: find the starting index where the last `count` tokens
+            # match the response token IDs (allowing 0-2 end tokens after the response).
+            start = None
+            for offset in range(min(3, len(lps) - count + 1)):  # try 0, 1, 2 end tokens
+                candidate_start = len(flat_ixs) - count - offset
+                if candidate_start < 0:
+                    continue
+                if flat_ixs[candidate_start:candidate_start + count] == rti[:count]:
+                    start = candidate_start
+                    break
+            if start is not None:
+                lps = lps[start:start + count]
+                ixs = ixs[start:start + count]
+            else:
+                # Fallback: take the last `count` entries (best effort).
+                lps = lps[-count:]
+                ixs = ixs[-count:]
         assert len(lps) == count, (f'Teacher logp count {len(lps)} != sampled tokens {count}. The teacher server '
                                    'must use the same tokenizer as the student (token-in-token-out).')
         # lps/ixs are per-position single-element lists ([[lp], ...]) -> [count, 1].

@@ -533,19 +533,21 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         column as ``teacher_per_token_logps``. Future top-k RL reuses the same ``TeacherOutput``."""
         sample_chunks = self.split_by_mini_batches(samples)
         local_requests, chunk_sizes = [], []
+        chunk_rti = []
         for chunk in sample_chunks:
-            reqs = build_teacher_requests(chunk)
+            reqs = build_teacher_requests(chunk, self.template)
             local_requests.extend(reqs)
             chunk_sizes.append(len(reqs))
+            chunk_rti.append([s.response_token_ids for s in chunk])
         parsed_local = self._fetch_teacher_logprobs(local_requests, topk=0)
 
         offset = 0
-        for batch_encoded, cs in zip(batch_encoded_inputs, chunk_sizes):
+        for batch_encoded, cs, rti in zip(batch_encoded_inputs, chunk_sizes, chunk_rti):
             chunk_parsed = parsed_local[offset:offset + cs]
             offset += cs
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
-            teacher_out = assemble_teacher_completion_logprobs(chunk_parsed, grpo_batch.completion_mask,
-                                                               grpo_batch.completion_mask.device)
+            teacher_out = assemble_teacher_completion_logprobs(
+                chunk_parsed, grpo_batch.completion_mask, grpo_batch.completion_mask.device, response_token_ids=rti)
             grpo_batch.teacher_per_token_logps = teacher_out.topk_logprobs[..., 0]
 
     @profiling_decorator
