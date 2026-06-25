@@ -1,6 +1,6 @@
 import unittest
 
-from swift.dataset import EncodePreprocessor, PackingDataset, load_dataset
+from swift.dataset import EncodePreprocessor, MessagesPreprocessor, PackingDataset, load_dataset
 from swift.model import get_processor
 from swift.template import get_template
 
@@ -145,6 +145,62 @@ class TestDataPreprocess(unittest.TestCase):
         self.assertGreater(len(packed), 0)
         self.assertIn('input_ids', packed[0])
         self.assertIn('labels', packed[0])
+
+
+class TestRejectedMessagesPreprocess(unittest.TestCase):
+    """MessagesPreprocessor handling of rejected_messages (no model required)."""
+
+    def test_empty_rejected_messages_does_not_crash(self):
+        """A DPO row whose rejected_messages repair to empty must not crash.
+
+        The recursive preprocess() call returns None when rejected_messages is
+        empty (the same graceful-skip path used for the main messages list), so
+        subscripting it with ['messages'] raised TypeError and aborted the whole
+        dataset map. Downstream already treats rejected_messages is None as
+        'no rejected', so the row should fall back to None instead.
+        """
+        row = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'Q'
+                },
+                {
+                    'role': 'assistant',
+                    'content': 'good'
+                },
+            ],
+            'rejected_messages': [],
+        }
+        result = MessagesPreprocessor().preprocess(row)
+        self.assertIsNotNone(result)
+        self.assertIsNone(result['rejected_messages'])
+
+    def test_valid_rejected_messages_preserved(self):
+        row = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': 'Q'
+                },
+                {
+                    'role': 'assistant',
+                    'content': 'good'
+                },
+            ],
+            'rejected_messages': [
+                {
+                    'role': 'user',
+                    'content': 'Q'
+                },
+                {
+                    'role': 'assistant',
+                    'content': 'bad'
+                },
+            ],
+        }
+        result = MessagesPreprocessor().preprocess(row)
+        self.assertEqual(result['rejected_messages'][-1]['content'], 'bad')
 
 
 if __name__ == '__main__':
