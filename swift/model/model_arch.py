@@ -617,11 +617,12 @@ register_model_arch(
         aligner=['thinker.audio_tower.proj1', 'thinker.audio_tower.proj2'],
     ))
 
-register_model_arch(MultiModelKeys(
-    MLLMModelArch.qwen3_tts,
-    language_model='talker',
-    vision_tower='speaker_encoder',
-))
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.qwen3_tts,
+        language_model='talker',
+        generator='speaker_encoder',  # no grad
+    ))
 
 register_model_arch(
     MultiModelKeys(

@@ -6,9 +6,8 @@ import torch
 import torch.nn.functional as F
 from packaging import version
 from PIL import Image
-from transformers import (
-    AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase, AutoConfig
-)
+from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
@@ -1766,15 +1765,13 @@ def _patch_qwen3_tts_forward(model):
     def tts_forward(self,
                     input_ids=None,
                     attention_mask=None,
-                    ref_mels=None,
+                    speaker_embedding=None,
                     text_embedding_mask=None,
                     codec_embedding_mask=None,
                     codec_0_labels=None,
                     codec_ids=None,
                     codec_mask=None,
                     **kwargs):
-        # Extract speaker embedding from reference audio mel
-        speaker_embedding = self.speaker_encoder(ref_mels.to(device=self.device, dtype=self.dtype)).detach()
 
         # Separate dual-channel input_ids
         input_text_ids = input_ids[:, :, 0]
@@ -1822,7 +1819,7 @@ class Qwen3TTSLoader(ModelLoader):
     def get_config(self, model_dir: str):
         from qwen_tts.core.models import Qwen3TTSConfig, Qwen3TTSForConditionalGeneration, Qwen3TTSProcessor
         from transformers import AutoProcessor
-        AutoConfig.register("qwen3_tts", Qwen3TTSConfig)
+        AutoConfig.register('qwen3_tts', Qwen3TTSConfig)
         AutoModel.register(Qwen3TTSConfig, Qwen3TTSForConditionalGeneration)
         AutoProcessor.register(Qwen3TTSConfig, Qwen3TTSProcessor)
 

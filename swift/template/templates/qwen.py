@@ -1115,6 +1115,8 @@ class Qwen3TTSTemplate(Template):
 
     def init_env_args(self) -> None:
         super().init_env_args()
+        self._config_initialized = False
+        self.target_speaker_embedding = None
         self._tts_tokenizer = None
         # Cache TTS config values for data collation
         config = self.config
@@ -1237,19 +1239,56 @@ class Qwen3TTSTemplate(Template):
         Combines the talker codec_0 cross-entropy loss with the sub-talker loss
         using a fixed weighting factor of 0.3.
         """
-        # speaker_name = get_env_args('speaker_name', str, None)
-        # if speaker_name is not None:
-        #     config.tts_model_type = 'custom_voice'
-        #     if not hasattr(config, 'talker_config') or config.talker_config is None:
-        #         config.talker_config = {}
-        #     config.talker_config['spk_id'] = {speaker_name: 3000}
-        #     config.talker_config['spk_is_dialect'] = {speaker_name: False}
+        if not self._config_initialized:
+            speaker_name = get_env_args('speaker_name', str, None)
+            if speaker_name is not None:
+                config = model.config
+                config.tts_model_type = 'custom_voice'
+                if not hasattr(config, 'talker_config') or config.talker_config is None:
+                    config.talker_config = {}
+                config.talker_config['spk_id'] = {speaker_name: 3000}
+                config.talker_config['spk_is_dialect'] = {speaker_name: False}
+            self._config_initialized = True
+        # Extract speaker_embedding from ref_mels and cache for checkpoint post-processing
+        if 'ref_mels' in inputs:
+            base_model = model.module if hasattr(model, 'module') else model
+            with torch.no_grad():
+                speaker_embedding = base_model.speaker_encoder(inputs['ref_mels'].to(base_model.device).to(
+                    base_model.dtype)).detach()
+            if self.target_speaker_embedding is None:
+                self.target_speaker_embedding = speaker_embedding.cpu()
+            inputs.pop('ref_mels')
+            inputs['speaker_embedding'] = speaker_embedding
         outputs = model(**inputs)
         talker_loss = outputs.loss
         sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
         if sub_talker_loss is not None:
             outputs.loss = talker_loss + 0.3 * sub_talker_loss
         return outputs
+
+    def save_callback(self, model, output_dir):
+        """Custom save: drop speaker_encoder weights and inject target_speaker_embedding
+        into codec_embedding.weight[3000]."""
+        from safetensors.torch import save_file
+        from transformers.modeling_utils import unwrap_model
+
+        base_model = unwrap_model(model)
+        state_dict = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
+
+        # 1. Drop speaker_encoder keys
+        keys_to_drop = [k for k in state_dict if k.startswith('speaker_encoder')]
+        for k in keys_to_drop:
+            del state_dict[k]
+
+        # 2. Inject target_speaker_embedding into codec_embedding.weight[3000]
+        emb_key = 'talker.model.codec_embedding.weight'
+        if self.target_speaker_embedding is not None and emb_key in state_dict:
+            weight = state_dict[emb_key]
+            state_dict[emb_key][3000] = self.target_speaker_embedding[0].to(weight.dtype)
+
+        save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
+        # Save config
+        base_model.config.save_pretrained(output_dir)
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to=None) -> Dict[str, Any]:
         """Custom TTS data collation - builds dual-channel input format."""
