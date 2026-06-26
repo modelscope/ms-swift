@@ -1,6 +1,6 @@
 import unittest
 
-from swift.dataset import EncodePreprocessor, PackingDataset, load_dataset
+from swift.dataset import EncodePreprocessor, MessagesPreprocessor, PackingDataset, load_dataset
 from swift.model import get_processor
 from swift.template import get_template
 
@@ -145,6 +145,37 @@ class TestDataPreprocess(unittest.TestCase):
         self.assertGreater(len(packed), 0)
         self.assertIn('input_ids', packed[0])
         self.assertIn('labels', packed[0])
+
+
+class TestMessagesPreprocessor(unittest.TestCase):
+    """Unit tests for MessagesPreprocessor (no model required)."""
+
+    def test_system_propagated_to_rejected_messages(self):
+        """system message must be prepended to rejected_messages, not only to messages.
+
+        Regression test for the bug where the recursive preprocess() call for
+        rejected_messages omitted the 'system' key, causing chosen and rejected
+        to have asymmetric conversation prefixes during DPO training.
+        """
+        row = {
+            'messages': [
+                {'role': 'user', 'content': 'Q'},
+                {'role': 'assistant', 'content': 'good'},
+            ],
+            'rejected_messages': [
+                {'role': 'user', 'content': 'Q'},
+                {'role': 'assistant', 'content': 'bad'},
+            ],
+            'system': 'You are helpful.',
+        }
+        result = MessagesPreprocessor().preprocess(row)
+        self.assertIsNotNone(result)
+        self.assertEqual(result['messages'][0]['role'], 'system',
+                         'system message should be first in chosen messages')
+        self.assertEqual(result['rejected_messages'][0]['role'], 'system',
+                         'system message should also be first in rejected_messages')
+        self.assertEqual(result['messages'][0]['content'], 'You are helpful.')
+        self.assertEqual(result['rejected_messages'][0]['content'], 'You are helpful.')
 
 
 if __name__ == '__main__':
