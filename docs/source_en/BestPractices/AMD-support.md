@@ -320,5 +320,5 @@ megatron rlhf \
 ## Known issues
 
 - **Reinforcement learning**: If vLLM is the inference engine, use vLLM ≥ 0.11.0. It is recommended to use ROCm 7.0 or the image we provide to avoid the sleep mode memory leak issue.
-  - When using [Ray Megatron](../../source/Instruction/Ray.md) instead of `torchrun` for multi-GPU/Node training，don't set `CUDA_VISIBLE_DEVICES`/`HIP_VISIBLE_DEVICES` etc. to aviod conflicts.
+  - When using [Ray Megatron](../../source/Instruction/Ray.md) instead of `torchrun` for multi-GPU/Node training, don't set `CUDA_VISIBLE_DEVICES`/`HIP_VISIBLE_DEVICES` etc. to avoid conflicts.
 - **MoE training**: Set `NVTE_USE_GROUPED_GEMM_TRITON=1` and `--gradient_accumulation_fusion false` to reduce occasional GPU hangs.
