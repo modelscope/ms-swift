@@ -1263,6 +1263,15 @@ def test_mineru2_5_pro():
     print(response)
 
 
+def test_unlimited_ocr():
+    engine = TransformersEngine('PaddlePaddle/Unlimited-OCR')  # 去掉 attn_impl
+    query = 'Free OCR.'
+    messages = [{'role': 'user', 'content': query}]
+    images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
+    response = _infer_model(engine, messages=messages, images=images, max_tokens=256)
+    print(response)
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -1353,3 +1362,4 @@ if __name__ == '__main__':
     # test_glm_ocr()
     # test_gemma4()
     # test_mineru2_5_pro()
+    # test_unlimited_ocr()
