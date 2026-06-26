@@ -1,5 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
+
+import torch
+from swift.utils import get_logger
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict
 
@@ -464,9 +467,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         return True
 
     def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
-        import torch
-
-        from swift.utils import get_logger
         logger = get_logger()
 
         self.auto_model_cls = self.auto_model_cls or AutoModel

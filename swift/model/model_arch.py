@@ -477,7 +477,7 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
-        ModelArch.unlimited_ocr,
+        MLLMModelArch.unlimited_ocr,
         language_model=['model.model.embed_tokens', 'model.model.layers', 'model.model.norm', 'model.lm_head'],
         vision_tower=['model.model.vision_model', 'model.model.sam_model'],
         aligner=['model.model.projector'],
