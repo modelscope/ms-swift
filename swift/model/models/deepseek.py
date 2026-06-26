@@ -1,13 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
-
 import torch
-from swift.utils import get_logger
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict
 
 from swift.template import TemplateType
-from swift.utils import Processor, git_clone_github
+from swift.utils import Processor, get_logger, git_clone_github
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -402,7 +400,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         to handle device placement automatically, then restore the original methods after execution.
         """
         import sys
-        import torch
 
         modeling_module = None
         for mod_name, mod in sys.modules.items():
