@@ -159,7 +159,7 @@ AMD GPUs often have large VRAM, so you can tune several knobs together to improv
 - **Parallelism tuning**: Large per-GPU memory lets you reduce communication from aggressive splits (prefer tuning PP/EP before TP).
 - **Optimizer CPU offload**: If VRAM allows, disable with `--optimizer_cpu_offload false`.
 - **Activation / gradient checkpointing**: If VRAM allows, use `--recompute_granularity none`, or `--recompute_granularity selective` with `--recompute_modules` for finer control.
-- **MoE models**: Set `export NVTE_USE_CUTLASS_GROUPED_GEMM=1` for the optimized grouped GEMM kernel.
+- **MoE models**: Set `export NVTE_USE_GROUPED_GEMM_TRITON=1` to use grouped GEMM triton kernel.
 - **Models with GatedDeltaNet**: Set `USE_MCORE_GDN=1` to use the Megatron-Core implementation.
 - **Stability on some AMD GPUs**: Set `export HSA_NO_SCRATCH_RECLAIM=1` to avoid known issues and stabilize performance.
 
@@ -167,7 +167,7 @@ Single-node training:
 
 ```bash
 export HSA_NO_SCRATCH_RECLAIM=1
-export NVTE_USE_CUTLASS_GROUPED_GEMM=1
+export NVTE_USE_GROUPED_GEMM_TRITON=1
 
 output_dir=${PWD}/megatron_output/Qwen3.5-35B-A3B
 mkdir -p ${output_dir}
@@ -202,6 +202,7 @@ megatron sft \
     --global_batch_size 8 \
     --recompute_granularity selective \
     --recompute_modules core_attn mlp moe \
+    --gradient_accumulation_fusion false \
     --num_train_epochs 500 \
     --group_by_length true \
     --finetune true \
@@ -251,7 +252,7 @@ export NCCL_IB_GID_INDEX=3
 ```bash
 # Single-node training example
 export HSA_NO_SCRATCH_RECLAIM=1
-export NVTE_USE_CUTLASS_GROUPED_GEMM=1
+export NVTE_USE_GROUPED_GEMM_TRITON=1
 
 SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by step and put your final answer within \\boxed{}."""
 
@@ -319,4 +320,5 @@ megatron rlhf \
 ## Known issues
 
 - **Reinforcement learning**: If vLLM is the inference engine, use vLLM ≥ 0.11.0. It is recommended to use ROCm 7.0 or the image we provide to avoid the sleep mode memory leak issue.
-- **MoE training**: Set `NVTE_USE_CUTLASS_GROUPED_GEMM=1` to reduce occasional GPU hangs.
+  - When using [Ray Megatron](../../source/Instruction/Ray.md) instead of `torchrun` for multi-GPU/Node training，don't set `CUDA_VISIBLE_DEVICES`/`HIP_VISIBLE_DEVICES` etc. to aviod conflicts.
+- **MoE training**: Set `NVTE_USE_GROUPED_GEMM_TRITON=1` and `--gradient_accumulation_fusion false` to reduce occasional GPU hangs.

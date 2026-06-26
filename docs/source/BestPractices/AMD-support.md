@@ -155,7 +155,7 @@ AMD GPU 显存相对较大，因此可以通过同时对以下参数进行联合
 - 并行度调优（TP/PP/EP等）：GPU 单卡显存较大使得用户可以尽可能减小并行度切分带来的通信开销（优先级 PP/EP > TP）
 - 显存允许的情况下关闭 optimizer cpu offload：设置 `--optimizer_cpu_offload false`
 - 显存允许的情况下调整 activation/gradient checkpointing：设置 `--recompute_granularity none`，或者 `--recompute_granularity selective` 配合 `--recompute_modules` 进行细粒度的控制
-- 对于 MoE 模型，建议设置 `export NVTE_USE_CUTLASS_GROUPED_GEMM=1` 以使用优化的 grouped gemm kernel
+- 对于 MoE 模型，建议设置 `export NVTE_USE_GROUPED_GEMM_TRITON=1` 以使用 triton 实现的 grouped gemm kernel
 - 对于带有 GatedDeltaNet 结构的模型，建议设置 `USE_MCORE_GDN=1` 使用 mcore 的实现版本
 - 为避免在某些 AMD GPU 上可能出现的问题，保证性能更稳定，建议设置 `export HSA_NO_SCRATCH_RECLAIM=1`
 
@@ -163,7 +163,7 @@ AMD GPU 显存相对较大，因此可以通过同时对以下参数进行联合
 
 ```bash
 export HSA_NO_SCRATCH_RECLAIM=1
-export NVTE_USE_CUTLASS_GROUPED_GEMM=1
+export NVTE_USE_GROUPED_GEMM_TRITON=1
 
 output_dir=${PWD}/megatron_output/Qwen3.5-35B-A3B
 mkdir -p ${output_dir}
@@ -198,6 +198,7 @@ megatron sft \
     --global_batch_size 8 \
     --recompute_granularity selective \
     --recompute_modules core_attn mlp moe \
+    --gradient_accumulation_fusion false \
     --num_train_epochs 500 \
     --group_by_length true \
     --finetune true \
@@ -247,7 +248,7 @@ export NCCL_IB_GID_INDEX=3
 ```bash
 # 单机训练样例
 export HSA_NO_SCRATCH_RECLAIM=1
-export NVTE_USE_CUTLASS_GROUPED_GEMM=1
+export NVTE_USE_GROUPED_GEMM_TRITON=1
 
 SYSTEM_PROMPT="""You are a helpful math assistant. Solve the problem step by step and put your final answer within \\boxed{}."""
 
@@ -315,5 +316,6 @@ megatron rlhf \
 ## 已知问题
 - 强化学习训练：
   - 在强化学习训练中，如果使用 vLLM 作为推理引擎，需要 vLLM>=0.11.0。建议使用 ROCm7.0 或者我们提供的镜像以避免出现 sleep mode memory leak 问题。
+  - 在使用 [Ray Megatron](../../source/Instruction/Ray.md) 而非 `torchrun` 的方式进行多 GPU/Node 训练时，不设置 `CUDA_VISIBLE_DEVICES`/`HIP_VISIBLE_DEVICES`等，以避免冲突问题。
 - MoE 模型训练：
-  - MoE模型建议增加环境变量 NVTE_USE_CUTLASS_GROUPED_GEMM=1 以避免偶发的GPU卡死问题。
+  - MoE 模型建议增加环境变量 `NVTE_USE_GROUPED_GEMM_TRITON=1` 和 `--gradient_accumulation_fusion false` 以避免偶发的GPU卡死问题。
