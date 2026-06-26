@@ -1264,7 +1264,7 @@ def test_mineru2_5_pro():
 
 
 def test_unlimited_ocr():
-    engine = TransformersEngine('PaddlePaddle/Unlimited-OCR')  # 去掉 attn_impl
+    engine = TransformersEngine('PaddlePaddle/Unlimited-OCR')
     query = 'Free OCR.'
     messages = [{'role': 'user', 'content': query}]
     images = ['http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/ocr.png']
