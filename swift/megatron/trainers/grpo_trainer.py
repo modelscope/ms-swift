@@ -56,9 +56,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.args = args
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
-        self.teacher_kl_coef = args.teacher_kl_coef
         self._prepare_metrics()
-        self._init_grpo_params()
+        self._init_grpo_params()  # also (re)sets teacher_kl_coef / _has_teacher from args
         self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
@@ -138,6 +137,16 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         # truncation_strategy support
         self.truncation_strategy = args.truncation_strategy
+
+        # OPD-RL teacher flags needed by forward_step / loss_func. These are a *pure* function of
+        # args (no model/API side-effects), so they live here -- the single place every loss path
+        # initializes. The Ray worker builds a loss-only stub via __new__ that calls only
+        # _init_grpo_params (+ _prepare_metrics), so anything loss_func reads must be set here, not
+        # in __init__'s _setup_teacher() (which also performs the heavy teacher resource setup).
+        self.teacher_kl_coef = args.teacher_kl_coef
+        self._has_teacher = (
+            getattr(args, 'teacher_model', None) is not None or getattr(args, 'teacher_model_server', None) is not None
+            or getattr(args, '_teacher_use_disable_adapter', False))
 
     def _init_rollout_engine(self):
         """Initialize rollout engine with GRPO-specific extensions."""
@@ -336,7 +345,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         total_advantages = gather(advantages, group=rollout_group)
 
         # Step 4: Write the advantage onto each batch, expanding the per-sequence base advantage to
-        # per-token [B, T] here so the OPD-RL teacher KL is subtracted per token (adv_t = base - coef * k3_t).
+        # per-token [B, T] here so the OPD-RL signed teacher log-ratio is added per token
+        # (adv_t = base + coef * (teacher_logp - student_logp)).
         for idx, micro_batch_encoded in enumerate(mini_batch_data):
             grpo_batch = micro_batch_encoded['grpo_batch']
             start_idx = idx * self.micro_batch_size
@@ -506,7 +516,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """
         Compute the per-sequence base advantage for RL training.
 
-        The OPD-RL teacher KL is not injected here; it is applied per-token when the base
+        The OPD-RL teacher signal is not injected here; it is applied per-token when the base
         advantage is expanded to ``[B, T]`` onto each batch (see ``expand_advantage_to_per_token``).
 
         Args:
@@ -524,7 +534,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Gather local rewards into a global tensor: GRPO group normalization needs every
         # completion of the same prompt visible on one rank (groups span DP ranks).
         # ``kl_values`` is already global (gathered in ``_compute_kl_from_batches``).
-        total_rewards_per_func = gather(rewards_per_func)
+        # OPD-RL pure distillation: no reward_funcs -> a [N, 0] tensor.
+        if rewards_per_func.shape[1] == 0:
+            global_count = sum(gather_object([rewards_per_func.shape[0]]))
+            total_rewards_per_func = torch.zeros((global_count, 0), dtype=torch.float32, device=self.device)
+        else:
+            total_rewards_per_func = gather(rewards_per_func)
 
         advantages, weighted_rewards = compute_advantages(
             rewards_per_func=total_rewards_per_func,
@@ -585,7 +600,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         while resample_count < self.max_resample_times:
             # Gather all samples and rewards across rollout group first
             global_rollout_batch = gather_object(rollout_batch)
-            global_rewards_per_func = gather(rewards_per_func)
+            if rewards_per_func.shape[1] == 0:
+                global_rewards_per_func = torch.zeros((len(global_rollout_batch), 0),
+                                                      dtype=torch.float32,
+                                                      device=self.device)
+            else:
+                global_rewards_per_func = gather(rewards_per_func)
 
             # Compute reward std for the entire global batch
             # We need to compute std on the gathered data to get a global mask
@@ -750,8 +770,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             offset += n
 
     def _log_teacher_kl_metric(self, mini_batch_data: List[Dict[str, Any]]) -> None:
-        """OPD-RL: log the per-token teacher KL (k3) averaged over response tokens (monitoring only;
-        the signal is applied per-token in ``expand_advantage_to_per_token``)."""
+        """OPD-RL: log the per-token teacher KL (k3) averaged over response tokens (monitoring only).
+
+        Note the deliberate asymmetry: the advantage uses the *signed* k1 log-ratio
+        (``teacher_logp - student_logp``, see ``expand_advantage_to_per_token``), but monitoring uses
+        the non-negative k3 estimator because it is the better "distance from the teacher" gauge --
+        it should decrease over training. They measure different things on purpose."""
         mode = 'train' if self.unwrapped_models[0].training else 'eval'
         kl_sum, tok_sum = 0.0, 0.0
         for data in mini_batch_data:
@@ -972,8 +996,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         coef_1 = torch.exp(log_importance_weights)
 
-        # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL teacher KL is
-        # subtracted per token). Edge loss types that need a per-sequence advantage (real / fipo /
+        # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL signed teacher
+        # log-ratio is added per token). Edge loss types that need a per-sequence advantage (real / fipo /
         # off_policy_sequence_mask) are not supported with a teacher.
         if self._has_teacher and (self.loss_type in ['real', 'fipo']
                                   or self.off_policy_sequence_mask_delta is not None):

@@ -97,9 +97,10 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
         req = s.to_infer_request()
         teacher_messages = getattr(s, 'teacher_messages', None)
         if teacher_messages:
+            # GKD OPSD: a deliberate teacher view replaces the request messages; it must win over
+            # the response-id injection below (which is the GRPO/OPD-RL token-in-token-out path).
             req.messages = teacher_messages
-        # DEBUG: check if response_token_ids is populated
-        if template is not None and s.response_token_ids:
+        elif template is not None and s.response_token_ids:
             loss_mask = s.response_loss_mask or None
             ctk = s.extra.get('chat_template_kwargs') or {}
             prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=ctk.get('enable_thinking'))
@@ -219,9 +220,13 @@ def assemble_teacher_completion_logprobs(
                 lps = lps[start:start + count]
                 ixs = ixs[start:start + count]
             else:
-                # Fallback: take the last `count` entries (best effort).
-                lps = lps[-count:]
-                ixs = ixs[-count:]
+                # The response token ids did not align anywhere in the returned sequence: the teacher
+                # tokenized differently than the student, so any slice would yield a meaningless
+                # per-token KL. Fail loudly rather than silently mis-aligning.
+                raise ValueError(
+                    f'Teacher returned {len(lps)} logprobs but could not locate the {count} sampled response '
+                    'tokens by id. The teacher server must use the same tokenizer as the student '
+                    '(token-in-token-out).')
         assert len(lps) == count, (f'Teacher logp count {len(lps)} != sampled tokens {count}. The teacher server '
                                    'must use the same tokenizer as the student (token-in-token-out).')
         # lps/ixs are per-position single-element lists ([[lp], ...]) -> [count, 1].

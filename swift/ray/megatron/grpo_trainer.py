@@ -231,18 +231,25 @@ class GRPOTrainer(BaseRayTrainer):
 
     @staticmethod
     def _align_width(x: torch.Tensor, width: int) -> torch.Tensor:
-        """Truncate or right-pad the last (token) dim of ``x`` to ``width``."""
+        """Truncate or right-pad the last (token) dim of ``x`` to ``width``.
+
+        A small width drift is expected (padding alignment across micro-batches), but a large
+        gap means the teacher logps are mis-shaped (e.g. a different tokenizer) and silently
+        slicing them would corrupt the per-token KL -- guard against that.
+        """
         cur = x.shape[-1]
         if cur == width:
             return x
+        assert abs(cur - width) <= 8, (f'teacher logp width {cur} differs from mask width {width} by more than the '
+                                       'padding slack; teacher/student token alignment is likely broken.')
         if cur > width:
             return x[..., :width]
         return torch.nn.functional.pad(x, (0, width - cur))
 
     def _scatter_advantages(self, grpo_batches: List[GRPOBatch], advantages: torch.Tensor) -> None:
         """Write the advantage onto each micro-batch's GRPOBatch, expanding the per-sequence base
-        advantage to per-token ``[B, T]`` so the OPD-RL teacher KL is subtracted per token
-        (``adv_t = base - coef * k3_t``). ``advantages`` is ``[N]`` in sample order."""
+        advantage to per-token ``[B, T]`` so the OPD-RL signed teacher log-ratio is added per token
+        (``adv_t = base + coef * (teacher_logp - student_logp)``). ``advantages`` is ``[N]`` in sample order."""
         pos = 0
         kl_sum, tok_sum = 0.0, 0.0
         for gb in grpo_batches:
@@ -387,7 +394,7 @@ class GRPOTrainer(BaseRayTrainer):
         """Return the per-sequence base advantage and rewards, both shaped [N] (N = B * num_gen).
 
         The driver already holds every completion of each group, so no gather is needed before
-        calling the pure advantage function. The OPD-RL teacher KL is applied per-token later in
+        calling the pure advantage function. The OPD-RL teacher signal is applied per-token later in
         ``_scatter_advantages`` (see ``expand_advantage_to_per_token``).
         """
         return compute_advantages(

@@ -587,9 +587,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 #### GKD Arguments
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
 - sft_alpha: The default value is 0. It controls the weight of sft_loss added in GKD. The final loss is `gkd_loss + sft_alpha * sft_loss`.
-  - Note: You can perform inference on the dataset using the teacher model in advance (accelerated by inference engines such as vLLM, SGLang, or lmdeploy), and use the teacher-generated data directly as dataset.
 - gkd_logits_topk: Use Top-K logits to compute KL divergence. Defaults to None, which means the full vocabulary is used. Setting this parameter can effectively reduce peak GPU memory usage during training. This parameter is required when teacher_model_server is configured. See [GKD documentation](./GKD.md#top-k-kl-computation) for more details.
-- offload_teacher_model: Whether to offload the teacher model to save GPU memory. If set to True, the teacher model will be loaded only during generate/logps computation. Default: False.
 - truncation_strategy: The method to handle inputs exceeding `max_length`. Supported values are `delete` and `left`, representing deletion and left-side truncation respectively. The default is `left`. With the delete strategy, over-long or encoding-failed samples are discarded, and new samples are resampled from the original dataset to maintain the intended batch size.
 - log_completions: Whether to log the model-generated content during training, to be used in conjunction with `--report_to wandb/swanlab`, default is False.
   - Note: If `--report_to wandb/swanlab` is not set, a `completions.jsonl` will be created in the checkpoint to store the generated content.
@@ -597,18 +595,19 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 
 #### Reward/Teacher Model Parameters
 
-The reward model parameters will be used in PPO and GRPO. The teacher model parameters will be used in GKD.
+The reward model parameters will be used in PPO and GRPO. The teacher model parameters will be used in GKD and GRPO.
 
 - reward_model: Default is None.
 - reward_adapters: Default is `[]`.
 - reward_model_type: Default is None.
 - reward_model_revision: Default is None.
-- teacher_model: Default is None. This parameter must be provided when `rlhf_type` is `'gkd'`.
+- teacher_model: Default is None.
 - teacher_adapters: Default is `[]`.
 - teacher_model_type: Default is None.
 - teacher_model_revision: Default is None.
-- teacher_model_server: The address of the teacher model server, e.g. `http://localhost:8000`. This should be a service deployed via `vllm serve` for computing top-k log probabilities.
+- teacher_model_server: The address of the teacher model server, e.g. `http://localhost:8000`. Deploy via `swift deploy` for logprobs.
 - teacher_deepspeed: Same as the deepspeed parameter, controls the DeepSpeed configuration for the teacher model. By default, uses the DeepSpeed configuration of the training model.
+- offload_teacher_model: Whether to offload the teacher model to save GPU memory. Loaded only during sampling/logps computation. Only effective when `teacher_model` is set. Default is False.
 
 
 #### PPO Arguments
@@ -694,6 +693,7 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
 - scale_rewards: Specifies the reward scaling strategy. Options: `group` (scale by intra-group std), `batch` (scale by batch-wide std), `none` (no scaling), `gdpo` (normalize each reward function separately within groups before weighted aggregation, see [GDPO paper](https://arxiv.org/abs/2601.05242)). The default is bound to `advantage_estimator`: `group` for `grpo`, `none` for `rloo`, and `batch` for `reinforce_plus_plus`.
   - Note: `gdpo` mode does not support `kl_in_reward=True`. If both are set, `kl_in_reward` will be automatically set to `False`.
   - GDPO is designed for multi-reward optimization: When using multiple reward functions, GDPO normalizes each reward function separately within groups (subtract mean, divide by std), then performs weighted aggregation using `reward_weights`, and finally applies batch-level normalization. This approach better preserves the relative differences between rewards and prevents different reward combinations from collapsing into identical advantage values.
+- teacher_kl_coef: Coefficient for the teacher signal in OPD-RL, i.e. `adv_t = base_adv + teacher_kl_coef * (teacher_logp - student_logp)` (the signed k1 reverse-KL reward; teacher-preferred tokens get a positive advantage). Default is 1.0.
 - sync_ref_model: Whether to synchronize the reference model. Default is False.
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.

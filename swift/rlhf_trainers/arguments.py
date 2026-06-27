@@ -100,8 +100,15 @@ class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
         require_version('trl>=0.26')
         GRPOArgumentsMixin.__post_init__(self)
         TrainArgumentsMixin.__post_init__(self)
-        # Skip trl GRPOConfig.__post_init__ (it hard-requires num_generations>=2).
+        # Skip trl GRPOConfig.__post_init__ (hard-requires num_generations>=2); keep TrainingArguments init.
         super(HfGRPOConfig, self).__post_init__()
+
+        self.scale_rewards = {True: 'group', False: 'none'}.get(self.scale_rewards, self.scale_rewards)
+
+        if self.log_completions_hub_repo is not None and not self.log_completions:
+            raise ValueError(
+                'log_completions_hub_repo is set, but log_completions is False. Enable log_completions to upload '
+                'completions to the Hub, or unset log_completions_hub_repo.')
 
         if self.vllm_reasoning_parser is not None:
             raise ValueError('vllm_reasoning_parser is not supported for GRPO Training, please unset it.')

@@ -1,10 +1,11 @@
-# Megatron On-Policy Distillation as RL (OPD-RL): teacher KL as a GRPO advantage.
+# Megatron On-Policy Distillation as RL (OPD-RL): the signed teacher log-ratio as a GRPO advantage.
 #
 # Same teacher as Megatron GKD (`--rlhf_type gkd`); the only change is `--rlhf_type grpo`.
-# OPD-RL keeps the GRPO policy-gradient pipeline and injects the per-token teacher KL on
-# the student-sampled tokens as an *advantage* (post-normalization). With no `--reward_funcs`,
-# teacher KL is the sole training signal (pure distillation); add `--reward_funcs` to mix
-# task reward with teacher KL. `--teacher_kl_coef` (default 1.0) scales the teacher KL.
+# OPD-RL keeps the GRPO policy-gradient pipeline (PG OPD) and injects the per-token signed
+# teacher log-ratio `teacher_logp - student_logp` on the student-sampled tokens as an
+# *advantage* (the k1 reverse-KL reward; teacher-preferred tokens get a positive advantage).
+# With no `--reward_funcs`, the teacher signal is the sole training signal (pure distillation);
+# add `--reward_funcs` to mix task reward with it. `--teacher_kl_coef` (default 1.0) scales it.
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
 NPROC_PER_NODE=8 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \

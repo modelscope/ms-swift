@@ -268,7 +268,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
             base_advantages = torch.stack([data.advantages.to(device) for data in batch])
             # Expand the per-sequence base advantage to per-token [B, T] here (not by broadcast
-            # in the loss), so the OPD-RL teacher KL is subtracted per token (adv_t = base - coef * k3_t).
+            # in the loss), so the OPD-RL signed teacher log-ratio is added per token
+            # (adv_t = base + coef * (teacher_logp - student_logp)).
             grpo_batch.advantages = expand_advantage_to_per_token(
                 base_advantages,
                 grpo_batch.completion_mask,
@@ -278,6 +279,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             )
             if self._has_teacher:
                 mode = 'train' if self.model.training else 'eval'
+                # Monitoring uses the non-negative k3 estimator (a "distance from the teacher" gauge
+                # that should decrease over training); the advantage above uses the signed k1 log-ratio.
                 k3 = compute_teacher_kl_per_token(grpo_batch.teacher_per_token_logps, grpo_batch.old_per_token_logps,
                                                   grpo_batch.completion_mask)
                 self._metrics[mode]['teacher_kl'].append(
@@ -928,8 +931,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         coef_1 = torch.exp(log_importance_weights)
 
-        # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL
-        # teacher KL is subtracted per token). Edge loss types that need a per-sequence
+        # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL signed
+        # teacher log-ratio is added per token). Edge loss types that need a per-sequence
         # advantage (real / fipo / off_policy_sequence_mask) are not supported with a teacher.
         if self._has_teacher and (self.loss_type in ['real', 'fipo']
                                   or self.off_policy_sequence_mask_delta is not None):
@@ -1649,12 +1652,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, grpo_batch.rollout_per_token_logps,
                                                                completion_mask)
 
+        # LigerFusedLinearGRPOLoss expects [B]; expand_advantage_to_per_token always yields [B, T].
+        advantages = grpo_batch.advantages
+        advantages = (advantages * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
             selected_token_ids=completion_ids,
             attention_mask=completion_mask,
-            advantages=grpo_batch.advantages,
+            advantages=advantages,
             bias=unwrapped_model.lm_head.bias,
             old_per_token_logps=old_per_token_logps,
             ref_per_token_logps=grpo_batch.ref_per_token_logps,

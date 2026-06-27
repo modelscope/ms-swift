@@ -342,6 +342,11 @@ class RLHFMegatronArgumentsMixin:
         if self.teacher_model is not None and self.teacher_model_server is not None:
             raise ValueError('setting both `teacher_model` and `teacher_model_server` is not supported.')
 
+        # Fail fast: the Ray pipeline only supports a colocated teacher_model (see
+        # swift/ray/megatron/grpo_trainer.py), so reject teacher_model_server at parse time.
+        if self.use_ray and self.teacher_model_server is not None:
+            raise ValueError('teacher_model_server is not supported with use_ray')
+
         self._teacher_use_disable_adapter = False
         if self.teacher_model is not None and self.teacher_model == self.model:
             if self.tuner_type == 'lora':

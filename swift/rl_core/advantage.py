@@ -22,10 +22,11 @@ def compute_advantages(
     This is a pure tensor function suitable for all backends (HF, Megatron, Ray).
     Input tensors should already be gathered across all processes.
 
-    Produces the **per-sequence** base advantage from rewards. The OPD-RL teacher KL
+    Produces the **per-sequence** base advantage from rewards. The OPD-RL teacher signal
     is *not* injected here: it is a per-token signal applied later (when the base
     advantage is broadcast to ``[B, T]`` while writing it onto the batch). See
-    :func:`compute_teacher_kl_per_token`.
+    :func:`compute_teacher_signed_logratio` (the advantage signal) and
+    :func:`compute_teacher_kl_per_token` (the k3 monitoring metric).
 
     Ref model KL (``kl_in_reward``) is subtracted from rewards **before** advantage
     normalization — standard GRPO/PPO regularization that prevents the policy from
@@ -106,8 +107,8 @@ def compute_advantages_dynamic(
     completions per prompt (multi-turn scenarios).
 
     Like :func:`compute_advantages`, this returns only the per-sequence base advantage;
-    the OPD-RL teacher KL is applied per-token later (see
-    :func:`compute_teacher_kl_per_token`).
+    the OPD-RL teacher signal is applied per-token later (see
+    :func:`compute_teacher_signed_logratio`).
 
     Input tensors should already be gathered across all processes.
 
@@ -205,17 +206,21 @@ def compute_teacher_kl_per_token(
     policy_per_token_logps: torch.Tensor,
     completion_mask: torch.Tensor,
 ) -> torch.Tensor:
-    """Per-token teacher KL (OPD-RL) via the k3 estimator.
+    """Per-token teacher KL (OPD-RL) via the k3 estimator -- **monitoring only**.
 
     Backend-agnostic pure tensor op shared by HF / Megatron / Ray GRPO. ``teacher`` and
     ``policy`` logps are token-in-token-out on the *same* sampled tokens (the teacher logp
     on the student-sampled token), so ``d = teacher - student`` and k3 is ``exp(d) - d - 1``
-    (non-negative per token).
+    (non-negative per token). It is the magnitude of the reverse KL between student and
+    teacher and a good "how far is the student from the teacher" gauge -- it should *decrease*
+    over training.
 
-    The result stays **per-token** (it is *not* summed over the response): the OPD-RL
-    advantage is per-token (``adv_t = base_adv - coef * k3_t``). Summing over the response
-    would scale the signal by the sequence length and, once broadcast back to every token in
-    the loss, blow up the gradient by ~seq_len.
+    .. warning::
+        k3 is **unsigned** and must NOT be used as the policy-gradient advantage. A
+        policy-gradient update moves ``adv_t * grad log pi(y_t)``; feeding an always-negative,
+        direction-less signal just suppresses every sampled token's probability uniformly,
+        which diverges the policy instead of pulling it toward the teacher. The signed
+        log-ratio (k1) is the correct advantage -- see :func:`compute_teacher_signed_logratio`.
 
     Args:
         teacher_per_token_logps: ``[B, T]`` teacher logp on sampled tokens.
@@ -230,6 +235,37 @@ def compute_teacher_kl_per_token(
     return per_token * completion_mask
 
 
+def compute_teacher_signed_logratio(
+    teacher_per_token_logps: torch.Tensor,
+    policy_per_token_logps: torch.Tensor,
+    completion_mask: torch.Tensor,
+) -> torch.Tensor:
+    """Per-token signed teacher log-ratio (OPD-RL) -- the k1 reverse-KL estimator.
+
+    This is the correct OPD-RL policy-gradient signal (PG OPD): the negative single-sample
+    reverse-KL estimate used as a reward, ``r_t = teacher_logp(y_t) - student_logp(y_t)``
+    (Thinking Machines "On-Policy Distillation"; verl ``distillation_loss`` with
+    ``loss_mode=k1`` then ``advantage = -k1 = teacher - student``).
+
+    Unlike k3 it is **signed**: where the teacher prefers the sampled token over the student
+    (``d > 0``) the advantage is positive and the update *raises* that token's probability
+    (pulling the student toward the teacher); where the student is over-confident relative to
+    the teacher (``d < 0``) the advantage is negative and the update *lowers* it.
+
+    Backend-agnostic pure tensor op shared by HF / Megatron / Ray GRPO.
+
+    Args:
+        teacher_per_token_logps: ``[B, T]`` teacher logp on sampled tokens.
+        policy_per_token_logps: ``[B, T]`` student (old) logp on the same tokens.
+        completion_mask: ``[B, T]`` response-token mask.
+
+    Returns:
+        ``[B, T]`` per-token signed log-ratio (masked outside the response).
+    """
+    d = teacher_per_token_logps - policy_per_token_logps
+    return d * completion_mask
+
+
 def expand_advantage_to_per_token(
     advantages: torch.Tensor,
     completion_mask: torch.Tensor,
@@ -240,9 +276,10 @@ def expand_advantage_to_per_token(
     """Expand the per-sequence base advantage ``[B]`` to per-token ``[B, T]``.
 
     Broadcasting the per-sequence advantage to per-token happens *here* (at batch
-    construction) rather than in the loss, so the OPD-RL teacher KL can be subtracted
-    per token: ``adv_t = base_adv - coef * k3_t`` (larger teacher KL -> smaller
-    advantage). Without a teacher this is a plain broadcast.
+    construction) rather than in the loss, so the OPD-RL teacher signal can be added
+    per token: ``adv_t = base_adv + coef * (teacher_logp_t - student_logp_t)`` (the signed
+    k1 reverse-KL reward; teacher-preferred tokens get a positive advantage). Without a
+    teacher this is a plain broadcast.
 
     Backend-agnostic pure tensor op shared by HF / Megatron / Ray GRPO.
 
@@ -251,15 +288,15 @@ def expand_advantage_to_per_token(
         completion_mask: ``[B, T]`` response-token mask (defines the token frame).
         teacher_per_token_logps: ``[B, T]`` teacher logp on sampled tokens (OPD-RL).
         policy_per_token_logps: ``[B, T]`` student (old) logp on the same tokens.
-        teacher_kl_coef: Coefficient for the per-token teacher KL term.
+        teacher_kl_coef: Coefficient for the per-token teacher signal.
 
     Returns:
         ``[B, T]`` per-token advantage.
     """
     per_token_adv = advantages.unsqueeze(1).expand_as(completion_mask).clone()
     if teacher_per_token_logps is not None and teacher_kl_coef != 0.0:
-        k3 = compute_teacher_kl_per_token(teacher_per_token_logps, policy_per_token_logps, completion_mask)
-        per_token_adv = per_token_adv - teacher_kl_coef * k3
+        signed = compute_teacher_signed_logratio(teacher_per_token_logps, policy_per_token_logps, completion_mask)
+        per_token_adv = per_token_adv + teacher_kl_coef * signed
     return per_token_adv
 
 

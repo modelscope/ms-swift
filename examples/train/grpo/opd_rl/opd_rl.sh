@@ -1,16 +1,17 @@
-# On-Policy Distillation as RL (OPD-RL): teacher KL as an advantage signal in GRPO.
+# On-Policy Distillation as RL (OPD-RL): the signed teacher log-ratio as an advantage in GRPO.
 #
 # Unlike GKD (`--rlhf_type gkd`), which back-propagates a supervised JSD/KL loss, OPD-RL
-# keeps the GRPO policy-gradient pipeline and injects the per-token teacher KL on the
-# student-sampled tokens as an *advantage* (post-normalization). Because the update only
-# flows through the sampled token, a single-token teacher logp is sufficient (no top-k).
+# keeps the GRPO policy-gradient pipeline (PG OPD) and injects the per-token signed teacher
+# log-ratio `teacher_logp - student_logp` on the student-sampled tokens as an *advantage*
+# (the k1 reverse-KL reward; teacher-preferred tokens get a positive advantage). Because the
+# update only flows through the sampled token, a single-token teacher logp is enough (no top-k).
 #
 # To turn a GKD script into OPD-RL, just change `--rlhf_type gkd` to `--rlhf_type grpo`:
 # the same `--teacher_model` (or `--teacher_model_server`) is reused. With no
-# `--reward_funcs`, teacher KL is the sole training signal (pure distillation). Add
-# `--reward_funcs` to mix task reward with teacher KL.
+# `--reward_funcs`, the teacher signal is the sole training signal (pure distillation). Add
+# `--reward_funcs` to mix task reward with the teacher signal.
 #
-# Optional: `--teacher_kl_coef` (default 1.0) scales the teacher KL advantage.
+# Optional: `--teacher_kl_coef` (default 1.0) scales the teacher advantage.
 
 NPROC_PER_NODE=4 \
 CUDA_VISIBLE_DEVICES=0,1,2,3 \

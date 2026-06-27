@@ -1,39 +1,38 @@
-# Ray Megatron On-Policy Distillation as RL (OPD-RL): teacher KL as a GRPO advantage.
+# Ray Megatron On-Policy Distillation as RL (OPD-RL): the signed teacher log-ratio as a GRPO advantage.
 #
 # Same colocated teacher as Ray GKD; the only change is `rlhf_type: grpo`. OPD-RL keeps the
-# GRPO policy-gradient pipeline and injects the per-token teacher KL on the student-sampled
-# tokens as an advantage (post-normalization). Omit `reward_funcs` for pure distillation, or
-# add them to mix task reward with teacher KL. `teacher_kl_coef` (default 1.0) scales the KL.
+# GRPO policy-gradient pipeline (PG OPD) and injects the per-token signed teacher log-ratio
+# `teacher_logp - student_logp` on the student-sampled tokens as an advantage (the k1 reverse-KL
+# reward; teacher-preferred tokens get a positive advantage). Omit `reward_funcs` for pure
+# distillation, or add them to mix task reward with it. `teacher_kl_coef` (default 1.0) scales it.
 # Note: the Ray pipeline supports a colocated `teacher_model`; `teacher_model_server` is not
 # wired yet.
 rlhf_type: grpo
 
 model: Qwen/Qwen3.5-2B
-teacher_model: Qwen/Qwen3.5-4B
+teacher_model: Qwen/Qwen3.5-9B
 
-dataset: AI-MO/NuminaMath-TIR#2000
+dataset: modelscope/gsm8k
 dataset_num_proc: 4
 split_dataset_ratio: 0
 
 micro_batch_size: 2
 global_batch_size: 16
-num_generations: 8
+num_generations: 1
 steps_per_generation: 4
 num_train_epochs: 1
 logging_steps: 1
 seed: 42
-max_length: 4096
-max_completion_length: 4096
+max_length: 2048
+max_completion_length: 2048
 padding_free: false
 cross_entropy_loss_fusion: true
 gradient_accumulation_fusion: false
-lr: 1e-6
+lr: 3e-5
 lr_warmup_fraction: 0.0
-min_lr: 1e-6
 attention_backend: flash
 temperature: 1.0
 beta: 0
-advantage_estimator: grpo
 teacher_kl_coef: 1.0
 
 use_vllm: true
@@ -43,6 +42,10 @@ offload_model: true
 offload_optimizer: true
 offload_teacher_model: true
 sleep_level: 1
+
+save_steps: 100
+no_save_optim: true
+no_save_rng: true
 
 train:
   gpus: 4
@@ -56,4 +59,4 @@ rollout:
   gpus: 4
   vllm_tensor_parallel_size: 1
   vllm_gpu_memory_utilization: 0.4
-  vllm_max_model_len: 8192
+  vllm_max_model_len: 4096

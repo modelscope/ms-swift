@@ -391,10 +391,23 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
     def _check_teacher(self):
         if self.rlhf_type not in ['grpo', 'gkd']:
+            if self.teacher_model is not None or self.teacher_model_server is not None:
+                logger.warning(f'teacher_model / teacher_model_server is ignored for rlhf_type={self.rlhf_type!r} '
+                               '(only used by gkd and grpo/OPD-RL).')
             return
         teacher_set = self.teacher_model is not None or self.teacher_model_server is not None
         if not teacher_set:
+            if self.rlhf_type == 'gkd':
+                logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
+                if self.use_liger_kernel:
+                    raise ValueError('Self-distillation mode with liger kernel loss is not supported yet')
+            if self.rlhf_type == 'grpo' and self.num_generations == 1:
+                raise ValueError('num_generations must be greater than 1 for GRPO')
             return
+
+        if self.rlhf_type == 'grpo' and self.use_liger_kernel:
+            raise ValueError('OPD-RL is not supported with use_liger_kernel.')
+
         if self.teacher_model is not None and self.teacher_model_server is not None:
             raise ValueError('setting both `teacher_model` and `teacher_model_server` is not supported.')
 
@@ -408,13 +421,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             else:
                 # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
                 pass
-
-        # Self-distillation: no teacher_model → dynamic teacher (current student weights)
-        if self.teacher_model is None and self.teacher_model_server is None:
-            logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
-
-            if self.use_liger_kernel:
-                raise ValueError('Self-distillation mode with liger kernel loss is not supported yet')
 
     def _init_rollout(self):
         if self.rlhf_type not in rlhf_support_vllm_types:
