@@ -62,6 +62,7 @@ class MLLMModelArch:
     deepseek_janus = 'deepseek_janus'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
+    unlimited_ocr = 'unlimited-ocr'
     kimi_k25 = 'kimi_k25'
 
     mplug_owl2 = 'mplug_owl2'
@@ -472,6 +473,14 @@ register_model_arch(
         language_model='model.layers',
         vision_tower=['model.sam_model', 'model.qwen2_model'],
         aligner='model.projector',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.unlimited_ocr,
+        language_model=['model.model.embed_tokens', 'model.model.layers', 'model.model.norm', 'model.lm_head'],
+        vision_tower=['model.model.vision_model', 'model.model.sam_model'],
+        aligner=['model.model.projector'],
     ))
 
 register_model_arch(
