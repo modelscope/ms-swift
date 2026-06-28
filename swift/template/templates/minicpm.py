@@ -9,7 +9,7 @@ from packaging import version
 from torch import nn
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_env_args
+from swift.utils import get_env_args, get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -691,6 +691,12 @@ class MiniCPMV4_6Template(Template):
         # Inject downsample_mode so the model forward uses the same mode
         # as data preprocessing, keeping image token/feature counts aligned.
         res['downsample_mode'] = self.downsample_mode
+        return res
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if self.padding_free:
+            res.update(get_packed_seq_params(res['position_ids']))
         return res
 
 
