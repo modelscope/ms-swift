@@ -32,7 +32,7 @@ class OpenAIEngine:
         for infer_request in infer_requests:
             completion = self.client.chat.completions.create(
                 model=self.model,
-                messages=infer_request['messages'],
+                messages=infer_request.messages,
                 temperature=request_config.temperature,
                 top_p=request_config.top_p,
                 max_tokens=request_config.max_tokens,
