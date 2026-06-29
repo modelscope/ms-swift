@@ -1,12 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import numpy as np
 import torch
 import torch.nn.functional as F
 import transformers
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
-import numpy as np
 from PIL import Image
 from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
@@ -1152,8 +1152,6 @@ class Qwen3TTSTemplate(Template):
     def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
         # Get text from messages (assistant content)
         text = inputs.messages[-1]['content'] if inputs.messages else ''
-        if not text:
-            text = inputs.extra_kwargs.get('text', '')
 
         # Build TTS text with assistant markers
         tts_text = f'<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n'
@@ -1173,17 +1171,13 @@ class Qwen3TTSTemplate(Template):
 
         # Extract mel spectrogram from reference audio
         ref_audios = inputs.extra_kwargs.get('ref_audios')
-        ref_audio_path = ref_audios[0] if ref_audios else inputs.extra_kwargs.get('ref_audio')
-        assert ref_audio_path is not None, "'ref_audio' or 'ref_audios' must be provided in the dataset."
+        ref_audio_path = ref_audios[0]
+        assert ref_audio_path is not None, "'ref_audios' must be provided in the dataset."
         ref_mel = self._extract_ref_mel(ref_audio_path)  # [1, mel_len, 128]
 
-        # Compute total sequence length for framework length tracking
-        total_len = len(text_ids) + audio_codes.shape[0] + 8
-
         return {
-            'input_ids': list(range(total_len)),  # dummy for length tracking
+            'input_ids': text_ids,  # dummy for length tracking
             'labels': None,
-            'tts_text_ids': torch.tensor(text_ids, dtype=torch.long).unsqueeze(0),  # [1, text_len]
             'tts_audio_codes': audio_codes,  # [codec_len, 16]
             'tts_ref_mel': ref_mel,  # [1, mel_len, 128]
         }
