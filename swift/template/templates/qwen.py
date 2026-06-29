@@ -1154,9 +1154,8 @@ class Qwen3TTSTemplate(Template):
         text = inputs.messages[-1]['content'] if inputs.messages else ''
 
         # Build TTS text with assistant markers
-        tts_text = f'<|im_start|>assistant\n{text}<|im_end|>\n<|im_start|>assistant\n'
+        tts_text = f'<|im_start|>assistant\n{text}'
         text_ids = self._tokenize(tts_text)
-        text_ids = text_ids[:-5]  # Remove trailing '<|im_start|>assistant\n'
 
         # Get audio codes (pre-extracted or online)
         audio_codes = inputs.extra_kwargs.get('audio_codes')
@@ -1241,7 +1240,7 @@ class Qwen3TTSTemplate(Template):
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to=None) -> Dict[str, Any]:
         """Custom TTS data collation - builds dual-channel input format."""
-        item_length = [b['tts_text_ids'].shape[1] + b['tts_audio_codes'].shape[0] for b in batch]
+        item_length = [len(b['input_ids']) + b['tts_audio_codes'].shape[0] for b in batch]
         max_length = max(item_length) + 8
         b_size, t = len(batch), max_length
 
@@ -1254,18 +1253,18 @@ class Qwen3TTSTemplate(Template):
         codec_0_labels = torch.full((b_size, t), -100, dtype=torch.long)
 
         for i, data in enumerate(batch):
-            text_ids = data['tts_text_ids']  # [1, text_len]
+            text_ids = torch.tensor(data['input_ids'])  # [text_len]
             audio_codes = data['tts_audio_codes']  # [codec_len, 16]
             audio_codec_0 = audio_codes[:, 0]
 
-            text_ids_len = text_ids.shape[1]
+            text_ids_len = len(text_ids)
             codec_ids_len = audio_codec_0.shape[0]
 
             # === Text channel ===
-            input_ids[i, :3, 0] = text_ids[0, :3]
+            input_ids[i, :3, 0] = text_ids[:3]
             input_ids[i, 3:7, 0] = self._tts_pad_token_id
             input_ids[i, 7, 0] = self._tts_bos_token_id
-            input_ids[i, 8:8 + text_ids_len - 3, 0] = text_ids[0, 3:]
+            input_ids[i, 8:8 + text_ids_len - 3, 0] = text_ids[3:]
             input_ids[i, 8 + text_ids_len - 3, 0] = self._tts_eos_token_id
             input_ids[i, 8 + text_ids_len - 2:8 + text_ids_len + codec_ids_len, 0] = self._tts_pad_token_id
             text_embedding_mask[i, :8 + text_ids_len + codec_ids_len] = True
