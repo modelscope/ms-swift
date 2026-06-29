@@ -1308,7 +1308,7 @@ class DataLoaderMixin:
                 dataloader_params['worker_init_fn'] = partial(
                     seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
                 if skip_batches > 0:
-                    epoch = self.state.epoch if hasattr(self, 'state') and self.state.epoch is not None else 0
+                    epoch = getattr(self.state, 'epoch', 0) or 0 if hasattr(self, 'state') else 0
                     batch_sampler.set_epoch(int(epoch))
                     from accelerate.data_loader import SkipBatchSampler
                     batch_sampler = SkipBatchSampler(batch_sampler, skip_batches=skip_batches)
