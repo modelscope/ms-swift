@@ -1,12 +1,3 @@
-# Ray Megatron On-Policy Distillation as RL (OPD-RL): the signed teacher log-ratio as a GRPO advantage.
-#
-# Same colocated teacher as Ray GKD; the only change is `rlhf_type: grpo`. OPD-RL keeps the
-# GRPO policy-gradient pipeline (PG OPD) and injects the per-token signed teacher log-ratio
-# `teacher_logp - student_logp` on the student-sampled tokens as an advantage (the k1 reverse-KL
-# reward; teacher-preferred tokens get a positive advantage). Omit `reward_funcs` for pure
-# distillation, or add them to mix task reward with it. `teacher_kl_coef` (default 1.0) scales it.
-# Note: the Ray pipeline supports a colocated `teacher_model`; `teacher_model_server` is not
-# wired yet.
 rlhf_type: grpo
 
 model: Qwen/Qwen3.5-2B
