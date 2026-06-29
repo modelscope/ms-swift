@@ -229,6 +229,8 @@ class RLHFMegatronArgumentsMixin:
         if self.rlhf_type == 'gkd' or (self.rlhf_type == 'grpo' and
                                        (self.teacher_model is not None or self.teacher_model_server is not None)):
             self._check_teacher()
+            if self.rlhf_type == 'grpo':
+                self._check_opd_rl()
         if self.rlhf_type == 'gkd':
             # GKD-specific: the API path only returns top-k logprobs, so gkd_logits_topk is required.
             if self.teacher_model_server is not None and self.gkd_logits_topk is None:
@@ -357,6 +359,26 @@ class RLHFMegatronArgumentsMixin:
 
         if self.teacher_model is None and self.teacher_model_server is None:
             logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
+
+    def _check_opd_rl(self):
+        """Fail-fast OPD-RL (teacher distillation on Megatron GRPO) parameter compatibility.
+
+        Mirrors ``RLHFArguments._check_opd_rl``: the teacher signal is a *per-token* advantage, so
+        features that need a *per-sequence* advantage (sign-based) or reward variance are rejected.
+        Called after ``_init_grpo`` so ``loss_type`` / ``scale_rewards`` are already resolved.
+        """
+        if self.loss_type in ['real', 'fipo']:
+            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} '
+                             '(it needs a per-sequence advantage). Use grpo/bnpo/dr_grpo/dapo/cispo/sapo.')
+        if self.off_policy_sequence_mask_delta is not None:
+            raise ValueError('OPD-RL (teacher) does not support off_policy_sequence_mask_delta '
+                             '(it needs a per-sequence advantage).')
+        if not self.reward_funcs:
+            if self.dynamic_sample:
+                raise ValueError('dynamic_sample requires reward_funcs (it filters groups by reward std); '
+                                 'pure OPD-RL distillation has no reward variance.')
+            if self.scale_rewards == 'gdpo':
+                raise ValueError("scale_rewards='gdpo' requires reward_funcs; pure OPD-RL distillation has none.")
 
     def _init_grpo(self):
 

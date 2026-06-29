@@ -63,6 +63,9 @@ class TeacherModelArguments:
             When set, the teacher logprobs will be fetched from the external API service (e.g., swift deploy, vLLM)
             instead of loading a local teacher model. This enables using larger teacher models or services hosted
             remotely. When this is set, `teacher_model` is not required. Defaults to None.
+        offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
+            or OPD-RL training. When enabled, the teacher model is loaded to GPU only during forward pass and
+            offloaded back to CPU afterwards. Defaults to False.
     """
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
@@ -83,6 +86,7 @@ class TeacherModelArguments:
             'URL of the teacher model server (e.g., http://localhost:8000). '
             'When set, teacher logprobs are fetched via API instead of loading a local model.'
         })
+    offload_teacher_model: bool = False
 
 
 @dataclass
@@ -221,8 +225,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             If set to a positive integer, only top-k teacher logits are used (more efficient).
             When using `teacher_model_server`, this is limited by the server's `max_logprobs` setting
             (vLLM default is 20, can be increased with `--max-logprobs`). Defaults to None.
-        offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
-            training. Defaults to False.
         max_new_tokens (Optional[int]): A backward-compatibility argument. Please use `max_completion_length` instead.
             Defaults to None.
     """
@@ -259,7 +261,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     lmbda: float = 0.5
     seq_kd: bool = False  # Deprecated
     gkd_logits_topk: Optional[int] = None
-    offload_teacher_model: bool = False
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
@@ -552,6 +553,38 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
+
+        self._check_opd_rl()
+
+    def _check_opd_rl(self):
+        """Fail-fast OPD-RL (teacher distillation on GRPO) parameter compatibility.
+
+        A teacher turns GRPO into OPD-RL, where the teacher signal is a *per-token* advantage
+        (the signed teacher log-ratio). Features that require a *per-sequence* advantage (typically
+        sign-based judgments) or reward variance are incompatible; reject them here rather than
+        deep inside the loss / advantage code. ``_check_teacher`` has already run, so
+        ``_teacher_use_disable_adapter`` is resolved.
+        """
+        opd_rl = (
+            self.teacher_model is not None or self.teacher_model_server is not None
+            or self._teacher_use_disable_adapter)
+        if not opd_rl:
+            return
+        # loss types / masks that reduce the advantage to a per-sequence scalar (sign-based).
+        if self.loss_type in ['real', 'fipo']:
+            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} '
+                             '(it needs a per-sequence advantage).')
+        if self.off_policy_sequence_mask_delta is not None:
+            raise ValueError('OPD-RL (teacher) does not support off_policy_sequence_mask_delta '
+                             '(it needs a per-sequence advantage).')
+        # Pure distillation (no reward functions): the base GRPO advantage is 0, so reward-variance
+        # driven features have no signal to act on.
+        if not self.reward_funcs:
+            if self.dynamic_sample:
+                raise ValueError('dynamic_sample requires reward_funcs (it filters groups by reward std); '
+                                 'pure OPD-RL distillation has no reward variance.')
+            if self.scale_rewards == 'gdpo':
+                raise ValueError("scale_rewards='gdpo' requires reward_funcs; pure OPD-RL distillation has none.")
 
     def _external_vllm_warning(self):
         if self.rlhf_type not in rlhf_support_vllm_types or not self.vllm_server_host:

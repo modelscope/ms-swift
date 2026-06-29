@@ -433,7 +433,6 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # OPD-RL (On-Policy Distillation as RL)
     # enabled when a teacher (teacher_model / teacher_model_server) is set on a GRPO run.
     teacher_kl_coef: float = 1.0
-    offload_teacher_model: bool = False
 
     # REAL https://arxiv.org/abs/2602.05630
     real_tau: float = 0.5
