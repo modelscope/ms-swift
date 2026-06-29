@@ -56,7 +56,7 @@ from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
                                              build_teacher_requests, encode_teacher_view,
-                                             remap_teacher_logps_to_student_frame)
+                                             remap_teacher_logps_to_student_frame, should_compute_local_teacher_logps)
 from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
@@ -275,11 +275,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             grpo_batch.advantages = expand_advantage_to_per_token(
                 base_advantages,
                 grpo_batch.completion_mask,
-                teacher_per_token_logps=grpo_batch.teacher_per_token_logps if self._has_teacher else None,
-                policy_per_token_logps=grpo_batch.old_per_token_logps if self._has_teacher else None,
-                teacher_kl_coef=self.teacher_kl_coef if self._has_teacher else 0.0,
+                teacher_per_token_logps=grpo_batch.teacher_per_token_logps,
+                policy_per_token_logps=grpo_batch.old_per_token_logps
+                if grpo_batch.teacher_per_token_logps is not None else None,
+                teacher_kl_coef=self.teacher_kl_coef if grpo_batch.teacher_per_token_logps is not None else 0.0,
             )
-            if self._has_teacher:
+            if grpo_batch.teacher_per_token_logps is not None:
                 mode = 'train' if self.model.training else 'eval'
                 # Monitoring uses the non-negative k3 estimator (a "distance from the teacher" gauge
                 # that should decrease over training); the advantage above uses the signed k1 log-ratio.
@@ -713,7 +714,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     batch, template, device=self.model.device, use_logits_to_keep=True)
                 # OPSD: the local teacher forwards its own (teacher_prompt + same response)
                 # encoding, so collate a separate teacher micro-batch (different length).
-                if self._has_teacher and not self.use_teacher_api and build_opsd_samples(batch):
+                has_opsd_batch = build_opsd_samples(batch)
+                is_opsd = (has_opsd_batch and (self._has_teacher_explicit() or self._is_dynamic_self_distillation))
+                if is_opsd:
                     teacher_model_inputs, teacher_grpo_batch = self._collate_teacher_opsd_batch(batch, template)
 
             model_inputs.pop('labels', None)
@@ -740,7 +743,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 self.model, model_inputs, grpo_batch, origin_data=origin_data)[0]
                 grpo_batch.ref_per_token_logps = ref_per_token_logps
                 # OPD-RL: local teacher logp on the sampled tokens (API path filled later).
-                if self._has_teacher and not self.use_teacher_api:
+                if should_compute_local_teacher_logps(
+                        has_teacher_explicit=self._has_teacher_explicit(),
+                        is_dynamic_self_distillation=self._is_dynamic_self_distillation,
+                        use_teacher_api=self.use_teacher_api,
+                        has_opsd_batch=is_opsd,
+                ):
                     grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(
                         model_inputs,
                         grpo_batch,

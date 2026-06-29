@@ -239,7 +239,37 @@ def assemble_teacher_completion_logprobs(
     return TeacherOutput(topk_logprobs=out_lp, topk_indices=out_ix)
 
 
+def resolve_dynamic_opd_self_distillation(
+    *,
+    has_teacher_explicit: bool,
+    is_self_distillation: bool,
+) -> bool:
+    if has_teacher_explicit or not is_self_distillation:
+        return False
+    return True
+
+
+def should_compute_local_teacher_logps(
+    *,
+    has_teacher_explicit: bool,
+    is_dynamic_self_distillation: bool,
+    use_teacher_api: bool,
+    has_opsd_batch: bool,
+) -> bool:
+    """Per-step gate for a local (non-API) teacher forward in OPD-RL."""
+    if use_teacher_api:
+        return False
+    if has_teacher_explicit:
+        return True
+    return is_dynamic_self_distillation and has_opsd_batch
+
+
 def build_opsd_samples(samples: List[OnPolicySample]) -> bool:
+    """Build each sample's OPSD teacher view; return True if ANY sample is OPSD.
+
+    ``build_teacher_view`` must run for every sample (not short-circuited by ``any()``)
+    so ``teacher_messages`` is populated wherever ``teacher_prompt`` is set.
+    """
     has_opsd = False
     for s in samples:
         if s.build_teacher_view():

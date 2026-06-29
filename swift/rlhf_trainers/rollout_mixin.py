@@ -40,6 +40,7 @@ from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, i
                          to_device, unwrap_model_for_generation)
 from .arguments import RolloutTrainerArgumentsMixin
 from .base_rollout_mixin import BaseRolloutTrainerMixin
+from .gkd_helpers import resolve_dynamic_opd_self_distillation
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
                     _create_parameter_buckets, _process_bucket_with_flattened_tensor,
@@ -188,6 +189,11 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         self.teacher_model_server = kwargs.pop('teacher_model_server', None)
         self._teacher_use_disable_adapter = kwargs.pop('teacher_use_disable_adapter', False)
 
+    def _has_teacher_explicit(self) -> bool:
+        return (getattr(self, '_teacher_model', None) is not None
+                or getattr(self, 'teacher_model_server', None) is not None
+                or getattr(self, '_teacher_use_disable_adapter', False))
+
     def _setup_teacher(self) -> None:
         """Resolve the teacher mode and prepare the local model / API client.
 
@@ -201,8 +207,14 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         self.use_teacher_api = teacher_model_server is not None
         self._teacher_use_disable_adapter = getattr(self, '_teacher_use_disable_adapter', False)
         self._is_self_distillation = (teacher_model is None and teacher_model_server is None)
-        self._has_teacher = (
-            teacher_model is not None or teacher_model_server is not None or self._teacher_use_disable_adapter)
+        explicit = self._has_teacher_explicit()
+        # Dynamic OPD-RL capability (no explicit teacher): student-as-teacher OPSD when a batch
+        # has ``teacher_prompt``; plain reward GRPO skips teacher forwards when OPSD is absent.
+        self._is_dynamic_self_distillation = resolve_dynamic_opd_self_distillation(
+            has_teacher_explicit=explicit,
+            is_self_distillation=self._is_self_distillation,
+        )
+        self._has_teacher = explicit or self._is_dynamic_self_distillation
 
         self.teacher_client = None
         if self.use_teacher_api:

@@ -15,7 +15,8 @@ from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics,
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import compute_std_for_dynamic_sampling, score_completions
 from swift.rlhf_trainers.gkd_helpers import (build_opsd_samples, encode_teacher_view,
-                                             remap_teacher_logps_to_student_frame)
+                                             remap_teacher_logps_to_student_frame,
+                                             resolve_dynamic_opd_self_distillation)
 from swift.rlhf_trainers.utils import encode_sample, make_reward_weights, resolve_reward_funcs
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger, remove_response
@@ -42,8 +43,14 @@ class GRPOTrainer(BaseRayTrainer):
         self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
         if self._teacher_use_disable_adapter:
             self._teacher_model_dir = None
-        self._has_teacher = bool(self._teacher_model_dir or self._teacher_model_server
-                                 or self._teacher_use_disable_adapter)
+        teacher_explicit = bool(self._teacher_model_dir or self._teacher_model_server
+                                or self._teacher_use_disable_adapter)
+        self._has_teacher_explicit = teacher_explicit
+        self._is_dynamic_self_distillation = resolve_dynamic_opd_self_distillation(
+            has_teacher_explicit=teacher_explicit,
+            is_self_distillation=not teacher_explicit,
+        )
+        self._has_teacher = teacher_explicit or self._is_dynamic_self_distillation
         self.teacher_kl_coef = getattr(args, 'teacher_kl_coef', 1.0)
         if self._teacher_model_server:
             raise NotImplementedError('teacher_model_server is not yet supported in the Ray pipeline. '
@@ -216,7 +223,10 @@ class GRPOTrainer(BaseRayTrainer):
         OPSD: the teacher forwards its own (teacher_prompt + same response) encoding via a
         separate dispatch, then the teacher-frame logps are remapped onto the student frame.
         """
-        if not build_opsd_samples(chunk_samples):
+        has_opsd_batch = build_opsd_samples(chunk_samples)
+        if not has_opsd_batch:
+            if not self._has_teacher_explicit:
+                return
             teacher_rows = tg.compute_teacher_logps(dispatch)
             self._scatter_logps(grpo_batches, teacher_rows, 'teacher_per_token_logps')
             return
@@ -295,12 +305,12 @@ class GRPOTrainer(BaseRayTrainer):
                 gb.completion_mask,
                 teacher_per_token_logps=teacher_lp,
                 policy_per_token_logps=policy_lp,
-                teacher_kl_coef=self.teacher_kl_coef if self._has_teacher else 0.0,
+                teacher_kl_coef=self.teacher_kl_coef if teacher_lp is not None else 0.0,
             )
         assert pos == advantages.shape[0], f'_scatter_advantages: wrote {pos} but got {advantages.shape[0]}'
         # Per-token teacher KL averaged over response tokens (monitoring only; the signal is applied
         # per-token above). Surfaced via _build_grpo_log_metrics -> worker on_log.
-        self._last_teacher_kl = (kl_sum / tok_sum) if (self._has_teacher and tok_sum > 0) else None
+        self._last_teacher_kl = (kl_sum / tok_sum) if tok_sum > 0 else None
 
     def _build_grpo_log_metrics(self, rewards, advantages, rewards_per_func) -> Dict[str, float]:
         """Driver-computed GRPO metrics (reward / reward_std / adv_nonzero / per-func),

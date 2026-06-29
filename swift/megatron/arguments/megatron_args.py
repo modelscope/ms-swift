@@ -357,9 +357,6 @@ class RLHFMegatronArgumentsMixin:
                 self.teacher_model = None
             # Full training + same teacher_model: a separate frozen copy is loaded as the fixed teacher.
 
-        if self.teacher_model is None and self.teacher_model_server is None:
-            logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
-
     def _check_opd_rl(self):
         """Fail-fast OPD-RL (teacher distillation on Megatron GRPO) parameter compatibility.
 

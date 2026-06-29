@@ -231,9 +231,9 @@ $$
 
 **Reference scripts**
 
-- HF: [examples/train/grpo/opd_rl/](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/opd_rl.sh)
-- Megatron: [examples/megatron/rlhf/opd_rl/](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo/opd_rl.sh)
-- Ray: [examples/ray/opd_rl/](https://github.com/modelscope/ms-swift/tree/main/examples/ray/grpo/run_opd.sh)
+- HF: [examples/train/grpo/opd_rl.sh](https://github.com/modelscope/ms-swift/tree/main/examples/train/grpo/opd_rl.sh)
+- Megatron: [examples/megatron/grpo/opd_rl.sh](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/grpo/opd_rl.sh)
+- Ray: [examples/ray/grpo/run_opd.sh](https://github.com/modelscope/ms-swift/tree/main/examples/ray/grpo/run_opd.sh)
 
 ---
 

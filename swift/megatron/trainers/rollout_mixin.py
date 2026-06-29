@@ -27,6 +27,7 @@ from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, Roll
 from swift.megatron.model import get_mcore_model
 from swift.rl_core.data import OnPolicySample
 from swift.rlhf_trainers.base_rollout_mixin import BaseRolloutTrainerMixin
+from swift.rlhf_trainers.gkd_helpers import resolve_dynamic_opd_self_distillation
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        TensorLoRARequest, add_base_layer_suffix_by_param_names, aggressive_empty_cache,
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
@@ -168,9 +169,14 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         self.offload_teacher_model = args.offload_teacher_model
         self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
         self._is_self_distillation = (args.teacher_model is None and self.teacher_model_server is None)
-        self._has_teacher = (
+        self._has_teacher_explicit = (
             args.teacher_model is not None or self.teacher_model_server is not None
             or self._teacher_use_disable_adapter)
+        self._is_dynamic_self_distillation = resolve_dynamic_opd_self_distillation(
+            has_teacher_explicit=self._has_teacher_explicit,
+            is_self_distillation=self._is_self_distillation,
+        )
+        self._has_teacher = self._has_teacher_explicit or self._is_dynamic_self_distillation
         self.teacher_models = None
         self.teacher_client = None
         if self.use_teacher_api:

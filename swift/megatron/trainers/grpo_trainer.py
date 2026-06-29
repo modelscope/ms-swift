@@ -20,7 +20,7 @@ from swift.rl_core.grpo_algorithm import score_completions
 from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
                                              build_teacher_requests, encode_teacher_view,
-                                             remap_teacher_logps_to_student_frame)
+                                             remap_teacher_logps_to_student_frame, should_compute_local_teacher_logps)
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, make_reward_weights,
                                        pad_logps_back_to_batch, profiling_context, profiling_decorator,
@@ -137,9 +137,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.truncation_strategy = args.truncation_strategy
 
         self.teacher_kl_coef = args.teacher_kl_coef
-        self._has_teacher = (
-            getattr(args, 'teacher_model', None) is not None or getattr(args, 'teacher_model_server', None) is not None
-            or getattr(args, '_teacher_use_disable_adapter', False))
 
     def _init_rollout_engine(self):
         """Initialize rollout engine with GRPO-specific extensions."""
@@ -300,8 +297,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         mini_batch_data = []
         template = self.template
 
-        # OPSD: build each sample's teacher view; local teacher forwards its own encoding.
-        is_opsd = self._has_teacher and not self.use_teacher_api and build_opsd_samples(total_samples)
+        # OPSD: build each sample's teacher view when this batch uses privileged teacher_prompt.
+        has_opsd_batch = build_opsd_samples(total_samples)
+        is_opsd = (not self.use_teacher_api and has_opsd_batch
+                   and (self._has_teacher_explicit or self._is_dynamic_self_distillation))
 
         # Step 1: Encode batches and compute logps first (unified flow like GRPOTrainer)
         with self._template_context(template):
@@ -352,11 +351,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             grpo_batch.advantages = expand_advantage_to_per_token(
                 micro_batch_advantages,
                 grpo_batch.completion_mask,
-                teacher_per_token_logps=grpo_batch.teacher_per_token_logps if self._has_teacher else None,
-                policy_per_token_logps=grpo_batch.old_per_token_logps if self._has_teacher else None,
-                teacher_kl_coef=self.teacher_kl_coef if self._has_teacher else 0.0,
+                teacher_per_token_logps=grpo_batch.teacher_per_token_logps,
+                policy_per_token_logps=grpo_batch.old_per_token_logps
+                if grpo_batch.teacher_per_token_logps is not None else None,
+                teacher_kl_coef=self.teacher_kl_coef if grpo_batch.teacher_per_token_logps is not None else 0.0,
             )
-        if self._has_teacher:
+        if any(m['grpo_batch'].teacher_per_token_logps is not None for m in mini_batch_data):
             self._log_teacher_kl_metric(mini_batch_data)
 
         if self.loss_type in ['cispo', 'dapo', 'fipo']:
@@ -681,7 +681,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     ref_per_token_logps = ref_per_token_logps_packed
                 grpo_batch.ref_per_token_logps = ref_per_token_logps
 
-        if self._has_teacher and not self.use_teacher_api:
+        if should_compute_local_teacher_logps(
+                has_teacher_explicit=self._has_teacher_explicit,
+                is_dynamic_self_distillation=self._is_dynamic_self_distillation,
+                use_teacher_api=self.use_teacher_api,
+                has_opsd_batch=teacher_inputs is not None,
+        ):
             grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(
                 inputs, grpo_batch, teacher_inputs=teacher_inputs)
 
