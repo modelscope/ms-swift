@@ -937,7 +937,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         if self._has_teacher and (self.loss_type in ['real', 'fipo']
                                   or self.off_policy_sequence_mask_delta is not None):
             raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} / '
-                             'off_policy_sequence_mask. Use grpo/bnpo/dr_grpo/dapo/cispo/sapo.')
+                             'off_policy_sequence_mask.')
 
         fipo_metrics = None
         if self.loss_type == 'cispo':

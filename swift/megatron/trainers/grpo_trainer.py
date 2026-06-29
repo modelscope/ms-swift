@@ -47,9 +47,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def __init__(self, args: MegatronArguments, template: Template, **kwargs):
         self.vllm_client = kwargs.pop('vllm_client')
-        # A teacher on a GRPO run turns it into OPD-RL (teacher KL as advantage). Resolve the
-        # teacher (separate model / API / self-distillation) before super().__init__ runs
-        # prepare_model(); both _setup_teacher and _load_teacher_model read self.args.
         self.args = args
         self._setup_teacher()
         super().__init__(args, template)
@@ -57,7 +54,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.hf_model_dir = args.model_info.model_dir
         self.processing_class = self.template.processor
         self._prepare_metrics()
-        self._init_grpo_params()  # also (re)sets teacher_kl_coef / _has_teacher from args
+        self._init_grpo_params()
         self._init_rollout_engine()
         self._prepare_rewards()
         self._prepare_scheduler()
@@ -65,7 +62,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
     def prepare_model(self):
         super().prepare_model()
-        # OPD-RL: load the separate local teacher (no-op for API / self-distillation / disable_adapter).
         self._load_teacher_model()
 
     def train(self, train_dataset, val_dataset):
@@ -138,11 +134,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # truncation_strategy support
         self.truncation_strategy = args.truncation_strategy
 
-        # OPD-RL teacher flags needed by forward_step / loss_func. These are a *pure* function of
-        # args (no model/API side-effects), so they live here -- the single place every loss path
-        # initializes. The Ray worker builds a loss-only stub via __new__ that calls only
-        # _init_grpo_params (+ _prepare_metrics), so anything loss_func reads must be set here, not
-        # in __init__'s _setup_teacher() (which also performs the heavy teacher resource setup).
         self.teacher_kl_coef = args.teacher_kl_coef
         self._has_teacher = (
             getattr(args, 'teacher_model', None) is not None or getattr(args, 'teacher_model_server', None) is not None
@@ -205,7 +196,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
-        # OPD-RL: a teacher alone is a valid (pure-distillation) signal, no reward_funcs needed.
         assert self.reward_funcs or self.use_gym_env or self._has_teacher, \
             'reward_funcs is not set (or pass --use_gym_env true / a teacher for OPD-RL)'
 
@@ -330,8 +320,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     data = self._maybe_compute_logps(data)
                 mini_batch_data.append(data)
 
-        # OPD-RL teacher API: fill teacher_per_token_logps from the server (local-teacher
-        # path already filled it inside _maybe_compute_logps).
         if self._has_teacher and self.use_teacher_api:
             self._assemble_teacher_api_logps(total_samples, mini_batch_data)
 
@@ -684,9 +672,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     ref_per_token_logps = ref_per_token_logps_packed
                 grpo_batch.ref_per_token_logps = ref_per_token_logps
 
-        # OPD-RL: local teacher logp on the sampled tokens (a frozen model like ref, so compute
-        # on clean inputs before routing replay). API path is filled later in
-        # _generate_and_score_completions (needs all samples).
         if self._has_teacher and not self.use_teacher_api:
             grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(inputs, grpo_batch)
 
@@ -1002,7 +987,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self._has_teacher and (self.loss_type in ['real', 'fipo']
                                   or self.off_policy_sequence_mask_delta is not None):
             raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} / '
-                             'off_policy_sequence_mask. Use grpo/bnpo/dr_grpo/dapo/cispo/sapo.')
+                             'off_policy_sequence_mask.')
 
         fipo_metrics = None
         if self.loss_type == 'cispo':

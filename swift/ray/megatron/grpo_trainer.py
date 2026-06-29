@@ -35,9 +35,6 @@ class GRPOTrainer(BaseRayTrainer):
         self.scale_rewards = args.scale_rewards
         self.kl_in_reward = args.kl_in_reward
 
-        # OPD-RL: a teacher on a GRPO run injects teacher KL as the advantage. Ray supports a
-        # colocated teacher (teacher_model) or same-model LoRA self-distillation; the API server
-        # path is not wired in the Ray pipeline yet (mirrors Ray GKD).
         self._teacher_model_dir = getattr(args, 'teacher_model_dir', None) or args.teacher_model
         self._teacher_model_server = getattr(args, 'teacher_model_server', None)
         self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
@@ -118,7 +115,6 @@ class GRPOTrainer(BaseRayTrainer):
         self.reward_weights = make_reward_weights(args.reward_weights, len(self.reward_func_names), self.device)
         self.reward_model_plugins = [None] * len(self.reward_funcs)
 
-        # OPD-RL: a teacher alone is a valid (pure-distillation) signal, no reward_funcs needed.
         if not self.reward_funcs and not self.use_gym_env and not getattr(self, '_has_teacher', False):
             raise ValueError('GRPOTrainer: no reward functions configured '
                              '(or pass use_gym_env: true / a teacher for OPD-RL)')

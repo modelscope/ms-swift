@@ -38,11 +38,6 @@ class GRPOLoss(Loss):
         Skips the heavy __init__ side-effects (vLLM, reward, model init)
         by using __new__ and manually initialising only the fields that
         ``forward_step`` / ``loss_func`` actually read.
-
-        ``_init_grpo_params`` is the single source of truth for every algorithm
-        parameter the loss path needs (including the OPD-RL ``_has_teacher`` /
-        ``teacher_kl_coef`` flags), so loss-only deps must be added there rather
-        than to ``__init__`` -- which this stub deliberately bypasses.
         """
         import torch
 

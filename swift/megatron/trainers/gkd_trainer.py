@@ -39,8 +39,6 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.beta = args.beta  # JSD interpolation coefficient
         self.temperature = args.temperature
         self.lmbda = args.lmbda  # On-policy probability
-        # _setup_teacher / _load_teacher_model (in prepare_model) read self.args; set it before
-        # super().__init__() runs prepare_model().
         self.args = args
         self._setup_teacher()
         if self._teacher_use_disable_adapter:

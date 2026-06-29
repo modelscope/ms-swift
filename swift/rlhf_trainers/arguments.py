@@ -103,13 +103,6 @@ class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
         # Skip trl GRPOConfig.__post_init__ (hard-requires num_generations>=2); keep TrainingArguments init.
         super(HfGRPOConfig, self).__post_init__()
 
-        self.scale_rewards = {True: 'group', False: 'none'}.get(self.scale_rewards, self.scale_rewards)
-
-        if self.log_completions_hub_repo is not None and not self.log_completions:
-            raise ValueError(
-                'log_completions_hub_repo is set, but log_completions is False. Enable log_completions to upload '
-                'completions to the Hub, or unset log_completions_hub_repo.')
-
         if self.vllm_reasoning_parser is not None:
             raise ValueError('vllm_reasoning_parser is not supported for GRPO Training, please unset it.')
 
@@ -124,11 +117,5 @@ class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
 
         # https://github.com/modelscope/ms-swift/issues/3863
         self.dataloader_drop_last = True
-
-        if self.num_generations < 1:
-            raise ValueError(f'num_generations must be >= 1, got {self.num_generations}.')
-
-        if self.delta is not None and self.use_liger_kernel:
-            raise ValueError('Liger kernel does not support two-sided GRPO loss yet.')
 
         self._init_generation_batch_params()
