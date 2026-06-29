@@ -24,18 +24,17 @@ NPROC_PER_NODE=7 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 \
 swift rlhf \
-    --rlhf_type gkd \
+    --rlhf_type grpo \
     --model Qwen/Qwen3-8B-Base \
     --teacher_model Qwen/Qwen3-32B \
     --tuner_type full \
     --dataset open-thoughts/OpenThoughts3-1.2M#10000 \
-    --lmbda 1 \
-    --beta 1 \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps 1 \
+    --num_generations 1 \
     --save_steps 1000 \
     --save_total_limit 2 \
     --logging_steps 1 \
