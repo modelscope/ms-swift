@@ -237,7 +237,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
     @contextmanager
     def load_teacher_model_context(self):
         """Load the local teacher to GPU for a forward and offload afterwards (when offloading is on)."""
-        if not self.args.offload_teacher_model:
+        if not self.args.offload_teacher_model or self.teacher_model is None:
             yield
             return
         self.load_model(self.accelerator.unwrap_model(self.teacher_model))

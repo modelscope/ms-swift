@@ -212,7 +212,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
     @contextmanager
     def load_teacher_model_context(self):
         """Load the teacher to GPU for a forward and offload after (when offloading is on)."""
-        if not self.offload_teacher_model:
+        if not self.offload_teacher_model or self.teacher_models is None:
             yield
             return
         self._load_teacher_models_to_gpu()

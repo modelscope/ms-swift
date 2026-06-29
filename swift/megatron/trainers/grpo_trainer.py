@@ -720,9 +720,12 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 teacher_logps_packed, _ = self.compute_per_token_logps(
                     self.unwrapped_models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
         else:
+            # Dynamic self-distillation (teacher_models is None): teacher = student (same
+            # weights including LoRA).
+            models = self.teacher_models if self.teacher_models else self.unwrapped_models
             with self.load_teacher_model_context():
                 teacher_logps_packed, _ = self.compute_per_token_logps(
-                    self.teacher_models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
+                    models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
 
         if self.template.padding_free:
             teacher_per_token_logps, _ = pad_logps_back_to_batch(

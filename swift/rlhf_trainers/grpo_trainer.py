@@ -523,10 +523,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                         self.model, self.args.gradient_checkpointing_kwargs):
                     return self._get_per_token_logps_and_entropies(
                         self.model, model_inputs, grpo_batch, origin_data=origin_data)[0]
+            model = self.teacher_model if self.teacher_model else self.model
             with self.load_teacher_model_context(), disable_gradient_checkpointing(
-                    self.teacher_model, self.args.gradient_checkpointing_kwargs):
+                    model, self.args.gradient_checkpointing_kwargs):
                 return self._get_per_token_logps_and_entropies(
-                    self.teacher_model, model_inputs, grpo_batch, origin_data=origin_data)[0]
+                    model, model_inputs, grpo_batch, origin_data=origin_data)[0]
 
     def _assemble_teacher_api_logps(self, samples: List[GRPOSample], batch_encoded_inputs: List[Dict[str,
                                                                                                      Any]]) -> None:

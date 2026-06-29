@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import torch
+from contextlib import nullcontext
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from swift.rl_core.data import GRPOBatch
@@ -318,9 +319,11 @@ class MegatronWorker(CheckpointEngineMixin):
                     stack.enter_context(m.disable_adapter())
                 return self._compute_logps_micro_batches(micro_batches, self._megatron.unwrapped_models[0],
                                                          'teacher_per_token_logps')
-        assert self.teacher is not None, 'Teacher model not initialized. Call init_teacher_model first.'
-        with self.teacher.loaded_context():
-            return self._compute_logps_micro_batches(micro_batches, self.teacher.models[0], 'teacher_per_token_logps')
+        # Dynamic self-distillation (teacher is None): teacher = student (same weights
+        # including LoRA). No offload/load needed.
+        model = self.teacher.models[0] if self.teacher else self._megatron.unwrapped_models[0]
+        with (self.teacher.loaded_context() if self.teacher else nullcontext()):
+            return self._compute_logps_micro_batches(micro_batches, model, 'teacher_per_token_logps')
 
     def _compute_logps_micro_batches(
         self,

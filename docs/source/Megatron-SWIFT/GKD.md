@@ -1,6 +1,6 @@
 # GKD
 
-如果你是首次使用 GKD，请先参考 [GKD文档](../Instruction/GKD.md)。
+如果你是首次使用 GKD/OPD-RL，请先参考 [蒸馏文档](../Instruction/distillation.md)。
 
 GKD（Generalized Knowledge Distillation，广义知识蒸馏）是一种将教师模型的知识迁移到学生模型的训练方法，通过计算两个模型输出分布之间的 Jensen-Shannon 散度（JSD）损失来实现知识蒸馏。
 

@@ -575,7 +575,7 @@ RLHF参数继承于[训练参数](#训练参数)。
 #### GKD参数
 - lmbda: 默认为0.5。该参数在GKD中使用。控制学生数据比例的 lambda 参数（即策略内学生生成输出所占的比例）。若lmbda为0，则不使用学生生成数据。
 - sft_alpha: 默认为0。控制GKD中加入sft_loss的权重。最后的loss为`gkd_loss + sft_alpha * sft_loss`。
-- gkd_logits_topk: 使用 Top-K logits 计算 KL 散度，默认为 None（即使用完整词表计算）。设置该参数可有效降低训练显存峰值；当配置 teacher_model_server 时，此参数为必填项。详见[GKD 文档](./GKD.md#top-k-kl-计算)。
+- gkd_logits_topk: 使用 Top-K logits 计算 KL 散度，默认为 None（即使用完整词表计算）。设置该参数可有效降低训练显存峰值；当配置 teacher_model_server 时，此参数为必填项。详见[蒸馏文档](./distillation.md#top-k-蒸馏省显存)。
 - truncation_strategy: 用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
 - log_completions: 是否记录训练中的模型生成内容，搭配 `--report_to wandb/swanlab` 使用。默认为False。
   - 提示：若没有设置`--report_to wandb/swanlab`，则会在checkpoint中创建`completions.jsonl`来存储生成内容。
