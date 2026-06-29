@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
 import numpy as np
+import os
 import torch
 import torch.nn.functional as F
 import transformers
@@ -1212,6 +1213,8 @@ class Qwen3TTSTemplate(Template):
         sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
         if sub_talker_loss is not None:
             outputs.loss = talker_loss + 0.3 * sub_talker_loss
+        if trainer.model.training:
+            outputs.loss = outputs.loss / trainer.current_gradient_accumulation_steps
         return outputs
 
     def save_callback(self, model, output_dir):
