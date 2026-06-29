@@ -8,7 +8,7 @@ outputs.  Shared by the HF and Megatron GKD trainers.
 import torch
 from typing import Any, Dict, List, Optional, Tuple
 
-from swift.rl_core.data import GKDSample
+from swift.rl_core.data import GKDSample, OnPolicySample
 from swift.template.base import Template
 from swift.utils import get_cu_seqlens_from_position_ids, get_logger
 from .gkd_loss import TeacherOutput
@@ -19,7 +19,7 @@ logger = get_logger()
 
 
 def encode_teacher_view(
-    sample: GKDSample,
+    sample: OnPolicySample,
     template: Template,
 ) -> Dict[str, Any]:
     """Encode the OPSD teacher view (teacher_prompt + the shared on-policy response).
@@ -79,16 +79,39 @@ def encode_gkd_samples(
     return student_encoded_list, teacher_encoded_list, has_opsd
 
 
-def build_teacher_requests(samples: List[GKDSample]) -> List[Any]:
-    """Build teacher API requests from GKDSample objects.
+def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Template] = None) -> List[Any]:
+    """Build teacher API requests from samples (GKD or GRPO/OPD-RL).
 
-    For OPSD samples, ``teacher_messages`` replaces the request messages.
+    For GKD OPSD samples, ``teacher_messages`` replaces the request messages;
+    GRPO samples have no OPSD view, so the on-policy request is used as-is.
+
+    When ``template`` is given and the sample carries ``response_token_ids``, the assistant
+    response is sent as raw token ids (mirroring :func:`encode_sample`) so the teacher server
+    forwards the *same* tokens the student sampled instead of re-tokenizing the decoded text.
+    Re-tokenization can split the response into a different number of tokens, breaking the
+    token-in-token-out alignment the teacher KL relies on. Teacher and student must share the
+    tokenizer/vocabulary (a prerequisite of distillation) for the ids to be meaningful.
     """
     requests = []
     for s in samples:
         req = s.to_infer_request()
-        if s.teacher_messages:
-            req.messages = s.teacher_messages
+        # OPSD: score the teacher on its privileged prompt instead of the student prompt.
+        teacher_messages = getattr(s, 'teacher_messages', None)
+        messages = teacher_messages if teacher_messages else req.messages
+        if template is not None and s.response_token_ids:
+            # Send the sampled response as raw token ids (token-in-token-out) so the teacher server
+            # forwards the *same* tokens the student sampled instead of re-tokenizing the decoded text.
+            # Re-tokenization can split the response into a different number of tokens, breaking the
+            # alignment the teacher KL relies on. Applies to both the on-policy prompt (GRPO/OPD-RL)
+            # and the OPSD teacher prompt (which shares the same response tokens).
+            loss_mask = s.response_loss_mask or None
+            ctk = s.extra.get('chat_template_kwargs') or {}
+            prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=ctk.get('enable_thinking'))
+            messages = replace_assistant_response_with_ids([m.copy() for m in messages],
+                                                           s.response_token_ids,
+                                                           loss_mask,
+                                                           non_thinking_prefix_ids=prefix_ids)
+        req.messages = messages
         requests.append(req)
     return requests
 
@@ -100,11 +123,14 @@ def assemble_teacher_output(
     template_padding_free: bool,
     device: torch.device,
 ) -> TeacherOutput:
-    """Build a ``TeacherOutput`` from parsed teacher prompt logprobs.
+    """Build a full-sequence ``TeacherOutput`` (GKD) from parsed teacher prompt logprobs.
 
-    Handles both packed (padding_free) and non-packed layouts, including
-    mrope / position-id based cu_seqlens detection.
+    Produces a ``[B, S, K]`` top-k frame aligned to the teacher's full input sequence,
+    masked later by ``labels`` in :func:`gkd_loss`. Handles both packed (padding_free)
+    and non-packed layouts, including mrope / position-id based cu_seqlens detection.
+    GRPO/OPD-RL uses :func:`assemble_teacher_completion_logprobs` instead (completion frame).
     """
+    K = topk or 1
     input_ids = teacher_model_inputs['input_ids']
     batch_size, seq_len = input_ids.shape
 
@@ -139,7 +165,7 @@ def assemble_teacher_output(
         batch_size=batch_size,
         seq_len=seq_len,
         cu_seqlens=cu_seqlens,
-        topk=topk or 1,
+        topk=K,
         device=device,
         offsets=offsets,
     )
@@ -148,3 +174,130 @@ def assemble_teacher_output(
     if 'labels' in teacher_model_inputs:
         teacher_out.labels = teacher_model_inputs['labels']
     return teacher_out
+
+
+def assemble_teacher_completion_logprobs(
+    parsed: List[Tuple],
+    completion_mask: torch.Tensor,
+    device: torch.device,
+    response_token_ids: Optional[List[List[int]]] = None,
+) -> TeacherOutput:
+    """Align parsed teacher *sampled-token* prompt logprobs to a ``[B, T, 1]`` completion frame (GRPO/OPD-RL).
+
+    ``parsed[i] = (lps, ixs)`` come from :func:`parse_prompt_logprobs` with ``topk=0``,
+    i.e. the sampled token's logp/id at each position. They are placed on
+    ``completion_mask``'s response region.
+
+    When the teacher API returns logprobs for the **full sequence** (prompt + response
+    + end tokens), ``response_token_ids`` is used to locate the response portion by
+    matching token IDs from the end of the sequence (the response is the last
+    ``count`` tokens before the end tokens).
+    """
+    batch_size, seq_len = completion_mask.shape
+    out_lp = torch.zeros(batch_size, seq_len, 1, dtype=torch.float32, device=device)
+    out_ix = torch.zeros(batch_size, seq_len, 1, dtype=torch.long, device=device)
+    for i, (lps, ixs) in enumerate(parsed):
+        completion_indices = completion_mask[i].nonzero(as_tuple=True)[0]
+        count = completion_indices.numel()
+        if count == 0:
+            continue
+        if len(lps) == count + 1:
+            lps, ixs = lps[:count], ixs[:count]
+        elif len(lps) > count + 1 and response_token_ids is not None:
+            # Teacher returned logprobs for the full sequence (prompt + response + end tokens).
+            # Locate the response portion by matching token IDs from the end.
+            rti = response_token_ids[i]
+            if isinstance(rti[0], list):
+                rti = rti[0]  # flatten [[1,2,3]] -> [1,2,3]
+            flat_ixs = [ix[0] for ix in ixs]  # each ix is a single-element list [token_id]
+            # Search from the end: find the starting index where the last `count` tokens
+            # match the response token IDs (allowing 0-2 end tokens after the response).
+            start = None
+            for offset in range(min(3, len(lps) - count + 1)):  # try 0, 1, 2 end tokens
+                candidate_start = len(flat_ixs) - count - offset
+                if candidate_start < 0:
+                    continue
+                if flat_ixs[candidate_start:candidate_start + count] == rti[:count]:
+                    start = candidate_start
+                    break
+            if start is not None:
+                lps = lps[start:start + count]
+                ixs = ixs[start:start + count]
+            else:
+                # The response token ids did not align anywhere in the returned sequence: the teacher
+                # tokenized differently than the student, so any slice would yield a meaningless
+                # per-token KL. Fail loudly rather than silently mis-aligning.
+                raise ValueError(
+                    f'Teacher returned {len(lps)} logprobs but could not locate the {count} sampled response '
+                    'tokens by id. The teacher server must use the same tokenizer as the student '
+                    '(token-in-token-out).')
+        assert len(lps) == count, (f'Teacher logp count {len(lps)} != sampled tokens {count}. The teacher server '
+                                   'must use the same tokenizer as the student (token-in-token-out).')
+        # lps/ixs are per-position single-element lists ([[lp], ...]) -> [count, 1].
+        out_lp[i, completion_indices] = torch.tensor(lps, dtype=torch.float32, device=device)
+        out_ix[i, completion_indices] = torch.tensor(ixs, dtype=torch.long, device=device)
+    return TeacherOutput(topk_logprobs=out_lp, topk_indices=out_ix)
+
+
+def resolve_dynamic_opd_self_distillation(
+    *,
+    has_teacher_explicit: bool,
+    is_self_distillation: bool,
+) -> bool:
+    if has_teacher_explicit or not is_self_distillation:
+        return False
+    return True
+
+
+def should_compute_local_teacher_logps(
+    *,
+    has_teacher_explicit: bool,
+    is_dynamic_self_distillation: bool,
+    use_teacher_api: bool,
+    has_opsd_batch: bool,
+) -> bool:
+    """Per-step gate for a local (non-API) teacher forward in OPD-RL."""
+    if use_teacher_api:
+        return False
+    if has_teacher_explicit:
+        return True
+    return is_dynamic_self_distillation and has_opsd_batch
+
+
+def build_opsd_samples(samples: List[OnPolicySample]) -> bool:
+    """Build each sample's OPSD teacher view; return True if ANY sample is OPSD.
+
+    ``build_teacher_view`` must run for every sample (not short-circuited by ``any()``)
+    so ``teacher_messages`` is populated wherever ``teacher_prompt`` is set.
+    """
+    has_opsd = False
+    for s in samples:
+        if s.build_teacher_view():
+            has_opsd = True
+    return has_opsd
+
+
+def remap_teacher_logps_to_student_frame(
+    teacher_logps: torch.Tensor,
+    teacher_completion_mask: torch.Tensor,
+    student_completion_mask: torch.Tensor,
+) -> torch.Tensor:
+    """Move per-token teacher logps from the OPSD teacher frame to the student frame.
+
+    OPSD teacher and student share the *same* response tokens (same ids, same order)
+    but different prompts, so their completion regions sit at different positions and
+    the sequences differ in length. The OPD-RL advantage compares teacher vs. student
+    logps position-by-position on the student ``completion_mask`` frame, so the teacher
+    logps (returned aligned to the teacher frame) must be scattered onto the student
+    frame: for each sample, the ``count`` valid teacher-completion values are placed at
+    the student-completion positions in order. Returns ``[B, T_student]``.
+    """
+    out = torch.zeros_like(student_completion_mask, dtype=teacher_logps.dtype)
+    for i in range(student_completion_mask.shape[0]):
+        s_idx = student_completion_mask[i].nonzero(as_tuple=True)[0]
+        t_idx = teacher_completion_mask[i].nonzero(as_tuple=True)[0]
+        assert s_idx.numel() == t_idx.numel(), (
+            f'OPSD response length mismatch at sample {i}: student={s_idx.numel()} teacher={t_idx.numel()}. '
+            'Teacher and student must share the same response tokens.')
+        out[i, s_idx] = teacher_logps[i, t_idx]
+    return out

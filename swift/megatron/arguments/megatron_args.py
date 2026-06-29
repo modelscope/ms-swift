@@ -59,6 +59,10 @@ class RLHFMegatronArgumentsMixin:
     offload_teacher_model: bool = False  # Offload teacher model to CPU to save GPU memory
     sft_alpha: float = 0.0  # Weight for SFT loss in GKD (0 = pure JSD, >0 = JSD + sft_alpha * SFT)
 
+    # OPD-RL (On-Policy Distillation as RL): a teacher (teacher_model / teacher_model_server)
+    # on a GRPO run turns it into OPD-RL, injecting teacher KL as the advantage.
+    teacher_kl_coef: float = 1.0
+
     # grpo/gkd
     temperature: float = 0.9  # Temperature for sampling and loss computation
 
@@ -218,30 +222,19 @@ class RLHFMegatronArgumentsMixin:
                 self.cosine_max_len = self.max_completion_length
             if self.vllm_limit_mm_per_prompt is not None:
                 self.vllm_limit_mm_per_prompt = json_parse_to_dict(self.vllm_limit_mm_per_prompt)
+        # Teacher setup is identical for GKD and GRPO (OPD-RL): a teacher_model / server /
+        # same-model LoRA self-distillation all flow through the same detection. GKD also
+        # allows dynamic self-distillation (no teacher at all); GRPO without a teacher is
+        # plain RL, so only resolve a teacher for GRPO when one is configured.
+        if self.rlhf_type == 'gkd' or (self.rlhf_type == 'grpo' and
+                                       (self.teacher_model is not None or self.teacher_model_server is not None)):
+            self._check_teacher()
+            if self.rlhf_type == 'grpo':
+                self._check_opd_rl()
         if self.rlhf_type == 'gkd':
-            if self.teacher_model is not None and self.teacher_model_server is not None:
-                raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
-
-            # Self-distillation: teacher_model == student model
-            self._teacher_use_disable_adapter = False
-            if self.teacher_model is not None and self.teacher_model == self.model:
-                if self.tuner_type == 'lora':
-                    logger.info(
-                        'LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
-                    self._teacher_use_disable_adapter = True
-                    self.teacher_model = None
-                else:
-                    # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
-                    pass
-
-            # Self-distillation: no teacher_model → dynamic teacher (current student weights)
-            if self.teacher_model is None and self.teacher_model_server is None:
-                logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
-
-            # When using teacher_model_server, gkd_logits_topk is required (API only returns top-k logprobs)
-            if self.teacher_model_server is not None:
-                if self.gkd_logits_topk is None:
-                    raise ValueError('gkd_logits_topk is required when using teacher_model_server')
+            # GKD-specific: the API path only returns top-k logprobs, so gkd_logits_topk is required.
+            if self.teacher_model_server is not None and self.gkd_logits_topk is None:
+                raise ValueError('gkd_logits_topk is required when using teacher_model_server')
 
             # Validate gkd_logits_topk
             if self.gkd_logits_topk is not None and self.gkd_logits_topk <= 0:
@@ -339,6 +332,50 @@ class RLHFMegatronArgumentsMixin:
             self.validate_batch_dp_alignment(self.generation_batch_size, self.num_generations, dp_size,
                                              self.micro_batch_size, world_size)
             self.per_device_generation_batch_size = self.generation_batch_size // world_size
+
+    def _check_teacher(self):
+        """Resolve the teacher (shared by GKD and GRPO/OPD-RL).
+
+        Detects the three teacher modes and sets ``_teacher_use_disable_adapter``:
+          - separate teacher_model / teacher_model_server,
+          - same-model LoRA self-distillation (disable_adapter, no extra model),
+          - dynamic self-distillation (no teacher -> teacher == current student weights).
+        """
+        if self.teacher_model is not None and self.teacher_model_server is not None:
+            raise ValueError('setting both `teacher_model` and `teacher_model_server` is not supported.')
+
+        # Fail fast: the Ray pipeline only supports a colocated teacher_model (see
+        # swift/ray/megatron/grpo_trainer.py), so reject teacher_model_server at parse time.
+        if self.use_ray and self.teacher_model_server is not None:
+            raise ValueError('teacher_model_server is not supported with use_ray')
+
+        self._teacher_use_disable_adapter = False
+        if self.teacher_model is not None and self.teacher_model == self.model:
+            if self.tuner_type == 'lora':
+                logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
+                self._teacher_use_disable_adapter = True
+                self.teacher_model = None
+            # Full training + same teacher_model: a separate frozen copy is loaded as the fixed teacher.
+
+    def _check_opd_rl(self):
+        """Fail-fast OPD-RL (teacher distillation on Megatron GRPO) parameter compatibility.
+
+        Mirrors ``RLHFArguments._check_opd_rl``: the teacher signal is a *per-token* advantage, so
+        features that need a *per-sequence* advantage (sign-based) or reward variance are rejected.
+        Called after ``_init_grpo`` so ``loss_type`` / ``scale_rewards`` are already resolved.
+        """
+        if self.loss_type in ['real', 'fipo']:
+            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} '
+                             '(it needs a per-sequence advantage). Use grpo/bnpo/dr_grpo/dapo/cispo/sapo.')
+        if self.off_policy_sequence_mask_delta is not None:
+            raise ValueError('OPD-RL (teacher) does not support off_policy_sequence_mask_delta '
+                             '(it needs a per-sequence advantage).')
+        if not self.reward_funcs:
+            if self.dynamic_sample:
+                raise ValueError('dynamic_sample requires reward_funcs (it filters groups by reward std); '
+                                 'pure OPD-RL distillation has no reward variance.')
+            if self.scale_rewards == 'gdpo':
+                raise ValueError("scale_rewards='gdpo' requires reward_funcs; pure OPD-RL distillation has none.")
 
     def _init_grpo(self):
 
