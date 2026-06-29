@@ -393,7 +393,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             self.enable_offload = args.offload_model or args.offload_optimizer
             context = self.offload_context if self.enable_offload else nullcontext
 
-            with context():
+            with context(), self._disable_sp_context():
                 self.engine = self._prepare_vllm_engine()
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:

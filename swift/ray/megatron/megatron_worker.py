@@ -568,6 +568,17 @@ class MegatronWorker(CheckpointEngineMixin):
             self.teacher.reload_to_gpu(load_grad=False)
 
     @staticmethod
+    def _align_seq_len(t, target_len, pad_val=0):
+        """Pad or truncate a tensor along dim=1 to target_len. Works for 2D [B,S] and 3D [B,S,*]."""
+        cur = t.shape[1]
+        if cur == target_len:
+            return t
+        if cur < target_len:
+            pad = (0, target_len - cur) if t.dim() == 2 else (0, 0, 0, target_len - cur)
+            return torch.nn.functional.pad(t, pad, value=pad_val)
+        return t[:, :target_len]
+
+    @staticmethod
     def _collate_teacher_outputs(
         teacher_outputs: List['TeacherOutput'],
         device: torch.device,
@@ -577,29 +588,8 @@ class MegatronWorker(CheckpointEngineMixin):
     ) -> 'TeacherOutput':
         """Collate per-sample TeacherOutputs into a batched one (driver-side).
 
-        Used by the teacher-REPLICAS path only: the driver builds a ``[1, S, K]``
-        top-k TeacherOutput per sample from the replica's prompt-logprobs, then
-        collates them here to match the collated student batch. (The colocated /
-        self-distillation path forwards the teacher on the worker and produces a
-        batched TeacherOutput directly, bypassing this function.)
-
-        Layout must match the student labels:
-        - padding_free: student labels are [1, total_tokens] (samples concatenated
-          along the sequence dim), so concatenate per-sample teacher tensors along
-          dim=1. Empty placeholders ([0, ...]) are dropped first.
-        - otherwise: stack per-sample tensors along the batch dim (dim=0).
-
-        ``target_seq_len`` is the student's collated sequence length. The student
-        collation pads the sequence to a multiple via ``get_padding_to`` (SP/CP/fp8),
-        so the standalone-teacher tensors (built from each sample's raw, unpadded
-        length) can be 1+ tokens short. Pad the teacher seq dim to ``target_seq_len``
-        so extract_active's label mask aligns; the padded tail has labels == -100 and
-        is masked out, leaving the loss unchanged.
-
-        OPSD (``is_opsd=True``): the teacher scores a *different* prompt (so its sequence
-        length differs from the student) and extract_active aligns by mask
-        (``labels != -100``), not by position. The teacher keeps its own length
-        (``target_seq_len`` is ignored).
+        For non-OPSD: each tensor is aligned to target_seq_len (pad or truncate).
+        For OPSD: teacher keeps its own length (target_seq_len ignored).
         """
         from swift.rlhf_trainers.gkd_loss import TeacherOutput
         effective_target = None if is_opsd else target_seq_len
@@ -612,25 +602,13 @@ class MegatronWorker(CheckpointEngineMixin):
             if not tensors:
                 continue
             pad_val = pad_vals.get(field, 0)
+            if effective_target is not None:
+                tensors = [MegatronWorker._align_seq_len(t, effective_target, pad_val) for t in tensors]
             if padding_free:
                 non_empty = [t for t in tensors if t.shape[0] > 0]
-                cat = torch.cat(non_empty, dim=1)
-                if effective_target is not None and cat.dim() == 3 and cat.shape[1] < effective_target:
-                    cat = torch.nn.functional.pad(cat, (0, 0, 0, effective_target - cat.shape[1]), value=pad_val)
-                kwargs[field] = cat.to(device)
+                kwargs[field] = torch.cat(non_empty, dim=1).to(device)
             else:
-                max_len = effective_target or max(t.shape[1] for t in tensors)
-                padded = []
-                for t in tensors:
-                    # labels is 2D [1, S]; topk_*/full_logits are 3D [1, S, *].
-                    # Pad the sequence dim (dim=1) of either to max_len so torch.cat works
-                    # even when per-sample teacher seq lengths differ within a micro-batch.
-                    if t.dim() == 3 and t.shape[1] < max_len:
-                        t = torch.nn.functional.pad(t, (0, 0, 0, max_len - t.shape[1]), value=pad_val)
-                    elif t.dim() == 2 and t.shape[1] < max_len:
-                        t = torch.nn.functional.pad(t, (0, max_len - t.shape[1]), value=pad_val)
-                    padded.append(t)
-                kwargs[field] = torch.cat(padded, dim=0).to(device)
+                kwargs[field] = torch.cat(tensors, dim=0).to(device)
         return TeacherOutput(**kwargs)
 
     def send_checkpoint_weights(self, adapter_only: bool = False) -> None:
