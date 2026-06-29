@@ -54,7 +54,9 @@ from swift.rl_core.advantage import (compute_advantages, compute_advantages_dyna
                                      compute_teacher_kl_per_token, expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
-from swift.rlhf_trainers.gkd_helpers import assemble_teacher_completion_logprobs, build_teacher_requests
+from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
+                                             build_teacher_requests, encode_teacher_view,
+                                             remap_teacher_logps_to_student_frame)
 from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
@@ -510,24 +512,60 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return advantages
 
-    def _compute_teacher_logps(self, model_inputs, grpo_batch, origin_data=None) -> torch.Tensor:
+    def _collate_teacher_opsd_batch(self, batch: List[GRPOSample], template) -> Tuple[Dict[str, Any], GRPOBatch]:
+        """Encode + collate the OPSD teacher view (teacher_prompt + same response).
+
+        Produces a teacher micro-batch whose completion frame may differ in length from
+        the student's; ``_compute_teacher_logps`` remaps the teacher logps back onto the
+        student frame. ``build_teacher_view`` is already done by ``build_opsd_samples``.
+        """
+        for s in batch:
+            s.encoded = encode_teacher_view(s, template)
+        teacher_model_inputs, teacher_grpo_batch = collate_to_grpo_micro_batch(
+            batch, template, device=self.model.device, use_logits_to_keep=True)
+        teacher_model_inputs.pop('labels', None)
+        # Restore the student encoding so downstream code (advantages/loss) keeps the student frame.
+        for s in batch:
+            s.encoded = encode_sample(s, template)
+            s.encoded.pop('_extra_kwargs', None)
+        return teacher_model_inputs, teacher_grpo_batch
+
+    def _compute_teacher_logps(self,
+                               model_inputs,
+                               grpo_batch,
+                               origin_data=None,
+                               teacher_model_inputs=None,
+                               teacher_grpo_batch=None) -> torch.Tensor:
         """OPD-RL: per-token teacher logp on the sampled tokens via a local teacher forward.
 
         Reuses ``_get_per_token_logps_and_entropies`` so the teacher logp frame matches
         the policy's old/ref logps (token-in-token-out, single token per position).
-        LoRA same-model teacher runs the student under ``disable_adapter``.
+        LoRA same-model teacher runs the student under ``disable_adapter``. For OPSD,
+        the teacher forwards its own ``teacher_model_inputs`` (teacher_prompt + same
+        response) and the result is remapped onto the student's completion frame.
         """
+        is_opsd = teacher_model_inputs is not None
+        # OPSD remaps via completion masks (per-token), which the chunked/multimodal logps path
+        # does not preserve; OPSD self-distillation uses single-token text batches so this holds.
+        fwd_inputs = teacher_model_inputs if is_opsd else model_inputs
+        fwd_batch = teacher_grpo_batch if is_opsd else grpo_batch
+        fwd_origin = None if is_opsd else origin_data
         with torch.no_grad():
             if self._teacher_use_disable_adapter:
                 with self.accelerator.unwrap_model(self.model).disable_adapter(), disable_gradient_checkpointing(
                         self.model, self.args.gradient_checkpointing_kwargs):
-                    return self._get_per_token_logps_and_entropies(
-                        self.model, model_inputs, grpo_batch, origin_data=origin_data)[0]
-            model = self.teacher_model if self.teacher_model else self.model
-            with self.load_teacher_model_context(), disable_gradient_checkpointing(
-                    model, self.args.gradient_checkpointing_kwargs):
-                return self._get_per_token_logps_and_entropies(
-                    model, model_inputs, grpo_batch, origin_data=origin_data)[0]
+                    teacher_logps = self._get_per_token_logps_and_entropies(
+                        self.model, fwd_inputs, fwd_batch, origin_data=fwd_origin)[0]
+            else:
+                model = self.teacher_model if self.teacher_model else self.model
+                with self.load_teacher_model_context(), disable_gradient_checkpointing(
+                        model, self.args.gradient_checkpointing_kwargs):
+                    teacher_logps = self._get_per_token_logps_and_entropies(
+                        model, fwd_inputs, fwd_batch, origin_data=fwd_origin)[0]
+        if is_opsd:
+            teacher_logps = remap_teacher_logps_to_student_frame(teacher_logps, teacher_grpo_batch.completion_mask,
+                                                                 grpo_batch.completion_mask)
+        return teacher_logps
 
     def _assemble_teacher_api_logps(self, samples: List[GRPOSample], batch_encoded_inputs: List[Dict[str,
                                                                                                      Any]]) -> None:
@@ -535,6 +573,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         (``prompt_logprobs=0`` -> ``parse_prompt_logprobs(topk=0)``, the actually-present
         token, not the top-1) as a completion-frame ``TeacherOutput``, then read its single
         column as ``teacher_per_token_logps``. Future top-k RL reuses the same ``TeacherOutput``."""
+        # OPSD: populate teacher_messages so build_teacher_requests scores the teacher prompt.
+        build_opsd_samples(samples)
         sample_chunks = self.split_by_mini_batches(samples)
         local_requests, chunk_sizes = [], []
         chunk_rti = []
@@ -663,6 +703,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         gas_chunks = self.split_by_mini_batches(samples)
         ga_batch_encoded_inputs: List[Dict[str, Any]] = []
         for batch in gas_chunks:
+            teacher_model_inputs = teacher_grpo_batch = None
             with self._template_context(template):
                 for s in batch:
                     encoded_inputs = encode_sample(s, template)
@@ -670,6 +711,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     s.encoded = encoded_inputs
                 model_inputs, grpo_batch = collate_to_grpo_micro_batch(
                     batch, template, device=self.model.device, use_logits_to_keep=True)
+                # OPSD: the local teacher forwards its own (teacher_prompt + same response)
+                # encoding, so collate a separate teacher micro-batch (different length).
+                if self._has_teacher and not self.use_teacher_api and build_opsd_samples(batch):
+                    teacher_model_inputs, teacher_grpo_batch = self._collate_teacher_opsd_batch(batch, template)
 
             model_inputs.pop('labels', None)
             batch_encoded_inputs = {'model_inputs': model_inputs, 'grpo_batch': grpo_batch}
@@ -697,7 +742,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 # OPD-RL: local teacher logp on the sampled tokens (API path filled later).
                 if self._has_teacher and not self.use_teacher_api:
                     grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(
-                        model_inputs, grpo_batch, origin_data=origin_data)
+                        model_inputs,
+                        grpo_batch,
+                        origin_data=origin_data,
+                        teacher_model_inputs=teacher_model_inputs,
+                        teacher_grpo_batch=teacher_grpo_batch)
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
         # --- log completion lengths ---

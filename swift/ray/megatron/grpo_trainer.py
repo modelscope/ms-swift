@@ -14,6 +14,8 @@ from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics,
                                      expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import compute_std_for_dynamic_sampling, score_completions
+from swift.rlhf_trainers.gkd_helpers import (build_opsd_samples, encode_teacher_view,
+                                             remap_teacher_logps_to_student_frame)
 from swift.rlhf_trainers.utils import encode_sample, make_reward_weights, resolve_reward_funcs
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger, remove_response
@@ -183,8 +185,7 @@ class GRPOTrainer(BaseRayTrainer):
                     self._scatter_logps(grpo_batches, ref_rows, 'ref_per_token_logps')
                 # OPD-RL: teacher logp on the sampled tokens (same frame as old/ref logps).
                 if self._has_teacher:
-                    teacher_rows = tg.compute_teacher_logps(dispatch)
-                    self._scatter_logps(grpo_batches, teacher_rows, 'teacher_per_token_logps')
+                    self._compute_teacher_logps(tg, chunk_samples, dispatch, grpo_batches)
                 all_chunks.append((dispatch, grpo_batches))
 
             for step_idx in range(spg):
@@ -205,6 +206,33 @@ class GRPOTrainer(BaseRayTrainer):
                 iteration = extract_iteration(results)
 
         return iteration
+
+    def _compute_teacher_logps(self, tg, chunk_samples: List[GRPOSample], dispatch,
+                               grpo_batches: List[GRPOBatch]) -> None:
+        """OPD-RL: fill each micro-batch's ``teacher_per_token_logps`` (student frame).
+
+        Non-OPSD: the teacher forwards the SAME student-collated dispatch, so the rows
+        already align to the student ``completion_mask`` frame and are scattered directly.
+        OPSD: the teacher forwards its own (teacher_prompt + same response) encoding via a
+        separate dispatch, then the teacher-frame logps are remapped onto the student frame.
+        """
+        if not build_opsd_samples(chunk_samples):
+            teacher_rows = tg.compute_teacher_logps(dispatch)
+            self._scatter_logps(grpo_batches, teacher_rows, 'teacher_per_token_logps')
+            return
+
+        # OPSD: encode the teacher view (teacher_prompt + shared response) and dispatch separately.
+        for s in chunk_samples:
+            s.encoded = encode_teacher_view(s, self.template)
+        teacher_dispatch, teacher_grpo_batches = self._collate_for_workers(tg, chunk_samples)
+        # Restore the student encoding so the dispatched student micro-batches stay the student frame.
+        self.encode_rollout_batch(chunk_samples)
+        teacher_rows = tg.compute_teacher_logps(teacher_dispatch)
+        self._scatter_logps(teacher_grpo_batches, teacher_rows, 'teacher_per_token_logps')
+        for student_gb, teacher_gb in zip(grpo_batches, teacher_grpo_batches):
+            student_gb.teacher_per_token_logps = remap_teacher_logps_to_student_frame(
+                teacher_gb.teacher_per_token_logps.to(student_gb.completion_mask.device),
+                teacher_gb.completion_mask.to(student_gb.completion_mask.device), student_gb.completion_mask)
 
     @staticmethod
     def _scatter_logps(grpo_batches: List[GRPOBatch], rows: List[Dict[str, torch.Tensor]], key: str) -> None:

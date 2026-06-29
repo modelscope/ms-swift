@@ -19,7 +19,7 @@ logger = get_logger()
 
 
 def encode_teacher_view(
-    sample: GKDSample,
+    sample: OnPolicySample,
     template: Template,
 ) -> Dict[str, Any]:
     """Encode the OPSD teacher view (teacher_prompt + the shared on-policy response).
@@ -95,19 +95,23 @@ def build_teacher_requests(samples: List[OnPolicySample], template: Optional[Tem
     requests = []
     for s in samples:
         req = s.to_infer_request()
+        # OPSD: score the teacher on its privileged prompt instead of the student prompt.
         teacher_messages = getattr(s, 'teacher_messages', None)
-        if teacher_messages:
-            # GKD OPSD: a deliberate teacher view replaces the request messages; it must win over
-            # the response-id injection below (which is the GRPO/OPD-RL token-in-token-out path).
-            req.messages = teacher_messages
-        elif template is not None and s.response_token_ids:
+        messages = teacher_messages if teacher_messages else req.messages
+        if template is not None and s.response_token_ids:
+            # Send the sampled response as raw token ids (token-in-token-out) so the teacher server
+            # forwards the *same* tokens the student sampled instead of re-tokenizing the decoded text.
+            # Re-tokenization can split the response into a different number of tokens, breaking the
+            # alignment the teacher KL relies on. Applies to both the on-policy prompt (GRPO/OPD-RL)
+            # and the OPSD teacher prompt (which shares the same response tokens).
             loss_mask = s.response_loss_mask or None
             ctk = s.extra.get('chat_template_kwargs') or {}
             prefix_ids = get_response_prefix_ids(template, sample_enable_thinking=ctk.get('enable_thinking'))
-            req.messages = replace_assistant_response_with_ids([m.copy() for m in req.messages],
-                                                               s.response_token_ids,
-                                                               loss_mask,
-                                                               non_thinking_prefix_ids=prefix_ids)
+            messages = replace_assistant_response_with_ids([m.copy() for m in messages],
+                                                           s.response_token_ids,
+                                                           loss_mask,
+                                                           non_thinking_prefix_ids=prefix_ids)
+        req.messages = messages
         requests.append(req)
     return requests
 
@@ -233,3 +237,37 @@ def assemble_teacher_completion_logprobs(
         out_lp[i, completion_indices] = torch.tensor(lps, dtype=torch.float32, device=device)
         out_ix[i, completion_indices] = torch.tensor(ixs, dtype=torch.long, device=device)
     return TeacherOutput(topk_logprobs=out_lp, topk_indices=out_ix)
+
+
+def build_opsd_samples(samples: List[OnPolicySample]) -> bool:
+    has_opsd = False
+    for s in samples:
+        if s.build_teacher_view():
+            has_opsd = True
+    return has_opsd
+
+
+def remap_teacher_logps_to_student_frame(
+    teacher_logps: torch.Tensor,
+    teacher_completion_mask: torch.Tensor,
+    student_completion_mask: torch.Tensor,
+) -> torch.Tensor:
+    """Move per-token teacher logps from the OPSD teacher frame to the student frame.
+
+    OPSD teacher and student share the *same* response tokens (same ids, same order)
+    but different prompts, so their completion regions sit at different positions and
+    the sequences differ in length. The OPD-RL advantage compares teacher vs. student
+    logps position-by-position on the student ``completion_mask`` frame, so the teacher
+    logps (returned aligned to the teacher frame) must be scattered onto the student
+    frame: for each sample, the ``count`` valid teacher-completion values are placed at
+    the student-completion positions in order. Returns ``[B, T_student]``.
+    """
+    out = torch.zeros_like(student_completion_mask, dtype=teacher_logps.dtype)
+    for i in range(student_completion_mask.shape[0]):
+        s_idx = student_completion_mask[i].nonzero(as_tuple=True)[0]
+        t_idx = teacher_completion_mask[i].nonzero(as_tuple=True)[0]
+        assert s_idx.numel() == t_idx.numel(), (
+            f'OPSD response length mismatch at sample {i}: student={s_idx.numel()} teacher={t_idx.numel()}. '
+            'Teacher and student must share the same response tokens.')
+        out[i, s_idx] = teacher_logps[i, t_idx]
+    return out

@@ -18,7 +18,9 @@ from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics,
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rl_core.resample import resample_encode_failed_inputs
-from swift.rlhf_trainers.gkd_helpers import assemble_teacher_completion_logprobs, build_teacher_requests
+from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
+                                             build_teacher_requests, encode_teacher_view,
+                                             remap_teacher_logps_to_student_frame)
 from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, make_reward_weights,
                                        pad_logps_back_to_batch, profiling_context, profiling_decorator,
@@ -298,6 +300,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         mini_batch_data = []
         template = self.template
 
+        # OPSD: build each sample's teacher view; local teacher forwards its own encoding.
+        is_opsd = self._has_teacher and not self.use_teacher_api and build_opsd_samples(total_samples)
+
         # Step 1: Encode batches and compute logps first (unified flow like GRPOTrainer)
         with self._template_context(template):
             for s in total_samples:
@@ -313,14 +318,18 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     padding_to=get_padding_to(self.args),
                     router_replay_mode=self.args.router_replay_mode,
                 )
+                teacher_inputs = None
+                if is_opsd:
+                    teacher_inputs = self._collate_teacher_opsd_batch(sample_slice, template)
                 # Wire format: model_inputs (dict) + grpo_batch (consumed by forward_step)
                 data = model_inputs
                 data['grpo_batch'] = grpo_batch
                 with profiling_context(self, 'compute_ref_old_logps'):
-                    data = self._maybe_compute_logps(data)
+                    data = self._maybe_compute_logps(data, teacher_inputs=teacher_inputs)
                 mini_batch_data.append(data)
 
         if self._has_teacher and self.use_teacher_api:
+            build_opsd_samples(total_samples)  # OPSD: populate teacher_messages for build_teacher_requests
             self._assemble_teacher_api_logps(total_samples, mini_batch_data)
 
         # Step 2: Compute KL from logps if kl_in_reward is enabled
@@ -648,7 +657,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         return rollout_batch, rewards_per_func
 
-    def _maybe_compute_logps(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+    def _maybe_compute_logps(self, batch: Dict[str, Any], teacher_inputs: Optional[Tuple] = None) -> Dict[str, Any]:
         grpo_batch: GRPOBatch = batch.pop('grpo_batch')
         seq_lengths = grpo_batch.seq_lengths
         batch_size = grpo_batch.completion_mask.shape[0]
@@ -673,7 +682,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 grpo_batch.ref_per_token_logps = ref_per_token_logps
 
         if self._has_teacher and not self.use_teacher_api:
-            grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(inputs, grpo_batch)
+            grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(
+                inputs, grpo_batch, teacher_inputs=teacher_inputs)
 
         if self.enable_routing_replay:
             if self.args.router_replay_mode == 'R2':
@@ -701,16 +711,52 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         batch['grpo_batch'] = grpo_batch
         return batch
 
-    def _compute_teacher_logps(self, inputs: Dict[str, Any], grpo_batch: GRPOBatch) -> torch.Tensor:
+    def _collate_teacher_opsd_batch(self, sample_slice: List[GRPOSample], template) -> Tuple[Dict[str, Any], GRPOBatch]:
+        """Encode + collate the OPSD teacher view (teacher_prompt + same response).
+
+        Produces a teacher micro-batch whose completion frame may differ in length from
+        the student's; ``_compute_teacher_logps`` remaps the teacher logps back onto the
+        student frame. The student ``encoded`` is restored so downstream logps/loss keep
+        the student frame. ``build_teacher_view`` is already done by ``build_opsd_samples``.
+        """
+        for s in sample_slice:
+            s.encoded = encode_teacher_view(s, template)
+        teacher_model_inputs, teacher_grpo_batch = collate_to_grpo_micro_batch(
+            sample_slice,
+            template,
+            device=self.device,
+            padding_to=get_padding_to(self.args),
+            router_replay_mode=self.args.router_replay_mode,
+        )
+        teacher_model_inputs['grpo_batch'] = teacher_grpo_batch
+        for s in sample_slice:
+            s.encoded = encode_sample(s, template)
+            s.encoded.pop('_extra_kwargs', None)
+        return teacher_model_inputs, teacher_grpo_batch
+
+    def _compute_teacher_logps(self,
+                               inputs: Dict[str, Any],
+                               grpo_batch: GRPOBatch,
+                               teacher_inputs: Optional[Tuple] = None) -> torch.Tensor:
         """OPD-RL: per-token teacher logp on the sampled tokens via a local teacher forward.
 
         Reuses ``compute_per_token_logps`` (same path as old/ref logps) so the teacher logp
         frame matches the policy's (token-in-token-out). Same-model LoRA self-distillation runs
         the student under ``disable_adapter``; otherwise the separate teacher model is used.
+        For OPSD, the teacher forwards its own ``teacher_inputs`` (teacher_prompt + same
+        response) and the result is remapped onto the student's completion frame.
         """
-        seq_lengths = grpo_batch.seq_lengths
-        batch_size = grpo_batch.completion_mask.shape[0]
-        max_seq_len = grpo_batch.completion_mask.shape[1]
+        is_opsd = teacher_inputs is not None
+        if is_opsd:
+            teacher_model_inputs, teacher_grpo_batch = teacher_inputs
+            fwd_inputs = {k: v for k, v in teacher_model_inputs.items() if k != 'grpo_batch'}
+            fwd_batch = teacher_grpo_batch
+        else:
+            fwd_inputs = inputs
+            fwd_batch = grpo_batch
+        seq_lengths = fwd_batch.seq_lengths
+        batch_size = fwd_batch.completion_mask.shape[0]
+        max_seq_len = fwd_batch.completion_mask.shape[1]
 
         if self._teacher_use_disable_adapter:
             from contextlib import ExitStack
@@ -718,14 +764,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 for m in self.peft_models:
                     stack.enter_context(m.disable_adapter())
                 teacher_logps_packed, _ = self.compute_per_token_logps(
-                    self.unwrapped_models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
+                    self.unwrapped_models[0], iter([deepcopy(fwd_inputs)]), temperature=self.temperature)
         else:
             # Dynamic self-distillation (teacher_models is None): teacher = student (same
             # weights including LoRA).
             models = self.teacher_models if self.teacher_models else self.unwrapped_models
             with self.load_teacher_model_context():
                 teacher_logps_packed, _ = self.compute_per_token_logps(
-                    models[0], iter([deepcopy(inputs)]), temperature=self.temperature)
+                    models[0], iter([deepcopy(fwd_inputs)]), temperature=self.temperature)
 
         if self.template.padding_free:
             teacher_per_token_logps, _ = pad_logps_back_to_batch(
@@ -735,6 +781,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 seq_lengths=seq_lengths)
         else:
             teacher_per_token_logps = teacher_logps_packed
+        if is_opsd:
+            teacher_per_token_logps = remap_teacher_logps_to_student_frame(teacher_per_token_logps,
+                                                                           teacher_grpo_batch.completion_mask,
+                                                                           grpo_batch.completion_mask)
         return teacher_per_token_logps
 
     def _assemble_teacher_api_logps(self, total_samples: List[GRPOSample], mini_batch_data: List[Dict[str,
