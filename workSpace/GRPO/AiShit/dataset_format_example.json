@@ -1,0 +1,114 @@
+[
+  {
+    "messages": [
+      {
+        "role": "user",
+        "content": "我需要搜索35个来自《壶口瀑布》这篇课文的核心词汇，用于八年级下册期中考试的听写复习。"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "chinese_dictation",
+          "description": "搜索小学、初中语文教材中的字词进行听写",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "grade": {
+                "type": "string",
+                "description": "年级，如'八年级'"
+              },
+              "term": {
+                "type": "string", 
+                "description": "学期，如'下册'"
+              },
+              "text_title": {
+                "type": "string",
+                "description": "课文标题"
+              },
+              "count": {
+                "type": "string",
+                "description": "需要的词汇数量"
+              },
+              "book_version": {
+                "type": "string",
+                "description": "教材版本，如'统编版'"
+              }
+            },
+            "required": ["text_title"]
+          }
+        }
+      }
+    ],
+    "system": ""
+  },
+  {
+    "messages": [
+      {
+        "role": "user", 
+        "content": "我现在正忙其他事情，来点快速完成的任务！搞10道选择题，适合初二知识点就行，别耽误时间。"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "search_tbl_question",
+          "description": "搜索题库中的题目",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "description": "题目数量"
+              },
+              "grade": {
+                "type": "string", 
+                "description": "年级"
+              },
+              "textbook_version": {
+                "type": "string",
+                "description": "教材版本"
+              },
+              "education_system": {
+                "type": "string",
+                "description": "教育制度"
+              }
+            },
+            "required": ["count"]
+          }
+        }
+      }
+    ],
+    "system": ""
+  },
+  {
+    "messages": [
+      {
+        "role": "user",
+        "content": "才干的拼音是什么？"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function", 
+        "function": {
+          "name": "dictionary_search",
+          "description": "搜索汉字、词语或成语的读音、写法、释义等信息",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "要查询的字词"
+              }
+            },
+            "required": ["name"]
+          }
+        }
+      }
+    ],
+    "system": ""
+  }
+] 
