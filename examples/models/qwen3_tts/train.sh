@@ -13,10 +13,10 @@ swift sft \
     --tuner_type full \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
-    --per_device_train_batch_size 1 \
-    --per_device_eval_batch_size 1 \
+    --per_device_train_batch_size 4 \
+    --per_device_eval_batch_size 4 \
     --learning_rate 1e-5 \
-    --gradient_accumulation_steps 4 \
+    --gradient_accumulation_steps 1 \
     --gradient_checkpointing true \
     --eval_steps 200 \
     --save_steps 200 \
@@ -25,6 +25,6 @@ swift sft \
     --max_length 4096 \
     --output_dir output \
     --warmup_ratio 0.05 \
-    --deepspeed zero2 \
+    --ddp_find_unused_parameters true \
     --dataset_num_proc 1 \
     --dataloader_num_workers 4
