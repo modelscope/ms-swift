@@ -410,8 +410,8 @@ def load_audio(
 
 
 def _resolve_video_local_path(path: Union[str, bytes]) -> tuple:
-    """Return (local_path, is_temp_file). HTTP URLs are downloaded once to a temp file."""
-    if isinstance(path, str) and path.startswith('http'):
+    """Return (local_path, is_temp_file). HTTP URLs and raw bytes are written to a temp file."""
+    if isinstance(path, bytes) or (isinstance(path, str) and path.startswith('http')):
         import tempfile
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
             f.write(load_file(path).read())

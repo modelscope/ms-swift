@@ -324,8 +324,9 @@ class Gemma4Template(Template):
             masks = encoded['input_features_mask']
             features = encoded['input_features']
             if isinstance(masks, torch.Tensor) and masks.ndim >= 2:
-                encoded['input_features'] = [f[mask] for f, mask in zip(features, masks)]
-                encoded['input_features_mask'] = [mask[mask] for mask in masks]
+                bool_masks = masks.bool()
+                encoded['input_features'] = [f[m] for f, m in zip(features, bool_masks)]
+                encoded['input_features_mask'] = [m[m] for m in bool_masks]
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
@@ -352,10 +353,10 @@ class Gemma4Template(Template):
                 input_features.append(feats)
                 input_features_mask.append(masks)
         if input_features:
-            max_len = max(x.shape[1] for x in input_features_mask)
-            res['input_features'] = torch.concat([F.pad(x, (0, 0, 0, max_len - x.shape[1])) for x in input_features])
+            max_len = max(x.shape[0] for x in input_features_mask)
+            res['input_features'] = torch.concat([F.pad(x, (0, 0, 0, max_len - x.shape[0])) for x in input_features])
             res['input_features_mask'] = torch.concat(
-                [F.pad(x, (0, max_len - x.shape[1])) for x in input_features_mask])
+                [F.pad(x, (0, max_len - x.shape[0])) for x in input_features_mask])
         return res
 
 
