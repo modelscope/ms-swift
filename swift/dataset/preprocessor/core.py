@@ -21,7 +21,7 @@ DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
 logger = get_logger()
 
-_pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects', 'ref_audios']
+_pair_keys = ['messages', 'images', 'videos', 'audios', 'tools', 'objects']
 
 
 class RowPreprocessor:
@@ -34,6 +34,9 @@ class RowPreprocessor:
                                 'margin',
                                 'teacher_prompt',
                                 'chat_template_kwargs',
+                                # Qwen3-TTS
+                                'ref_audios',
+                                'audio_codes',
                             ]
 
     def __init__(self,

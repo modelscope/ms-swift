@@ -1,7 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import json
 import numpy as np
 import os
+import shutil
 import torch
 import torch.nn.functional as F
 import transformers
@@ -1107,6 +1109,7 @@ class Qwen3TTSTemplate(Template):
     # ref: https://github.com/QwenLM/Qwen3-TTS/tree/main/finetuning
     support_padding_free = False
     use_model = True
+    model_accepts_loss_kwargs = False
 
     def init_env_args(self) -> None:
         super().init_env_args()
@@ -1188,16 +1191,6 @@ class Qwen3TTSTemplate(Template):
         Combines the talker codec_0 cross-entropy loss with the sub-talker loss
         using a fixed weighting factor of 0.3.
         """
-        if not self._config_initialized:
-            speaker_name = get_env_args('speaker_name', str, None)
-            if speaker_name is not None:
-                config = model.config
-                config.tts_model_type = 'custom_voice'
-                if not hasattr(config, 'talker_config') or config.talker_config is None:
-                    config.talker_config = {}
-                config.talker_config['spk_id'] = {speaker_name: 3000}
-                config.talker_config['spk_is_dialect'] = {speaker_name: False}
-            self._config_initialized = True
         # Extract speaker_embedding from ref_mels and cache for checkpoint post-processing
         if 'ref_mels' in inputs:
             base_model = model.module if hasattr(model, 'module') else model
@@ -1213,13 +1206,18 @@ class Qwen3TTSTemplate(Template):
         sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
         if sub_talker_loss is not None:
             outputs.loss = talker_loss + 0.3 * sub_talker_loss
-        if trainer.model.training:
-            outputs.loss = outputs.loss / trainer.current_gradient_accumulation_steps
         return outputs
 
     def save_callback(self, model, output_dir):
         """Custom save: drop speaker_encoder weights and inject target_speaker_embedding
         into codec_embedding.weight[3000]."""
+        shutil.copytree(model.config.name_or_path, output_dir, dirs_exist_ok=True)
+        with open(os.path.join(model.config.name_or_path, 'config.json'), 'r', encoding='utf-8') as f:
+            config_dict = json.load(f)
+        speaker_name = get_env_args('speaker_name', str, 'speaker_test')
+        config_dict['tts_model_type'] = 'custom_voice'
+        config_dict['talker_config']['spk_id'] = {speaker_name: 3000}
+        config_dict['talker_config']['spk_is_dialect'] = {speaker_name: False}
         from safetensors.torch import save_file
         from transformers.modeling_utils import unwrap_model
 
@@ -1239,7 +1237,8 @@ class Qwen3TTSTemplate(Template):
 
         save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
         # Save config
-        base_model.config.save_pretrained(output_dir)
+        with open(os.path.join(output_dir, 'config.json'), 'w', encoding='utf-8') as f:
+            json.dump(config_dict, f, indent=2, ensure_ascii=False)
 
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to=None) -> Dict[str, Any]:
         """Custom TTS data collation - builds dual-channel input format."""
