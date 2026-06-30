@@ -2,12 +2,13 @@
 import ast
 import numpy as np
 import os
+import zipfile
 from datasets import Dataset as HfDataset
 from datasets import IterableDataset as HfIterableDataset
 from tqdm import tqdm
 from typing import Any, Dict, List, Optional
 
-from swift.utils import get_hf_endpoint, use_hf_hub
+from swift.utils import download_file, get_hf_endpoint, use_hf_hub
 from ..media import MediaResource
 from ..preprocessor import GroundingMixin, MessagesPreprocessor, ResponsePreprocessor, RowPreprocessor
 from ..register import DatasetMeta, SubsetDataset, register_dataset
@@ -1344,3 +1345,47 @@ register_dataset(
         ],
         preprocess_func=Geometry3KPreprocessor(),
         tags=['multi-modal', 'en', 'math']))
+
+
+class Qwen3TTSPreprocessor(ResponsePreprocessor):
+    """Preprocessor for Qwen3-TTS SFT datasets.
+
+    Input format:
+        {'audio': 'path.wav', 'text': '...', 'ref_audio': 'ref.wav'}
+    Output format:
+        {'messages': [{'role': 'assistant', 'content': '...'}],
+         'audios': ['path.wav'], 'ref_audios': ['ref.wav']}
+    """
+
+    data_dir: Optional[str] = None
+
+    def prepare_dataset(self, dataset):
+        url = 'https://modelscope.cn/datasets/qsdong/Qwen3-1.7-TTS-SFT-Furina/resolve/master/Furina.zip'
+        file_path = download_file(url)
+        extract_dir = file_path.rsplit('.', 1)[0]
+        if not os.path.exists(extract_dir):
+            with zipfile.ZipFile(file_path, 'r') as zf:
+                zf.extractall(extract_dir)
+        self.data_dir = extract_dir
+        return super().prepare_dataset(dataset)
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if self.data_dir:
+            audios = row.get('audios')
+            if isinstance(audios, str) and not os.path.isabs(audios):
+                row['audios'] = os.path.join(self.data_dir, audios)
+            ref_audios = row.get('ref_audios')
+            if isinstance(ref_audios, str) and not os.path.isabs(ref_audios):
+                row['ref_audios'] = os.path.join(self.data_dir, ref_audios)
+        ref_audios = row.get('ref_audios')
+        if isinstance(ref_audios, str):
+            row['ref_audios'] = [ref_audios]
+        return super().preprocess(row)
+
+
+register_dataset(
+    DatasetMeta(
+        ms_dataset_id='qsdong/Qwen3-1.7-TTS-SFT-Furina',
+        preprocess_func=Qwen3TTSPreprocessor(columns={'ref_audio': 'ref_audios'}),
+        tags=['chat', 'multi-modal', 'audio', 'tts'],
+    ))

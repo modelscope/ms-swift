@@ -1,10 +1,7 @@
 import colorsys
 import itertools
-import os
-import requests
 from copy import deepcopy
 from modelscope.hub.file_download import model_file_download
-from modelscope.hub.utils.utils import get_cache_dir
 from PIL import Image, ImageDraw, ImageFont
 from typing import Any, List, Literal
 
@@ -31,18 +28,6 @@ def generate_colors():
     colors = [colorsys.hsv_to_rgb(i / 16, s, v) for v, s in vs_combinations for i in _shuffle_colors(list(range(16)))]
     colors = [(int(r * 255), int(g * 255), int(b * 255)) for r, g, b in colors]
     return _shuffle_colors(colors)
-
-
-def download_file(url: str) -> str:
-    url = url.rstrip('/')
-    file_name = url.rsplit('/', 1)[-1]
-    cache_dir = os.path.join(get_cache_dir(), 'files')
-    os.makedirs(cache_dir, exist_ok=True)
-    req = requests.get(url)
-    file_path = os.path.join(cache_dir, file_name)
-    with open(file_path, 'wb') as f:
-        f.write(req.content)
-    return file_path
 
 
 colors = generate_colors()
