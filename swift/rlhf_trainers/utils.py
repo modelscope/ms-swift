@@ -579,10 +579,10 @@ def profiling_context(trainer, name: str):
     elif hasattr(trainer, 'is_main_process'):
         is_main_process = trainer.is_main_process
 
-    if 'wandb' in trainer.args.report_to and wandb.run is not None and is_main_process:
+    if 'wandb' in trainer.args.report_to and is_main_process and wandb.run is not None:
         wandb.log(profiling_metrics, commit=False)
 
-    if 'swanlab' in trainer.args.report_to and swanlab_get_run() is not None and is_main_process:
+    if 'swanlab' in trainer.args.report_to and is_main_process and swanlab_get_run() is not None:
         swanlab.log(profiling_metrics)
 
 
