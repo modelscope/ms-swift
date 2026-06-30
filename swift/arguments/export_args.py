@@ -30,6 +30,8 @@ class ExportArguments(MergeArguments, BaseArguments):
         to_ollama (bool): Whether to generate the `Modelfile` required by Ollama. Defaults to False.
         to_mcore (bool): Whether to convert Hugging Face format weights to Megatron-Core format. Defaults to False.
         to_hf (bool): Whether to convert Megatron-Core format weights to Hugging Face format. Defaults to False.
+        export_language_model_only (bool): Whether to export only the language model part of a multimodal model.
+            This is useful when a text-only inference backend expects CausalLM-style weight names. Defaults to False.
         mcore_model (Optional[str]): The path to the Megatron-Core format model. Defaults to None.
         mcore_adapter (Optional[str]): A list of adapter paths for the Megatron-Core format model. Defaults to [].
         thread_count (Optional[int]): The number of model shards when `to_mcore` is True. Defaults to None, which
@@ -66,6 +68,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     # megatron
     to_mcore: bool = False
     to_hf: bool = False
+    export_language_model_only: bool = False
     mcore_model: Optional[str] = None
     mcore_adapter: Optional[str] = None
     thread_count: Optional[int] = None
@@ -101,6 +104,10 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'ollama'
             elif self.merge_lora:
                 suffix = 'merged'
+                if self.export_language_model_only:
+                    suffix += '-language-model'
+            elif self.export_language_model_only:
+                suffix = 'language-model'
             elif self.to_mcore:
                 suffix = 'mcore'
             elif self.to_hf:
@@ -126,6 +133,11 @@ class ExportArguments(MergeArguments, BaseArguments):
             raise ValueError('Please specify `--quant_bits`.')
         if self.quant_method in {'gptq', 'awq'} and self.torch_dtype is None:
             self.torch_dtype = torch.float16
+        if self.export_language_model_only and (
+                self.quant_method or self.to_ollama or self.to_mcore or self.to_hf or self.to_cached_dataset
+                or self.to_peft_format):
+            raise ValueError(
+                '`export_language_model_only` only supports regular checkpoint export or merge-lora export.')
         if self.to_mcore or self.to_hf:
             if self.merge_lora:
                 self.merge_lora = False
