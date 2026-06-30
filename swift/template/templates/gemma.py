@@ -255,8 +255,7 @@ class Gemma4Template(Template):
             return ['<|image|>']
         elif media_type == 'audio':
             if self.mode != 'vllm':
-                sr = self.processor.feature_extractor.sampling_rate
-                inputs.audios[index] = load_audio(inputs.audios[index], sr)
+                inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
             return ['<|audio|>']
         elif media_type == 'video':
             if self.mode == 'vllm':
