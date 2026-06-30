@@ -2,6 +2,7 @@
 # The dataset can also be set to `--dataset qsdong/Qwen3-1.7-TTS-SFT-Furina`,
 # but the preprocessing will affect training speed.
 
+SPEAKER_NAME='speaker_test' \
 NPROC_PER_NODE=2 \
 CUDA_VISIBLE_DEVICES=0,1 \
 swift sft \
@@ -17,8 +18,8 @@ swift sft \
     --learning_rate 1e-5 \
     --gradient_accumulation_steps 4 \
     --gradient_checkpointing true \
-    --eval_steps 100 \
-    --save_steps 100 \
+    --eval_steps 200 \
+    --save_steps 200 \
     --save_total_limit 2 \
     --logging_steps 5 \
     --max_length 4096 \
