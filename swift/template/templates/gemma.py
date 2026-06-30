@@ -11,7 +11,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
-from ..vision_utils import load_audio
+from ..vision_utils import load_audio, video_get_metadata, video_to_ndarrays
 
 logger = get_logger()
 
@@ -255,11 +255,11 @@ class Gemma4Template(Template):
             return ['<|image|>']
         elif media_type == 'audio':
             if self.mode != 'vllm':
-                inputs.audios[index] = load_audio(inputs.audios[index], self.processor.feature_extractor.sampling_rate)
+                sr = self.processor.feature_extractor.sampling_rate
+                inputs.audios[index] = load_audio(inputs.audios[index], sr)
             return ['<|audio|>']
         elif media_type == 'video':
             if self.mode == 'vllm':
-                from vllm.assets.video import video_get_metadata, video_to_ndarrays
                 num_frames = self.processor.video_processor.num_frames
                 video_data = video_to_ndarrays(inputs.videos[index], num_frames)
                 video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
@@ -320,6 +320,14 @@ class Gemma4Template(Template):
         ]:
             if key in media_inputs:
                 encoded[key] = media_inputs[key]
+        # unpad input_features
+        # https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/model_executor/models/gemma4_mm.py#L747-L758
+        if 'input_features' in encoded and 'input_features_mask' in encoded:
+            masks = encoded['input_features_mask']
+            features = encoded['input_features']
+            if isinstance(masks, torch.Tensor) and masks.ndim >= 2:
+                encoded['input_features'] = torch.stack([f[mask] for f, mask in zip(features, masks)])
+                encoded['input_features_mask'] = torch.stack([mask[mask] for mask in masks])
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale

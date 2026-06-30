@@ -392,6 +392,10 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.rlhf_type not in rlhf_support_vllm_types:
             return
 
+        if self.use_vllm and os.getenv('SWIFT_AUDIO_LOAD_BACKEND') is None:
+            # align with vLLM audio load backend
+            os.environ['SWIFT_AUDIO_LOAD_BACKEND'] = 'soundfile_pyav'
+
         if self.vllm_mode is not None and not self.use_vllm:
             raise ValueError('vllm_mode is not supported when use_vllm is false')
 
