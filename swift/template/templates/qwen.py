@@ -692,7 +692,7 @@ register_template(
 def trim_audio_to_hop_length(x: np.ndarray, hop_length: int) -> np.ndarray:
     length = x.shape[-1]
     aligned = (length // hop_length) * hop_length
-    if aligned < length:
+    if 0 < aligned < length:
         x = x[..., :aligned]
     return x
 
@@ -735,7 +735,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             elif isinstance(audio, np.ndarray):
                 trimmed.append(trim_audio_to_hop_length(audio, hop))
             else:
-                trimmed.append(audio)
+                raise TypeError(f'unexpected audio type {type(audio)!r}; expected ndarray or (ndarray, meta)')
         return trimmed
 
     def _encode_truncated(self, inputs: StdTemplateInputs):

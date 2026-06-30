@@ -11,7 +11,7 @@ from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Context, Prompt, Word, findall
-from ..vision_utils import load_audio, video_get_metadata, video_to_ndarrays
+from ..vision_utils import load_audio, load_vllm_video
 
 logger = get_logger()
 
@@ -260,8 +260,7 @@ class Gemma4Template(Template):
         elif media_type == 'video':
             if self.mode == 'vllm':
                 num_frames = self.processor.video_processor.num_frames
-                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
-                video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
+                video_data, video_metadatas = load_vllm_video(inputs.videos[index], num_frames)
                 inputs.videos[index] = [(video_data, video_metadatas)]
             return ['<|video|>']
 
@@ -325,8 +324,8 @@ class Gemma4Template(Template):
             masks = encoded['input_features_mask']
             features = encoded['input_features']
             if isinstance(masks, torch.Tensor) and masks.ndim >= 2:
-                encoded['input_features'] = torch.stack([f[mask] for f, mask in zip(features, masks)])
-                encoded['input_features_mask'] = torch.stack([mask[mask] for mask in masks])
+                encoded['input_features'] = [f[mask] for f, mask in zip(features, masks)]
+                encoded['input_features_mask'] = [mask[mask] for mask in masks]
         encoded['input_ids'] = input_ids
         encoded['labels'] = labels
         encoded['loss_scale'] = loss_scale
@@ -339,10 +338,21 @@ class Gemma4Template(Template):
             value = [b[key] for b in batch if b.get(key) is not None]
             if value:
                 res[key] = torch.concat(value)
-        input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
+        input_features = []
+        input_features_mask = []
+        for b in batch:
+            feats = b.get('input_features')
+            masks = b.get('input_features_mask')
+            if feats is None:
+                continue
+            if isinstance(feats, list):
+                input_features.extend(feats)
+                input_features_mask.extend(masks)
+            else:
+                input_features.append(feats)
+                input_features_mask.append(masks)
         if input_features:
-            input_features_mask = [b['input_features_mask'] for b in batch if b.get('input_features_mask') is not None]
-            max_len = max([x.shape[1] for x in input_features_mask])
+            max_len = max(x.shape[1] for x in input_features_mask)
             res['input_features'] = torch.concat([F.pad(x, (0, 0, 0, max_len - x.shape[1])) for x in input_features])
             res['input_features_mask'] = torch.concat(
                 [F.pad(x, (0, max_len - x.shape[1])) for x in input_features_mask])

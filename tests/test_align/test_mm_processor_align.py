@@ -1,21 +1,9 @@
-"""Swift train encode vs vLLM rollout multimodal alignment (GPU + vLLM).
-
-Run:
-  cd workspace/swift
-  CUDA_VISIBLE_DEVICES=0 python tests/test_align/test_mm_processor_align.py
-  CUDA_VISIBLE_DEVICES=0 pytest tests/test_align/test_mm_processor_align.py -v
-"""
 import copy
 import os
-import sys
-from contextlib import contextmanager, nullcontext
-from pathlib import Path
-from typing import Any, Dict
-
 import pytest
 import torch
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from contextlib import contextmanager, nullcontext
+from typing import Any, Dict
 
 from swift.model import get_processor
 from swift.template import get_template
@@ -39,10 +27,23 @@ _SKIP_TRAIN_KEYS = frozenset({'input_ids', 'labels', 'loss_scale', 'mm_token_typ
 
 os.environ['SWIFT_AUDIO_LOAD_BACKEND'] = 'soundfile_pyav'
 
+_QWEN_VL_VIDEO_ALIASES = {'video_second_per_grid': 'second_per_grid_ts'}
+_GEMMA4_IMAGE_ALIASES = {'image_position_ids': 'pixel_position_ids'}
+_QWEN3_OMNI_AUDIO_ALIASES = {
+    'input_features': 'input_audio_features',
+    'feature_attention_mask': 'feature_attention_mask',
+}
+_XFAIL_TESTS = frozenset({
+    'test_qwen2_5_vl_video',
+    'test_qwen3_vl_video',
+    'test_qwen3_5_video',
+    'test_gemma4_video',
+})
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def as_list_ids(x):
     if isinstance(x, torch.Tensor):
@@ -51,6 +52,12 @@ def as_list_ids(x):
 
 
 def tensors_aligned(a, b) -> bool:
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(tensors_aligned(x, y) for x, y in zip(a, b))
+    if isinstance(a, list) and len(a) == 1:
+        a = a[0]
+    if isinstance(b, list) and len(b) == 1:
+        b = b[0]
     if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
         a, b = a.detach().cpu(), b.detach().cpu()
         if a.ndim == b.ndim + 1 and a.shape[0] == 1 and a.shape[1:] == b.shape:
@@ -173,11 +180,9 @@ def _assert_mm_align(
         assert as_list_ids(train['input_ids']) == as_list_ids(vllm['input_ids'])
 
     vllm_tensors = dict(vllm['mm_tensors'])
-    compared = [
-        (tk, tensor_key_aliases.get(tk, tk))
-        for tk in sorted(k for k, v in train.items() if v is not None and k not in _SKIP_TRAIN_KEYS)
-        if tensor_key_aliases.get(tk, tk) in vllm_tensors
-    ]
+    compared = [(tk, tensor_key_aliases.get(tk, tk))
+                for tk in sorted(k for k, v in train.items() if v is not None and k not in _SKIP_TRAIN_KEYS)
+                if tensor_key_aliases.get(tk, tk) in vllm_tensors]
     for train_key, vllm_key in compared:
         assert tensors_aligned(train[train_key], vllm_tensors[vllm_key]), f'{train_key}!={vllm_key}'
     if check_vllm_audio_feature_lengths:
@@ -185,20 +190,132 @@ def _assert_mm_align(
 
 
 # ---------------------------------------------------------------------------
+# Qwen2.5-VL
+# ---------------------------------------------------------------------------
+
+
+def test_qwen2_5_vl_image():
+    _assert_mm_align(
+        'Qwen/Qwen2.5-VL-3B-Instruct',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the image.'
+            }],
+            'images': [CAT_IMAGE]
+        },
+    )
+
+
+@pytest.mark.xfail(reason='vLLM Qwen2_5_VLProcessor rejects fps list in mm_processor_kwargs (expects scalar)')
+def test_qwen2_5_vl_video():
+    _assert_mm_align(
+        'Qwen/Qwen2.5-VL-3B-Instruct',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the video.'
+            }],
+            'videos': [BABY_VIDEO]
+        },
+        tensor_key_aliases=_QWEN_VL_VIDEO_ALIASES,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Qwen3-VL
+# ---------------------------------------------------------------------------
+
+
+def test_qwen3_vl_image():
+    _assert_mm_align(
+        'Qwen/Qwen3-VL-2B-Instruct',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the image.'
+            }],
+            'images': [CAT_IMAGE]
+        },
+    )
+
+
+@pytest.mark.xfail(reason='vLLM get_video_repl drops outer vision_start/end wrapper (2-token diff vs HF)')
+def test_qwen3_vl_video():
+    _assert_mm_align(
+        'Qwen/Qwen3-VL-2B-Instruct',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the video.'
+            }],
+            'videos': [BABY_VIDEO]
+        },
+        tensor_key_aliases=_QWEN_VL_VIDEO_ALIASES,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Qwen3.5
+# ---------------------------------------------------------------------------
+
+
+def test_qwen3_5_image():
+    _assert_mm_align(
+        'Qwen/Qwen3.5-2B',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the image.'
+            }],
+            'images': [CAT_IMAGE]
+        },
+    )
+
+
+@pytest.mark.xfail(reason='vLLM get_video_repl drops outer vision_start/end wrapper (2-token diff vs HF)')
+def test_qwen3_5_video():
+    _assert_mm_align(
+        'Qwen/Qwen3.5-2B',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the video.'
+            }],
+            'videos': [BABY_VIDEO]
+        },
+        tensor_key_aliases=_QWEN_VL_VIDEO_ALIASES,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Qwen2.5-Omni
 # ---------------------------------------------------------------------------
+
 
 def test_qwen2_5_omni_image():
     _assert_mm_align(
         'Qwen/Qwen2.5-Omni-7B',
-        {'messages': [{'role': 'user', 'content': 'describe the image.'}], 'images': [CAT_IMAGE]},
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the image.'
+            }],
+            'images': [CAT_IMAGE]
+        },
     )
 
 
 def test_qwen2_5_omni_video():
     _assert_mm_align(
         'Qwen/Qwen2.5-Omni-7B',
-        {'messages': [{'role': 'user', 'content': 'describe the video.'}], 'videos': [BABY_VIDEO]},
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the video.'
+            }],
+            'videos': [BABY_VIDEO]
+        },
         tensor_key_aliases={'video_second_per_grid': 'second_per_grid_ts'},
     )
 
@@ -208,7 +325,13 @@ def test_qwen2_5_omni_audio():
     # vLLM path loads as (wav, sr) in _preprocess_inputs; train path uses ndarray.
     _assert_mm_align(
         'Qwen/Qwen2.5-Omni-7B',
-        {'messages': [{'role': 'user', 'content': 'describe the audio.'}], 'audios': [WEATHER_AUDIO]},
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the audio.'
+            }],
+            'audios': [WEATHER_AUDIO]
+        },
         check_vllm_audio_feature_lengths=True,
     )
 
@@ -217,7 +340,13 @@ def test_qwen2_5_omni_video_use_audio_in_video():
     # Video track extracted in replace_tag; vLLM uses different audio/video token layout.
     _assert_mm_align(
         'Qwen/Qwen2.5-Omni-7B',
-        {'messages': [{'role': 'user', 'content': 'describe the video.'}], 'videos': [DRAW_VIDEO]},
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the video.'
+            }],
+            'videos': [DRAW_VIDEO]
+        },
         tensor_key_aliases={'video_second_per_grid': 'second_per_grid_ts'},
         check_input_ids=False,
         check_vllm_audio_feature_lengths=True,
@@ -229,14 +358,74 @@ def test_qwen2_5_omni_video_use_audio_in_video():
 # Qwen3-Omni
 # ---------------------------------------------------------------------------
 
+
+def test_qwen3_omni_image():
+    _assert_mm_align(
+        'Qwen/Qwen3-Omni-30B-A3B-Instruct',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the image.'
+            }],
+            'images': [CAT_IMAGE]
+        },
+    )
+
+
+def test_qwen3_omni_video():
+    _assert_mm_align(
+        'Qwen/Qwen3-Omni-30B-A3B-Instruct',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the video.'
+            }],
+            'videos': [BABY_VIDEO]
+        },
+        tensor_key_aliases=_QWEN_VL_VIDEO_ALIASES,
+    )
+
+
 def test_qwen3_omni_audio():
     _assert_mm_align(
         'Qwen/Qwen3-Omni-30B-A3B-Instruct',
-        {'messages': [{'role': 'user', 'content': 'describe the audio.'}], 'audios': [WEATHER_AUDIO]},
-        tensor_key_aliases={
-            'input_features': 'input_audio_features',
-            'feature_attention_mask': 'feature_attention_mask',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the audio.'
+            }],
+            'audios': [WEATHER_AUDIO]
         },
+        tensor_key_aliases=_QWEN3_OMNI_AUDIO_ALIASES,
+        check_vllm_audio_feature_lengths=True,
+    )
+
+
+def test_qwen3_omni_audio_non_hop_aligned(tmp_path):
+    """Verify hop-length floor trim when waveform length is not hop-aligned."""
+    import soundfile as sf
+
+    from swift.template.vision_utils import load_audio
+
+    hop = 160
+    wav = load_audio(WEATHER_AUDIO, 16000)
+    n = len(wav)
+    rem = n % hop
+    cut = rem if rem else hop // 2 + 1
+    wav = wav[:max(n - cut, hop + 1)]
+    assert len(wav) % hop != 0, 'test fixture must be non hop-aligned'
+    wav_path = tmp_path / 'non_hop_aligned.wav'
+    sf.write(str(wav_path), wav, 16000)
+    _assert_mm_align(
+        'Qwen/Qwen3-Omni-30B-A3B-Instruct',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the audio.'
+            }],
+            'audios': [str(wav_path)]
+        },
+        tensor_key_aliases=_QWEN3_OMNI_AUDIO_ALIASES,
         check_vllm_audio_feature_lengths=True,
     )
 
@@ -244,11 +433,16 @@ def test_qwen3_omni_audio():
 def test_qwen3_omni_video_use_audio_in_video():
     _assert_mm_align(
         'Qwen/Qwen3-Omni-30B-A3B-Instruct',
-        {'messages': [{'role': 'user', 'content': 'describe the video.'}], 'videos': [DRAW_VIDEO]},
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the video.'
+            }],
+            'videos': [DRAW_VIDEO]
+        },
         tensor_key_aliases={
-            'input_features': 'input_audio_features',
-            'feature_attention_mask': 'feature_attention_mask',
-            'video_second_per_grid': 'second_per_grid_ts',
+            **_QWEN3_OMNI_AUDIO_ALIASES,
+            **_QWEN_VL_VIDEO_ALIASES
         },
         check_input_ids=False,
         check_vllm_audio_feature_lengths=True,
@@ -260,10 +454,31 @@ def test_qwen3_omni_video_use_audio_in_video():
 # Gemma4
 # ---------------------------------------------------------------------------
 
+
+def test_gemma4_image():
+    _assert_mm_align(
+        'google/gemma-4-E2B-it',
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the image.'
+            }],
+            'images': [CAT_IMAGE]
+        },
+        tensor_key_aliases=_GEMMA4_IMAGE_ALIASES,
+    )
+
+
 def test_gemma4_audio():
     _assert_mm_align(
         'google/gemma-4-E2B-it',
-        {'messages': [{'role': 'user', 'content': 'describe the audio.'}], 'audios': [WEATHER_AUDIO]},
+        {
+            'messages': [{
+                'role': 'user',
+                'content': 'describe the audio.'
+            }],
+            'audios': [WEATHER_AUDIO]
+        },
         tensor_key_aliases={
             'input_features': 'input_features_padded',
             'input_features_mask': 'input_features_mask',
@@ -275,7 +490,13 @@ def test_gemma4_audio():
 def test_gemma4_video():
     _assert_mm_align(
         'google/gemma-4-E2B-it',
-        {'messages': [{'role': 'user', 'content': '<video>describe the video.'}], 'videos': [BABY_VIDEO]},
+        {
+            'messages': [{
+                'role': 'user',
+                'content': '<video>describe the video.'
+            }],
+            'videos': [BABY_VIDEO]
+        },
         tensor_key_aliases={
             'pixel_values_videos': 'pixel_values_videos',
             'video_position_ids': 'video_position_ids',
@@ -285,23 +506,38 @@ def test_gemma4_video():
 
 if __name__ == '__main__':
     tests = [
+        test_qwen2_5_vl_image,
+        test_qwen2_5_vl_video,
+        test_qwen3_vl_image,
+        test_qwen3_vl_video,
+        test_qwen3_5_image,
+        test_qwen3_5_video,
         test_qwen2_5_omni_image,
         test_qwen2_5_omni_video,
         test_qwen2_5_omni_audio,
         test_qwen2_5_omni_video_use_audio_in_video,
+        test_qwen3_omni_image,
+        test_qwen3_omni_video,
         test_qwen3_omni_audio,
+        test_qwen3_omni_audio_non_hop_aligned,
         test_qwen3_omni_video_use_audio_in_video,
+        test_gemma4_image,
         test_gemma4_audio,
         test_gemma4_video,
     ]
+    passed = xfailed = failed = 0
     for fn in tests:
         name = fn.__name__
         try:
             fn()
             print(f'{name}: PASS')
+            passed += 1
         except Exception:
-            if fn is test_gemma4_video:
-                print(f'{name}: XFAIL (expected vLLM upstream mismatch)')
+            if name in _XFAIL_TESTS:
+                print(f'{name}: XFAIL (expected upstream vLLM mismatch)')
+                xfailed += 1
             else:
+                print(f'{name}: FAIL')
+                failed += 1
                 raise
-    print('all mm processor align tests finished')
+    print(f'all mm processor align tests finished: {passed} passed, {xfailed} xfailed, {failed} failed')

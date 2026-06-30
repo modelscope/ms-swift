@@ -374,6 +374,9 @@ def _load_audio_soundfile_pyav(path: Union[str, bytes, BytesIO], *, sr: float, m
                         chunks.append(out_frame.to_ndarray())
                 else:
                     chunks.append(frame.to_ndarray())
+            if needs_resampling:
+                for out_frame in resampler.resample(None):
+                    chunks.append(out_frame.to_ndarray())
         if not chunks:
             raise ValueError('No audio found.')
         y = np.concatenate(chunks, axis=-1).astype(np.float32)
@@ -406,24 +409,22 @@ def load_audio(
     return res if return_sr else res[0]
 
 
-def _video_local_path(path: Union[str, bytes]) -> str:
+def _resolve_video_local_path(path: Union[str, bytes]) -> tuple:
+    """Return (local_path, is_temp_file). HTTP URLs are downloaded once to a temp file."""
     if isinstance(path, str) and path.startswith('http'):
         import tempfile
         with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
             f.write(load_file(path).read())
-            return f.name
+            return f.name, True
     checked = _check_path(path) if isinstance(path, str) else None
-    return checked or path
+    return checked or path, False
 
 
-# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/assets/video.py#L39-L68
-def video_to_ndarrays(path: Union[str, bytes], num_frames: int = -1) -> np.ndarray:
-    """Decode video for vLLM rollout only; train should pass URL to HF processor."""
+def _video_to_ndarrays_local(local_path: str, num_frames: int = -1) -> np.ndarray:
     import cv2
-    local_path = _video_local_path(path)
     cap = cv2.VideoCapture(local_path)
     if not cap.isOpened():
-        raise ValueError(f'Could not open video file {path}')
+        raise ValueError(f'Could not open video file {local_path}')
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     num_frames = num_frames if num_frames > 0 else total_frames
     frame_indices = set(np.linspace(0, total_frames - 1, num_frames, dtype=int))
@@ -438,18 +439,15 @@ def video_to_ndarrays(path: Union[str, bytes], num_frames: int = -1) -> np.ndarr
     cap.release()
     frames = np.stack(frames)
     if len(frames) < num_frames:
-        raise ValueError(f'Could not read enough frames from video file {path}')
+        raise ValueError(f'Could not read enough frames from video file {local_path}')
     return frames
 
 
-# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/assets/video.py#L76-L100
-def video_get_metadata(path: Union[str, bytes], num_frames: int = -1) -> dict:
-    """Metadata for vLLM rollout; not used on HF-aligned train path."""
+def _video_get_metadata_local(local_path: str, num_frames: int = -1) -> dict:
     import cv2
-    local_path = _video_local_path(path)
     cap = cv2.VideoCapture(local_path)
     if not cap.isOpened():
-        raise ValueError(f'Could not open video file {path}')
+        raise ValueError(f'Could not open video file {local_path}')
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     duration = total_frames / fps if fps > 0 else 0
@@ -464,6 +462,47 @@ def video_get_metadata(path: Union[str, bytes], num_frames: int = -1) -> dict:
         'frames_indices': list(range(num_frames)),
         'do_sample_frames': num_frames == total_frames,
     }
+
+
+def load_vllm_video(path: Union[str, bytes], num_frames: int = -1) -> tuple:
+    """Decode video frames + metadata for vLLM rollout; one download, temp file cleaned up."""
+    local_path, is_temp = _resolve_video_local_path(path)
+    try:
+        return _video_to_ndarrays_local(local_path, num_frames), _video_get_metadata_local(local_path, num_frames)
+    finally:
+        if is_temp:
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
+
+
+# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/assets/video.py#L39-L68
+def video_to_ndarrays(path: Union[str, bytes], num_frames: int = -1) -> np.ndarray:
+    """Decode video for vLLM rollout only; train should pass URL to HF processor."""
+    local_path, is_temp = _resolve_video_local_path(path)
+    try:
+        return _video_to_ndarrays_local(local_path, num_frames)
+    finally:
+        if is_temp:
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
+
+
+# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/assets/video.py#L76-L100
+def video_get_metadata(path: Union[str, bytes], num_frames: int = -1) -> dict:
+    """Metadata for vLLM rollout; not used on HF-aligned train path."""
+    local_path, is_temp = _resolve_video_local_path(path)
+    try:
+        return _video_get_metadata_local(local_path, num_frames)
+    finally:
+        if is_temp:
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
 
 
 def load_video_valley(video: Union[str, bytes]):
