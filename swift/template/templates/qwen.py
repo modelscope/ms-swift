@@ -1,6 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import json
 import numpy as np
+import os
+import shutil
 import torch
 import torch.nn.functional as F
 import transformers
@@ -1135,6 +1138,221 @@ register_template(
         system_prefix=None,
         default_system=None,
         prefix=['<|im_start|>system\n{{SYSTEM}}<|im_end|>\n']))
+
+
+class Qwen3TTSTemplate(Template):
+    # ref: https://github.com/QwenLM/Qwen3-TTS/tree/main/finetuning
+    support_padding_free = False
+    use_model = True
+    model_accepts_loss_kwargs = False
+
+    def init_env_args(self) -> None:
+        super().init_env_args()
+        self._config_initialized = False
+        self.target_speaker_embedding = None
+        # Cache TTS config values for data collation
+        config = self.config
+        self._tts_pad_token_id = config.tts_pad_token_id
+        self._tts_bos_token_id = config.tts_bos_token_id
+        self._tts_eos_token_id = config.tts_eos_token_id
+        talker_config = config.talker_config
+        self._codec_nothink_id = talker_config.codec_nothink_id
+        self._codec_think_bos_id = talker_config.codec_think_bos_id
+        self._codec_think_eos_id = talker_config.codec_think_eos_id
+        self._codec_pad_id = talker_config.codec_pad_id
+        self._codec_bos_id = talker_config.codec_bos_id
+        self._codec_eos_token_id = talker_config.codec_eos_token_id
+
+    @staticmethod
+    def _extract_ref_mel(ref_audio_path: str) -> torch.Tensor:
+        """Extract mel spectrogram from reference audio for speaker embedding."""
+        import librosa
+        from qwen_tts.core.models.modeling_qwen3_tts import mel_spectrogram
+        audio, sr = librosa.load(ref_audio_path, sr=None, mono=True)
+        if audio.ndim > 1:
+            audio = np.mean(audio, axis=-1)
+        if sr != 24000:
+            audio = librosa.resample(audio, orig_sr=sr, target_sr=24000)
+        mels = mel_spectrogram(
+            torch.from_numpy(audio.astype(np.float32)).unsqueeze(0),
+            n_fft=1024,
+            num_mels=128,
+            sampling_rate=24000,
+            hop_size=256,
+            win_size=1024,
+            fmin=0,
+            fmax=12000).transpose(1, 2)  # [1, mel_len, 128]
+        return mels
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        """Override to skip _add_default_tags since audios here are targets, not inputs."""
+        pass
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        # Get text from messages (assistant content)
+        text = inputs.messages[-1]['content'] if inputs.messages else ''
+
+        # Build TTS text with assistant markers
+        tts_text = f'<|im_start|>assistant\n{text}'
+        text_ids = self._tokenize(tts_text)
+
+        # Get audio codes (pre-extracted or online)
+        audio_codes = inputs.extra_kwargs.get('audio_codes')
+        if audio_codes is None:
+            audio_path = inputs.audios[0] if inputs.audios else None
+            if audio_path:
+                tts_tokenizer = self.processor.tts_tokenizer
+                enc_res = tts_tokenizer.encode([audio_path])
+                audio_codes = enc_res.audio_codes[0].cpu().tolist()
+        assert audio_codes is not None, "Either 'audio_codes' or 'audio'/'audios' must be provided in the dataset."
+        audio_codes = torch.tensor(audio_codes, dtype=torch.long)  # [t, 16]
+
+        # Extract mel spectrogram from reference audio
+        ref_audios = inputs.extra_kwargs.get('ref_audios')
+        ref_audio_path = ref_audios[0]
+        assert ref_audio_path is not None, "'ref_audios' must be provided in the dataset."
+        ref_mel = self._extract_ref_mel(ref_audio_path)  # [1, mel_len, 128]
+
+        return {
+            'input_ids': text_ids,  # dummy for length tracking
+            'labels': None,
+            'tts_audio_codes': audio_codes,  # [codec_len, 16]
+            'tts_ref_mel': ref_mel,  # [1, mel_len, 128]
+        }
+
+    def compute_sft_loss(self, model, inputs, num_items_in_batch=None, trainer=None):
+        """Override to bypass standard label adjustment - TTS loss is computed in forward.
+
+        Combines the talker codec_0 cross-entropy loss with the sub-talker loss
+        using a fixed weighting factor of 0.3.
+        """
+        # Extract speaker_embedding from ref_mels and cache for checkpoint post-processing
+        if 'ref_mels' in inputs:
+            base_model = model.module if hasattr(model, 'module') else model
+            with torch.no_grad():
+                speaker_embedding = base_model.speaker_encoder(inputs['ref_mels'].to(base_model.device).to(
+                    base_model.dtype)).detach()
+            if self.target_speaker_embedding is None:
+                self.target_speaker_embedding = speaker_embedding.cpu()
+            inputs.pop('ref_mels')
+            inputs['speaker_embedding'] = speaker_embedding
+        outputs = model(**inputs)
+        talker_loss = outputs.loss
+        sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
+        if sub_talker_loss is not None:
+            outputs.loss = talker_loss + 0.3 * sub_talker_loss
+        return outputs
+
+    def save_callback(self, model, output_dir):
+        """Custom save: drop speaker_encoder weights and inject target_speaker_embedding
+        into codec_embedding.weight[3000]."""
+        shutil.copytree(model.config.name_or_path, output_dir, dirs_exist_ok=True)
+        with open(os.path.join(model.config.name_or_path, 'config.json'), 'r', encoding='utf-8') as f:
+            config_dict = json.load(f)
+        speaker_name = get_env_args('speaker_name', str, 'speaker_test')
+        config_dict['tts_model_type'] = 'custom_voice'
+        config_dict['talker_config']['spk_id'] = {speaker_name: 3000}
+        config_dict['talker_config']['spk_is_dialect'] = {speaker_name: False}
+        from safetensors.torch import save_file
+        from transformers.modeling_utils import unwrap_model
+
+        base_model = unwrap_model(model)
+        state_dict = {k: v.detach().cpu() for k, v in base_model.state_dict().items()}
+
+        # 1. Drop speaker_encoder keys
+        keys_to_drop = [k for k in state_dict if k.startswith('speaker_encoder')]
+        for k in keys_to_drop:
+            del state_dict[k]
+
+        # 2. Inject target_speaker_embedding into codec_embedding.weight[3000]
+        emb_key = 'talker.model.codec_embedding.weight'
+        if self.target_speaker_embedding is not None and emb_key in state_dict:
+            weight = state_dict[emb_key]
+            state_dict[emb_key][3000] = self.target_speaker_embedding[0].to(weight.dtype)
+
+        save_file(state_dict, os.path.join(output_dir, 'model.safetensors'))
+        # Save config
+        with open(os.path.join(output_dir, 'config.json'), 'w', encoding='utf-8') as f:
+            json.dump(config_dict, f, indent=2, ensure_ascii=False)
+
+    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to=None) -> Dict[str, Any]:
+        """Custom TTS data collation - builds dual-channel input format."""
+        item_length = [len(b['input_ids']) + b['tts_audio_codes'].shape[0] for b in batch]
+        max_length = max(item_length) + 8
+        b_size, t = len(batch), max_length
+
+        input_ids = torch.zeros((b_size, t, 2), dtype=torch.long)
+        codec_ids = torch.zeros((b_size, t, 16), dtype=torch.long)
+        text_embedding_mask = torch.zeros((b_size, t), dtype=torch.bool)
+        codec_embedding_mask = torch.zeros((b_size, t), dtype=torch.bool)
+        codec_mask = torch.zeros((b_size, t), dtype=torch.bool)
+        attention_mask = torch.zeros((b_size, t), dtype=torch.long)
+        codec_0_labels = torch.full((b_size, t), -100, dtype=torch.long)
+
+        for i, data in enumerate(batch):
+            text_ids = torch.tensor(data['input_ids'])  # [text_len]
+            audio_codes = data['tts_audio_codes']  # [codec_len, 16]
+            audio_codec_0 = audio_codes[:, 0]
+
+            text_ids_len = len(text_ids)
+            codec_ids_len = audio_codec_0.shape[0]
+
+            # === Text channel ===
+            input_ids[i, :3, 0] = text_ids[:3]
+            input_ids[i, 3:7, 0] = self._tts_pad_token_id
+            input_ids[i, 7, 0] = self._tts_bos_token_id
+            input_ids[i, 8:8 + text_ids_len - 3, 0] = text_ids[3:]
+            input_ids[i, 8 + text_ids_len - 3, 0] = self._tts_eos_token_id
+            input_ids[i, 8 + text_ids_len - 2:8 + text_ids_len + codec_ids_len, 0] = self._tts_pad_token_id
+            text_embedding_mask[i, :8 + text_ids_len + codec_ids_len] = True
+
+            # === Codec channel ===
+            input_ids[i, 3:8, 1] = torch.tensor([
+                self._codec_nothink_id,
+                self._codec_think_bos_id,
+                self._codec_think_eos_id,
+                0,  # placeholder for speaker embedding
+                self._codec_pad_id,
+            ])
+            input_ids[i, 8:8 + text_ids_len - 3, 1] = self._codec_pad_id
+            input_ids[i, 8 + text_ids_len - 3, 1] = self._codec_pad_id
+            input_ids[i, 8 + text_ids_len - 2, 1] = self._codec_bos_id
+            input_ids[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len, 1] = audio_codec_0
+            input_ids[i, 8 + text_ids_len - 1 + codec_ids_len, 1] = self._codec_eos_token_id
+
+            # === Labels (codec layer 0) ===
+            codec_0_labels[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len] = audio_codec_0
+            codec_0_labels[i, 8 + text_ids_len - 1 + codec_ids_len] = self._codec_eos_token_id
+
+            # === Sub-talker codec IDs ===
+            codec_ids[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len, :] = audio_codes
+
+            # === Masks ===
+            codec_embedding_mask[i, 3:8 + text_ids_len + codec_ids_len] = True
+            codec_embedding_mask[i, 6] = False  # speaker embedding position
+            codec_mask[i, 8 + text_ids_len - 1:8 + text_ids_len - 1 + codec_ids_len] = True
+            attention_mask[i, :8 + text_ids_len + codec_ids_len] = True
+
+        ref_mels = torch.cat([data['tts_ref_mel'] for data in batch], dim=0)
+
+        return {
+            'input_ids': input_ids,
+            'ref_mels': ref_mels,
+            'attention_mask': attention_mask,
+            'text_embedding_mask': text_embedding_mask.unsqueeze(-1),
+            'codec_embedding_mask': codec_embedding_mask.unsqueeze(-1),
+            'labels': codec_0_labels,
+            'codec_0_labels': codec_0_labels,
+            'codec_ids': codec_ids,
+            'codec_mask': codec_mask,
+        }
+
+
+register_template(QwenTemplateMeta(
+    MLLMTemplateType.qwen3_tts,
+    template_cls=Qwen3TTSTemplate,
+    default_system=None,
+))
 
 
 class Ovis1_6Template(Template):

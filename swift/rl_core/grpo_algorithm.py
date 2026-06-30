@@ -74,7 +74,7 @@ def compute_rewards_per_func(
             output = [r if r is not None else torch.nan for r in output]
             rewards_per_func[:, idx] = torch.tensor(output, dtype=torch.float32, device=device)
 
-    if torch.isnan(rewards_per_func).all(dim=1).any():
+    if rewards_per_func.shape[1] > 0 and torch.isnan(rewards_per_func).all(dim=1).any():
         nan_row_idx = torch.isnan(rewards_per_func).all(dim=1).nonzero(as_tuple=True)[0][0]
         row_reward_kwargs = {key: value[nan_row_idx] for key, value in reward_kwargs.items() if key != 'trainer_state'}
         row_reward_kwargs['completion'] = completions[nan_row_idx]

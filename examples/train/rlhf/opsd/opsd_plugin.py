@@ -6,7 +6,10 @@ Prepares the dataset for On-Policy Self-Distillation:
 - Only verified-correct examples are used.
 
 Usage:
+    # GKD path (teacher KL as a direct loss):
     swift rlhf --rlhf_type gkd --external_plugins opsd_plugin.py ...
+    # OPD-RL path (teacher KL as a per-token RL advantage):
+    swift rlhf --rlhf_type grpo --teacher_model <same-as-model> --external_plugins opsd_plugin.py ...
 """
 from typing import Any, Dict, List, Optional
 

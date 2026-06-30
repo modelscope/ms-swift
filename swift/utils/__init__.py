@@ -8,7 +8,7 @@ if TYPE_CHECKING:
                       is_deepspeed_enabled, is_dist, is_last_rank, is_local_master, is_master, is_mp, is_mp_ddp,
                       is_pai_training_job, select_device, use_hf_hub)
     from .hf_config import HfConfigFactory
-    from .hub_utils import download_ms_file, git_clone_github, patch_kernels, safe_snapshot_download
+    from .hub_utils import download_file, download_ms_file, git_clone_github, patch_kernels, safe_snapshot_download
     from .import_utils import (is_flash_attn_2_available, is_flash_attn_3_available, is_liger_available,
                                is_lmdeploy_available, is_megatron_available, is_swanlab_available, is_trl_available,
                                is_unsloth_available, is_vllm_ascend_available, is_vllm_available,
@@ -44,7 +44,8 @@ else:
             'is_pai_training_job', 'select_device', 'use_hf_hub'
         ],
         'hf_config': ['HfConfigFactory'],
-        'hub_utils': ['download_ms_file', 'git_clone_github', 'patch_kernels', 'safe_snapshot_download'],
+        'hub_utils':
+        ['download_ms_file', 'git_clone_github', 'patch_kernels', 'safe_snapshot_download', 'download_file'],
         'import_utils': [
             'is_flash_attn_2_available', 'is_flash_attn_3_available', 'is_liger_available', 'is_lmdeploy_available',
             'is_megatron_available', 'is_swanlab_available', 'is_trl_available', 'is_unsloth_available',
