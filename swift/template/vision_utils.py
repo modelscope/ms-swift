@@ -427,7 +427,11 @@ def _video_to_ndarrays_local(local_path: str, num_frames: int = -1) -> np.ndarra
     if not cap.isOpened():
         raise ValueError(f'Could not open video file {local_path}')
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    num_frames = num_frames if num_frames > 0 else total_frames
+    if total_frames <= 0:
+        cap.release()
+        raise ValueError(f'Video file {local_path} has invalid or zero frame count: {total_frames}')
+    if num_frames <= 0 or num_frames > total_frames:
+        num_frames = total_frames
     frame_indices = set(np.linspace(0, total_frames - 1, num_frames, dtype=int))
     frames = []
     for idx in range(total_frames):
@@ -450,10 +454,13 @@ def _video_get_metadata_local(local_path: str, num_frames: int = -1) -> dict:
     if not cap.isOpened():
         raise ValueError(f'Could not open video file {local_path}')
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        cap.release()
+        raise ValueError(f'Video file {local_path} has invalid or zero frame count: {total_frames}')
     fps = cap.get(cv2.CAP_PROP_FPS)
     duration = total_frames / fps if fps > 0 else 0
     cap.release()
-    if num_frames == -1 or num_frames > total_frames:
+    if num_frames <= 0 or num_frames > total_frames:
         num_frames = total_frames
     return {
         'total_num_frames': num_frames,
