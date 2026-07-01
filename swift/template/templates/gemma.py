@@ -342,7 +342,7 @@ class Gemma4Template(Template):
         input_features = [b['input_features'] for b in batch if b.get('input_features') is not None]
         if input_features:
             input_features_mask = [b['input_features_mask'] for b in batch if b.get('input_features_mask') is not None]
-            max_len = max(x.shape[1] for x in input_features_mask)
+            max_len = max([x.shape[1] for x in input_features_mask])
             res['input_features'] = torch.concat([F.pad(x, (0, 0, 0, max_len - x.shape[1])) for x in input_features])
             res['input_features_mask'] = torch.concat(
                 [F.pad(x, (0, max_len - x.shape[1])) for x in input_features_mask])
