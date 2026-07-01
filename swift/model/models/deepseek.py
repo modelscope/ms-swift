@@ -423,7 +423,12 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             _orig_masked_scatter_ = torch.Tensor.masked_scatter_
 
             def _safe_cat(tensors, dim=0, **cat_kwargs):
-                ref_device = next((t.device for t in tensors if isinstance(t, torch.Tensor)), None)
+                # Using the device of the first tensor as the reference, the others are aligned to it.
+                ref_device = None
+                for t in tensors:
+                    if isinstance(t, torch.Tensor):
+                        ref_device = t.device
+                        break
                 if ref_device is None:
                     return _orig_cat(tensors, dim, **cat_kwargs)
                 aligned = [
@@ -434,8 +439,13 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             def _safe_masked_scatter_(tensor_self, mask, source):
                 # Use the device of tensor_self (inputs_embeds[idx]) as the reference.
                 dev = tensor_self.device
-                return _orig_masked_scatter_(tensor_self, mask.to(dev), source.to(dev))
+                if mask.device != dev:
+                    mask = mask.to(dev)
+                if source.device != dev:
+                    source = source.to(dev)
+                return _orig_masked_scatter_(tensor_self, mask, source)
 
+            # Simultaneously replace the module namespace and the global scope (double insurance).
             modeling_module.torch.cat = _safe_cat
             torch.cat = _safe_cat
             torch.Tensor.masked_scatter_ = _safe_masked_scatter_

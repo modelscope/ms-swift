@@ -73,6 +73,7 @@ class Template(ProcessorMixin):
     # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
     # the assistant turn after a tool_response should NOT open a new thinking block.
     non_thinking_prefix_only_after_user: bool = False
+    model_accepts_loss_kwargs: Optional[bool] = None
 
     is_encoder_decoder = False
 

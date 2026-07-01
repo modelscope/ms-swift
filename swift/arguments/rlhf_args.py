@@ -63,6 +63,9 @@ class TeacherModelArguments:
             When set, the teacher logprobs will be fetched from the external API service (e.g., swift deploy, vLLM)
             instead of loading a local teacher model. This enables using larger teacher models or services hosted
             remotely. When this is set, `teacher_model` is not required. Defaults to None.
+        offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
+            or OPD-RL training. When enabled, the teacher model is loaded to GPU only during forward pass and
+            offloaded back to CPU afterwards. Defaults to False.
     """
     teacher_model: Optional[str] = None
     teacher_adapters: List[str] = field(default_factory=list)
@@ -83,6 +86,7 @@ class TeacherModelArguments:
             'URL of the teacher model server (e.g., http://localhost:8000). '
             'When set, teacher logprobs are fetched via API instead of loading a local model.'
         })
+    offload_teacher_model: bool = False
 
 
 @dataclass
@@ -221,8 +225,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             If set to a positive integer, only top-k teacher logits are used (more efficient).
             When using `teacher_model_server`, this is limited by the server's `max_logprobs` setting
             (vLLM default is 20, can be increased with `--max-logprobs`). Defaults to None.
-        offload_teacher_model (bool): Whether to offload the teacher model to CPU memory to save VRAM during GKD
-            training. Defaults to False.
         max_new_tokens (Optional[int]): A backward-compatibility argument. Please use `max_completion_length` instead.
             Defaults to None.
     """
@@ -259,7 +261,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
     lmbda: float = 0.5
     seq_kd: bool = False  # Deprecated
     gkd_logits_topk: Optional[int] = None
-    offload_teacher_model: bool = False
     # compat
     max_new_tokens: Optional[int] = None  # use max_completion_length instead
 
@@ -280,6 +281,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         GRPOArguments.__post_init__(self)
         SftArguments.__post_init__(self)
         self._check_sequence_parallel()
+        self._check_teacher()
         self._check_grpo()
         self._check_gkd()
 
@@ -387,6 +389,39 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 self.scale_rewards = 'batch'
             else:
                 raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
+
+    def _check_teacher(self):
+        if self.rlhf_type not in ['grpo', 'gkd']:
+            if self.teacher_model is not None or self.teacher_model_server is not None:
+                logger.warning(f'teacher_model / teacher_model_server is ignored for rlhf_type={self.rlhf_type!r} '
+                               '(only used by gkd and grpo/OPD-RL).')
+            return
+        teacher_set = self.teacher_model is not None or self.teacher_model_server is not None
+        if not teacher_set:
+            if self.rlhf_type == 'gkd':
+                logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
+                if self.use_liger_kernel:
+                    raise ValueError('Self-distillation mode with liger kernel loss is not supported yet')
+            if self.rlhf_type == 'grpo' and self.num_generations == 1:
+                raise ValueError('num_generations must be greater than 1 for GRPO')
+            return
+
+        if self.rlhf_type == 'grpo' and self.use_liger_kernel:
+            raise ValueError('OPD-RL is not supported with use_liger_kernel.')
+
+        if self.teacher_model is not None and self.teacher_model_server is not None:
+            raise ValueError('setting both `teacher_model` and `teacher_model_server` is not supported.')
+
+        # Self-distillation: teacher_model == student model
+        self._teacher_use_disable_adapter = False
+        if self.teacher_model is not None and self.teacher_model == self.model:
+            if self.tuner_type == 'lora':
+                logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
+                self._teacher_use_disable_adapter = True
+                self.teacher_model = None
+            else:
+                # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
+                pass
 
     def _init_rollout(self):
         if self.rlhf_type not in rlhf_support_vllm_types:
@@ -519,6 +554,38 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if self.async_generate and self.multi_turn_scheduler is not None:
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
+        self._check_opd_rl()
+
+    def _check_opd_rl(self):
+        """Fail-fast OPD-RL (teacher distillation on GRPO) parameter compatibility.
+
+        A teacher turns GRPO into OPD-RL, where the teacher signal is a *per-token* advantage
+        (the signed teacher log-ratio). Features that require a *per-sequence* advantage (typically
+        sign-based judgments) or reward variance are incompatible; reject them here rather than
+        deep inside the loss / advantage code. ``_check_teacher`` has already run, so
+        ``_teacher_use_disable_adapter`` is resolved.
+        """
+        opd_rl = (
+            self.teacher_model is not None or self.teacher_model_server is not None
+            or self._teacher_use_disable_adapter)
+        if not opd_rl:
+            return
+        # loss types / masks that reduce the advantage to a per-sequence scalar (sign-based).
+        if self.loss_type in ['real', 'fipo']:
+            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} '
+                             '(it needs a per-sequence advantage).')
+        if self.off_policy_sequence_mask_delta is not None:
+            raise ValueError('OPD-RL (teacher) does not support off_policy_sequence_mask_delta '
+                             '(it needs a per-sequence advantage).')
+        # Pure distillation (no reward functions): the base GRPO advantage is 0, so reward-variance
+        # driven features have no signal to act on.
+        if not self.reward_funcs:
+            if self.dynamic_sample:
+                raise ValueError('dynamic_sample requires reward_funcs (it filters groups by reward std); '
+                                 'pure OPD-RL distillation has no reward variance.')
+            if self.scale_rewards == 'gdpo':
+                raise ValueError("scale_rewards='gdpo' requires reward_funcs; pure OPD-RL distillation has none.")
+
     def _external_vllm_warning(self):
         if self.rlhf_type not in rlhf_support_vllm_types or not self.vllm_server_host:
             return
@@ -580,30 +647,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
 
         if self.async_generate:
             raise NotImplementedError('Currently, async_generate is not supported for GKD.')
-
-        if self.teacher_model is not None and self.teacher_model_server is not None:
-            raise ValueError('GKD requires either `teacher_model` or `teacher_model_server` to be set, not both.')
-
-        # Self-distillation: teacher_model == student model
-        self._teacher_use_disable_adapter = False
-        if self.teacher_model is not None and self.teacher_model == self.model:
-            if self.tuner_type == 'lora':
-                logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
-                self._teacher_use_disable_adapter = True
-                self.teacher_model = None
-            else:
-                # Full training + same teacher_model: a separate frozen copy will be loaded as fixed teacher.
-                pass
-
-        # Self-distillation: no teacher_model → dynamic teacher (current student weights)
-        if self.teacher_model is None and self.teacher_model_server is None:
-            logger.info('No teacher_model specified. Using self-distillation mode (teacher = student).')
-
-            if self.seq_kd:
-                raise ValueError(
-                    'Self-distillation mode with seq_kd is not supported yet, please specify a teacher_model.')
-            if self.use_liger_kernel:
-                raise ValueError('Self-distillation mode with liger kernel GKD loss is not supported yet')
 
         # seq_kd (teacher-generated responses) is not implemented; raise early.
         if self.seq_kd:
