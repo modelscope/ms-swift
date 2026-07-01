@@ -36,5 +36,21 @@ def test_resume_from_checkpoint():
     assert diff < 0.01
 
 
+def test_resume_from_checkpoint_true():
+    """Test that resume_from_checkpoint='true' auto-detects the last checkpoint."""
+    from swift import sft_main, SftArguments
+    # First run: train and produce checkpoints.
+    result = sft_main(SftArguments(**kwargs))
+    last_model_checkpoint = result['last_model_checkpoint']
+    output_dir = result['output_dir']
+    # Second run: resume using 'true' with the same output_dir.
+    result2 = sft_main(SftArguments(**kwargs, output_dir=output_dir, add_version=False, resume_from_checkpoint='true'))
+    # The resumed run should have loaded the last checkpoint (checkpoint-10 here)
+    # and therefore its resolved path should match what the first run produced.
+    assert result2['last_model_checkpoint'] == last_model_checkpoint
+    print('test_resume_from_checkpoint_true passed')
+
+
 if __name__ == '__main__':
     test_resume_from_checkpoint()
+    test_resume_from_checkpoint_true()
