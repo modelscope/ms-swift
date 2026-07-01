@@ -25,8 +25,6 @@ DRAW_VIDEO = 'https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen2.5-Omni/draw.
 CAT_IMAGE = 'http://modelscope-open.oss-cn-hangzhou.aliyuncs.com/images/cat.png'
 _SKIP_TRAIN_KEYS = frozenset({'input_ids', 'labels', 'loss_scale', 'mm_token_type_ids'})
 
-os.environ['SWIFT_AUDIO_LOAD_BACKEND'] = 'soundfile_pyav'
-
 _QWEN_VL_VIDEO_ALIASES = {'video_second_per_grid': 'second_per_grid_ts'}
 _GEMMA4_IMAGE_ALIASES = {'image_position_ids': 'pixel_position_ids'}
 _QWEN3_OMNI_AUDIO_ALIASES = {
@@ -129,6 +127,12 @@ def audio_backend(backend: str):
             os.environ.pop('SWIFT_AUDIO_LOAD_BACKEND', None)
         else:
             os.environ['SWIFT_AUDIO_LOAD_BACKEND'] = prev
+
+
+@pytest.fixture(autouse=True)
+def _soundfile_pyav_for_align_tests():
+    with audio_backend('soundfile_pyav'):
+        yield
 
 
 def _vllm_audio_feature_lengths(train: dict, vllm_tensors: dict) -> None:
@@ -486,6 +490,26 @@ def test_gemma4_audio():
     )
 
 
+def test_gemma4_audio_collator_3d():
+    """Collator must batch audio as (N, max_len, feat_dim), not concat along time dim."""
+    sample = {
+        'messages': [{
+            'role': 'user',
+            'content': 'describe the audio.'
+        }],
+        'audios': [WEATHER_AUDIO],
+    }
+    processor = get_processor('google/gemma-4-E2B-it')
+    template = get_template(processor)
+    template.set_mode('train')
+    batch = [template.encode(sample), template.encode(sample)]
+    collated = template._data_collator_mm_data(batch)
+    assert collated['input_features'].ndim == 3
+    assert collated['input_features'].shape[0] == 2
+    assert collated['input_features_mask'].ndim == 2
+    assert collated['input_features_mask'].shape[0] == 2
+
+
 @pytest.mark.xfail(reason='vLLM gemma4 video timestamp/soft-token path differs from HF Gemma4VideoProcessor')
 def test_gemma4_video():
     _assert_mm_align(
@@ -523,6 +547,7 @@ if __name__ == '__main__':
         test_qwen3_omni_video_use_audio_in_video,
         test_gemma4_image,
         test_gemma4_audio,
+        test_gemma4_audio_collator_3d,
         test_gemma4_video,
     ]
     passed = xfailed = failed = 0

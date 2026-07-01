@@ -175,5 +175,6 @@ class RolloutArguments(DeployArguments):
                              'and pass it via `--multi_turn_scheduler your_scheduler_name`.')
 
     def _set_default_audio_load_backend(self):
+        # Rollout uses GRPOVllmEngine (vLLM-only); align audio decode with vLLM multimodal loader.
         if os.getenv('SWIFT_AUDIO_LOAD_BACKEND') is None:
             os.environ['SWIFT_AUDIO_LOAD_BACKEND'] = 'soundfile_pyav'

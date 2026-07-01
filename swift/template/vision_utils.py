@@ -296,18 +296,18 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     return frames
 
 
-def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int):
+def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int, mono: bool = True):
     import librosa
     try:
         audio_io = load_file(audio)
-        return librosa.load(audio_io, sr=sampling_rate)
+        return librosa.load(audio_io, sr=sampling_rate, mono=mono)
     except Exception:
         if isinstance(audio, str) and audio.startswith(('http://', 'https://')):
             import audioread
             audio_io = audioread.ffdec.FFmpegAudioFile(audio)
         else:
             audio_io = _check_path(audio) if isinstance(audio, str) else audio
-        return librosa.load(audio_io, sr=sampling_rate)
+        return librosa.load(audio_io, sr=sampling_rate, mono=mono)
 
 
 # ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/multimodal/audio.py#L169-L224
@@ -337,13 +337,12 @@ def _resample_audio_pyav(audio: np.ndarray, *, orig_sr: float, target_sr: float)
 # ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/multimodal/media/audio.py#L45-L160
 def _load_audio_soundfile_pyav(path: Union[str, bytes, BytesIO], *, sr: float, mono: bool = True):
     """soundfile first, pyav fallback — same strategy as vLLM multimodal audio loader."""
-    import av
-    import soundfile
     bad_sf_codes = {0, 1, 3, 4}
     if not isinstance(path, BytesIO):
         path = load_file(path)
 
     def _load_soundfile():
+        import soundfile
         with soundfile.SoundFile(path) as f:
             native_sr = f.samplerate
             y = f.read(dtype='float32', always_2d=False).T
@@ -357,6 +356,7 @@ def _load_audio_soundfile_pyav(path: Union[str, bytes, BytesIO], *, sr: float, m
         return y, native_sr
 
     def _load_pyav():
+        import av
         path.seek(0)
         with av.open(path) as container:
             if not container.streams.audio:
@@ -374,9 +374,6 @@ def _load_audio_soundfile_pyav(path: Union[str, bytes, BytesIO], *, sr: float, m
                         chunks.append(out_frame.to_ndarray())
                 else:
                     chunks.append(frame.to_ndarray())
-            if needs_resampling:
-                for out_frame in resampler.resample(None):
-                    chunks.append(out_frame.to_ndarray())
         if not chunks:
             raise ValueError('No audio found.')
         y = np.concatenate(chunks, axis=-1).astype(np.float32)
@@ -386,8 +383,12 @@ def _load_audio_soundfile_pyav(path: Union[str, bytes, BytesIO], *, sr: float, m
 
     try:
         return _load_soundfile()
-    except soundfile.LibsndfileError as exc:
-        if exc.code not in bad_sf_codes:
+    except ImportError:
+        path.seek(0)
+        return _load_pyav()
+    except Exception as exc:
+        import soundfile
+        if not isinstance(exc, soundfile.LibsndfileError) or exc.code not in bad_sf_codes:
             raise
     path.seek(0)
     return _load_pyav()
@@ -401,7 +402,7 @@ def load_audio(
 ):
     backend = get_env_args('swift_audio_load_backend', str, 'librosa')
     if backend == 'librosa':
-        res = _load_audio_librosa(audio, sampling_rate)
+        res = _load_audio_librosa(audio, sampling_rate, mono=mono)
     elif backend == 'soundfile_pyav':
         res = _load_audio_soundfile_pyav(audio, sr=sampling_rate, mono=mono)
     else:
@@ -437,10 +438,10 @@ def _video_to_ndarrays_local(local_path: str, num_frames: int = -1) -> np.ndarra
             if ret:
                 frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
     cap.release()
-    frames = np.stack(frames)
     if len(frames) < num_frames:
-        raise ValueError(f'Could not read enough frames from video file {local_path}')
-    return frames
+        raise ValueError(f'Could not read enough frames from video file {local_path} '
+                         f'(expected {num_frames} frames, got {len(frames)})')
+    return np.stack(frames)
 
 
 def _video_get_metadata_local(local_path: str, num_frames: int = -1) -> dict:
@@ -469,34 +470,6 @@ def load_vllm_video(path: Union[str, bytes], num_frames: int = -1) -> tuple:
     local_path, is_temp = _resolve_video_local_path(path)
     try:
         return _video_to_ndarrays_local(local_path, num_frames), _video_get_metadata_local(local_path, num_frames)
-    finally:
-        if is_temp:
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
-
-
-# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/assets/video.py#L39-L68
-def video_to_ndarrays(path: Union[str, bytes], num_frames: int = -1) -> np.ndarray:
-    """Decode video for vLLM rollout only; train should pass URL to HF processor."""
-    local_path, is_temp = _resolve_video_local_path(path)
-    try:
-        return _video_to_ndarrays_local(local_path, num_frames)
-    finally:
-        if is_temp:
-            try:
-                os.remove(local_path)
-            except OSError:
-                pass
-
-
-# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/assets/video.py#L76-L100
-def video_get_metadata(path: Union[str, bytes], num_frames: int = -1) -> dict:
-    """Metadata for vLLM rollout; not used on HF-aligned train path."""
-    local_path, is_temp = _resolve_video_local_path(path)
-    try:
-        return _video_get_metadata_local(local_path, num_frames)
     finally:
         if is_temp:
             try:
