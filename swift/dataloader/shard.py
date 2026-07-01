@@ -84,9 +84,16 @@ class DataLoaderShard(DataLoader):
         super().__init__(dataset, **dataloader_params)
 
     def set_epoch(self, epoch: int):
-        if self.batch_sampler is not None and hasattr(self.batch_sampler, 'set_epoch'):
-            self.batch_sampler.set_epoch(epoch)
-        elif self.sampler is not None and hasattr(self.sampler, 'set_epoch'):
+        set_epoch_called = False
+        sampler = self.batch_sampler
+        while sampler is not None:
+            if hasattr(sampler, 'set_epoch'):
+                sampler.set_epoch(epoch)
+                set_epoch_called = True
+                break
+            sampler = getattr(sampler, 'batch_sampler', None)
+
+        if not set_epoch_called and self.sampler is not None and hasattr(self.sampler, 'set_epoch'):
             self.sampler.set_epoch(epoch)
 
     def __iter__(self):
