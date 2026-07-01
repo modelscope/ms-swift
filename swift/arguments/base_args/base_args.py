@@ -19,6 +19,7 @@ from swift.utils import (Processor, check_json_format, get_dist_setting, get_log
 from .data_args import DataArguments
 from .generation_args import GenerationArguments
 from .model_args import ModelArguments
+from .profile_args import ProfilerArguments
 from .quant_args import QuantizeArguments
 from .template_args import TemplateArguments
 
@@ -45,12 +46,11 @@ def _patch_peft():
 
 @dataclass
 class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, TemplateArguments, ModelArguments,
-                    RayArguments):
+                    RayArguments, ProfilerArguments):
     """BaseArguments class is a dataclass that inherits from multiple argument classes.
 
     This class consolidates arguments from GenerationArguments, QuantizeArguments, DataArguments,
-    TemplateArguments, ModelArguments, RayArguments.
-
+    TemplateArguments, ModelArguments, RayArguments, and ProfilerArguments.
     Args:
         tuner_backend (str): The tuner backend to use. Choices are 'peft' or 'unsloth'. Default is 'peft'.
         tuner_type (str): The tuner type. Choices include 'lora', 'full', 'longlora', 'adalora', 'llamapro',
@@ -187,6 +187,7 @@ class BaseArguments(GenerationArguments, QuantizeArguments, DataArguments, Templ
         TemplateArguments.__post_init__(self)
         DataArguments.__post_init__(self)
         RayArguments.__post_init__(self)
+        ProfilerArguments.__post_init__(self)
         self._init_stream()
         if self.max_length is None and self.model_info is not None:
             self.max_length = self.model_info.max_model_len
