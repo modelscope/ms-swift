@@ -391,6 +391,8 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 raise ValueError(f'Invalid advantage_estimator: {self.advantage_estimator}')
 
     def _check_teacher(self):
+        self._teacher_use_disable_adapter = False
+
         if self.rlhf_type not in ['grpo', 'gkd']:
             if self.teacher_model is not None or self.teacher_model_server is not None:
                 logger.warning(f'teacher_model / teacher_model_server is ignored for rlhf_type={self.rlhf_type!r} '
@@ -413,7 +415,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise ValueError('setting both `teacher_model` and `teacher_model_server` is not supported.')
 
         # Self-distillation: teacher_model == student model
-        self._teacher_use_disable_adapter = False
         if self.teacher_model is not None and self.teacher_model == self.model:
             if self.tuner_type == 'lora':
                 logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')

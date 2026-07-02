@@ -96,6 +96,8 @@ class GKDConfig(RolloutTrainerArgumentsMixin, TrainArgumentsMixin, HfGKDConfig):
 @dataclass
 class GRPOConfig(GRPOArgumentsMixin, TrainArgumentsMixin, HfGRPOConfig):
 
+    offload_teacher_model: bool = False
+
     def __post_init__(self):
         require_version('trl>=0.26')
         GRPOArgumentsMixin.__post_init__(self)

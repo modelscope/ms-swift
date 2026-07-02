@@ -38,7 +38,7 @@ from swift.template import Template
 from swift.tuners import Swift
 from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
                          to_device, unwrap_model_for_generation)
-from .arguments import RolloutTrainerArgumentsMixin
+from .arguments import GKDConfig, GRPOConfig, RolloutTrainerArgumentsMixin
 from .base_rollout_mixin import BaseRolloutTrainerMixin
 from .gkd_helpers import resolve_dynamic_opd_self_distillation
 from .rlhf_mixin import RLHFTrainerMixin
@@ -110,6 +110,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         if self.is_fsdp_enabled and not self._is_fsdp2:
             raise NotImplementedError('FSDP1 is not supported. Please use FSDP2 (fsdp_version=2) instead. '
                                       'Set fsdp_version: 2 in your FSDP config or use --fsdp fsdp2')
+        self.args: Union[GRPOConfig, GKDConfig]
 
     def prepare_rollout(self):
         self._prepare_rollout_params()
