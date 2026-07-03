@@ -7,10 +7,10 @@ import torch
 
 from swift.rlhf_trainers.utils import assemble_teacher_topk_logprobs
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_parsed(seq_len: int, topk: int):
     """Create ``parsed`` data mimicking ``parse_prompt_logprobs`` output.
@@ -31,6 +31,7 @@ def _make_parsed(seq_len: int, topk: int):
 # 1. padding_free=True (packed mode)
 # ---------------------------------------------------------------------------
 
+
 class TestPacked:
 
     def test_single_sample(self):
@@ -41,8 +42,7 @@ class TestPacked:
         cu_seqlens = [0, seq_len]
 
         out_lp, out_ix = assemble_teacher_topk_logprobs(
-            parsed, batch_size=1, seq_len=seq_len, cu_seqlens=cu_seqlens,
-            topk=topk, device=torch.device('cpu'))
+            parsed, batch_size=1, seq_len=seq_len, cu_seqlens=cu_seqlens, topk=topk, device=torch.device('cpu'))
 
         assert out_lp.shape == (1, seq_len, topk)
         # Positions 0..4 filled, position 5 = -inf
@@ -60,8 +60,7 @@ class TestPacked:
         cu_seqlens = [0, s1, s1 + s2]
 
         out_lp, out_ix = assemble_teacher_topk_logprobs(
-            parsed, batch_size=1, seq_len=s1 + s2, cu_seqlens=cu_seqlens,
-            topk=topk, device=torch.device('cpu'))
+            parsed, batch_size=1, seq_len=s1 + s2, cu_seqlens=cu_seqlens, topk=topk, device=torch.device('cpu'))
 
         assert out_lp.shape == (1, s1 + s2, topk)
         # Sample 1: positions 0..2 filled, position 3 = -inf
@@ -78,6 +77,7 @@ class TestPacked:
 # 2. padding_free=False (non-packed mode)
 # ---------------------------------------------------------------------------
 
+
 class TestNonPacked:
 
     def test_no_offset(self):
@@ -88,8 +88,7 @@ class TestNonPacked:
         parsed = [_make_parsed(seq_len, topk), _make_parsed(seq_len, topk)]
 
         out_lp, out_ix = assemble_teacher_topk_logprobs(
-            parsed, batch_size=batch_size, seq_len=seq_len, cu_seqlens=None,
-            topk=topk, device=torch.device('cpu'))
+            parsed, batch_size=batch_size, seq_len=seq_len, cu_seqlens=None, topk=topk, device=torch.device('cpu'))
 
         assert out_lp.shape == (batch_size, seq_len, topk)
         for b in range(batch_size):
@@ -108,8 +107,13 @@ class TestNonPacked:
         offsets = [2, 0]
 
         out_lp, out_ix = assemble_teacher_topk_logprobs(
-            parsed, batch_size=batch_size, seq_len=seq_len, cu_seqlens=None,
-            topk=topk, device=torch.device('cpu'), offsets=offsets)
+            parsed,
+            batch_size=batch_size,
+            seq_len=seq_len,
+            cu_seqlens=None,
+            topk=topk,
+            device=torch.device('cpu'),
+            offsets=offsets)
 
         assert out_lp.shape == (batch_size, seq_len, topk)
         # Sample 0: starts at offset 2, has 3 logprobs (4 tokens - 1)
