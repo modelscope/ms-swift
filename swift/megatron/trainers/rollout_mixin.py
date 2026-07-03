@@ -21,7 +21,7 @@ from dacite import from_dict
 from dataclasses import asdict
 from megatron.core import mpu
 from transformers import AutoConfig
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.model import get_mcore_model
@@ -178,9 +178,13 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         )
         self._has_teacher = self._has_teacher_explicit or self._is_dynamic_self_distillation
         self.teacher_models = None
-        self.teacher_client = None
+        self.teacher_configs: list = []
+        self.teacher_clients: list = []
         if self.use_teacher_api:
-            self.teacher_client = VLLMInferClient(base_urls=[self.teacher_model_server]) if is_last_rank() else None
+            from swift.rlhf_trainers.gkd_helpers import parse_teacher_model_server
+            self.teacher_configs = parse_teacher_model_server(self.teacher_model_server)
+            if is_last_rank():
+                self.teacher_clients = [VLLMInferClient(base_urls=[cfg.url]) for cfg in self.teacher_configs]
 
     def _load_teacher_model(self) -> None:
         """Load the separate local teacher mcore model (called from ``prepare_model``).
@@ -227,12 +231,17 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         finally:
             self._offload_teacher_models()
 
-    def _fetch_teacher_parsed_logprobs(self, requests: List[RolloutInferRequest], topk: int):
+    def _fetch_teacher_parsed_logprobs(self,
+                                       requests: List[RolloutInferRequest],
+                                       topk: int,
+                                       teacher_client: Optional[Any] = None):
         """Query the teacher API for prompt logprobs; return this DP rank's parsed slice.
 
         ``topk == 0`` -> sampled-token logp (OPD-RL); ``topk > 0`` -> top-k (GKD). Gathers
         the rollout-group-rank-0 contributions to the main process, infers once, broadcasts,
         and slices back this DP rank's contiguous segment.
+
+        ``teacher_client`` selects which teacher server to query (defaults to the first).
         """
         rollout_group = self._get_rollout_group()
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
@@ -242,13 +251,14 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         all_contributions = [None] * world_size
         torch.distributed.all_gather_object(all_contributions, contribution)
 
+        client = teacher_client if teacher_client is not None else self.teacher_clients[0]
         if self.is_main_process:
             flat_global = []
             for c in all_contributions:
                 if c:
                     flat_global.extend(c)
             request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
-            responses = self.teacher_client.infer(flat_global, request_config=request_config, use_tqdm=False)
+            responses = client.infer(flat_global, request_config=request_config, use_tqdm=False)
             parsed_global = [parse_prompt_logprobs(r, topk=topk) for r in responses]
         else:
             parsed_global = None

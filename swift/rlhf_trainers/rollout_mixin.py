@@ -40,7 +40,7 @@ from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, i
                          to_device, unwrap_model_for_generation)
 from .arguments import RolloutTrainerArgumentsMixin
 from .base_rollout_mixin import BaseRolloutTrainerMixin
-from .gkd_helpers import resolve_dynamic_opd_self_distillation
+from .gkd_helpers import TeacherServerConfig, parse_teacher_model_server, resolve_dynamic_opd_self_distillation
 from .rlhf_mixin import RLHFTrainerMixin
 from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket, TensorLoRARequest,
                     _create_parameter_buckets, _process_bucket_with_flattened_tensor,
@@ -216,10 +216,13 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         )
         self._has_teacher = explicit or self._is_dynamic_self_distillation
 
-        self.teacher_client = None
+        self.teacher_clients: List[VLLMInferClient] = []
+        self.teacher_configs: List[TeacherServerConfig] = []
         if self.use_teacher_api:
-            self.teacher_client = (
-                VLLMInferClient(base_urls=[teacher_model_server]) if self.accelerator.is_main_process else None)
+            # Parse teacher config (single URL -> list of 1; JSON -> list of N).
+            self.teacher_configs = parse_teacher_model_server(teacher_model_server)
+            if self.accelerator.is_main_process:
+                self.teacher_clients = [VLLMInferClient(base_urls=[cfg.url]) for cfg in self.teacher_configs]
 
         self.teacher_ds3_gather_for_generation = getattr(self.args, 'ds3_gather_for_generation', False)
         self.is_teacher_ds3 = None
@@ -258,19 +261,22 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         finally:
             self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
 
-    def _fetch_teacher_logprobs(self, requests: List[Any], topk: int):
+    def _fetch_teacher_logprobs(self, requests: List[Any], topk: int, teacher_client: Optional[Any] = None):
         """Query the teacher vLLM API for prompt logprobs; return this rank's parsed slice.
 
         ``topk == 0`` -> the sampled token's logp (OPD-RL); ``topk > 0`` -> top-k (GKD).
         Gathers requests across DP (accelerate semantics: every rank gets the full list),
         infers once on the main process, broadcasts, and slices back this rank's segment.
+
+        ``teacher_client`` selects which teacher server to query (defaults to the first).
         """
         n_local = len(requests)
         all_requests = gather_object(requests)
+        client = teacher_client if teacher_client is not None else self.teacher_clients[0]
 
         if self.accelerator.is_main_process:
             request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
-            responses = self.teacher_client.infer(all_requests, request_config=request_config, use_tqdm=False)
+            responses = client.infer(all_requests, request_config=request_config, use_tqdm=False)
             parsed_global = [parse_prompt_logprobs(r, topk=topk) for r in responses]
         else:
             parsed_global = None

@@ -349,8 +349,15 @@ def load_dataset(
             random_state=seed,
         )
         if train_dataset is not None:
+            # Inject dataset name as routing tag for multi-teacher (only when multiple datasets).
+            if len(datasets) > 1 and not streaming:
+                ds_name = dataset_syntax.dataset
+                train_dataset = train_dataset.add_column('dataset', [ds_name] * len(train_dataset))
             train_datasets.append(train_dataset)
         if val_dataset is not None:
+            if len(datasets) > 1 and not streaming:
+                ds_name = dataset_syntax.dataset
+                val_dataset = val_dataset.add_column('dataset', [ds_name] * len(val_dataset))
             val_datasets.append(val_dataset)
 
     if interleave_prob is None:

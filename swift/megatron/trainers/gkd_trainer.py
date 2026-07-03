@@ -14,7 +14,8 @@ from typing import Dict, List, Optional
 from swift.megatron.arguments import MegatronArguments
 from swift.rl_core.data import GKDSample
 from swift.rl_core.resample import resample_encode_failed_inputs
-from swift.rlhf_trainers.gkd_helpers import assemble_teacher_output, build_teacher_requests, encode_gkd_samples
+from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_teacher_requests, encode_gkd_samples,
+                                             fetch_teacher_parsed_by_routing)
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import Template
 from swift.utils import get_logger, to_device
@@ -291,7 +292,14 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if self.use_teacher_api:
             teacher_requests = self._build_teacher_requests(samples)
             if teacher_requests:
-                local_parsed = self._fetch_teacher_parsed_logprobs(teacher_requests, topk=self.gkd_logits_topk)
+                local_parsed = fetch_teacher_parsed_by_routing(
+                    samples,
+                    teacher_requests,
+                    self.teacher_configs,
+                    self.teacher_clients,
+                    fetch_fn=lambda reqs, client: self._fetch_teacher_parsed_logprobs(
+                        reqs, topk=self.gkd_logits_topk, teacher_client=client),
+                    tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
 
         # Encode micro-batches
         total_microbatches = self.args.num_microbatches * self.steps_per_generation

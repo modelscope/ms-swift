@@ -5,7 +5,9 @@ These functions are stateless: they operate on ``GKDSample`` objects and a
 ``Template`` and return encoded dicts / teacher requests / assembled teacher
 outputs.  Shared by the HF and Megatron GKD trainers.
 """
+import json
 import torch
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.rl_core.data import GKDSample, OnPolicySample
@@ -237,6 +239,132 @@ def assemble_teacher_completion_logprobs(
         out_lp[i, completion_indices] = torch.tensor(lps, dtype=torch.float32, device=device)
         out_ix[i, completion_indices] = torch.tensor(ixs, dtype=torch.long, device=device)
     return TeacherOutput(topk_logprobs=out_lp, topk_indices=out_ix)
+
+
+@dataclass
+class TeacherServerConfig:
+    """Configuration for a single teacher model server.
+
+    Args:
+        url: Teacher server URL (e.g., 'http://localhost:8000').
+        tags: Tags this teacher handles. With multiple teachers each sample is routed to
+            exactly one teacher by tag. Empty only for the single-teacher case (one teacher
+            handles all samples). All teachers share the global ``--teacher_kl_coef``.
+    """
+    url: str
+    tags: List[str] = field(default_factory=list)
+
+
+def parse_teacher_model_server(val: Optional[str]) -> Optional[List[TeacherServerConfig]]:
+    """Parse ``teacher_model_server``: single URL string or JSON multi-teacher config.
+
+    Accepts two formats:
+    - Single URL (backward compatible): ``'http://localhost:8000'`` -> one teacher, no tags,
+      handles all samples.
+    - Multi-teacher JSON: ``'[{"url":"http://localhost:8000","tags":["math"]}, ...]'``.
+      With multiple teachers each entry MUST have non-empty ``tags`` and tags MUST NOT overlap
+      across teachers (each sample routes to exactly one teacher).
+
+    Returns ``None`` when *val* is ``None``. Otherwise returns a list of
+    :class:`TeacherServerConfig` (always a list, even for single teacher).
+    """
+    if val is None:
+        return None
+    val = val.strip()
+    if not val.startswith('['):
+        return [TeacherServerConfig(url=val, tags=[])]
+
+    configs_raw = json.loads(val)
+    if not configs_raw:
+        raise ValueError('teacher_model_server JSON list is empty.')
+    configs = []
+    for i, c in enumerate(configs_raw):
+        url = c.get('url')
+        if not url:
+            raise ValueError(f'teacher_model_server[{i}]: "url" is required.')
+        tags = c.get('tags', [])
+        if not isinstance(tags, list):
+            raise ValueError(f'teacher_model_server[{i}]: "tags" must be a list, got {type(tags)}.')
+        configs.append(TeacherServerConfig(url=url, tags=tags))
+
+    if len(configs) > 1:
+        seen = {}
+        for i, cfg in enumerate(configs):
+            if not cfg.tags:
+                raise ValueError(f'teacher_model_server[{i}]: "tags" must be non-empty with multiple teachers '
+                                 '(each sample routes to exactly one teacher).')
+            for tag in cfg.tags:
+                if tag in seen:
+                    raise ValueError(f'teacher_model_server: tag "{tag}" appears in both teacher[{seen[tag]}] '
+                                     f'and teacher[{i}]; tags must not overlap.')
+                seen[tag] = i
+    return configs
+
+
+def get_sample_tag(sample: OnPolicySample, tag_key: str = 'dataset') -> str:
+    """Extract the routing tag from a sample's ``extra`` dict.
+
+    Priority: ``tag_key`` field -> 'tag' -> 'source'. Returns ``None`` if none is set.
+    """
+    for key in [tag_key, 'tag', 'source']:
+        val = sample.extra.get(key)
+        if val is not None:
+            return str(val)
+    return None
+
+
+def route_samples_to_teachers(
+    samples: List[OnPolicySample],
+    teacher_configs: List[TeacherServerConfig],
+    tag_key: str = 'dataset',
+) -> Dict[int, List[int]]:
+    """Route each sample to exactly one teacher, returning ``{teacher_index: [sample_indices]}``.
+
+    Single teacher: all samples route to it (tags ignored). Multiple teachers: route by tag;
+    ``parse_teacher_model_server`` guarantees tags are non-empty and non-overlapping, so a tag
+    maps to at most one teacher. Fails fast when a sample's tag matches no teacher.
+    """
+    routing: Dict[int, List[int]] = {i: [] for i in range(len(teacher_configs))}
+    if len(teacher_configs) == 1:
+        routing[0] = list(range(len(samples)))
+        return routing
+
+    tag_to_teacher = {tag: t_idx for t_idx, cfg in enumerate(teacher_configs) for tag in cfg.tags}
+    for s_idx, sample in enumerate(samples):
+        tag = get_sample_tag(sample, tag_key=tag_key)
+        t_idx = tag_to_teacher.get(tag)
+        if t_idx is None:
+            raise ValueError(f'sample[{s_idx}] tag {tag!r} (from "{tag_key}") matches no teacher; '
+                             f'available tags: {sorted(tag_to_teacher)}')
+        routing[t_idx].append(s_idx)
+    return routing
+
+
+def fetch_teacher_parsed_by_routing(
+    samples: List[OnPolicySample],
+    requests: List[Any],
+    teacher_configs: List[TeacherServerConfig],
+    teacher_clients: List[Any],
+    fetch_fn,
+    tag_key: str = 'dataset',
+) -> List[Any]:
+    """Route samples to teachers, fetch each teacher's subset, scatter parsed results back.
+
+    Teacher-count-agnostic fetch shared by GKD (top-k) and GRPO (sampled-token) paths and by
+    single/multi teacher alike: each sample goes to exactly one teacher, so results scatter back
+    by sample index with no merge/averaging (single teacher = one group over all samples).
+    ``fetch_fn(subset_requests, teacher_client) -> parsed_list`` performs the actual query.
+    Returns parsed results in the original sample order.
+    """
+    routing = route_samples_to_teachers(samples, teacher_configs, tag_key=tag_key)
+    parsed: List[Any] = [None] * len(requests)
+    for t_idx, sample_indices in routing.items():
+        if not sample_indices:
+            continue
+        subset = fetch_fn([requests[i] for i in sample_indices], teacher_clients[t_idx])
+        for local_i, s_idx in enumerate(sample_indices):
+            parsed[s_idx] = subset[local_i]
+    return parsed
 
 
 def resolve_dynamic_opd_self_distillation(

@@ -46,6 +46,7 @@ class GRPOLoss(Loss):
         cls = MegatronGRPOTrainer
         dummy = cls.__new__(cls)
         dummy.args = args
+        dummy._setup_teacher()
         dummy._init_grpo_params()
         dummy._prepare_metrics()
         dummy.log_rollout_offpolicy_metrics = args.log_rollout_offpolicy_metrics

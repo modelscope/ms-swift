@@ -56,7 +56,8 @@ from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
                                              build_teacher_requests, encode_teacher_view,
-                                             remap_teacher_logps_to_student_frame, should_compute_local_teacher_logps)
+                                             fetch_teacher_parsed_by_routing, remap_teacher_logps_to_student_frame,
+                                             should_compute_local_teacher_logps)
 from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
@@ -573,27 +574,35 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         """OPD-RL teacher API: fetch the *sampled* token's logp at each response position
         (``prompt_logprobs=0`` -> ``parse_prompt_logprobs(topk=0)``, the actually-present
         token, not the top-1) as a completion-frame ``TeacherOutput``, then read its single
-        column as ``teacher_per_token_logps``. Future top-k RL reuses the same ``TeacherOutput``."""
+        column as ``teacher_per_token_logps``. Future top-k RL reuses the same ``TeacherOutput``.
+
+        Each sample routes to exactly one teacher by tag (single teacher = all samples). Routing
+        runs once over the flattened batch, so a single teacher is one DP gather → infer → slice.
+        """
         # OPSD: populate teacher_messages so build_teacher_requests scores the teacher prompt.
         build_opsd_samples(samples)
-        sample_chunks = self.split_by_mini_batches(samples)
-        local_requests, chunk_sizes = [], []
-        chunk_rti = []
-        for chunk in sample_chunks:
-            reqs = build_teacher_requests(chunk, self.template)
-            local_requests.extend(reqs)
-            chunk_sizes.append(len(reqs))
-            chunk_rti.append([s.response_token_ids for s in chunk])
-        parsed_local = self._fetch_teacher_logprobs(local_requests, topk=0)
+        requests = build_teacher_requests(samples, self.template)
+        parsed = fetch_teacher_parsed_by_routing(
+            samples,
+            requests,
+            self.teacher_configs,
+            self.teacher_clients,
+            fetch_fn=lambda r, client: self._fetch_teacher_logprobs(r, topk=0, teacher_client=client),
+            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
 
         offset = 0
-        for batch_encoded, cs, rti in zip(batch_encoded_inputs, chunk_sizes, chunk_rti):
-            chunk_parsed = parsed_local[offset:offset + cs]
-            offset += cs
+        for batch_encoded in batch_encoded_inputs:
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
+            device = grpo_batch.completion_mask.device
+            n = grpo_batch.completion_mask.shape[0]
+            chunk = samples[offset:offset + n]
             teacher_out = assemble_teacher_completion_logprobs(
-                chunk_parsed, grpo_batch.completion_mask, grpo_batch.completion_mask.device, response_token_ids=rti)
+                parsed[offset:offset + n],
+                grpo_batch.completion_mask,
+                device,
+                response_token_ids=[s.response_token_ids for s in chunk])
             grpo_batch.teacher_per_token_logps = teacher_out.topk_logprobs[..., 0]
+            offset += n
 
     @profiling_decorator
     def _dynamic_sampling(self, samples: List[GRPOSample],

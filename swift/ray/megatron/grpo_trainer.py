@@ -9,12 +9,15 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.dataset import RowPreprocessor
+from swift.infer_engine import RequestConfig
 from swift.infer_engine.protocol import RolloutOutput
 from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics, compute_teacher_kl_per_token,
                                      expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import compute_std_for_dynamic_sampling, score_completions
-from swift.rlhf_trainers.gkd_helpers import (build_opsd_samples, encode_teacher_view,
+from swift.rlhf_trainers.gkd_helpers import (TeacherServerConfig, assemble_teacher_completion_logprobs,
+                                             build_opsd_samples, build_teacher_requests, encode_teacher_view,
+                                             fetch_teacher_parsed_by_routing, parse_teacher_model_server,
                                              remap_teacher_logps_to_student_frame,
                                              resolve_dynamic_opd_self_distillation)
 from swift.rlhf_trainers.utils import encode_sample, make_reward_weights, resolve_reward_funcs
@@ -52,9 +55,14 @@ class GRPOTrainer(BaseRayTrainer):
         )
         self._has_teacher = teacher_explicit or self._is_dynamic_self_distillation
         self.teacher_kl_coef = getattr(args, 'teacher_kl_coef', 1.0)
-        if self._teacher_model_server:
-            raise NotImplementedError('teacher_model_server is not yet supported in the Ray pipeline. '
-                                      'Use teacher_model (colocated) for OPD-RL instead.')
+        # Parse teacher_model_server: supports single URL and multi-teacher JSON.
+        self.use_teacher_api = self._teacher_model_server is not None
+        self.teacher_configs: List[TeacherServerConfig] = []
+        self.teacher_clients = []
+        if self.use_teacher_api:
+            self.teacher_configs = parse_teacher_model_server(self._teacher_model_server)
+            from swift.rlhf_trainers.vllm_client import VLLMInferClient
+            self.teacher_clients = [VLLMInferClient(base_urls=[cfg.url]) for cfg in self.teacher_configs]
 
         self._prepare_rewards()
         self._prepare_multi_turn()
@@ -191,8 +199,13 @@ class GRPOTrainer(BaseRayTrainer):
                     ref_rows = tg.compute_ref_logps(dispatch)
                     self._scatter_logps(grpo_batches, ref_rows, 'ref_per_token_logps')
                 # OPD-RL: teacher logp on the sampled tokens (same frame as old/ref logps).
+                # TODO(perf): When use_teacher_api, start API requests after old_logps scatter
+                # and overlap with ref_logps computation (beta != 0) to hide API latency.
                 if self._has_teacher:
-                    self._compute_teacher_logps(tg, chunk_samples, dispatch, grpo_batches)
+                    if self.use_teacher_api:
+                        self._compute_teacher_api_logps(chunk_samples, grpo_batches)
+                    else:
+                        self._compute_teacher_logps(tg, chunk_samples, dispatch, grpo_batches)
                 all_chunks.append((dispatch, grpo_batches))
 
             for step_idx in range(spg):
@@ -243,6 +256,43 @@ class GRPOTrainer(BaseRayTrainer):
             student_gb.teacher_per_token_logps = remap_teacher_logps_to_student_frame(
                 teacher_gb.teacher_per_token_logps.to(student_gb.completion_mask.device),
                 teacher_gb.completion_mask.to(student_gb.completion_mask.device), student_gb.completion_mask)
+
+    def _compute_teacher_api_logps(self, chunk_samples: List[GRPOSample], grpo_batches: List[GRPOBatch]) -> None:
+        """Driver-side: fetch teacher logps from API servers, scatter into GRPOBatch.
+
+        Each sample routes to exactly one teacher by tag (single teacher = all samples). Runs on
+        the driver, so fetching is a direct ``client.infer`` (no distributed gather).
+
+        TODO(perf): reduce synchronous blocking — parallelize multi-teacher fetch with a
+        ThreadPoolExecutor, overlap teacher API calls with ref_logps, and pipeline across chunks.
+        """
+        from swift.rlhf_trainers.utils import parse_prompt_logprobs
+
+        build_opsd_samples(chunk_samples)
+        request_config = RequestConfig(prompt_logprobs=0, max_tokens=1, temperature=0.0)
+
+        def fetch(reqs, client):
+            responses = client.infer(reqs, request_config=request_config, use_tqdm=False)
+            return [parse_prompt_logprobs(r, topk=0) for r in responses]
+
+        requests = build_teacher_requests(chunk_samples, self.template)
+        all_rti = [s.response_token_ids for s in chunk_samples]
+        parsed = fetch_teacher_parsed_by_routing(
+            chunk_samples,
+            requests,
+            self.teacher_configs,
+            self.teacher_clients,
+            fetch_fn=fetch,
+            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+
+        offset = 0
+        for gb in grpo_batches:
+            device = gb.completion_mask.device
+            n = gb.completion_mask.shape[0]
+            teacher_out = assemble_teacher_completion_logprobs(
+                parsed[offset:offset + n], gb.completion_mask, device, response_token_ids=all_rti[offset:offset + n])
+            gb.teacher_per_token_logps = teacher_out.topk_logprobs[..., 0]
+            offset += n
 
     @staticmethod
     def _scatter_logps(grpo_batches: List[GRPOBatch], rows: List[Dict[str, torch.Tensor]], key: str) -> None:
