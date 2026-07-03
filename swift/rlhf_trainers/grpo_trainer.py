@@ -578,24 +578,37 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         Each sample routes to exactly one teacher by tag (single teacher = all samples). Routing
         runs once over the flattened batch, so a single teacher is one DP gather → infer → slice.
+
+        Samples/requests come from each chunk's ``_chunk_samples`` (the SP-gathered batch that its
+        ``grpo_batch`` was collated from), not the local ``samples`` argument: under SP>1 the local
+        samples are shorter/reordered, which would misalign the teacher logps.
         """
+        flat_samples: List[GRPOSample] = []
+        chunk_samples_list: List[List[GRPOSample]] = []
+        for batch_encoded in batch_encoded_inputs:
+            chunk = batch_encoded['_chunk_samples']
+            chunk_samples_list.append(chunk)
+            flat_samples.extend(chunk)
+
         # OPSD: populate teacher_messages so build_teacher_requests scores the teacher prompt.
-        build_opsd_samples(samples)
-        requests = build_teacher_requests(samples, self.template)
+        build_opsd_samples(flat_samples)
+        requests = build_teacher_requests(flat_samples, self.template)
         parsed = fetch_teacher_parsed_by_routing(
-            samples,
+            flat_samples,
             requests,
             self.teacher_configs,
             self.teacher_clients,
-            fetch_fn=lambda r, client: self._fetch_teacher_logprobs(r, topk=0, teacher_client=client),
+            gather_fn=self._gather_teacher_requests,
+            infer_fn=lambda handle, client: self._infer_teacher_requests(handle, topk=0, teacher_client=client),
+            scatter_fn=self._scatter_teacher_parsed,
+            is_main_process=self.accelerator.is_main_process,
             tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
 
         offset = 0
-        for batch_encoded in batch_encoded_inputs:
+        for batch_encoded, chunk in zip(batch_encoded_inputs, chunk_samples_list):
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
             device = grpo_batch.completion_mask.device
-            n = grpo_batch.completion_mask.shape[0]
-            chunk = samples[offset:offset + n]
+            n = len(chunk)
             teacher_out = assemble_teacher_completion_logprobs(
                 parsed[offset:offset + n],
                 grpo_batch.completion_mask,
@@ -732,6 +745,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             batch_encoded_inputs = {'model_inputs': model_inputs, 'grpo_batch': grpo_batch}
             if self.dynamic_num_samples and self.is_multimodal:
                 batch_encoded_inputs['_origin_data'] = batch
+            if self._has_teacher and self.use_teacher_api:
+                # OPD-RL API teacher: keep the SP-gathered chunk samples so teacher routing/fetch
+                # aligns with each grpo_batch (local `samples` are shorter/reordered under SP>1).
+                batch_encoded_inputs['_chunk_samples'] = batch
             origin_data = batch if (self.dynamic_num_samples and self.is_multimodal) else None
 
             with torch.no_grad(), disable_gradient_checkpointing(self.model, self.args.gradient_checkpointing_kwargs):

@@ -171,6 +171,92 @@ class TestFetchTeacherParsedByRouting(unittest.TestCase):
         self.assertEqual(parsed, ['p:r0', 'p:r1', 'p:r2'])
         self.assertEqual(calls, [['r0', 'r1', 'r2']])  # exactly one fetch
 
+    def test_empty_subset_teacher_still_visited(self):
+        """Every teacher index is visited even with an empty subset (collective ordering / no
+        per-rank skip that would desync the DP gather/broadcast)."""
+        samples = [_make_sample('math'), _make_sample('math')]  # nothing routes to 'code'
+        configs = [
+            TeacherServerConfig(url='http://t0', tags=['math']),
+            TeacherServerConfig(url='http://t1', tags=['code']),
+        ]
+        requests = ['r0', 'r1']
+        visited = []
+
+        def fetch_fn(subset_reqs, client):
+            visited.append((client.url, list(subset_reqs)))
+            return [f'{client.url}:{r}' for r in subset_reqs]
+
+        parsed = fetch_teacher_parsed_by_routing(samples, requests, configs, configs, fetch_fn=fetch_fn)
+        self.assertEqual(parsed, ['http://t0:r0', 'http://t0:r1'])
+        # both teachers visited, in order, including the empty one
+        self.assertEqual(visited, [('http://t0', ['r0', 'r1']), ('http://t1', [])])
+
+    def test_phase_split_concurrent_scatter(self):
+        """3-phase (gather/infer/scatter) form scatters back in original sample order, and only
+        the main process runs infer (concurrently across teachers)."""
+        samples = [_make_sample('math'), _make_sample('code'), _make_sample('math')]
+        configs = [
+            TeacherServerConfig(url='http://t0', tags=['math']),
+            TeacherServerConfig(url='http://t1', tags=['code']),
+        ]
+        requests = ['r0', 'r1', 'r2']
+
+        def gather_fn(subset_reqs):
+            return list(subset_reqs)
+
+        def infer_fn(handle, client):
+            return [f'{client.url}:{r}' for r in handle]
+
+        def scatter_fn(handle, parsed_global):
+            return parsed_global
+
+        parsed = fetch_teacher_parsed_by_routing(
+            samples,
+            requests,
+            configs,
+            configs,
+            gather_fn=gather_fn,
+            infer_fn=infer_fn,
+            scatter_fn=scatter_fn,
+            is_main_process=True)
+        self.assertEqual(parsed, ['http://t0:r0', 'http://t1:r1', 'http://t0:r2'])
+
+    def test_phase_split_non_main_no_infer(self):
+        """On non-main ranks infer is skipped; scatter still runs for every teacher (receives the
+        broadcast in real distributed runs). Here scatter returns the per-teacher subset unchanged."""
+        samples = [_make_sample('math'), _make_sample('code')]
+        configs = [
+            TeacherServerConfig(url='http://t0', tags=['math']),
+            TeacherServerConfig(url='http://t1', tags=['code']),
+        ]
+        requests = ['r0', 'r1']
+        infer_called = []
+        scatter_calls = []
+
+        def gather_fn(subset_reqs):
+            return list(subset_reqs)
+
+        def infer_fn(handle, client):
+            infer_called.append(client)
+            return [f'x:{r}' for r in handle]
+
+        def scatter_fn(handle, parsed_global):
+            scatter_calls.append(parsed_global)
+            return [f's:{r}' for r in handle]  # mimic broadcast-then-slice back to local subset
+
+        parsed = fetch_teacher_parsed_by_routing(
+            samples,
+            requests,
+            configs,
+            configs,
+            gather_fn=gather_fn,
+            infer_fn=infer_fn,
+            scatter_fn=scatter_fn,
+            is_main_process=False)
+        self.assertEqual(infer_called, [])  # infer never runs off the main process
+        self.assertEqual(scatter_calls, [None, None])  # parsed_global is None on non-main
+        self.assertEqual(parsed, ['s:r0', 's:r1'])
+
 
 class TestExpandAdvantageScalarCoef(unittest.TestCase):
 

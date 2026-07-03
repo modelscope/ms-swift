@@ -345,25 +345,52 @@ def fetch_teacher_parsed_by_routing(
     requests: List[Any],
     teacher_configs: List[TeacherServerConfig],
     teacher_clients: List[Any],
-    fetch_fn,
+    fetch_fn=None,
     tag_key: str = 'dataset',
+    *,
+    gather_fn=None,
+    infer_fn=None,
+    scatter_fn=None,
+    is_main_process: bool = False,
 ) -> List[Any]:
-    """Route samples to teachers, fetch each teacher's subset, scatter parsed results back.
-
-    Teacher-count-agnostic fetch shared by GKD (top-k) and GRPO (sampled-token) paths and by
-    single/multi teacher alike: each sample goes to exactly one teacher, so results scatter back
-    by sample index with no merge/averaging (single teacher = one group over all samples).
-    ``fetch_fn(subset_requests, teacher_client) -> parsed_list`` performs the actual query.
-    Returns parsed results in the original sample order.
-    """
     routing = route_samples_to_teachers(samples, teacher_configs, tag_key=tag_key)
+    num_teachers = len(teacher_configs)
+
+    def subset_requests(t_idx):
+        return [requests[i] for i in routing[t_idx]]
+
+    def client_for(t_idx):
+        # teacher_clients is empty on non-main ranks (client is only used during infer on the main
+        # process); pass None there and let the fetcher resolve its default.
+        return teacher_clients[t_idx] if t_idx < len(teacher_clients) else None
+
     parsed: List[Any] = [None] * len(requests)
-    for t_idx, sample_indices in routing.items():
-        if not sample_indices:
-            continue
-        subset = fetch_fn([requests[i] for i in sample_indices], teacher_clients[t_idx])
-        for local_i, s_idx in enumerate(sample_indices):
+
+    def scatter_back(t_idx, subset):
+        for local_i, s_idx in enumerate(routing[t_idx]):
             parsed[s_idx] = subset[local_i]
+
+    if gather_fn is not None:
+        # Phase A: gather every teacher's requests (serial collectives, same order on all ranks).
+        handles = [gather_fn(subset_requests(t_idx)) for t_idx in range(num_teachers)]
+        # Phase B: infer concurrently on the main process (HTTP to distinct teacher servers).
+        parsed_globals: List[Any] = [None] * num_teachers
+        if is_main_process:
+            if num_teachers == 1:
+                parsed_globals[0] = infer_fn(handles[0], client_for(0))
+            else:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=num_teachers) as pool:
+                    futures = {pool.submit(infer_fn, handles[t], client_for(t)): t for t in range(num_teachers)}
+                    for fut in futures:
+                        parsed_globals[futures[fut]] = fut.result()
+        # Phase C: broadcast + slice each teacher's result back (serial collectives, rank-ordered).
+        for t_idx in range(num_teachers):
+            scatter_back(t_idx, scatter_fn(handles[t_idx], parsed_globals[t_idx]))
+        return parsed
+
+    for t_idx in range(num_teachers):
+        scatter_back(t_idx, fetch_fn(subset_requests(t_idx), client_for(t_idx)))
     return parsed
 
 

@@ -261,17 +261,15 @@ class GRPOTrainer(BaseRayTrainer):
         """Driver-side: fetch teacher logps from API servers, scatter into GRPOBatch.
 
         Each sample routes to exactly one teacher by tag (single teacher = all samples). Runs on
-        the driver, so fetching is a direct ``client.infer`` (no distributed gather).
-
-        TODO(perf): reduce synchronous blocking — parallelize multi-teacher fetch with a
-        ThreadPoolExecutor, overlap teacher API calls with ref_logps, and pipeline across chunks.
+        the driver, so there is no distributed gather: the per-teacher requests go straight to
+        ``client.infer``. Multiple teachers infer concurrently (distinct HTTP servers).
         """
         from swift.rlhf_trainers.utils import parse_prompt_logprobs
 
         build_opsd_samples(chunk_samples)
         request_config = RequestConfig(prompt_logprobs=0, max_tokens=1, temperature=0.0)
 
-        def fetch(reqs, client):
+        def infer(reqs, client):
             responses = client.infer(reqs, request_config=request_config, use_tqdm=False)
             return [parse_prompt_logprobs(r, topk=0) for r in responses]
 
@@ -282,7 +280,10 @@ class GRPOTrainer(BaseRayTrainer):
             requests,
             self.teacher_configs,
             self.teacher_clients,
-            fetch_fn=fetch,
+            gather_fn=lambda reqs: reqs,  # driver-side: no distributed gather
+            infer_fn=infer,
+            scatter_fn=lambda reqs, parsed_global: parsed_global,  # already local
+            is_main_process=True,
             tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
 
         offset = 0

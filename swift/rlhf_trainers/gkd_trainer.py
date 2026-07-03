@@ -375,8 +375,11 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             flat_requests,
             self.teacher_configs,
             self.teacher_clients,
-            fetch_fn=lambda reqs, client: self._fetch_teacher_logprobs(
-                reqs, topk=self.gkd_logits_topk, teacher_client=client),
+            gather_fn=self._gather_teacher_requests,
+            infer_fn=lambda handle, client: self._infer_teacher_requests(
+                handle, topk=self.gkd_logits_topk, teacher_client=client),
+            scatter_fn=self._scatter_teacher_parsed,
+            is_main_process=self.accelerator.is_main_process,
             tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
 
         per_chunk_parsed, offset = [], 0
