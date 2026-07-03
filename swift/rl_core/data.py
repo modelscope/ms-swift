@@ -72,6 +72,15 @@ class OnPolicySample:
     def is_truncated(self) -> bool:
         return self.finish_reason == 'length'
 
+    def get_tag(self, tag_key: str = 'dataset') -> Optional[str]:
+        """Return the multi-teacher routing tag from ``extra[tag_key]`` (``None`` if unset).
+
+        Single source of truth for where a sample's routing tag lives (``--teacher_tag_key``,
+        default ``dataset``); routing keys off exactly this, with no fallback to other columns.
+        """
+        val = self.extra.get(tag_key)
+        return str(val) if val is not None else None
+
     def build_teacher_view(self) -> bool:
         """Populate the OPSD teacher view from ``teacher_prompt`` + the on-policy response.
 

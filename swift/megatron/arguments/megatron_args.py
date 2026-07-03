@@ -27,9 +27,6 @@ class RLHFMegatronArgumentsMixin:
     loss_type: Optional[str] = None  # rlhf / plugins
     mcore_ref_model: Optional[str] = None
     mcore_ref_adapter: Optional[str] = None
-    # Set by _check_teacher: True when teacher_model == model with LoRA (disable_adapter self-distillation).
-    # Declared as a field so it survives Ray serialization (dynamic attrs may be lost).
-    _teacher_use_disable_adapter: bool = False
 
     beta: Optional[float] = None
     rpo_alpha: Optional[float] = None
@@ -49,6 +46,7 @@ class RLHFMegatronArgumentsMixin:
     teacher_model: Optional[str] = field(default=None)
     teacher_model_type: Optional[str] = field(default=None)
     teacher_model_revision: Optional[str] = field(default=None)
+    _teacher_use_disable_adapter: bool = False
     teacher_model_server: Optional[str] = field(
         default=None,
         metadata={
@@ -350,11 +348,15 @@ class RLHFMegatronArgumentsMixin:
         if self.teacher_model is not None and self.teacher_model_server is not None:
             raise ValueError('setting both `teacher_model` and `teacher_model_server` is not supported.')
 
+        # Fail fast: the Ray pipeline only supports a colocated teacher_model (see
+        # swift/ray/megatron/grpo_trainer.py), so reject teacher_model_server at parse time.
+        if self.use_ray and self.teacher_model_server is not None:
+            raise ValueError('teacher_model_server is not supported with use_ray')
+
         # Validate teacher_model_server: accept single URL or JSON multi-teacher config.
         if self.teacher_model_server is not None:
             from swift.rlhf_trainers.gkd_helpers import parse_teacher_model_server
             parse_teacher_model_server(self.teacher_model_server)
-        # Ray mode: colocated teacher_model is not supported (OOM), but API teacher_model_server is fine.
 
         self._teacher_use_disable_adapter = False
         if self.teacher_model is not None and self.teacher_model == self.model:
@@ -362,7 +364,7 @@ class RLHFMegatronArgumentsMixin:
                 logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
                 self._teacher_use_disable_adapter = True
                 self.teacher_model = None
-                self.teacher_model_dir = None  # Belt-and-suspenders: ensure no stale dir survives
+                self.teacher_model_dir = None
             # Full training + same teacher_model: a separate frozen copy is loaded as the fixed teacher.
 
     def _check_opd_rl(self):

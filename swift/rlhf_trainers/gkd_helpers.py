@@ -5,14 +5,13 @@ These functions are stateless: they operate on ``GKDSample`` objects and a
 ``Template`` and return encoded dicts / teacher requests / assembled teacher
 outputs.  Shared by the HF and Megatron GKD trainers.
 """
-import json
 import torch
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.rl_core.data import GKDSample, OnPolicySample
 from swift.template.base import Template
-from swift.utils import get_cu_seqlens_from_position_ids, get_logger
+from swift.utils import get_cu_seqlens_from_position_ids, get_logger, json_parse_to_dict
 from .gkd_loss import TeacherOutput
 from .utils import (assemble_teacher_topk_logprobs, encode_sample, get_response_prefix_ids,
                     replace_assistant_response_with_ids)
@@ -274,7 +273,9 @@ def parse_teacher_model_server(val: Optional[str]) -> Optional[List[TeacherServe
     if not val.startswith('['):
         return [TeacherServerConfig(url=val, tags=[])]
 
-    configs_raw = json.loads(val)
+    # JSON list of teachers: reuse swift's shared JSON parser (repairs malformed JSON), matching
+    # how other JSON-valued args (e.g. model_kwargs) are parsed rather than a bespoke json.loads.
+    configs_raw = json_parse_to_dict(val)
     if not configs_raw:
         raise ValueError('teacher_model_server JSON list is empty.')
     configs = []
@@ -301,18 +302,6 @@ def parse_teacher_model_server(val: Optional[str]) -> Optional[List[TeacherServe
     return configs
 
 
-def get_sample_tag(sample: OnPolicySample, tag_key: str = 'dataset') -> str:
-    """Extract the routing tag from a sample's ``extra`` dict.
-
-    Priority: ``tag_key`` field -> 'tag' -> 'source'. Returns ``None`` if none is set.
-    """
-    for key in [tag_key, 'tag', 'source']:
-        val = sample.extra.get(key)
-        if val is not None:
-            return str(val)
-    return None
-
-
 def route_samples_to_teachers(
     samples: List[OnPolicySample],
     teacher_configs: List[TeacherServerConfig],
@@ -331,7 +320,7 @@ def route_samples_to_teachers(
 
     tag_to_teacher = {tag: t_idx for t_idx, cfg in enumerate(teacher_configs) for tag in cfg.tags}
     for s_idx, sample in enumerate(samples):
-        tag = get_sample_tag(sample, tag_key=tag_key)
+        tag = sample.get_tag(tag_key)
         t_idx = tag_to_teacher.get(tag)
         if t_idx is None:
             raise ValueError(f'sample[{s_idx}] tag {tag!r} (from "{tag_key}") matches no teacher; '

@@ -17,16 +17,14 @@ from typing import List, Optional
 from swift.dataset import load_dataset
 from swift.rl_core.advantage import expand_advantage_to_per_token
 from swift.rl_core.data import OnPolicySample
-from swift.rlhf_trainers.gkd_helpers import (TeacherServerConfig, fetch_teacher_parsed_by_routing, get_sample_tag,
+from swift.rlhf_trainers.gkd_helpers import (TeacherServerConfig, fetch_teacher_parsed_by_routing,
                                              parse_teacher_model_server, route_samples_to_teachers)
 
 
-def _make_sample(tag: Optional[str] = None, source: Optional[str] = None) -> OnPolicySample:
+def _make_sample(tag: Optional[str] = None) -> OnPolicySample:
     extra = {}
     if tag is not None:
         extra['dataset'] = tag
-    if source is not None:
-        extra['source'] = source
     return OnPolicySample(messages=[], extra=extra)
 
 
@@ -129,11 +127,15 @@ class TestRouteSamplesToTeachers(unittest.TestCase):
         with self.assertRaises(ValueError):
             route_samples_to_teachers(samples, configs)
 
-    def test_route_tag_fallback_to_source(self):
-        self.assertEqual(get_sample_tag(_make_sample(source='gsm8k')), 'gsm8k')
+    def test_get_tag_reads_tag_key(self):
+        # OnPolicySample.get_tag keys off exactly tag_key (default 'dataset'); no column fallback.
+        self.assertEqual(_make_sample('math').get_tag(), 'math')
+        sample = OnPolicySample(messages=[], extra={'domain': 'code'})
+        self.assertEqual(sample.get_tag(tag_key='domain'), 'code')
+        self.assertIsNone(sample.get_tag())  # default 'dataset' key absent -> None
 
-    def test_route_no_tag_returns_none(self):
-        self.assertIsNone(get_sample_tag(_make_sample()))
+    def test_get_tag_no_tag_returns_none(self):
+        self.assertIsNone(_make_sample().get_tag())
 
 
 class TestFetchTeacherParsedByRouting(unittest.TestCase):
