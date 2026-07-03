@@ -399,8 +399,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         Fix strategy: Temporarily replace `torch.cat` and `torch.Tensor.masked_scatter_` during the forward pass
         to handle device placement automatically, then restore the original methods after execution.
         """
-        import sys
-
         modeling_module = None
         for mod_name, mod in sys.modules.items():
             if 'modeling_unlimitedocr' in mod_name:
@@ -474,19 +472,18 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         patch_output_to_input_device(model.model.projector)
         patch_output_to_input_device(model.model)
 
-        # Apply the patch only in multi-card scenarios.
-        # When `device_map='auto'` is used, the model is split across multiple cards,
-        # requiring a fix for device inconsistency issues.
+        _orig_sw = (getattr(model.config, 'sliding_window_size', None) or getattr(model.config, 'sliding_window', None))
+        if _orig_sw is not None:
+            model.config._ring_window = _orig_sw
+            model.config.sliding_window = None
+            logger.info('[UnlimitedOCR] R-SWA enabled: ring_window=%d', _orig_sw)
+        else:
+            logger.warning('[UnlimitedOCR] sliding_window config not found, R-SWA may not work.')
+
         n_devices = len(set(str(p.device) for p in model.parameters() if p.device.type == 'cuda'))
         if n_devices > 1:
-            patched = self._apply_multi_gpu_patch()
-            if patched:
-                logger.info(
-                    '[UnlimitedOCR] Multi-GPU deployment detected (%d GPUs);'
-                    'automatically applied device_map patch'
-                    '(automatic device alignment for torch.cat + masked_scatter_)',
-                    n_devices,
-                )
+            if self._apply_multi_gpu_patch():
+                logger.info('[UnlimitedOCR] Multi-GPU patch applied (%d GPUs).', n_devices)
             else:
                 logger.warning('[UnlimitedOCR] Multi-GPU deployment failed to apply patch.'
                                'If an inference error occurs, please check whether'

@@ -27,7 +27,7 @@ from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
-from swift.infer_engine import RequestConfig
+from swift.infer_engine import RequestConfig, TransformersEngine
 from swift.infer_engine.protocol import ChatCompletionResponse, RolloutInferRequest, RolloutOutput
 from swift.model import MultiModelKeys
 from swift.rl_core.data import OnPolicySample
@@ -38,7 +38,7 @@ from swift.template import Template
 from swift.tuners import Swift
 from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
                          to_device, unwrap_model_for_generation)
-from .arguments import RolloutTrainerArgumentsMixin
+from .arguments import GKDConfig, GRPOConfig, RolloutTrainerArgumentsMixin
 from .base_rollout_mixin import BaseRolloutTrainerMixin
 from .gkd_helpers import TeacherServerConfig, parse_teacher_model_server, resolve_dynamic_opd_self_distillation
 from .rlhf_mixin import RLHFTrainerMixin
@@ -110,6 +110,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         if self.is_fsdp_enabled and not self._is_fsdp2:
             raise NotImplementedError('FSDP1 is not supported. Please use FSDP2 (fsdp_version=2) instead. '
                                       'Set fsdp_version: 2 in your FSDP config or use --fsdp fsdp2')
+        self.args: Union[GRPOConfig, GKDConfig]
 
     def prepare_rollout(self):
         self._prepare_rollout_params()
@@ -380,6 +381,11 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
         # split model parameters into batches for synchronized weight transfer / ref sync
         if not args.use_vllm:
+            infer_template = copy(self.template)
+            infer_template.padding_free = False
+            infer_template.sequence_parallel_size = 1
+            infer_template.remove_unused_columns = True
+            self.engine = TransformersEngine(self.model, template=infer_template, max_batch_size=0)
             return
 
         if not is_vllm_available():

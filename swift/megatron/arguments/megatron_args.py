@@ -253,6 +253,9 @@ class RLHFMegatronArgumentsMixin:
 
         if self.rlhf_type in ['grpo', 'gkd']:
             self.vllm_engine_kwargs = json_parse_to_dict(self.vllm_engine_kwargs)
+            if self.use_vllm and os.getenv('SWIFT_AUDIO_LOAD_BACKEND') is None:
+                # align with vLLM audio load backend
+                os.environ['SWIFT_AUDIO_LOAD_BACKEND'] = 'soundfile_pyav'
 
     @staticmethod
     def resolve_generation_batch_size(

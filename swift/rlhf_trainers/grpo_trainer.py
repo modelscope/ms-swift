@@ -36,7 +36,7 @@ import transformers
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
-from copy import copy, deepcopy
+from copy import deepcopy
 from packaging import version
 from transformers import PreTrainedModel
 from transformers.trainer import Trainer as HfTrainer
@@ -48,7 +48,6 @@ from trl.trainer.utils import selective_log_softmax
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
-from swift.infer_engine import TransformersEngine
 from swift.rewards import orms, rm_plugins
 from swift.rl_core.advantage import (compute_advantages, compute_advantages_dynamic, compute_reward_metrics,
                                      compute_teacher_kl_per_token, expand_advantage_to_per_token)
@@ -141,13 +140,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-
-        if not self.args.use_vllm:
-            infer_template = copy(self.template)
-            infer_template.padding_free = False
-            infer_template.sequence_parallel_size = 1
-            infer_template.remove_unused_columns = True
-            self.engine = TransformersEngine(self.model, template=infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set

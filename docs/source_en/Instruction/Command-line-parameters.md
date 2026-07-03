@@ -987,3 +987,4 @@ The meanings of the following parameters can be found in the example code [here]
 - SWIFT_TIMEOUT: If the multimodal dataset contains image URLs, this parameter controls the timeout for fetching images, defaulting to 20 seconds.
 - ROOT_IMAGE_DIR: The root directory for image (multimodal) resources. By setting this parameter, relative paths in the dataset can be interpreted relative to `ROOT_IMAGE_DIR`. By default, paths are relative to the current working directory.
 - SWIFT_SINGLE_DEVICE_MODE: Single device mode, valid values are "0"(default)/"1". In this mode, each process can only see one device.
+- SWIFT_AUDIO_LOAD_BACKEND: Audio waveform loading backend. `librosa` (default) or `soundfile_pyav` (soundfile first, pyav fallback). For GRPO/GKD with `--use_vllm true`,swift auto-sets it to `soundfile_pyav` so training encode and vLLM rollout decode audio URLs consistently.
