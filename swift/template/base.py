@@ -1194,8 +1194,8 @@ class Template(ProcessorMixin):
                 content = message['content']
                 # After merge, content may be a list; only process the first element.
                 if isinstance(content, list):
-                    if (content and isinstance(content[0], str)
-                            and not content[0].startswith((thinking_prefix, non_thinking_prefix))):
+                    if (content and isinstance(content[0], str) and not content[0].startswith(
+                        (thinking_prefix, non_thinking_prefix))):
                         content[0] = non_thinking_prefix + content[0]
                 elif isinstance(content, str):
                     if not content.startswith((thinking_prefix, non_thinking_prefix)):
