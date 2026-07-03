@@ -6,11 +6,12 @@ These functions are stateless: they operate on ``GKDSample`` objects and a
 outputs.  Shared by the HF and Megatron GKD trainers.
 """
 import torch
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.rl_core.data import GKDSample, OnPolicySample
 from swift.template.base import Template
-from swift.utils import get_cu_seqlens_from_position_ids, get_logger
+from swift.utils import get_cu_seqlens_from_position_ids, get_logger, json_parse_to_dict
 from .gkd_loss import TeacherOutput
 from .utils import (assemble_teacher_topk_logprobs, encode_sample, get_response_prefix_ids,
                     replace_assistant_response_with_ids)
@@ -237,6 +238,174 @@ def assemble_teacher_completion_logprobs(
         out_lp[i, completion_indices] = torch.tensor(lps, dtype=torch.float32, device=device)
         out_ix[i, completion_indices] = torch.tensor(ixs, dtype=torch.long, device=device)
     return TeacherOutput(topk_logprobs=out_lp, topk_indices=out_ix)
+
+
+@dataclass
+class TeacherServerConfig:
+    """Configuration for a single teacher model server.
+
+    Args:
+        url: Teacher server URL (e.g., 'http://localhost:8000').
+        tags: Tags this teacher handles. With multiple teachers each sample is routed to
+            exactly one teacher by tag. Empty only for the single-teacher case (one teacher
+            handles all samples). All teachers share the global ``--teacher_kl_coef``.
+    """
+    url: str
+    tags: List[str] = field(default_factory=list)
+
+
+def parse_teacher_model_server(val: Optional[str]) -> Optional[List[TeacherServerConfig]]:
+    """Parse ``teacher_model_server``: single URL string or JSON multi-teacher config.
+
+    Accepts two formats:
+    - Single URL (backward compatible): ``'http://localhost:8000'`` -> one teacher, no tags,
+      handles all samples.
+    - Multi-teacher JSON: ``'[{"url":"http://localhost:8000","tags":["math"]}, ...]'``.
+      With multiple teachers each entry MUST have non-empty ``tags`` and tags MUST NOT overlap
+      across teachers (each sample routes to exactly one teacher).
+
+    Returns ``None`` when *val* is ``None``. Otherwise returns a list of
+    :class:`TeacherServerConfig` (always a list, even for single teacher).
+    """
+    if val is None:
+        return None
+    val = val.strip()
+    if not val.startswith('['):
+        return [TeacherServerConfig(url=val, tags=[])]
+
+    # JSON list of teachers: reuse swift's shared JSON parser (repairs malformed JSON), matching
+    # how other JSON-valued args (e.g. model_kwargs) are parsed rather than a bespoke json.loads.
+    configs_raw = json_parse_to_dict(val)
+    if not isinstance(configs_raw, list):
+        raise ValueError(f'teacher_model_server must be a JSON list of {{url, tags}}, got {type(configs_raw)}.')
+    if not configs_raw:
+        raise ValueError('teacher_model_server JSON list is empty.')
+    configs = []
+    for i, c in enumerate(configs_raw):
+        if not isinstance(c, dict):
+            raise ValueError(f'teacher_model_server[{i}] must be a dict, got {type(c)}.')
+        url = c.get('url')
+        if not url:
+            raise ValueError(f'teacher_model_server[{i}]: "url" is required.')
+        tags = c.get('tags', [])
+        if not isinstance(tags, list):
+            raise ValueError(f'teacher_model_server[{i}]: "tags" must be a list, got {type(tags)}.')
+        # get_tag returns str, so normalize tags to str for consistent matching (a numeric dataset
+        # name would otherwise never match the routing tag).
+        tags = [str(t) for t in tags]
+        configs.append(TeacherServerConfig(url=url, tags=tags))
+
+    if len(configs) > 1:
+        seen = {}
+        for i, cfg in enumerate(configs):
+            if not cfg.tags:
+                raise ValueError(f'teacher_model_server[{i}]: "tags" must be non-empty with multiple teachers '
+                                 '(each sample routes to exactly one teacher).')
+            for tag in cfg.tags:
+                if tag in seen:
+                    raise ValueError(f'teacher_model_server: tag "{tag}" appears in both teacher[{seen[tag]}] '
+                                     f'and teacher[{i}]; tags must not overlap.')
+                seen[tag] = i
+    return configs
+
+
+def route_samples_to_teachers(
+    samples: List[OnPolicySample],
+    teacher_configs: List[TeacherServerConfig],
+    tag_key: str = 'dataset',
+) -> Dict[int, List[int]]:
+    """Route each sample to exactly one teacher, returning ``{teacher_index: [sample_indices]}``.
+
+    Single teacher: all samples route to it (tags ignored). Multiple teachers: route by tag;
+    ``parse_teacher_model_server`` guarantees tags are non-empty and non-overlapping, so a tag
+    maps to at most one teacher. Fails fast when a sample's tag matches no teacher.
+    """
+    routing: Dict[int, List[int]] = {i: [] for i in range(len(teacher_configs))}
+    if len(teacher_configs) == 1:
+        routing[0] = list(range(len(samples)))
+        return routing
+
+    tag_to_teacher = {tag: t_idx for t_idx, cfg in enumerate(teacher_configs) for tag in cfg.tags}
+    for s_idx, sample in enumerate(samples):
+        tag = sample.get_tag(tag_key)
+        t_idx = tag_to_teacher.get(tag)
+        if t_idx is None:
+            raise ValueError(f'sample[{s_idx}] tag {tag!r} (from "{tag_key}") matches no teacher; '
+                             f'available tags: {sorted(tag_to_teacher)}')
+        routing[t_idx].append(s_idx)
+    return routing
+
+
+def fetch_teacher_parsed_by_routing(
+    samples: List[OnPolicySample],
+    requests: List[Any],
+    teacher_configs: List[TeacherServerConfig],
+    teacher_clients: List[Any],
+    fetch_fn=None,
+    tag_key: str = 'dataset',
+    *,
+    gather_fn=None,
+    infer_fn=None,
+    scatter_fn=None,
+    is_main_process: bool = False,
+) -> List[Any]:
+    routing = route_samples_to_teachers(samples, teacher_configs, tag_key=tag_key)
+    num_teachers = len(teacher_configs)
+
+    def subset_requests(t_idx):
+        return [requests[i] for i in routing[t_idx]]
+
+    def client_for(t_idx):
+        # teacher_clients is empty on non-main ranks (client is only used during infer on the main
+        # process); pass None there and let the fetcher resolve its default.
+        return teacher_clients[t_idx] if t_idx < len(teacher_clients) else None
+
+    parsed: List[Any] = [None] * len(requests)
+
+    def scatter_back(t_idx, subset):
+        for local_i, s_idx in enumerate(routing[t_idx]):
+            parsed[s_idx] = subset[local_i]
+
+    if gather_fn is not None:
+        # Phase A: gather every teacher's requests (serial collectives, same order on all ranks).
+        handles = [gather_fn(subset_requests(t_idx)) for t_idx in range(num_teachers)]
+        # Phase B: infer concurrently on the main process (HTTP to distinct teacher servers).
+        parsed_globals: List[Any] = [None] * num_teachers
+        if is_main_process:
+
+            def _handle_requests(handle):
+                if isinstance(handle, dict):
+                    return handle.get('all_requests', handle)
+                return handle
+
+            def _infer_or_empty(t_idx):
+                handle = handles[t_idx]
+                if not _handle_requests(handle):
+                    return []
+                return infer_fn(handle, client_for(t_idx))
+
+            if num_teachers == 1:
+                parsed_globals[0] = _infer_or_empty(0)
+            else:
+                from concurrent.futures import ThreadPoolExecutor
+                with ThreadPoolExecutor(max_workers=num_teachers) as pool:
+                    futures = {
+                        pool.submit(_infer_or_empty, t): t
+                        for t in range(num_teachers) if _handle_requests(handles[t])
+                    }
+                    for t in range(num_teachers):
+                        if not _handle_requests(handles[t]):
+                            parsed_globals[t] = []
+                    for fut in futures:
+                        parsed_globals[futures[fut]] = fut.result()
+        # Phase C: broadcast + slice each teacher's result back (serial collectives, rank-ordered).
+        for t_idx in range(num_teachers):
+            scatter_back(t_idx, scatter_fn(handles[t_idx], parsed_globals[t_idx]))
+        return parsed
+
+    for t_idx in range(num_teachers):
+        scatter_back(t_idx, fetch_fn(subset_requests(t_idx), client_for(t_idx)))
+    return parsed
 
 
 def resolve_dynamic_opd_self_distillation(

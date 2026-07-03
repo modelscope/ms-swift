@@ -21,7 +21,7 @@ from dacite import from_dict
 from dataclasses import asdict
 from megatron.core import mpu
 from transformers import AutoConfig
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
 from swift.megatron.model import get_mcore_model
@@ -178,9 +178,13 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         )
         self._has_teacher = self._has_teacher_explicit or self._is_dynamic_self_distillation
         self.teacher_models = None
-        self.teacher_client = None
+        self.teacher_configs: list = []
+        self.teacher_clients: list = []
         if self.use_teacher_api:
-            self.teacher_client = VLLMInferClient(base_urls=[self.teacher_model_server]) if is_last_rank() else None
+            from swift.rlhf_trainers.gkd_helpers import parse_teacher_model_server
+            self.teacher_configs = parse_teacher_model_server(self.teacher_model_server)
+            if is_last_rank():
+                self.teacher_clients = [VLLMInferClient(base_urls=[cfg.url]) for cfg in self.teacher_configs]
 
     def _load_teacher_model(self) -> None:
         """Load the separate local teacher mcore model (called from ``prepare_model``).
@@ -227,39 +231,61 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         finally:
             self._offload_teacher_models()
 
-    def _fetch_teacher_parsed_logprobs(self, requests: List[RolloutInferRequest], topk: int):
-        """Query the teacher API for prompt logprobs; return this DP rank's parsed slice.
+    def _gather_teacher_requests(self, requests: List[RolloutInferRequest]) -> Dict[str, Any]:
+        """Phase 1 (all ranks, collective): gather this teacher's rollout-group-rank-0 requests.
 
-        ``topk == 0`` -> sampled-token logp (OPD-RL); ``topk > 0`` -> top-k (GKD). Gathers
-        the rollout-group-rank-0 contributions to the main process, infers once, broadcasts,
-        and slices back this DP rank's contiguous segment.
+        Only rollout-group rank 0 contributes (others hold TP/PP/CP replicas of the same data);
+        contributions are tagged with ``dp_rank`` so segments order by DP rank regardless of world
+        layout or empty (zero-routed) subsets. Returns a handle with the per-DP-rank segments (for
+        the main-process infer) plus this DP rank's offset/length (for the later slice). The offset
+        is the prefix sum of preceding DP ranks' lengths, not ``dp_rank * n``: under multi-teacher
+        routing each DP rank's subset may differ in length, so equal-length slicing misaligns.
         """
         rollout_group = self._get_rollout_group()
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
-        contribution = list(requests) if rollout_rank == 0 else []
+        dp_rank = mpu.get_data_parallel_rank()
+        contribution = (dp_rank, list(requests)) if rollout_rank == 0 else None
 
         world_size = torch.distributed.get_world_size()
         all_contributions = [None] * world_size
         torch.distributed.all_gather_object(all_contributions, contribution)
 
-        if self.is_main_process:
-            flat_global = []
-            for c in all_contributions:
-                if c:
-                    flat_global.extend(c)
-            request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
-            responses = self.teacher_client.infer(flat_global, request_config=request_config, use_tqdm=False)
-            parsed_global = [parse_prompt_logprobs(r, topk=topk) for r in responses]
-        else:
-            parsed_global = None
+        segments_by_dp = {dp: reqs for c in all_contributions if c is not None for dp, reqs in [c]}
+        dp_ranks_sorted = sorted(segments_by_dp)
+        offset = sum(len(segments_by_dp[dp]) for dp in dp_ranks_sorted if dp < dp_rank)
+        flat_global = [req for dp in dp_ranks_sorted for req in segments_by_dp[dp]]
+        return {'flat_global': flat_global, 'offset': offset, 'n_local': len(requests)}
 
+    def _infer_teacher_requests(self, handle: Dict[str, Any], topk: int, teacher_client: Optional[Any] = None):
+        """Phase 2 (main process only, no collective): run the teacher HTTP infer.
+
+        Safe to call concurrently across teachers (distinct clients, no collective inside).
+        """
+        if not handle['flat_global']:  # no sample routed to this teacher: skip the empty HTTP call
+            return []
+        client = teacher_client if teacher_client is not None else self.teacher_clients[0]
+        request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
+        responses = client.infer(handle['flat_global'], request_config=request_config, use_tqdm=False)
+        return [parse_prompt_logprobs(r, topk=topk) for r in responses]
+
+    def _scatter_teacher_parsed(self, handle: Dict[str, Any], parsed_global):
+        """Phase 3 (all ranks, collective): broadcast the parsed result and slice this rank's part."""
+        world_size = torch.distributed.get_world_size()
         obj_list = [parsed_global]
         torch.distributed.broadcast_object_list(obj_list, src=world_size - 1)
         parsed_global = obj_list[0]
+        offset, n = handle['offset'], handle['n_local']
+        return parsed_global[offset:offset + n]
 
-        n = len(requests)
-        dp_rank = mpu.get_data_parallel_rank()
-        return parsed_global[dp_rank * n:(dp_rank + 1) * n]
+    def _fetch_teacher_parsed_logprobs(self,
+                                       requests: List[RolloutInferRequest],
+                                       topk: int,
+                                       teacher_client: Optional[Any] = None):
+        """Combined gather→infer→broadcast for a single teacher (serial); returns this rank's slice."""
+        handle = self._gather_teacher_requests(requests)
+        parsed_global = self._infer_teacher_requests(handle, topk, teacher_client) \
+            if self.is_main_process else None
+        return self._scatter_teacher_parsed(handle, parsed_global)
 
     def _get_local_rollout_batch(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
         """Split batch within rollout group for distributed vLLM generation.

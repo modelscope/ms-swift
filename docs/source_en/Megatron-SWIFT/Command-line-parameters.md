@@ -442,7 +442,8 @@ Used in GKD and GRPO.
 - teacher_model: Path or model ID of the teacher model. Required.
 - teacher_model_type: Teacher model type. Default is None, auto-detected.
 - teacher_model_revision: Teacher model version. Default is None.
-- teacher_model_server: Teacher model service URL, e.g. `http://localhost:8000`. Deploy via `swift deploy` for logprobs.
+- teacher_model_server: Teacher model service URL. Deploy via `swift deploy` for logprobs; mutually exclusive with `teacher_model`. Single URL or multi-teacher JSON (`'[{"url":"...","tags":["..."]}, ...]'`). See [distillation docs](../Instruction/Distillation.md#multi-teacher-routing).
+- teacher_tag_key: Column name for multi-teacher routing (match sample values to teacher `tags`). Default is `"dataset"`.
 - offload_teacher_model: Whether to offload teacher model to CPU to save GPU memory. Default is False.
 
 ## Export Parameters

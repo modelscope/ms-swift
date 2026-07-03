@@ -418,7 +418,8 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - teacher_model: 教师模型的路径或模型 ID，必需参数。
 - teacher_model_type: 教师模型类型，默认为None，自动检测。
 - teacher_model_revision: 教师模型版本，默认为None。
-- teacher_model_server: 教师模型服务地址, 如：`http://localhost:8000`, 使用`swift deploy`部署的服务端计算logps。
+- teacher_model_server: 教师模型服务地址，通过 `swift deploy` 部署后用于获取 logprobs，与 `teacher_model` 互斥。支持单 URL 或多 teacher JSON（`'[{"url":"...","tags":["..."]}, ...]'`）。详见[蒸馏文档](../Instruction/Distillation.md#multi-teacher多教师路由)。
+- teacher_tag_key: 多 teacher 路由时样本匹配 teacher `tags` 的字段名，默认为 `"dataset"`。
 - offload_teacher_model: 是否将教师模型卸载到 CPU 以节省 GPU 显存。默认为False。
 
 

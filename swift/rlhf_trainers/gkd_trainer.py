@@ -16,7 +16,8 @@ from trl.trainer.utils import RepeatSampler
 from typing import Any, Dict, List, Optional, Union
 
 from swift.rl_core.data import GKDBatch, GKDSample
-from swift.rlhf_trainers.gkd_helpers import assemble_teacher_output, build_teacher_requests, encode_gkd_samples
+from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_teacher_requests, encode_gkd_samples,
+                                             fetch_teacher_parsed_by_routing)
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
@@ -330,6 +331,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             }
             if self.use_teacher_api:
                 result['_teacher_requests'] = self._build_teacher_requests(chunk_samples)
+                result['_chunk_samples'] = chunk_samples
             ga_batch_encoded_inputs.append(result)
         return ga_batch_encoded_inputs
 
@@ -355,19 +357,37 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return inputs
 
     def _fetch_and_assemble_teacher_logprobs(self, chunks):
-        """Fetch teacher logprobs via API using sample-based _teacher_requests."""
-        local_chunk_sizes = [len(c.get('_teacher_requests', [])) for c in chunks]
-        local_requests = []
+        """Fetch teacher logprobs via API using sample-based _teacher_requests.
+
+        Each sample routes to exactly one teacher by tag (single teacher = all samples). Routing
+        runs once over the flattened chunks, so a single teacher is one DP gather → infer → slice.
+        The parsed results are sliced back per chunk and fed to ``assemble_teacher_output``.
+        """
+        flat_samples, flat_requests, chunk_sizes = [], [], []
         for c in chunks:
-            local_requests.extend(c.pop('_teacher_requests', []))
+            reqs = c.pop('_teacher_requests', [])
+            flat_samples.extend(c.pop('_chunk_samples', []))
+            flat_requests.extend(reqs)
+            chunk_sizes.append(len(reqs))
 
-        # Shared DP gather → infer → broadcast → slice (RolloutTrainerMixin).
-        parsed_local = self._fetch_teacher_logprobs(local_requests, topk=self.gkd_logits_topk)
+        parsed = fetch_teacher_parsed_by_routing(
+            flat_samples,
+            flat_requests,
+            self.teacher_configs,
+            self.teacher_clients,
+            gather_fn=self._gather_teacher_requests,
+            infer_fn=lambda handle, client: self._infer_teacher_requests(
+                handle, topk=self.gkd_logits_topk, teacher_client=client),
+            scatter_fn=self._scatter_teacher_parsed,
+            is_main_process=self.accelerator.is_main_process,
+            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
 
-        offset = 0
-        for c, cs in zip(chunks, local_chunk_sizes):
-            chunk_parsed = parsed_local[offset:offset + cs]
+        per_chunk_parsed, offset = [], 0
+        for cs in chunk_sizes:
+            per_chunk_parsed.append(parsed[offset:offset + cs])
             offset += cs
+
+        for c, chunk_parsed in zip(chunks, per_chunk_parsed):
             gkd_batch: GKDBatch = c['gkd_batch']
             target = c['teacher_model_inputs']
             teacher_out = assemble_teacher_output(

@@ -94,7 +94,9 @@ class MegatronRayPipeline:
             self._shutdown()
 
     def _build_dataset(self) -> Dict[str, Any]:
-        cfg = dict(self.shared_cfg)
+        # Merge train group config (tuner_type, lora_rank, etc.) into shared cfg so that
+        # _check_teacher can detect LoRA self-distillation (teacher_model == model + lora).
+        cfg = {**self.shared_cfg, **self.group_cfgs.get('train', {})}
         data_info = build_dataset_from_dict(cfg)
         return data_info
 

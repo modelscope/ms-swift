@@ -46,13 +46,17 @@ class RLHFMegatronArgumentsMixin:
     teacher_model: Optional[str] = field(default=None)
     teacher_model_type: Optional[str] = field(default=None)
     teacher_model_revision: Optional[str] = field(default=None)
+    _teacher_use_disable_adapter: bool = False
     teacher_model_server: Optional[str] = field(
         default=None,
         metadata={
             'help':
             'URL of the teacher model server (e.g., http://localhost:8000). '
-            'When set, teacher logprobs are fetched via API instead of loading a local model.'
+            'When set, teacher logprobs are fetched via API instead of loading a local model. '
+            'Supports multi-teacher via JSON.'
         })
+    teacher_tag_key: str = field(
+        default='dataset', metadata={'help': 'Column name for multi-teacher routing. Default "dataset".'})
     gkd_logits_topk: Optional[int] = None
     lmbda: float = 0.5  # On-policy probability: with prob lmbda, use student-generated responses
     seq_kd: bool = False  # Deprecated
@@ -352,12 +356,18 @@ class RLHFMegatronArgumentsMixin:
         if self.use_ray and self.teacher_model_server is not None:
             raise ValueError('teacher_model_server is not supported with use_ray')
 
+        # Validate teacher_model_server: accept single URL or JSON multi-teacher config.
+        if self.teacher_model_server is not None:
+            from swift.rlhf_trainers.gkd_helpers import parse_teacher_model_server
+            parse_teacher_model_server(self.teacher_model_server)
+
         self._teacher_use_disable_adapter = False
         if self.teacher_model is not None and self.teacher_model == self.model:
             if self.tuner_type == 'lora':
                 logger.info('LoRA + same teacher_model: using disable_adapter() for fixed teacher (no extra model).')
                 self._teacher_use_disable_adapter = True
                 self.teacher_model = None
+                self.teacher_model_dir = None
             # Full training + same teacher_model: a separate frozen copy is loaded as the fixed teacher.
 
     def _check_opd_rl(self):
