@@ -203,8 +203,6 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     ...
 ```
 
-**参考脚本**：[scripts/test_multi_teacher.sh](https://github.com/modelscope/ms-swift/tree/main/scripts/test_multi_teacher.sh)
-
 ---
 
 ### 3.1 GKD：散度作为直接损失
