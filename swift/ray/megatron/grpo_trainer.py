@@ -270,6 +270,8 @@ class GRPOTrainer(BaseRayTrainer):
         request_config = RequestConfig(prompt_logprobs=0, max_tokens=1, temperature=0.0)
 
         def infer(reqs, client):
+            if not reqs:  # no sample routed to this teacher: skip the empty HTTP call
+                return []
             responses = client.infer(reqs, request_config=request_config, use_tqdm=False)
             return [parse_prompt_logprobs(r, topk=0) for r in responses]
 

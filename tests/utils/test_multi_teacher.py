@@ -98,6 +98,27 @@ class TestParseTeacherModelServer(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_teacher_model_server(config)
 
+    def test_parse_non_dict_entry_rejected(self):
+        """A non-dict list entry is rejected instead of raising AttributeError."""
+        with self.assertRaises(ValueError):
+            parse_teacher_model_server(json.dumps(['http://localhost:8000']))
+
+    def test_parse_tags_coerced_to_str(self):
+        """Non-string tags are normalized to str so they match get_tag's str output."""
+        config = json.dumps([
+            {
+                'url': 'http://localhost:8000',
+                'tags': [1]
+            },
+            {
+                'url': 'http://localhost:8001',
+                'tags': [2]
+            },
+        ])
+        result = parse_teacher_model_server(config)
+        self.assertEqual(result[0].tags, ['1'])
+        self.assertEqual(result[1].tags, ['2'])
+
 
 class TestRouteSamplesToTeachers(unittest.TestCase):
 

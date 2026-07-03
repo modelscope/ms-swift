@@ -276,16 +276,23 @@ def parse_teacher_model_server(val: Optional[str]) -> Optional[List[TeacherServe
     # JSON list of teachers: reuse swift's shared JSON parser (repairs malformed JSON), matching
     # how other JSON-valued args (e.g. model_kwargs) are parsed rather than a bespoke json.loads.
     configs_raw = json_parse_to_dict(val)
+    if not isinstance(configs_raw, list):
+        raise ValueError(f'teacher_model_server must be a JSON list of {{url, tags}}, got {type(configs_raw)}.')
     if not configs_raw:
         raise ValueError('teacher_model_server JSON list is empty.')
     configs = []
     for i, c in enumerate(configs_raw):
+        if not isinstance(c, dict):
+            raise ValueError(f'teacher_model_server[{i}] must be a dict, got {type(c)}.')
         url = c.get('url')
         if not url:
             raise ValueError(f'teacher_model_server[{i}]: "url" is required.')
         tags = c.get('tags', [])
         if not isinstance(tags, list):
             raise ValueError(f'teacher_model_server[{i}]: "tags" must be a list, got {type(tags)}.')
+        # get_tag returns str, so normalize tags to str for consistent matching (a numeric dataset
+        # name would otherwise never match the routing tag).
+        tags = [str(t) for t in tags]
         configs.append(TeacherServerConfig(url=url, tags=tags))
 
     if len(configs) > 1:

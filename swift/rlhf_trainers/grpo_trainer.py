@@ -586,7 +586,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         flat_samples: List[GRPOSample] = []
         chunk_samples_list: List[List[GRPOSample]] = []
         for batch_encoded in batch_encoded_inputs:
-            chunk = batch_encoded['_chunk_samples']
+            chunk = batch_encoded.pop('_chunk_samples', [])
             chunk_samples_list.append(chunk)
             flat_samples.extend(chunk)
 

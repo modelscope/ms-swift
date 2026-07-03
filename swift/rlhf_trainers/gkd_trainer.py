@@ -366,7 +366,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         flat_samples, flat_requests, chunk_sizes = [], [], []
         for c in chunks:
             reqs = c.pop('_teacher_requests', [])
-            flat_samples.extend(c['_chunk_samples'])
+            flat_samples.extend(c.pop('_chunk_samples', []))
             flat_requests.extend(reqs)
             chunk_sizes.append(len(reqs))
 

@@ -280,6 +280,8 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         Safe to call concurrently across teachers (distinct clients, no collective inside).
         ``topk == 0`` -> the sampled token's logp (OPD-RL); ``topk > 0`` -> top-k (GKD).
         """
+        if not handle['all_requests']:  # no sample routed to this teacher: skip the empty HTTP call
+            return []
         client = teacher_client if teacher_client is not None else self.teacher_clients[0]
         request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
         responses = client.infer(handle['all_requests'], request_config=request_config, use_tqdm=False)

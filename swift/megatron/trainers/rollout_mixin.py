@@ -261,6 +261,8 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
         Safe to call concurrently across teachers (distinct clients, no collective inside).
         """
+        if not handle['flat_global']:  # no sample routed to this teacher: skip the empty HTTP call
+            return []
         client = teacher_client if teacher_client is not None else self.teacher_clients[0]
         request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
         responses = client.infer(handle['flat_global'], request_config=request_config, use_tqdm=False)
