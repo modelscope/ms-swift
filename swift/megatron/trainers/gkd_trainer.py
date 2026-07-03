@@ -14,7 +14,8 @@ from typing import Dict, List, Optional
 from swift.megatron.arguments import MegatronArguments
 from swift.rl_core.data import GKDSample
 from swift.rl_core.resample import resample_encode_failed_inputs
-from swift.rlhf_trainers.gkd_helpers import assemble_teacher_output, build_teacher_requests, encode_gkd_samples
+from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_opsd_samples, build_teacher_requests,
+                                             encode_gkd_samples)
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import Template
 from swift.utils import get_logger, to_device
@@ -289,6 +290,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Teacher API: build requests from samples, fetch logprobs
         local_parsed = None
         if self.use_teacher_api:
+            build_opsd_samples(samples)
             teacher_requests = self._build_teacher_requests(samples)
             if teacher_requests:
                 local_parsed = self._fetch_teacher_parsed_logprobs(teacher_requests, topk=self.gkd_logits_topk)
