@@ -36,7 +36,7 @@ import transformers
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
-from copy import copy, deepcopy
+from copy import deepcopy
 from packaging import version
 from transformers import PreTrainedModel
 from transformers.trainer import Trainer as HfTrainer
