@@ -200,8 +200,6 @@ CUDA_VISIBLE_DEVICES=0 swift rlhf \
     ...
 ```
 
-**Reference script**: [scripts/test_multi_teacher.sh](https://github.com/modelscope/ms-swift/tree/main/scripts/test_multi_teacher.sh)
-
 ---
 
 ### 3.1 GKD: Divergence as Direct Loss
