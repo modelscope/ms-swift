@@ -365,12 +365,30 @@ def fetch_teacher_parsed_by_routing(
         # Phase B: infer concurrently on the main process (HTTP to distinct teacher servers).
         parsed_globals: List[Any] = [None] * num_teachers
         if is_main_process:
+
+            def _handle_requests(handle):
+                if isinstance(handle, dict):
+                    return handle.get('all_requests', handle)
+                return handle
+
+            def _infer_or_empty(t_idx):
+                handle = handles[t_idx]
+                if not _handle_requests(handle):
+                    return []
+                return infer_fn(handle, client_for(t_idx))
+
             if num_teachers == 1:
-                parsed_globals[0] = infer_fn(handles[0], client_for(0))
+                parsed_globals[0] = _infer_or_empty(0)
             else:
                 from concurrent.futures import ThreadPoolExecutor
                 with ThreadPoolExecutor(max_workers=num_teachers) as pool:
-                    futures = {pool.submit(infer_fn, handles[t], client_for(t)): t for t in range(num_teachers)}
+                    futures = {
+                        pool.submit(_infer_or_empty, t): t
+                        for t in range(num_teachers) if _handle_requests(handles[t])
+                    }
+                    for t in range(num_teachers):
+                        if not _handle_requests(handles[t]):
+                            parsed_globals[t] = []
                     for fut in futures:
                         parsed_globals[futures[fut]] = fut.result()
         # Phase C: broadcast + slice each teacher's result back (serial collectives, rank-ordered).
