@@ -605,7 +605,8 @@ The reward model parameters will be used in PPO and GRPO. The teacher model para
 - teacher_adapters: Default is `[]`.
 - teacher_model_type: Default is None.
 - teacher_model_revision: Default is None.
-- teacher_model_server: The address of the teacher model server, e.g. `http://localhost:8000`. Deploy via `swift deploy` for logprobs.
+- teacher_model_server: Teacher model service URL. Deploy via `swift deploy` for logprobs. Single URL (e.g. `http://localhost:8000`) or multi-teacher JSON (e.g. `'[{"url":"http://t1:8000","tags":["data/math.jsonl"]},{"url":"http://t2:8001","tags":["data/code.jsonl"]}]'`). How `tags` map to datasets or sample fields: [distillation docs](./Distillation.md#multi-teacher-routing).
+- teacher_tag_key: Column name for multi-teacher routing; sample values are matched to each teacher's `tags`. Default is `"dataset"`. With multiple `--dataset` values, match each entry; or use a custom column (e.g. `teacher_tag`) via `--teacher_tag_key teacher_tag`.
 - teacher_deepspeed: Same as the deepspeed parameter, controls the DeepSpeed configuration for the teacher model. By default, uses the DeepSpeed configuration of the training model.
 - offload_teacher_model: Whether to offload the teacher model to save GPU memory. Loaded only during sampling/logps computation. Only effective when `teacher_model` is set. Default is False.
 

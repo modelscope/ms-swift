@@ -241,22 +241,31 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         the rollout-group-rank-0 contributions to the main process, infers once, broadcasts,
         and slices back this DP rank's contiguous segment.
 
+        The slice offset is the prefix sum of preceding DP ranks' contribution lengths, not
+        ``dp_rank * n``: with multi-teacher routing each DP rank's routed subset may differ in
+        length, so equal-length slicing would misalign.
+
         ``teacher_client`` selects which teacher server to query (defaults to the first).
         """
         rollout_group = self._get_rollout_group()
         rollout_rank = torch.distributed.get_rank(group=rollout_group)
-        contribution = list(requests) if rollout_rank == 0 else []
+        dp_rank = mpu.get_data_parallel_rank()
+        # Only rollout-group rank 0 contributes (others hold TP/PP/CP replicas of the same data).
+        # Tag with dp_rank so the driver can order segments by DP rank regardless of world layout
+        # or empty (zero-routed) subsets — a rank that routes nothing to this teacher sends [].
+        contribution = (dp_rank, list(requests)) if rollout_rank == 0 else None
 
         world_size = torch.distributed.get_world_size()
         all_contributions = [None] * world_size
         torch.distributed.all_gather_object(all_contributions, contribution)
 
+        # Per-DP-rank segments (includes empty subsets, keyed by dp_rank to preserve ordering).
+        segments_by_dp = {dp: reqs for c in all_contributions if c is not None for dp, reqs in [c]}
+        dp_ranks_sorted = sorted(segments_by_dp)
+
         client = teacher_client if teacher_client is not None else self.teacher_clients[0]
         if self.is_main_process:
-            flat_global = []
-            for c in all_contributions:
-                if c:
-                    flat_global.extend(c)
+            flat_global = [req for dp in dp_ranks_sorted for req in segments_by_dp[dp]]
             request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
             responses = client.infer(flat_global, request_config=request_config, use_tqdm=False)
             parsed_global = [parse_prompt_logprobs(r, topk=topk) for r in responses]
@@ -267,9 +276,9 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         torch.distributed.broadcast_object_list(obj_list, src=world_size - 1)
         parsed_global = obj_list[0]
 
+        offset = sum(len(segments_by_dp[dp]) for dp in dp_ranks_sorted if dp < dp_rank)
         n = len(requests)
-        dp_rank = mpu.get_data_parallel_rank()
-        return parsed_global[dp_rank * n:(dp_rank + 1) * n]
+        return parsed_global[offset:offset + n]
 
     def _get_local_rollout_batch(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
         """Split batch within rollout group for distributed vLLM generation.

@@ -268,10 +268,15 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         Gathers requests across DP (accelerate semantics: every rank gets the full list),
         infers once on the main process, broadcasts, and slices back this rank's segment.
 
+        The slice offset is the prefix sum of preceding ranks' request counts, not
+        ``rank * n_local``: with multi-teacher routing each rank's routed subset may differ in
+        length, so equal-length slicing would misalign.
+
         ``teacher_client`` selects which teacher server to query (defaults to the first).
         """
         n_local = len(requests)
         all_requests = gather_object(requests)
+        all_counts = gather_object([n_local])  # per-rank counts in rank order
         client = teacher_client if teacher_client is not None else self.teacher_clients[0]
 
         if self.accelerator.is_main_process:
@@ -286,7 +291,8 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         parsed_global = container[0]
 
         rank = self.accelerator.process_index
-        return parsed_global[rank * n_local:(rank + 1) * n_local]
+        offset = sum(all_counts[:rank])
+        return parsed_global[offset:offset + n_local]
 
     def split_by_mini_batches(self, samples: List[OnPolicySample]) -> List[List[OnPolicySample]]:
         """Split inputs into mini-batches based on steps_per_generation.

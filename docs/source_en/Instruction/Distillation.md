@@ -96,7 +96,7 @@ Both paths **share the same teacher infrastructure** (see below); they differ on
 
 ## 3. Distillation Methods in swift
 
-swift provides three distillation training methods. They share the same teacher infrastructure; differences fall within the framework in Section 2:
+swift provides three distillation training methods. They share the same teacher infrastructure:
 
 | Method | Signal path | How to enable | One-liner |
 |------|--------------|----------|--------|
@@ -107,17 +107,100 @@ swift provides three distillation training methods. They share the same teacher 
 **Three teacher sources** (shared by GKD and OPD-RL):
 
 - `--teacher_model`: Load a separate frozen teacher model in the training process.
-- `--teacher_model_server`: Connect to an external teacher service (`swift deploy --infer_backend vllm`) without loading the teacher on training GPUs. When using the API with GKD, also set `--gkd_logits_topk`.
-- **Self-distillation**: Teacher and student share the same source. For LoRA training when `--teacher_model` equals `--model`, the base model is used as a fixed teacher via `disable_adapter()` without extra loading; for GKD without `--teacher_model`, the student's current weights serve as a dynamic teacher.
-
-**Teacher-related parameters** (shared by GKD and OPD-RL; full details in [command-line parameters](./Command-line-parameters.md)):
+- `--teacher_model_server`: Connect to an external teacher service (vLLM service started via `swift deploy`) without loading the teacher on training GPUs. When using the API with GKD, also set `--gkd_logits_topk`. Supports single URL and multi-teacher JSON config.
+- **Self-distillation**: Teacher and student share the same source. For LoRA training when `--teacher_model` equals `--model`, the base model is used as a fixed teacher via `disable_adapter()` without extra loading; without `--teacher_model` or `teacher_model_server`, the student's current weights serve as a dynamic teacher (all batches in GKD; in GRPO only when data includes `teacher_prompt`—see [3.3](#33-opsd-on-policy-self-distillation)).
 
 | Parameter | Default | Description |
 |------|--------|------|
 | `--teacher_model` | None | Teacher model path; omit for dynamic self-distillation in GKD |
-| `--teacher_model_server` | None | Teacher API URL (mutually exclusive with `teacher_model`) |
+| `--teacher_model_server` | None | Teacher API URL; see format below |
+| `--teacher_tag_key` | `"dataset"` | Column name for matching sample tags to teacher `tags` in multi-teacher routing |
 | `--teacher_deepspeed` | None | DeepSpeed config for teacher model (e.g. `zero3`) |
-| `--offload_teacher_model` | False | Offload teacher to CPU when not in forward pass |
+| `--offload_teacher_model` | False | Offload teacher to CPU when not in forward pass (only with `teacher_model`) |
+
+Full parameter details: [command-line parameters](./Command-line-parameters.md#rewardteacher-model-parameters).
+
+#### External Teacher API
+
+Deploy the teacher via `swift deploy --model xxx --infer_backend vllm`; the training process requests logprobs by prompt without loading teacher weights on training GPUs.
+
+- **GKD**: Requires `--gkd_logits_topk` (API returns only top-k logprobs) for JSD divergence loss.
+- **OPD-RL**: Uses sampled-token logp (`prompt_logprobs=0`) injected into advantage; coefficient is global `--teacher_kl_coef` (see [3.2](#32-opd-rl-kl-as-rl-advantage)).
+
+#### Multi-Teacher Routing
+
+Multi-Teacher connects multiple external teacher APIs and routes each sample to one teacher by tag (domain-expert distillation).
+
+**`teacher_model_server` format**
+
+```bash
+# Single teacher
+--teacher_model_server http://localhost:8000
+
+# Multi-teacher (`tags` match `--dataset` or a data column; see Mode 1 below)
+--teacher_model_server '[{"url":"http://t1:8000","tags":["data/math.jsonl"]},{"url":"http://t2:8001","tags":["data/code.jsonl"]}]'
+```
+
+Each teacher entry:
+
+| Field | Description |
+|------|------|
+| `url` | Teacher API URL |
+| `tags` | Data sources this teacher handles; optional with a single teacher; with multiple teachers, entries must not overlap and must match the routing identifiers below |
+
+**Routing modes**
+
+**Mode 1: Route by dataset (default)**
+
+When you pass multiple `--dataset` values, samples are matched to teachers by source dataset. Default `--teacher_tag_key` is `"dataset"`. Set each teacher's `tags` to match the corresponding `--dataset` entry:
+
+```bash
+# Hub IDs
+--dataset AI-ModelScope/alpaca-gpt4-data-en AI-ModelScope/alpaca-cleaned \
+--teacher_model_server '[{"url":"http://t1:8000","tags":["AI-ModelScope/alpaca-gpt4-data-en"]},{"url":"http://t2:8001","tags":["AI-ModelScope/alpaca-cleaned"]}]'
+
+# Local paths
+--dataset data/math.jsonl data/code.jsonl \
+--teacher_model_server '[{"url":"http://t1:8000","tags":["data/math.jsonl"]},{"url":"http://t2:8001","tags":["data/code.jsonl"]}]'
+```
+
+**Mode 2: Route by sample**
+
+Add a column in your data (e.g. `teacher_tag`) and set `--teacher_tag_key teacher_tag`. Match `tags` to values in that column. Use this when you pass a single `--dataset` but still need multiple teachers.
+
+**Example: GKD + multi-teacher**
+
+```bash
+# Deploy two teacher services (GKD requires max_logprobs >= gkd_logits_topk)
+CUDA_VISIBLE_DEVICES=1 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 64
+CUDA_VISIBLE_DEVICES=2 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 64
+
+CUDA_VISIBLE_DEVICES=0 swift rlhf \
+    --rlhf_type gkd \
+    --model Qwen/Qwen3.5-0.6B \
+    --teacher_model_server '[{"url":"http://localhost:8000","tags":["data/math.jsonl"]},{"url":"http://localhost:8001","tags":["data/code.jsonl"]}]' \
+    --gkd_logits_topk 64 \
+    --dataset data/math.jsonl data/code.jsonl \
+    ...
+```
+
+**Example: OPD-RL + multi-teacher**
+
+```bash
+CUDA_VISIBLE_DEVICES=1 swift deploy --model Qwen/Qwen3.5-4B --port 8000 --max_logprobs 1
+CUDA_VISIBLE_DEVICES=2 swift deploy --model Qwen/Qwen3.5-1.7B --port 8001 --max_logprobs 1
+
+CUDA_VISIBLE_DEVICES=0 swift rlhf \
+    --rlhf_type grpo \
+    --model Qwen/Qwen3.5-0.6B \
+    --teacher_model_server '[{"url":"http://localhost:8000","tags":["data/math.jsonl"]},{"url":"http://localhost:8001","tags":["data/code.jsonl"]}]' \
+    --teacher_kl_coef 1.0 \
+    --dataset data/math.jsonl data/code.jsonl \
+    --use_vllm true --vllm_mode colocate \
+    ...
+```
+
+**Reference script**: [scripts/test_multi_teacher.sh](https://github.com/modelscope/ms-swift/tree/main/scripts/test_multi_teacher.sh)
 
 ---
 
@@ -221,7 +304,7 @@ $$
 
 **Monitoring metric**: `teacher_kl` in logs is the k3 estimator $e^{d}-d-1$ ($d=\log\pi_{\text{teacher}}-\log\pi_{\text{student}}$), measuring distance between student and teacher.
 
-**How to enable**: Under `--rlhf_type grpo`, set `--teacher_model` or `--teacher_model_server` to automatically enable OPD-RL—no extra switch needed. See shared teacher parameters above.
+**How to enable**: Under `--rlhf_type grpo`, set `--teacher_model` or `--teacher_model_server` to automatically enable OPD-RL—no extra switch needed. See the shared teacher parameter table above.
 
 **OPD-RL-specific parameters**
 
@@ -250,7 +333,7 @@ OPSD ([On-Policy Self-Distillation](https://arxiv.org/abs/2601.18734)) is a sing
 OPSD can follow either GKD or OPD-RL path:
 
 - **GKD + OPSD**: `--rlhf_type gkd`, teacher KL as direct loss.
-- **OPD-RL + OPSD**: `--rlhf_type grpo` + `--teacher_model` (same as `--model`), teacher KL as advantage.
+- **OPD-RL + OPSD**: `--rlhf_type grpo`; dynamic mode omits `--teacher_model`, fixed mode sets `--teacher_model` equal to `--model`.
 
 **Two self-distillation weight modes**
 

@@ -21,7 +21,8 @@ Megatron GKD currently supports the following features:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `--teacher_model` | str | - | Path or model ID of the teacher model<br>*Can be omitted when using `teacher_model_server` |
-| `--teacher_model_server` | str | None | Teacher model service URL (`vllm serve` only), e.g. `http://localhost:8000` |
+| `--teacher_model_server` | str | None | Teacher API URL; single URL or multi-teacher JSON. See [distillation docs](../Instruction/Distillation.md#multi-teacher-routing) |
+| `--teacher_tag_key` | str | `"dataset"` | Column name for matching sample tags to teacher `tags` in multi-teacher routing |
 | `--gkd_logits_topk` | int | None | Number of Top-K logits; required when using external API |
 | `--beta` | float | 0.5 | JSD divergence interpolation coefficient:<br>• 0.0: Forward KL<br>• 0.5: Symmetric JSD<br>• 1.0: Reverse KL |
 | `--lmbda` | float | 0.5 | On-Policy learning probability:<br>• 0.0: Pure Off-Policy<br>• 1.0: Pure On-Policy |
