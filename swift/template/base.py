@@ -1194,7 +1194,7 @@ class Template(ProcessorMixin):
                 content = message['content']
                 # After merge, content may be a list; only process the first element.
                 if isinstance(content, list):
-                    if (isinstance(content[0], str)
+                    if (content and isinstance(content[0], str)
                             and not content[0].startswith((thinking_prefix, non_thinking_prefix))):
                         content[0] = non_thinking_prefix + content[0]
                 elif isinstance(content, str):
@@ -1214,7 +1214,7 @@ class Template(ProcessorMixin):
             if message['role'] == 'assistant' and i < last_user_round:
                 content = message['content']
                 # After merge, content may be a list; only process the first element.
-                if isinstance(content, list) and isinstance(content[0], str):
+                if isinstance(content, list) and content and isinstance(content[0], str):
                     content[0] = self._remove_thinking_content(content[0])
                 elif isinstance(content, str):
                     message['content'] = self._remove_thinking_content(content)
