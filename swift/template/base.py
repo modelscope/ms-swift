@@ -73,6 +73,7 @@ class Template(ProcessorMixin):
     # assistant text live in the same logical turn (e.g. Gemma4, DeepSeekV3.1), so
     # the assistant turn after a tool_response should NOT open a new thinking block.
     non_thinking_prefix_only_after_user: bool = False
+    model_accepts_loss_kwargs: Optional[bool] = None
 
     is_encoder_decoder = False
 
@@ -924,11 +925,9 @@ class Template(ProcessorMixin):
             return self.image_placeholder
         elif media_type == 'video':
             if self.mode == 'vllm':
-                # https://github.com/vllm-project/vllm/blob/main/examples/offline_inference/vision_language.py
-                from vllm.assets.video import video_get_metadata, video_to_ndarrays
+                from ..vision_utils import load_vllm_video
                 num_frames = get_env_args('vllm_num_frames', int, 16)
-                video_data = video_to_ndarrays(inputs.videos[index], num_frames)
-                video_metadatas = video_get_metadata(inputs.videos[index], num_frames)
+                video_data, video_metadatas = load_vllm_video(inputs.videos[index], num_frames)
                 inputs.videos[index] = [(video_data, video_metadatas)]
                 return self.video_placeholder
             else:
@@ -1188,12 +1187,18 @@ class Template(ProcessorMixin):
             else:
                 start_idx = -1
             for i, message in enumerate(messages):
-                if (self._is_add_non_thinking_round(messages, i, start_idx) and isinstance(message['content'], str)
-                        and not message['content'].startswith((thinking_prefix, non_thinking_prefix))):
-                    # During multi-turn SFT training/validation:
-                    # If the message has no <think> block and does not start with the non_thinking_prefix,
-                    # prepend the non_thinking_prefix to the content.
-                    message['content'] = non_thinking_prefix + message['content']
+                if not self._is_add_non_thinking_round(messages, i, start_idx):
+                    continue
+                content = message['content']
+                # After merge, content may be a list; only process the first element.
+                if isinstance(content, list):
+                    _add_prefix = content and isinstance(content[0], str) and not content[0].startswith(
+                        (thinking_prefix, non_thinking_prefix))
+                    if _add_prefix:
+                        content[0] = non_thinking_prefix + content[0]
+                elif isinstance(content, str):
+                    if not content.startswith((thinking_prefix, non_thinking_prefix)):
+                        message['content'] = non_thinking_prefix + content
 
     def _remove_thinking_content(self, content: str, thinking_suffix='</think>') -> str:
         content = content.split(thinking_suffix)[-1].strip()
@@ -1205,8 +1210,13 @@ class Template(ProcessorMixin):
         last_user_round = get_last_user_round(messages)
         for i, message in enumerate(messages):
             # Delete the content before '</think>' in all assistant turns except the last round.
-            if message['role'] == 'assistant' and isinstance(message['content'], str) and i < last_user_round:
-                message['content'] = self._remove_thinking_content(message['content'])
+            if message['role'] == 'assistant' and i < last_user_round:
+                content = message['content']
+                # After merge, content may be a list; only process the first element.
+                if isinstance(content, list) and content and isinstance(content[0], str):
+                    content[0] = self._remove_thinking_content(content[0])
+                elif isinstance(content, str):
+                    message['content'] = self._remove_thinking_content(content)
 
     def _swift_prepare_inputs(self, inputs: StdTemplateInputs):
         """

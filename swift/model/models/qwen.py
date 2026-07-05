@@ -6,7 +6,8 @@ import torch
 import torch.nn.functional as F
 from packaging import version
 from PIL import Image
-from transformers import AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from transformers.models.auto.tokenization_auto import get_tokenizer_config
 from transformers.utils.versions import require_version
@@ -16,7 +17,7 @@ from typing import Optional, Tuple, Type, Union
 from swift.sequence_parallel import sequence_parallel
 from swift.template import TemplateType
 from swift.utils import (Processor, get_cu_seqlens_from_position_ids, get_device_count, get_dist_setting, get_env_args,
-                         get_logger, is_deepspeed_enabled, to_device)
+                         get_logger, is_deepspeed_enabled, safe_snapshot_download, to_device)
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -1735,7 +1736,6 @@ class Qwen3ASRLoader(ModelLoader):
         return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import AutoModel
         self.auto_model_cls = self.auto_model_cls or AutoModel
         model = super().get_model(model_dir, config, processor, model_kwargs)
         use_submodel_func(model, 'thinker')
@@ -1756,6 +1756,110 @@ register_model(
         architectures=['Qwen3ASRForConditionalGeneration'],
         requires=['qwen-asr', 'transformers==4.57.6'],
         tags=['audio'],
+    ))
+
+
+def _patch_qwen3_tts_forward(model):
+    """Patch model.forward to implement Qwen3-TTS dual-channel training logic."""
+
+    def tts_forward(self,
+                    input_ids=None,
+                    attention_mask=None,
+                    speaker_embedding=None,
+                    text_embedding_mask=None,
+                    codec_embedding_mask=None,
+                    codec_0_labels=None,
+                    codec_ids=None,
+                    codec_mask=None,
+                    **kwargs):
+
+        # Separate dual-channel input_ids
+        input_text_ids = input_ids[:, :, 0]
+        input_codec_ids = input_ids[:, :, 1]
+
+        # Build text and codec embeddings
+        input_text_embedding = self.talker.model.text_embedding(input_text_ids) * text_embedding_mask
+        input_codec_embedding = self.talker.model.codec_embedding(input_codec_ids) * codec_embedding_mask
+        # Inject speaker embedding at position 6
+        input_codec_embedding[:, 6, :] = speaker_embedding
+
+        # Sum text and codec embeddings
+        input_embeddings = input_text_embedding + input_codec_embedding
+
+        # Add sub-talker codec embeddings (layers 1-15)
+        for i in range(1, 16):
+            codec_i_embedding = self.talker.code_predictor.get_input_embeddings()[i - 1](codec_ids[:, :, i])
+            codec_i_embedding = codec_i_embedding * codec_mask.unsqueeze(-1)
+            input_embeddings = input_embeddings + codec_i_embedding
+
+        # Forward through talker (shifted by 1 for autoregressive prediction)
+        outputs = self.talker(
+            inputs_embeds=input_embeddings[:, :-1, :],
+            attention_mask=attention_mask[:, :-1],
+            labels=codec_0_labels[:, 1:],
+            output_hidden_states=True,
+        )
+
+        # Compute sub_talker_loss from hidden states at codec positions
+        hidden_states = outputs.hidden_states[0][-1]
+        talker_hidden_states = hidden_states[codec_mask[:, :-1]]
+        talker_codec_ids = codec_ids[codec_mask]
+
+        _, sub_talker_loss = self.talker.forward_sub_talker_finetune(talker_codec_ids, talker_hidden_states)
+
+        # Attach sub_talker_loss to outputs for the custom loss function
+        outputs.sub_talker_loss = sub_talker_loss
+        return outputs
+
+    model.forward = MethodType(tts_forward, model)
+
+
+class Qwen3TTSLoader(ModelLoader):
+
+    def get_config(self, model_dir: str):
+        from qwen_tts.core.models import Qwen3TTSConfig, Qwen3TTSForConditionalGeneration, Qwen3TTSProcessor
+        from transformers import AutoProcessor
+        AutoConfig.register('qwen3_tts', Qwen3TTSConfig)
+        AutoModel.register(Qwen3TTSConfig, Qwen3TTSForConditionalGeneration)
+        AutoProcessor.register(Qwen3TTSConfig, Qwen3TTSProcessor)
+
+        return super().get_config(model_dir)
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+        model = super().get_model(model_dir, config, processor, model_kwargs)
+        # Redirect gradient_checkpointing and get_input_embeddings to talker
+        use_submodel_func(model, 'talker', func_list=['get_input_embeddings', 'gradient_checkpointing_enable'])
+        if model.speaker_encoder is not None:
+            # Freeze speaker_encoder (only talker is trained)
+            for param in model.speaker_encoder.parameters():
+                param.requires_grad = False
+        # Patch forward for TTS dual-channel training
+        _patch_qwen3_tts_forward(model)
+        from qwen_tts import Qwen3TTSTokenizer
+        tokenizer_path = get_env_args('tts_tokenizer_path', str, 'Qwen/Qwen3-TTS-Tokenizer-12Hz')
+        tokenizer_path = safe_snapshot_download(tokenizer_path)
+        processor.tts_tokenizer = Qwen3TTSTokenizer.from_pretrained(tokenizer_path, device_map='cpu')
+        model.config = config
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_tts,
+        [
+            ModelGroup([
+                Model('Qwen/Qwen3-TTS-12Hz-1.7B-Base', 'Qwen/Qwen3-TTS-12Hz-1.7B-Base'),
+                Model('Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice', 'Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice'),
+                Model('Qwen/Qwen3-TTS-12Hz-0.6B-Base', 'Qwen/Qwen3-TTS-12Hz-0.6B-Base'),
+                Model('Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice', 'Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice'),
+            ], TemplateType.qwen3_tts)
+        ],
+        Qwen3TTSLoader,
+        model_arch=ModelArch.qwen3_tts,
+        architectures=['Qwen3TTSForConditionalGeneration'],
+        requires=['qwen-tts'],
+        tags=['audio', 'tts'],
     ))
 
 

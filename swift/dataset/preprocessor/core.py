@@ -34,6 +34,9 @@ class RowPreprocessor:
                                 'margin',
                                 'teacher_prompt',
                                 'chat_template_kwargs',
+                                # Qwen3-TTS
+                                'ref_audios',
+                                'audio_codes',
                             ]
 
     def __init__(self,

@@ -420,23 +420,31 @@ In addition to inheriting the training parameters, the following parameters are 
 - log_rollout_offpolicy_metrics: Whether to log training-inference mismatch diagnostic metrics (KL, PPL, χ², etc.) when `rollout_importance_sampling_mode` is not set. When `rollout_importance_sampling_mode` is set, metrics are always logged. Default is False.
 - off_policy_sequence_mask_delta: Off-Policy Sequence Masking threshold from [DeepSeek-V3.2 paper](https://arxiv.org/abs/2512.02556). When set, computes `mean(old_policy_logps - policy_logps)` for each sequence. If this value exceeds the threshold AND the sequence has negative advantage, the sequence is masked out from loss computation. For details, refer to the [documentation](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md#off-policy-sequence-masking).
 - router_replay_mode: Router replay mode. Options are `disabled`,`R2`,`R3`. Default is disabled.
+- teacher_kl_coef: Coefficient for teacher KL in OPD-RL, i.e. `adv_t = base_adv + teacher_kl_coef * teacher_kl`. Default is 1.0.
 
 Built-in reward function parameters refer to the [documentation](../Instruction/Command-line-parameters.md#reward-function-parameters).
 
 ### GKD Parameters
 
-- teacher_model: Path or model ID of the teacher model. Required.
-- teacher_model_type: Teacher model type. Default is None, auto-detected.
-- teacher_model_revision: Teacher model version. Default is None.
 - beta: JSD divergence interpolation coefficient. 0.0 means Forward KL, 0.5 means symmetric JSD, 1.0 means Reverse KL. Default is 0.5.
 - lmbda: On-Policy learning probability. 0.0 means pure Off-Policy, 1.0 means pure On-Policy. Default is 0.5.
 - temperature: Temperature for sampling and loss computation. Default is 0.9.
-- offload_teacher_model: Whether to offload teacher model to CPU to save GPU memory. Default is False.
 - sft_alpha: Mixing coefficient for SFT loss, `loss = jsd_loss + sft_alpha * sft_loss`. Takes effect when using dataset responses (Off-Policy). Default is 0.
 - max_completion_length: Maximum tokens for generation. Default is 512.
 - vllm_mode: Same as GRPO parameter, used for On-Policy generation. Colocate mode deploys vLLM within the program.
   - Note: On-Policy generation requires vLLM (`--use_vllm true --vllm_mode colocate/server`).
   - When `lmbda > 0` but vLLM is not enabled, it will automatically fall back to Off-Policy mode.
+
+### Teacher Parameters
+
+Used in GKD and GRPO.
+
+- teacher_model: Path or model ID of the teacher model. Required.
+- teacher_model_type: Teacher model type. Default is None, auto-detected.
+- teacher_model_revision: Teacher model version. Default is None.
+- teacher_model_server: Teacher model service URL. Deploy via `swift deploy` for logprobs; mutually exclusive with `teacher_model`. Single URL or multi-teacher JSON (`'[{"url":"...","tags":["..."]}, ...]'`). See [distillation docs](../Instruction/Distillation.md#multi-teacher-routing).
+- teacher_tag_key: Column name for multi-teacher routing (match sample values to teacher `tags`). Default is `"dataset"`.
+- offload_teacher_model: Whether to offload teacher model to CPU to save GPU memory. Default is False.
 
 ## Export Parameters
 

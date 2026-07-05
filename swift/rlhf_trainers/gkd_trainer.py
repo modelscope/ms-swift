@@ -5,7 +5,7 @@ import random
 import torch
 import torch.nn as nn
 import trl
-from accelerate.utils import broadcast_object_list, gather_object, is_peft_model
+from accelerate.utils import gather_object, is_peft_model
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
@@ -15,18 +15,16 @@ from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler
 from typing import Any, Dict, List, Optional, Union
 
-from swift.infer_engine.protocol import RequestConfig
 from swift.rl_core.data import GKDBatch, GKDSample
-from swift.rlhf_trainers.gkd_helpers import assemble_teacher_output, build_teacher_requests, encode_gkd_samples
+from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_teacher_requests, encode_gkd_samples,
+                                             fetch_teacher_parsed_by_routing)
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
-from swift.rlhf_trainers.utils import parse_prompt_logprobs, prepare_fsdp
-from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
                          swanlab_get_run, to_device)
 from .rollout_mixin import DataType, RolloutTrainerMixin
-from .utils import get_gather_if_zero3_context, identity_data_collator, prepare_deepspeed, profiling_decorator
+from .utils import get_gather_if_zero3_context, identity_data_collator, profiling_decorator
 
 try:
     from liger_kernel.chunked_loss import LigerFusedLinearJSDLoss
@@ -54,14 +52,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     sample_cls = GKDSample
 
     def __init__(self, model: Optional[Union[PreTrainedModel, nn.Module, str]] = None, *_args, **kwargs):
-        teacher_model = kwargs.pop('teacher_model', None)
-        teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.gkd_logits_topk = kwargs.pop('gkd_logits_topk', None)
-        teacher_model_server = kwargs.pop('teacher_model_server', None)
-
-        # Self-distillation: reuse base model as teacher via disable_adapter().
-        teacher_use_disable_adapter = kwargs.pop('teacher_use_disable_adapter', False)
+        self._pop_teacher_kwargs(kwargs)  # teacher kwargs (shared with GRPO via RolloutTrainerMixin)
         super().__init__(model, None, *_args, **kwargs)
         args = kwargs['args']
         self.lmbda = args.lmbda
@@ -69,44 +62,13 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self._metrics = {'train': defaultdict(list), 'eval': defaultdict(list)}
         self._total_train_tokens = 0
 
-        self.teacher_model_server = teacher_model_server
-        self.use_teacher_api = teacher_model_server is not None
-        if self.use_teacher_api:
-            if self.accelerator.is_main_process:
-                self.teacher_client = VLLMInferClient(base_urls=[teacher_model_server])
-            else:
-                self.teacher_client = None
         # Initialize logging components
         self._prepare_logging()
 
         # Initialize liger loss if enabled
         self._prepare_liger_loss()
 
-        self.teacher_ds3_gather_for_generation = args.ds3_gather_for_generation
-        self.is_teacher_ds3 = None
-        self._teacher_use_disable_adapter = teacher_use_disable_adapter
-        self._is_self_distillation = (teacher_model is None and teacher_model_server is None)
-
-        # Initialize teacher model
-        if teacher_model is not None:
-            if self.is_deepspeed_enabled:
-                if teacher_deepspeed_config is not None:
-                    self.is_teacher_ds3 = teacher_deepspeed_config.get('zero_optimization', {}).get('stage') == 3
-                    if not self.is_teacher_ds3:
-                        self.teacher_ds3_gather_for_generation = False
-                    self.teacher_model = prepare_deepspeed(
-                        teacher_model, self.accelerator, deepspeed_config=teacher_deepspeed_config, training_args=args)
-                else:
-                    self.teacher_model = prepare_deepspeed(teacher_model, self.accelerator)
-            elif self.is_fsdp_enabled:
-                self.teacher_model = prepare_fsdp(teacher_model, self.accelerator)
-            else:
-                self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
-            self.teacher_model.eval()
-            if self.args.offload_teacher_model:
-                self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
-        else:
-            self.teacher_model = None
+        self._setup_teacher()
 
         # Initialize rollout infrastructure for vLLM support
         self.prepare_rollout()
@@ -325,7 +287,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
     def _build_teacher_requests(self, samples: List[GKDSample]):
         """Build teacher API requests from samples (mirrors Megatron GKD)."""
-        return build_teacher_requests(samples)
+        return build_teacher_requests(samples, self.template)
 
     def _rollout_samples(self, inputs: DataType) -> List[GKDSample]:
         """Pick the data source, convert rows to samples, and generate for the STUDENT branch."""
@@ -369,6 +331,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             }
             if self.use_teacher_api:
                 result['_teacher_requests'] = self._build_teacher_requests(chunk_samples)
+                result['_chunk_samples'] = chunk_samples
             ga_batch_encoded_inputs.append(result)
         return ga_batch_encoded_inputs
 
@@ -394,35 +357,37 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return inputs
 
     def _fetch_and_assemble_teacher_logprobs(self, chunks):
-        """Fetch teacher logprobs via API using sample-based _teacher_requests."""
-        local_chunk_sizes = [len(c.get('_teacher_requests', [])) for c in chunks]
-        local_requests = []
+        """Fetch teacher logprobs via API using sample-based _teacher_requests.
+
+        Each sample routes to exactly one teacher by tag (single teacher = all samples). Routing
+        runs once over the flattened chunks, so a single teacher is one DP gather → infer → slice.
+        The parsed results are sliced back per chunk and fed to ``assemble_teacher_output``.
+        """
+        flat_samples, flat_requests, chunk_sizes = [], [], []
         for c in chunks:
-            local_requests.extend(c.pop('_teacher_requests', []))
+            reqs = c.pop('_teacher_requests', [])
+            flat_samples.extend(c.pop('_chunk_samples', []))
+            flat_requests.extend(reqs)
+            chunk_sizes.append(len(reqs))
 
-        # gather across DP: every rank gets the full list (accelerate semantics)
-        all_requests = gather_object(local_requests)
+        parsed = fetch_teacher_parsed_by_routing(
+            flat_samples,
+            flat_requests,
+            self.teacher_configs,
+            self.teacher_clients,
+            gather_fn=self._gather_teacher_requests,
+            infer_fn=lambda handle, client: self._infer_teacher_requests(
+                handle, topk=self.gkd_logits_topk, teacher_client=client),
+            scatter_fn=self._scatter_teacher_parsed,
+            is_main_process=self.accelerator.is_main_process,
+            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
 
-        if self.accelerator.is_main_process:
-            request_config = RequestConfig(prompt_logprobs=self.gkd_logits_topk, max_tokens=1, temperature=0.0)
-            responses = self.teacher_client.infer(all_requests, request_config=request_config, use_tqdm=False)
-            parsed_global = [parse_prompt_logprobs(r, topk=self.gkd_logits_topk) for r in responses]
-        else:
-            parsed_global = None
-
-        container = [parsed_global]
-        broadcast_object_list(container, from_process=0)
-        parsed_global = container[0]
-
-        # Slice this rank's contiguous segment in gather order, then redistribute to chunks.
-        n_local = sum(local_chunk_sizes)
-        rank = self.accelerator.process_index
-        parsed_local = parsed_global[rank * n_local:(rank + 1) * n_local]
-
-        offset = 0
-        for c, cs in zip(chunks, local_chunk_sizes):
-            chunk_parsed = parsed_local[offset:offset + cs]
+        per_chunk_parsed, offset = [], 0
+        for cs in chunk_sizes:
+            per_chunk_parsed.append(parsed[offset:offset + cs])
             offset += cs
+
+        for c, chunk_parsed in zip(chunks, per_chunk_parsed):
             gkd_batch: GKDBatch = c['gkd_batch']
             target = c['teacher_model_inputs']
             teacher_out = assemble_teacher_output(
@@ -480,19 +445,6 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         seed += int(self.state.global_step)
         rng = random.Random(seed)
         return rng.random()
-
-    @contextmanager
-    def load_teacher_model_context(self):
-        """
-        Context manager to load and offload the teacher model with memory and timing profiling.
-        """
-        if not self.args.offload_teacher_model:
-            yield
-            return
-
-        self.load_model(self.accelerator.unwrap_model(self.teacher_model))
-        yield
-        self.offload_model(self.accelerator.unwrap_model(self.teacher_model))
 
     def _prepare_liger_loss(self):
         """Initialize liger loss if enabled."""

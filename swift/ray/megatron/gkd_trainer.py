@@ -61,8 +61,8 @@ class GKDTrainer(BaseRayTrainer):
         ckpt = self.ckpt_manager
         spg = self._steps_per_generation
 
-        # Initialize colocated teacher if configured
-        if self._teacher_model_dir and not self._teacher_model_server:
+        # Initialize colocated teacher if configured (skip for self-distillation via disable_adapter)
+        if self._teacher_model_dir and not self._teacher_model_server and not self._teacher_use_disable_adapter:
             tg.execute('init_teacher_model', self._teacher_model_dir)
             logger.info('Colocated teacher model initialized from %s', self._teacher_model_dir)
 
