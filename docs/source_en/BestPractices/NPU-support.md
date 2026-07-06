@@ -288,10 +288,12 @@ When the patch takes effect, ms-swift performs the following replacements:
 1. Set `transformers.utils.is_flash_linear_attention_available` and `transformers.utils.import_utils.is_flash_linear_attention_available` to return `True`, so that `transformers.models.qwen3_5.modeling_qwen3_5` can complete initialization through the FLA fast path.
 2. Redirect `transformers.models.qwen3_5.modeling_qwen3_5.chunk_gated_delta_rule` and `transformers.models.qwen3_5_moe.modeling_qwen3_5_moe.chunk_gated_delta_rule` to the built-in ms-swift implementation `swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule`.
 3. Inside `swift.model.chunk_gated_delta_rule`, continue calling the native Triton operators provided by MindSpeed, including:
-   - `mindspeed.lite.ops.triton.chunk_delta_h`
-   - `mindspeed.lite.ops.triton.chunk_o`
-   - `mindspeed.lite.ops.triton.chunk_scaled_dot_kkt`
-   - `mindspeed.lite.ops.triton.wy_fast`
+   - `mindspeed.ops.triton.chunk_delta_h`
+   - `mindspeed.ops.triton.chunk_o`
+   - `mindspeed.ops.triton.chunk_scaled_dot_kkt`
+   - `mindspeed.ops.triton.cumsum`
+   - `mindspeed.ops.triton.solve_tril`
+   - `mindspeed.ops.triton.wy_fast`
 4. Keep the native torch l2norm helper, reducing per-layer per-step launch overhead as well as compile/autotune overhead during cold start, which improves model performance on NPU.
 5. For `FusedRMSNormGated`, which depends on `torch.cuda.current_device()` during FLA initialization, NPU keeps the native Qwen3.5 torch path to avoid compatibility issues caused by CUDA-only initialization logic.
 
@@ -310,27 +312,33 @@ Therefore:
 - To make this path effective, ensure that MindSpeed can be imported correctly in the current environment.
 - Verified versions for accuracy alignment: torch 2.9.0 + MindSpeed 0.16.0 + flash-linear-attention 0.4.2 + triton-ascend 3.2.1 + transformers 5.2.0
 
-When running Qwen3.5 with Megatron-SWIFT on NPU, note the following version and feature constraints:
+When running Qwen3.5 on NPU with either the transformers backend or the Megatron-SWIFT backend, note the following version and feature constraints:
 
 1. The MindSpeed training combination currently pinned by the NPU documentation
    is `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`. With this combination,
    `megatron-core` already ships the native GDN kernel
    `core.ssm.gated_delta_net`, and `mcore-bridge` defaults to the
-   Megatron-Core/MindSpeed GDN path with `USE_MCORE_GDN=1`. Set
-   `USE_MCORE_GDN=0` only when you intentionally need to fall back to the
-   transformers-native GDN implementation wrapped by `mcore-bridge`. Combined
-   with ms-swift's built-in Qwen3.5 FLA NPU patch, `chunk_gated_delta_rule` is
-   then redirected to MindSpeed's Triton kernels. The known costs of this
-   fallback path are:
+   Megatron-Core/MindSpeed GDN path with `USE_MCORE_GDN=1`. If you explicitly
+   set `USE_MCORE_GDN=0`, it falls back to the transformers-native GDN
+   implementation wrapped by `mcore-bridge`; combined with ms-swift's built-in
+   Qwen3.5 FLA NPU patch, `chunk_gated_delta_rule` is then redirected to
+   MindSpeed's Triton kernels.
 
-   - The transformers GDN implementation does not support packing, nor TP/CP
-     for the GDN layer.
+2. At the moment, do not enable sequence-related features on the Qwen3.5 NPU
+   path with either the transformers backend or the Megatron-SWIFT backend,
+   regardless of whether `USE_MCORE_GDN=1` or `USE_MCORE_GDN=0` is used under
+   Megatron-SWIFT. This includes sequence parallel (SP), context parallel (CP),
+   and packing/padding-free. The related FLA Triton operators do not yet have
+   complete native NPU support. Enabling these features may hit
+   missing-operator paths, incomplete sample-boundary handling, or mismatched
+   parallel partitioning.
 
-2. When using the native 0.16 GDN path with `USE_MCORE_GDN=1`, do not apply
-   the fallback-only limitations above to that path. The native path's packing,
-   TP/CP, mask routing, and parallel combinations should still be verified
-   against the current MindSpeed/Megatron-LM, mcore-bridge, and target script
-   combination.
+3. For the transformers backend, keep `--sequence_parallel_size` at `1` and
+   avoid `--packing true` / `--padding_free true`. For the Megatron-SWIFT
+   backend, keep `--context_parallel_size`
+   at `1`, and also avoid `--packing true` / `--padding_free true`. Re-enable
+   these features only after the target MindSpeed/FLA stack explicitly fills
+   this support and the combination has been validated in layers.
 
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
