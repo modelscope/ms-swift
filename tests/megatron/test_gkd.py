@@ -40,3 +40,57 @@ if __name__ == '__main__':
             padding_free=True,
             sequence_parallel=True,
         ))
+
+
+def test_gkd_multi_turn():
+    """Megatron GKD multi-turn smoke test.
+
+    Verifies that ``_prepare_scheduler`` (now in MegatronRolloutMixin) initializes
+    the multi_turn_scheduler for GKD, and that multi-turn rollout → encode → JSD
+    loss completes without error.
+    """
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1'
+    from swift.megatron import MegatronRLHFArguments, megatron_rlhf_main
+    megatron_rlhf_main(
+        MegatronRLHFArguments(
+            rlhf_type='gkd',
+            model='Qwen/Qwen3-4B',
+            teacher_model='Qwen/Qwen3-8B',
+            tuner_type='lora',
+            dataset=['AI-ModelScope/alpaca-gpt4-data-en#200'],
+            tensor_model_parallel_size=2,
+            seq_kd=False,
+            lmbda=1,
+            beta=1,
+            micro_batch_size=2,
+            global_batch_size=8,
+            num_train_epochs=1,
+            lr=5e-6,
+            logging_steps=1,
+            max_length=2048,
+            max_completion_length=512,
+            attention_backend='flash',
+            use_vllm=True,
+            vllm_mode='colocate',
+            vllm_gpu_memory_utilization=0.5,
+            vllm_tensor_parallel_size=1,
+            vllm_max_model_len=4096,
+            sleep_level=1,
+            offload_teacher_model=True,
+            recompute_granularity='full',
+            recompute_method='uniform',
+            recompute_num_layers=1,
+            finetune=True,
+            no_save_optim=True,
+            no_save_rng=True,
+            temperature=1,
+            padding_free=True,
+            sequence_parallel=True,
+            multi_turn_scheduler='math_tip_trick',
+            max_turns=2,
+        ))
+
+
+if __name__ == '__main__':
+    test_gkd_multi_turn()

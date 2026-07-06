@@ -311,7 +311,7 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                 # Avoid padding labels during the model's forward pass in multimodal models.
                 # Some multimodal models do not expand the image pad token.
                 self.loss_scale = 'default'
-            elif self.rlhf_type == 'grpo':
+            elif self.rlhf_type in ('grpo', 'gkd'):
                 if self.multi_turn_scheduler:
                     self.loss_scale = 'default'
                 else:
@@ -662,9 +662,6 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
         if is_mp() and self.use_vllm:
             raise ValueError('GKD with vLLM is not compatible with `device_map`. '
                              'Please set NPROC_PER_NODE equal to num_processes.')
-
-        if self.multi_turn_scheduler is not None:
-            raise NotImplementedError('Currently, multi_turn_scheduler is not supported for GKD.')
 
         if self.async_generate:
             raise NotImplementedError('Currently, async_generate is not supported for GKD.')

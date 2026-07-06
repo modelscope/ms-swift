@@ -13,6 +13,7 @@ Megatron GKD currently supports the following features:
 - **Model Support**: Compatible with LLMs and MLLMs in Megatron-SWIFT
 - **Teacher Offload**: Supports offloading teacher model to CPU to save GPU memory
 - **Online Generation**: Supports on-policy generation using vLLM for student model
+- **Multi-turn Training**: Supports multi-turn GKD via `--multi_turn_scheduler`, sharing the same `MultiTurnScheduler` infrastructure as GRPO.
 
 ## Parameters
 
