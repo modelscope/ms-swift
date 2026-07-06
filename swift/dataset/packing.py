@@ -23,12 +23,12 @@ def calculate_matched_group(sequences, packing_length: int, is_finished: bool = 
         # a single global ordering.)
         packs, cur, cur_len = [], [], 0
         for item in sequences:  # item = (idx, length); weight_pos=1 -> length at item[1]
-            length = item[1]
-            if cur and cur_len + length > packing_length:
+            seq_len = item[1]
+            if cur and cur_len + seq_len > packing_length:
                 packs.append(cur)
                 cur, cur_len = [], 0
             cur.append(item)
-            cur_len += length
+            cur_len += seq_len
             if cur_len >= packing_length:
                 packs.append(cur)
                 cur, cur_len = [], 0
