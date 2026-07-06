@@ -9,7 +9,6 @@ from peft.utils import WEIGHTS_NAME
 from swift.tuners import LoRAConfig, SwiftModel
 
 
-@unittest.skip
 class TestSwift(unittest.TestCase):
 
     def setUp(self):
@@ -22,6 +21,7 @@ class TestSwift(unittest.TestCase):
         shutil.rmtree(self.tmp_dir)
         super().tearDown()
 
+    @unittest.skip
     def test_swift_multiple_adapters(self):
         model = Model.from_pretrained('modelscope/Llama-2-7b-ms', device_map='auto')
         lora_config = LoRAConfig(target_modules=['q_proj', 'k_proj', 'v_proj'])
