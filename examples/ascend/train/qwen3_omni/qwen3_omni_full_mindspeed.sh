@@ -1,5 +1,6 @@
 # 16 * 64GiB Ascend A3
 # Modified from https://github.com/modelscope/ms-swift/blob/main/examples/megatron/multimodal/omni/moe.sh
+export TASK_QUEUE_ENABLE=2
 PYTORCH_NPU_ALLOC_CONF='expandable_segments:True' \
 NPROC_PER_NODE=16 \
 IMAGE_MAX_TOKEN_NUM=1024 \
