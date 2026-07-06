@@ -317,7 +317,11 @@ register_model(
             ModelGroup([
                 Model('Tencent-Hunyuan/Hy3-preview', 'tencent/Hy3-preview'),
                 Model('Tencent-Hunyuan/Hy3-preview-Base', 'tencent/Hy3-preview-Base'),
-            ])
+            ]),
+            ModelGroup([
+                Model('Tencent-Hunyuan/Hy3', 'tencent/Hy3'),
+                Model('Tencent-Hunyuan/Hy3-FP8', 'tencent/Hy3-FP8'),
+            ]),
         ],
         template=TemplateType.hy_v3,
         requires=['transformers>=5.6.0'],
