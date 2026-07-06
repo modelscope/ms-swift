@@ -19,17 +19,16 @@ def calculate_matched_group(sequences, packing_length: int, is_finished: bool = 
     if strategy == 'sequential':
         # Order-preserving greedy packing (next-fit): keep a single open pack and flush it
         # when the next sample doesn't fit, so the global sample order and pack boundaries
-        # follow the input order (a sequential sampler). Useful for faithfully reproducing
-        # recipes that encode domain weighting in the sample order. (Use packing_num_proc=1
-        # for a single global ordering.)
+        # follow the input order (a sequential sampler). (Use packing_num_proc=1 for
+        # a single global ordering.)
         packs, cur, cur_len = [], [], 0
         for item in sequences:  # item = (idx, length); weight_pos=1 -> length at item[1]
-            ln = item[1]
-            if cur and cur_len + ln > packing_length:
+            seq_len = item[1]
+            if cur and cur_len + seq_len > packing_length:
                 packs.append(cur)
                 cur, cur_len = [], 0
             cur.append(item)
-            cur_len += ln
+            cur_len += seq_len
             if cur_len >= packing_length:
                 packs.append(cur)
                 cur, cur_len = [], 0
