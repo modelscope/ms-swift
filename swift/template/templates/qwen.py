@@ -599,11 +599,6 @@ class Qwen3_5Template(Qwen3VLTemplate):
     image_token_id = 248056
     video_token_id = 248057
 
-    def init_env_args(self):
-        super().init_env_args()
-        self.transformers_version = version.parse(transformers.__version__)
-        self.transformers_5_9 = self.transformers_version >= version.parse('5.9.0')
-
     def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
         if self.padding_free and self.sequence_parallel_size <= 1 and not self.transformers_5_9:
             raise RuntimeError('Qwen3.5 packing/padding_free with sequence_parallel_size=1 requires '
