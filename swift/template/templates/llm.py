@@ -387,7 +387,7 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
-        agent_template='hy_v3'))
+        agent_template='hy_v3_preview'))
 
 
 class HyV3Template(HyV3PreviewTemplate):
