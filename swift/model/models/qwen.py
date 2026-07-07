@@ -4,6 +4,7 @@ import inspect
 import os
 import torch
 import torch.nn.functional as F
+from importlib import import_module
 from packaging import version
 from PIL import Image
 from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
@@ -1219,7 +1220,7 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     **kwargs,
 ) -> torch.Tensor:
     _ensure_linear_attention_kernels(mod)
-    from transformers.models.qwen3_5.modeling_qwen3_5 import apply_mask_to_padding_states
+    apply_mask_to_padding_states = mod.__class__._apply_mask_to_padding_states
 
     local_attention_mask = attention_mask
     if torch.is_tensor(attention_mask) and attention_mask.dim() == 2:
@@ -1334,54 +1335,68 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
 
 
 def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
-    try:
-        from transformers.models.qwen3_5.modeling_qwen3_5 import Qwen3_5GatedDeltaNet
-    except Exception:
-        return
+    gated_delta_net_specs = []
+    class_specs = (
+        ('transformers.models.qwen3_5.modeling_qwen3_5', 'Qwen3_5GatedDeltaNet'),
+        ('transformers.models.qwen3_5_moe.modeling_qwen3_5_moe', 'Qwen3_5MoeGatedDeltaNet'),
+    )
+    for module_name, class_name in class_specs:
+        try:
+            modeling_module = import_module(module_name)
+            gated_delta_net_cls = getattr(modeling_module, class_name)
+            apply_mask_to_padding_states = getattr(modeling_module, 'apply_mask_to_padding_states')
+            gated_delta_net_specs.append((gated_delta_net_cls, apply_mask_to_padding_states))
+        except Exception:
+            pass
 
-    if getattr(Qwen3_5GatedDeltaNet, '_ms_swift_sp_linear_patched', False):
-        return
+    def patch_gated_delta_net(gated_delta_net_cls, apply_mask_to_padding_states):
+        if getattr(gated_delta_net_cls, '_ms_swift_sp_linear_patched', False):
+            return
 
-    origin_forward = Qwen3_5GatedDeltaNet.forward
-    parameters = inspect.signature(origin_forward).parameters
+        gated_delta_net_cls._apply_mask_to_padding_states = apply_mask_to_padding_states
+        origin_forward = gated_delta_net_cls.forward
+        parameters = inspect.signature(origin_forward).parameters
 
-    def sp_linear_forward(
-        mod,
-        hidden_states: torch.Tensor,
-        cache_params=None,
-        cache_position=None,
-        attention_mask: Optional[torch.Tensor] = None,
-        **kwargs,
-    ):
-        if not sequence_parallel.enabled() and 'cu_seq_lens_q' not in kwargs:
-            kwargs = {}
-            if 'cache_position' in parameters:
-                kwargs['cache_position'] = cache_position
-            return origin_forward(
-                mod, hidden_states, cache_params=cache_params, attention_mask=attention_mask, **kwargs)
-
-        if int(sequence_parallel.rp_world_size or 1) > 1:
-            requested_sp_size = int(sequence_parallel.world_size or 1)
-            suggested_sp_size = int(sequence_parallel.sp_world_size or 1)
-            raise NotImplementedError(
-                'Qwen3.5 linear attention sequence parallel does not support derived ring attention '
-                f'(sequence_parallel_size={requested_sp_size}, '
-                f'sp_world_size={sequence_parallel.sp_world_size}, '
-                f'rp_world_size={sequence_parallel.rp_world_size}). '
-                f'Please reduce --sequence_parallel_size to {suggested_sp_size} so that rp_world_size becomes 1.')
-
-        # padding_free/packing or sp will all go through here
-        return _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
+        def sp_linear_forward(
             mod,
-            hidden_states,
-            cache_params=cache_params,
-            cache_position=cache_position,
-            attention_mask=attention_mask,
+            hidden_states: torch.Tensor,
+            cache_params=None,
+            cache_position=None,
+            attention_mask: Optional[torch.Tensor] = None,
             **kwargs,
-        )
+        ):
+            if not sequence_parallel.enabled() and 'cu_seq_lens_q' not in kwargs:
+                kwargs = {}
+                if 'cache_position' in parameters:
+                    kwargs['cache_position'] = cache_position
+                return origin_forward(
+                    mod, hidden_states, cache_params=cache_params, attention_mask=attention_mask, **kwargs)
 
-    Qwen3_5GatedDeltaNet.forward = sp_linear_forward
-    Qwen3_5GatedDeltaNet._ms_swift_sp_linear_patched = True
+            if int(sequence_parallel.rp_world_size or 1) > 1:
+                requested_sp_size = int(sequence_parallel.world_size or 1)
+                suggested_sp_size = int(sequence_parallel.sp_world_size or 1)
+                raise NotImplementedError(
+                    'Qwen3.5 linear attention sequence parallel does not support derived ring attention '
+                    f'(sequence_parallel_size={requested_sp_size}, '
+                    f'sp_world_size={sequence_parallel.sp_world_size}, '
+                    f'rp_world_size={sequence_parallel.rp_world_size}). '
+                    f'Please reduce --sequence_parallel_size to {suggested_sp_size} so that rp_world_size becomes 1.')
+
+            # padding_free/packing or sp will all go through here
+            return _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
+                mod,
+                hidden_states,
+                cache_params=cache_params,
+                cache_position=cache_position,
+                attention_mask=attention_mask,
+                **kwargs,
+            )
+
+        gated_delta_net_cls.forward = sp_linear_forward
+        gated_delta_net_cls._ms_swift_sp_linear_patched = True
+
+    for gated_delta_net_cls, apply_mask_to_padding_states in gated_delta_net_specs:
+        patch_gated_delta_net(gated_delta_net_cls, apply_mask_to_padding_states)
 
 
 class Qwen3_5MoeLoader(Qwen3VLLoader):
