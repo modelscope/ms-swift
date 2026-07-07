@@ -33,6 +33,7 @@ agent_template_map = {
     'qwen3_5': Qwen3_5AgentTemplate,
     'hermes': HermesAgentTemplate,
     'hunyuan_hermes': HunyuanHermesAgentTemplate,
+    'hy_v3_preview': HyV3PreviewAgentTemplate,
     'hy_v3': HyV3AgentTemplate,
     'toolbench': ToolBenchAgentTemplate,  # ref: https://modelscope.cn/datasets/swift/ToolBench
     'chatglm4': ChatGLM4AgentTemplate,

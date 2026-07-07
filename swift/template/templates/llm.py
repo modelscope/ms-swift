@@ -374,7 +374,7 @@ class HyV3Template(Template):
 
 register_template(
     TemplateMeta(
-        LLMTemplateType.hy_v3,
+        LLMTemplateType.hy_v3_preview,
         prefix=['<｜hy_begin▁of▁sentence｜>'],
         system_prefix=['<｜hy_begin▁of▁sentence｜>{{SYSTEM}}'],
         prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
@@ -385,6 +385,21 @@ register_template(
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
+        agent_template='hy_v3'))
+
+register_template(
+    TemplateMeta(
+        LLMTemplateType.hy_v3,
+        prefix=['<｜hy_begin_of_sentence:opensource｜>'],
+        system_prefix=['<｜hy_begin_of_sentence:opensource｜>{{SYSTEM}}'],
+        prompt=['<｜hy_User:opensource｜>{{QUERY}}<｜hy_Assistant:opensource｜>'],
+        chat_sep=['<｜hy_eos:opensource｜>'],
+        suffix=['<｜hy_eos:opensource｜>'],
+        template_cls=HyV3Template,
+        is_thinking=True,
+        thinking_prefix='<think:opensource>',
+        non_thinking_prefix='<think:opensource></think:opensource>',
+        history_thinking_prefix='<think:opensource></think:opensource>',
         agent_template='hy_v3'))
 
 
