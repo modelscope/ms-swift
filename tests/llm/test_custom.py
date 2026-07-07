@@ -64,7 +64,7 @@ class TestCustom(unittest.TestCase):
     def test_custom_dataset(self):
         dataset = load_dataset(['swift/stsb'])[0]
         assert len(dataset) == 5749
-        assert list(dataset[0].keys()) == ['messages']
+        assert list(dataset[0].keys()) == ['messages', 'dataset']
         print(f'dataset: {dataset}')
         print(f'dataset[0]: {dataset[0]}')
 

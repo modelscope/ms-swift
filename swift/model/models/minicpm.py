@@ -198,6 +198,8 @@ class MiniCPMV4_6Loader(ModelLoader):
     def get_model(self, *args, **kwargs) -> PreTrainedModel:
         from transformers import AutoModelForImageTextToText
         self.auto_model_cls = self.auto_model_cls or AutoModelForImageTextToText
+        from .qwen import _patch_qwen3_5_linear_attention_sequence_parallel
+        _patch_qwen3_5_linear_attention_sequence_parallel()
         return super().get_model(*args, **kwargs)
 
 

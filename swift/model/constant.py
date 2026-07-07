@@ -144,6 +144,7 @@ class MLLMModelType:
     qwen3_omni_moe = 'qwen3_omni_moe'
     qwen2_audio = 'qwen2_audio'
     qwen3_asr = 'qwen3_asr'
+    qwen3_tts = 'qwen3_tts'
     qwen3_vl = 'qwen3_vl'
     qwen3_vl_moe = 'qwen3_vl_moe'
     qwen3_vl_emb = 'qwen3_vl_emb'
@@ -207,6 +208,7 @@ class MLLMModelType:
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
+    unlimited_ocr = 'unlimited-ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'

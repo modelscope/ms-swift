@@ -142,6 +142,7 @@ class MLLMTemplateType:
     qwen3_omni = 'qwen3_omni'
     qwen2_audio = 'qwen2_audio'
     qwen3_asr = 'qwen3_asr'
+    qwen3_tts = 'qwen3_tts'
     qwen3_vl = 'qwen3_vl'
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
@@ -224,6 +225,7 @@ class MLLMTemplateType:
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
+    unlimited_ocr = 'unlimited_ocr'
 
     mplug_owl2 = 'mplug_owl2'
     mplug_owl3 = 'mplug_owl3'

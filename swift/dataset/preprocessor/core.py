@@ -34,6 +34,9 @@ class RowPreprocessor:
                                 'margin',
                                 'teacher_prompt',
                                 'chat_template_kwargs',
+                                # Qwen3-TTS
+                                'ref_audios',
+                                'audio_codes',
                             ]
 
     def __init__(self,
@@ -513,8 +516,8 @@ class MessagesPreprocessor(RowPreprocessor):
 
     def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if 'rejected_messages' in row:
-            row['rejected_messages'] = MessagesPreprocessor.preprocess(
-                self, {'messages': row['rejected_messages']})['messages']
+            rejected = MessagesPreprocessor.preprocess(self, {'messages': row['rejected_messages']})
+            row['rejected_messages'] = rejected['messages'] if rejected else None
         messages = row['messages']
         if self.inner_key is not None:
             messages = messages[self.inner_key]

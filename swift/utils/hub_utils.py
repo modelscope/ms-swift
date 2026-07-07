@@ -217,6 +217,7 @@ def patch_kernels() -> bool:
             allow_patterns = [f'build/{variant_str}/*'] if variant_str else None
             model_dir = safe_snapshot_download(repo_id, use_hf=False, allow_patterns=allow_patterns)
             package_name = repo_id.split('/')[-1].replace('-', '_')
+            # kernels < 0.14
             kernel = get_local_kernel(Path(model_dir), package_name)
             logger.info(f'Loaded kernel `{repo_id}` from ModelScope: {model_dir}')
             return kernel
@@ -226,3 +227,22 @@ def patch_kernels() -> bool:
 
     hub_kernels.get_kernel = patched_get_kernel
     return True
+
+
+def download_file(url: str) -> str:
+    url = url.rstrip('/')
+    file_name = url.rsplit('/', 1)[-1]
+    cache_dir = os.path.join(get_cache_dir(), 'files')
+    os.makedirs(cache_dir, exist_ok=True)
+    file_path = os.path.join(cache_dir, file_name)
+    if os.path.exists(file_path):
+        return file_path
+    resp = requests.get(url, stream=True)
+    resp.raise_for_status()
+    total_size = int(resp.headers.get('content-length', 0))
+    with open(file_path, 'wb') as f, tqdm(
+            total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=file_name) as pbar:
+        for chunk in resp.iter_content(chunk_size=8192):
+            f.write(chunk)
+            pbar.update(len(chunk))
+    return file_path

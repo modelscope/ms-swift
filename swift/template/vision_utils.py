@@ -296,19 +296,193 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
     return frames
 
 
-def load_audio(audio: Union[str, bytes], sampling_rate: int, return_sr: bool = False):
+def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int, mono: bool = True):
     import librosa
     try:
         audio_io = load_file(audio)
-        res = librosa.load(audio_io, sr=sampling_rate)
+        return librosa.load(audio_io, sr=sampling_rate, mono=mono)
     except Exception:
-        if audio.startswith(('http://', 'https://')):
+        if isinstance(audio, str) and audio.startswith(('http://', 'https://')):
             import audioread
             audio_io = audioread.ffdec.FFmpegAudioFile(audio)
         else:
-            audio_io = _check_path(audio) or audio
-        res = librosa.load(audio_io, sr=sampling_rate)
+            audio_io = _check_path(audio) if isinstance(audio, str) else audio
+        return librosa.load(audio_io, sr=sampling_rate, mono=mono)
+
+
+# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/multimodal/audio.py#L169-L224
+def _resample_audio_pyav(audio: np.ndarray, *, orig_sr: float, target_sr: float) -> np.ndarray:
+    import av
+    orig_sr_int = int(round(orig_sr))
+    target_sr_int = int(round(target_sr))
+    if orig_sr_int == target_sr_int:
+        return audio
+    if audio.ndim == 2:
+        return np.stack([_resample_audio_pyav(ch, orig_sr=orig_sr, target_sr=target_sr) for ch in audio], axis=0)
+    expected_len = int(math.ceil(audio.shape[-1] * target_sr_int / orig_sr_int))
+    min_samples = 1024
+    audio_f32 = np.asarray(audio, dtype=np.float32)
+    if len(audio_f32) < min_samples:
+        audio_f32 = np.pad(audio_f32, (0, min_samples - len(audio_f32)))
+    audio_f32 = audio_f32.reshape(1, -1)
+    resampler = av.AudioResampler(format='fltp', layout='mono', rate=target_sr_int)
+    frame = av.AudioFrame.from_ndarray(audio_f32, format='fltp', layout='mono')
+    frame.sample_rate = orig_sr_int
+    out_frames = resampler.resample(frame)
+    out_frames.extend(resampler.resample(None))
+    result = np.concatenate([f.to_ndarray() for f in out_frames], axis=1).squeeze(0)
+    return result[:expected_len]
+
+
+# ref: https://github.com/vllm-project/vllm/blob/v0.23.0/vllm/multimodal/media/audio.py#L45-L160
+def _load_audio_soundfile_pyav(path: Union[str, bytes, BytesIO], *, sr: float, mono: bool = True):
+    """soundfile first, pyav fallback — same strategy as vLLM multimodal audio loader."""
+    bad_sf_codes = {0, 1, 3, 4}
+    if not isinstance(path, BytesIO):
+        path = load_file(path)
+
+    def _load_soundfile():
+        import soundfile
+        with soundfile.SoundFile(path) as f:
+            native_sr = f.samplerate
+            y = f.read(dtype='float32', always_2d=False).T
+
+        if mono and y.ndim > 1:
+            y = np.mean(y, axis=tuple(range(y.ndim - 1)))
+
+        if sr is not None and sr != native_sr:
+            y = _resample_audio_pyav(y, orig_sr=native_sr, target_sr=sr)
+            return y, int(sr)
+        return y, native_sr
+
+    def _load_pyav():
+        import av
+        path.seek(0)
+        with av.open(path) as container:
+            if not container.streams.audio:
+                raise ValueError('No audio stream found.')
+            stream = container.streams.audio[0]
+            stream.thread_type = 'AUTO'
+            native_sr = stream.rate
+            target_sr = sr or native_sr
+            chunks = []
+            needs_resampling = not math.isclose(float(target_sr), float(native_sr), rel_tol=0.0, abs_tol=1e-6)
+            resampler = av.AudioResampler(format='fltp', layout='mono', rate=target_sr) if needs_resampling else None
+            for frame in container.decode(stream):
+                if needs_resampling:
+                    for out_frame in resampler.resample(frame):
+                        chunks.append(out_frame.to_ndarray())
+                else:
+                    chunks.append(frame.to_ndarray())
+        if not chunks:
+            raise ValueError('No audio found.')
+        y = np.concatenate(chunks, axis=-1).astype(np.float32)
+        if mono and y.ndim > 1:
+            y = np.mean(y, axis=0)
+        return y, target_sr
+
+    try:
+        return _load_soundfile()
+    except ImportError:
+        path.seek(0)
+        return _load_pyav()
+    except Exception as exc:
+        import soundfile
+        if not isinstance(exc, soundfile.LibsndfileError) or exc.code not in bad_sf_codes:
+            raise
+    path.seek(0)
+    return _load_pyav()
+
+
+def load_audio(
+    audio: Union[str, bytes, BytesIO],
+    sampling_rate: int,
+    return_sr: bool = False,
+    mono: bool = True,
+):
+    backend = get_env_args('swift_audio_load_backend', str, 'librosa')
+    if backend == 'librosa':
+        res = _load_audio_librosa(audio, sampling_rate, mono=mono)
+    elif backend == 'soundfile_pyav':
+        res = _load_audio_soundfile_pyav(audio, sr=sampling_rate, mono=mono)
+    else:
+        raise ValueError(f'Unknown audio load backend {backend!r}. Supported: librosa, soundfile_pyav')
     return res if return_sr else res[0]
+
+
+def _resolve_video_local_path(path: Union[str, bytes]) -> tuple:
+    """Return (local_path, is_temp_file). HTTP URLs and raw bytes are written to a temp file."""
+    if isinstance(path, bytes) or (isinstance(path, str) and path.startswith('http')):
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as f:
+            f.write(load_file(path).read())
+            return f.name, True
+    checked = _check_path(path) if isinstance(path, str) else None
+    return checked or path, False
+
+
+def _video_to_ndarrays_local(local_path: str, num_frames: int = -1) -> np.ndarray:
+    import cv2
+    cap = cv2.VideoCapture(local_path)
+    if not cap.isOpened():
+        raise ValueError(f'Could not open video file {local_path}')
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        cap.release()
+        raise ValueError(f'Video file {local_path} has invalid or zero frame count: {total_frames}')
+    if num_frames <= 0 or num_frames > total_frames:
+        num_frames = total_frames
+    frame_indices = set(np.linspace(0, total_frames - 1, num_frames, dtype=int))
+    frames = []
+    for idx in range(total_frames):
+        if not cap.grab():
+            break
+        if idx in frame_indices:
+            ret, frame = cap.retrieve()
+            if ret:
+                frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    cap.release()
+    if len(frames) < num_frames:
+        raise ValueError(f'Could not read enough frames from video file {local_path} '
+                         f'(expected {num_frames} frames, got {len(frames)})')
+    return np.stack(frames)
+
+
+def _video_get_metadata_local(local_path: str, num_frames: int = -1) -> dict:
+    import cv2
+    cap = cv2.VideoCapture(local_path)
+    if not cap.isOpened():
+        raise ValueError(f'Could not open video file {local_path}')
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    if total_frames <= 0:
+        cap.release()
+        raise ValueError(f'Video file {local_path} has invalid or zero frame count: {total_frames}')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    duration = total_frames / fps if fps > 0 else 0
+    cap.release()
+    if num_frames <= 0 or num_frames > total_frames:
+        num_frames = total_frames
+    return {
+        'total_num_frames': num_frames,
+        'fps': duration / num_frames if num_frames else fps,
+        'duration': duration,
+        'video_backend': 'opencv',
+        'frames_indices': list(range(num_frames)),
+        'do_sample_frames': num_frames == total_frames,
+    }
+
+
+def load_vllm_video(path: Union[str, bytes], num_frames: int = -1) -> tuple:
+    """Decode video frames + metadata for vLLM rollout; one download, temp file cleaned up."""
+    local_path, is_temp = _resolve_video_local_path(path)
+    try:
+        return _video_to_ndarrays_local(local_path, num_frames), _video_get_metadata_local(local_path, num_frames)
+    finally:
+        if is_temp:
+            try:
+                os.remove(local_path)
+            except OSError:
+                pass
 
 
 def load_video_valley(video: Union[str, bytes]):

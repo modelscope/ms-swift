@@ -36,7 +36,7 @@ import transformers
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
-from copy import copy, deepcopy
+from copy import deepcopy
 from packaging import version
 from transformers import PreTrainedModel
 from transformers.trainer import Trainer as HfTrainer
@@ -48,11 +48,15 @@ from trl.trainer.utils import selective_log_softmax
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
-from swift.infer_engine import TransformersEngine
 from swift.rewards import orms, rm_plugins
-from swift.rl_core.advantage import compute_advantages, compute_advantages_dynamic, compute_reward_metrics
+from swift.rl_core.advantage import (compute_advantages, compute_advantages_dynamic, compute_reward_metrics,
+                                     compute_teacher_kl_per_token, expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
+from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
+                                             build_teacher_requests, encode_teacher_view,
+                                             fetch_teacher_parsed_by_routing, remap_teacher_logps_to_student_frame,
+                                             should_compute_local_teacher_logps)
 from swift.sequence_parallel import GatherLoss, sequence_parallel
 from swift.template import Template, TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
@@ -106,13 +110,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.vllm_client = kwargs.pop('vllm_client', None)
         self.chord_sft_dataset = kwargs.pop('chord_sft_dataset', None)
         reward_templates = kwargs.pop('reward_template', None)
+        # Teacher kwargs (same set as GKD; setting one turns GRPO into OPD-RL: teacher KL as advantage).
+        self._pop_teacher_kwargs(kwargs)
         self._prepare_algorithm_params()
         super().__init__(model, ref_model, *_args, **kwargs)
         self._prepare_chord_dataset()
         self.prepare_rollout()
         self._prepare_rewards(reward_funcs, reward_model, reward_templates)
 
-        if not self.reward_funcs and not self.use_gym_env:
+        # A configured teacher enables OPD-RL (teacher KL as advantage); with no reward
+        # functions it is the sole signal. Same gating as GKD: teacher set -> teacher branch.
+        self._setup_teacher()
+        self.teacher_kl_coef = args.teacher_kl_coef
+        if not self.reward_funcs and not self.use_gym_env and not self._has_teacher:
             raise ValueError('You must specify reward_funcs or reward_model')
 
         if self.args.eval_strategy != 'no' and not self.args.eval_use_evalscope:
@@ -130,13 +140,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # transformers if num_generations exceeds per_device_train_batch_size. We could skip it if we use vLLM, but
         # it's safer to set it in all cases.
         set_seed(args.seed, device_specific=True)
-
-        if not self.args.use_vllm:
-            infer_template = copy(self.template)
-            infer_template.padding_free = False
-            infer_template.sequence_parallel_size = 1
-            infer_template.remove_unused_columns = True
-            self.engine = TransformersEngine(self.model, template=infer_template, max_batch_size=0)  # 0: no limit
 
         # Gradient accumulation requires scaled loss. Normally, loss scaling in the parent class depends on whether the
         # model accepts loss-related kwargs. Since we compute our own loss, this check is irrelevant. We set
@@ -235,6 +238,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
     def _postprocess_batch(self, samples: List[GRPOSample], batch_encoded_inputs: List[Dict[str, Any]]) -> None:
         """Compute advantages and write them into each ``grpo_batch``."""
+        # OPD-RL teacher API: fetch single-token teacher logps before advantage computation.
+        if self._has_teacher and self.use_teacher_api:
+            self._assemble_teacher_api_logps(samples, batch_encoded_inputs)
         total_advantages = self._compute_advantages(samples, self._rewards_per_func, batch_encoded_inputs)
 
         local_advantages = get_even_process_data(self, total_advantages)
@@ -250,13 +256,31 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             f'Mismatch: {len(gas_chunks)} chunks vs {len(batch_encoded_inputs)} batches'
 
         for batch, batch_encoded in zip(gas_chunks, batch_encoded_inputs):
-            # Advantages are always [batch_size], will be broadcast to [batch_size, seq_len] in loss computation.
             # Under sequence parallel, split_by_mini_batches gathers samples across the SP group via
             # all_gather_object, so per-sample advantages may carry tensors from different ranks/devices;
             # move them onto the current device before stacking.
             device = self.accelerator.device
-            all_advantages = torch.stack([data.advantages.to(device) for data in batch])
-            batch_encoded['grpo_batch'].advantages = all_advantages
+            grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
+            base_advantages = torch.stack([data.advantages.to(device) for data in batch])
+            # Expand the per-sequence base advantage to per-token [B, T] here (not by broadcast
+            # in the loss), so the OPD-RL signed teacher log-ratio is added per token
+            # (adv_t = base + coef * (teacher_logp - student_logp)).
+            grpo_batch.advantages = expand_advantage_to_per_token(
+                base_advantages,
+                grpo_batch.completion_mask,
+                teacher_per_token_logps=grpo_batch.teacher_per_token_logps,
+                policy_per_token_logps=grpo_batch.old_per_token_logps
+                if grpo_batch.teacher_per_token_logps is not None else None,
+                teacher_kl_coef=self.teacher_kl_coef if grpo_batch.teacher_per_token_logps is not None else 0.0,
+            )
+            if grpo_batch.teacher_per_token_logps is not None:
+                mode = 'train' if self.model.training else 'eval'
+                # Monitoring uses the non-negative k3 estimator (a "distance from the teacher" gauge
+                # that should decrease over training); the advantage above uses the signed k1 log-ratio.
+                k3 = compute_teacher_kl_per_token(grpo_batch.teacher_per_token_logps, grpo_batch.old_per_token_logps,
+                                                  grpo_batch.completion_mask)
+                self._metrics[mode]['teacher_kl'].append(
+                    (k3.sum() / grpo_batch.completion_mask.sum().clamp(min=1.0)).item())
 
     def _log_rollout(self, samples: List[GRPOSample]) -> None:
         """Log prompts/completions and extra gathered metrics (solution, num_turns)."""
@@ -314,6 +338,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 device=self.accelerator.device,
                 trainer_state=self.state,
             )
+
+        # OPD-RL pure distillation: no reward_funcs -> a [N, 0] tensor. accelerate.gather
+        # can't reshape a 0-column tensor (view(-1, 0) is ambiguous), so gather only the
+        # global sample count and rebuild an empty [N_global, 0] reward matrix. Downstream
+        # advantages then come solely from the teacher KL injection.
+        if local_rewards_per_func.shape[1] == 0:
+            global_count = sum(gather_object([local_rewards_per_func.shape[0]]))
+            return torch.zeros((global_count, 0), dtype=torch.float32, device=self.accelerator.device)
 
         # gather rewards
         if not self.dynamic_num_samples:
@@ -474,6 +506,109 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
             return advantages
 
+    def _collate_teacher_opsd_batch(self, batch: List[GRPOSample], template) -> Tuple[Dict[str, Any], GRPOBatch]:
+        """Encode + collate the OPSD teacher view (teacher_prompt + same response).
+
+        Produces a teacher micro-batch whose completion frame may differ in length from
+        the student's; ``_compute_teacher_logps`` remaps the teacher logps back onto the
+        student frame. ``build_teacher_view`` is already done by ``build_opsd_samples``.
+        """
+        for s in batch:
+            s.encoded = encode_teacher_view(s, template)
+        teacher_model_inputs, teacher_grpo_batch = collate_to_grpo_micro_batch(
+            batch, template, device=self.model.device, use_logits_to_keep=True)
+        teacher_model_inputs.pop('labels', None)
+        # Restore the student encoding so downstream code (advantages/loss) keeps the student frame.
+        for s in batch:
+            s.encoded = encode_sample(s, template)
+            s.encoded.pop('_extra_kwargs', None)
+        return teacher_model_inputs, teacher_grpo_batch
+
+    def _compute_teacher_logps(self,
+                               model_inputs,
+                               grpo_batch,
+                               origin_data=None,
+                               teacher_model_inputs=None,
+                               teacher_grpo_batch=None) -> torch.Tensor:
+        """OPD-RL: per-token teacher logp on the sampled tokens via a local teacher forward.
+
+        Reuses ``_get_per_token_logps_and_entropies`` so the teacher logp frame matches
+        the policy's old/ref logps (token-in-token-out, single token per position).
+        LoRA same-model teacher runs the student under ``disable_adapter``. For OPSD,
+        the teacher forwards its own ``teacher_model_inputs`` (teacher_prompt + same
+        response) and the result is remapped onto the student's completion frame.
+        """
+        is_opsd = teacher_model_inputs is not None
+        # OPSD remaps via completion masks (per-token), which the chunked/multimodal logps path
+        # does not preserve; OPSD self-distillation uses single-token text batches so this holds.
+        fwd_inputs = teacher_model_inputs if is_opsd else model_inputs
+        fwd_batch = teacher_grpo_batch if is_opsd else grpo_batch
+        fwd_origin = None if is_opsd else origin_data
+        with torch.no_grad():
+            if self._teacher_use_disable_adapter:
+                with self.accelerator.unwrap_model(self.model).disable_adapter(), disable_gradient_checkpointing(
+                        self.model, self.args.gradient_checkpointing_kwargs):
+                    teacher_logps = self._get_per_token_logps_and_entropies(
+                        self.model, fwd_inputs, fwd_batch, origin_data=fwd_origin)[0]
+            else:
+                model = self.teacher_model if self.teacher_model else self.model
+                with self.load_teacher_model_context(), disable_gradient_checkpointing(
+                        model, self.args.gradient_checkpointing_kwargs):
+                    teacher_logps = self._get_per_token_logps_and_entropies(
+                        model, fwd_inputs, fwd_batch, origin_data=fwd_origin)[0]
+        if is_opsd:
+            teacher_logps = remap_teacher_logps_to_student_frame(teacher_logps, teacher_grpo_batch.completion_mask,
+                                                                 grpo_batch.completion_mask)
+        return teacher_logps
+
+    def _assemble_teacher_api_logps(self, samples: List[GRPOSample], batch_encoded_inputs: List[Dict[str,
+                                                                                                     Any]]) -> None:
+        """OPD-RL teacher API: fetch the *sampled* token's logp at each response position
+        (``prompt_logprobs=0`` -> ``parse_prompt_logprobs(topk=0)``, the actually-present
+        token, not the top-1) as a completion-frame ``TeacherOutput``, then read its single
+        column as ``teacher_per_token_logps``. Future top-k RL reuses the same ``TeacherOutput``.
+
+        Each sample routes to exactly one teacher by tag (single teacher = all samples). Routing
+        runs once over the flattened batch, so a single teacher is one DP gather → infer → slice.
+
+        Samples/requests come from each chunk's ``_chunk_samples`` (the SP-gathered batch that its
+        ``grpo_batch`` was collated from), not the local ``samples`` argument: under SP>1 the local
+        samples are shorter/reordered, which would misalign the teacher logps.
+        """
+        flat_samples: List[GRPOSample] = []
+        chunk_samples_list: List[List[GRPOSample]] = []
+        for batch_encoded in batch_encoded_inputs:
+            chunk = batch_encoded.pop('_chunk_samples', [])
+            chunk_samples_list.append(chunk)
+            flat_samples.extend(chunk)
+
+        # OPSD: populate teacher_messages so build_teacher_requests scores the teacher prompt.
+        build_opsd_samples(flat_samples)
+        requests = build_teacher_requests(flat_samples, self.template)
+        parsed = fetch_teacher_parsed_by_routing(
+            flat_samples,
+            requests,
+            self.teacher_configs,
+            self.teacher_clients,
+            gather_fn=self._gather_teacher_requests,
+            infer_fn=lambda handle, client: self._infer_teacher_requests(handle, topk=0, teacher_client=client),
+            scatter_fn=self._scatter_teacher_parsed,
+            is_main_process=self.accelerator.is_main_process,
+            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+
+        offset = 0
+        for batch_encoded, chunk in zip(batch_encoded_inputs, chunk_samples_list):
+            grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
+            device = grpo_batch.completion_mask.device
+            n = len(chunk)
+            teacher_out = assemble_teacher_completion_logprobs(
+                parsed[offset:offset + n],
+                grpo_batch.completion_mask,
+                device,
+                response_token_ids=[s.response_token_ids for s in chunk])
+            grpo_batch.teacher_per_token_logps = teacher_out.topk_logprobs[..., 0]
+            offset += n
+
     @profiling_decorator
     def _dynamic_sampling(self, samples: List[GRPOSample],
                           rewards_per_func: torch.Tensor) -> Tuple[List[GRPOSample], torch.Tensor]:
@@ -583,6 +718,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         gas_chunks = self.split_by_mini_batches(samples)
         ga_batch_encoded_inputs: List[Dict[str, Any]] = []
         for batch in gas_chunks:
+            teacher_model_inputs = teacher_grpo_batch = None
             with self._template_context(template):
                 for s in batch:
                     encoded_inputs = encode_sample(s, template)
@@ -590,11 +726,21 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     s.encoded = encoded_inputs
                 model_inputs, grpo_batch = collate_to_grpo_micro_batch(
                     batch, template, device=self.model.device, use_logits_to_keep=True)
+                # OPSD: the local teacher forwards its own (teacher_prompt + same response)
+                # encoding, so collate a separate teacher micro-batch (different length).
+                has_opsd_batch = build_opsd_samples(batch)
+                is_opsd = (has_opsd_batch and (self._has_teacher_explicit() or self._is_dynamic_self_distillation))
+                if is_opsd:
+                    teacher_model_inputs, teacher_grpo_batch = self._collate_teacher_opsd_batch(batch, template)
 
             model_inputs.pop('labels', None)
             batch_encoded_inputs = {'model_inputs': model_inputs, 'grpo_batch': grpo_batch}
             if self.dynamic_num_samples and self.is_multimodal:
                 batch_encoded_inputs['_origin_data'] = batch
+            if self._has_teacher and self.use_teacher_api:
+                # OPD-RL API teacher: keep the SP-gathered chunk samples so teacher routing/fetch
+                # aligns with each grpo_batch (local `samples` are shorter/reordered under SP>1).
+                batch_encoded_inputs['_chunk_samples'] = batch
             origin_data = batch if (self.dynamic_num_samples and self.is_multimodal) else None
 
             with torch.no_grad(), disable_gradient_checkpointing(self.model, self.args.gradient_checkpointing_kwargs):
@@ -614,6 +760,19 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                             self._get_per_token_logps_and_entropies(
                                 self.model, model_inputs, grpo_batch, origin_data=origin_data)[0]
                 grpo_batch.ref_per_token_logps = ref_per_token_logps
+                # OPD-RL: local teacher logp on the sampled tokens (API path filled later).
+                if should_compute_local_teacher_logps(
+                        has_teacher_explicit=self._has_teacher_explicit(),
+                        is_dynamic_self_distillation=self._is_dynamic_self_distillation,
+                        use_teacher_api=self.use_teacher_api,
+                        has_opsd_batch=is_opsd,
+                ):
+                    grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(
+                        model_inputs,
+                        grpo_batch,
+                        origin_data=origin_data,
+                        teacher_model_inputs=teacher_model_inputs,
+                        teacher_grpo_batch=teacher_grpo_batch)
             ga_batch_encoded_inputs.append(batch_encoded_inputs)
 
         # --- log completion lengths ---
@@ -742,7 +901,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # avoid amplifying negative-advantage tokens with very high IS ratios.
         safety_mask = torch.ones_like(completion_mask, dtype=torch.bool)
         if self.fipo_safety_threshold is not None:
-            negative_advantage = advantages.unsqueeze(1) < 0
+            negative_advantage = advantages < 0
             high_is_ratio = coef_1 > self.fipo_safety_threshold
             safety_mask = ~(negative_advantage & high_is_ratio)
             influence_weight = torch.where(safety_mask, influence_weight,
@@ -848,18 +1007,25 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         coef_1 = torch.exp(log_importance_weights)
 
+        # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL signed
+        # teacher log-ratio is added per token). Edge loss types that need a per-sequence
+        # advantage (real / fipo / off_policy_sequence_mask) are not supported with a teacher.
+        if self._has_teacher and (self.loss_type in ['real', 'fipo']
+                                  or self.off_policy_sequence_mask_delta is not None):
+            raise ValueError(f'OPD-RL (teacher) does not support loss_type={self.loss_type!r} / '
+                             'off_policy_sequence_mask.')
+
         fipo_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
-            per_token_loss = -clamped_ratios * advantages.unsqueeze(1) * per_token_logps
+            per_token_loss = -clamped_ratios * advantages * per_token_logps
         elif self.loss_type == 'sapo':
-            advantages_expanded = advantages.unsqueeze(1)
             gate_pos = torch.sigmoid(self.tau_pos * (coef_1 - 1)) * (4.0 / self.tau_pos)
             gate_neg = torch.sigmoid(self.tau_neg * (coef_1 - 1)) * (4.0 / self.tau_neg)
-            is_positive = advantages_expanded > 0
+            is_positive = advantages > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
 
-            per_token_loss = -soft_gate * advantages_expanded
+            per_token_loss = -soft_gate * advantages
         elif self.loss_type == 'real':
             per_token_loss = torch.zeros_like(per_token_logps)
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
@@ -870,8 +1036,8 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             if self.args.delta is not None:
                 coef_1 = torch.clamp(coef_1, max=self.args.delta)
 
-            per_token_loss1 = coef_1 * advantages.unsqueeze(1)
-            per_token_loss2 = coef_2 * advantages.unsqueeze(1)
+            per_token_loss1 = coef_1 * advantages
+            per_token_loss2 = coef_2 * advantages
             per_token_loss = -torch.min(per_token_loss1, per_token_loss2)
             if self.loss_type == 'fipo':
                 per_token_loss = per_token_loss * fipo_weight
@@ -887,8 +1053,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             old_policy_per_token_logps = (
                 grpo_batch.rollout_per_token_logps
                 if grpo_batch.rollout_per_token_logps is not None else old_per_token_logps)
+            # advantages is per-token [B, T] (constant across tokens without a teacher); the mask
+            # needs a per-sequence scalar.
+            seq_advantages = (advantages * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
             off_policy_seq_mask = self._compute_off_policy_sequence_mask(per_token_logps, old_policy_per_token_logps,
-                                                                         completion_mask, advantages)
+                                                                         completion_mask, seq_advantages)
             # Expand sequence mask to token level and apply to completion_mask
             off_policy_seq_mask_expanded = off_policy_seq_mask.unsqueeze(-1).expand_as(completion_mask)
             completion_mask = completion_mask & off_policy_seq_mask_expanded
@@ -905,7 +1074,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             global_scores = (log_ratio * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
 
             group_scores = global_scores.view(-1, self.num_generations)
-            group_rewards = advantages.view(-1, self.num_generations)
+            # advantages is per-token [B, T] (constant across tokens without a teacher); reduce
+            # to a per-sequence scalar for the group pos/neg split.
+            seq_advantages = (advantages * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+            group_rewards = seq_advantages.view(-1, self.num_generations)
 
             pos_mask = (group_rewards > 0)
             neg_mask = (group_rewards <= 0)
@@ -979,15 +1151,15 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         # Compute the clipped probability ratios
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
-            is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            is_cispo_clipped = (coef_1 > self.epsilon_high) & (advantages > 0)
             cispo_clip_ratio = masked_batch_mean(is_cispo_clipped.float())
             gathered_cispo_clip_ratio = self.accelerator.gather_for_metrics(cispo_clip_ratio)
             metrics_data['clipping'] = {'cispo_clip_ratio': gathered_cispo_clip_ratio.nanmean().item()}
         elif self.loss_type in ['sapo', 'real']:
             pass
         else:
-            is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages.unsqueeze(1) < 0)
-            is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages.unsqueeze(1) > 0)
+            is_low_clipped = (coef_1 < 1 - self.epsilon_low) & (advantages < 0)
+            is_high_clipped = (coef_1 > 1 + self.epsilon_high) & (advantages > 0)
             is_region_clipped = is_low_clipped | is_high_clipped
 
             low_clip = masked_batch_mean(is_low_clipped.float())
@@ -1556,12 +1728,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             _, vllm_is_ratio = self._get_rollout_is_correction(old_per_token_logps, grpo_batch.rollout_per_token_logps,
                                                                completion_mask)
 
+        # LigerFusedLinearGRPOLoss expects [B]; expand_advantage_to_per_token always yields [B, T].
+        advantages = grpo_batch.advantages
+        advantages = (advantages * completion_mask).sum(-1) / completion_mask.sum(-1).clamp(min=1.0)
+
         loss, metrics = self.liger_grpo_loss(
             _input=last_hidden_state,
             lin_weight=unwrapped_model.lm_head.weight,
             selected_token_ids=completion_ids,
             attention_mask=completion_mask,
-            advantages=grpo_batch.advantages,
+            advantages=advantages,
             bias=unwrapped_model.lm_head.bias,
             old_per_token_logps=old_per_token_logps,
             ref_per_token_logps=grpo_batch.ref_per_token_logps,

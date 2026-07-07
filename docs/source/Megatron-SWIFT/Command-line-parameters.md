@@ -38,6 +38,7 @@
 - 🔥optimizer_cpu_offload: 将优化器状态卸载到 CPU，例如设置：`--use_precision_aware_optimizer true --optimizer_cpu_offload true --optimizer_offload_fraction 0.7`。默认为False。
   - 该参数可以显著降低显存占用（但增加内存占用）。若global_batch_size较大，则对训练速度的影响不大。
 - 🔥optimizer_offload_fraction: 卸载到 CPU 的优化器状态所占比例。默认为1.。
+- optimizer_cuda_graph: 是否为优化器步骤启用 CUDA 计算图，传递给 Megatron 的 `--optimizer-cuda-graph`。默认为False。该参数需要"megatron-core>=0.17"。
 - use_precision_aware_optimizer: 使用 TransformerEngine 中的精度感知优化器，该优化器允许将主参数和优化器状态设置为较低精度，例如 fp16 和 fp8。
 - main_grads_dtype: 启用 use_precision_aware_optimizer 时主梯度的 dtype。可选为'fp32', 'bf16'。默认为'fp32'。
 - main_params_dtype: 启用 use_precision_aware_optimizer 时主参数的 dtype。可选为'fp32', 'fp16'。默认为'fp32'。
@@ -397,22 +398,31 @@ Megatron训练参数继承自Megatron参数和基本参数（**与ms-swift共用
 - log_rollout_offpolicy_metrics: 当 `rollout_importance_sampling_mode` 未设置时，是否记录训推不一致诊断指标（KL、PPL、χ²等）。当设置了 `rollout_importance_sampling_mode` 时，指标会自动记录。默认为False。
 - off_policy_sequence_mask_delta: Off-Policy Sequence Masking 阈值，来自 DeepSeek-V3.2 论文。当设置此值时，会计算每个序列的 `mean(old_policy_logps - policy_logps)`，若该值大于阈值且该序列的优势为负，则 mask 掉该序列不参与损失计算。默认为None，不启用。具体参考[文档](../Instruction/GRPO/AdvancedResearch/training_inference_mismatch.md#off-policy-sequence-masking)。
 - router_replay_mode: 路由重放模式，可选项为`disabled`、`R2`、`R3`。默认为disabled，不启用路由重放。
+- teacher_kl_coef: OPD-RL中teacher_kl的系数，即 `adv_t = base_adv + teacher_kl_coef * teacher_kl`。默认为 1.0。
 
 内置奖励函数参数参考[文档](../Instruction/Command-line-parameters.md#奖励函数参数)
 
 ### GKD参数
-- teacher_model: 教师模型的路径或模型 ID，必需参数。
-- teacher_model_type: 教师模型类型，默认为None，自动检测。
-- teacher_model_revision: 教师模型版本，默认为None。
+
 - beta: JSD 散度插值系数。0.0 代表 Forward KL，0.5 代表对称 JSD，1.0 代表 Reverse KL。默认为0.5。
 - lmbda: On-Policy 学习触发概率。0.0 代表纯 Off-Policy，1.0 代表纯 On-Policy。默认为0.5。
 - temperature: 用于采样和损失计算的温度参数。默认为0.9。
-- offload_teacher_model: 是否将教师模型卸载到 CPU 以节省 GPU 显存。默认为False。
 - sft_alpha: SFT 损失的混合系数，`loss = jsd_loss + sft_alpha * sft_loss`。当使用数据集响应（Off-Policy）时生效。默认为0。
 - max_completion_length: 生成时的最大 token 数。默认为512。
 - vllm_mode: 同 GRPO 参数，用于 On-Policy 生成。colocate 模式下在程序内部署 vLLM。
   - 注意：On-Policy 生成需要启用 vLLM（`--use_vllm true --vllm_mode colocate/server`）。
   - 当 `lmbda > 0` 但未启用 vLLM 时，将自动回退到 Off-Policy 模式。
+
+### teacher 参数
+在GKD与GRPO中使用
+
+- teacher_model: 教师模型的路径或模型 ID，必需参数。
+- teacher_model_type: 教师模型类型，默认为None，自动检测。
+- teacher_model_revision: 教师模型版本，默认为None。
+- teacher_model_server: 教师模型服务地址，通过 `swift deploy` 部署后用于获取 logprobs，与 `teacher_model` 互斥。支持单 URL 或多 teacher JSON（`'[{"url":"...","tags":["..."]}, ...]'`）。详见[蒸馏文档](../Instruction/Distillation.md#multi-teacher多教师路由)。
+- teacher_tag_key: 多 teacher 路由时样本匹配 teacher `tags` 的字段名，默认为 `"dataset"`。
+- offload_teacher_model: 是否将教师模型卸载到 CPU 以节省 GPU 显存。默认为False。
+
 
 ## 导出参数
 这里介绍`megatron export`的参数，若要使用`swift export`导出命令，请参考[ms-swift命令行参数文档](../Instruction/Command-line-parameters.md#导出参数)。`megatron export`相比`swift export`，支持分布式和多机导出。Megatron导出参数继承自Megatron参数和基本参数。

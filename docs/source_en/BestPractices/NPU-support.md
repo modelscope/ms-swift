@@ -12,6 +12,28 @@ If this is your first time using ms-swift on NPUs, we recommend reading this doc
 4. Use "Quick Start" to complete one ModelScope model LoRA training, merge, inference, and deployment flow.
 5. For larger-scale training, continue reading the DDP, DeepSpeed, and MindSpeed/Megatron-SWIFT sections.
 
+## Hardware and Supported Operating Systems
+
+**Table 1** Product hardware support list
+
+| Product | Supported |
+| ------- | :-------: |
+| <term>Ascend 950 series products</term> | √ |
+| <term>Atlas A3 training series products</term> | √ |
+| <term>Atlas A3 inference series products</term> | x |
+| <term>Atlas A2 training series products</term> | √ |
+| <term>Atlas A2 inference series products</term> | x |
+| <term>Atlas 200I/500 A2 inference products</term> | x |
+| <term>Atlas inference series products</term> | x |
+| <term>Atlas training series products</term> | x |
+
+> [!NOTE]
+>
+> In this section, "√" indicates supported and "x" indicates not supported.
+
+- For operating systems supported by each hardware product in physical-machine deployment scenarios, see the [Compatibility Query Assistant](https://www.hiascend.com/hardware/compatibility).
+- For operating systems supported by each hardware product in VM and container deployment scenarios, see "Operating System Compatibility" in CANN Software Installation for the [commercial edition](https://www.hiascend.com/document/detail/zh/canncommercial/900/softwareinst/instg/instg_0101.html?OS=openEuler&InstallType=netyum) or [community edition](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/softwareinst/instg/instg_0101.html?OS=openEuler&InstallType=netyum).
+
 ## Support Scope at a Glance
 
 Recommended base environment versions:
@@ -114,9 +136,17 @@ For regular Qwen3.5 GRPO/SFT LoRA training, avoid explicitly passing `--model_ty
 
 ### Image/Container Environment Installation
 
-The official NPU image is still being prepared for release. Before the official image is released, you can build a container environment with CANN, PyTorch, torch_npu, and ms-swift dependencies from the Dockerfile provided by the project. The container approach makes dependency versions easier to freeze and helps reproduce the same environment across multiple Ascend machines.
+The official NPU image is available at [quay.io/ascend/ms-swift](https://quay.io/repository/ascend/ms-swift?tab=tags). We recommend choosing an image tag that matches your device generation, Python version, CANN version, and OS version first. If you need to pin a branch or customize dependencies, build the image from the Dockerfile provided by the project. The container approach makes dependency versions easier to freeze and helps reproduce the same environment across multiple Ascend machines.
 
-Clone the modelscope repository first, then build the image with [Dockerfile.ascend](https://github.com/modelscope/modelscope/blob/master/docker/Dockerfile.ascend) and [build_image.py](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py):
+The following example uses the A2, Python 3.11, CANN 9.0.0, Ubuntu 22.04 tag. In actual use, choose the latest tag from the Quay tag page that matches your machine and software stack.
+
+```shell
+docker pull quay.io/ascend/ms-swift:v4.3.0-A2-py311-CANN9.0.0-ubuntu22.04
+export IMAGE_NAME=quay.io/ascend/ms-swift:v4.3.0-A2-py311-CANN9.0.0-ubuntu22.04
+export WORKSPACE=/path/to/workspace
+```
+
+If you need to build the image yourself, clone the modelscope repository first, then use [Dockerfile.ascend](https://github.com/modelscope/modelscope/blob/master/docker/Dockerfile.ascend) and [build_image.py](https://github.com/modelscope/modelscope/blob/master/docker/build_image.py):
 
 ```shell
 git clone https://github.com/modelscope/modelscope.git
@@ -128,11 +158,10 @@ DOCKER_REGISTRY=ms-swift python docker/build_image.py \
   --arch arm
 ```
 
-The current `build_image.py` generates Ascend image names in the format `{DOCKER_REGISTRY}:{swift_branch}-{atlas_hardware}-{python_tag}-{arch}`. The command above uses the ARM-based Atlas 900 A2 PODc as an example and usually generates `ms-swift:main-A2-py311-arm`. Save the image name and workspace path in variables as shown below. Replace the image name with the actual one from your build log.
+The current `build_image.py` generates Ascend image names in the format `{DOCKER_REGISTRY}:{swift_branch}-{atlas_hardware}-{python_tag}-{arch}`. The command above uses the ARM-based Atlas 900 A2 PODc as an example and usually generates `ms-swift:main-A2-py311-arm`. If you use a self-built image, replace `IMAGE_NAME` above with the actual image name from your build log.
 
 ```shell
 export IMAGE_NAME=ms-swift:main-A2-py311-arm
-export WORKSPACE=/path/to/workspace
 ```
 
 Before starting the container, check which NPU devices are exposed on the host:
@@ -259,10 +288,12 @@ When the patch takes effect, ms-swift performs the following replacements:
 1. Set `transformers.utils.is_flash_linear_attention_available` and `transformers.utils.import_utils.is_flash_linear_attention_available` to return `True`, so that `transformers.models.qwen3_5.modeling_qwen3_5` can complete initialization through the FLA fast path.
 2. Redirect `transformers.models.qwen3_5.modeling_qwen3_5.chunk_gated_delta_rule` and `transformers.models.qwen3_5_moe.modeling_qwen3_5_moe.chunk_gated_delta_rule` to the built-in ms-swift implementation `swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule`.
 3. Inside `swift.model.chunk_gated_delta_rule`, continue calling the native Triton operators provided by MindSpeed, including:
-   - `mindspeed.lite.ops.triton.chunk_delta_h`
-   - `mindspeed.lite.ops.triton.chunk_o`
-   - `mindspeed.lite.ops.triton.chunk_scaled_dot_kkt`
-   - `mindspeed.lite.ops.triton.wy_fast`
+   - `mindspeed.ops.triton.chunk_delta_h`
+   - `mindspeed.ops.triton.chunk_o`
+   - `mindspeed.ops.triton.chunk_scaled_dot_kkt`
+   - `mindspeed.ops.triton.cumsum`
+   - `mindspeed.ops.triton.solve_tril`
+   - `mindspeed.ops.triton.wy_fast`
 4. Keep the native torch l2norm helper, reducing per-layer per-step launch overhead as well as compile/autotune overhead during cold start, which improves model performance on NPU.
 5. For `FusedRMSNormGated`, which depends on `torch.cuda.current_device()` during FLA initialization, NPU keeps the native Qwen3.5 torch path to avoid compatibility issues caused by CUDA-only initialization logic.
 
@@ -281,27 +312,33 @@ Therefore:
 - To make this path effective, ensure that MindSpeed can be imported correctly in the current environment.
 - Verified versions for accuracy alignment: torch 2.9.0 + MindSpeed 0.16.0 + flash-linear-attention 0.4.2 + triton-ascend 3.2.1 + transformers 5.2.0
 
-When running Qwen3.5 with Megatron-SWIFT on NPU, note the following version and feature constraints:
+When running Qwen3.5 on NPU with either the transformers backend or the Megatron-SWIFT backend, note the following version and feature constraints:
 
 1. The MindSpeed training combination currently pinned by the NPU documentation
    is `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`. With this combination,
    `megatron-core` already ships the native GDN kernel
    `core.ssm.gated_delta_net`, and `mcore-bridge` defaults to the
-   Megatron-Core/MindSpeed GDN path with `USE_MCORE_GDN=1`. Set
-   `USE_MCORE_GDN=0` only when you intentionally need to fall back to the
-   transformers-native GDN implementation wrapped by `mcore-bridge`. Combined
-   with ms-swift's built-in Qwen3.5 FLA NPU patch, `chunk_gated_delta_rule` is
-   then redirected to MindSpeed's Triton kernels. The known costs of this
-   fallback path are:
+   Megatron-Core/MindSpeed GDN path with `USE_MCORE_GDN=1`. If you explicitly
+   set `USE_MCORE_GDN=0`, it falls back to the transformers-native GDN
+   implementation wrapped by `mcore-bridge`; combined with ms-swift's built-in
+   Qwen3.5 FLA NPU patch, `chunk_gated_delta_rule` is then redirected to
+   MindSpeed's Triton kernels.
 
-   - The transformers GDN implementation does not support packing, nor TP/CP
-     for the GDN layer.
+2. At the moment, do not enable sequence-related features on the Qwen3.5 NPU
+   path with either the transformers backend or the Megatron-SWIFT backend,
+   regardless of whether `USE_MCORE_GDN=1` or `USE_MCORE_GDN=0` is used under
+   Megatron-SWIFT. This includes sequence parallel (SP), context parallel (CP),
+   and packing/padding-free. The related FLA Triton operators do not yet have
+   complete native NPU support. Enabling these features may hit
+   missing-operator paths, incomplete sample-boundary handling, or mismatched
+   parallel partitioning.
 
-2. When using the native 0.16 GDN path with `USE_MCORE_GDN=1`, do not apply
-   the fallback-only limitations above to that path. The native path's packing,
-   TP/CP, mask routing, and parallel combinations should still be verified
-   against the current MindSpeed/Megatron-LM, mcore-bridge, and target script
-   combination.
+3. For the transformers backend, keep `--sequence_parallel_size` at `1` and
+   avoid `--packing true` / `--padding_free true`. For the Megatron-SWIFT
+   backend, keep `--context_parallel_size`
+   at `1`, and also avoid `--packing true` / `--padding_free true`. Re-enable
+   these features only after the target MindSpeed/FLA stack explicitly fills
+   this support and the combination has been validated in layers.
 
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.

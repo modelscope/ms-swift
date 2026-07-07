@@ -2,12 +2,14 @@
 import math
 import numpy as np
 import torch
+import transformers
 from dataclasses import dataclass, field
 from functools import partial
+from packaging import version
 from torch import nn
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_env_args
+from swift.utils import get_env_args, get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -612,6 +614,10 @@ class MiniCPMV4_6Template(Template):
 
     def init_env_args(self):
         super().init_env_args()
+        transformers_version = version.parse(transformers.__version__)
+        if (self.padding_free and self.sequence_parallel_size <= 1 and transformers_version < version.parse('5.9.0')):
+            raise RuntimeError('MiniCPM-V 4.6 packing/padding_free with sequence_parallel_size=1 requires '
+                               f'transformers>=5.9.0 (current: {transformers_version}). ')
         self.downsample_mode = get_env_args('downsample_mode', str, '16x')
         self.max_slice_nums = get_env_args('max_slice_nums', int, 9)
         self.video_max_slice_nums = get_env_args('video_max_slice_nums', int, 1)
@@ -685,6 +691,12 @@ class MiniCPMV4_6Template(Template):
         # Inject downsample_mode so the model forward uses the same mode
         # as data preprocessing, keeping image token/feature counts aligned.
         res['downsample_mode'] = self.downsample_mode
+        return res
+
+    def _data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super()._data_collator(batch, padding_to=padding_to)
+        if self.padding_free:
+            res.update(get_packed_seq_params(res['position_ids']))
         return res
 
 

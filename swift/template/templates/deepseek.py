@@ -457,6 +457,46 @@ register_template(
         template_cls=DeepseekOCR2))
 
 
+class UnlimitedOCR(DeepseekOCR):
+    image_placeholder = ['<image>']  # Remove trailing newline; override the parent class default
+
+    def init_env_args(self):
+        super().init_env_args()
+        self._device_fixed = False  # Instance variable; avoid sharing state across multiple instances.
+
+    def _fix_device(self):
+        if not self._device_fixed and self.model is not None:
+            try:
+                vision_device = next(self.model.model.vision_model.parameters()).device
+                self.model.model.image_newline.data = self.model.model.image_newline.data.to(vision_device)
+                self.model.model.view_seperator.data = self.model.model.view_seperator.data.to(vision_device)
+                self._device_fixed = True
+            except Exception:
+                pass
+
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        self._fix_device()
+        return super()._encode(inputs)
+
+    def _load_dynamic_modules(self):
+        if self._BasicImageTransform is None:
+            model_dir = self.model_info.model_dir
+            self._BasicImageTransform = get_class_from_dynamic_module('modeling_unlimitedocr.BasicImageTransform',
+                                                                      model_dir)
+            self._dynamic_preprocess = get_class_from_dynamic_module('modeling_unlimitedocr.dynamic_preprocess',
+                                                                     model_dir)
+
+
+register_template(
+    TemplateMeta(
+        MLLMTemplateType.unlimited_ocr,
+        prefix=[['bos_token_id']],
+        prompt=['{{QUERY}}'],
+        chat_sep=None,
+        template_cls=UnlimitedOCR,
+    ))
+
+
 @dataclass
 class DeepseekV2_5TemplateMeta(TemplateMeta):
     prefix: Prompt = field(default_factory=lambda: ['<｜begin▁of▁sentence｜>{{SYSTEM}}'])
