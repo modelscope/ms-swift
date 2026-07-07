@@ -320,6 +320,10 @@ class SwiftMixin:
                 value['step'] = step.to(target_device)
 
     def _save_model(self, output_dir: Optional[str] = None, state_dict=None):
+        # If template defines a save_callback, delegate to it
+        if hasattr(self, 'template') and hasattr(self.template, 'save_callback'):
+            self.template.save_callback(self.model, output_dir)
+            return
         # model
         supported_classes = (SwiftModel, PreTrainedModel, PeftModel)
         supported_names = ('SentenceTransformer', )

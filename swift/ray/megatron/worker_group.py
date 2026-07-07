@@ -399,6 +399,8 @@ class WorkerGroup:
                     dev_cfg['device_max_connections_key']: '1',
                     dev_cfg['visible_devices_key']: node_cvd,
                     'RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES': '1',
+                    'RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES': '1',
+                    'RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES': '1',
                     'NCCL_CUMEM_ENABLE': '0',
                     'RAY_SWIFT_GROUP': f'default,{name}',
                 }

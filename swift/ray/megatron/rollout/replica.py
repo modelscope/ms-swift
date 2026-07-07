@@ -186,6 +186,8 @@ class RolloutReplica:
             env_vars: Dict[str, str] = {
                 'VLLM_USE_V1': '1',
                 'RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES': '1',
+                'RAY_EXPERIMENTAL_NOSET_HIP_VISIBLE_DEVICES': '1',
+                'RAY_EXPERIMENTAL_NOSET_ROCR_VISIBLE_DEVICES': '1',
                 'RAY_EXPERIMENTAL_NOSET_ASCEND_RT_VISIBLE_DEVICES': '1',
                 'NCCL_CUMEM_ENABLE': '0',
                 visible_key: cvd,

@@ -13,10 +13,31 @@ from swift.utils import get_logger, is_dist, is_master, split_list
 logger = get_logger()
 
 
-def calculate_matched_group(sequences, packing_length: int, is_finished: bool = True):
+def calculate_matched_group(sequences, packing_length: int, is_finished: bool = True, strategy: str = 'binpack'):
     if len(sequences) == 0:
         return [], []
-    # https://arxiv.org/pdf/2404.10830
+    if strategy == 'sequential':
+        # Order-preserving greedy packing (next-fit): keep a single open pack and flush it
+        # when the next sample doesn't fit, so the global sample order and pack boundaries
+        # follow the input order (a sequential sampler). (Use packing_num_proc=1 for
+        # a single global ordering.)
+        packs, cur, cur_len = [], [], 0
+        for item in sequences:  # item = (idx, length); weight_pos=1 -> length at item[1]
+            seq_len = item[1]
+            if cur and cur_len + seq_len > packing_length:
+                packs.append(cur)
+                cur, cur_len = [], 0
+            cur.append(item)
+            cur_len += seq_len
+            if cur_len >= packing_length:
+                packs.append(cur)
+                cur, cur_len = [], 0
+        if is_finished:
+            if cur:
+                packs.append(cur)
+            return packs, []
+        return packs, cur
+    # default: best-fit-decreasing bin packing (https://arxiv.org/pdf/2404.10830)
     import binpacking
     sequences = binpacking.to_constant_volume(sequences, packing_length, weight_pos=1)
     if sequences and not is_finished:
@@ -39,6 +60,7 @@ class PackingDataset(Dataset):
         load_from_cache_file: bool = True,
         packing_length: Optional[int] = None,
         packing_num_proc: int = 1,
+        packing_strategy: str = 'binpack',
         **kwargs,
     ):
         template.packing = True
@@ -48,6 +70,7 @@ class PackingDataset(Dataset):
         self.num_proc = num_proc
         self.strict = strict
         self.load_from_cache_file = load_from_cache_file
+        self.packing_strategy = packing_strategy
         self.packing_length = packing_length or self.template.max_length
         self.packing_num_proc = min(packing_num_proc, math.ceil(len(dataset) / self.PACKING_BATCH_SIZE))
         self._out_queue = mp.Queue()
@@ -97,7 +120,8 @@ class PackingDataset(Dataset):
                 break
             i += self.PACKING_BATCH_SIZE
             is_finished = i >= len(data)
-            sequences, input_data = calculate_matched_group(input_data, self.packing_length, is_finished=is_finished)
+            sequences, input_data = calculate_matched_group(
+                input_data, self.packing_length, is_finished=is_finished, strategy=self.packing_strategy)
             self._out_queue.put((rank, sequences, len(new_data)))
         self._out_queue.put((rank, [], -1))
 
@@ -122,6 +146,7 @@ class IterablePackingDataset(IterableDataset):
         packing_length: Optional[int] = None,
         strict: bool = False,
         cyclic: bool = False,
+        packing_strategy: str = 'binpack',
         **kwargs,
     ):
         template.packing = True
@@ -137,6 +162,7 @@ class IterablePackingDataset(IterableDataset):
         self._out_queue = mp.Queue()
         self.workers = []
         self.cyclic = cyclic
+        self.packing_strategy = packing_strategy
         for _ in range(self.num_proc):
             worker = mp.Process(target=self._processor, daemon=True)
             worker.start()
@@ -194,7 +220,8 @@ class IterablePackingDataset(IterableDataset):
             num_samples = self._put_data_in_queue(iterator)
             finished = num_samples != self.packing_interval
             data = self._fetch_data_out_queue(data, num_samples)
-            sequences, data = calculate_matched_group(data, self.packing_length, is_finished=finished)
+            sequences, data = calculate_matched_group(
+                data, self.packing_length, is_finished=finished, strategy=self.packing_strategy)
             res = []
             for row in sequences:
                 res.append([r[0] for r in row])

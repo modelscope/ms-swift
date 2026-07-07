@@ -837,15 +837,31 @@ def replace_assistant_response_with_ids(messages: 'Messages',
 
 
 def parse_prompt_logprobs(response, topk: int) -> Tuple[List[List[float]], List[List[int]]]:
+    """Parse vLLM prompt_logprobs into per-position (logprobs, token_ids).
+
+    vLLM's ``prompt_logprobs[i]`` is ``{token_id: {logprob, rank, ...}}`` for predicting
+    prompt token ``i`` (position 0 is ``None`` and skipped).
+
+    - ``topk == 0`` (sampled-token, OPD-RL): the teacher was queried with
+      ``prompt_logprobs=0``, so each position holds exactly the *sampled* (actually-present)
+      token — take that single entry. This is token-in-token-out, NOT the top-1: the
+      sampled token may have any rank.
+    - ``topk > 0`` (top-k, GKD): the ``topk`` highest-probability tokens, ordered by logprob
+      (== rank order). The sampled token, if returned as an extra ``k+1``-th entry, is dropped.
+    """
     raw = response.prompt_logprobs or []
     lps: List[List[float]] = []
     ixs: List[List[int]] = []
     for pos_lp in raw[1:]:
-        sorted_items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])[:topk]
-        lp_row = [info['logprob'] for _, info in sorted_items]
-        ix_row = [int(tid) for tid, _ in sorted_items]
-        lps.append(lp_row)
-        ixs.append(ix_row)
+        if topk == 0:
+            # prompt_logprobs=0 -> a single entry: the sampled (actually-present) token.
+            tid, info = next(iter(pos_lp.items()))
+            lps.append([info['logprob']])
+            ixs.append([int(tid)])
+        else:
+            items = sorted(pos_lp.items(), key=lambda x: -x[1]['logprob'])[:topk]
+            lps.append([info['logprob'] for _, info in items])
+            ixs.append([int(tid) for tid, _ in items])
     return lps, ixs
 
 

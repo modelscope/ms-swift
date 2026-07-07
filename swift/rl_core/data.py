@@ -64,9 +64,62 @@ class OnPolicySample:
     # --- per-sample template.encode output, used for model forward kwargs ---
     encoded: Optional[Dict[str, Any]] = None
 
+    # --- OPSD (On-Policy Self-Distillation), shared by GKD and OPD-RL ---
+    teacher_prompt: Optional[Any] = None  # OPSD: dataset ``teacher_prompt`` column (pre-collation)
+    teacher_messages: Optional[Messages] = None  # OPSD: messages with teacher_prompt replacing last user
+
     @property
     def is_truncated(self) -> bool:
         return self.finish_reason == 'length'
+
+    def get_tag(self, tag_key: str = 'dataset') -> Optional[str]:
+        """Return the multi-teacher routing tag from ``extra[tag_key]`` (``None`` if unset).
+
+        Single source of truth for where a sample's routing tag lives (``--teacher_tag_key``,
+        default ``dataset``); routing keys off exactly this, with no fallback to other columns.
+        """
+        val = self.extra.get(tag_key)
+        return str(val) if val is not None else None
+
+    def build_teacher_view(self) -> bool:
+        """Populate the OPSD teacher view from ``teacher_prompt`` + the on-policy response.
+
+        OPSD scores the teacher on its OWN (teacher_prompt + same on-policy response)
+        sequence: replace the last user message with ``teacher_prompt`` and keep the
+        assistant response. Teacher and student share ``response_token_ids`` (identical
+        response tokens, only the prompt differs). Returns ``True`` when an OPSD view
+        exists (idempotent) and ``False`` when ``teacher_prompt`` is unset (non-OPSD).
+        """
+        if self.teacher_messages is not None:
+            return True
+
+        if not self.teacher_prompt:
+            return False
+
+        messages = [dict(m) for m in self.messages]
+        for msg in reversed(messages):
+            if msg['role'] == 'user':
+                msg['content'] = self.teacher_prompt
+                break
+
+        self.teacher_messages = messages
+        return True
+
+    def to_teacher_template_dict(self) -> Dict[str, Any]:
+        """Reconstruct the teacher-side dict consumed by ``template.encode`` (OPSD).
+
+        Uses ``teacher_messages`` (teacher_prompt-replaced) + the shared
+        ``response_token_ids`` (same on-policy response as the student).
+        """
+        d = self._standard_fields()
+        d['messages'] = self.teacher_messages
+        chat_template_kwargs = self.extra.get('chat_template_kwargs')
+        if chat_template_kwargs is not None:
+            d['chat_template_kwargs'] = chat_template_kwargs
+        if self.response_token_ids:
+            d['response_token_ids'] = self.response_token_ids
+        d['add_eos'] = False
+        return d
 
     def _standard_fields(self) -> Dict[str, Any]:
         """Non-empty StandardKeys fields from this sample (replaces _multimodal_columns)."""
@@ -267,7 +320,8 @@ class GRPOBatch:
     old_per_token_logps: Optional[torch.Tensor] = None  # [B, T]
     ref_per_token_logps: Optional[torch.Tensor] = None  # [B, T]
     rollout_per_token_logps: Optional[torch.Tensor] = None  # [B, T]
-    advantages: Optional[torch.Tensor] = None  # [B]
+    teacher_per_token_logps: Optional[torch.Tensor] = None  # [B, T], OPD-RL teacher logp on sampled tokens
+    advantages: Optional[torch.Tensor] = None  # [B, T] per-token (base broadcast minus per-token teacher KL)
     num_items_in_batch: Optional[torch.Tensor] = None  # scalar
     logits_to_keep: Optional[int] = None
 
@@ -283,49 +337,7 @@ class GRPOBatch:
 
 @dataclass
 class GKDSample(OnPolicySample):
-    """On-policy sample with GKD teacher-side per-sample signals."""
-    teacher_prompt: Optional[Any] = None  # OPSD: dataset ``teacher_prompt`` column (pre-collation)
-    teacher_messages: Optional[Messages] = None  # OPSD: messages with teacher_prompt replacing last user
-
-    def build_teacher_view(self) -> bool:
-        """Populate teacher-side fields for OPSD from ``teacher_prompt`` + on-policy response.
-
-        OPSD trains the teacher to score its OWN (teacher_prompt + same on-policy response)
-        sequence. Build that view by replacing the last user message with ``teacher_prompt``
-        and keeping the assistant response; teacher and student share the same
-        ``response_token_ids`` (identical response positions). No-op (returns False) when
-        ``teacher_prompt`` is unset.
-        """
-        if self.teacher_messages is not None:
-            return True
-
-        if not self.teacher_prompt:
-            return False
-
-        messages = [dict(m) for m in self.messages]
-        for msg in reversed(messages):
-            if msg['role'] == 'user':
-                msg['content'] = self.teacher_prompt
-                break
-
-        self.teacher_messages = messages
-        return True
-
-    def to_teacher_template_dict(self) -> Dict[str, Any]:
-        """Reconstruct the teacher-side dict consumed by ``template.encode`` (OPSD).
-
-        Uses ``teacher_messages`` (teacher_prompt-replaced) + the shared
-        ``response_token_ids`` (same on-policy response as student).
-        """
-        d = self._standard_fields()
-        d['messages'] = self.teacher_messages
-        chat_template_kwargs = self.extra.get('chat_template_kwargs')
-        if chat_template_kwargs is not None:
-            d['chat_template_kwargs'] = chat_template_kwargs
-        if self.response_token_ids:
-            d['response_token_ids'] = self.response_token_ids
-        d['add_eos'] = False
-        return d
+    pass
 
 
 @dataclass

@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -115,6 +116,7 @@ class RolloutArguments(DeployArguments):
         self._check_device_count()
         self._check_vllm_enable_expert_parallel()
         self._check_deprecated_args()
+        self._set_default_audio_load_backend()
 
     def _set_default_engine_type(self):
         if self.vllm_use_async_engine is None:
@@ -171,3 +173,8 @@ class RolloutArguments(DeployArguments):
                              '(e.g. history compression, prompt injection), implement that logic in a custom '
                              '`MultiTurnScheduler` subclass by overriding `step` / `run`, '
                              'and pass it via `--multi_turn_scheduler your_scheduler_name`.')
+
+    def _set_default_audio_load_backend(self):
+        # Rollout uses GRPOVllmEngine (vLLM-only); align audio decode with vLLM multimodal loader.
+        if os.getenv('SWIFT_AUDIO_LOAD_BACKEND') is None:
+            os.environ['SWIFT_AUDIO_LOAD_BACKEND'] = 'soundfile_pyav'

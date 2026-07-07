@@ -20,16 +20,21 @@ from copy import copy
 from dacite import from_dict
 from dataclasses import asdict
 from megatron.core import mpu
-from typing import Any, Dict, List, Tuple, Union
+from transformers import AutoConfig
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
+from swift.megatron.model import get_mcore_model
 from swift.rl_core.data import OnPolicySample
 from swift.rlhf_trainers.base_rollout_mixin import BaseRolloutTrainerMixin
+from swift.rlhf_trainers.gkd_helpers import resolve_dynamic_opd_self_distillation
 from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedTensorBucket,
                                        TensorLoRARequest, add_base_layer_suffix_by_param_names, aggressive_empty_cache,
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
-                                       patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, profiling_context,
-                                       profiling_decorator, set_expandable_segments, vllm_supports_lora_load_inplace)
+                                       parse_prompt_logprobs, patch_vllm_load_adapter,
+                                       patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
+                                       set_expandable_segments, vllm_supports_lora_load_inplace)
+from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.rollout import invoke_async_hook, run_multi_turn
 from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
                          synchronize, to_device)
@@ -150,6 +155,137 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
     def _get_rollout_group(self):
         """Get or create the rollout process group (TP×PP×CP)."""
         return create_rollout_group(self)
+
+    def _setup_teacher(self) -> None:
+        """Resolve teacher mode from args and init the API client when applicable.
+
+        Sets ``teacher_model_server`` / ``use_teacher_api`` / ``_is_self_distillation`` /
+        ``_teacher_use_disable_adapter`` / ``offload_teacher_model`` / ``_has_teacher``.
+        Must be called before ``_init_rollout_engine`` (the API client lives on last rank).
+        """
+        args = self.args
+        self.teacher_model_server = getattr(args, 'teacher_model_server', None)
+        self.use_teacher_api = self.teacher_model_server is not None
+        self.offload_teacher_model = args.offload_teacher_model
+        self._teacher_use_disable_adapter = getattr(args, '_teacher_use_disable_adapter', False)
+        self._is_self_distillation = (args.teacher_model is None and self.teacher_model_server is None)
+        self._has_teacher_explicit = (
+            args.teacher_model is not None or self.teacher_model_server is not None
+            or self._teacher_use_disable_adapter)
+        self._is_dynamic_self_distillation = resolve_dynamic_opd_self_distillation(
+            has_teacher_explicit=self._has_teacher_explicit,
+            is_self_distillation=self._is_self_distillation,
+        )
+        self._has_teacher = self._has_teacher_explicit or self._is_dynamic_self_distillation
+        self.teacher_models = None
+        self.teacher_configs: list = []
+        self.teacher_clients: list = []
+        if self.use_teacher_api:
+            from swift.rlhf_trainers.gkd_helpers import parse_teacher_model_server
+            self.teacher_configs = parse_teacher_model_server(self.teacher_model_server)
+            if is_last_rank():
+                self.teacher_clients = [VLLMInferClient(base_urls=[cfg.url]) for cfg in self.teacher_configs]
+
+    def _load_teacher_model(self) -> None:
+        """Load the separate local teacher mcore model (called from ``prepare_model``).
+
+        No-op for the API path, dynamic self-distillation, and same-model LoRA
+        (disable_adapter) — those reuse the student weights or an external server.
+        """
+        if self.use_teacher_api or self._is_self_distillation or self._teacher_use_disable_adapter:
+            return
+        args = self.args
+        vp_size = getattr(args, 'virtual_pipeline_model_parallel_size', None)
+        assert vp_size is None or vp_size == 1, 'Teacher distillation does not support VPP.'
+        self.teacher_hf_config = AutoConfig.from_pretrained(args.teacher_model_dir, trust_remote_code=True)
+        self.teacher_models = get_mcore_model(args, self.teacher_hf_config)
+        self.teacher_config = self.teacher_models[0].config
+        if not args.use_cpu_initialization:
+            for teacher_model in self.teacher_models:
+                teacher_model.cuda(torch.cuda.current_device())
+        for teacher_model in self.teacher_models:
+            teacher_model.requires_grad_(False)
+            teacher_model.eval()
+        self.teacher_config.bridge.load_weights(self.teacher_models, args.teacher_model_dir)
+        if self.offload_teacher_model:
+            self._offload_teacher_models()
+            logger.info('Teacher models offloaded to CPU to save GPU memory')
+
+    def _offload_teacher_models(self) -> None:
+        if self.teacher_models and not self.use_teacher_api:
+            offload_megatron_model_to_cpu(self.teacher_models)
+
+    def _load_teacher_models_to_gpu(self) -> None:
+        if self.teacher_models and not self.use_teacher_api:
+            load_megatron_model_to_gpu(self.teacher_models, load_grad=False)
+
+    @contextmanager
+    def load_teacher_model_context(self):
+        """Load the teacher to GPU for a forward and offload after (when offloading is on)."""
+        if not self.offload_teacher_model or self.teacher_models is None:
+            yield
+            return
+        self._load_teacher_models_to_gpu()
+        try:
+            yield
+        finally:
+            self._offload_teacher_models()
+
+    def _gather_teacher_requests(self, requests: List[RolloutInferRequest]) -> Dict[str, Any]:
+        """Phase 1 (all ranks, collective): gather this teacher's rollout-group-rank-0 requests.
+
+        Only rollout-group rank 0 contributes (others hold TP/PP/CP replicas of the same data);
+        contributions are tagged with ``dp_rank`` so segments order by DP rank regardless of world
+        layout or empty (zero-routed) subsets. Returns a handle with the per-DP-rank segments (for
+        the main-process infer) plus this DP rank's offset/length (for the later slice). The offset
+        is the prefix sum of preceding DP ranks' lengths, not ``dp_rank * n``: under multi-teacher
+        routing each DP rank's subset may differ in length, so equal-length slicing misaligns.
+        """
+        rollout_group = self._get_rollout_group()
+        rollout_rank = torch.distributed.get_rank(group=rollout_group)
+        dp_rank = mpu.get_data_parallel_rank()
+        contribution = (dp_rank, list(requests)) if rollout_rank == 0 else None
+
+        world_size = torch.distributed.get_world_size()
+        all_contributions = [None] * world_size
+        torch.distributed.all_gather_object(all_contributions, contribution)
+
+        segments_by_dp = {dp: reqs for c in all_contributions if c is not None for dp, reqs in [c]}
+        dp_ranks_sorted = sorted(segments_by_dp)
+        offset = sum(len(segments_by_dp[dp]) for dp in dp_ranks_sorted if dp < dp_rank)
+        flat_global = [req for dp in dp_ranks_sorted for req in segments_by_dp[dp]]
+        return {'flat_global': flat_global, 'offset': offset, 'n_local': len(requests)}
+
+    def _infer_teacher_requests(self, handle: Dict[str, Any], topk: int, teacher_client: Optional[Any] = None):
+        """Phase 2 (main process only, no collective): run the teacher HTTP infer.
+
+        Safe to call concurrently across teachers (distinct clients, no collective inside).
+        """
+        if not handle['flat_global']:  # no sample routed to this teacher: skip the empty HTTP call
+            return []
+        client = teacher_client if teacher_client is not None else self.teacher_clients[0]
+        request_config = RequestConfig(prompt_logprobs=topk, max_tokens=1, temperature=0.0)
+        responses = client.infer(handle['flat_global'], request_config=request_config, use_tqdm=False)
+        return [parse_prompt_logprobs(r, topk=topk) for r in responses]
+
+    def _scatter_teacher_parsed(self, handle: Dict[str, Any], parsed_global):
+        """Phase 3 (all ranks, collective): broadcast the parsed result and slice this rank's part."""
+        world_size = torch.distributed.get_world_size()
+        obj_list = [parsed_global]
+        torch.distributed.broadcast_object_list(obj_list, src=world_size - 1)
+        parsed_global = obj_list[0]
+        offset, n = handle['offset'], handle['n_local']
+        return parsed_global[offset:offset + n]
+
+    def _fetch_teacher_parsed_logprobs(self,
+                                       requests: List[RolloutInferRequest],
+                                       topk: int,
+                                       teacher_client: Optional[Any] = None):
+        """Combined gather→infer→broadcast for a single teacher (serial); returns this rank's slice."""
+        handle = self._gather_teacher_requests(requests)
+        parsed_global = self._infer_teacher_requests(handle, topk, teacher_client) \
+            if self.is_main_process else None
+        return self._scatter_teacher_parsed(handle, parsed_global)
 
     def _get_local_rollout_batch(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
         """Split batch within rollout group for distributed vLLM generation.
