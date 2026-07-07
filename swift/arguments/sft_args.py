@@ -275,7 +275,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             if self.deepspeed_autotp_size is not None:
                 assert self.deepspeed is not None, (
                     'To use `deepspeed_autotp_size`, you need to additionally set the `--deepspeed` argument.')
-                self.deepspeed['tensor_parallel'] = {'autotp_size': self.deepspeed_autotp_size}
+                self.deepspeed['tensor_parallel']['autotp_size'] = self.deepspeed_autotp_size
                 self.deepspeed['zero_optimization']['gather_16bit_weights_on_model_save'] = True
             if 'deepspeed_elastic' in set(getattr(self, 'callbacks', []) or []):
                 prepare_deepspeed_elastic_config(self)
