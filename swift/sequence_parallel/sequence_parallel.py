@@ -3,7 +3,7 @@ import inspect
 import math
 import torch
 import torch.distributed as dist
-from functools import partial
+from functools import lru_cache, partial
 from torch.distributed import init_device_mesh
 from transformers import PreTrainedTokenizer
 from types import SimpleNamespace
@@ -14,19 +14,23 @@ from .ulysses import DistributedAttention
 from .zigzag_ring_attn import zigzag_ring_flash_attn_varlen_func
 
 
-def has_signature_parameter(fn, parameter: str) -> bool:
+@lru_cache(maxsize=None)
+def get_signature_parameters(fn):
     try:
-        return parameter in inspect.signature(fn).parameters
+        return inspect.signature(fn).parameters
     except (TypeError, ValueError):
-        return False
+        return None
+
+
+def has_signature_parameter(fn, parameter: str) -> bool:
+    parameters = get_signature_parameters(fn)
+    return parameters is not None and parameter in parameters
 
 
 def call_with_supported_kwargs(fn, *args, **kwargs):
-    try:
-        signature = inspect.signature(fn)
-    except (TypeError, ValueError):
+    parameters = get_signature_parameters(fn)
+    if parameters is None:
         return fn(*args, **kwargs)
-    parameters = signature.parameters
     if not any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()):
         kwargs = {key: value for key, value in kwargs.items() if key in parameters}
     return fn(*args, **kwargs)
