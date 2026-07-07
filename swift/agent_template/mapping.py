@@ -6,7 +6,7 @@ from .gemma4 import Gemma4AgentTemplate
 from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTemplate, GLM4AgentTemplate,
                    GLM5_1AgentTemplate)
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
-from .hy_v3 import HyV3AgentTemplate
+from .hy_v3 import HyV3AgentTemplate, HyV3PreviewAgentTemplate
 from .kimi_k25 import KimiK25AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minicpm5 import MiniCPM5AgentTemplate

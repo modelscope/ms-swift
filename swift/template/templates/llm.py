@@ -337,7 +337,8 @@ register_template(
         agent_template='hunyuan_hermes'))
 
 
-class HyV3Template(Template):
+class HyV3PreviewTemplate(Template):
+    HYTK = ''
 
     def init_env_args(self):
         super().init_env_args()
@@ -363,11 +364,12 @@ class HyV3Template(Template):
         if inputs.tools:
             # For tool calls, append reasoning_mode after </tool_calls> in the tool instruction
             system = system.replace(
-                'you should print </tool_calls>',
-                f'you should print </tool_calls><｜reasoning_mode｜>reasoning_effort:{reasoning_effort}')
+                f'you should print </tool_calls{self.HYTK}>',
+                f'you should print </tool_calls{self.HYTK}><｜reasoning_mode{self.HYTK}｜>'
+                f'reasoning_effort:{reasoning_effort}')
         else:
             # For non-tool calls, append reasoning_mode to the system/prefix area
-            mode_str = f'<｜reasoning_mode｜>reasoning_effort:{reasoning_effort}'
+            mode_str = f'<｜reasoning_mode{self.HYTK}｜>reasoning_effort:{reasoning_effort}'
             system = (system or '') + mode_str
         return system
 
@@ -380,12 +382,17 @@ register_template(
         prompt=['<｜hy_User｜>{{QUERY}}<｜hy_Assistant｜>'],
         chat_sep=['<｜hy_eos｜>'],
         suffix=['<｜hy_eos｜>'],
-        template_cls=HyV3Template,
+        template_cls=HyV3PreviewTemplate,
         is_thinking=True,
         thinking_prefix='<think>',
         non_thinking_prefix='<think></think>',
         history_thinking_prefix='<think></think>',
         agent_template='hy_v3'))
+
+
+class HyV3Template(HyV3PreviewTemplate):
+    HYTK = ':opensource'
+
 
 register_template(
     TemplateMeta(
