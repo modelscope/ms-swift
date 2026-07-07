@@ -1,11 +1,10 @@
-# 2 * 73GiB, multi-turn GKD with math_tip_trick scheduler
-CUDA_VISIBLE_DEVICES=0,1 \
-NPROC_PER_NODE=2 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
+NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
 megatron rlhf \
     --rlhf_type gkd \
-    --model Qwen/Qwen3.5-0.8B \
-    --teacher_model Qwen/Qwen3.5-2B \
+    --model Qwen/Qwen3.5-2B \
+    --teacher_model Qwen/Qwen3.5-4B \
     --tuner_type lora \
     --dataset 'AI-ModelScope/NuminaMath-TIR#2000' \
     --tensor_model_parallel_size 2 \
@@ -33,8 +32,14 @@ megatron rlhf \
     --no_save_optim \
     --no_save_rng \
     --enable_thinking false \
+    --loss_scale last_round \
     --multi_turn_scheduler math_tip_trick \
     --max_turns 2 \
     --truncation_strategy delete \
     --padding_free true \
-    --sequence_parallel true
+    --sequence_parallel true \
+    --output_dir output \
+    --save_steps 200 \
+    --save_total_limit 2 \
+    --vllm_server_pass_dataset true \
+    --remove_unused_columns false

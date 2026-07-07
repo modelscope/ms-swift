@@ -1,27 +1,25 @@
-# 1 * 73GiB, multi-turn GKD with math_tip_trick scheduler
-NPROC_PER_NODE=1 \
+NPROC_PER_NODE=4 \
 PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True' \
-CUDA_VISIBLE_DEVICES=0 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 swift rlhf \
     --rlhf_type gkd \
-    --model Qwen/Qwen3.5-0.8B \
-    --teacher_model Qwen/Qwen3.5-2B \
+    --model Qwen/Qwen3.5-2B \
+    --teacher_model Qwen/Qwen3.5-9B \
     --tuner_type lora \
-    --dataset 'AI-ModelScope/NuminaMath-TIR#2000' \
+    --dataset 'AI-ModelScope/NuminaMath-TIR#5000' \
     --lmbda 1 \
     --beta 0.5 \
     --temperature 1.0 \
     --torch_dtype bfloat16 \
     --max_steps 200 \
     --per_device_train_batch_size 4 \
-    --per_device_eval_batch_size 4 \
-    --learning_rate 1e-5 \
-    --gradient_accumulation_steps 4 \
+    --learning_rate 5e-6 \
+    --gradient_accumulation_steps 1 \
     --save_steps 200 \
     --save_total_limit 1 \
     --logging_steps 5 \
-    --max_length 2048 \
-    --max_completion_length 1024 \
+    --max_length 4096 \
+    --max_completion_length 2048 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --save_only_model true \
@@ -33,9 +31,11 @@ swift rlhf \
     --use_vllm true \
     --vllm_mode colocate \
     --vllm_gpu_memory_utilization 0.3 \
-    --vllm_max_model_len 4096 \
+    --vllm_max_model_len 8192 \
     --sleep_level 1 \
     --enable_thinking false \
+    --loss_scale last_round \
     --multi_turn_scheduler math_tip_trick \
     --max_turns 2 \
-    --truncation_strategy delete
+    --truncation_strategy delete \
+    --log_completions true
