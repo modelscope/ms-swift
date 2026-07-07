@@ -1,11 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import megatron.core
+import os
 from dataclasses import dataclass
 from megatron.core import mpu
 from megatron.core.enums import ModelType
-from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec,
+from megatron.core.models.gpt.gpt_layer_specs import (get_gpt_decoder_block_spec, get_gpt_layer_local_spec,
                                                       get_gpt_layer_with_transformer_engine_spec,
                                                       get_gpt_mtp_block_spec)
+from megatron.core.transformer.dot_product_attention import DotProductAttention
 from packaging import version
 from torch import nn
 from typing import TYPE_CHECKING, List, Optional, Type, Union
@@ -22,6 +24,36 @@ if TYPE_CHECKING:
 
 MEGATRON_MODEL_MAPPING = {}
 logger = get_logger()
+
+
+def _disable_transformer_engine_for_alignment() -> bool:
+    """Return whether alignment-mode model construction should avoid TE specs.
+
+    Fleet does not use TransformerEngine.  Keep the default ms-swift behavior
+    unchanged, but allow repro/alignment probes to force local Megatron-Core
+    module specs through an explicit environment switch.
+    """
+
+    return os.environ.get('SWIFT_MEGATRON_NO_TE', '').lower() in {'1', 'true', 'yes', 'on'}
+
+
+class _NoTEMLADotProductAttention(DotProductAttention):
+    """Compatibility wrapper for MLA local/no-TE attention spec.
+
+    MCore MLA builders pass TE-style ``k_channels``/``v_channels`` keyword
+    arguments into the core attention module.  The local DotProductAttention in
+    this pinned Megatron-Core does not accept those kwargs.  For MLA, q/k and v
+    head dimensions may differ, so keep the TE semantics by overriding the final
+    context flatten size with ``v_channels * heads_per_partition`` while using
+    the caller-provided ``softmax_scale`` for q/k score scaling.
+    """
+
+    def __init__(self, *args, k_channels=None, v_channels=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if k_channels is not None:
+            self.hidden_size_per_attention_head = k_channels
+        if v_channels is not None:
+            self.hidden_size_per_partition = self.num_attention_heads_per_partition * v_channels
 
 
 @dataclass
@@ -74,6 +106,15 @@ class MegatronModelLoader:
         self.args = args
         self.hf_config = hf_config
         self.config = get_mcore_model_config(args, hf_config)
+        if _disable_transformer_engine_for_alignment():
+            # MCore's local WrappedTorchNorm rejects TE/Apex-style persistent
+            # layernorm.  Disable it only for explicit no-TE alignment probes.
+            self.config.persist_layer_norm = False
+            # Local no-TE MoE with grouped_gemm=True selects GroupedMLP, which
+            # requires the external grouped_gemm package.  Fleet alignment should
+            # first establish a pure local/SequentialMLP reference.
+            self.config.moe_grouped_gemm = False
+            self.args.moe_grouped_gemm = False
         self.mcore_013 = version.parse(megatron.core.__version__) >= version.parse('0.13.0rc0')
         if self.model_cls is None:
             self.model_cls = MultimodalGPTModel if self.args.is_multimodal else GPTModel
@@ -92,29 +133,55 @@ class MegatronModelLoader:
             dsa_spec.submodules.linear_kv_up_proj = linear_q_up_proj
         layer_spec.submodules.self_attention = dsa_spec
 
+    def _patch_no_te_mla_spec(self, transformer_layer_spec):
+        if not (_disable_transformer_engine_for_alignment() and self.config.multi_latent_attention):
+            return transformer_layer_spec
+        layer_specs = getattr(transformer_layer_spec, 'layer_specs', None)
+        if layer_specs is None:
+            layer_specs = [transformer_layer_spec]
+        for layer_spec in layer_specs:
+            self_attn = getattr(getattr(layer_spec, 'submodules', None), 'self_attention', None)
+            self_attn_submodules = getattr(self_attn, 'submodules', None)
+            if self_attn_submodules is not None and hasattr(self_attn_submodules, 'core_attention'):
+                self_attn_submodules.core_attention = _NoTEMLADotProductAttention
+        return transformer_layer_spec
+
     def get_transformer_layer_spec(self, vp_stage: Optional[int] = None):
         if self.config.num_moe_experts:
             kwargs = {'qk_l2_norm': self.config.qk_l2_norm, 'vp_stage': vp_stage} if self.mcore_013 else {}
             transformer_layer_spec = get_gpt_decoder_block_spec(
-                self.config, use_transformer_engine=True, normalization=self.config.normalization, **kwargs)
+                self.config,
+                use_transformer_engine=not _disable_transformer_engine_for_alignment(),
+                normalization=self.config.normalization,
+                **kwargs)
             if self.config.experimental_attention_variant == 'dsa':
                 for layer_spec in transformer_layer_spec.layer_specs:
                     self._replace_spec_dsa(layer_spec)
         else:
             transformer_layer_spec = self._get_transformer_layer_spec()
-        return transformer_layer_spec
+        return self._patch_no_te_mla_spec(transformer_layer_spec)
 
     def _get_transformer_layer_spec(self):
         config = self.config
         kwargs = {'qk_l2_norm': config.qk_l2_norm} if self.mcore_013 else {}
-        transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
-            config.num_moe_experts,
-            self.args.moe_grouped_gemm,
-            config.qk_layernorm,
-            config.multi_latent_attention,
-            **kwargs,
-        )
-        return transformer_layer_spec
+        if _disable_transformer_engine_for_alignment():
+            transformer_layer_spec = get_gpt_layer_local_spec(
+                config.num_moe_experts,
+                self.args.moe_grouped_gemm,
+                config.qk_layernorm,
+                config.multi_latent_attention,
+                normalization=config.normalization,
+                **kwargs,
+            )
+        else:
+            transformer_layer_spec = get_gpt_layer_with_transformer_engine_spec(
+                config.num_moe_experts,
+                self.args.moe_grouped_gemm,
+                config.qk_layernorm,
+                config.multi_latent_attention,
+                **kwargs,
+            )
+        return self._patch_no_te_mla_spec(transformer_layer_spec)
 
     def get_mtp_block_spec(self, transformer_layer_spec, vp_stage: Optional[int] = None):
         if hasattr(transformer_layer_spec, 'layer_specs') and len(transformer_layer_spec.layer_specs) == 0:
@@ -126,7 +193,10 @@ class MegatronModelLoader:
             transformer_layer_spec_for_mtp = transformer_layer_spec
         kwargs = {'vp_stage': vp_stage} if self.mcore_013 else {}
         return get_gpt_mtp_block_spec(
-            self.config, transformer_layer_spec_for_mtp, use_transformer_engine=True, **kwargs)
+            self.config,
+            transformer_layer_spec_for_mtp,
+            use_transformer_engine=not _disable_transformer_engine_for_alignment(),
+            **kwargs)
 
     def _set_shared_expert_gate(self, transformer_layer_spec):
         mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')

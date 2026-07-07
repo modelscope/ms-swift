@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import math
 import megatron.core
+import os
 import re
 import torch
 import torch.distributed as dist
@@ -230,11 +231,49 @@ class GPTBridge:
                     del param.get_high_precision_init_val
             else:
                 if hf_scale_inv is not None:
-                    fp8_tensor = self.fp8_quantizer.make_empty(tensor.shape)
-                    fp8_tensor._rowwise_data.copy_(tensor.view(torch.uint8))
-                    self._copy_scale_inv(fp8_tensor, hf_scale_inv[i])
-                    tensor = fp8_tensor
+                    if self._use_no_te_fp8_dequant() and self._is_float8_e4m3fn_tensor(tensor):
+                        tensor = self._dequant_fp8_blockwise_to_dtype(tensor, hf_scale_inv[i], param.dtype)
+                    else:
+                        fp8_tensor = self.fp8_quantizer.make_empty(tensor.shape)
+                        fp8_tensor._rowwise_data.copy_(tensor.view(torch.uint8))
+                        self._copy_scale_inv(fp8_tensor, hf_scale_inv[i])
+                        tensor = fp8_tensor
                 param.data.copy_(tensor)
+
+    @staticmethod
+    def _use_no_te_fp8_dequant():
+        return os.environ.get('SWIFT_MEGATRON_NO_TE', '').lower() in {'1', 'true', 'yes', 'on'}
+
+    @staticmethod
+    def _is_float8_e4m3fn_tensor(tensor: torch.Tensor) -> bool:
+        float8_e4m3fn = getattr(torch, 'float8_e4m3fn', None)
+        return float8_e4m3fn is not None and tensor.dtype is float8_e4m3fn
+
+    @classmethod
+    def _dequant_fp8_blockwise_to_dtype(cls, tensor: torch.Tensor, scale_inv: torch.Tensor,
+                                        target_dtype: torch.dtype) -> torch.Tensor:
+        """Dequantize Kimi blockwise FP8 weights to a regular dense tensor.
+
+        Kimi-K2 FP8 checkpoints store float8_e4m3fn weights plus float32
+        `<weight>_scale_inv` tensors with one scale per 128x128 block.  The
+        no-TE alignment route builds ordinary BF16 MCore parameters, so avoid
+        constructing TransformerEngine Float8BlockwiseQTensor objects here.
+        """
+        block = cls.fp8_block_size
+        if tensor.ndim < 2:
+            raise ValueError(f'FP8 blockwise tensor must be at least 2D, got shape={tuple(tensor.shape)}')
+        out_dim, in_dim = tensor.shape[-2:]
+        if out_dim % block != 0 or in_dim % block != 0:
+            raise ValueError(f'FP8 blockwise tensor shape must be multiples of {block}, got {tuple(tensor.shape)}')
+        expected_scale_shape = (*tensor.shape[:-2], out_dim // block, in_dim // block)
+        if tuple(scale_inv.shape) != expected_scale_shape:
+            raise ValueError(
+                f'FP8 scale_inv shape mismatch for tensor {tuple(tensor.shape)}: '
+                f'expected {expected_scale_shape}, got {tuple(scale_inv.shape)}')
+        view_shape = (*tensor.shape[:-2], out_dim // block, block, in_dim // block, block)
+        scale_shape = (*tensor.shape[:-2], out_dim // block, 1, in_dim // block, 1)
+        dequant = tensor.float().reshape(view_shape) * scale_inv.float().reshape(scale_shape)
+        return dequant.reshape(tensor.shape).to(target_dtype)
 
     @staticmethod
     def _copy_scale_inv(tensor, scale_inv):
