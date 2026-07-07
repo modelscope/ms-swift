@@ -74,6 +74,9 @@ class GKDTrainer(BaseRayTrainer):
                 raise ValueError(f'Unknown multi_turn_scheduler: {scheduler_cfg!r}; '
                                  f'available: {list(multi_turns)}')
             scheduler_kwargs = {'max_turns': self._max_turns}
+            tokenizer = getattr(getattr(self, 'template', None), 'tokenizer', None)
+            if tokenizer is not None:
+                scheduler_kwargs['tokenizer'] = tokenizer
             gym_env = getattr(args, 'gym_env', None)
             if gym_env is not None:
                 scheduler_kwargs['gym_env'] = gym_env
