@@ -192,7 +192,7 @@ Tips:
 --pipeline_model_parallel_size 8 \
 --pipeline_model_parallel_layout Et*5|t*5|t*6|t*6|t*6|t*5|t*5|t*5mL \
 ```
-- Packing/CP support: Requires installing the mcore-bridge/ms-swift main branch. Refer to these two PRs: [ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705), [mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140). To use CP, you need to set the following additionally (must be used together with packing `--packing true`):
+- Packing/CP support: Requires installing the mcore-bridge/ms-swift main branch. Refer to these two PRs: [ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705), [mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140). To use CP, you need to set the following additionally (must be used together with packing `--packing true`, and note the merge of this PR [megatron-core#5706](https://github.com/NVIDIA/Megatron-LM/pull/5706)):
 
 ```
 --sequence_packing_scheduler dp_balanced \
