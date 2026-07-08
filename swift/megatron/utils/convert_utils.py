@@ -232,7 +232,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
 
     template.use_megatron = True
     inputs = [
-        template.encode(get_examples(test_mm_type), return_length=True) for _ in range(2 if args.padding_free else 1)
+        template.encode(get_examples(test_mm_type), return_length=True) for _ in range(16 if args.padding_free else 1)
     ]
     mg_inputs = to_device(template.data_collator(inputs, padding_to=get_padding_to(args)), 'cuda')
     mg_model.eval()
@@ -241,7 +241,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
     if text_position_ids is None:
         text_position_ids = mg_inputs.get('position_ids')
     if args.padding_free:
-        mg_inputs['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+        mg_inputs['packed_seq_params'] = get_packed_seq_params(args, text_position_ids)
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
     for key in ['labels', 'seq_lens', 'attention_mask_2d']:
