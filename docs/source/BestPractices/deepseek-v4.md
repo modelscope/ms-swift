@@ -11,7 +11,7 @@ pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
 
 # Megatron-LM在以下commit hash下进行测试
-# pip install git+https://github.com/NVIDIA/Megatron-LM.git@9af7c7937b6123bb0b22be4d8eb28a8ebf407d7d
+# pip install git+https://github.com/NVIDIA/Megatron-LM.git@c6449f0b23be397449f21c0967c5fc90785e55ea
 ```
 
 ## 精度对齐
@@ -192,7 +192,12 @@ megatron sft \
 --pipeline_model_parallel_size 8 \
 --pipeline_model_parallel_layout Et*5|t*5|t*6|t*6|t*6|t*5|t*5|t*5mL \
 ```
-- 暂时不支持`padding_free`和`packing`，但可以通过`group_by_length`加速。暂时不支持TP，待Megatron-Core支持。
+- Packing/CP的支持：需安装mcore-bridge/ms-swift main分支。参考这两个PR：[ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705)、[mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140)。若要使用CP，你需要额外设置（需结合packing一起使用`--packing true`）：
+```
+--sequence_packing_scheduler dp_balanced \
+--cp_partition_mode contiguous \
+```
+- 暂时不支持TP，待Megatron-Core支持。
 - FP8训练：你可以设置以下参数开启FP8训练，并最终将权重保存成FP8权重。推荐使用全参数训练。如果要使用LoRA + FP8，你需要只保存LoRA权重（设置`--merge_lora false`），并使用BF16权重进行Merge-LoRA（FP8 精度有限，LoRA delta 会被舍入为 0）。参考[这个例子](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/fp8/lora.sh)。
 ```
 --fp8_recipe blockwise \
