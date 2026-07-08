@@ -611,6 +611,7 @@ class Qwen3_5Template(Qwen3VLTemplate):
         # Must run BEFORE super(), because super() merges/wraps tool messages into
         # `<tool_response>...</tool_response>` blobs using the raw inner content.
         # See: https://github.com/modelscope/ms-swift/issues/9276
+        super()._swift_prepare_inputs(inputs)
         if isinstance(inputs.system, str):
             inputs.system = inputs.system.strip()
         for message in inputs.messages:
@@ -631,7 +632,6 @@ class Qwen3_5Template(Qwen3VLTemplate):
                     message['content'] = f'<think>\n{reasoning}\n</think>\n\n{rest}'
                 else:
                     message['content'] = stripped
-        super()._swift_prepare_inputs(inputs)
 
 
 register_template(
