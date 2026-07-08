@@ -35,7 +35,7 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
                                        set_expandable_segments, vllm_supports_lora_load_inplace)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
-from swift.rollout import invoke_async_hook, run_multi_turn
+from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
                          synchronize, to_device)
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
@@ -350,6 +350,8 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         self.base_sync_done = False
         self._cached_vllm_param_names = None
 
+        self._prepare_scheduler()
+
         if not args.use_vllm:
             return
 
@@ -390,6 +392,28 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
                 set_expandable_segments(True)
         else:
             raise ValueError(f'Invalid vllm_mode: {self.vllm_mode}')
+
+    def _prepare_scheduler(self):
+        """Prepare multi-turn scheduler (shared by GRPO and GKD)."""
+        args = self.args
+
+        self.multi_turn_scheduler = None
+        if not hasattr(args, 'multi_turn_scheduler'):
+            return
+
+        if args.multi_turn_scheduler:
+            tokenizer = getattr(self, 'processing_class', None) or getattr(self.template, 'tokenizer', None)
+            if isinstance(args.multi_turn_scheduler, str):
+                assert args.multi_turn_scheduler in multi_turns
+                scheduler_kwargs = {'max_turns': args.max_turns, 'tokenizer': tokenizer}
+                gym_env = getattr(args, 'gym_env', None)
+                if gym_env is not None:
+                    scheduler_kwargs['gym_env'] = gym_env
+                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](**scheduler_kwargs)
+                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
+            else:
+                assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
+                self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
 
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode."""

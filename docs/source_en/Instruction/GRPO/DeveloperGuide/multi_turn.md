@@ -4,6 +4,8 @@ In reinforcement-learning scenarios, the model may need to interact with the env
 This interactive training requires the model to carry out continuous reasoning based on the feedback from the environment.
 This document explains in detail how to customise the multi-turn training workflow in GRPO training.
 
+> GKD also supports multi-turn training, sharing the same `MultiTurnScheduler` infrastructure as GRPO.
+
 The figure below shows a typical multi-turn training process, where the model may perform several rollout rounds that include environment interaction, tool calls, and so on:
 
 ![Multi-turn example](../../../../resources/grpo_multi_turn.png)

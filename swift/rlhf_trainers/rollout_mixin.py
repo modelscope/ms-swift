@@ -1492,7 +1492,6 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         self.multi_turn_scheduler = None
         if not hasattr(args, 'multi_turn_scheduler'):
-            # only GRPO support it now
             return
 
         if args.multi_turn_scheduler:
