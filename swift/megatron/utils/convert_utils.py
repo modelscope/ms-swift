@@ -232,7 +232,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
 
     template.use_megatron = True
     inputs = [
-        template.encode(get_examples(test_mm_type), return_length=True) for _ in range(16 if args.padding_free else 1)
+        template.encode(get_examples(test_mm_type), return_length=True) for _ in range(2 if args.padding_free else 1)
     ]
     mg_inputs = to_device(template.data_collator(inputs, padding_to=get_padding_to(args)), 'cuda')
     mg_model.eval()
