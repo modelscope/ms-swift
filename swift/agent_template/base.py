@@ -153,6 +153,21 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
     - `get_toolcall`: Extract tool calls from agent responses
     """
 
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        """Hook to prepend a separator before tool_call content based on the preceding message.
+
+        Subclasses can override this to match their jinja template's separator logic
+        (e.g., Qwen3.5/3.6 inserts '\n\n' when assistant has effective content before tool_calls).
+
+        Args:
+            tool_content: The formatted tool_call string from _format_tool_calls.
+            pre_message: The message immediately before the tool_call block, or None.
+
+        Returns:
+            tool_content with any necessary prefix prepended.
+        """
+        return tool_content
+
     @staticmethod
     def _get_tool_name(tool):
         return tool.get('name_for_model') or tool.get('name')

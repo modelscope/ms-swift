@@ -341,6 +341,8 @@ class Template(ProcessorMixin):
                     i += 1
                 tool_call_msgs = messages[i_start:i + 1]
                 tool_content = agent_template._format_tool_calls(tool_call_msgs)
+                pre_message = messages[i_start - 1] if i_start > 0 else None
+                tool_content = agent_template._add_tool_call_prefix(tool_content, pre_message)
                 merged_message = {'role': 'assistant', 'content': tool_content}
                 # Preserve loss/loss_scale fields from the first tool_call message.
                 for msg in tool_call_msgs:
@@ -366,7 +368,6 @@ class Template(ProcessorMixin):
         inputs: StdTemplateInputs,
     ) -> None:
         self._preprocess_tools(inputs)
-        self._preprocess_tool_call(inputs)
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
@@ -1236,6 +1237,7 @@ class Template(ProcessorMixin):
         Returns:
             None. The input messages list is updated in-place.
         """
+        self._preprocess_tool_call(inputs)
         messages = inputs.messages
         if len(messages) < 2:
             return
