@@ -274,9 +274,15 @@ swift rlhf \
 
 When `lmbda > 0`, the student must generate sequences online. Use vLLM to accelerate sampling (colocate / server modes, same as GRPO). See [GRPO documentation](./GRPO/GetStarted/GRPO.md#cluster-support).
 
+**Multi-turn GKD**
+
+GKD supports multi-turn training, sharing the same `MultiTurnScheduler` infrastructure as GRPO.
+For the full scheduler interface and customisation, see the [GRPO multi-turn documentation](./GRPO/DeveloperGuide/multi_turn.md).
+
 **Reference scripts**
 
 - Basic training: [examples/train/rlhf/gkd/](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/)
+- Multi-turn training: [examples/train/rlhf/gkd/multi_turn.sh](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd/multi_turn.sh)
 - Multimodal: [examples/train/multimodal/rlhf/gkd/](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf/gkd/)
 - Megatron: [examples/megatron/rlhf/gkd/](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/)
 
