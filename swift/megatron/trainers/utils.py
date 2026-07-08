@@ -394,7 +394,7 @@ def prepare_batch(args, data, vp_stage=None):
     else:
         batch.pop('attention_mask_2d', None)
     if args.padding_free and text_position_ids is not None:
-        batch['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+        batch['packed_seq_params'] = get_packed_seq_params(args, text_position_ids)
         if seq_lens is not None:
             batch['packed_seq_params'].seq_lens = torch.tensor(seq_lens, device=text_position_ids.device)
         if num_samples is not None:

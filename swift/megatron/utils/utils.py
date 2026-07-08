@@ -224,14 +224,17 @@ def get_padding_to(args):
     return padding_to
 
 
-def get_packed_seq_params(position_ids: torch.Tensor) -> PackedSeqParams:
+def get_packed_seq_params(args, position_ids: torch.Tensor) -> PackedSeqParams:
     params = _get_packed_seq_params(position_ids)
     packed = PackedSeqParams(
         cu_seqlens_q=params['cu_seq_lens_q'],
         cu_seqlens_kv=params['cu_seq_lens_k'],
         max_seqlen_q=params['max_length_q'],
         max_seqlen_kv=params['max_length_k'],
-        qkv_format='thd')
+        qkv_format='thd',
+    )
+    if hasattr(packed, 'cp_partition_mode'):
+        packed.cp_partition_mode = args.cp_partition_mode
 
     if is_torch_npu_available():
         packed.cu_seqlens_q_padded = params['cu_seq_lens_q']

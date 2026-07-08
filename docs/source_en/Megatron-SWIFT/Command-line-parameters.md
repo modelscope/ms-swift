@@ -159,6 +159,8 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - align_param_gather: When set to True, all PP stages will launch parameter all-gather operations simultaneously. Otherwise, each PP stage will launch independently as needed. Defaults to True.
 - 🔥sequence_parallel: Enables sequence parallel optimization; this option takes effect only when `tensor_model_parallel_size` is set. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
+- cp_partition_mode: How THD sequence rows are partitioned across context-parallel ranks.
+- sequence_packing_scheduler: Scheduler for sequence packing and dynamic context parallel. Optional values are "dp_balanced" and "default_dynamic_cp". dp_balanced: DP-balanced scheduler for sequence packing. default_dynamic_cp: Dynamic-CP scheduler for packed sequence balancing. Defaults to None.
 - tp_comm_overlap: Overlap tensor parallel communication with GEMM (General Matrix Multiplication) kernels (to reduce communication time). Default is False.
 - 🔥overlap_grad_reduce: Overlap grad reduction operations in DDP (to reduce DP communication time). Default is False.
 - 🔥overlap_param_gather: Overlap all-gather of parameters in the distributed optimizer (to reduce DP communication time). Default is False.
