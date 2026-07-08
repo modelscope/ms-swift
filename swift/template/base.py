@@ -368,7 +368,6 @@ class Template(ProcessorMixin):
         inputs: StdTemplateInputs,
     ) -> None:
         self._preprocess_tools(inputs)
-        self._preprocess_tool_call(inputs)
         if self.model_meta.is_multimodal:
             self._replace_image_tags(inputs)
             self._replace_start_image_tags(inputs)
@@ -1238,6 +1237,7 @@ class Template(ProcessorMixin):
         Returns:
             None. The input messages list is updated in-place.
         """
+        self._preprocess_tool_call(inputs)
         messages = inputs.messages
         if len(messages) < 2:
             return
