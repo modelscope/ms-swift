@@ -148,7 +148,7 @@ ChatCompletionResponseChoice(
 ```bash
 swift rollout \
     --model Qwen/Qwen3-1.7B \
-    --use_async_engine true \
+    --vllm_use_async_engine true \
     --multi_turn_scheduler thinking_tips_scheduler \
     --vllm_max_model_len 32768 \
     --vllm_gpu_memory_utilization 0.8 \
@@ -165,7 +165,7 @@ swift rollout \
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/asyncengine.png" width="400" />
 
-在 `rollout` 命令中使用参数 `use_async_engine` 来指定 engine 的种类（默认使用 async engine）：
+在 `rollout` 命令中使用参数 `vllm_use_async_engine` 来指定 engine 的种类（默认使用 async engine）：
 
 > 注意: async engine 仅在 server mode 下可用。
 
