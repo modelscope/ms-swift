@@ -1948,15 +1948,22 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs_by_request_id
 
     def _get_trajectory_inputs(self, samples: List[GRPOSample]) -> Dict[str, List[Dict]]:
-        if not samples:
-            return {}
+        """
+        Retrieve trajectory data corresponding to the request_ids present in the current samples.
 
+        This mirrors the pre-rl_core implementation: gather reward rows across processes,
+        keep only entries whose request_id exists in the local samples, then group them by request_id.
+        All ranks must participate in gather_object, even when the local sample list is empty.
+        """
         current_request_ids = {sample.request_id for sample in samples}
         local_inputs = [sample.to_reward_row() for sample in samples]
         total_inputs = gather_object(local_inputs)
-        filtered_total_inputs = [
-            input_data for input_data in total_inputs if input_data.get('request_id') in current_request_ids
-        ]
+        filtered_total_inputs = []
+        for rank_inputs in total_inputs:
+            candidate_inputs = [rank_inputs] if isinstance(rank_inputs, dict) else rank_inputs
+            for input_data in candidate_inputs:
+                if input_data.get('request_id') in current_request_ids:
+                    filtered_total_inputs.append(input_data)
         return self._group_inputs_by_request_id(filtered_total_inputs)
 
     def _get_last_indices(self, request_ids: List[str]) -> torch.Tensor:
