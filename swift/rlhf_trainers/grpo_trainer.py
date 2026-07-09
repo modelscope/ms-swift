@@ -1948,13 +1948,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return inputs_by_request_id
 
     def _get_trajectory_inputs(self, samples: List[GRPOSample]) -> Dict[str, List[Dict]]:
-        """
-        Retrieve trajectory data corresponding to the request_ids present in the current samples.
-
-        This mirrors the pre-rl_core implementation: gather reward rows across processes,
-        keep only entries whose request_id exists in the local samples, then group them by request_id.
-        All ranks must participate in gather_object, even when the local sample list is empty.
-        """
         current_request_ids = {sample.request_id for sample in samples}
         local_inputs = [sample.to_reward_row() for sample in samples]
         total_inputs = gather_object(local_inputs)
