@@ -382,9 +382,145 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
     visual_name = 'vision_model'
 
     @staticmethod
+    def _make_rswa_causal_mask(
+        seq_len: int,
+        prefill_len: int,
+        window_size: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        batch_size: int = 1,
+    ) -> torch.Tensor:
+        """
+        Constructing a 4D Attention Mask for R-SWA training.
+        shape: [batch_size, 1, seq_len, seq_len]
+
+        Rules: Position i can attend to:
+            1. prefill region [0, prefill_len) with causal constraint
+            2. sliding window [i-W+1, i] after prefill
+        """
+        min_val = torch.finfo(dtype).min
+
+        row = torch.arange(seq_len, device=device).unsqueeze(1)  # [seq, 1]
+        col = torch.arange(seq_len, device=device).unsqueeze(0)  # [1, seq]
+
+        causal      = col <= row
+        prefill_vis = (col < prefill_len) & causal
+        window_vis  = (col >= prefill_len) & (col > row - window_size) & causal
+
+        mask = torch.full((seq_len, seq_len), min_val, dtype=dtype, device=device)
+        mask[prefill_vis | window_vis] = 0
+
+        return mask.unsqueeze(0).unsqueeze(0).expand(
+            batch_size, -1, -1, -1
+        ).contiguous()
+
+    @staticmethod
+    def _apply_rswa_training_patch(model, ring_window: int):
+        """
+        Monkey patch UnlimitedOCRForCausalLM instance forward.
+        Replace attention_mask with R-SWA mask during training.
+        """
+        import types
+        import inspect
+        logger = get_logger()
+
+        _original_forward = model.__class__.forward
+        _make_mask        = UnlimitedOCRLoader._make_rswa_causal_mask
+        _CACHE_MAX        = 8
+        _mask_cache       = {}
+
+        _sig        = inspect.signature(_original_forward)
+        _param_list = list(_sig.parameters.keys())
+
+        _attn_mask_pos = (
+            _param_list.index('attention_mask') - 1
+            if 'attention_mask' in _param_list else None
+        )
+
+        def _get_arg(name, args, kwargs):
+            if name in kwargs:
+                return kwargs[name]
+            try:
+                idx = _param_list.index(name) - 1
+                if 0 <= idx < len(args):
+                    return args[idx]
+            except ValueError:
+                pass
+            return None
+
+        def _patched_forward(self, *args, **kwargs):
+            if not self.training:
+                return _original_forward(self, *args, **kwargs)
+
+            input_ids       = _get_arg('input_ids',       args, kwargs)
+            inputs_embeds   = _get_arg('inputs_embeds',   args, kwargs)
+            images_seq_mask = _get_arg('images_seq_mask', args, kwargs)
+
+            if input_ids is not None:
+                batch_size = input_ids.shape[0]
+                seq_len    = input_ids.shape[1]
+                device     = input_ids.device
+            elif inputs_embeds is not None:
+                batch_size = inputs_embeds.shape[0]
+                seq_len    = inputs_embeds.shape[1]
+                device     = inputs_embeds.device
+            else:
+                return _original_forward(self, *args, **kwargs)
+
+            prefill_len = 0
+            if images_seq_mask is not None:
+                all_prefill = []
+                for b in range(images_seq_mask.shape[0]):
+                    indices = torch.where(images_seq_mask[b])[0]
+                    if len(indices) > 0:
+                        all_prefill.append(int(indices[-1].item()) + 1)
+                prefill_len = max(all_prefill) if all_prefill else 0
+
+            if prefill_len == 0:
+                return _original_forward(self, *args, **kwargs)
+
+            dtype = next(self.parameters()).dtype
+
+            cache_key = (seq_len, prefill_len, batch_size, dtype, str(device))
+            if cache_key not in _mask_cache:
+                if len(_mask_cache) >= _CACHE_MAX:
+                    _mask_cache.pop(next(iter(_mask_cache)))
+                _mask_cache[cache_key] = _make_mask(
+                    seq_len=seq_len,
+                    prefill_len=prefill_len,
+                    window_size=ring_window,
+                    dtype=dtype,
+                    device=device,
+                    batch_size=batch_size,
+                )
+
+            rswa_mask = _mask_cache[cache_key]
+
+            if (
+                _attn_mask_pos is not None
+                and _attn_mask_pos < len(args)
+                and 'attention_mask' not in kwargs
+            ):
+                args = list(args)
+                args[_attn_mask_pos] = rswa_mask
+                args = tuple(args)
+            else:
+                kwargs['attention_mask'] = rswa_mask
+
+            return _original_forward(self, *args, **kwargs)
+
+        model.forward = types.MethodType(_patched_forward, model)
+        model._rswa_training_patched = True
+        logger.info(
+            '[UnlimitedOCR] R-SWA training mask patch applied: ring_window=%d',
+            ring_window
+        )
+
+    @staticmethod
     def _apply_multi_gpu_patch():
         """
-        Fixed two bugs affecting `UnlimitedOCRModel` in multi-GPU scenarios using `device_map='auto'`:
+        Fixed two bugs affecting `UnlimitedOCRModel` in multi-GPU scenarios
+        using `device_map='auto'`:
 
         Bug 1 - Device mismatch in `torch.cat`:
             `image_newline` and `view_seperator` are `nn.Parameter`s;
@@ -392,12 +528,14 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             with the image features.
 
         Bug 2 - Device mismatch in `masked_scatter_`:
-            Hard-coded `.cuda()` usage caused a conflict where `images_in_this_batch`
-            resided on the projector's device (e.g., `cuda:7`),
-            while `inputs_embeds` resided on the device hosting `embed_tokens` (e.g., `cuda:0`).
+            Hard-coded `.cuda()` usage caused a conflict where
+            `images_in_this_batch` resided on the projector's device (e.g., `cuda:7`),
+            while `inputs_embeds` resided on the device hosting `embed_tokens`
+            (e.g., `cuda:0`).
 
-        Fix strategy: Temporarily replace `torch.cat` and `torch.Tensor.masked_scatter_` during the forward pass
-        to handle device placement automatically, then restore the original methods after execution.
+        Fix strategy: Temporarily replace `torch.cat` and
+        `torch.Tensor.masked_scatter_` during the forward pass to handle device
+        placement automatically, then restore the original methods after execution.
         """
         modeling_module = None
         for mod_name, mod in sys.modules.items():
@@ -419,11 +557,11 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         _original_forward = UnlimitedOCRModel.forward
 
         def _patched_forward(self, *args, **kwargs):
-            _orig_cat = torch.cat
+            _orig_cat            = torch.cat
             _orig_masked_scatter_ = torch.Tensor.masked_scatter_
 
             def _safe_cat(tensors, dim=0, **cat_kwargs):
-                # Using the device of the first tensor as the reference, the others are aligned to it.
+                # Using the device of the first tensor as reference
                 ref_device = None
                 for t in tensors:
                     if isinstance(t, torch.Tensor):
@@ -432,12 +570,15 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
                 if ref_device is None:
                     return _orig_cat(tensors, dim, **cat_kwargs)
                 aligned = [
-                    t.to(ref_device) if isinstance(t, torch.Tensor) and t.device != ref_device else t for t in tensors
+                    t.to(ref_device)
+                    if isinstance(t, torch.Tensor) and t.device != ref_device
+                    else t
+                    for t in tensors
                 ]
                 return _orig_cat(aligned, dim, **cat_kwargs)
 
             def _safe_masked_scatter_(tensor_self, mask, source):
-                # Use the device of tensor_self (inputs_embeds[idx]) as the reference.
+                # Use the device of tensor_self as reference
                 dev = tensor_self.device
                 if mask.device != dev:
                     mask = mask.to(dev)
@@ -445,19 +586,19 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
                     source = source.to(dev)
                 return _orig_masked_scatter_(tensor_self, mask, source)
 
-            # Simultaneously replace the module namespace and the global scope (double insurance).
-            modeling_module.torch.cat = _safe_cat
-            torch.cat = _safe_cat
-            torch.Tensor.masked_scatter_ = _safe_masked_scatter_
+            # Replace in both module namespace and global scope
+            modeling_module.torch.cat       = _safe_cat
+            torch.cat                       = _safe_cat
+            torch.Tensor.masked_scatter_    = _safe_masked_scatter_
             try:
                 return _original_forward(self, *args, **kwargs)
             finally:
-                # Restore the state to avoid contaminating other modules.
-                modeling_module.torch.cat = _orig_cat
-                torch.cat = _orig_cat
-                torch.Tensor.masked_scatter_ = _orig_masked_scatter_
+                # Restore to avoid contaminating other modules
+                modeling_module.torch.cat       = _orig_cat
+                torch.cat                       = _orig_cat
+                torch.Tensor.masked_scatter_    = _orig_masked_scatter_
 
-        UnlimitedOCRModel.forward = _patched_forward
+        UnlimitedOCRModel.forward               = _patched_forward
         UnlimitedOCRModel._swift_multi_gpu_patched = True
         return True
 
@@ -477,12 +618,14 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             model.config._ring_window = _orig_sw
             model.config.sliding_window = None
             logger.info('[UnlimitedOCR] R-SWA enabled: ring_window=%d', _orig_sw)
+
+            UnlimitedOCRLoader._apply_rswa_training_patch(model, _orig_sw)
         else:
             logger.warning('[UnlimitedOCR] sliding_window config not found, R-SWA may not work.')
 
         n_devices = len(set(str(p.device) for p in model.parameters() if p.device.type == 'cuda'))
         if n_devices > 1:
-            if self._apply_multi_gpu_patch():
+            if UnlimitedOCRLoader._apply_multi_gpu_patch():
                 logger.info('[UnlimitedOCR] Multi-GPU patch applied (%d GPUs).', n_devices)
             else:
                 logger.warning('[UnlimitedOCR] Multi-GPU deployment failed to apply patch.'
