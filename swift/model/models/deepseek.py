@@ -1,6 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 import torch
+import types
+import inspect
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict
 
@@ -384,11 +386,10 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
     @staticmethod
     def _make_rswa_causal_mask(
         seq_len: int,
-        prefill_len: int,
+        prefill_lens: torch.Tensor,
         window_size: int,
         dtype: torch.dtype,
         device: torch.device,
-        batch_size: int = 1,
     ) -> torch.Tensor:
         """
         Constructing a 4D Attention Mask for R-SWA training.
@@ -397,22 +398,26 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         Rules: Position i can attend to:
             1. prefill region [0, prefill_len) with causal constraint
             2. sliding window [i-W+1, i] after prefill
+        Each batch item has its own prefill_len via prefill_lens: [batch_size].
         """
-        min_val = torch.finfo(dtype).min
+        min_val    = torch.finfo(dtype).min
+        batch_size = prefill_lens.shape[0]
 
-        row = torch.arange(seq_len, device=device).unsqueeze(1)  # [seq, 1]
-        col = torch.arange(seq_len, device=device).unsqueeze(0)  # [1, seq]
+        row = torch.arange(seq_len, device=device).view(1, seq_len, 1)  # [1, seq, 1]
+        col = torch.arange(seq_len, device=device).view(1, 1, seq_len)  # [1, 1, seq]
+        pl  = prefill_lens.view(batch_size, 1, 1)                       # [B, 1, 1]
 
         causal      = col <= row
-        prefill_vis = (col < prefill_len) & causal
-        window_vis  = (col >= prefill_len) & (col > row - window_size) & causal
+        prefill_vis = (col < pl) & causal
+        window_vis  = (col >= pl) & (col > row - window_size) & causal
 
-        mask = torch.full((seq_len, seq_len), min_val, dtype=dtype, device=device)
+        mask = torch.full(
+            (batch_size, seq_len, seq_len), min_val, dtype=dtype, device=device
+        )
         mask[prefill_vis | window_vis] = 0
 
-        return mask.unsqueeze(0).unsqueeze(0).expand(
-            batch_size, -1, -1, -1
-        ).contiguous()
+        return mask.unsqueeze(1)  # [batch_size, 1, seq_len, seq_len]
+
 
     @staticmethod
     def _apply_rswa_training_patch(model, ring_window: int):
@@ -420,8 +425,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         Monkey patch UnlimitedOCRForCausalLM instance forward.
         Replace attention_mask with R-SWA mask during training.
         """
-        import types
-        import inspect
         logger = get_logger()
 
         _original_forward = model.__class__.forward
@@ -467,31 +470,33 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             else:
                 return _original_forward(self, *args, **kwargs)
 
-            prefill_len = 0
+            # Vectorized per-sample prefill_len computation.
+            # images_seq_mask: [batch, seq_len] bool
+            # Multiply by 1-based position indices, then take max per sample
+            # to get the last image token position + 1.
             if images_seq_mask is not None:
-                all_prefill = []
-                for b in range(images_seq_mask.shape[0]):
-                    indices = torch.where(images_seq_mask[b])[0]
-                    if len(indices) > 0:
-                        all_prefill.append(int(indices[-1].item()) + 1)
-                prefill_len = max(all_prefill) if all_prefill else 0
+                seq_indices  = torch.arange(1, seq_len + 1, device=device).unsqueeze(0)
+                prefill_lens = (
+                    images_seq_mask.to(dtype=torch.long, device=device) * seq_indices
+                ).max(dim=1)[0]  # [batch_size]
+            else:
+                prefill_lens = torch.zeros(batch_size, dtype=torch.long, device=device)
 
-            if prefill_len == 0:
+            if prefill_lens.max().item() == 0:
                 return _original_forward(self, *args, **kwargs)
 
             dtype = next(self.parameters()).dtype
 
-            cache_key = (seq_len, prefill_len, batch_size, dtype, str(device))
+            cache_key = (seq_len, tuple(prefill_lens.tolist()), dtype, str(device))
             if cache_key not in _mask_cache:
                 if len(_mask_cache) >= _CACHE_MAX:
                     _mask_cache.pop(next(iter(_mask_cache)))
                 _mask_cache[cache_key] = _make_mask(
                     seq_len=seq_len,
-                    prefill_len=prefill_len,
+                    prefill_lens=prefill_lens,
                     window_size=ring_window,
                     dtype=dtype,
                     device=device,
-                    batch_size=batch_size,
                 )
 
             rswa_mask = _mask_cache[cache_key]
@@ -519,8 +524,7 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
     @staticmethod
     def _apply_multi_gpu_patch():
         """
-        Fixed two bugs affecting `UnlimitedOCRModel` in multi-GPU scenarios
-        using `device_map='auto'`:
+        Fixed two bugs affecting `UnlimitedOCRModel` in multi-GPU scenarios using `device_map='auto'`:
 
         Bug 1 - Device mismatch in `torch.cat`:
             `image_newline` and `view_seperator` are `nn.Parameter`s;
@@ -557,7 +561,7 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         _original_forward = UnlimitedOCRModel.forward
 
         def _patched_forward(self, *args, **kwargs):
-            _orig_cat            = torch.cat
+            _orig_cat = torch.cat
             _orig_masked_scatter_ = torch.Tensor.masked_scatter_
 
             def _safe_cat(tensors, dim=0, **cat_kwargs):
@@ -587,18 +591,18 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
                 return _orig_masked_scatter_(tensor_self, mask, source)
 
             # Replace in both module namespace and global scope
-            modeling_module.torch.cat       = _safe_cat
-            torch.cat                       = _safe_cat
-            torch.Tensor.masked_scatter_    = _safe_masked_scatter_
+            modeling_module.torch.cat = _safe_cat
+            torch.cat = _safe_cat
+            torch.Tensor.masked_scatter_ = _safe_masked_scatter_
             try:
                 return _original_forward(self, *args, **kwargs)
             finally:
                 # Restore to avoid contaminating other modules
-                modeling_module.torch.cat       = _orig_cat
-                torch.cat                       = _orig_cat
-                torch.Tensor.masked_scatter_    = _orig_masked_scatter_
+                modeling_module.torch.cat = _orig_cat
+                torch.cat = _orig_cat
+                torch.Tensor.masked_scatter_ = _orig_masked_scatter_
 
-        UnlimitedOCRModel.forward               = _patched_forward
+        UnlimitedOCRModel.forward = _patched_forward
         UnlimitedOCRModel._swift_multi_gpu_patched = True
         return True
 
