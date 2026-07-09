@@ -52,11 +52,20 @@ class JsonlWriter:
         self.enable_async = enable_async
         self._queue = Queue()
         self._thread = None
+        self._closed = False
+        self._worker_exception = None
 
     def _append_worker(self):
         while True:
             item = self._queue.get()
-            self._append(**item)
+            try:
+                if item is None:
+                    return
+                self._append(**item)
+            except Exception as e:
+                self._worker_exception = e
+            finally:
+                self._queue.task_done()
 
     def _append(self, obj: Union[Dict, List[Dict]], gather_obj: bool = False):
         if isinstance(obj, (list, tuple)) and all(isinstance(item, dict) for item in obj):
@@ -73,6 +82,8 @@ class JsonlWriter:
         self._write_buffer(''.join(obj_list))
 
     def append(self, obj: Union[Dict, List[Dict]], gather_obj: bool = False):
+        if self._closed:
+            raise RuntimeError('Cannot append to a closed JsonlWriter')
         if self.enable_async:
             if self._thread is None:
                 self._thread = Thread(target=self._append_worker, daemon=True)
@@ -80,6 +91,24 @@ class JsonlWriter:
             self._queue.put({'obj': obj, 'gather_obj': gather_obj})
         else:
             self._append(obj, gather_obj=gather_obj)
+
+    def flush(self):
+        if not self.enable_async:
+            return
+        self._queue.join()
+        if self._worker_exception is not None:
+            raise self._worker_exception
+
+    def close(self):
+        if self._closed:
+            return
+        self._closed = True
+        if self.enable_async and self._thread is not None:
+            self._queue.put(None)
+            self._queue.join()
+            self._thread.join()
+            if self._worker_exception is not None:
+                raise self._worker_exception
 
     def _write_buffer(self, text: str):
         if not text:
