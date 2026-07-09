@@ -286,7 +286,7 @@ class GRPOTrainer(BaseRayTrainer):
             infer_fn=infer,
             scatter_fn=lambda reqs, parsed_global: parsed_global,  # already local
             is_main_process=True,
-            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+            tag_key=self.args.teacher_tag_key)
 
         offset = 0
         for gb in grpo_batches:

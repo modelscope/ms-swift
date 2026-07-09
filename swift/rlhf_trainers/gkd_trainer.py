@@ -380,7 +380,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 handle, topk=self.gkd_logits_topk, teacher_client=client),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.accelerator.is_main_process,
-            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+            tag_key=self.args.teacher_tag_key)
 
         per_chunk_parsed, offset = [], 0
         for cs in chunk_sizes:
