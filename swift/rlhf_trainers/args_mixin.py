@@ -192,6 +192,8 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     generation_batch_size: Optional[int] = None
     steps_per_generation: Optional[int] = None
 
+    teacher_tag_key: str = 'dataset'
+
     def _init_generation_batch_params(self):
         num_generations = getattr(self, 'num_generations', 1)
         num_processes = self.world_size
