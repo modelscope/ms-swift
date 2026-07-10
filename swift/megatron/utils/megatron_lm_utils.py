@@ -670,7 +670,7 @@ def warmup_jit_function(config, args):
     for bias_grad, input_grad in zip([True, True], [False, True]):
         bias.requires_grad, input_tensor.requires_grad = bias_grad, input_grad
         for _ in range(5):
-            if getattr(config, 'swiglu', getattr(config, 'gated_linear_unit', True)):
+            if config.swiglu:
                 output = bias_swiglu(input_tensor, bias)
             else:
                 output = bias_gelu(bias, input_tensor)

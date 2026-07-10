@@ -274,6 +274,9 @@ def _get_megatron_bridge_model(args, hf_config):
     # --- Step 3: Apply overrides and finalize ---
     provider.apply_overrides_and_finalize(dtype=dtype, overrides=overrides)
 
+    import torch.nn.functional as F
+    provider.swiglu = (provider.gated_linear_unit and provider.activation_func is F.silu)
+
     # --- Step 4: Create raw models (no DDP/Float16 wrapping) ---
     # swift's wrap_model handles DDP/Float16 wrapping with the correct DDP config from args.
     models = provider.provide_distributed_model(
