@@ -1,11 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from dataclasses import fields
-from typing import Any, Generator, Optional, Tuple
-
 from mcore_bridge import ModelConfig
 from mcore_bridge import get_mcore_model as _get_mcore_model
 from mcore_bridge import hf_to_mcore_config
 from transformers.utils import is_torch_npu_available
+from typing import Any, Generator, Optional, Tuple
 
 from swift.utils import get_logger
 
@@ -81,6 +80,7 @@ def get_mcore_model_config(args, hf_config):
     _check_padding_free(args, config)
     return config
 
+
 class MegatronBridgeBackend:
     """Adapter for NVIDIA ``megatron.bridge.AutoBridge``.
 
@@ -99,24 +99,27 @@ class MegatronBridgeBackend:
         from megatron.bridge.models.conversion.auto_bridge import AutoBridge
         return cls(AutoBridge.from_hf_config(hf_config), hf_config)
 
-    def load_weights(self, models, hf_model_dir, peft_format=False, adapter_name='default',
-                     converter=None):
+    def load_weights(self, models, hf_model_dir, peft_format=False, adapter_name='default', converter=None):
         if peft_format:
-            raise NotImplementedError(
-                'LoRA loading via megatron-bridge backend is not yet supported. '
-                'Please use bridge_backend="mcore-bridge" for LoRA training.')
+            raise NotImplementedError('LoRA loading via megatron-bridge backend is not yet supported. '
+                                      'Please use bridge_backend="mcore-bridge" for LoRA training.')
         if converter is not None:
             logger.warning('converter is not supported by megatron-bridge backend, ignoring.')
         self._bridge.load_hf_weights(models, hf_path=hf_model_dir)
 
-    def export_weights(self, models, target_device=None, only_master_rank=False,
-                       peft_format=False, adapter_name='default', converter=None,
-                       tqdm_desc='Exporting: ', disable_tqdm=True, _is_saving=False
-                       ) -> Generator[Tuple[str, 'torch.Tensor'], None, None]:
+    def export_weights(self,
+                       models,
+                       target_device=None,
+                       only_master_rank=False,
+                       peft_format=False,
+                       adapter_name='default',
+                       converter=None,
+                       tqdm_desc='Exporting: ',
+                       disable_tqdm=True,
+                       _is_saving=False) -> Generator[Tuple[str, 'torch.Tensor'], None, None]:
         if peft_format:
-            raise NotImplementedError(
-                'LoRA export via megatron-bridge backend is not yet supported. '
-                'Please use bridge_backend="mcore-bridge" for LoRA training.')
+            raise NotImplementedError('LoRA export via megatron-bridge backend is not yet supported. '
+                                      'Please use bridge_backend="mcore-bridge" for LoRA training.')
         cpu = (target_device == 'cpu')
         for weight_tuple in self._bridge.export_hf_weights(models, cpu=cpu):
             key = weight_tuple.param_name
@@ -128,12 +131,16 @@ class MegatronBridgeBackend:
                 key, tensor = kv
             yield key, tensor
 
-    def save_weights(self, models, output_dir, peft_format=False, max_shard_size='5GB',
-                     args=None, processor=None) -> None:
+    def save_weights(self,
+                     models,
+                     output_dir,
+                     peft_format=False,
+                     max_shard_size='5GB',
+                     args=None,
+                     processor=None) -> None:
         if peft_format:
-            raise NotImplementedError(
-                'LoRA saving via megatron-bridge backend is not yet supported. '
-                'Please use bridge_backend="mcore-bridge" for LoRA training.')
+            raise NotImplementedError('LoRA saving via megatron-bridge backend is not yet supported. '
+                                      'Please use bridge_backend="mcore-bridge" for LoRA training.')
 
         # 1. Save weights via megatron-bridge (safetensors format)
         self._bridge.save_hf_weights(models, path=output_dir)
@@ -145,18 +152,48 @@ class MegatronBridgeBackend:
         is_master = (not dist.is_initialized()) or dist.get_rank() == 0
         if is_master and args is not None and self._hf_config is not None:
             from copy import deepcopy
+
             from swift.model import save_checkpoint
             from swift.utils import HfConfigFactory
             hf_config = deepcopy(self._hf_config)
+            llm_config = HfConfigFactory.get_text_config(hf_config)
+
+            # MTP: write back num_nextn_predict_layers
+            mtp_num_layers = getattr(args, 'mtp_num_layers', None)
+            if mtp_num_layers:
+                for key in ['num_nextn_predict_layers', 'mtp_num_hidden_layers']:
+                    if hasattr(llm_config, key):
+                        setattr(llm_config, key, mtp_num_layers)
+                        break
+                else:
+                    llm_config.num_nextn_predict_layers = mtp_num_layers
+
             HfConfigFactory.del_config_attr(hf_config, 'quantization_config')
+
+            # FP8: write back quantization_config
+            expert_dtype = None
+            fp8_format = getattr(args, 'fp8_format', None)
+            fp8_recipe = getattr(args, 'fp8_recipe', 'delayed')
+            fp8_param = getattr(args, 'fp8_param_gather', False)
+            if fp8_format is not None and fp8_recipe == 'blockwise' and fp8_param:
+                from transformers.utils.quantization_config import FineGrainedFP8Config
+                hf_config.quantization_config = FineGrainedFP8Config()
+                expert_dtype = 'fp8'
+            if getattr(args, 'model_type', None) == 'deepseek_v4':
+                HfConfigFactory.set_config_attr(hf_config, 'expert_dtype', expert_dtype)
+
             hf_config.save_pretrained(output_dir)
             if processor is not None:
+                additional_saved_files = getattr(getattr(processor, 'model_meta', None), 'additional_saved_files', None)
                 save_checkpoint(
-                    None, processor, output_dir,
+                    None,
+                    processor,
+                    output_dir,
                     model_dirs=[args.model_dir],
-                    additional_saved_files=getattr(args, 'additional_saved_files', None))
+                    additional_saved_files=additional_saved_files)
         if dist.is_initialized():
             dist.barrier()
+
 
 def get_mcore_model(args, hf_config):
     bridge_backend = args.bridge_backend
@@ -177,10 +214,9 @@ def _get_megatron_bridge_model(args, hf_config):
     # Validate model support via AutoBridge.supports()
     from megatron.bridge.models.conversion.auto_bridge import AutoBridge
     if not AutoBridge.supports(hf_config):
-        raise ValueError(
-            f'Model {getattr(hf_config, "model_type", "unknown")} is not supported by '
-            f'megatron-bridge. Please use bridge_backend="mcore-bridge" or check '
-            f'AutoBridge.list_supported_models() for supported architectures.')
+        raise ValueError(f'Model {getattr(hf_config, "model_type", "unknown")} is not supported by '
+                         f'megatron-bridge. Please use bridge_backend="mcore-bridge" or check '
+                         f'AutoBridge.list_supported_models() for supported architectures.')
 
     # --- Step 1: Get provider (GPTModelProvider, which extends TransformerConfig) ---
     provider = auto_bridge.to_megatron_provider(load_weights=False)
@@ -211,7 +247,10 @@ def _get_megatron_bridge_model(args, hf_config):
     dtype = getattr(args, 'torch_dtype', None)
 
     # MoE: if no experts, force EP/ETP to 1
-    if overrides.get('num_moe_experts') is None:
+    # num_moe_experts comes from HF config (parsed by AutoBridge into provider),
+    # not from args — so check provider too.
+    num_moe_experts = overrides.get('num_moe_experts') or getattr(provider, 'num_moe_experts', None)
+    if num_moe_experts is None:
         overrides['expert_model_parallel_size'] = 1
         overrides['expert_tensor_parallel_size'] = 1
 

@@ -772,16 +772,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             try:
                 import megatron.bridge
             except ImportError:
-                raise ImportError(
-                    'bridge_backend="megatron-bridge" requires the `megatron-bridge` package. '
-                    'Install it via `pip install megatron-bridge` or use bridge_backend="mcore-bridge".')
+                raise ImportError('bridge_backend="megatron-bridge" requires the `megatron-bridge` package. '
+                                  'Install it via `pip install megatron-bridge` or use bridge_backend="mcore-bridge".')
             if self.tuner_type != 'full':
-                raise ValueError(
-                    'LoRA training is not yet supported with bridge_backend="megatron-bridge". '
-                    'Please use bridge_backend="mcore-bridge" for LoRA, or set tuner_type="full".')
+                raise ValueError('LoRA training is not yet supported with bridge_backend="megatron-bridge". '
+                                 'Please use bridge_backend="mcore-bridge" for LoRA, or set tuner_type="full".')
         else:
-            require_version('mcore-bridge>=1.4.0',
-                            'Please install mcore-bridge via `pip install mcore-bridge -U`')
+            require_version('mcore-bridge>=1.4.0', 'Please install mcore-bridge via `pip install mcore-bridge -U`')
             from swift.megatron.init import _patch_mcore_bridge
             _patch_mcore_bridge()
 
@@ -814,17 +811,13 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
         if self.bridge_backend == 'megatron-bridge':
-            # megatron-bridge does not use mcore-bridge's ModelMeta/ModelConfig.
             self.megatron_model_meta = None
             if self.is_multimodal:
-                raise ValueError(
-                    'Multimodal training is not yet supported with bridge_backend="megatron-bridge". '
-                    'Please use bridge_backend="mcore-bridge" for multimodal models.')
+                raise ValueError('Multimodal training is not yet supported with bridge_backend="megatron-bridge". '
+                                 'Please use bridge_backend="mcore-bridge" for multimodal models.')
             if self.task_type not in (None, 'causal_lm'):
-                raise ValueError(
-                    f'task_type={self.task_type!r} is not yet supported with '
-                    f'bridge_backend="megatron-bridge". Only causal_lm is supported. '
-                    f'Please use bridge_backend="mcore-bridge" for other task types.')
+                raise ValueError(f'task_type={self.task_type!r} is not yet supported with '
+                                 f'bridge_backend="megatron-bridge".')
         else:
             self.megatron_model_meta = get_model_meta(self._get_mcore_model_type(self.model_meta))
             if self.megatron_model_meta is None:
