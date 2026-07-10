@@ -273,9 +273,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         """
         template = self.template
 
-        student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
-
         with self._template_context(template):
+            student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
             encoded_inputs = to_device(template.data_collator(student_encoded_list), self.model.device)
         if has_opsd:
             with self._template_context(template):
