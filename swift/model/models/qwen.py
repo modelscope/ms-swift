@@ -1793,11 +1793,9 @@ def _patch_qwen3_tts_forward(model):
             codec_i_embedding = codec_i_embedding * codec_mask.unsqueeze(-1)
             input_embeddings = input_embeddings + codec_i_embedding
 
-        # Forward through talker (shifted by 1 for autoregressive prediction)
         outputs = self.talker(
             inputs_embeds=input_embeddings[:, :-1, :],
             attention_mask=attention_mask[:, :-1],
-            labels=codec_0_labels[:, 1:],
             output_hidden_states=True,
         )
 
@@ -1859,7 +1857,7 @@ register_model(
         Qwen3TTSLoader,
         model_arch=ModelArch.qwen3_tts,
         architectures=['Qwen3TTSForConditionalGeneration'],
-        requires=['qwen-tts'],
+        requires=['qwen-tts', 'transformers<5'],
         tags=['audio', 'tts'],
     ))
 
