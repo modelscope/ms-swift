@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+import torch.distributed as dist
 from datasets import Dataset as HfDataset
 from typing import List, Optional, Union
 
