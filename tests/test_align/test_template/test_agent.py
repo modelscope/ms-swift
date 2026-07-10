@@ -717,6 +717,12 @@ def _assert_telechat3_agent_template(model_id: str, template_type: str):
     tokenizer = get_processor(model_id)
     template = get_template(tokenizer)
     assert template.template_meta.template_type == template_type
+
+    for role in ['user', 'assistant']:
+        messages = [{'role': role, 'content': [101, 102]}, {'role': role, 'content': 'tail'}]
+        template._merge_natural_messages(SimpleNamespace(messages=messages))
+        assert messages == [{'role': role, 'content': [[101, 102], 'tail']}]
+
     data = {
         'tools':
         telechat3_tools,
@@ -1009,6 +1015,19 @@ def test_telechat3_coder():
                 'content': '<think>\n\n</think>answer'
             }]
         }, '<_system><_user>q<_bot></think>answer<_end>'),
+        ({
+            'chat_template_kwargs': {
+                'clear_thinking': False
+            },
+            'messages': [{
+                'role': 'user',
+                'content': 'q'
+            }, {
+                'role': 'assistant',
+                'content': 'answer',
+                'reasoning_content': '   '
+            }]
+        }, '<_system><_user>q<_bot><think>\n\n</think>answer<_end>'),
         ({
             'messages': [{
                 'role': 'user',

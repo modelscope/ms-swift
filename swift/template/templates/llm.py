@@ -228,6 +228,12 @@ class TeleChat3Template(Template):
             return content.copy()
         return [content]
 
+    @classmethod
+    def _concat_content(cls, pre_content, content):
+        if isinstance(pre_content, str) and isinstance(content, str):
+            return pre_content + content
+        return cls._to_content_segments(pre_content) + cls._to_content_segments(content)
+
     @staticmethod
     def _expand_metadata(value, num_segments, key):
         if isinstance(value, list):
@@ -270,8 +276,10 @@ class TeleChat3Template(Template):
             if pre_message['role'] != role or role not in {'assistant', 'user'}:
                 i += 1
                 continue
-            pre_content = pre_message.get('content') or ''
-            content = message.get('content') or ''
+            pre_content = pre_message.get('content')
+            content = message.get('content')
+            pre_content = '' if pre_content is None else pre_content
+            content = '' if content is None else content
             if role == 'assistant':
                 for key in ['loss', 'loss_scale']:
                     if key not in pre_message and key not in message:
@@ -280,7 +288,7 @@ class TeleChat3Template(Template):
                         raise ValueError(
                             f'TeleChat3 cannot merge consecutive assistant messages with different `{key}` values. '
                             'Merge the messages before encoding or use the same value.')
-                pre_message['content'] = pre_content + content
+                pre_message['content'] = self._concat_content(pre_content, content)
                 tool_calls = list(pre_message.get('tool_calls') or []) + list(message.get('tool_calls') or [])
                 if tool_calls:
                     pre_message['tool_calls'] = tool_calls
@@ -289,7 +297,7 @@ class TeleChat3Template(Template):
                 if isinstance(reasoning, str):
                     pre_message['reasoning_content'] = (pre_reasoning or '') + reasoning
             else:
-                pre_message['content'] = pre_content + content
+                pre_message['content'] = self._concat_content(pre_content, content)
             messages.pop(i)
 
     def _prepare_assistant_thinking(self, inputs):
@@ -401,7 +409,7 @@ class TeleChat3Template(Template):
                 if self.template_backend == 'swift' and pre_role == 'assistant':
                     self._merge_assistant_messages(pre_message, message)
                 else:
-                    pre_message['content'] = pre_content + content
+                    pre_message['content'] = self._concat_content(pre_content, content)
                 messages.pop(i)
             else:
                 i += 1
