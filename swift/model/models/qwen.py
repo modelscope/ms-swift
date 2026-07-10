@@ -1872,7 +1872,7 @@ register_model(
         Qwen3TTSLoader,
         model_arch=ModelArch.qwen3_tts,
         architectures=['Qwen3TTSForConditionalGeneration'],
-        requires=['qwen-tts'],
+        requires=['qwen-tts', 'transformers<5'],
         tags=['audio', 'tts'],
     ))
 

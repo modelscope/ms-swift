@@ -1243,9 +1243,9 @@ class Qwen3TTSTemplate(Template):
         )
         sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
         if sub_talker_loss is not None:
-            outputs.loss = talker_loss + 0.3 * sub_talker_loss
+            outputs['loss'] = talker_loss + 0.3 * sub_talker_loss
         else:
-            outputs.loss = talker_loss
+            outputs['loss'] = talker_loss
         return outputs
 
     def save_callback(self, model, output_dir):
