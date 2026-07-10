@@ -247,6 +247,36 @@ _MISSING = object()
 _TRANSFORMERS_FLA_PROBE_MODULES = ('transformers.utils', 'transformers.utils.import_utils')
 
 
+def _is_flash_linear_attention_importable_on_npu() -> bool:
+    try:
+        from fla.modules.convolution import causal_conv1d  # noqa: F401
+        from fla.ops.gated_delta_rule import chunk_gated_delta_rule  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _patch_transformers_flash_linear_attention_available_for_npu() -> None:
+    for module_name in _TRANSFORMERS_FLA_PROBE_MODULES:
+        module = import_optional_module(module_name)
+        if module is None:
+            continue
+        original = getattr(module, 'is_flash_linear_attention_available', None)
+        if getattr(original, '_ms_swift_npu_patched', False):
+            continue
+
+        def _is_flash_linear_attention_available(_original=original) -> bool:
+            try:
+                if callable(_original) and _original():
+                    return True
+            except Exception:
+                pass
+            return _is_flash_linear_attention_importable_on_npu()
+
+        _is_flash_linear_attention_available._ms_swift_npu_patched = True
+        setattr(module, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
+
+
 def _patch_transformers_flash_linear_attention_available(available: bool) -> dict[str, object]:
 
     def _is_flash_linear_attention_available() -> bool:
@@ -275,7 +305,7 @@ def _restore_transformers_flash_linear_attention_available(originals: dict[str, 
 
 def patch_qwen3_5_chunk_gated_delta_rule_with_mindspeed() -> None:
     try:
-        from ..chunk_gated_delta_rule import chunk_gated_delta_rule
+        from .chunk_gated_delta_rule import chunk_gated_delta_rule
     except ImportError as exc:
         logger.warning('Failed to import embedded MindSpeed chunk_gated_delta_rule: %s', exc)
         return
@@ -528,6 +558,8 @@ def apply_patch() -> None:
         ('qwen3_moe', modeling_qwen3_moe, QWEN3_MOE_PATCHES, QWEN3_MOE_TRANSFORMERS_5_PATCHES),
         ('qwen3_vl_moe', modeling_qwen3_vl_moe, QWEN3_VL_MOE_PATCHES, {}),
     ]
+
+    _patch_transformers_flash_linear_attention_available_for_npu()
 
     # Qwen3.5 GDN is patched to swift's embedded MindSpeed implementation below.
     # Skip Transformers' import-time FLA probe so FLA is not a hard dependency.
