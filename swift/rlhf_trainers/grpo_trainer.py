@@ -594,7 +594,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_fn=lambda handle, client: self._infer_teacher_requests(handle, topk=0, teacher_client=client),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.accelerator.is_main_process,
-            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+            tag_key=self.teacher_tag_key)
 
         offset = 0
         for batch_encoded, chunk in zip(batch_encoded_inputs, chunk_samples_list):
