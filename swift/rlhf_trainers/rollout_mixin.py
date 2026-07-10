@@ -189,9 +189,6 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         self._teacher_deepspeed_config = kwargs.pop('teacher_deepspeed_config', None)
         self.teacher_model_server = kwargs.pop('teacher_model_server', None)
         self._teacher_use_disable_adapter = kwargs.pop('teacher_use_disable_adapter', False)
-        # From CLI RLHFArguments via trainer kwargs: the training config (self.args) has no such
-        # field, so reading getattr(self.args, 'teacher_tag_key') would silently yield 'dataset'.
-        self.teacher_tag_key = kwargs.pop('teacher_tag_key', 'dataset')
 
     def _has_teacher_explicit(self) -> bool:
         return (getattr(self, '_teacher_model', None) is not None

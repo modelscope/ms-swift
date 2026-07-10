@@ -239,9 +239,6 @@ class SwiftRLHF(SwiftSft):
             if self.args.teacher_model_server:
                 trainer_kwargs['teacher_model_server'] = self.args.teacher_model_server
             trainer_kwargs['teacher_use_disable_adapter'] = getattr(self.args, '_teacher_use_disable_adapter', False)
-            # teacher_tag_key lives on the CLI RLHFArguments (TeacherModelArguments), not on the
-            # trainer's GRPOConfig/GKDConfig, so it must ride the trainer-kwargs channel.
-            trainer_kwargs['teacher_tag_key'] = getattr(self.args, 'teacher_tag_key', 'dataset')
         if self.args.rlhf_type == 'gkd':
             trainer_kwargs['gkd_logits_topk'] = self.args.gkd_logits_topk
         return trainer_kwargs

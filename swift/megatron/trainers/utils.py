@@ -399,10 +399,6 @@ def prepare_batch(args, data, vp_stage=None):
             batch['packed_seq_params'].seq_lens = torch.tensor(seq_lens, device=text_position_ids.device)
         if num_samples is not None:
             batch['packed_seq_params'].num_samples = num_samples
-    # padding_free mode does not produce attention_mask in the batch.
-    # mcore-bridge's GPTModel.forward has attention_mask=None default,
-    # but megatron-core's GPTModel.forward requires it as positional arg.
-    # Setting None is safe for both backends.
     batch.setdefault('attention_mask', None)
     batch = get_batch_on_this_cp_rank(args, batch)
     return batch

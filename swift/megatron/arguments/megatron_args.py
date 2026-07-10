@@ -779,8 +779,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 raise ValueError(
                     'LoRA training is not yet supported with bridge_backend="megatron-bridge". '
                     'Please use bridge_backend="mcore-bridge" for LoRA, or set tuner_type="full".')
-            # Skip mcore-bridge model_meta lookup for megatron-bridge backend.
-            # Model support will be validated via AutoBridge.supports() in get_mcore_model.
         else:
             require_version('mcore-bridge>=1.4.0',
                             'Please install mcore-bridge via `pip install mcore-bridge -U`')

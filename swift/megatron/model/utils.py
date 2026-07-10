@@ -159,7 +159,7 @@ class MegatronBridgeBackend:
             dist.barrier()
 
 def get_mcore_model(args, hf_config):
-    bridge_backend = getattr(args, 'bridge_backend', 'mcore-bridge')
+    bridge_backend = args.bridge_backend
     if bridge_backend == 'megatron-bridge':
         return _get_megatron_bridge_model(args, hf_config)
     config = get_mcore_model_config(args, hf_config)
