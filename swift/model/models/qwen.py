@@ -1778,7 +1778,8 @@ def _patch_qwen3_tts_forward(model):
         input_codec_ids = input_ids[:, :, 1]
 
         # Build text and codec embeddings
-        input_text_embedding = self.talker.model.text_embedding(input_text_ids) * text_embedding_mask
+        input_text_embedding = self.talker.text_projection(
+            self.talker.model.text_embedding(input_text_ids)) * text_embedding_mask
         input_codec_embedding = self.talker.model.codec_embedding(input_codec_ids) * codec_embedding_mask
         # Inject speaker embedding at position 6
         input_codec_embedding[:, 6, :] = speaker_embedding
