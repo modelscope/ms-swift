@@ -1234,10 +1234,18 @@ class Qwen3TTSTemplate(Template):
             inputs.pop('ref_mels')
             inputs['speaker_embedding'] = speaker_embedding
         outputs = model(**inputs)
-        talker_loss = outputs.loss
+        logits = outputs.logits
+        shift_labels = inputs['codec_0_labels'][:, 1:].contiguous()
+        talker_loss = F.cross_entropy(
+            logits.reshape(-1, logits.shape[-1]).float(),
+            shift_labels.reshape(-1).to(logits.device),
+            ignore_index=-100,
+        )
         sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
         if sub_talker_loss is not None:
             outputs.loss = talker_loss + 0.3 * sub_talker_loss
+        else:
+            outputs.loss = talker_loss
         return outputs
 
     def save_callback(self, model, output_dir):
