@@ -329,6 +329,10 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         Returns:
             rewards_per_func: Tensor of shape (num_examples, num_reward_funcs) with all reward values
         """
+        extra_reward_kwargs = None
+        if self.enable_server_multi_turn:
+            extra_reward_kwargs = {'trajectory_inputs': self._get_trajectory_inputs(samples)}
+
         with self._disable_sp_context():
             local_rewards_per_func = score_completions(
                 samples,
@@ -337,6 +341,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 use_gym_env=self.use_gym_env,
                 device=self.accelerator.device,
                 trainer_state=self.state,
+                extra_reward_kwargs=extra_reward_kwargs,
             )
 
         # OPD-RL pure distillation: no reward_funcs -> a [N, 0] tensor. accelerate.gather
@@ -594,7 +599,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             infer_fn=lambda handle, client: self._infer_teacher_requests(handle, topk=0, teacher_client=client),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.accelerator.is_main_process,
-            tag_key=self.teacher_tag_key)
+            tag_key=self.args.teacher_tag_key)
 
         offset = 0
         for batch_encoded, chunk in zip(batch_encoded_inputs, chunk_samples_list):
@@ -1941,6 +1946,18 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             inputs_by_request_id[request_id].append(input_data)
 
         return inputs_by_request_id
+
+    def _get_trajectory_inputs(self, samples: List[GRPOSample]) -> Dict[str, List[Dict]]:
+        current_request_ids = {sample.request_id for sample in samples}
+        local_inputs = [sample.to_reward_row() for sample in samples]
+        total_inputs = gather_object(local_inputs)
+        filtered_total_inputs = []
+        for rank_inputs in total_inputs:
+            candidate_inputs = [rank_inputs] if isinstance(rank_inputs, dict) else rank_inputs
+            for input_data in candidate_inputs:
+                if input_data.get('request_id') in current_request_ids:
+                    filtered_total_inputs.append(input_data)
+        return self._group_inputs_by_request_id(filtered_total_inputs)
 
     def _get_last_indices(self, request_ids: List[str]) -> torch.Tensor:
         seen = {}

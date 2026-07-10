@@ -1252,7 +1252,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 self.dynamic_num_samples = True
                 logger.warning(
                     'Detected a multi-turn scheduler that splits one trajectory into multiple training samples '
-                    'This code path is scheduled for removal in swift 4.4 — please migrate '
+                    'This code path is scheduled for removal in future swift — please migrate '
                     'to a single-trajectory scheduler (e.g. return one sample per request from `run`).')
                 if self.dynamic_sample:
                     logger.warning('Mismatch between returned samples and requests detected.')
@@ -1495,7 +1495,6 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         self.multi_turn_scheduler = None
         if not hasattr(args, 'multi_turn_scheduler'):
-            # only GRPO support it now
             return
 
         if args.multi_turn_scheduler:

@@ -277,9 +277,16 @@ swift rlhf \
 
 `lmbda > 0` 时学生需在线生成序列，建议用 vLLM 加速采样（colocate / server 两种模式，与 GRPO 一致），参考 [GRPO 文档](./GRPO/GetStarted/GRPO.md#集群支持)。
 
+**多轮 GKD**
+
+GKD 多轮训练，与 GRPO 共享同一套 `MultiTurnScheduler` 基础设施。
+
+完整接口和自定义方式请参考 [GRPO 多轮训练文档](./GRPO/DeveloperGuide/multi_turn.md)。
+
 **参考脚本**
 
 - 基础训练：[examples/train/rlhf/gkd/](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/gkd/)
+- 多轮训练：[examples/train/rlhf/gkd/multi_turn.sh](https://github.com/modelscope/ms-swift/blob/main/examples/train/rlhf/gkd/multi_turn.sh)
 - 多模态：[examples/train/multimodal/rlhf/gkd/](https://github.com/modelscope/ms-swift/tree/main/examples/train/multimodal/rlhf/gkd/)
 - Megatron：[examples/megatron/rlhf/gkd/](https://github.com/modelscope/ms-swift/tree/main/examples/megatron/rlhf/gkd/)
 

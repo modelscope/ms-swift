@@ -13,6 +13,7 @@ from swift.infer_engine.protocol import RequestConfig, RolloutOutput
 from swift.rl_core.data import GKDSample
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput
 from swift.rlhf_trainers.utils import parse_prompt_logprobs
+from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import get_logger, remove_response
 from .base_trainer import BaseRayTrainer
 from .driver_utils import extract_iteration
@@ -56,6 +57,33 @@ class GKDTrainer(BaseRayTrainer):
         self.max_completion_length = args.max_completion_length
         self._max_resample_rounds = getattr(args, 'max_resample_times', 3)
         self._needs_resample_iterator = self.truncation_strategy == 'delete'
+
+        self._prepare_multi_turn()
+
+    def _prepare_multi_turn(self) -> None:
+        args = self.args
+        self._multi_turn_scheduler: MultiTurnScheduler | None = None
+        self._max_turns: int | None = getattr(args, 'max_turns', None)
+        self._enable_server_multi_turn = False
+
+        scheduler_cfg = getattr(args, 'multi_turn_scheduler', None)
+        if not scheduler_cfg:
+            return
+        if isinstance(scheduler_cfg, str):
+            if scheduler_cfg not in multi_turns:
+                raise ValueError(f'Unknown multi_turn_scheduler: {scheduler_cfg!r}; '
+                                 f'available: {list(multi_turns)}')
+            scheduler_kwargs = {'max_turns': self._max_turns}
+            tokenizer = getattr(getattr(self, 'template', None), 'tokenizer', None)
+            if tokenizer is not None:
+                scheduler_kwargs['tokenizer'] = tokenizer
+            gym_env = getattr(args, 'gym_env', None)
+            if gym_env is not None:
+                scheduler_kwargs['gym_env'] = gym_env
+            self._multi_turn_scheduler = multi_turns[scheduler_cfg](**scheduler_kwargs)
+        else:
+            assert isinstance(scheduler_cfg, MultiTurnScheduler)
+            self._multi_turn_scheduler = scheduler_cfg
 
     def _train_loop(self, tg, train_iters, iteration):
         ckpt = self.ckpt_manager
@@ -157,6 +185,24 @@ class GKDTrainer(BaseRayTrainer):
         # Convert samples to RolloutInferRequest at the engine boundary
         # (same pattern as GRPO Ray trainer).
         requests = [s.to_infer_request() for s in batch]
+
+        if self._multi_turn_scheduler is not None and not self._enable_server_multi_turn:
+            # Mode A: driver-side trainer loop. run_multi_turn mutates `messages`
+            # in place on RolloutInferRequest objects.
+            invoke_async_hook(self._multi_turn_scheduler.on_trajectory_start(requests))
+            first_turn = [
+                RolloutOutput(response=resp) for resp in self._distribute_to_replicas(requests, request_config)
+            ]
+            return run_multi_turn(
+                requests=requests,
+                first_turn_outputs=first_turn,
+                scheduler=self._multi_turn_scheduler,
+                rollout_fn=lambda reqs, cfg:
+                [RolloutOutput(response=resp) for resp in self._distribute_to_replicas(reqs, cfg)],
+                request_config=request_config,
+                max_turns=self._max_turns,
+            )
+
         completions = self._distribute_to_replicas(requests, request_config)
         return [RolloutOutput(response=resp) for resp in completions]
 

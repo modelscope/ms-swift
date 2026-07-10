@@ -597,6 +597,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     sequence_parallel: bool = False
     context_parallel_size: int = 1
+    cp_partition_mode: Literal['zigzag', 'contiguous'] = 'zigzag'
+    sequence_packing_scheduler: Optional[Literal['dp_balanced', 'default_dynamic_cp']] = None
     tp_comm_overlap: bool = False
     overlap_grad_reduce: bool = False
     overlap_param_gather: bool = False

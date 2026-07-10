@@ -11,7 +11,7 @@ pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
 
 # Megatron-LM is tested under the following commit hash
-# pip install git+https://github.com/NVIDIA/Megatron-LM.git@9af7c7937b6123bb0b22be4d8eb28a8ebf407d7d
+# pip install git+https://github.com/NVIDIA/Megatron-LM.git@c6449f0b23be397449f21c0967c5fc90785e55ea
 ```
 
 ## Precision Alignment
@@ -192,7 +192,13 @@ Tips:
 --pipeline_model_parallel_size 8 \
 --pipeline_model_parallel_layout Et*5|t*5|t*6|t*6|t*6|t*5|t*5|t*5mL \
 ```
-- `padding_free` and `packing` are not yet supported, but you can use `group_by_length` to speed up training. TP is also not yet supported, pending Megatron-Core support.
+- Packing/CP support: Requires installing the mcore-bridge/ms-swift main branch. Refer to these two PRs: [ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705), [mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140). To use CP, you need to set the following additionally (must be used together with packing `--packing true`, and note the merge of this PR [megatron-core#5706](https://github.com/NVIDIA/Megatron-LM/pull/5706)):
+
+```
+--sequence_packing_scheduler dp_balanced \
+--cp_partition_mode contiguous \
+```
+- TP is not supported for now, pending support from Megatron-Core.
 - FP8 training: you can enable FP8 training and save the weights in FP8 by setting the parameters below. Full-parameter training is recommended. If you want to use LoRA + FP8, you should save only the LoRA weights (set `--merge_lora false`) and perform Merge-LoRA against the BF16 weights (FP8 has limited precision and the LoRA delta would be rounded to 0). See [this example](https://github.com/modelscope/ms-swift/blob/main/examples/megatron/fp8/lora.sh).
 ```
 --fp8_recipe blockwise \

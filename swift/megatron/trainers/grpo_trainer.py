@@ -26,7 +26,6 @@ from swift.rlhf_trainers.grpo_trainer import DataType
 from swift.rlhf_trainers.utils import (collate_to_grpo_micro_batch, encode_sample, make_reward_weights,
                                        pad_logps_back_to_batch, profiling_context, profiling_decorator,
                                        resolve_reward_funcs)
-from swift.rollout import MultiTurnScheduler, multi_turns
 from swift.template import Template
 from swift.utils import get_logger
 from .rlhf_mixin import MegatronRLHFTrainer
@@ -60,7 +59,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._init_grpo_params()
         self._init_rollout_engine()
         self._prepare_rewards()
-        self._prepare_scheduler()
         self.resample_data_iterator = None
 
     def prepare_model(self):
@@ -198,27 +196,6 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
 
         assert self.reward_funcs or self.use_gym_env or self._has_teacher, \
             'reward_funcs is not set (or pass --use_gym_env true / a teacher for OPD-RL)'
-
-    def _prepare_scheduler(self):
-        """Prepare multi-turn scheduler"""
-        args = self.args
-
-        self.multi_turn_scheduler = None
-        if not hasattr(args, 'multi_turn_scheduler'):
-            return
-
-        if args.multi_turn_scheduler:
-            if isinstance(args.multi_turn_scheduler, str):
-                assert args.multi_turn_scheduler in multi_turns
-                scheduler_kwargs = {'max_turns': args.max_turns}
-                gym_env = getattr(args, 'gym_env', None)
-                if gym_env is not None:
-                    scheduler_kwargs['gym_env'] = gym_env
-                multi_turn_scheduler = multi_turns[args.multi_turn_scheduler](**scheduler_kwargs)
-                self.multi_turn_scheduler: MultiTurnScheduler = multi_turn_scheduler
-            else:
-                assert isinstance(args.multi_turn_scheduler, MultiTurnScheduler)
-                self.multi_turn_scheduler: MultiTurnScheduler = args.multi_turn_scheduler
 
     def _init_resample_data_iterator(self, train_dataset):
         """Initialize an independent data iterator for resampling.
@@ -813,7 +790,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             infer_fn=lambda handle, client: self._infer_teacher_requests(handle, topk=0, teacher_client=client),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.is_main_process,
-            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+            tag_key=self.args.teacher_tag_key)
 
         offset = 0
         for data in mini_batch_data:

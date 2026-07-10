@@ -489,16 +489,18 @@ CUDA_VISIBLE_DEVICES=0,1 swift eval \
 
 ### GKD
 
-使用 GKD 进行 LoRA 训练，以 Qwen3.5-9B 作为 teacher 模型。首先使用 vLLM 拉起 teacher server（也可以通过 `--teacher_model` 参数直接加载模型）：
+使用 GKD 进行 LoRA 训练，以 Qwen3.5-9B 作为 teacher 模型。首先使用 swift deploy 拉起 teacher server（也可以通过 `--teacher_model` 参数直接加载模型）：
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-vllm serve Qwen/Qwen3.5-9B \
+swift deploy \
+    --model Qwen/Qwen3.5-9B \
+    --infer_backend vllm \
     --port 8000 \
-    --tensor-parallel-size 1 \
-    --max-model-len 10240 \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_max_model_len 10240 \
     --gpu-memory-utilization 0.8 \
-    --max-logprobs 64
+    --max_logprobs 64
 ```
 
 然后在其余 GPU 上启动 GKD 训练：

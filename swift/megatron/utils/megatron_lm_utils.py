@@ -724,16 +724,20 @@ def get_batch_on_this_cp_rank(args, batch: Dict[str, Any]):
             keys.append('input_ids')
 
         packed_seq_params = batch.get('packed_seq_params')
+        cp_partition_mode = getattr(args, 'cp_partition_mode', 'zigzag')
+        kwargs = {}
+        if cp_partition_mode == 'contiguous':
+            kwargs['cp_partition_mode'] = 'contiguous'
         for key, val in batch.items():
             if key not in keys:
                 continue
             if args.task_type in ('seq_cls', 'embedding', 'generative_reranker') and key == 'labels':
                 continue
             if val is not None:
-                batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1)
+                batch[key] = split_cp_inputs(val, getattr(packed_seq_params, 'cu_seqlens_q', None), -1, **kwargs)
         attention_mask = batch.get('attention_mask')
         if is_torch_npu_available() and attention_mask is not None and attention_mask.ndim >= 4:
             batch['attention_mask'] = split_cp_inputs(attention_mask, getattr(packed_seq_params, 'cu_seqlens_q', None),
-                                                      -2)
+                                                      -2, **kwargs)
 
     return batch
