@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import sys
 import torch
 import types
-import inspect
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict
 
@@ -400,24 +400,21 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             2. sliding window [i-W+1, i] after prefill
         Each batch item has its own prefill_len via prefill_lens: [batch_size].
         """
-        min_val    = torch.finfo(dtype).min
+        min_val = torch.finfo(dtype).min
         batch_size = prefill_lens.shape[0]
 
         row = torch.arange(seq_len, device=device).view(1, seq_len, 1)  # [1, seq, 1]
         col = torch.arange(seq_len, device=device).view(1, 1, seq_len)  # [1, 1, seq]
-        pl  = prefill_lens.view(batch_size, 1, 1)                       # [B, 1, 1]
+        pl = prefill_lens.view(batch_size, 1, 1)  # [B, 1, 1]
 
-        causal      = col <= row
+        causal = col <= row
         prefill_vis = (col < pl) & causal
-        window_vis  = (col >= pl) & (col > row - window_size) & causal
+        window_vis = (col >= pl) & (col > row - window_size) & causal
 
-        mask = torch.full(
-            (batch_size, seq_len, seq_len), min_val, dtype=dtype, device=device
-        )
+        mask = torch.full((batch_size, seq_len, seq_len), min_val, dtype=dtype, device=device)
         mask[prefill_vis | window_vis] = 0
 
         return mask.unsqueeze(1)  # [batch_size, 1, seq_len, seq_len]
-
 
     @staticmethod
     def _apply_rswa_training_patch(model, ring_window: int):
@@ -428,17 +425,14 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         logger = get_logger()
 
         _original_forward = model.__class__.forward
-        _make_mask        = UnlimitedOCRLoader._make_rswa_causal_mask
-        _CACHE_MAX        = 8
-        _mask_cache       = {}
+        _make_mask = UnlimitedOCRLoader._make_rswa_causal_mask
+        _CACHE_MAX = 8
+        _mask_cache = {}
 
-        _sig        = inspect.signature(_original_forward)
+        _sig = inspect.signature(_original_forward)
         _param_list = list(_sig.parameters.keys())
 
-        _attn_mask_pos = (
-            _param_list.index('attention_mask') - 1
-            if 'attention_mask' in _param_list else None
-        )
+        _attn_mask_pos = (_param_list.index('attention_mask') - 1 if 'attention_mask' in _param_list else None)
 
         def _get_arg(name, args, kwargs):
             if name in kwargs:
@@ -455,18 +449,18 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             if not self.training:
                 return _original_forward(self, *args, **kwargs)
 
-            input_ids       = _get_arg('input_ids',       args, kwargs)
-            inputs_embeds   = _get_arg('inputs_embeds',   args, kwargs)
+            input_ids = _get_arg('input_ids', args, kwargs)
+            inputs_embeds = _get_arg('inputs_embeds', args, kwargs)
             images_seq_mask = _get_arg('images_seq_mask', args, kwargs)
 
             if input_ids is not None:
                 batch_size = input_ids.shape[0]
-                seq_len    = input_ids.shape[1]
-                device     = input_ids.device
+                seq_len = input_ids.shape[1]
+                device = input_ids.device
             elif inputs_embeds is not None:
                 batch_size = inputs_embeds.shape[0]
-                seq_len    = inputs_embeds.shape[1]
-                device     = inputs_embeds.device
+                seq_len = inputs_embeds.shape[1]
+                device = inputs_embeds.device
             else:
                 return _original_forward(self, *args, **kwargs)
 
@@ -475,10 +469,9 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
             # Multiply by 1-based position indices, then take max per sample
             # to get the last image token position + 1.
             if images_seq_mask is not None:
-                seq_indices  = torch.arange(1, seq_len + 1, device=device).unsqueeze(0)
-                prefill_lens = (
-                    images_seq_mask.to(dtype=torch.long, device=device) * seq_indices
-                ).max(dim=1)[0]  # [batch_size]
+                seq_indices = torch.arange(1, seq_len + 1, device=device).unsqueeze(0)
+                prefill_lens = (images_seq_mask.to(dtype=torch.long, device=device)
+                                * seq_indices).max(dim=1)[0]  # [batch_size]
             else:
                 prefill_lens = torch.zeros(batch_size, dtype=torch.long, device=device)
 
@@ -501,11 +494,7 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
 
             rswa_mask = _mask_cache[cache_key]
 
-            if (
-                _attn_mask_pos is not None
-                and _attn_mask_pos < len(args)
-                and 'attention_mask' not in kwargs
-            ):
+            if (_attn_mask_pos is not None and _attn_mask_pos < len(args) and 'attention_mask' not in kwargs):
                 args = list(args)
                 args[_attn_mask_pos] = rswa_mask
                 args = tuple(args)
@@ -516,10 +505,7 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
 
         model.forward = types.MethodType(_patched_forward, model)
         model._rswa_training_patched = True
-        logger.info(
-            '[UnlimitedOCR] R-SWA training mask patch applied: ring_window=%d',
-            ring_window
-        )
+        logger.info('[UnlimitedOCR] R-SWA training mask patch applied: ring_window=%d', ring_window)
 
     @staticmethod
     def _apply_multi_gpu_patch():
@@ -574,10 +560,7 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
                 if ref_device is None:
                     return _orig_cat(tensors, dim, **cat_kwargs)
                 aligned = [
-                    t.to(ref_device)
-                    if isinstance(t, torch.Tensor) and t.device != ref_device
-                    else t
-                    for t in tensors
+                    t.to(ref_device) if isinstance(t, torch.Tensor) and t.device != ref_device else t for t in tensors
                 ]
                 return _orig_cat(aligned, dim, **cat_kwargs)
 
