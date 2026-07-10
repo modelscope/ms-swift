@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -8,7 +9,7 @@ from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
-from ..utils import Prompt
+from ..utils import Prompt, get_last_user_round
 from .llama import Llama3_2TemplateMeta
 from .qwen import Qwen2VLTemplate, QwenTemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
@@ -196,6 +197,295 @@ register_template(TeleChatTemplateMeta(LLMTemplateType.telechat))
 
 telechat_system = '你是中国电信星辰语义大模型，英文名是TeleChat，你是由中电信人工智能科技有限公司和中国电信人工智能研究院（TeleAI）研发的人工智能助手。'
 register_template(TeleChatTemplateMeta(LLMTemplateType.telechat2, default_system=telechat_system))
+
+
+class TeleChat3Template(Template):
+
+    class _TruthyEmptySystem(str):
+
+        def __bool__(self):
+            return True
+
+    def _get_system(self, inputs):
+        system = super()._get_system(inputs)
+        if system == '' and not inputs.tools:
+            system = self._TruthyEmptySystem('')
+        return system
+
+    def _get_response_prefix(self, inputs=None):
+        response_prefix = None if inputs is None else inputs.chat_template_kwargs.get('response_prefix')
+        if response_prefix is None:
+            response_prefix = self.response_prefix
+        if response_prefix is not None:
+            return response_prefix
+        if not self.use_chat_template:
+            return ''
+        return self.template_meta.thinking_prefix
+
+    @staticmethod
+    def _to_content_segments(content):
+        if isinstance(content, list) and (not content or not isinstance(content[0], int)):
+            return content.copy()
+        return [content]
+
+    @staticmethod
+    def _expand_metadata(value, num_segments, key):
+        if isinstance(value, list):
+            if len(value) > num_segments:
+                raise ValueError(f'{key} has {len(value)} values for {num_segments} content segments.')
+            return value + [None] * (num_segments - len(value))
+        return [value] * num_segments
+
+    def _merge_assistant_messages(self, pre_message, message):
+        pre_segments = self._to_content_segments(pre_message['content'])
+        cur_segments = self._to_content_segments(message['content'])
+        pre_message['content'] = pre_segments + cur_segments
+        for key in ['loss', 'loss_scale']:
+            if key not in pre_message and key not in message:
+                continue
+            pre_values = self._expand_metadata(pre_message.get(key), len(pre_segments), key)
+            cur_values = self._expand_metadata(message.get(key), len(cur_segments), key)
+            pre_message[key] = pre_values + cur_values
+
+    def _extend_assistant_metadata(self, message, old_num_segments):
+        new_num_segments = len(self._to_content_segments(message['content']))
+        if new_num_segments <= old_num_segments:
+            return
+        for key in ['loss', 'loss_scale']:
+            if key not in message:
+                continue
+            values = message[key]
+            if not isinstance(values, list):
+                continue
+            values = self._expand_metadata(values, old_num_segments, key)
+            fill_value = values[-1] if values else None
+            message[key] = values + [fill_value] * (new_num_segments - old_num_segments)
+
+    def _merge_natural_messages(self, inputs):
+        messages = inputs.messages
+        i = 1
+        while i < len(messages):
+            pre_message, message = messages[i - 1], messages[i]
+            role = message['role']
+            if pre_message['role'] != role or role not in {'assistant', 'user'}:
+                i += 1
+                continue
+            pre_content = pre_message.get('content') or ''
+            content = message.get('content') or ''
+            if role == 'assistant':
+                for key in ['loss', 'loss_scale']:
+                    if key not in pre_message and key not in message:
+                        continue
+                    if key not in pre_message or key not in message or pre_message[key] != message[key]:
+                        raise ValueError(
+                            f'TeleChat3 cannot merge consecutive assistant messages with different `{key}` values. '
+                            'Merge the messages before encoding or use the same value.')
+                pre_message['content'] = pre_content + content
+                tool_calls = list(pre_message.get('tool_calls') or []) + list(message.get('tool_calls') or [])
+                if tool_calls:
+                    pre_message['tool_calls'] = tool_calls
+                pre_reasoning = pre_message.get('reasoning_content')
+                reasoning = message.get('reasoning_content')
+                if isinstance(reasoning, str):
+                    pre_message['reasoning_content'] = (pre_reasoning or '') + reasoning
+            else:
+                pre_message['content'] = pre_content + content
+            messages.pop(i)
+
+    def _prepare_assistant_thinking(self, inputs):
+        for message in inputs.messages:
+            if message['role'] != 'assistant':
+                continue
+            content = message['content']
+            if isinstance(content, list) and (not content or not isinstance(content[0], int)):
+                for i, value in enumerate(content):
+                    if isinstance(value, str):
+                        content[i] = value.split('</think>')[-1].lstrip('\n')
+            elif isinstance(content, str):
+                message['content'] = content.split('</think>')[-1].lstrip('\n')
+
+    def _preprocess_tool_call_jinja(self, inputs):
+        messages = inputs.messages
+        i = 0
+        while i < len(messages):
+            if messages[i]['role'] != 'tool_call':
+                i += 1
+                continue
+            i_start = i
+            while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool_call':
+                i += 1
+            tool_calls = []
+            for message in messages[i_start:i + 1]:
+                tool_call = self.agent_template._parse_tool_call(message['content'])
+                tool_calls.append({'type': 'function', 'function': tool_call})
+            if i_start > 0 and messages[i_start - 1]['role'] == 'assistant':
+                assistant_message = messages[i_start - 1]
+                if assistant_message.get('content') is None:
+                    assistant_message['content'] = ''
+                assistant_message['tool_calls'] = list(assistant_message.get('tool_calls') or []) + tool_calls
+                messages[i_start:i + 1] = []
+                i = i_start
+            else:
+                messages[i_start:i + 1] = [{'role': 'assistant', 'content': '', 'tool_calls': tool_calls}]
+                i = i_start + 1
+
+    def _preprocess_structured_tool_calls_swift(self, inputs):
+        messages = inputs.messages
+        i = 0
+        while i < len(messages):
+            message = messages[i]
+            tool_calls = message.pop('tool_calls', None) if message['role'] == 'assistant' else None
+            if not tool_calls:
+                i += 1
+                continue
+            tool_call_messages = []
+            for tool_call in tool_calls:
+                function = tool_call.get('function', tool_call)
+                arguments = function.get('arguments') or {}
+                tool_call_message = {
+                    'role': 'tool_call',
+                    'content': json.dumps({
+                        'name': function['name'],
+                        'arguments': arguments
+                    }, ensure_ascii=False)
+                }
+                for key in ['loss', 'loss_scale']:
+                    value = message.get(key)
+                    if key in message:
+                        tool_call_message[key] = value[-1] if isinstance(value, list) and value else value
+                tool_call_messages.append(tool_call_message)
+            messages[i + 1:i + 1] = tool_call_messages
+            i += len(tool_call_messages) + 1
+
+    def _normalize_structured_tool_calls(self, inputs):
+        for message in inputs.messages:
+            if message['role'] != 'assistant':
+                continue
+            for tool_call in message.get('tool_calls') or []:
+                function = tool_call.get('function', tool_call)
+                arguments = function.get('arguments')
+                if isinstance(arguments, str):
+                    parsed_arguments = self.agent_template._parse_json(arguments)
+                    if parsed_arguments is not None:
+                        function['arguments'] = parsed_arguments
+
+    def _swift_prepare_inputs(self, inputs):
+        # Normalize natural assistant text before tool calls are expanded into strings.
+        self._normalize_structured_tool_calls(inputs)
+        self._merge_natural_messages(inputs)
+        if self.template_backend == 'jinja':
+            self._preprocess_tool_call_jinja(inputs)
+            return
+        self._prepare_assistant_thinking(inputs)
+        self._preprocess_structured_tool_calls_swift(inputs)
+        self._preprocess_tool_call(inputs)
+        messages = inputs.messages
+        if len(messages) < 2:
+            return
+        i = 1
+        while i < len(messages):
+            pre_message, message = messages[i - 1], messages[i]
+            pre_role, pre_content = pre_message['role'], pre_message['content']
+            role, content = message['role'], message['content']
+            if pre_role == 'assistant' and role == 'tool' and self.template_backend == 'swift':
+                i_start = i
+                while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
+                    i += 1
+                old_num_segments = len(self._to_content_segments(pre_content))
+                pre_message['content'], tool_content = self.agent_template._format_tool_responses(
+                    pre_content, messages[i_start:i + 1])
+                self._extend_assistant_metadata(pre_message, old_num_segments)
+                messages[i_start:i + 1] = [{'role': 'tool', 'content': tool_content}]
+                i = i_start + 1
+            elif pre_role == 'assistant' and role == 'assistant' or pre_role == 'user' and role == 'user':
+                if self.template_backend == 'swift' and pre_role == 'assistant':
+                    self._merge_assistant_messages(pre_message, message)
+                else:
+                    pre_message['content'] = pre_content + content
+                messages.pop(i)
+            else:
+                i += 1
+
+    def _remove_history_thinking(self, inputs) -> None:
+        # Every assistant turn is already normalized against the model Jinja above.
+        pass
+
+
+@dataclass
+class TeleChat3TemplateMeta(TemplateMeta):
+    template_cls: type = TeleChat3Template
+    prefix: Prompt = field(default_factory=lambda: ['<_system>'])
+    prompt: Prompt = field(default_factory=lambda: ['<_user>{{QUERY}}<_bot>'])
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>\n'])
+    suffix: Prompt = field(default_factory=lambda: ['<_end>\n'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}\n'])
+    is_thinking: bool = True
+    thinking_prefix: str = '<think>\n'
+    agent_template: Optional[str] = 'telechat3'
+
+
+register_template(TeleChat3TemplateMeta(LLMTemplateType.telechat3))
+
+
+class TeleChat3CoderTemplate(TeleChat3Template):
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.get('enable_thinking') is None:
+            kwargs['enable_thinking'] = True
+        super().__init__(*args, **kwargs)
+
+    def _prepare_assistant_thinking(self, inputs):
+        messages = inputs.messages
+        last_user_round = get_last_user_round(messages)
+        clear_thinking_defined = ('clear_thinking' in self.chat_template_kwargs
+                                  or 'clear_thinking' in inputs.chat_template_kwargs)
+        clear_thinking = inputs.chat_template_kwargs.get('clear_thinking',
+                                                         self.chat_template_kwargs.get('clear_thinking'))
+        preserve_all = clear_thinking_defined and not clear_thinking
+        for i, message in enumerate(messages):
+            if message['role'] != 'assistant':
+                continue
+            preserve_reasoning = preserve_all or i > last_user_round
+            content = message['content']
+            reasoning_content = message.pop('reasoning_content', None)
+            if isinstance(content, list) and (not content or not isinstance(content[0], int)):
+                for j, value in enumerate(content):
+                    if isinstance(value, str):
+                        reasoning = reasoning_content if j == 0 else None
+                        content[j] = self._normalize_current_thinking(value, reasoning, preserve_reasoning)
+            elif isinstance(content, str):
+                message['content'] = self._normalize_current_thinking(content, reasoning_content, preserve_reasoning)
+
+    @staticmethod
+    def _normalize_current_thinking(content: str,
+                                    reasoning_content: Optional[str] = None,
+                                    preserve_reasoning: bool = True) -> str:
+        if not isinstance(reasoning_content, str):
+            reasoning_content = ''
+            if '</think>' in content:
+                reasoning_content = content.split('</think>')[0].rstrip('\n').split('<think>')[-1].lstrip('\n')
+                content = content.split('</think>')[-1].lstrip('\n')
+        has_reasoning = bool(reasoning_content)
+        reasoning_content = reasoning_content.strip()
+        content = content.strip()
+        if preserve_reasoning and has_reasoning:
+            return f'<think>\n{reasoning_content}\n</think>{content}'
+        return f'</think>{content}'
+
+
+@dataclass
+class TeleChat3CoderTemplateMeta(TeleChat3TemplateMeta):
+    template_cls: type = TeleChat3CoderTemplate
+    chat_sep: Optional[Prompt] = field(default_factory=lambda: ['<_end>'])
+    suffix: Prompt = field(default_factory=lambda: ['<_end>'])
+    system_prefix: Optional[Prompt] = field(default_factory=lambda: ['<_system>{{SYSTEM}}'])
+    thinking_prefix: str = '<think>'
+    non_thinking_prefix: str = '</think>'
+    history_thinking_prefix: str = '</think>'
+    agent_template: Optional[str] = 'telechat3_coder'
+
+
+register_template(TeleChat3CoderTemplateMeta(LLMTemplateType.telechat3_coder))
 
 DBRX_SYSTEM = (
     'You are DBRX, created by Databricks. You were last updated in December 2023. '

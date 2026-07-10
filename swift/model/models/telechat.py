@@ -58,3 +58,22 @@ register_model(
         model_arch=ModelArch.telechat,
         architectures=['TeleChat2ForCausalLM'],
     ))
+
+register_model(
+    ModelMeta(
+        LLMModelType.telechat3,
+        [
+            ModelGroup([
+                Model('TeleAI/TeleChat3-36B-Thinking', 'Tele-AI/TeleChat3-36B-Thinking'),
+            ]),
+            ModelGroup([
+                Model('TeleAI/TeleChat3-Coder-36B-Thinking', 'Tele-AI/TeleChat3-Coder-36B-Thinking'),
+            ],
+                       template=TemplateType.telechat3_coder,
+                       tags=['coding']),
+        ],
+        template=TemplateType.telechat3,
+        model_arch=ModelArch.llama,
+        architectures=['TeleChat3ForCausalLM'],
+        requires=['transformers>=4.53.2'],
+    ))

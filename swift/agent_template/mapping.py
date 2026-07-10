@@ -17,6 +17,7 @@ from .qwen import QwenEnAgentTemplate, QwenEnParallelAgentTemplate, QwenZhAgentT
 from .qwen3_coder import Qwen3_5AgentTemplate, Qwen3CoderAgentTemplate
 from .react import ReactEnAgentTemplate, ReactZnAgentTemplate
 from .seed_oss import SeedAgentTemplate
+from .telechat3 import TeleChat3AgentTemplate, TeleChat3CoderAgentTemplate
 from .toolbench import ToolBenchAgentTemplate
 from .youtu import YoutuAgentTemplate
 
@@ -50,6 +51,8 @@ agent_template_map = {
     'minimax_m2': MinimaxM2AgentTemplate,
     'minimax_m3': MinimaxM3AgentTemplate,
     'seed_oss': SeedAgentTemplate,
+    'telechat3': TeleChat3AgentTemplate,
+    'telechat3_coder': TeleChat3CoderAgentTemplate,
     # ref: https://modelscope.cn/models/google/gemma-4-12B-it
     'gemma4': Gemma4AgentTemplate,
     # extra

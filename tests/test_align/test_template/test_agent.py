@@ -1,8 +1,12 @@
+import json
 import os
+import pytest
+from types import SimpleNamespace
 
 os.environ['SWIFT_DEBUG'] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 os.environ['ASCEND_RT_VISIBLE_DEVICES'] = '0,1,2,3'
+
 system = 'You are a helpful assistant.'
 
 tools = [{
@@ -61,6 +65,8 @@ glm4_query = '北京和上海今天的天气情况'
 
 
 def _infer(engine, num_tools: int = 1, agent_tools=None, tool_messages=None, query=None):
+    from swift import InferRequest, RequestConfig
+
     if agent_tools is None:
         agent_tools = tools
     if tool_messages is None:
@@ -655,6 +661,458 @@ def test_deepseek_v4():
         '<｜end▁of▁sentence｜>')
 
     assert template.safe_decode(encoded['input_ids']) == expected_input_ids
+
+
+telechat3_tools = [{
+    'type': 'function',
+    'function': {
+        'name': 'get_weather',
+        'description': 'Get weather',
+        'parameters': {
+            'type': 'object',
+            'properties': {
+                'city': {
+                    'type': 'string'
+                },
+                'unit': {
+                    'type': 'string'
+                },
+            },
+            'required': ['city']
+        }
+    }
+}]
+
+telechat3_tool_call = '{"name": "get_weather", "arguments": {"city": "Beijing", "unit": "celsius"}}'
+telechat3_tool_call2 = '{"name": "get_weather", "arguments": {"city": "Shanghai", "unit": "fahrenheit"}}'
+
+
+def _assert_template_backend_equal(template, data):
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    assert encoded['input_ids'] == encoded2['input_ids']
+    return encoded
+
+
+def _assert_generation_backend_equal(template, data):
+    template.set_mode('transformers')
+    template.template_backend = 'swift'
+    encoded = template.encode(data)
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+    assert encoded['input_ids'] == encoded2['input_ids']
+    return template.safe_decode(encoded['input_ids'])
+
+
+def _assert_telechat3_agent_template(model_id: str, template_type: str):
+    from swift import get_processor, get_template
+    from swift.model import get_matched_model_meta
+
+    model_meta = get_matched_model_meta(model_id)
+    assert model_meta.model_type == 'telechat3'
+    assert model_meta.template == template_type
+    tokenizer = get_processor(model_id)
+    template = get_template(tokenizer)
+    assert template.template_meta.template_type == template_type
+    data = {
+        'tools':
+        telechat3_tools,
+        'messages': [{
+            'role': 'system',
+            'content': 'You are a helpful assistant.'
+        }, {
+            'role': 'user',
+            'content': 'weather?'
+        }, {
+            'role': 'tool_call',
+            'content': telechat3_tool_call
+        }, {
+            'role': 'tool_response',
+            'content': '{"temperature": 22}'
+        }, {
+            'role': 'assistant',
+            'content': 'sunny'
+        }]
+    }
+    _assert_template_backend_equal(template, data)
+
+    data['messages'].insert(2, {'role': 'assistant', 'content': 'I will check.'})
+    _assert_template_backend_equal(template, data)
+
+    data = {
+        'tools':
+        telechat3_tools,
+        'messages': [{
+            'role': 'system',
+            'content': 'You are a helpful assistant.'
+        }, {
+            'role': 'user',
+            'content': 'weather in two cities?'
+        }, {
+            'role': 'tool_call',
+            'content': telechat3_tool_call
+        }, {
+            'role': 'tool_call',
+            'content': telechat3_tool_call2
+        }, {
+            'role': 'tool_response',
+            'content': '{"temperature": 22}'
+        }, {
+            'role': 'tool_response',
+            'content': '{"temperature": 28}'
+        }, {
+            'role': 'assistant',
+            'content': 'Beijing is 22 and Shanghai is 28.'
+        }]
+    }
+    _assert_template_backend_equal(template, data)
+
+    thinking_arg = 'before</think>after'
+    data = {
+        'tools':
+        telechat3_tools,
+        'messages': [{
+            'role': 'user',
+            'content': 'echo the text'
+        }, {
+            'role': 'tool_call',
+            'content': json.dumps({
+                'name': 'get_weather',
+                'arguments': {
+                    'city': thinking_arg
+                }
+            })
+        }]
+    }
+    encoded = _assert_template_backend_equal(template, data)
+    assert thinking_arg in template.safe_decode(encoded['input_ids'])
+
+    structured_tool_call = {
+        'type': 'function',
+        'function': {
+            'name': 'get_weather',
+            'arguments': {
+                'city': thinking_arg
+            }
+        }
+    }
+    data = {
+        'tools':
+        telechat3_tools,
+        'messages': [{
+            'role': 'user',
+            'content': 'echo the text'
+        }, {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [structured_tool_call]
+        }]
+    }
+    encoded = _assert_template_backend_equal(template, data)
+    assert thinking_arg in template.safe_decode(encoded['input_ids'])
+
+    structured_tool_call['function']['arguments'] = json.dumps({'city': thinking_arg}, separators=(',', ':'))
+    encoded = _assert_template_backend_equal(template, data)
+    assert thinking_arg in template.safe_decode(encoded['input_ids'])
+
+    for key, pre_value, tool_value in [('loss', False, True), ('loss_scale', 0.2, 0.8)]:
+        data = {
+            'tools':
+            telechat3_tools,
+            'messages': [{
+                'role': 'user',
+                'content': 'weather?'
+            }, {
+                'role': 'assistant',
+                'content': 'I will check.',
+                key: pre_value
+            }, {
+                'role': 'tool_call',
+                'content': telechat3_tool_call,
+                key: tool_value
+            }, {
+                'role': 'tool_response',
+                'content': '{"temperature": 22}'
+            }, {
+                'role': 'assistant',
+                'content': 'sunny'
+            }]
+        }
+        template.template_backend = 'swift'
+        template.set_mode('train')
+        is_binary_loss_scale = template.is_binary_loss_scale
+        if key == 'loss_scale':
+            template.is_binary_loss_scale = False
+        encoded = template.encode(data)
+        template.is_binary_loss_scale = is_binary_loss_scale
+        assert len(encoded['input_ids']) == len(encoded['labels'])
+        if key == 'loss_scale':
+            assert len(encoded['input_ids']) == len(encoded['loss_scale'])
+            assert pre_value in encoded['loss_scale']
+            assert tool_value in encoded['loss_scale']
+        else:
+            labels = template.safe_decode(encoded['labels'])
+            assert 'I will check.' not in labels
+            assert 'Beijing' in labels
+    return template
+
+
+def test_telechat3():
+    from swift import agent_template_map
+    from swift.model import get_matched_model_meta
+
+    template = _assert_telechat3_agent_template('TeleAI/TeleChat3-36B-Thinking', 'telechat3')
+    model_meta = get_matched_model_meta('TeleAI/TeleChat3-105B-A4.7B-Thinking')
+    assert model_meta.model_type == 'deepseek_v3'
+    assert model_meta.template == 'telechat3'
+
+    data = {
+        'messages': [{
+            'role': 'system',
+            'content': ''
+        }, {
+            'role': 'user',
+            'content': 'hi'
+        }, {
+            'role': 'assistant',
+            'content': 'answer'
+        }]
+    }
+    encoded = _assert_template_backend_equal(template, data)
+    assert template.safe_decode(encoded['input_ids']) == '<_system>\n<_user>hi<_bot>answer<_end>\n'
+
+    data = {
+        'messages': [{
+            'role': 'user',
+            'content': 'question'
+        }, {
+            'role': 'assistant',
+            'content': '<think>\nplan\n</think>\nanswer'
+        }]
+    }
+    encoded = _assert_template_backend_equal(template, data)
+    assert template.safe_decode(encoded['input_ids']) == '<_system><_user>question<_bot>answer<_end>\n'
+    data['chat_template_kwargs'] = {'preserve_thinking': True}
+    encoded = _assert_template_backend_equal(template, data)
+    assert template.safe_decode(encoded['input_ids']) == '<_system><_user>question<_bot>answer<_end>\n'
+
+    data = {'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': ' answer\n'}]}
+    encoded = _assert_template_backend_equal(template, data)
+    assert template.safe_decode(encoded['input_ids']) == '<_system><_user>q<_bot> answer\n<_end>\n'
+
+    data = {'chat_template_kwargs': {'enable_thinking': False}, 'messages': [{'role': 'user', 'content': 'q'}]}
+    assert _assert_generation_backend_equal(template, data) == '<_system><_user>q<_bot><think>\n'
+
+    agent_template = agent_template_map['telechat3']()
+    functions = agent_template.get_toolcall(f'<tool_call>\n{telechat3_tool_call}\n</tool_call>\n'
+                                            f'<tool_call>\n{telechat3_tool_call2}\n</tool_call>')
+    assert len(functions) == 2
+    assert functions[0].arguments == '{"city": "Beijing", "unit": "celsius"}'
+    assert functions[1].arguments == '{"city": "Shanghai", "unit": "fahrenheit"}'
+
+
+def test_telechat3_infer():
+    from swift import TransformersEngine
+
+    engine = TransformersEngine('TeleAI/TeleChat3-36B-Thinking')
+    engine.template.template_backend = 'jinja'
+    messages = _infer(
+        engine,
+        num_tools=2,
+        agent_tools=telechat3_tools,
+        query='Use the get_weather tool to get the weather in Beijing. Return only a tool call.')
+    assert messages[-1]['content']
+
+
+def test_telechat3_coder():
+    from swift import agent_template_map
+
+    template = _assert_telechat3_agent_template('TeleAI/TeleChat3-Coder-36B-Thinking', 'telechat3_coder')
+
+    data = {'messages': [{'role': 'user', 'content': 'hi'}, {'role': 'assistant', 'content': 'answer'}]}
+    encoded = _assert_template_backend_equal(template, data)
+    assert template.safe_decode(encoded['input_ids']) == '<_system><_user>hi<_bot></think>answer<_end>'
+
+    data = {
+        'messages': [{
+            'role': 'user',
+            'content': 'hi'
+        }, {
+            'role': 'assistant',
+            'content': '<think>plan</think>answer'
+        }, {
+            'role': 'user',
+            'content': 'again'
+        }, {
+            'role': 'assistant',
+            'content': 'done'
+        }]
+    }
+    encoded = _assert_template_backend_equal(template, data)
+    expected_input = '<_system><_user>hi<_bot></think>answer<_end><_user>again<_bot></think>done<_end>'
+    assert template.safe_decode(encoded['input_ids']) == expected_input
+    data['chat_template_kwargs'] = {'preserve_thinking': True}
+    encoded = _assert_template_backend_equal(template, data)
+    assert template.safe_decode(encoded['input_ids']) == expected_input
+
+    for key, first_value, second_value in [('loss', False, True), ('loss_scale', 0.2, 0.8)]:
+        data = {
+            'messages': [{
+                'role': 'user',
+                'content': 'q'
+            }, {
+                'role': 'assistant',
+                'content': 'left',
+                key: first_value
+            }, {
+                'role': 'assistant',
+                'content': 'right',
+                key: second_value
+            }]
+        }
+        with pytest.raises(ValueError, match=rf'different `{key}` values'):
+            template.encode(data)
+
+    data = {
+        'messages': [{
+            'role': 'user',
+            'content': 'question'
+        }, {
+            'role': 'assistant',
+            'content': '<think>\nplan\n</think>\nanswer'
+        }]
+    }
+    encoded = _assert_template_backend_equal(template, data)
+    expected_input = '<_system><_user>question<_bot><think>\nplan\n</think>answer<_end>'
+    assert template.safe_decode(encoded['input_ids']) == expected_input
+
+    cases = [
+        ({
+            'messages': [{
+                'role': 'user',
+                'content': 'q'
+            }, {
+                'role': 'assistant',
+                'content': 'answer',
+                'reasoning_content': 'plan'
+            }]
+        }, '<_system><_user>q<_bot><think>\nplan\n</think>answer<_end>'),
+        ({
+            'messages': [{
+                'role': 'user',
+                'content': 'q'
+            }, {
+                'role': 'assistant',
+                'content': '<think>\n\n</think>answer'
+            }]
+        }, '<_system><_user>q<_bot></think>answer<_end>'),
+        ({
+            'messages': [{
+                'role': 'user',
+                'content': 'q'
+            }, {
+                'role': 'assistant',
+                'content': 'prefix'
+            }, {
+                'role': 'assistant',
+                'content': '<think>x</think>answer'
+            }]
+        }, '<_system><_user>q<_bot><think>\nx\n</think>answer<_end>'),
+    ]
+    for data, expected_input in cases:
+        encoded = _assert_template_backend_equal(template, data)
+        assert template.safe_decode(encoded['input_ids']) == expected_input
+
+    data = {
+        'chat_template_kwargs': {
+            'clear_thinking': False
+        },
+        'messages': [{
+            'role': 'user',
+            'content': 'q1'
+        }, {
+            'role': 'assistant',
+            'content': '<think>p1</think>a1'
+        }, {
+            'role': 'user',
+            'content': 'q2'
+        }, {
+            'role': 'assistant',
+            'content': '<think>p2</think>a2'
+        }]
+    }
+    encoded = _assert_template_backend_equal(template, data)
+    expected_input = ('<_system><_user>q1<_bot><think>\np1\n</think>a1<_end>'
+                      '<_user>q2<_bot><think>\np2\n</think>a2<_end>')
+    assert template.safe_decode(encoded['input_ids']) == expected_input
+
+    data = {'chat_template_kwargs': {'enable_thinking': False}, 'messages': [{'role': 'user', 'content': 'q'}]}
+    assert _assert_generation_backend_equal(template, data) == '<_system><_user>q<_bot><think>'
+
+    data = {
+        'tools':
+        telechat3_tools,
+        'messages': [{
+            'role': 'user',
+            'content': 'q1'
+        }, {
+            'role': 'tool_call',
+            'content': telechat3_tool_call
+        }, {
+            'role': 'tool_response',
+            'content': '{"temperature": 22}'
+        }, {
+            'role': 'assistant',
+            'content': 'done'
+        }, {
+            'role': 'user',
+            'content': 'q2'
+        }]
+    }
+    rendered = _assert_generation_backend_equal(template, data)
+    assert '<_user>q1<_bot></think><tool_call>' in rendered
+
+    agent_template = agent_template_map['telechat3_coder']()
+    functions = agent_template.get_toolcall('<tool_call>get_weather'
+                                            '<param_key>city</param_key><param_value>Beijing</param_value>'
+                                            '</tool_call><tool_call>get_weather'
+                                            '<param_key>city</param_key><param_value>Shanghai</param_value>'
+                                            '</tool_call>')
+    assert len(functions) == 2
+    assert functions[0].arguments == '{"city": "Beijing"}'
+    assert functions[1].arguments == '{"city": "Shanghai"}'
+    response = ('<tool_call>get_weather'
+                '<param_key> city </param_key>\n<param_value> 22 </param_value>'
+                '<param_key>unit</param_key> <param_value>null</param_value>'
+                '</tool_call>')
+    functions = agent_template.get_toolcall(response)
+    assert len(functions) == 1
+    assert functions[0].arguments == '{"city": 22, "unit": null}'
+    functions = agent_template.get_toolcall_with_tools(response, telechat3_tools)
+    assert len(functions) == 1
+    assert functions[0].arguments == '{"city": "22", "unit": "null"}'
+
+    from swift.infer_engine.infer_engine import InferEngine
+    engine = SimpleNamespace(template=SimpleNamespace(agent_template=agent_template))
+    tool_calls = InferEngine._get_toolcall(engine, response, telechat3_tools)
+    assert len(tool_calls) == 1
+    assert tool_calls[0].function.arguments == '{"city": "22", "unit": "null"}'
+
+
+def test_telechat3_coder_infer():
+    from swift import TransformersEngine
+
+    engine = TransformersEngine('TeleAI/TeleChat3-Coder-36B-Thinking', template_type='telechat3_coder')
+    engine.template.template_backend = 'jinja'
+    messages = _infer(
+        engine,
+        num_tools=2,
+        agent_tools=telechat3_tools,
+        query='Use the get_weather tool to get the weather in Beijing. Return only a tool call.')
+    assert messages[-1]['content']
 
 
 def test_seed_oss():
