@@ -761,7 +761,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
 
     def _check_mcore_bridge(self):
         if self.language_model_only:
-            require_version('mcore-bridge>=1.4.3', 'Please install "mcore-bridge>=1.4.3" to use language_model_only.')
             if self.tuner_type == 'lora_llm':
                 raise ValueError('`tuner_type="lora_llm"` is not supported when `language_model_only=True`. '
                                  'Please use `tuner_type="lora"` instead.')
@@ -778,9 +777,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 raise ValueError('LoRA training is not yet supported with bridge_backend="megatron-bridge". '
                                  'Please use bridge_backend="mcore-bridge" for LoRA, or set tuner_type="full".')
         else:
-            require_version('mcore-bridge>=1.4.0', 'Please install mcore-bridge via `pip install mcore-bridge -U`')
+            require_version('mcore-bridge>=1.5.0', 'Please install mcore-bridge via `pip install mcore-bridge -U`')
             from swift.megatron.init import _patch_mcore_bridge
             _patch_mcore_bridge()
+            self._check_mcore_bridge()
 
     def __post_init__(self):
         if self.tuner_type != 'full':
@@ -788,7 +788,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
-        self._check_mcore_bridge()
         self._check_bridge_backend()
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
