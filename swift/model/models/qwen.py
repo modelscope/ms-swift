@@ -1691,6 +1691,7 @@ class Qwen3OmniLoader(ModelLoader):
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen3OmniMoeForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen3OmniMoeForConditionalGeneration
+        Qwen3OmniMoeForConditionalGeneration._no_split_modules.append('Qwen3OmniMoeThinkerTextDecoderLayer')
         model = super().get_model(model_dir, config, processor, model_kwargs)
         _compat_qwen3_omni_mixed_data(model.thinker, processor)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
