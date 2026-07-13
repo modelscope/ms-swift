@@ -1,13 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
-import importlib.metadata
 import logging
 import os
 import torch
 import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy, deepcopy
-from packaging import version
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
