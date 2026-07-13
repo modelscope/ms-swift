@@ -194,9 +194,17 @@ class IterablePackingDataset(IterableDataset):
             i, data = self._out_queue.get()
             if not data:
                 continue
-            res[i] = (data, len(data['input_ids']))
-        res = [data for data in res if data]
-        last_res += res
+            res[i] = data
+        # `template.encode` returns a single dict, except for `truncation_strategy='split'`
+        # where an over-long sample is split into a list of chunks. Flatten each sample
+        # (in input order, preserved via `res[i]`) into one bin-packing item per chunk.
+        for data in res:
+            if not data:
+                continue
+            if isinstance(data, dict):
+                data = [data]
+            for chunk in data:
+                last_res.append((chunk, len(chunk['input_ids'])))
         return last_res
 
     @staticmethod

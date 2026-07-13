@@ -43,6 +43,38 @@ def test_streaming():
     infer_main(InferArguments(adapters=last_model_checkpoint, load_data_args=True, merge_lora=True))
 
 
+def test_streaming_packing_split():
+    """IterablePackingDataset must flatten ``truncation_strategy='split'``'s list-of-chunks
+    return from ``template.encode``. Regression test for
+    https://github.com/modelscope/ms-swift/issues/8285 : streaming + packing + split crashed
+    with ``TypeError: list indices must be integers or slices, not str`` because
+    ``_fetch_data_out_queue`` assumed ``encode`` always returns a dict."""
+    import queue
+    import types
+
+    from swift.dataset.packing import IterablePackingDataset, calculate_matched_group
+
+    # _fetch_data_out_queue only touches self._out_queue; bypass __init__ (which spawns mp workers).
+    obj = types.SimpleNamespace(_out_queue=queue.Queue())
+
+    normal = {'input_ids': list(range(100)), 'labels': [-100] * 100}  # dict: delete/left/right
+    chunk_a = {'input_ids': list(range(1024)), 'labels': [-100] * 1024}  # split chunk 1
+    chunk_b = {'input_ids': list(range(904)), 'labels': [-100] * 904}  # split chunk 2
+
+    obj._out_queue.put((0, normal))  # i=0: single dict (non-split)
+    obj._out_queue.put((1, [chunk_a, chunk_b]))  # i=1: split -> list of chunks
+    obj._out_queue.put((2, {}))  # i=2: failed encode (MaxLengthError) -> skipped
+
+    res = IterablePackingDataset._fetch_data_out_queue(obj, [], 3)
+
+    # Flattened to one (chunk, length) item per chunk; failed sample skipped; input order preserved.
+    assert res == [(normal, 100), (chunk_a, 1024), (chunk_b, 904)]
+
+    # Flattened chunks feed bin-packing without error; total tokens are conserved across bins.
+    bins, _ = calculate_matched_group(res, 1024, is_finished=True)
+    assert sum(sum(item[1] for item in b) for b in bins) == 100 + 1024 + 904
+
+
 def test_mllm_streaming():
     from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
