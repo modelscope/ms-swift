@@ -860,13 +860,12 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             else:
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
-        do_resize = self.version == 'omni_v3'
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
-            do_resize=do_resize,
+            do_resize=False,
             return_tensors='pt')
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
