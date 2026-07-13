@@ -204,7 +204,10 @@ class IterablePackingDataset(IterableDataset):
             if isinstance(data, dict):
                 data = [data]
             for chunk in data:
-                last_res.append((chunk, len(chunk['input_ids'])))
+                # Defensive: skip empty/malformed chunks (e.g. missing 'input_ids')
+                # to avoid KeyError/TypeError, mirroring RowPreprocessor's skip-bad-data behaviour.
+                if chunk and 'input_ids' in chunk:
+                    last_res.append((chunk, len(chunk['input_ids'])))
         return last_res
 
     @staticmethod

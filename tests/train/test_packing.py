@@ -75,6 +75,25 @@ def test_streaming_packing_split():
     assert sum(sum(item[1] for item in b) for b in bins) == 100 + 1024 + 904
 
 
+def test_streaming_packing_split_skips_malformed_chunks():
+    """Empty chunks or chunks missing ``'input_ids'`` are skipped defensively, keeping only
+    valid chunks for bin-packing (mirrors RowPreprocessor's skip-bad-data behaviour)."""
+    import queue
+    import types
+
+    from swift.dataset.packing import IterablePackingDataset
+
+    obj = types.SimpleNamespace(_out_queue=queue.Queue())
+    good = {'input_ids': list(range(50)), 'labels': [-100] * 50}
+    empty_chunk = {}  # empty -> skipped
+    no_input_ids = {'labels': [-100]}  # missing 'input_ids' -> skipped
+
+    obj._out_queue.put((0, [good, empty_chunk, no_input_ids]))
+
+    res = IterablePackingDataset._fetch_data_out_queue(obj, [], 1)
+    assert res == [(good, 50)]
+
+
 def test_mllm_streaming():
     from swift import InferArguments, SftArguments, infer_main, sft_main
     result = sft_main(
