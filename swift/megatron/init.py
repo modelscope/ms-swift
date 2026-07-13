@@ -1,17 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
-import importlib.metadata
 import logging
 import os
 import torch
 import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy, deepcopy
-from packaging import version
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
-from transformers.utils.versions import require_version
 
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
@@ -117,7 +114,6 @@ def _patch_unified_memory():
 
 
 def _patch_mcore_bridge():
-    require_version('mcore-bridge>=1.4.0', 'please install mcore-bridge via `pip install mcore-bridge -U`')
     import mcore_bridge
     from mcore_bridge import GPTBridge
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')
