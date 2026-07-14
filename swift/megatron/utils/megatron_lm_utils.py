@@ -13,8 +13,6 @@ from datetime import timedelta
 from mcore_bridge import set_random_seed, split_cp_inputs, unwrap_model
 from megatron.core import dist_checkpointing, mpu, parallel_state, tensor_parallel
 from megatron.core.dist_checkpointing.mapping import ShardedObject
-from megatron.core.dist_checkpointing.serialization import (get_default_load_sharded_strategy,
-                                                            get_default_save_sharded_strategy)
 from megatron.core.dist_checkpointing.strategies.async_utils import AsyncCallsQueue, AsyncRequest
 from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyParallelLoadStrategyWrapper,
                                                                         FullyParallelSaveStrategyWrapper)
@@ -266,6 +264,7 @@ def save_mcore_checkpoint(
     if mcore_017:
         save_strategy = TorchDistSaveShardedStrategy()
     else:
+        from megatron.core.dist_checkpointing.serialization import get_default_save_sharded_strategy
         save_strategy = get_default_save_sharded_strategy()
     save_strategy = FullyParallelSaveStrategyWrapper(
         save_strategy,
@@ -455,6 +454,7 @@ def load_mcore_checkpoint(args,
     if mcore_017:
         load_strategy = TorchDistLoadShardedStrategy()
     else:
+        from megatron.core.dist_checkpointing.serialization import get_default_load_sharded_strategy
         load_strategy = get_default_load_sharded_strategy(checkpoint_dir)
 
     load_strategy = FullyParallelLoadStrategyWrapper(load_strategy,
