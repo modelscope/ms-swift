@@ -181,9 +181,10 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 for _ in range(_MAX_MEDIA_URL_REDIRECTS + 1):
                     _assert_media_url_allowed(url)
                     response = session.get(url, allow_redirects=False, **request_kwargs)
-                    if not response.is_redirect:
+                    location = response.headers.get('location')
+                    if not response.is_redirect or not location:
                         break
-                    url = urljoin(url, response.headers['location'])
+                    url = urljoin(url, location)
                 else:
                     raise ValueError(f'Too many redirects while fetching media URL: {path!r}')
                 response.raise_for_status()
@@ -345,6 +346,12 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
 
 def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int, mono: bool = True):
     import librosa
+    if isinstance(audio, str) and audio.startswith(('http://', 'https://')):
+        # Validate up front: the audioread fallback below hands the raw URL to ffmpeg,
+        # which would re-fetch it without going through load_file. Without this, an
+        # internal URL that load_file rejects gets caught by ``except Exception`` and
+        # re-fetched unvalidated, bypassing the SSRF guard.
+        _assert_media_url_allowed(audio)
     try:
         audio_io = load_file(audio)
         return librosa.load(audio_io, sr=sampling_rate, mono=mono)

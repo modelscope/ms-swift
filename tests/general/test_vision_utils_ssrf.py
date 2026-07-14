@@ -50,3 +50,42 @@ def test_media_url_opt_out():
             os.environ.pop('SWIFT_ALLOW_INTERNAL_MEDIA_URLS', None)
         else:
             os.environ['SWIFT_ALLOW_INTERNAL_MEDIA_URLS'] = prev
+
+
+def test_load_audio_librosa_blocks_internal_url_before_fallback():
+    """``_load_audio_librosa`` wraps ``load_file`` in ``except Exception`` and, for an
+    ``http(s)`` URL, re-fetches it via ``audioread``/ffmpeg. That fallback would swallow
+    the SSRF ``ValueError`` load_file raises and fetch the internal URL anyway, so the
+    URL must be validated up front, before the fallback can run. See #9740.
+
+    ``librosa`` and ``audioread`` are stubbed via ``sys.modules`` so the test needs no
+    audio deps, ffmpeg, or network; the ffmpeg stub records if it is ever reached.
+    """
+    import sys
+    import types
+
+    from swift.template import vision_utils
+
+    reached = []
+    fake_audioread = types.ModuleType('audioread')
+    fake_audioread.ffdec = types.SimpleNamespace(FFmpegAudioFile=lambda url: reached.append(url))
+    fake_librosa = types.ModuleType('librosa')
+    fake_librosa.load = lambda *args, **kwargs: (None, None)
+
+    saved = {name: sys.modules.get(name) for name in ('audioread', 'librosa')}
+    sys.modules['audioread'] = fake_audioread
+    sys.modules['librosa'] = fake_librosa
+    try:
+        blocked = False
+        try:
+            vision_utils._load_audio_librosa('http://127.0.0.1:9000/x.wav', 16000)
+        except ValueError:
+            blocked = True
+        assert blocked, 'internal audio_url was not rejected'
+        assert reached == [], 'internal audio_url reached the ffmpeg fallback (SSRF bypass)'
+    finally:
+        for name, mod in saved.items():
+            if mod is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = mod
