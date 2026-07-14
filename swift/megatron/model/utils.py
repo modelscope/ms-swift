@@ -26,9 +26,7 @@ def _check_padding_free(args, config):
     attention_backend = config.attention_backend.name
     message = None
 
-    if config.experimental_attention_variant == 'dsa':
-        message = 'DSA is not supported in padding-free mode'
-    elif attention_backend == 'unfused':
+    if attention_backend == 'unfused':
         message = f'Attention backend "{attention_backend}" is not supported in padding-free mode'
 
     if message:
