@@ -197,8 +197,6 @@ This assumes the model's history is not modified during interaction.
 In some scenarios you may need to dynamically change the history during rollout (e.g., compressing context).
 In that case each turn should be treated as a separate trajectory.
 
-> Note: this "split one trajectory into multiple training samples" mode will be removed in **swift 4.4**; only the "one rollout = one trajectory sample" form will be retained.
-
 #### Approach 1: Using hooks
 
 ```python

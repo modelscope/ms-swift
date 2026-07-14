@@ -486,16 +486,18 @@ Evaluation results on AIME-2025 and MATH-500:
 
 ### GKD
 
-LoRA training with GKD (Guided Knowledge Distillation), using Qwen3.5-9B as the teacher model. First, launch the teacher server with vLLM (alternatively, use the `--teacher_model` parameter to load the model directly):
+LoRA training with GKD (General Knowledge Distillation), using Qwen3.5-9B as the teacher model. First, launch the teacher server with `swift deploy` (alternatively, use the `--teacher_model` parameter to load the model directly):
 
 ```shell
 CUDA_VISIBLE_DEVICES=0 \
-vllm serve Qwen/Qwen3.5-9B \
+swift deploy \
+    --model Qwen/Qwen3.5-9B \
+    --infer_backend vllm \
     --port 8000 \
-    --tensor-parallel-size 1 \
-    --max-model-len 10240 \
+    --vllm_tensor_parallel_size 1 \
+    --vllm_max_model_len 10240 \
     --gpu-memory-utilization 0.8 \
-    --max-logprobs 64
+    --max_logprobs 64
 ```
 
 Then start GKD training on the remaining GPUs:

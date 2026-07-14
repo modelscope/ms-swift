@@ -1706,6 +1706,7 @@ class Qwen3OmniLoader(ModelLoader):
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
         from transformers import Qwen3OmniMoeForConditionalGeneration
         self.auto_model_cls = self.auto_model_cls or Qwen3OmniMoeForConditionalGeneration
+        Qwen3OmniMoeForConditionalGeneration._no_split_modules.append('Qwen3OmniMoeThinkerTextDecoderLayer')
         model = super().get_model(model_dir, config, processor, model_kwargs)
         _compat_qwen3_omni_mixed_data(model.thinker, processor)
         base_model = model.model if 'AWQ' in model.__class__.__name__ else model
@@ -1793,7 +1794,8 @@ def _patch_qwen3_tts_forward(model):
         input_codec_ids = input_ids[:, :, 1]
 
         # Build text and codec embeddings
-        input_text_embedding = self.talker.model.text_embedding(input_text_ids) * text_embedding_mask
+        input_text_embedding = self.talker.text_projection(
+            self.talker.model.text_embedding(input_text_ids)) * text_embedding_mask
         input_codec_embedding = self.talker.model.codec_embedding(input_codec_ids) * codec_embedding_mask
         # Inject speaker embedding at position 6
         input_codec_embedding[:, 6, :] = speaker_embedding
@@ -1807,11 +1809,9 @@ def _patch_qwen3_tts_forward(model):
             codec_i_embedding = codec_i_embedding * codec_mask.unsqueeze(-1)
             input_embeddings = input_embeddings + codec_i_embedding
 
-        # Forward through talker (shifted by 1 for autoregressive prediction)
         outputs = self.talker(
             inputs_embeds=input_embeddings[:, :-1, :],
             attention_mask=attention_mask[:, :-1],
-            labels=codec_0_labels[:, 1:],
             output_hidden_states=True,
         )
 
@@ -1873,7 +1873,7 @@ register_model(
         Qwen3TTSLoader,
         model_arch=ModelArch.qwen3_tts,
         architectures=['Qwen3TTSForConditionalGeneration'],
-        requires=['qwen-tts'],
+        requires=['qwen-tts', 'transformers<5'],
         tags=['audio', 'tts'],
     ))
 

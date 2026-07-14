@@ -217,6 +217,11 @@ def get_padding_to(args):
     fp4_format = getattr(args, 'fp4_format', None) or getattr(args, 'fp4', None)
     if args.fp8_recipe == 'blockwise':
         padding_to = (padding_to or 1) * 128
+    elif args.fp8_recipe == 'mxfp8':
+        # MXFP8 uses a block size of 32. Under sequence parallel, the sequence is
+        # split across TP ranks, so each per-rank shard (seq_len / TP) must itself
+        # be divisible by 32. Pad the total length to TP * 32 to guarantee this.
+        padding_to = (padding_to or 1) * 32
     elif fp8_format is not None or fp4_format is not None:
         padding_to = (padding_to or 1) * 16
     if args.attention_backend == 'fused':
