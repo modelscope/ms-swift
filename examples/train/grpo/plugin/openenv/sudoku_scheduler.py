@@ -274,18 +274,20 @@ class SudokuScheduler(OpenEnvScheduler):
         action_text = response_choice.message.content
         action_dict = self.parse_action(action_text)
         if action_dict is None:
-            # Parse failed: end trajectory with penalty instead of polluting env
+            # Parse failed: end trajectory with penalty instead of polluting env.
+            # Snapshot rollout_infos *before* _close_and_remove, which pops
+            # self._total_rewards[uuid] / self._step_rewards[uuid] (see the
+            # base OpenEnvScheduler._close_and_remove). Building the dict after
+            # cleanup raised KeyError on total_reward and lost step_rewards.
             self._total_rewards[uuid] = self._total_rewards.get(uuid, 0.0) - 1.0
             self._step_rewards.setdefault(uuid, []).append(-1.0)
-            await self._close_and_remove(uuid)
-            return {
-                'done': True,
-                'rollout_infos': {
-                    'total_reward': self._total_rewards[uuid],
-                    'step_rewards': list(self._step_rewards.get(uuid, [])),
-                    'gym_done': True,
-                }
+            rollout_infos = {
+                'total_reward': self._total_rewards[uuid],
+                'step_rewards': list(self._step_rewards.get(uuid, [])),
+                'gym_done': True,
             }
+            await self._close_and_remove(uuid)
+            return {'done': True, 'rollout_infos': rollout_infos}
         move = action_dict.get('message', '')
 
         # Step environment
