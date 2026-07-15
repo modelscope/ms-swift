@@ -313,7 +313,8 @@ Megatron-SWIFT训练Qwen3.5的提示：
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
 - 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练。请安装对应版本。
 - CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练，需安装megatron-core [main分支](https://github.com/NVIDIA/Megatron-LM)。
-- 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0` 可切换至 transformers 模型路径；在昇腾 NPU 上，该路径可使用 FLA 原生 Triton-Ascend GDN。当前已验证 `USE_MCORE_GDN=0`、packing、8 卡数据并行、TP=1、CP=1 的训练与保存链路；GDN 的 TP/CP 组合与当前原生 FLA 的严格 packed-vs-separate 边界 A/B 尚未验证。
+- Transformers/FSDP packing 验证：Qwen3.5-4B 已在 8 卡 Atlas 900 A2 上使用 LoRA、BF16、`alpaca-gpt4-data-zh`、`packing=true`、`max_length=512`、每卡 batch size 1、梯度累积 1 完成 300 steps 训练；loss/grad_norm 全程为有限值，并成功保存 checkpoint。在相同配置下，NPU 与 GPU 对照实验的 loss 变化趋势对齐。
+- 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0` 可切换至 transformers 模型路径；在昇腾 NPU 上，该路径可使用 FLA 原生 Triton-Ascend GDN。
 - padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
   - Qwen3-Next的Megatron GatedDeltaNet支持参考[这个PR](https://github.com/modelscope/mcore-bridge/pull/76)，需要"mcore-bridge>=1.4.0"。
 - apply_wd_to_qk_layernorm: 对 qk layernorm 应用权重衰减。默认为False。
