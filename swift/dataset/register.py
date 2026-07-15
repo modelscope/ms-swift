@@ -103,6 +103,9 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> L
                 dataset_info = json.load(f)
         else:
             dataset_info = json.loads(dataset_info)  # json
+    if not isinstance(dataset_info, list):
+        raise ValueError(f'`dataset_info` should be a JSON list of dataset entries (e.g. `[{{...}}]`), but got '
+                         f'type `{type(dataset_info).__name__}`. Please wrap the entry in a list.')
     if len(dataset_info) == 0:
         return []
     res = []

@@ -79,6 +79,27 @@ def test_cls():
     _test_dataset(['simpleai/HC3-Chinese:baike_cls'])
 
 
+def test_register_dataset_info_rejects_non_list():
+    import json
+    import tempfile
+
+    from swift.dataset import register_dataset_info
+
+    # A single entry written as a top-level object instead of a one-element list is a
+    # common mistake; it must fail with a clear message rather than a cryptic
+    # "'str' object does not support item assignment" from iterating the dict keys.
+    with tempfile.NamedTemporaryFile('w', suffix='.json', delete=False, encoding='utf-8') as f:
+        json.dump({'ms_dataset_id': 'swift/self-cognition'}, f)
+        path = f.name
+
+    try:
+        register_dataset_info(path)
+    except ValueError as e:
+        assert 'list' in str(e)
+    else:
+        raise AssertionError('expected ValueError for a non-list dataset_info')
+
+
 if __name__ == '__main__':
     # test_sft()
     # test_agent()
