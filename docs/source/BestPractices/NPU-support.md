@@ -305,8 +305,6 @@ Qwen3.5 modeling.chunk_gated_delta_rule
 
 3. 当前已验证 Qwen3.5-4B 在 8 卡数据并行、`USE_MCORE_GDN=0`、`packing=true`、TP=1、CP=1 下完成 2 个有限值 loss/grad_norm 训练步并保存 checkpoint；各 rank 最终记录的 GDN callable 均来自 FLA 的 `fla.ops.gated_delta_rule.chunk`。这证明了该组合下的运行时分发、前向、反向与保存链路。
 
-4. 当前原生 FLA 路径尚未重新执行相同样本的严格 packed-vs-separate 边界 A/B，也未验证 GDN 的 TP/CP 组合。完成对应验证前，`--sequence_parallel_size` 与 Megatron-SWIFT 的 `--context_parallel_size` 仍保持为 `1`；不要把上述 8 卡数据并行 smoke 扩大为边界语义或并行路径正确性结论。
-
 ### 环境查看
 
 查看NPU的P2P连接，这里看到每个NPU都通过7条HCCS与其他NPU互联

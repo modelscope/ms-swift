@@ -307,8 +307,6 @@ When running Qwen3.5 on NPU with either the transformers backend or the Megatron
 
 3. Qwen3.5-4B has been validated for two training steps with finite loss and grad norm, followed by checkpoint saving, on 8-way data parallel with `USE_MCORE_GDN=0`, `packing=true`, TP=1, and CP=1. Every rank reported the final GDN callable from FLA's `fla.ops.gated_delta_rule.chunk`. This validates runtime dispatch, forward, backward, and saving for that tested combination.
 
-4. The current native FLA path has not yet been rerun through a strict same-sample packed-vs-separate boundary A/B, and GDN TP/CP combinations have not been validated. Until those checks are complete, keep `--sequence_parallel_size` and Megatron-SWIFT's `--context_parallel_size` at `1`. Do not generalize the 8-way data-parallel smoke to boundary semantics or parallel-path correctness.
-
 ### Environment Viewing
 Check the P2P connections of the NPU, where we can see that each NPU is interconnected through 7 HCCS links with other NPUs.
 
