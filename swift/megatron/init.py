@@ -209,6 +209,9 @@ def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_unified_memory()
+    if is_torch_npu_available():
+        from swift.model.npu_patcher import patch_mindspeed_fla_gdn_implementation
+        patch_mindspeed_fla_gdn_implementation()
     _patch_mcore_bridge()
     _patch__batched_p2p_ops()
     logging.root.setLevel(logging_level)  # revert logger level

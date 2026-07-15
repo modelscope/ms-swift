@@ -12,6 +12,8 @@ pip install -U "transformers>=5.9" "qwen_vl_utils>=0.0.14" peft liger-kernel
 # If you encounter slow training issues, please refer to: https://github.com/fla-org/flash-linear-attention/issues/758
 # Please use Python 3.12: https://github.com/fla-org/flash-linear-attention/issues/121
 pip install -U "flash-linear-attention>=0.4.2" --no-build-isolation
+# For Ascend NPU GDN, install the latest main branch (replace the command above)
+pip install -U git+https://github.com/fla-org/flash-linear-attention.git --no-build-isolation
 
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
@@ -27,7 +29,7 @@ pip install -U "vllm>=0.17.0"
 ```
 
 - Qwen3.5 video data training hangs: Using the decord backend to read videos may cause hanging issues, refer to [this issue](https://github.com/dmlc/decord/issues/269). You can use the torchcodec backend, specifically refer to the [qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400) library.
-- If you are using Qwen3.5 on Ascend NPU and want details about the FLA / MindSpeed replacement, effective patch path, and verified version combinations, please refer to [Qwen3.5 FLA Patch Notes in the NPU Support document](./NPU-support.md#qwen35-fla-patch-notes).
+- If you are using Qwen3.5 on Ascend NPU and want details about the FLA GDN call path and verified version combinations, please refer to [Qwen3.5 FLA Patch Notes in the NPU Support document](./NPU-support.md#qwen35-fla-patch-notes).
 
 ## Inference
 
@@ -308,7 +310,7 @@ Tips for training Qwen3.5 with Megatron-SWIFT:
 - TP Limitation Removed: Using `megatron-core>=0.16` removes the `num_query_groups` limitation on TP.
 - Regarding MTP training: `mcore-bridge>=1.1.0` supports multimodal MTP training. Please install the corresponding version.
 - CP support: "mcore-bridge>=1.1.0" supports CP training for GDN. Additionally, the megatron-core [main branch](https://github.com/NVIDIA/Megatron-LM) needs to be installed.
-- By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set the environment variable `USE_MCORE_GDN=0` to switch to the transformers implementation. **Note that the transformers implementation does not support packing and GDN's TP/CP**.
+- By default, `GatedDeltaNet` uses the Megatron implementation, which requires "megatron-core>=0.16" (ms-swift>=4.1.0; previous versions defaulted to the transformers implementation). Set `USE_MCORE_GDN=0` to switch to the transformers model path; on Ascend NPU, this path can use FLA's native Triton-Ascend GDN. Training and checkpoint saving have been validated with `USE_MCORE_GDN=0`, packing, 8-way data parallel, TP=1, and CP=1. GDN TP/CP combinations and a strict packed-vs-separate boundary A/B for the current native FLA path remain unvalidated.
 - Support for padding_free/packing: Packing can improve training speed. Refer to [this example](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh).
   - Qwen3-Next Megatron GatedDeltaNet support refers to [this PR](https://github.com/modelscope/mcore-bridge/pull/76), requiring `mcore-bridge>=1.4.0`.
 - apply_wd_to_qk_layernorm: Apply weight decay to qk layernorm. Default is False.
