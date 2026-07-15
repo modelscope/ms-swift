@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
-import functools
 import importlib
 import inspect
 import sys
@@ -13,46 +12,6 @@ logger = get_logger()
 
 _ORIGINAL_MINDSPEED_TE_CP_CLASS = None
 _FLA_GDN_PATCH_TARGET = 'fla.ops.gated_delta_rule.chunk_gated_delta_rule'
-_LOGGED_TORCH_GDN_FALLBACK = False
-
-
-def _get_native_torch_gdn(patch, bridge_gdn):
-    candidates = [
-        getattr(bridge_gdn, 'torch_chunk_gated_delta_rule', None) if bridge_gdn is not None else None,
-        getattr(patch, 'patch_func', None) if patch is not None else None,
-    ]
-    try:
-        from megatron.core.ssm.gated_delta_net import torch_chunk_gated_delta_rule
-        candidates.append(torch_chunk_gated_delta_rule)
-    except ImportError:
-        pass
-
-    for candidate in candidates:
-        if (candidate is not None and not candidate.__module__.startswith('fla.')
-                and (candidate.__name__ == 'torch_chunk_gated_delta_rule'
-                     or getattr(candidate, '_swift_native_torch_gdn', False))):
-            return candidate
-
-
-def _adapt_native_torch_gdn(native_torch_gdn):
-    if getattr(native_torch_gdn, '_swift_accepts_cu_seqlens', False):
-        return native_torch_gdn
-    try:
-        if 'cu_seqlens' in inspect.signature(native_torch_gdn).parameters:
-            return native_torch_gdn
-    except (TypeError, ValueError):
-        pass
-
-    @functools.wraps(native_torch_gdn)
-    def native_torch_gdn_adapter(*args, cu_seqlens=None, **kwargs):
-        if cu_seqlens is not None:
-            raise RuntimeError('Packed Megatron GDN requires flash-linear-attention; '
-                               'the native Torch fallback only supports non-packed sequences.')
-        return native_torch_gdn(*args, **kwargs)
-
-    native_torch_gdn_adapter._swift_accepts_cu_seqlens = True
-    native_torch_gdn_adapter._swift_native_torch_gdn = True
-    return native_torch_gdn_adapter
 
 
 def _apply_gdn_patch(MindSpeedPatchesManager, patch, implementation) -> None:
@@ -86,8 +45,6 @@ def _apply_gdn_patch(MindSpeedPatchesManager, patch, implementation) -> None:
 
 def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
     patch = MindSpeedPatchesManager.patches_info.get(_FLA_GDN_PATCH_TARGET)
-    bridge_gdn = sys.modules.get('mcore_bridge.model.modules.gated_delta_net')
-    native_torch_gdn = _get_native_torch_gdn(patch, bridge_gdn)
 
     fla_error = None
     if (patch is not None and patch.orig_func is not None and patch.orig_func.__module__.startswith('fla.')):
@@ -117,33 +74,15 @@ def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
         except Exception as e:
             fla_error = e
 
-    if native_torch_gdn is None:
-        logger.warning(
-            'FLA GDN is unavailable and no native Torch fallback was found; '
-            'keep the current Megatron GDN implementation: %s', fla_error)
-        return
-
-    native_torch_gdn = _adapt_native_torch_gdn(native_torch_gdn)
-    try:
-        _apply_gdn_patch(MindSpeedPatchesManager, patch, native_torch_gdn)
-    except Exception as e:
-        logger.warning(
-            'FLA GDN is unavailable and native Torch fallback setup failed; '
-            'keep the current Megatron GDN implementation: %s', e)
-        return
-
-    global _LOGGED_TORCH_GDN_FALLBACK
-    if not _LOGGED_TORCH_GDN_FALLBACK:
-        logger.warning(
-            'FLA GDN is unavailable (%s); falling back to native Torch chunk_gated_delta_rule. '
-            'Packed Megatron GDN still requires flash-linear-attention.',
-            fla_error,
-        )
-        _LOGGED_TORCH_GDN_FALLBACK = True
+    logger.warning(
+        'FLA GDN is unavailable (%s); keep the current MindSpeed/Megatron GDN implementation unchanged. '
+        'If it does not support packed cu_seqlens, the GDN call will fail at runtime.',
+        fla_error,
+    )
 
 
 def patch_mindspeed_fla_gdn_implementation() -> None:
-    """Best-effort preference for upstream FLA with a native Torch fallback."""
+    """Best-effort preference for upstream FLA while preserving the current GDN implementation."""
     from mindspeed.patch_utils import MindSpeedPatchesManager
 
     try:
