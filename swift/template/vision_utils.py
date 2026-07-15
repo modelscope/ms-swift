@@ -286,7 +286,7 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
 
     video_io = load_file(video)
     vr = VideoReader(video_io, ctx=cpu(0))
-    sample_fps = round(vr.get_avg_fps() / 1)  # FPS
+    sample_fps = max(1, round(vr.get_avg_fps() / 1))  # FPS; clamp so a 0-fps video does not make range() step 0
     frame_idx = [i for i in range(0, len(vr), sample_fps)]
 
     if len(frame_idx) > max_num_frames:
