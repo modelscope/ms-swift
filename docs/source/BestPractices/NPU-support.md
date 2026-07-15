@@ -299,9 +299,9 @@ Qwen3.5 modeling.chunk_gated_delta_rule
 
 当前 Qwen3.5 在 NPU 上如果走 transformers 后端或 Megatron-SWIFT 后端训练，还需要额外注意版本和功能约束：
 
-1. 当前 NPU 文档中约定的 MindSpeed 训练组合是 `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`。在这个组合下，`mcore-bridge` 默认按 `USE_MCORE_GDN=1` 走 Megatron-Core/MindSpeed GDN；若显式设置 `USE_MCORE_GDN=0`，则回退到 transformers 版 GDN，并使用上述 FLA Triton-Ascend backend。
+1. 当前 NPU 文档中约定的 MindSpeed 训练组合是 `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`。在这个组合下，`mcore-bridge` 默认按 `USE_MCORE_GDN=1` 走 Megatron-Core/MindSpeed GDN；若显式设置 `USE_MCORE_GDN=0`，则回退到 transformers 版 GDN。该路径会优先使用上述 FLA Triton-Ascend backend；FLA 不可用时会记录 warning，并降级到原生 Torch GDN，因此 FLA 不是普通 Megatron 训练的强依赖。
 
-2. MindSpeed 初始化以及训练参数 `repatch()` 可能会替换 FLA 的公共 GDN 入口。ms-swift 会在构建 `mcore-bridge` 前和 `repatch()` 后，从 MindSpeed patch manager 保存的 `orig_func` 恢复 FLA 原始 callable；如果 `mcore-bridge` 已缓存该 callable，也会同步刷新。恢复失败会直接报错，启动日志会记录最终使用的模块与源码路径。
+2. MindSpeed 初始化以及训练参数 `repatch()` 可能会替换 FLA 的公共 GDN 入口。ms-swift 会在构建 `mcore-bridge` 前和 `repatch()` 后，优先从 MindSpeed patch manager 保存的 `orig_func` 恢复 FLA 原始 callable；如果 FLA 缺失或恢复失败，则保留 MindSpeed/Megatron 提供的原生 Torch callable。如果 `mcore-bridge` 已缓存该 callable，也会同步刷新。启动日志会记录最终选择或降级原因。原生 Torch fallback 不支持 packed/varlen GDN；这类输入仍需要安装 FLA。
 
 3. 当前已验证 Qwen3.5-4B 在 8 卡数据并行、`USE_MCORE_GDN=0`、`packing=true`、TP=1、CP=1 下完成 2 个有限值 loss/grad_norm 训练步并保存 checkpoint；各 rank 最终记录的 GDN callable 均来自 FLA 的 `fla.ops.gated_delta_rule.chunk`。这证明了该组合下的运行时分发、前向、反向与保存链路。
 
