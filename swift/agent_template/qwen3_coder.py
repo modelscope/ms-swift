@@ -165,6 +165,23 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
 
 class Qwen3_5AgentTemplate(Qwen3CoderAgentTemplate):
 
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        """Qwen3.5/3.6 jinja inserts \n\n between assistant content and <tool_call>
+        only when effective content (after think removal) is non-empty."""
+        if not pre_message or pre_message.get('role') != 'assistant':
+            return tool_content
+        content = pre_message.get('content', '')
+        if not isinstance(content, str):
+            return tool_content
+        # Mirror jinja: content.split('</think>')[-1].lstrip('\n') then content|trim
+        if '</think>' in content:
+            effective = content.split('</think>')[-1].lstrip('\n')
+        else:
+            effective = content
+        if effective.strip():
+            return '\n\n' + tool_content
+        return tool_content
+
     def _format_tools(self, tools: List[Union[str, dict]], system: Optional[str] = None, user_message=None) -> str:
         tool_descs = [json.dumps(self.wrap_tool(tool), ensure_ascii=False) for tool in tools]
         tools_prompt = """# Tools

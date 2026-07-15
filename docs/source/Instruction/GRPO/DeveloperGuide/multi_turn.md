@@ -150,7 +150,7 @@ ChatCompletionResponseChoice(
 ```bash
 swift rollout \
     --model Qwen/Qwen3-1.7B \
-    --use_async_engine true \
+    --vllm_use_async_engine true \
     --multi_turn_scheduler thinking_tips_scheduler \
     --vllm_max_model_len 32768 \
     --vllm_gpu_memory_utilization 0.8 \
@@ -167,7 +167,7 @@ swift rollout \
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/asyncengine.png" width="400" />
 
-在 `rollout` 命令中使用参数 `use_async_engine` 来指定 engine 的种类（默认使用 async engine）：
+在 `rollout` 命令中使用参数 `vllm_use_async_engine` 来指定 engine 的种类（默认使用 async engine）：
 
 > 注意: async engine 仅在 server mode 下可用。
 
@@ -190,8 +190,6 @@ swift rollout \
 在以上默认逻辑中，我们用一条轨迹来计算多轮 rollout 的损失，这里需要假设多轮交互的过程中，模型的历史信息没有受到改变。
 
 而在一些多轮场景中，我们可能需要在多轮 rollout 过程中动态地修改模型的历史信息（比如压缩历史信息），此时，我们需要将每轮的 rollout 单独作为一条轨迹进行训练。
-
-> Note: 这种“一条轨迹拆成多条样本”的训练模式将在 **swift 4.4** 版本中移除，后续仅保留“一次 rollout 对应一条轨迹样本”的形式。
 
 #### 方式一：使用 hook
 

@@ -87,14 +87,6 @@ class TeacherModelArguments:
             'When set, teacher logprobs are fetched via API instead of loading a local model. '
             'Supports multi-teacher via JSON list of {url, tags}.'
         })
-    teacher_tag_key: str = field(
-        default='dataset',
-        metadata={
-            'help':
-            'Column name in the dataset used for multi-teacher routing. '
-            'Samples are routed to teachers based on this field\'s value matching teacher "tags". '
-            'Default "dataset" (auto-injected when loading multiple datasets).'
-        })
     offload_teacher_model: bool = False
 
 

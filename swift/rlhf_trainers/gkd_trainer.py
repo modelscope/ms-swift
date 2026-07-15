@@ -273,9 +273,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         """
         template = self.template
 
-        student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
-
         with self._template_context(template):
+            student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
             encoded_inputs = to_device(template.data_collator(student_encoded_list), self.model.device)
         if has_opsd:
             with self._template_context(template):
@@ -380,7 +379,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
                 handle, topk=self.gkd_logits_topk, teacher_client=client),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.accelerator.is_main_process,
-            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+            tag_key=self.args.teacher_tag_key)
 
         per_chunk_parsed, offset = [], 0
         for cs in chunk_sizes:

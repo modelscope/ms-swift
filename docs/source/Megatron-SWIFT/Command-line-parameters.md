@@ -153,6 +153,9 @@
 - align_param_gather: 设置为True，所有 PP 阶段将同时启动参数全收集（all-gather）操作。否则，每个 PP 阶段将根据需要独立启动。默认为True。
 - 🔥sequence_parallel: 启动序列并行优化，该参数需要设置`tensor_model_parallel_size`才生效。默认为False。
 - 🔥context_parallel_size: cp数，默认为1。
+- cp_comm_type: 上下文并行（Context Parallelism）中 GPU 间的通信类型。可选值为 "p2p"、"all_gather"、"a2a" 或 "a2a+p2p"。默认为None。
+- cp_partition_mode: THD 序列行如何在上下文并行（context-parallel）ranks 之间进行划分。可选为"zigzag", "contiguous"，默认为"zigzag"。
+- sequence_packing_scheduler: 用于序列打包和动态上下文并行的调度器。可选为"dp_balanced"，"default_dynamic_cp"。dp_balanced：用于序列打包的 DP 均衡调度器。default_dynamic_cp：用于打包序列均衡的动态 CP 调度器。默认为None。
 - tp_comm_overlap: 启用张量并行通信与GEMM（通用矩阵乘法）内核的重叠（降低通信耗时）。默认为False。
 - 🔥overlap_grad_reduce: 启用DDP中grad reduce操作的重叠（降低DP通信耗时）。默认为False。
 - 🔥overlap_param_gather: 启用分布式优化器中参数all-gather的重叠（降低DP通信耗时）。默认为False。

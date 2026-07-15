@@ -790,7 +790,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             infer_fn=lambda handle, client: self._infer_teacher_requests(handle, topk=0, teacher_client=client),
             scatter_fn=self._scatter_teacher_parsed,
             is_main_process=self.is_main_process,
-            tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+            tag_key=self.args.teacher_tag_key)
 
         offset = 0
         for data in mini_batch_data:

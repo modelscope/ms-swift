@@ -303,7 +303,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                         handle, topk=self.gkd_logits_topk, teacher_client=client),
                     scatter_fn=self._scatter_teacher_parsed,
                     is_main_process=self.is_main_process,
-                    tag_key=getattr(self.args, 'teacher_tag_key', 'dataset'))
+                    tag_key=self.args.teacher_tag_key)
 
         # Encode micro-batches
         total_microbatches = self.args.num_microbatches * self.steps_per_generation
