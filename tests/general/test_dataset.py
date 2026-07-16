@@ -79,6 +79,18 @@ def test_cls():
     _test_dataset(['simpleai/HC3-Chinese:baike_cls'])
 
 
+def test_dataset_syntax_rejects_empty_entry():
+    import pytest
+
+    from swift.dataset.dataset_syntax import DatasetSyntax
+
+    # An empty dataset entry (e.g. an unset shell variable wrapped in quotes in a
+    # `--dataset "$DS1" "$DS2"` invocation) must raise a clear ValueError instead
+    # of crashing deep inside with a cryptic `os.path.exists(None)` TypeError.
+    with pytest.raises(ValueError, match='empty dataset entry'):
+        DatasetSyntax.parse('')
+
+
 if __name__ == '__main__':
     # test_sft()
     # test_agent()
