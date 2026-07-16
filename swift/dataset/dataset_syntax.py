@@ -55,9 +55,11 @@ class DatasetSyntax:
     @classmethod
     def parse(cls, dataset: str) -> 'DatasetSyntax':
         """Parse the dataset from the command line"""
+        if dataset:
+            dataset = dataset.strip()
         if not dataset:
             raise ValueError('Received an empty dataset entry. Check `--dataset`/`--val_dataset` for a stray empty '
-                             'string (e.g. an unset shell variable wrapped in quotes).')
+                             'or whitespace-only string (e.g. an unset shell variable wrapped in quotes).')
         # hf/ms::dataset_id or dataset_path:subset1/subset2/subset3#dataset_sample
         if os.path.exists(dataset):
             use_hf = None
