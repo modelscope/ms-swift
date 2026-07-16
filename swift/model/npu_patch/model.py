@@ -189,21 +189,316 @@ def npu_apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1)
     return q_embed, k_embed
 
 
+_FUSED_SWIGLU_KERNELS = None
+_FAST_LORA_FUNCS = None
+
+
+def _get_FUSED_SWIGLU_KERNELS():
+    global _FUSED_SWIGLU_KERNELS
+    if _FUSED_SWIGLU_KERNELS is None:
+        try:
+            from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
+            _FUSED_SWIGLU_KERNELS = (swiglu_fg_kernel, swiglu_DWf_DW_dfg_kernel)
+        except Exception:
+            _FUSED_SWIGLU_KERNELS = False
+    if _FUSED_SWIGLU_KERNELS is False:
+        return None
+    return _FUSED_SWIGLU_KERNELS
+
+
+class FusedSwiGLUFunction(torch.autograd.Function):
+
+    @staticmethod
+    def forward(ctx, gate, up):
+        kernels = _get_FUSED_SWIGLU_KERNELS()
+        if kernels is None:
+            raise RuntimeError('Fused SwiGLU kernels are not available.')
+        swiglu_fg_kernel, _ = kernels
+        ctx.save_for_backward(gate, up)
+        if gate.dim() == 2:
+            return swiglu_fg_kernel(gate.unsqueeze(1).contiguous(), up.unsqueeze(1).contiguous()).squeeze(1)
+        return swiglu_fg_kernel(gate.contiguous(), up.contiguous())
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        kernels = _get_FUSED_SWIGLU_KERNELS()
+        if kernels is None:
+            raise RuntimeError('Fused SwiGLU kernels are not available.')
+        _, swiglu_backward_kernel = kernels
+        gate, up = ctx.saved_tensors
+        grad_output_2d = grad_output.reshape(-1, grad_output.shape[-1]).contiguous().clone()
+        gate_2d = gate.reshape(-1, gate.shape[-1]).contiguous().clone()
+        up_2d = up.reshape(-1, up.shape[-1]).contiguous().clone()
+        _, grad_up, grad_gate = swiglu_backward_kernel(grad_output_2d, gate_2d, up_2d)
+        return grad_gate.view_as(gate), grad_up.view_as(up)
+
+
+def npu_swiglu(gate, up):
+    kernels = _get_FUSED_SWIGLU_KERNELS()
+    if kernels is None:
+        return torch_npu.npu_swiglu(torch.cat((gate, up), dim=-1), dim=-1)
+    return FusedSwiGLUFunction.apply(gate, up)
+
 def npu_swiglu_forward(self, hidden_state):
-    return self.down_proj(
-        torch_npu.npu_swiglu(torch.cat((self.gate_proj(hidden_state), self.up_proj(hidden_state)), dim=-1), dim=-1))
+    gate = self.gate_proj(hidden_state)
+    up = self.up_proj(hidden_state)
+    return self.down_proj(npu_swiglu(gate, up))
+
+
+def _get_fast_lora_funcs():
+    global _FAST_LORA_FUNCS
+    if _FAST_LORA_FUNCS is None:
+        try:
+            from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
+            from .fast_lora import apply_lora_mlp_swiglu, apply_lora_o, apply_lora_qkv
+            _FAST_LORA_FUNCS = {
+                'apply_lora_mlp_swiglu': apply_lora_mlp_swiglu,
+                'apply_lora_qkv': apply_lora_qkv,
+                'apply_lora_o': apply_lora_o,
+            }
+        except Exception as exc:
+            logger.warning_once(f'Failed to import NPU fast LoRA functions: {exc}')
+            _FAST_LORA_FUNCS = False
+    if _FAST_LORA_FUNCS is False:
+        return None
+    return _FAST_LORA_FUNCS
+
+
+def _get_active_adapter_name(module: torch.nn.Module) -> str | None:
+    adapter = getattr(module, 'active_adapters', None)
+    if adapter is None:
+        adapter = getattr(module, 'active_adapter', None)
+    if isinstance(adapter, str):
+        return adapter
+    if isinstance(adapter, (list, tuple)):
+        if len(adapter) != 1:
+            return None
+        return adapter[0]
+    return None
+
+
+def _get_lora_dropout_p(module: torch.nn.Module, adapter_name: str | None) -> float:
+    if adapter_name is None:
+        return 0.0
+    dropout = getattr(module, 'lora_dropout', None)
+    if dropout is None:
+        return 0.0
+
+    layer = None
+    if isinstance(dropout, dict):
+        layer = dropout.get(adapter_name)
+    else:
+        try:
+            if adapter_name in dropout:
+                layer = dropout[adapter_name]
+        except Exception:
+            layer = None
+    if layer is None:
+        layer = dropout
+
+    p = getattr(layer, 'p', None)
+    return float(p) if p is not None else 0.0
+
+def _has_trainable_base_bias(module: torch.nn.Module) -> bool:
+    bias = getattr(getattr(module, 'base_layer', module), 'bias', None)
+    return bias is not None and getattr(bias, 'requires_grad', False)
+
+def _is_fast_lora_projection_compatible(module: torch.nn.Module) -> bool:
+    required_attrs = ('base_layer', 'lora_A', 'lora_B', 'scaling')
+    if not all(hasattr(module, attr) for attr in required_attrs):
+        return False
+    if _has_trainable_base_bias(module):
+        return False
+    if getattr(module, 'disable_adapters', False) or getattr(module, 'merged', False):
+        return False
+    adapter_name = _get_active_adapter_name(module)
+    if adapter_name is None:
+        return False
+    return _get_lora_dropout_p(module, adapter_name) == 0.0
+
+
+def _can_use_fast_lora_mlp(module: torch.nn.Module) -> bool:
+    return getattr(module, '_npu_fast_lora_enabled', False) and all(
+        _is_fast_lora_projection_compatible(getattr(module, proj_name))
+        for proj_name in ('gate_proj', 'up_proj', 'down_proj'))
+
+
+def _can_use_fast_lora_qkv(module: torch.nn.Module) -> bool:
+    return getattr(module, '_npu_fast_lora_enabled', False) and all(
+        _is_fast_lora_projection_compatible(getattr(module, proj_name))
+        for proj_name in ('q_proj', 'k_proj', 'v_proj'))
+
+
+def _can_use_fast_lora_o(module: torch.nn.Module) -> bool:
+    return getattr(module, '_npu_fast_lora_enabled', False) and _is_fast_lora_projection_compatible(module.o_proj)
+
+
+def npu_fast_lora_mlp_forward(self, hidden_state):
+    fast_lora_funcs = _get_fast_lora_funcs()
+    if fast_lora_funcs is not None and _can_use_fast_lora_mlp(self):
+        return fast_lora_funcs['apply_lora_mlp_swiglu'](self, hidden_state)
+    return npu_swiglu_forward(self, hidden_state)
+
+
+def _npu_fast_lora_attention_forward(
+    self,
+    hidden_states: torch.Tensor,
+    position_embeddings: tuple[torch.Tensor, torch.Tensor],
+    attention_mask: torch.Tensor | None,
+    past_key_values = None,
+    cache_position: torch.LongTensor | None = None,
+    **kwargs,
+):
+    input_shape = hidden_states.shape[:-1]
+    hidden_shape = (*input_shape, -1, self.head_dim)
+
+    fast_lora_funcs = _get_fast_lora_funcs()
+    use_fast_qkv = fast_lora_funcs is not None and _can_use_fast_lora_qkv(self)
+    use_fast_o = fast_lora_funcs is not None and _can_use_fast_lora_o(self)
+
+    if use_fast_qkv:
+        query_states, key_states, value_states = fast_lora_funcs['apply_lora_qkv'](self, hidden_states)
+        query_states = query_states.view(hidden_shape)
+        key_states = key_states.view(hidden_shape)
+        value_states = value_states.view(hidden_shape)
+    else:
+        query_states = self.q_proj(hidden_states).view(hidden_shape)
+        key_states = self.k_proj(hidden_states).view(hidden_shape)
+        value_states = self.v_proj(hidden_states).view(hidden_shape)
+
+    if hasattr(self, 'q_norm'):
+        query_states = self.q_norm(query_states)
+    if hasattr(self, 'k_norm'):
+        key_states = self.k_norm(key_states)
+
+    query_states = query_states.transpose(1, 2)
+    key_states = key_states.transpose(1, 2)
+    value_states = value_states.transpose(1, 2)
+
+    cos, sin = position_embeddings
+    query_states, key_states = npu_apply_rotary_pos_emb(query_states, key_states, cos, sin)
+
+    if past_key_values is not None:
+        cache_kwargs = {'sin': sin, 'cos': cos, 'cache_position': cache_position}
+        key_states, value_states = past_key_values.update(key_states, value_states, self.layer_idx, cache_kwargs)
+
+    attention_interface: Callable = modeling_qwen2.eager_attention_forward
+    if self.config._attn_implementation != 'eager':
+        from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+        attention_interface = ALL_ATTENTION_FUNCTIONS[self.config._attn_implementation]
+    attn_output, attn_weights = attention_interface(
+        self,
+        query_states,
+        key_states,
+        value_states,
+        attention_mask,
+        dropout=0.0 if not self.training else self.attention_dropout,
+        scaling=self.scaling,
+        sliding_window=getattr(self, 'sliding_window', None),
+        **kwargs,
+    )
+
+    attn_output = attn_output.reshape(*input_shape, -1).contiguous()
+    if use_fast_o:
+        attn_output = fast_lora_funcs['apply_lora_o'](self, attn_output)
+    else:
+        attn_output = self.o_proj(attn_output)
+    return attn_output, attn_weights
+
+
+def npu_qwen2_attention_forward(
+    self,
+    hidden_states: torch.Tensor,
+    position_embeddings: tuple[torch.Tensor, torch.Tensor],
+    attention_mask: torch.Tensor | None,
+    past_key_values = None,
+    cache_position: torch.LongTensor | None = None,
+    **kwargs,
+):
+    return _npu_fast_lora_attention_forward(
+        self,
+        hidden_states,
+        position_embeddings,
+        attention_mask,
+        past_key_values=past_key_values,
+        cache_position=cache_position,
+        **kwargs,
+    )
+
+
+def npu_qwen3_attention_forward(
+    self,
+    hidden_states: torch.Tensor,
+    position_embeddings: tuple[torch.Tensor, torch.Tensor],
+    attention_mask: torch.Tensor | None,
+    past_key_values = None,
+    cache_position: torch.LongTensor | None = None,
+    **kwargs,
+):
+    return _npu_fast_lora_attention_forward(
+        self,
+        hidden_states,
+        position_embeddings,
+        attention_mask,
+        past_key_values=past_key_values,
+        cache_position=cache_position,
+        **kwargs,
+    )
+
+
+def enable_npu_fast_lora(model: torch.nn.Module) -> int:
+    if not hasattr(torch, 'npu') or not torch.npu.is_available():
+        logger.info_once('Skip enabling NPU fast LoRA: torch.npu is not available.')
+        return 0
+    if _get_fast_lora_funcs() is None:
+        logger.info_once('Skip enabling NPU fast LoRA: fast_lora functions are unavailable.')
+        return 0
+
+    module_types = (
+        modeling_qwen2.Qwen2MLP,
+        modeling_qwen2.Qwen2Attention,
+        modeling_qwen3.Qwen3MLP,
+        modeling_qwen3.Qwen3Attention,
+    )
+    enabled_count = 0
+    for module in model.modules():
+        if isinstance(module, module_types):
+            module._npu_fast_lora_enabled = True
+            enabled_count += 1
+    if enabled_count == 0:
+        logger.info_once('Enabled NPU fast LoRA on 0 modules: no Qwen2/Qwen3 MLP/Attention modules found.')
+        return 0
+
+    total_mlp = 0
+    eligible_mlp = 0
+    total_attn = 0
+    eligible_qkv = 0
+    eligible_o = 0
+    for module in model.modules():
+        if isinstance(module, (modeling_qwen2.Qwen2MLP, modeling_qwen3.Qwen3MLP)):
+            total_mlp += 1
+            eligible_mlp += int(_can_use_fast_lora_mlp(module))
+        elif isinstance(module, (modeling_qwen2.Qwen2Attention, modeling_qwen3.Qwen3Attention)):
+            total_attn += 1
+            eligible_qkv += int(_can_use_fast_lora_qkv(module))
+            eligible_o += int(_can_use_fast_lora_o(module))
+    logger.info_once(
+        f'NPU fast LoRA eligibility: MLP {eligible_mlp}/{total_mlp}, QKV {eligible_qkv}/{total_attn}, O {eligible_o}/{total_attn}.')
+    return enabled_count
 
 
 QWEN2_PATCHES = {
     'Qwen2RMSNorm': NpuRMSNorm,
     'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
-    'Qwen2MLP.forward': npu_swiglu_forward,
+    'Qwen2MLP.forward': npu_fast_lora_mlp_forward,
+    'Qwen2Attention.forward': npu_qwen2_attention_forward,
 }
 
 QWEN3_PATCHES = {
     'Qwen3RMSNorm': NpuRMSNorm,
     'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
-    'Qwen3MLP.forward': npu_swiglu_forward,
+    'Qwen3MLP.forward': npu_fast_lora_mlp_forward,
+    'Qwen3Attention.forward': npu_qwen3_attention_forward,
 }
 
 # ---------------------------------------------------------------------------
