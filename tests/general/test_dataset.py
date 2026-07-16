@@ -81,6 +81,7 @@ def test_cls():
 
 def test_register_dataset_info_rejects_non_list():
     import json
+    import os
     import tempfile
 
     from swift.dataset import register_dataset_info
@@ -93,11 +94,14 @@ def test_register_dataset_info_rejects_non_list():
         path = f.name
 
     try:
-        register_dataset_info(path)
-    except ValueError as e:
-        assert 'list' in str(e)
-    else:
-        raise AssertionError('expected ValueError for a non-list dataset_info')
+        try:
+            register_dataset_info(path)
+        except ValueError as e:
+            assert 'list' in str(e)
+        else:
+            raise AssertionError('expected ValueError for a non-list dataset_info')
+    finally:
+        os.remove(path)
 
 
 if __name__ == '__main__':
