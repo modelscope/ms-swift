@@ -49,8 +49,9 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.dataset import RowPreprocessor
 from swift.rewards import orms, rm_plugins
-from swift.rl_core.advantage import (compute_advantages, compute_advantages_dynamic, compute_reward_metrics,
-                                     compute_teacher_kl_per_token, expand_advantage_to_per_token)
+from swift.rl_core.advantage import (apply_rlsd_reweight, compute_advantages, compute_advantages_dynamic,
+                                     compute_reward_metrics, compute_teacher_kl_per_token,
+                                     expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
@@ -262,17 +263,35 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             device = self.accelerator.device
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
             base_advantages = torch.stack([data.advantages.to(device) for data in batch])
-            # Expand the per-sequence base advantage to per-token [B, T] here (not by broadcast
-            # in the loss), so the OPD-RL signed teacher log-ratio is added per token
-            # (adv_t = base + coef * (teacher_logp - student_logp)).
-            grpo_batch.advantages = expand_advantage_to_per_token(
-                base_advantages,
-                grpo_batch.completion_mask,
-                teacher_per_token_logps=grpo_batch.teacher_per_token_logps,
-                policy_per_token_logps=grpo_batch.old_per_token_logps
-                if grpo_batch.teacher_per_token_logps is not None else None,
-                teacher_kl_coef=self.teacher_kl_coef if grpo_batch.teacher_per_token_logps is not None else 0.0,
-            )
+            use_rlsd = (self.advantage_reweight == 'rlsd' and grpo_batch.teacher_per_token_logps is not None)
+            if use_rlsd:
+                # RLSD (Self-Distilled RLVR): multiplicative, sign-aware, clipped token-level reweight
+                # of the per-sequence advantage using the teacher-vs-student logprob gap, in place of the
+                # additive OPD-RL term. Teacher = current policy conditioned on the ground-truth answer.
+                mode = 'train' if self.model.training else 'eval'
+                lam = self._rlsd_effective_lambda()
+                grpo_batch.advantages = apply_rlsd_reweight(
+                    base_advantages,
+                    grpo_batch.completion_mask,
+                    grpo_batch.teacher_per_token_logps,
+                    grpo_batch.old_per_token_logps,
+                    lam=lam,
+                    clip_range=self.rlsd_reweight_clip_range,
+                    negative_only=self.rlsd_negative_only,
+                )
+                self._metrics[mode]['rlsd_lambda'].append(lam)
+            else:
+                # Expand the per-sequence base advantage to per-token [B, T] here (not by broadcast
+                # in the loss), so the OPD-RL signed teacher log-ratio is added per token
+                # (adv_t = base + coef * (teacher_logp - student_logp)).
+                grpo_batch.advantages = expand_advantage_to_per_token(
+                    base_advantages,
+                    grpo_batch.completion_mask,
+                    teacher_per_token_logps=grpo_batch.teacher_per_token_logps,
+                    policy_per_token_logps=grpo_batch.old_per_token_logps
+                    if grpo_batch.teacher_per_token_logps is not None else None,
+                    teacher_kl_coef=self.teacher_kl_coef if grpo_batch.teacher_per_token_logps is not None else 0.0,
+                )
             if grpo_batch.teacher_per_token_logps is not None:
                 mode = 'train' if self.model.training else 'eval'
                 # Monitoring uses the non-negative k3 estimator (a "distance from the teacher" gauge
@@ -2111,6 +2130,32 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
 
         # Off-Policy Sequence Masking
         self.off_policy_sequence_mask_delta = args.off_policy_sequence_mask_delta
+
+        # RLSD (Self-Distilled RLVR), https://arxiv.org/abs/2604.03128
+        self.advantage_reweight = args.advantage_reweight
+        self.rlsd_lambda = args.rlsd_lambda
+        self.rlsd_reweight_clip_range = args.rlsd_reweight_clip_range
+        self.rlsd_lambda_warmup_steps = args.rlsd_lambda_warmup_steps
+        self.rlsd_lambda_decay_steps = args.rlsd_lambda_decay_steps
+        self.rlsd_negative_only = args.rlsd_negative_only
+
+    def _rlsd_effective_lambda(self) -> float:
+        """RLSD lambda schedule (mirrors RLSD/verl/trainer/opsd_trainer.py:1952-1961).
+
+        With warmup: ramps 0 -> rlsd_lambda over ``rlsd_lambda_warmup_steps``.
+        With decay: after warmup, decays rlsd_lambda -> 0 over ``rlsd_lambda_decay_steps``.
+        Otherwise constant at ``rlsd_lambda``.
+        """
+        step = int(self.state.global_step)
+        warmup = self.rlsd_lambda_warmup_steps
+        decay = self.rlsd_lambda_decay_steps
+        target = self.rlsd_lambda
+        if warmup > 0 and step < warmup:
+            return target * (step / warmup)
+        if decay > 0 and step >= warmup:
+            decay_progress = (step - warmup) / decay
+            return target * max(1.0 - decay_progress, 0.0)
+        return target
 
     def _prepare_chord_dataset(self):
         # CHORD, https://arxiv.org/abs/2508.11408
