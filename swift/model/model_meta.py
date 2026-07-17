@@ -145,6 +145,8 @@ class ModelInfo:
 
 def get_model_name(model_id_or_path: str) -> Optional[str]:
     assert isinstance(model_id_or_path, str), f'model_id_or_path: {model_id_or_path}'
+    if platform.system().lower() == 'windows':
+        model_id_or_path = model_id_or_path.replace('\\', '/')
     # compat hf hub
     model_id_or_path = model_id_or_path.rstrip('/')
     match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
@@ -155,8 +157,6 @@ def get_model_name(model_id_or_path: str) -> Optional[str]:
         return match_.group(1)
 
     model_name = model_id_or_path.rsplit('/', 1)[-1]
-    if platform.system().lower() == 'windows':
-        model_name = model_name.rsplit('\\', 1)[-1]
     # compat modelscope snapshot_download
     model_name = model_name.replace('___', '.')
     return model_name
