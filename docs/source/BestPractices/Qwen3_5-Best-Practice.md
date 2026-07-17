@@ -12,6 +12,8 @@ pip install -U "transformers>=5.9" "qwen_vl_utils>=0.0.14" peft liger-kernel
 # 若出现训练缓慢的问题请参考：https://github.com/fla-org/flash-linear-attention/issues/758
 # 请使用python3.12: https://github.com/fla-org/flash-linear-attention/issues/121
 pip install -U "flash-linear-attention>=0.4.2" --no-build-isolation
+# 昇腾 NPU GDN 请安装 main 分支最新版本（替换上一条命令）
+pip install -U git+https://github.com/fla-org/flash-linear-attention.git --no-build-isolation
 
 # causal_conv1d
 pip install -U git+https://github.com/Dao-AILab/causal-conv1d --no-build-isolation
@@ -27,7 +29,7 @@ pip install -U "vllm>=0.17.0"
 ```
 
 - Qwen3.5 视频数据训练卡住：使用decord后端读取视频可能导致卡住问题，参考[这个issue](https://github.com/dmlc/decord/issues/269)。你可以使用torchcodec后端，具体参考[qwen_vl_utils](https://github.com/QwenLM/Qwen3-VL/blob/50068df2334f309979ff05d75f1078c8309c63ed/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L390-L400)库。
-- 如果你在昇腾 NPU 上使用 Qwen3.5，并且需要了解 FLA / MindSpeed 的替换关系、补丁生效路径以及版本验证信息，请参考 [NPU支持文档中的 Qwen3.5 FLA补丁说明](./NPU-support.md#qwen35-fla补丁说明)。
+- 如果你在昇腾 NPU 上使用 Qwen3.5，并且需要了解 FLA GDN 调用路径以及版本验证信息，请参考 [NPU支持文档中的 Qwen3.5 FLA补丁说明](./NPU-support.md#qwen35-fla补丁说明)。
 
 
 ## 推理
@@ -311,7 +313,8 @@ Megatron-SWIFT训练Qwen3.5的提示：
 - TP 限制解除：使用 "megatron-core>=0.16" 可解除 TP 受到的 `num_query_groups` 限制。
 - 关于MTP训练："mcore-bridge>=1.1.0"支持了多模态MTP的训练。请安装对应版本。
 - CP支持："mcore-bridge>=1.1.0"支持了GDN的CP训练，需安装megatron-core [main分支](https://github.com/NVIDIA/Megatron-LM)。
-- 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0`可切换至 transformers 实现，**transformers实现不支持packing和GDN的TP/CP**。
+- Transformers/FSDP packing 验证：Qwen3.5-4B 已在 8 卡 Atlas 900 A2 上使用 LoRA、BF16、`alpaca-gpt4-data-zh`、`packing=true`、`max_length=512`、每卡 batch size 1、梯度累积 1 完成 300 steps 训练；loss/grad_norm 全程为有限值，并成功保存 checkpoint。在相同配置下，NPU 与 GPU 对照实验的 loss 变化趋势对齐。
+- 默认 `GatedDeltaNet` 使用 Megatron 实现，需使用 "megatron-core>=0.16"（ms-swift>=4.1.0，之前版本默认使用transformers实现）。设置环境变量 `USE_MCORE_GDN=0` 可切换至 transformers 模型路径；在昇腾 NPU 上，该路径可使用 FLA 原生 Triton-Ascend GDN。
 - padding_free/packing的支持：packing可以提升训练速度。参考[这个例子](https://github.com/modelscope/ms-swift/tree/main/examples/models/qwen3_5/packing.sh)。
   - Qwen3-Next的Megatron GatedDeltaNet支持参考[这个PR](https://github.com/modelscope/mcore-bridge/pull/76)，需要"mcore-bridge>=1.4.0"。
 - apply_wd_to_qk_layernorm: 对 qk layernorm 应用权重衰减。默认为False。

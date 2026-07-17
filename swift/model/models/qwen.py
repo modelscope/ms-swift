@@ -31,12 +31,29 @@ dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: '
 
 causal_conv1d = None
 chunk_gated_delta_rule = None
+
+
+def _try_import_flash_linear_attention_kernels() -> None:
+    global causal_conv1d, chunk_gated_delta_rule
+    if causal_conv1d is None:
+        try:
+            from fla.modules.convolution import causal_conv1d as _causal_conv1d
+            causal_conv1d = _causal_conv1d
+        except Exception:
+            pass
+    if chunk_gated_delta_rule is None:
+        try:
+            from fla.ops.gated_delta_rule import chunk_gated_delta_rule as _chunk_gated_delta_rule
+            chunk_gated_delta_rule = _chunk_gated_delta_rule
+        except Exception:
+            pass
+
+
 try:
     from transformers.utils.import_utils import is_flash_linear_attention_available
 
     if is_flash_linear_attention_available():
-        from fla.modules.convolution import causal_conv1d
-        from fla.ops.gated_delta_rule import chunk_gated_delta_rule
+        _try_import_flash_linear_attention_kernels()
 except Exception:
     pass
 
@@ -1167,6 +1184,7 @@ def _get_local_padding_mask(attention_mask: torch.Tensor, local_seq_len: int):
 
 
 def _ensure_linear_attention_kernels(mod: torch.nn.Module) -> None:
+    _try_import_flash_linear_attention_kernels()
     mod._swift_fla_causal_conv1d_fn = causal_conv1d
     mod.chunk_gated_delta_rule = getattr(mod, 'chunk_gated_delta_rule', None) or chunk_gated_delta_rule
     if mod.chunk_gated_delta_rule is None or mod._swift_fla_causal_conv1d_fn is None:
