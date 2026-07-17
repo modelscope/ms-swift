@@ -568,6 +568,62 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
         self._check_opd_rl()
+        self._check_rlsd()
+
+    def _check_rlsd(self):
+        """Validate RLSD (Self-Distilled RLVR) advantage reweighting parameters.
+
+        RLSD reweights the per-sequence GRPO advantage per token using the teacher-vs-student
+        logprob gap. It relies on an OPSD teacher forward driven by a per-sample ``teacher_prompt``
+        column (privileged context, e.g. question + reference solution / GT answer). It also needs
+        an environment reward (``reward_funcs``) because the reweight direction uses ``sign(A)``.
+
+        Two teacher modes are supported (mirroring the reference's ``freeze_teacher_model`` flag):
+
+        * **Dynamic self-distillation** (no ``--teacher_model``, default): teacher = current policy
+          evaluated on the privileged prompt (paper's same-model, two-contexts Δ_t; equivalent to
+          the reference's ``freeze_teacher_model=false``).
+        * **Frozen local teacher** (``--teacher_model <ckpt>``): a separate model scores the
+          privileged prompt under ``no_grad`` and is never in the optimizer, so it stays frozen
+          throughout training. Point ``--teacher_model`` at the initial policy checkpoint to
+          reproduce the reference's ``freeze_teacher_model=true`` (frozen θ₀ anchor).
+        """
+        if self.advantage_reweight != 'rlsd':
+            return
+        if not (0.0 <= self.rlsd_lambda <= 1.0):
+            raise ValueError(f'rlsd_lambda must be in [0, 1], got {self.rlsd_lambda}.')
+        if self.rlsd_reweight_clip_range < 0:
+            raise ValueError(f'rlsd_reweight_clip_range (eps_w) must be >= 0, got {self.rlsd_reweight_clip_range}.')
+        if not self.reward_funcs:
+            raise ValueError('advantage_reweight=rlsd requires reward_funcs: the reweight direction uses '
+                             'sign(A) of the GRPO advantage, which needs an environment reward.')
+        if self.use_liger_kernel:
+            raise ValueError('advantage_reweight=rlsd is not compatible with use_liger_kernel '
+                             '(the fused loss path bypasses the per-token RLSD reweight).')
+        if self.loss_type in ['real', 'fipo']:
+            raise ValueError(f'advantage_reweight=rlsd does not support loss_type={self.loss_type!r} '
+                             '(it reduces the advantage to a per-sequence scalar).')
+        if self.off_policy_sequence_mask_delta is not None:
+            raise ValueError('advantage_reweight=rlsd does not support off_policy_sequence_mask_delta.')
+        # Local frozen teacher (--teacher_model) is allowed: it drives the OPSD teacher forward on
+        # the privileged prompt via the same code path as OPD-RL, and use_rlsd bypasses OPD-RL's
+        # additive term (grpo_trainer.py:266) so there is no double-count. The API-teacher path
+        # (--teacher_model_server) scores tokens over a remote inference call whose tokenizer
+        # alignment with the student is not guaranteed, so keep it gated for RLSD's per-token reweight.
+        if self.teacher_model_server is not None:
+            raise ValueError('advantage_reweight=rlsd does not support --teacher_model_server (remote API '
+                             'teacher). Use --teacher_model <local ckpt> for a frozen local teacher, or omit '
+                             'both to use dynamic self-distillation (teacher = current policy).')
+        if self.beta not in (0, 0.0):
+            logger.warning(f'advantage_reweight=rlsd: the reference RLSD config disables KL (beta=0), '
+                           f'but beta={self.beta}. Consider setting --beta 0.')
+        if self.teacher_model is not None:
+            logger.info(f'advantage_reweight=rlsd: frozen-teacher mode — --teacher_model={self.teacher_model!r} scores '
+                        f'the `teacher_prompt` column under no_grad and stays frozen throughout training (matches the '
+                        f'RLSD reference freeze_teacher_model=true when this checkpoint is the initial policy).')
+        else:
+            logger.info('advantage_reweight=rlsd: dynamic self-distillation mode — expecting a `teacher_prompt` '
+                        'column in the dataset; teacher = current policy on the privileged prompt.')
 
     def _check_opd_rl(self):
         """Fail-fast OPD-RL (teacher distillation on GRPO) parameter compatibility.
