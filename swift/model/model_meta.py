@@ -148,6 +148,9 @@ def get_model_name(model_id_or_path: str) -> Optional[str]:
     # compat hf hub
     model_id_or_path = model_id_or_path.rstrip('/')
     match_ = re.search('/models--.+?--(.+?)/snapshots/', model_id_or_path)
+    if match_ is None:
+        # compat modelscope-hub
+        match_ = re.search('/models/.+?--(.+?)/snapshots/', model_id_or_path)
     if match_ is not None:
         return match_.group(1)
 
