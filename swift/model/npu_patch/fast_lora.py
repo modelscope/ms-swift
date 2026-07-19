@@ -1,8 +1,8 @@
-from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
-
 import torch
 import triton
 import triton.language as tl
+
+from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
 
 
 def _maybe_fake_quantize_activations(
