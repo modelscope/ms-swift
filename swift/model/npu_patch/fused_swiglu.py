@@ -1,11 +1,13 @@
 
 import os
-os.environ["TRITON_ALL_BLOCKS_PARALLEL"] = "1"
+os.environ['TRITON_ALL_BLOCKS_PARALLEL'] = '1'
 
 from contextlib import nullcontext
 import triton
 import triton.language as tl
 import torch
+# from .utils import calculate_settings, torch_gpu_device
+
 
 
 # signed int32 max is 2**31-1 so num_elements cannot exceed 2**31
@@ -53,7 +55,7 @@ def swiglu_fg_kernel(e, g):
     batch, seq_len, hd = e.shape
     n_elements = e.numel()
     h = torch.empty((batch, seq_len, hd), dtype = e.dtype, device = e.device)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
     with torch_gpu_device(e.device):
         _fg_kernel[grid](
             e,
@@ -74,7 +76,7 @@ def _DWf_DW_dfg_kernel(
     BLOCK_SIZE: tl.constexpr,
     LONG_INDEXING: tl.constexpr,
 ):
-    """
+    '''
     e = e.float()
     se = 1.0 / (1.0 + torch.exp(-e))
     f = (se * e).to(dtype)
@@ -82,7 +84,7 @@ def _DWf_DW_dfg_kernel(
     df = DW * f
     dg = DW * g
     de = (dg.float() * se * (1.0 + e * (1.0 - se))).to(dtype)
-    """
+    '''
     block_idx = tl.program_id(0)
     if LONG_INDEXING:
         offsets = block_idx.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(
@@ -122,7 +124,7 @@ def _DWf_DW_dfg_kernel(
 def swiglu_DWf_DW_dfg_kernel(DW, e, g):
     batch_seq_len, hd = e.shape  # Flattened to 2D, so 1st dim is bsz * seq_len
     n_elements = e.numel()
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
     with torch_gpu_device(e.device):
         _DWf_DW_dfg_kernel[grid](
             DW,
