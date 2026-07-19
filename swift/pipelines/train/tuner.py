@@ -1,12 +1,14 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import os
+from typing import List, Union
+
 import torch
 import transformers
 from packaging import version
 from peft.utils.other import ModulesToSaveWrapper
 from transformers import TrainingArguments
 from transformers.integrations import is_deepspeed_zero3_enabled
-from typing import List, Union
 
 from swift.arguments import SftArguments
 from swift.trainers import calculate_max_steps
@@ -14,7 +16,6 @@ from swift.tuner_plugin import Tuner, tuners_map
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, get_multimodal_target_regex)
-import os                         
 
 logger = get_logger()
 
@@ -385,7 +386,7 @@ class TunerMixin:
                 args.galore_target_modules = find_all_linears(model)
             if args.galore_with_embedding:
                 args.galore_target_modules += find_embedding(model)
-                
+
         if hasattr(torch, 'npu'):
             is_sft = type(args).__name__ == 'SftArguments'
             is_fast_lora = os.getenv('ENABLE_FAST_LORA', '0').strip() == '1'
