@@ -1,7 +1,8 @@
-from .fused_swiglu import swiglu_fg_kernel,swiglu_DWf_DW_dfg_kernel
+from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
+
+import torch
 import triton
 import triton.language as tl
-import torch
 
 
 def _maybe_fake_quantize_activations(
@@ -17,12 +18,16 @@ def _maybe_fake_quantize_activations(
     if activation_fake_quantizer is not None:
         X = activation_fake_quantizer(X)
     return X
+
+
 def fast_dequantize(W, quant_state=None, out=None, use_global_buffer=False):
     if quant_state is not None:
         raise RuntimeError('fast_dequantize: quant_state is not None, but quantization is disabled in this build.')
     if str(W.dtype).startswith('torch.float8') or W.__class__.__name__ == 'Float8Tensor':
         raise RuntimeError('fast_dequantize: fp8 weight encountered, but fp8 is disabled in this build.')
     return W
+
+
 def QUANT_STATE(W):
     return getattr(W, 'quant_state', None)
 
@@ -104,8 +109,11 @@ def matmul_lora(X, W, W_quant, A, B, s, bias = None, out = None):
 
     return out.view(batch, seq_len, -1) if reshape else out
 
+
 torch_amp_custom_fwd = torch.amp.custom_fwd(device_type='npu')
-torch_amp_custom_bwd = torch.amp.custom_bwd(device_type = 'npu')
+torch_amp_custom_bwd = torch.amp.custom_bwd(device_type='npu')
+
+
 class LoRA_MLP(torch.autograd.Function):
     '''
     ### LoRA weights
@@ -167,7 +175,6 @@ class LoRA_MLP(torch.autograd.Function):
         _backward_function,
         inplace = True,
     ):
-        dtype = X.dtype
         e = matmul_lora(X, gateW, gateW_quant, gateA, gateB, gateS)
         g = matmul_lora(X, upW, upW_quant, upA, upB, upS)
         h = _forward_function(e, g)
@@ -303,6 +310,8 @@ class LoRA_MLP(torch.autograd.Function):
             None,
             None,
         )  # _backward and _forward and inplace
+
+
 torch_mm = torch.mm
 torch_mv = torch.mv
 torch_matmul = torch.matmul
@@ -311,7 +320,8 @@ torch_empty = torch.empty
 torch_float32 = torch.float32
 torch_float16 = torch.float16
 torch_bfloat16 = torch.bfloat16
-        
+
+
 def apply_lora_mlp_swiglu(self, X, inplace = True):
     X = _maybe_fake_quantize_activations(X, self.gate_proj)
     gateW, gateW_quant, gateA, gateB, gateS = get_lora_parameters(self.gate_proj)
@@ -339,6 +349,8 @@ def apply_lora_mlp_swiglu(self, X, inplace = True):
         inplace,
     )
     return out
+
+
 class LoRA_QKV(torch.autograd.Function):
     '''
     ### LoRA weights
@@ -369,7 +381,6 @@ class LoRA_QKV(torch.autograd.Function):
     dC/dBv = A.T @ X.T @ D(Wv)
     '''
 
-
     @staticmethod
     @torch_amp_custom_fwd
     def forward(
@@ -395,8 +406,6 @@ class LoRA_QKV(torch.autograd.Function):
         VS,
         inplace = True,
     ):
-        dtype = X.dtype
-
         # bitsandbytes 8-bit matmul expects 2D inputs.
         # TorchInductor/AOTAutograd fails on 3D tensors during backward,
         # so we explicitly flatten the sequence dimension.
@@ -467,7 +476,7 @@ class LoRA_QKV(torch.autograd.Function):
         )
 
         QA, QB, KA, KB, VA, VB = QA.t(), QB.t(), KA.t(), KB.t(), VA.t(), VB.t()
-        ### Weight projection LoRA weights
+        # Weight projection LoRA weights
         d_QA = torch.empty_like(QA)
         d_QB = torch.empty_like(QB)
         d_KA = torch.empty_like(KA)
@@ -578,6 +587,8 @@ def apply_lora_qkv(self, X, inplace = True):
         inplace,
     )
     return Q, K, V
+
+
 class LoRA_W(torch.autograd.Function):
     '''
     ### LoRA weights
@@ -609,7 +620,6 @@ class LoRA_W(torch.autograd.Function):
     @staticmethod
     @torch_amp_custom_fwd
     def forward(ctx, X: torch.Tensor, W, W_quant, A, B, S):
-        dtype = X.dtype
         XW = matmul_lora(X, W, W_quant, A, B, S)
         ctx.custom_saved_tensors = (
             W,
@@ -618,6 +628,7 @@ class LoRA_W(torch.autograd.Function):
         )
         ctx.save_for_backward(A, B, X)
         return XW
+
     @staticmethod
     @torch_amp_custom_bwd
     def backward(ctx, dY: torch.Tensor):
@@ -636,7 +647,7 @@ class LoRA_W(torch.autograd.Function):
         d_A = torch.empty_like(A)
         d_B = torch.empty_like(B)
 
-        ### Weight projection LoRA weights
+        # Weight projection LoRA weights
         # Weight projection
         # d_A = X.t() @ (dY @ B.t())
         # d_B = (A.t() @ X.t()) @ dY
@@ -659,5 +670,5 @@ class LoRA_W(torch.autograd.Function):
 def apply_lora_o(self, X):
     X = _maybe_fake_quantize_activations(X, self.o_proj)
     OW, OW_quant, OA, OB, OS = get_lora_parameters(self.o_proj)
-    O = LoRA_W.apply(X, OW, OW_quant, OA, OB, OS)
-    return O
+    out = LoRA_W.apply(X, OW, OW_quant, OA, OB, OS)
+    return out
