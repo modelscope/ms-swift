@@ -1,8 +1,7 @@
-from contextlib import nullcontext
-
 import torch
 import triton
 import triton.language as tl
+from contextlib import nullcontext
 
 # signed int32 max is 2**31-1 so num_elements cannot exceed 2**31
 NUM_INT32_ELEMENTS = 2**31
@@ -26,16 +25,14 @@ def _fg_kernel(
 ):
     block_idx = tl.program_id(0)
     if LONG_INDEXING:
-        offsets = block_idx.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(
-            tl.int64
-        )
+        offsets = block_idx.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
         n_elements = tl.cast(n_elements, tl.int64)
     else:
         offsets = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    e_row = tl.load(e + offsets, mask = mask, other = 0).to(tl.float32)
-    g_row = tl.load(g + offsets, mask = mask, other = 0)  # .to(tl.float32)
+    e_row = tl.load(e + offsets, mask=mask, other=0).to(tl.float32)
+    g_row = tl.load(g + offsets, mask=mask, other=0)  # .to(tl.float32)
 
     # f = e * sigmoid(e)
     f_row = e_row * tl.sigmoid(e_row)  # e_row / (1 + tl.exp(-e_row))
@@ -44,17 +41,17 @@ def _fg_kernel(
     h_row = f_row * g_row
 
     # Store h
-    tl.store(h + offsets, h_row, mask = mask)
+    tl.store(h + offsets, h_row, mask=mask)
 
 
 def _fg_grid(meta, n_elements):
-    return (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    return (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
 
 
 def swiglu_fg_kernel(e, g):
     batch, seq_len, hd = e.shape
     n_elements = e.numel()
-    h = torch.empty((batch, seq_len, hd), dtype = e.dtype, device = e.device)
+    h = torch.empty((batch, seq_len, hd), dtype=e.dtype, device=e.device)
 
     def grid(meta):
         return _fg_grid(meta, n_elements)
@@ -65,8 +62,8 @@ def swiglu_fg_kernel(e, g):
             g,
             h,
             n_elements,
-            BLOCK_SIZE = BLOCK_SIZE,
-            LONG_INDEXING = 0 if n_elements <= INT32_SAFETY_BUFFER else 1,
+            BLOCK_SIZE=BLOCK_SIZE,
+            LONG_INDEXING=0 if n_elements <= INT32_SAFETY_BUFFER else 1,
         )
     return h
 
@@ -91,17 +88,15 @@ def _DWf_DW_dfg_kernel(
     '''
     block_idx = tl.program_id(0)
     if LONG_INDEXING:
-        offsets = block_idx.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(
-            tl.int64
-        )
+        offsets = block_idx.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE).to(tl.int64)
         n_elements = tl.cast(n_elements, tl.int64)
     else:
         offsets = block_idx * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < n_elements
 
-    DW_row = tl.load(DW + offsets, mask = mask, other = 0)  # .to(tl.float32)
-    e_row = tl.load(e + offsets, mask = mask, other = 0).to(tl.float32)
-    g_row = tl.load(g + offsets, mask = mask, other = 0)  # .to(tl.float32)
+    DW_row = tl.load(DW + offsets, mask=mask, other=0)  # .to(tl.float32)
+    e_row = tl.load(e + offsets, mask=mask, other=0).to(tl.float32)
+    g_row = tl.load(g + offsets, mask=mask, other=0)  # .to(tl.float32)
 
     # e = e.float()
     # se = 1.0 / (1.0 + torch.exp(-e))
@@ -120,13 +115,13 @@ def _DWf_DW_dfg_kernel(
     de_row = de_row.to(DW_row.dtype)
 
     # Store derivatives in buffers
-    tl.store(DW + offsets, h_row, mask = mask)  # h  = f * g
-    tl.store(e + offsets, df_row, mask = mask)  # df = DW * f
-    tl.store(g + offsets, de_row, mask = mask)  # de
+    tl.store(DW + offsets, h_row, mask=mask)  # h  = f * g
+    tl.store(e + offsets, df_row, mask=mask)  # df = DW * f
+    tl.store(g + offsets, de_row, mask=mask)  # de
 
 
 def _dw_grid(meta, n_elements):
-    return (triton.cdiv(n_elements, meta['BLOCK_SIZE']),)
+    return (triton.cdiv(n_elements, meta['BLOCK_SIZE']), )
 
 
 def swiglu_DWf_DW_dfg_kernel(DW, e, g):
@@ -142,7 +137,7 @@ def swiglu_DWf_DW_dfg_kernel(DW, e, g):
             e,
             g,
             n_elements,
-            BLOCK_SIZE = BLOCK_SIZE,
-            LONG_INDEXING = 0 if n_elements <= INT32_SAFETY_BUFFER else 1,
+            BLOCK_SIZE=BLOCK_SIZE,
+            LONG_INDEXING=0 if n_elements <= INT32_SAFETY_BUFFER else 1,
         )
     return DW, e, g
