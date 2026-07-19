@@ -31,6 +31,7 @@ def fast_dequantize(W, quant_state=None, out=None, use_global_buffer=False):
 def QUANT_STATE(W):
     return getattr(W, 'quant_state', None)
 
+
 def _resolve_active_adapter(proj):
     adapter = getattr(proj, 'active_adapters', None)
     if adapter is None:
@@ -40,6 +41,7 @@ def _resolve_active_adapter(proj):
     if isinstance(adapter, (list, tuple)):
         return adapter[0] if len(adapter) > 0 else None
     return 'default'
+
 
 def get_lora_parameters(proj):
     '''Return a 5-tuple of (weight, weight quant_state, lora A, lora B, lora scale).'''
@@ -76,11 +78,13 @@ def get_lora_parameters(proj):
             B = lora_B_fake_quantizer(B)
     return W, W_quant, A, B, proj.scaling[adapter]
 
+
 def get_lora_parameters_bias(proj):
     '''Return a 6-tuple of (weight, weight quant_state, bias, lora A, lora B, lora scale).'''
     base = getattr(proj, 'base_layer', proj)
     W, W_quant, A, B, S = get_lora_parameters(proj)
     return W, W_quant, getattr(base, 'bias', None), A, B, S
+
 
 def matmul_lora(X, W, W_quant, A, B, s, bias = None, out = None):
     dtype = X.dtype
@@ -91,7 +95,6 @@ def matmul_lora(X, W, W_quant, A, B, s, bias = None, out = None):
         reshape = True
     else:
         reshape = False
-
 
     W = fast_dequantize(W, W_quant, use_global_buffer = True)
     out = torch_matmul(X, W.t(), out = out)
