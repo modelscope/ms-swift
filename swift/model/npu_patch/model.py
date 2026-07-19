@@ -239,6 +239,7 @@ def npu_swiglu(gate, up):
         return torch_npu.npu_swiglu(torch.cat((gate, up), dim=-1), dim=-1)
     return FusedSwiGLUFunction.apply(gate, up)
 
+
 def npu_swiglu_forward(self, hidden_state):
     gate = self.gate_proj(hidden_state)
     up = self.up_proj(hidden_state)
@@ -299,9 +300,11 @@ def _get_lora_dropout_p(module: torch.nn.Module, adapter_name: str | None) -> fl
     p = getattr(layer, 'p', None)
     return float(p) if p is not None else 0.0
 
+
 def _has_trainable_base_bias(module: torch.nn.Module) -> bool:
     bias = getattr(getattr(module, 'base_layer', module), 'bias', None)
     return bias is not None and getattr(bias, 'requires_grad', False)
+
 
 def _is_fast_lora_projection_compatible(module: torch.nn.Module) -> bool:
     required_attrs = ('base_layer', 'lora_A', 'lora_B', 'scaling')
@@ -483,7 +486,11 @@ def enable_npu_fast_lora(model: torch.nn.Module) -> int:
             eligible_qkv += int(_can_use_fast_lora_qkv(module))
             eligible_o += int(_can_use_fast_lora_o(module))
     logger.info_once(
-        f'NPU fast LoRA eligibility: MLP {eligible_mlp}/{total_mlp}, QKV {eligible_qkv}/{total_attn}, O {eligible_o}/{total_attn}.')
+        'NPU fast LoRA eligibility: '
+        f'MLP {eligible_mlp}/{total_mlp}, '
+        f'QKV {eligible_qkv}/{total_attn}, '
+        f'O {eligible_o}/{total_attn}.'
+    )
     return enabled_count
 
 
