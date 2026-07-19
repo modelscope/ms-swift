@@ -1,14 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
 import os
-from typing import List, Union
-
 import torch
 import transformers
 from packaging import version
 from peft.utils.other import ModulesToSaveWrapper
 from transformers import TrainingArguments
 from transformers.integrations import is_deepspeed_zero3_enabled
+from typing import List, Union
 
 from swift.arguments import SftArguments
 from swift.trainers import calculate_max_steps
