@@ -250,8 +250,8 @@ def _get_fast_lora_funcs():
     global _FAST_LORA_FUNCS
     if _FAST_LORA_FUNCS is None:
         try:
-            from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
             from .fast_lora import apply_lora_mlp_swiglu, apply_lora_o, apply_lora_qkv
+            from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
             _FAST_LORA_FUNCS = {
                 'apply_lora_mlp_swiglu': apply_lora_mlp_swiglu,
                 'apply_lora_qkv': apply_lora_qkv,
@@ -328,8 +328,7 @@ def _can_use_fast_lora_mlp(module: torch.nn.Module) -> bool:
 
 def _can_use_fast_lora_qkv(module: torch.nn.Module) -> bool:
     return getattr(module, '_npu_fast_lora_enabled', False) and all(
-        _is_fast_lora_projection_compatible(getattr(module, proj_name))
-        for proj_name in ('q_proj', 'k_proj', 'v_proj'))
+        _is_fast_lora_projection_compatible(getattr(module, proj_name)) for proj_name in ('q_proj', 'k_proj', 'v_proj'))
 
 
 def _can_use_fast_lora_o(module: torch.nn.Module) -> bool:
@@ -348,7 +347,7 @@ def _npu_fast_lora_attention_forward(
     hidden_states: torch.Tensor,
     position_embeddings: tuple[torch.Tensor, torch.Tensor],
     attention_mask: torch.Tensor | None,
-    past_key_values = None,
+    past_key_values=None,
     cache_position: torch.LongTensor | None = None,
     **kwargs,
 ):
@@ -414,7 +413,7 @@ def npu_qwen2_attention_forward(
     hidden_states: torch.Tensor,
     position_embeddings: tuple[torch.Tensor, torch.Tensor],
     attention_mask: torch.Tensor | None,
-    past_key_values = None,
+    past_key_values=None,
     cache_position: torch.LongTensor | None = None,
     **kwargs,
 ):
@@ -434,7 +433,7 @@ def npu_qwen3_attention_forward(
     hidden_states: torch.Tensor,
     position_embeddings: tuple[torch.Tensor, torch.Tensor],
     attention_mask: torch.Tensor | None,
-    past_key_values = None,
+    past_key_values=None,
     cache_position: torch.LongTensor | None = None,
     **kwargs,
 ):
@@ -485,12 +484,10 @@ def enable_npu_fast_lora(model: torch.nn.Module) -> int:
             total_attn += 1
             eligible_qkv += int(_can_use_fast_lora_qkv(module))
             eligible_o += int(_can_use_fast_lora_o(module))
-    logger.info_once(
-        'NPU fast LoRA eligibility: '
-        f'MLP {eligible_mlp}/{total_mlp}, '
-        f'QKV {eligible_qkv}/{total_attn}, '
-        f'O {eligible_o}/{total_attn}.'
-    )
+    logger.info_once('NPU fast LoRA eligibility: '
+                     f'MLP {eligible_mlp}/{total_mlp}, '
+                     f'QKV {eligible_qkv}/{total_attn}, '
+                     f'O {eligible_o}/{total_attn}.')
     return enabled_count
 
 
