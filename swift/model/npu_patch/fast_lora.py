@@ -7,52 +7,52 @@ import torch
 def _maybe_fake_quantize_activations(
     X: torch.Tensor, proj: torch.nn.Module
 ) -> torch.Tensor:
-    """
+    '''
     If QAT is enabled, fake quantize the input activations.
     Otherwise, just return the input activations as is.
     Weights are fake quantized separately in `get_lora_parameters`.
-    """
-    base_layer = getattr(proj, "base_layer", proj)
-    activation_fake_quantizer = getattr(base_layer, "activation_fake_quantizer", None)
+    '''
+    base_layer = getattr(proj, 'base_layer', proj)
+    activation_fake_quantizer = getattr(base_layer, 'activation_fake_quantizer', None)
     if activation_fake_quantizer is not None:
         X = activation_fake_quantizer(X)
     return X
 def fast_dequantize(W, quant_state=None, out=None, use_global_buffer=False):
     if quant_state is not None:
-        raise RuntimeError("fast_dequantize: quant_state is not None, but quantization is disabled in this build.")
-    if str(W.dtype).startswith("torch.float8") or W.__class__.__name__ == "Float8Tensor":
-        raise RuntimeError("fast_dequantize: fp8 weight encountered, but fp8 is disabled in this build.")
+        raise RuntimeError('fast_dequantize: quant_state is not None, but quantization is disabled in this build.')
+    if str(W.dtype).startswith('torch.float8') or W.__class__.__name__ == 'Float8Tensor':
+        raise RuntimeError('fast_dequantize: fp8 weight encountered, but fp8 is disabled in this build.')
     return W
 def QUANT_STATE(W):
-    return getattr(W, "quant_state", None)
+    return getattr(W, 'quant_state', None)
 
 def _resolve_active_adapter(proj):
-    adapter = getattr(proj, "active_adapters", None)
+    adapter = getattr(proj, 'active_adapters', None)
     if adapter is None:
-        adapter = getattr(proj, "active_adapter", "default")
+        adapter = getattr(proj, 'active_adapter', 'default')
     if isinstance(adapter, str):
         return adapter
     if isinstance(adapter, (list, tuple)):
         return adapter[0] if len(adapter) > 0 else None
-    return "default"
+    return 'default'
 
 def get_lora_parameters(proj):
-    """Return a 5-tuple of (weight, weight quant_state, lora A, lora B, lora scale)."""
-    base_layer = getattr(proj, "base_layer", proj)
+    '''Return a 5-tuple of (weight, weight quant_state, lora A, lora B, lora scale).'''
+    base_layer = getattr(proj, 'base_layer', proj)
     W = base_layer.weight
-    if hasattr(base_layer, "weight_fake_quantizer"):
-        weight_fake_quantizer = getattr(base_layer, "weight_fake_quantizer", None)
+    if hasattr(base_layer, 'weight_fake_quantizer'):
+        weight_fake_quantizer = getattr(base_layer, 'weight_fake_quantizer', None)
         if weight_fake_quantizer is not None:
             W = weight_fake_quantizer(W)
-    W_quant = getattr(W, "quant_state", None)
+    W_quant = getattr(W, 'quant_state', None)
     if W_quant is None:
-        W_quant = getattr(base_layer, "weight_scale_inv", None)
+        W_quant = getattr(base_layer, 'weight_scale_inv', None)
         if W_quant is None:
-            W_quant = getattr(base_layer, "weight_scale", None)
-    if getattr(base_layer, "quant_method", None) == "fp8":
-        W.block_size = getattr(base_layer, "block_size", [128, 128])
+            W_quant = getattr(base_layer, 'weight_scale', None)
+    if getattr(base_layer, 'quant_method', None) == 'fp8':
+        W.block_size = getattr(base_layer, 'block_size', [128, 128])
         W_quant.block_size = W.block_size
-    if getattr(proj, "disable_adapters", True) or getattr(proj, "merged", False):
+    if getattr(proj, 'disable_adapters', True) or getattr(proj, 'merged', False):
         return W, W_quant, None, None, None
     adapter = _resolve_active_adapter(proj)
     if adapter is None:
@@ -61,21 +61,21 @@ def get_lora_parameters(proj):
     lora_B_linear = proj.lora_B[adapter]
     A = lora_A_linear.weight
     B = lora_B_linear.weight
-    if hasattr(lora_A_linear, "weight_fake_quantizer"):
-        lora_A_fake_quantizer = getattr(lora_A_linear, "weight_fake_quantizer", None)
+    if hasattr(lora_A_linear, 'weight_fake_quantizer'):
+        lora_A_fake_quantizer = getattr(lora_A_linear, 'weight_fake_quantizer', None)
         if lora_A_fake_quantizer is not None:
             A = lora_A_fake_quantizer(A)
-    if hasattr(lora_B_linear, "weight_fake_quantizer"):
-        lora_B_fake_quantizer = getattr(lora_B_linear, "weight_fake_quantizer", None)
+    if hasattr(lora_B_linear, 'weight_fake_quantizer'):
+        lora_B_fake_quantizer = getattr(lora_B_linear, 'weight_fake_quantizer', None)
         if lora_B_fake_quantizer is not None:
             B = lora_B_fake_quantizer(B)
     return W, W_quant, A, B, proj.scaling[adapter]
 
 def get_lora_parameters_bias(proj):
-    """Return a 6-tuple of (weight, weight quant_state, bias, lora A, lora B, lora scale)."""
-    base = getattr(proj, "base_layer", proj)
+    '''Return a 6-tuple of (weight, weight quant_state, bias, lora A, lora B, lora scale).'''
+    base = getattr(proj, 'base_layer', proj)
     W, W_quant, A, B, S = get_lora_parameters(proj)
-    return W, W_quant, getattr(base, "bias", None), A, B, S
+    return W, W_quant, getattr(base, 'bias', None), A, B, S
 
 def matmul_lora(X, W, W_quant, A, B, s, bias = None, out = None):
     dtype = X.dtype
@@ -104,10 +104,10 @@ def matmul_lora(X, W, W_quant, A, B, s, bias = None, out = None):
 
     return out.view(batch, seq_len, -1) if reshape else out
 
-torch_amp_custom_fwd = torch.amp.custom_fwd(device_type="npu")
-torch_amp_custom_bwd = torch.amp.custom_bwd(device_type = "npu")
+torch_amp_custom_fwd = torch.amp.custom_fwd(device_type='npu')
+torch_amp_custom_bwd = torch.amp.custom_bwd(device_type = 'npu')
 class LoRA_MLP(torch.autograd.Function):
-    """
+    '''
     ### LoRA weights
     G = G + Ag @ Bg
     U = U + Au @ Bu
@@ -141,7 +141,7 @@ class LoRA_MLP(torch.autograd.Function):
     dC/dAg =       X.T @ (D @ W.T * df * g) @ B.T
     dC/dBg = A.T @ X.T @ (D @ W.T * df * g)
 
-    """
+    '''
 
     @staticmethod
     @torch_amp_custom_fwd
@@ -340,7 +340,7 @@ def apply_lora_mlp_swiglu(self, X, inplace = True):
     )
     return out
 class LoRA_QKV(torch.autograd.Function):
-    """
+    '''
     ### LoRA weights
     Wq = Wq + Aq @ Bq
     Wk = Wk + Ak @ Bk
@@ -367,7 +367,7 @@ class LoRA_QKV(torch.autograd.Function):
     ### V projection LoRA weights
     dC/dAv =       X.T @ D(Wv) @ B.T
     dC/dBv = A.T @ X.T @ D(Wv)
-    """
+    '''
 
 
     @staticmethod
@@ -579,7 +579,7 @@ def apply_lora_qkv(self, X, inplace = True):
     )
     return Q, K, V
 class LoRA_W(torch.autograd.Function):
-    """
+    '''
     ### LoRA weights
     Wq = Wq + Aq @ Bq
     Wk = Wk + Ak @ Bk
@@ -604,7 +604,7 @@ class LoRA_W(torch.autograd.Function):
     ### V projection LoRA weights
     dC/dAv =       X.T @ D(Wv) @ B.T
     dC/dBv = A.T @ X.T @ D(Wv)
-    """
+    '''
 
     @staticmethod
     @torch_amp_custom_fwd
