@@ -14,6 +14,7 @@ INT32_SAFETY_BUFFER = NUM_INT32_ELEMENTS - BLOCK_SIZE * SAFE_INT32_BUFFER_MULTIP
 def torch_gpu_device(device):
     return nullcontext()
 
+
 @triton.jit
 def _fg_kernel(
     e,
@@ -54,7 +55,10 @@ def swiglu_fg_kernel(e, g):
     batch, seq_len, hd = e.shape
     n_elements = e.numel()
     h = torch.empty((batch, seq_len, hd), dtype = e.dtype, device = e.device)
-    grid = lambda meta: _fg_grid(meta, n_elements)
+
+    def grid(meta):
+        return _fg_grid(meta, n_elements)
+
     with torch_gpu_device(e.device):
         _fg_kernel[grid](
             e,
@@ -65,6 +69,7 @@ def swiglu_fg_kernel(e, g):
             LONG_INDEXING = 0 if n_elements <= INT32_SAFETY_BUFFER else 1,
         )
     return h
+
 
 @triton.jit
 def _DWf_DW_dfg_kernel(
@@ -127,7 +132,10 @@ def _dw_grid(meta, n_elements):
 def swiglu_DWf_DW_dfg_kernel(DW, e, g):
     batch_seq_len, hd = e.shape  # Flattened to 2D, so 1st dim is bsz * seq_len
     n_elements = e.numel()
-    grid = lambda meta: _dw_grid(meta, n_elements)
+
+    def grid(meta):
+        return _dw_grid(meta, n_elements)
+
     with torch_gpu_device(e.device):
         _DWf_DW_dfg_kernel[grid](
             DW,
