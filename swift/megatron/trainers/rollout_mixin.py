@@ -899,6 +899,8 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         """
         if not self.log_completions:
             return
+        if not self.unwrapped_models[0].training:
+            return
         messages = gather_object([s.messages for s in samples])
         completions = []
         for s in samples:
