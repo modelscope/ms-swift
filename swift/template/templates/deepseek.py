@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import sys
 import math
 import numpy as np
 import torch
@@ -9,13 +10,14 @@ from PIL import Image, ImageOps
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from typing import Any, Dict, List, Optional
 
-from swift.utils import get_env_args
+from swift.utils import get_env_args, get_logger
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt, findall
 
+logger = get_logger()
 
 @dataclass
 class DeepseekTemplateMeta(TemplateMeta):
@@ -458,33 +460,167 @@ register_template(
 
 
 class UnlimitedOCR(DeepseekOCR):
-    image_placeholder = ['<image>']  # Remove trailing newline; override the parent class default
+    image_placeholder = ['<image>']
 
     def init_env_args(self):
         super().init_env_args()
-        self._device_fixed = False  # Instance variable; avoid sharing state across multiple instances.
+        self._rswa_patched = False
+        self._rswa_window = self.config.sliding_window_size
 
-    def _fix_device(self):
-        if not self._device_fixed and self.model is not None:
+    # ==================== R-SWA Training Mask (only train) ====================
+
+    @staticmethod
+    def _build_rswa_attention_mask(labels, attention_mask_1d, window_size, dtype):
+        """构建 R-SWA 掩码：Prefix 全可见 + Answer 滑动窗口。⚠️ 仅用于训练"""
+        batch_size, seq_len = labels.shape
+        device = labels.device
+        prefix_lens = []
+        for i in range(batch_size):
+            non_ignored = (labels[i] != -100).nonzero(as_tuple=True)[0]
+            prefix_lens.append(non_ignored[0].item() if len(non_ignored) > 0 else seq_len)
+
+        row = torch.arange(seq_len, device=device).view(seq_len, 1)
+        col = torch.arange(seq_len, device=device).view(1, seq_len)
+        causal = col <= row
+        can_attend = torch.zeros(batch_size, seq_len, seq_len, dtype=torch.bool, device=device)
+
+        for i in range(batch_size):
+            p = prefix_lens[i]
+            can_attend[i, :p, :] = causal[:p, :]
+            can_attend[i, p:, :p] = True
+            if p < seq_len:
+                answer_len = seq_len - p
+                a_row = torch.arange(answer_len, device=device).view(-1, 1)
+                a_col = torch.arange(answer_len, device=device).view(1, -1)
+                can_attend[i, p:, p:] = causal[p:, p:] & ((a_row - a_col) < window_size)
+
+        valid = attention_mask_1d.bool()
+        for i in range(batch_size):
+            can_attend[i, :, ~valid[i]] = False
+            can_attend[i, ~valid[i], :] = False
+
+        min_val = torch.finfo(dtype).min
+        mask = torch.where(can_attend, torch.tensor(0, dtype=dtype, device=device), min_val).to(dtype)
+        return mask.unsqueeze(1)
+
+    def _patch_rswa_attention(self):
+        if self._rswa_patched:
+            return
+        for mod in sys.modules.values():
+            if mod is not None and hasattr(mod, '_prepare_4d_causal_attention_mask') and hasattr(mod, 'DeepseekV2Model'):
+                original_fn = mod._prepare_4d_causal_attention_mask
+                def _passthrough_4d(attention_mask, *args, **kwargs):
+                    if attention_mask is not None and attention_mask.ndim == 4:
+                        return attention_mask
+                    return original_fn(attention_mask, *args, **kwargs)
+                mod._prepare_4d_causal_attention_mask = _passthrough_4d
+                self._rswa_patched = True
+                logger.info('[UnlimitedOCR] Patched _prepare_4d_causal_attention_mask for R-SWA training')
+                return
+
+    def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
+        res = super().data_collator(batch, padding_to=padding_to)
+        if not self.is_training or not self._rswa_window or self._rswa_window <= 0:
+            return res
+        if 'labels' not in res or 'attention_mask' not in res:
+            return res
+
+        self._patch_rswa_attention()
+        labels, attn_1d = res['labels'], res['attention_mask']
+        if not isinstance(labels, torch.Tensor) or not isinstance(attn_1d, torch.Tensor):
+            return res
+
+        res['attention_mask'] = self._build_rswa_attention_mask(
+            labels, attn_1d, self._rswa_window, self.model_info.torch_dtype)
+        logger.info_once('[UnlimitedOCR] R-SWA windowed mask applied in data_collator')
+        return res
+
+    # ==================== Generation Control ====================
+
+    def generate(self, model, *args, **kwargs):
+        base_model = self.get_base_model(model)
+        config = base_model.config
+
+        _orig_sw = config.sliding_window_size
+        config._ring_window = _orig_sw
+        config.sliding_window = None
+
+        try:
+            ngram_size = get_env_args('no_repeat_ngram_size', int, 0)
+            ngram_window = get_env_args('ngram_window', int, 256)
+            if ngram_size > 0 and ngram_window > 0:
+                ProcessorCls = get_class_from_dynamic_module(
+                    'modeling_unlimitedocr.SlidingWindowNoRepeatNgramProcessor',
+                    self.model_info.model_dir)
+                if ProcessorCls is not None:
+                    existing = kwargs.get('logits_processor', []) or []
+                    kwargs['logits_processor'] = list(existing) + [ProcessorCls(ngram_size, ngram_window)]
+
+            return super().generate(model, *args, **kwargs)
+        finally:
+            config.sliding_window = _orig_sw
+
+    # ==================== Post-processing Hooks ====================
+
+    def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> str:
+        response = super().decode_generate_ids(generate_ids, **kwargs)
+        template_inputs = kwargs.get('template_inputs')
+        is_finished = kwargs.get('is_finished', True)
+
+        if is_finished and not self.is_training and template_inputs is not None:
+            re_match = get_class_from_dynamic_module(
+                'modeling_unlimitedocr.re_match', self.model_info.model_dir)
+            if re_match is not None:
+                try:
+                    matches_ref, matches_images, matches_other = re_match(response)
+                    template_inputs._ocr_parsed_refs = {
+                        'all': matches_ref, 'images': matches_images, 'others': matches_other
+                    }
+                except Exception as e:
+                    logger.warning(f'[UnlimitedOCR] Official re_match failed: {e}')
+        return response
+
+    def post_process_generate_response(self, response: str, inputs: StdTemplateInputs) -> str:
+        if self.is_training:
+            return response
+
+        output_dir = (inputs.chat_template_kwargs or {}).get('ocr_output_dir', './ocr_output')
+        parsed_refs = getattr(inputs, '_ocr_parsed_refs', None)
+
+        if parsed_refs and inputs.images:
             try:
-                vision_device = next(self.model.model.vision_model.parameters()).device
-                self.model.model.image_newline.data = self.model.model.image_newline.data.to(vision_device)
-                self.model.model.view_seperator.data = self.model.model.view_seperator.data.to(vision_device)
-                self._device_fixed = True
-            except Exception:
-                pass
+                import os
+                image = inputs.images[0] if isinstance(inputs.images[0], Image.Image) else None
+                if image is not None:
+                    os.makedirs(os.path.join(output_dir, 'images'), exist_ok=True)
+                    
+                    draw_fn = get_class_from_dynamic_module(
+                        'modeling_unlimitedocr.process_image_with_refs',
+                        self.model_info.model_dir)
+                    if draw_fn is not None:
+                        result_img = draw_fn(image, parsed_refs['all'], output_dir)
+                        result_img.save(os.path.join(output_dir, 'result_with_boxes.jpg'))
 
-    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
-        self._fix_device()
-        return super()._encode(inputs)
+                    img_idx = 0
+                    for match in parsed_refs['images']:
+                        response = response.replace(match, f'![](images/{img_idx}.jpg)\n', 1)
+                        img_idx += 1
+                    for match in parsed_refs['others']:
+                        response = response.replace(match, '')
+                    response = response.replace('\\coloneqq', ':=').replace('\\eqqcolon', '=:')
+            except Exception as e:
+                logger.warning(f'[UnlimitedOCR] Post-process failed: {e}')
+
+        return response.strip()
 
     def _load_dynamic_modules(self):
         if self._BasicImageTransform is None:
             model_dir = self.model_info.model_dir
-            self._BasicImageTransform = get_class_from_dynamic_module('modeling_unlimitedocr.BasicImageTransform',
-                                                                      model_dir)
-            self._dynamic_preprocess = get_class_from_dynamic_module('modeling_unlimitedocr.dynamic_preprocess',
-                                                                     model_dir)
+            self._BasicImageTransform = get_class_from_dynamic_module(
+                'modeling_unlimitedocr.BasicImageTransform', model_dir)
+            self._dynamic_preprocess = get_class_from_dynamic_module(
+                'modeling_unlimitedocr.dynamic_preprocess', model_dir)
+
 
 
 register_template(

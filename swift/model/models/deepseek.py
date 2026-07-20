@@ -386,15 +386,10 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         """
         Fixed two bugs affecting `UnlimitedOCRModel` in multi-GPU scenarios using `device_map='auto'`:
 
-        Bug 1 - Device mismatch in `torch.cat`:
-            `image_newline` and `view_seperator` are `nn.Parameter`s;
-            under `device_map='auto'`, their device placement might not align
-            with the image features.
+        Bug 1 - image_newline 和 view_seperator 是 nn.Parameter，与 global_features/local_features 不同的 GPU 上。torch.cat 要求所有输入在同一设备，直接报错
 
-        Bug 2 - Device mismatch in `masked_scatter_`:
-            Hard-coded `.cuda()` usage caused a conflict where `images_in_this_batch`
-            resided on the projector's device (e.g., `cuda:7`),
-            while `inputs_embeds` resided on the device hosting `embed_tokens` (e.g., `cuda:0`).
+        Bug 2 - 源码中硬编码 .cuda() 导致 images_in_this_batch 在 projector 所在卡（如 cuda:7），
+                而 inputs_embeds 在 embed_tokens 所在卡（如 cuda:0）
 
         Fix strategy: Temporarily replace `torch.cat` and `torch.Tensor.masked_scatter_` during the forward pass
         to handle device placement automatically, then restore the original methods after execution.
@@ -472,13 +467,21 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         patch_output_to_input_device(model.model.projector)
         patch_output_to_input_device(model.model)
 
-        _orig_sw = (getattr(model.config, 'sliding_window_size', None) or getattr(model.config, 'sliding_window', None))
+        _orig_sw = getattr(model.config, 'sliding_window_size', None)
         if _orig_sw is not None:
             model.config._ring_window = _orig_sw
-            model.config.sliding_window = None
             logger.info('[UnlimitedOCR] R-SWA enabled: ring_window=%d', _orig_sw)
         else:
-            logger.warning('[UnlimitedOCR] sliding_window config not found, R-SWA may not work.')
+            logger.warning('[UnlimitedOCR] sliding_window_size config not found, R-SWA may not work.')
+
+        # Fix device placement for bare nn.Parameter (image_newline, view_seperator)
+        # These are used in torch.cat inside forward, so patch_output_to_input_device can't help.
+        try:
+            vision_device = next(model.model.vision_model.parameters()).device
+            model.model.image_newline.data = model.model.image_newline.data.to(vision_device)
+            model.model.view_seperator.data = model.model.view_seperator.data.to(vision_device)
+        except Exception as e:
+            logger.warning('[UnlimitedOCR] Failed to fix parameter device: %s', e)
 
         n_devices = len(set(str(p.device) for p in model.parameters() if p.device.type == 'cuda'))
         if n_devices > 1:
