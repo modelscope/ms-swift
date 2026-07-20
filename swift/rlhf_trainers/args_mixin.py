@@ -447,6 +447,15 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     rlsd_lambda_decay_steps: int = 0  # linear decay of lambda to 0 over this many steps
     rlsd_negative_only: bool = False  # only reweight sequences with advantage < 0
 
+    # SDAR (Self-Distilled Agentic RL), https://arxiv.org/abs/2605.15155
+    # Confidence-gated teacher distillation auxiliary loss added to the GRPO policy loss:
+    #   L_SDAR = token-mean( sigmoid(sdar_gate_beta*(logP_T-logP_S)) * (logP_T-logP_S) ),
+    #   loss   = policy_loss + sdar_loss_coef * L_SDAR.
+    # Reuses the OPSD self-distillation teacher (teacher = current policy conditioned on a privileged
+    # per-sample ``teacher_prompt`` column). Enabled when ``sdar_loss_coef > 0``.
+    sdar_loss_coef: float = 0.0  # 0 disables SDAR; reference uses 0.1 (0.01 for ALFWorld)
+    sdar_gate_beta: float = 5.0  # sigmoid gate temperature (higher -> sharper gating)
+
     # REAL https://arxiv.org/abs/2602.05630
     real_tau: float = 0.5
 
