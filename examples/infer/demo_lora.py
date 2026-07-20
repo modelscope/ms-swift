@@ -34,6 +34,32 @@ def infer_multilora(infer_request: 'InferRequest', infer_backend: Literal['vllm'
     print(f'lora2-response: {response}')
 
 
+def infer_multilora_2(infer_request: 'InferRequest'):
+    adapter_path = safe_snapshot_download('swift/test_lora')
+    adapter_path2 = safe_snapshot_download('swift/test_lora2')
+    args = BaseArguments.from_pretrained(adapter_path)
+    engine = TransformersEngine(args.model, adapters=[adapter_path, adapter_path2], adapter_names=['lora1', 'lora2'])
+    template = get_template(engine.processor, template_type=args.template, default_system=args.system)
+    engine.template = template
+    request_config = RequestConfig(max_tokens=512, temperature=0)
+
+    # use lora
+    engine.model.set_adapter('lora1')
+    resp_list = engine.infer([infer_request], request_config)
+    response = resp_list[0].choices[0].message.content
+    print(f'lora1-response: {response}')
+    # origin model
+    with engine.model.disable_adapter():
+        resp_list = engine.infer([infer_request], request_config)
+    response = resp_list[0].choices[0].message.content
+    print(f'response: {response}')
+    # use lora
+    engine.model.set_adapter('lora2')
+    resp_list = engine.infer([infer_request], request_config)
+    response = resp_list[0].choices[0].message.content
+    print(f'lora2-response: {response}')
+
+
 def infer_lora(infer_request: 'InferRequest'):
     request_config = RequestConfig(max_tokens=512, temperature=0)
     adapter_path = safe_snapshot_download('swift/test_lora')
@@ -68,3 +94,4 @@ if __name__ == '__main__':
     infer_request = InferRequest(messages=[{'role': 'user', 'content': 'who are you?'}])
     # infer_lora(infer_request)
     infer_multilora(infer_request, 'transformers')
+    # infer_multilora_2(infer_request)
