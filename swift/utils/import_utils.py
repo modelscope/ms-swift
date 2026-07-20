@@ -61,6 +61,23 @@ def is_trl_available() -> bool:
     return importlib.util.find_spec('trl') is not None
 
 
+def patch_trl_package_check() -> None:
+    """Fix optional dependency checks in TRL <= 0.28 with Transformers 5."""
+    import trl.import_utils as trl_import_utils
+
+    package_check = trl_import_utils._is_package_available
+    if not isinstance(package_check('trl'), tuple):
+        return
+
+    def compatible_package_check(package, return_version=False):
+        result = package_check(package, return_version=return_version)
+        if not return_version and isinstance(result, tuple):
+            return result[0]
+        return result
+
+    trl_import_utils._is_package_available = compatible_package_check
+
+
 class _LazyModule(ModuleType):
     """
     Module class that surfaces all objects but only performs associated imports when the objects are requested.
