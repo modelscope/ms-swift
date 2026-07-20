@@ -195,9 +195,7 @@ class IterablePackingDataset(IterableDataset):
             if not data:
                 continue
             res[i] = data if isinstance(data, list) else [data]
-        res = [data for data in res if data]
-        res = list(chain.from_iterable(res))
-        res = [(data, len(data['input_ids'])) for data in res]
+        res = [(item, len(item['input_ids'])) for group in res if group for item in group]
         last_res += res
         return last_res
 
