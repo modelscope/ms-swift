@@ -105,6 +105,11 @@ class TransformersEngine(InferEngine):
             if template is None:
                 raise ValueError('`template` is required when `model` is a nn.Module')
         super().__init__(template)
+        if isinstance(adapter_names, str):
+            adapter_names = [adapter_names]
+        if adapter_names and len(adapter_names) != len(self.adapters):
+            raise ValueError(f"The length of adapter_names ({len(adapter_names)}) must match the length of "
+                             f"adapters ({len(self.adapters)})")
         for i, adapter in enumerate(self.adapters):
             adapter_name = None if adapter_names is None else adapter_names[i]
             self._add_adapter(
