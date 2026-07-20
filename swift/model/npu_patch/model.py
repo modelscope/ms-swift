@@ -189,55 +189,11 @@ def npu_apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1)
     return q_embed, k_embed
 
 
-_FUSED_SWIGLU_KERNELS = None
 _FAST_LORA_FUNCS = None
 
 
-def _get_FUSED_SWIGLU_KERNELS():
-    global _FUSED_SWIGLU_KERNELS
-    if _FUSED_SWIGLU_KERNELS is None:
-        try:
-            from .fused_swiglu import swiglu_DWf_DW_dfg_kernel, swiglu_fg_kernel
-            _FUSED_SWIGLU_KERNELS = (swiglu_fg_kernel, swiglu_DWf_DW_dfg_kernel)
-        except Exception:
-            _FUSED_SWIGLU_KERNELS = False
-    if _FUSED_SWIGLU_KERNELS is False:
-        return None
-    return _FUSED_SWIGLU_KERNELS
-
-
-class FusedSwiGLUFunction(torch.autograd.Function):
-
-    @staticmethod
-    def forward(ctx, gate, up):
-        kernels = _get_FUSED_SWIGLU_KERNELS()
-        if kernels is None:
-            raise RuntimeError('Fused SwiGLU kernels are not available.')
-        swiglu_fg_kernel, _ = kernels
-        ctx.save_for_backward(gate, up)
-        if gate.dim() == 2:
-            return swiglu_fg_kernel(gate.unsqueeze(1).contiguous(), up.unsqueeze(1).contiguous()).squeeze(1)
-        return swiglu_fg_kernel(gate.contiguous(), up.contiguous())
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        kernels = _get_FUSED_SWIGLU_KERNELS()
-        if kernels is None:
-            raise RuntimeError('Fused SwiGLU kernels are not available.')
-        _, swiglu_backward_kernel = kernels
-        gate, up = ctx.saved_tensors
-        grad_output_2d = grad_output.reshape(-1, grad_output.shape[-1]).contiguous().clone()
-        gate_2d = gate.reshape(-1, gate.shape[-1]).contiguous().clone()
-        up_2d = up.reshape(-1, up.shape[-1]).contiguous().clone()
-        _, grad_up, grad_gate = swiglu_backward_kernel(grad_output_2d, gate_2d, up_2d)
-        return grad_gate.view_as(gate), grad_up.view_as(up)
-
-
 def npu_swiglu(gate, up):
-    kernels = _get_FUSED_SWIGLU_KERNELS()
-    if kernels is None:
-        return torch_npu.npu_swiglu(torch.cat((gate, up), dim=-1), dim=-1)
-    return FusedSwiGLUFunction.apply(gate, up)
+    return torch_npu.npu_swiglu(torch.cat((gate, up), dim=-1), dim=-1)
 
 
 def npu_swiglu_forward(self, hidden_state):
