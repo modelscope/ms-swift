@@ -155,6 +155,7 @@ class MLLMTemplateType:
     ovis1_6_llama3 = 'ovis1_6_llama3'
     ovis2 = 'ovis2'
     ovis2_5 = 'ovis2_5'
+    ovis_ocr2 = 'ovis_ocr2'
     mimo_vl = 'mimo_vl'
     midashenglm = 'midashenglm'
 
