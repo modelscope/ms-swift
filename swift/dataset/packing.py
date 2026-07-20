@@ -194,8 +194,10 @@ class IterablePackingDataset(IterableDataset):
             i, data = self._out_queue.get()
             if not data:
                 continue
-            res[i] = (data, len(data['input_ids']))
+            res[i] = data if isinstance(data, list) else [data]
         res = [data for data in res if data]
+        res = list(chain.from_iterable(res))
+        res = [(data, len(data['input_ids'])) for data in res]
         last_res += res
         return last_res
 
