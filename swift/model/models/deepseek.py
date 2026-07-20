@@ -3,7 +3,7 @@ import sys
 import torch
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict
-
+from types import MethodType
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, git_clone_github
 from ..constant import LLMModelType, MLLMModelType
@@ -456,11 +456,24 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         UnlimitedOCRModel._swift_multi_gpu_patched = True
         return True
 
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, *args, **kwargs) -> PreTrainedModel:
         logger = get_logger()
 
         self.auto_model_cls = self.auto_model_cls or AutoModel
-        model = super(DeepseekOCRLoader, self).get_model(model_dir, *args, **kwargs)
+
+        def to_dict(self, *args, **kwargs):
+            res = self._to_dict(*args, **kwargs)
+            if 'language_config' in res and res['language_config'].get('torch_dtype') is not None:
+                dtype = res['language_config']['torch_dtype']
+                res['language_config']['torch_dtype'] = str(dtype).replace('torch.', '')
+            res.pop('to_dict')
+            res.pop('_to_dict')
+            return res
+
+        config._to_dict = config.to_dict
+        config.to_dict = MethodType(to_dict, config)
+
+        model = super(DeepseekOCRLoader, self).get_model(model_dir, config, *args, **kwargs)
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.sam_model)
         patch_output_to_input_device(getattr(model.model, self.visual_name))
