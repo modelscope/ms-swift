@@ -1689,7 +1689,7 @@ def _compat_qwen3_omni_mixed_data(model, processor):
                 attention_mask,
             )
             if labels is not None:
-                loss += self.config.router_aux_loss_coef * aux_loss.to(
+                loss += self.config.text_config.router_aux_loss_coef * aux_loss.to(
                     loss.device)  # make sure to reside in the same device
 
         return Qwen3OmniMoeThinkerCausalLMOutputWithPast(
