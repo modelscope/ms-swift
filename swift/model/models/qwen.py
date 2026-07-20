@@ -1813,20 +1813,25 @@ def _patch_qwen3_tts_forward(model):
             input_embeddings = input_embeddings + codec_i_embedding
 
         outputs = self.talker(
-            inputs_embeds=input_embeddings[:, :-1, :],
-            attention_mask=attention_mask[:, :-1],
+            inputs_embeds=input_embeddings,
+            attention_mask=attention_mask,
+            labels=codec_0_labels,
             output_hidden_states=True,
         )
 
         # Compute sub_talker_loss from hidden states at codec positions
-        hidden_states = outputs.hidden_states[0][-1]
-        talker_hidden_states = hidden_states[codec_mask[:, :-1]]
+        hidden_states = outputs.hidden_states[0][-1][:, :-1, :]
+        talker_hidden_states = hidden_states[codec_mask[:, 1:]]
         talker_codec_ids = codec_ids[codec_mask]
 
-        _, sub_talker_loss = self.talker.forward_sub_talker_finetune(talker_codec_ids, talker_hidden_states)
+        sub_talker_logits, _ = self.talker.forward_sub_talker_finetune(talker_codec_ids, talker_hidden_states)
+        sub_talker_loss = F.cross_entropy(
+            sub_talker_logits.reshape(-1, sub_talker_logits.shape[-1]).float(),
+            talker_codec_ids[:, 1:].reshape(-1).to(sub_talker_logits.device),
+        )
 
-        # Attach sub_talker_loss to outputs for the custom loss function
-        outputs.sub_talker_loss = sub_talker_loss
+        outputs['loss'] = outputs.loss + 0.3 * sub_talker_loss
+
         return outputs
 
     model.forward = MethodType(tts_forward, model)
