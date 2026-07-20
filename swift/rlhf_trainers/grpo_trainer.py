@@ -16,13 +16,8 @@ except ImportError:
     pass
 
 # https://github.com/modelscope/ms-swift/pull/8280
-try:
-    import trl.import_utils as _trl_import_utils
-    _orig = _trl_import_utils.is_vllm_ascend_available
-    if not isinstance(_orig(), bool):
-        _trl_import_utils.is_vllm_ascend_available = lambda: bool(_orig()[0])
-except Exception:
-    pass
+from swift.utils.import_utils import patch_trl_package_check
+patch_trl_package_check()
 # fmt: on
 
 import concurrent.futures
