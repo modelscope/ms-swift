@@ -63,10 +63,13 @@ def is_trl_available() -> bool:
 
 def patch_trl_package_check() -> None:
     """Fix optional dependency checks in TRL <= 0.28 with Transformers 5."""
-    import trl.import_utils as trl_import_utils
+    try:
+        import trl.import_utils as trl_import_utils
+    except ImportError:
+        return
 
-    package_check = trl_import_utils._is_package_available
-    if not isinstance(package_check('trl'), tuple):
+    package_check = getattr(trl_import_utils, '_is_package_available', None)
+    if package_check is None or not isinstance(package_check('trl'), tuple):
         return
 
     def compatible_package_check(package, return_version=False):
