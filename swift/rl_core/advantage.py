@@ -222,8 +222,10 @@ def compute_teacher_kl_per_token(
         ``[B, T]`` per-token teacher KL (masked outside the response).
     """
     d = teacher_per_token_logps - policy_per_token_logps
+    # Mask before exp so padding sentinel values cannot overflow and produce inf * 0.
+    d = d.masked_fill(~completion_mask.bool(), 0.0)
     per_token = torch.exp(d) - d - 1
-    return per_token * completion_mask
+    return per_token
 
 
 def compute_teacher_logratio(
@@ -245,7 +247,7 @@ def compute_teacher_logratio(
         ``[B, T]`` per-token signed log-ratio (masked outside the response).
     """
     d = teacher_per_token_logps - policy_per_token_logps
-    return d * completion_mask
+    return d.masked_fill(~completion_mask.bool(), 0.0)
 
 
 def expand_advantage_to_per_token(
