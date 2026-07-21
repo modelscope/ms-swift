@@ -7,7 +7,6 @@ from copy import copy, deepcopy
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
-from megatron.core.rerun_state_machine import RerunDataIterator
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
@@ -226,22 +225,19 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             )
         return resample_data_iterator
 
-    def _replace_data_iterator(self, data_iterator):
-        if self._step % self.steps_per_generation == 0:
-            num_iters_per_step = self.get_num_iters_per_step()
-            rollout_batch = []
-            for _ in range(num_iters_per_step):
-                rollout_batch.extend(next(data_iterator))
-            micro_batch_data = self._generate_and_score_completions(rollout_batch)
-            num_mini_batch = self.global_batch_size // (self.micro_batch_size * mpu.get_data_parallel_world_size())
-            mini_batch_data = [
-                micro_batch_data[i:i + num_mini_batch] for i in range(0, len(micro_batch_data), num_mini_batch)
-            ]
-            assert len(mini_batch_data) == self.steps_per_generation
-            self._buffered_inputs = mini_batch_data
-        inputs = self._buffered_inputs[self._step % self.steps_per_generation]
-        self._step += 1
-        return RerunDataIterator(iter(inputs))
+    def _build_rollout_buffer(self, data_iterator):
+        num_gen_steps = self.steps_per_generation if self.unwrapped_models[0].training else 1
+        num_iters_per_step = self.get_num_iters_per_step()
+        rollout_batch = []
+        for _ in range(num_iters_per_step):
+            rollout_batch.extend(next(data_iterator))
+        micro_batch_data = self._generate_and_score_completions(rollout_batch)
+        num_mini_batch = self.global_batch_size // (self.micro_batch_size * mpu.get_data_parallel_world_size())
+        mini_batch_data = [
+            micro_batch_data[i:i + num_mini_batch] for i in range(0, len(micro_batch_data), num_mini_batch)
+        ]
+        assert len(mini_batch_data) == num_gen_steps
+        return mini_batch_data
 
     def _generate_and_score_completions(self, inputs: DataType):
         # Get or create the rollout group (TP×PP×CP)
@@ -1305,9 +1301,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         cache_key = f'_num_iters_per_step_{mode}'
         if hasattr(self, cache_key):
             return getattr(self, cache_key)
-        # each rollout DP group will generate generation_batch_size / dp_size completions
         dp_size = mpu.get_data_parallel_world_size()
-        completions_to_rollout = self.generation_batch_size // dp_size
+        completions_batch_size = self.generation_batch_size if mode == 'train' else self.global_batch_size
+        completions_to_rollout = completions_batch_size // dp_size
         # completions will be repeated num_generations times after
         # so we need to divide num_iters_per_step by num_generations to get prompt batch size
         num_generations = self.num_generations if mode == 'train' else self.num_generations_eval
@@ -1337,6 +1333,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         rollout_group_size = torch.distributed.get_world_size(group=rollout_group)
 
         per_device_batch_size = self.per_device_generation_batch_size
+        if mode != 'train':
+            per_device_batch_size //= self.steps_per_generation
         assert rollout_group_size * per_device_batch_size == len(global_rollout_batch)
         data_slice = slice(rollout_rank * per_device_batch_size, (rollout_rank + 1) * per_device_batch_size)
         rollout_batch = global_rollout_batch[data_slice]
