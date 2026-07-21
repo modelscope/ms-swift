@@ -62,7 +62,12 @@ def is_trl_available() -> bool:
 
 
 def patch_trl_package_check() -> None:
-    """Fix optional dependency checks in TRL <= 0.28 with Transformers 5."""
+    """Normalize Transformers 5 package checks used by TRL <= 0.28.
+
+    Old TRL code expects a bool from default calls. Transformers 5 returns a tuple for every package, so probing the
+    installed ``trl`` package detects that behavior without depending on any optional package. Version queries keep
+    their original tuple result.
+    """
     try:
         import trl.import_utils as trl_import_utils
     except ImportError:

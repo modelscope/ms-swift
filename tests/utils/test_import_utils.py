@@ -37,9 +37,12 @@ class TestImportUtils(unittest.TestCase):
         trl_import_utils = modules['trl.import_utils']
         with patch.dict(sys.modules, modules):
             patch_trl_package_check()
+            patched_package_check = trl_import_utils._is_package_available
+            patch_trl_package_check()
 
             self.assertIs(trl_import_utils.is_vllm_ascend_available(), False)
             self.assertIs(trl_import_utils.is_weave_available(), False)
+            self.assertIs(trl_import_utils._is_package_available, patched_package_check)
             self.assertEqual(trl_import_utils._is_package_available('vllm', return_version=True), (True, '1.0.0'))
 
     def test_patch_trl_package_check_is_noop_for_bool_return(self):
