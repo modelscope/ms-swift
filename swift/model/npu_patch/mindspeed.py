@@ -46,6 +46,18 @@ def _apply_gdn_patch(MindSpeedPatchesManager, patch, implementation) -> None:
 def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
     patch = MindSpeedPatchesManager.patches_info.get(_FLA_GDN_PATCH_TARGET)
 
+    import torch_npu
+    device_name = torch_npu.npu.get_device_name()
+    if 'Ascend910_95' in device_name or 'Ascend950' in device_name:
+        from mindspeed.core.ssm.chunk_gated_delta_rule import chunk_gated_delta_rule as mindspeed_gdn
+        _apply_gdn_patch(MindSpeedPatchesManager, patch, mindspeed_gdn)
+        logger.info(
+            'Using MindSpeed chunk_gated_delta_rule for Megatron GDN on Ascend arch35: module=%s, source=%s.',
+            mindspeed_gdn.__module__,
+            inspect.getsourcefile(inspect.unwrap(mindspeed_gdn)),
+        )
+        return
+
     fla_error = None
     if (patch is not None and patch.orig_func is not None and patch.orig_func.__module__.startswith('fla.')):
         # MindSpeed propagates its replacement into already imported submodules,
@@ -82,7 +94,7 @@ def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
 
 
 def patch_mindspeed_fla_gdn_implementation() -> None:
-    """Best-effort preference for upstream FLA while preserving the current GDN implementation."""
+    """Use MindSpeed GDN on Ascend arch35 and prefer upstream FLA elsewhere."""
     from mindspeed.patch_utils import MindSpeedPatchesManager
 
     try:
