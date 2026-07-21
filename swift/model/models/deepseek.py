@@ -2,6 +2,7 @@
 import sys
 import torch
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
+from types import MethodType
 from typing import Any, Dict
 
 from swift.template import TemplateType
@@ -383,22 +384,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
 
     @staticmethod
     def _apply_multi_gpu_patch():
-        """
-        Fixed two bugs affecting `UnlimitedOCRModel` in multi-GPU scenarios using `device_map='auto'`:
-
-        Bug 1 - Device mismatch in `torch.cat`:
-            `image_newline` and `view_seperator` are `nn.Parameter`s;
-            under `device_map='auto'`, their device placement might not align
-            with the image features.
-
-        Bug 2 - Device mismatch in `masked_scatter_`:
-            Hard-coded `.cuda()` usage caused a conflict where `images_in_this_batch`
-            resided on the projector's device (e.g., `cuda:7`),
-            while `inputs_embeds` resided on the device hosting `embed_tokens` (e.g., `cuda:0`).
-
-        Fix strategy: Temporarily replace `torch.cat` and `torch.Tensor.masked_scatter_` during the forward pass
-        to handle device placement automatically, then restore the original methods after execution.
-        """
         modeling_module = None
         for mod_name, mod in sys.modules.items():
             if 'modeling_unlimitedocr' in mod_name:
@@ -412,7 +397,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         if UnlimitedOCRModel is None:
             return False
 
-        # Avoid redundant patching
         if getattr(UnlimitedOCRModel, '_swift_multi_gpu_patched', False):
             return True
 
@@ -445,14 +429,13 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
                     source = source.to(dev)
                 return _orig_masked_scatter_(tensor_self, mask, source)
 
-            # Simultaneously replace the module namespace and the global scope (double insurance).
             modeling_module.torch.cat = _safe_cat
             torch.cat = _safe_cat
             torch.Tensor.masked_scatter_ = _safe_masked_scatter_
             try:
                 return _original_forward(self, *args, **kwargs)
             finally:
-                # Restore the state to avoid contaminating other modules.
+                # Restore state
                 modeling_module.torch.cat = _orig_cat
                 torch.cat = _orig_cat
                 torch.Tensor.masked_scatter_ = _orig_masked_scatter_
@@ -461,24 +444,64 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         UnlimitedOCRModel._swift_multi_gpu_patched = True
         return True
 
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
+    def get_model(self, model_dir: str, config, *args, **kwargs) -> PreTrainedModel:
         logger = get_logger()
 
         self.auto_model_cls = self.auto_model_cls or AutoModel
-        model = super(DeepseekOCRLoader, self).get_model(model_dir, *args, **kwargs)
+
+        def to_dict(self, *args, **kwargs):
+            res = self._to_dict(*args, **kwargs)
+            if 'language_config' in res and res['language_config'].get('torch_dtype') is not None:
+                dtype = res['language_config']['torch_dtype']
+                res['language_config']['torch_dtype'] = str(dtype).replace('torch.', '')
+            res.pop('to_dict')
+            res.pop('_to_dict')
+            return res
+
+        config._to_dict = config.to_dict
+        config.to_dict = MethodType(to_dict, config)
+
+        model = super(DeepseekOCRLoader, self).get_model(model_dir, config, *args, **kwargs)
         patch_output_clone(model.model.embed_tokens)
         patch_output_to_input_device(model.model.sam_model)
         patch_output_to_input_device(getattr(model.model, self.visual_name))
         patch_output_to_input_device(model.model.projector)
         patch_output_to_input_device(model.model)
 
-        _orig_sw = (getattr(model.config, 'sliding_window_size', None) or getattr(model.config, 'sliding_window', None))
+        _orig_sw = getattr(model.config, 'sliding_window_size', None)
         if _orig_sw is not None:
             model.config._ring_window = _orig_sw
-            model.config.sliding_window = None
             logger.info('[UnlimitedOCR] R-SWA enabled: ring_window=%d', _orig_sw)
+            # Patch _prepare_4d_causal_attention_mask in the main process (where model.forward runs).
+            # Without this, transformers mangles 4D R-SWA masks (0/-inf) by treating them as 0/1 binary.
+            # Find DeepseekV2Model's module via MRO
+            for cls in type(model.model).__mro__:
+                if cls.__name__ == 'DeepseekV2Model':
+                    mod = sys.modules[cls.__module__]
+                    if not getattr(mod, '_rswa_patched_global', False):
+                        _orig_fn = mod._prepare_4d_causal_attention_mask
+
+                        def _passthrough_4d(attention_mask, *args, **kwargs):
+                            if attention_mask is not None and attention_mask.ndim == 4:
+                                return attention_mask
+                            return _orig_fn(attention_mask, *args, **kwargs)
+
+                        mod._prepare_4d_causal_attention_mask = _passthrough_4d
+                        mod._rswa_patched_global = True
+                        logger.info('[UnlimitedOCR] Patched _prepare_4d_causal_attention_mask in module %s',
+                                    cls.__module__)
+                    break
         else:
-            logger.warning('[UnlimitedOCR] sliding_window config not found, R-SWA may not work.')
+            logger.warning('[UnlimitedOCR] sliding_window_size config not found, R-SWA may not work.')
+
+        # Fix device placement for bare nn.Parameter (image_newline, view_seperator)
+        # These are used in torch.cat inside forward, so patch_output_to_input_device can't help.
+        try:
+            vision_device = next(model.model.vision_model.parameters()).device
+            model.model.image_newline.data = model.model.image_newline.data.to(vision_device)
+            model.model.view_seperator.data = model.model.view_seperator.data.to(vision_device)
+        except Exception as e:
+            logger.warning('[UnlimitedOCR] Failed to fix parameter device: %s', e)
 
         n_devices = len(set(str(p.device) for p in model.parameters() if p.device.type == 'cuda'))
         if n_devices > 1:
