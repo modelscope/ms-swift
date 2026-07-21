@@ -19,6 +19,7 @@ from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyPar
 from megatron.core.dist_checkpointing.strategies.torch import TorchDistLoadShardedStrategy, TorchDistSaveShardedStrategy
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
+from megatron.core.distributed import FullyShardedDataParallel as megatron_FSDP
 from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
 from megatron.core.fusions.fused_bias_gelu import bias_gelu
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
@@ -550,7 +551,6 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     ddp_stream = torch.cuda.Stream()
     ddp_stream.wait_stream(torch.cuda.current_stream())
     if getattr(args, 'use_megatron_fsdp', False):
-        from megatron.core.distributed import FullyShardedDataParallel as megatron_FSDP
         DP = megatron_FSDP
     else:
         DP = DDP

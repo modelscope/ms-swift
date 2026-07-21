@@ -902,7 +902,6 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self._check_muon()
 
     def _check_megatron_fsdp(self):
-        # Code borrowed from NVIDIA/Megatron-LM
         if not self.use_megatron_fsdp:
             return
         # Megatron-FSDP is only compatible with the distributed optimizer.
