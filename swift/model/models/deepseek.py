@@ -2,8 +2,9 @@
 import sys
 import torch
 from transformers import AutoModel, PretrainedConfig, PreTrainedModel
-from typing import Any, Dict
 from types import MethodType
+from typing import Any, Dict
+
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, git_clone_github
 from ..constant import LLMModelType, MLLMModelType
@@ -383,17 +384,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
 
     @staticmethod
     def _apply_multi_gpu_patch():
-        """
-        Fixed two bugs affecting `UnlimitedOCRModel` in multi-GPU scenarios using `device_map='auto'`:
-
-        Bug 1 - image_newline 和 view_seperator 是 nn.Parameter，与 global_features/local_features 不同的 GPU 上。torch.cat 要求所有输入在同一设备，直接报错
-
-        Bug 2 - 源码中硬编码 .cuda() 导致 images_in_this_batch 在 projector 所在卡（如 cuda:7），
-                而 inputs_embeds 在 embed_tokens 所在卡（如 cuda:0）
-
-        Fix strategy: Temporarily replace `torch.cat` and `torch.Tensor.masked_scatter_` during the forward pass
-        to handle device placement automatically, then restore the original methods after execution.
-        """
         modeling_module = None
         for mod_name, mod in sys.modules.items():
             if 'modeling_unlimitedocr' in mod_name:
@@ -407,7 +397,6 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         if UnlimitedOCRModel is None:
             return False
 
-        # Avoid redundant patching
         if getattr(UnlimitedOCRModel, '_swift_multi_gpu_patched', False):
             return True
 
@@ -440,14 +429,13 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
                     source = source.to(dev)
                 return _orig_masked_scatter_(tensor_self, mask, source)
 
-            # Simultaneously replace the module namespace and the global scope (double insurance).
             modeling_module.torch.cat = _safe_cat
             torch.cat = _safe_cat
             torch.Tensor.masked_scatter_ = _safe_masked_scatter_
             try:
                 return _original_forward(self, *args, **kwargs)
             finally:
-                # Restore the state to avoid contaminating other modules.
+                # Restore state
                 modeling_module.torch.cat = _orig_cat
                 torch.cat = _orig_cat
                 torch.Tensor.masked_scatter_ = _orig_masked_scatter_
@@ -484,6 +472,25 @@ class UnlimitedOCRLoader(DeepseekOCRLoader):
         if _orig_sw is not None:
             model.config._ring_window = _orig_sw
             logger.info('[UnlimitedOCR] R-SWA enabled: ring_window=%d', _orig_sw)
+            # Patch _prepare_4d_causal_attention_mask in the main process (where model.forward runs).
+            # Without this, transformers mangles 4D R-SWA masks (0/-inf) by treating them as 0/1 binary.
+            # Find DeepseekV2Model's module via MRO
+            for cls in type(model.model).__mro__:
+                if cls.__name__ == 'DeepseekV2Model':
+                    mod = sys.modules[cls.__module__]
+                    if not getattr(mod, '_rswa_patched_global', False):
+                        _orig_fn = mod._prepare_4d_causal_attention_mask
+
+                        def _passthrough_4d(attention_mask, *args, **kwargs):
+                            if attention_mask is not None and attention_mask.ndim == 4:
+                                return attention_mask
+                            return _orig_fn(attention_mask, *args, **kwargs)
+
+                        mod._prepare_4d_causal_attention_mask = _passthrough_4d
+                        mod._rswa_patched_global = True
+                        logger.info('[UnlimitedOCR] Patched _prepare_4d_causal_attention_mask in module %s',
+                                    cls.__module__)
+                    break
         else:
             logger.warning('[UnlimitedOCR] sliding_window_size config not found, R-SWA may not work.')
 

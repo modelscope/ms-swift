@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import sys
 import math
 import numpy as np
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -18,6 +18,7 @@ from ..template_inputs import StdTemplateInputs
 from ..utils import Prompt, findall
 
 logger = get_logger()
+
 
 @dataclass
 class DeepseekTemplateMeta(TemplateMeta):
@@ -464,14 +465,23 @@ class UnlimitedOCR(DeepseekOCR):
 
     def init_env_args(self):
         super().init_env_args()
-        self._rswa_patched = False
         self._rswa_window = self.config.sliding_window_size
 
-    # ==================== R-SWA Training Mask (only train) ====================
+    def _encode(self, inputs: StdTemplateInputs) -> Dict[str, Any]:
+        # Official infer_multi uses a single <image> for all images.
+        # Expand to N placeholders so DeepseekOCR._encode's 1:1 mapping works.
+        n_images = len(inputs.images or [])
+        if n_images > 1:
+            for msg in inputs.messages:
+                content = msg.get('content')
+                if isinstance(content, str) and content.count('<image>') == 1:
+                    msg['content'] = content.replace('<image>', '<image>' * n_images, 1)
+        return super()._encode(inputs)
 
+    # ==================== R-SWA Training Mask (only train) ====================
     @staticmethod
     def _build_rswa_attention_mask(labels, attention_mask_1d, window_size, dtype):
-        """构建 R-SWA 掩码：Prefix 全可见 + Answer 滑动窗口。⚠️ 仅用于训练"""
+        """Construct an R-SWA mask: Prefix fully visible + Answer sliding window. ⚠️ For training purposes only."""
         batch_size, seq_len = labels.shape
         device = labels.device
         prefix_lens = []
@@ -503,21 +513,6 @@ class UnlimitedOCR(DeepseekOCR):
         mask = torch.where(can_attend, torch.tensor(0, dtype=dtype, device=device), min_val).to(dtype)
         return mask.unsqueeze(1)
 
-    def _patch_rswa_attention(self):
-        if self._rswa_patched:
-            return
-        for mod in sys.modules.values():
-            if mod is not None and hasattr(mod, '_prepare_4d_causal_attention_mask') and hasattr(mod, 'DeepseekV2Model'):
-                original_fn = mod._prepare_4d_causal_attention_mask
-                def _passthrough_4d(attention_mask, *args, **kwargs):
-                    if attention_mask is not None and attention_mask.ndim == 4:
-                        return attention_mask
-                    return original_fn(attention_mask, *args, **kwargs)
-                mod._prepare_4d_causal_attention_mask = _passthrough_4d
-                self._rswa_patched = True
-                logger.info('[UnlimitedOCR] Patched _prepare_4d_causal_attention_mask for R-SWA training')
-                return
-
     def data_collator(self, batch: List[Dict[str, Any]], *, padding_to: Optional[int] = None) -> Dict[str, Any]:
         res = super().data_collator(batch, padding_to=padding_to)
         if not self.is_training or not self._rswa_window or self._rswa_window <= 0:
@@ -525,18 +520,16 @@ class UnlimitedOCR(DeepseekOCR):
         if 'labels' not in res or 'attention_mask' not in res:
             return res
 
-        self._patch_rswa_attention()
         labels, attn_1d = res['labels'], res['attention_mask']
         if not isinstance(labels, torch.Tensor) or not isinstance(attn_1d, torch.Tensor):
             return res
 
-        res['attention_mask'] = self._build_rswa_attention_mask(
-            labels, attn_1d, self._rswa_window, self.model_info.torch_dtype)
+        res['attention_mask'] = self._build_rswa_attention_mask(labels, attn_1d, self._rswa_window,
+                                                                self.model_info.torch_dtype)
         logger.info_once('[UnlimitedOCR] R-SWA windowed mask applied in data_collator')
         return res
 
     # ==================== Generation Control ====================
-
     def generate(self, model, *args, **kwargs):
         base_model = self.get_base_model(model)
         config = base_model.config
@@ -550,8 +543,7 @@ class UnlimitedOCR(DeepseekOCR):
             ngram_window = get_env_args('ngram_window', int, 256)
             if ngram_size > 0 and ngram_window > 0:
                 ProcessorCls = get_class_from_dynamic_module(
-                    'modeling_unlimitedocr.SlidingWindowNoRepeatNgramProcessor',
-                    self.model_info.model_dir)
+                    'modeling_unlimitedocr.SlidingWindowNoRepeatNgramProcessor', self.model_info.model_dir)
                 if ProcessorCls is not None:
                     existing = kwargs.get('logits_processor', []) or []
                     kwargs['logits_processor'] = list(existing) + [ProcessorCls(ngram_size, ngram_window)]
@@ -561,20 +553,20 @@ class UnlimitedOCR(DeepseekOCR):
             config.sliding_window = _orig_sw
 
     # ==================== Post-processing Hooks ====================
-
     def decode_generate_ids(self, generate_ids: List[int], **kwargs) -> str:
         response = super().decode_generate_ids(generate_ids, **kwargs)
         template_inputs = kwargs.get('template_inputs')
         is_finished = kwargs.get('is_finished', True)
 
         if is_finished and not self.is_training and template_inputs is not None:
-            re_match = get_class_from_dynamic_module(
-                'modeling_unlimitedocr.re_match', self.model_info.model_dir)
+            re_match = get_class_from_dynamic_module('modeling_unlimitedocr.re_match', self.model_info.model_dir)
             if re_match is not None:
                 try:
                     matches_ref, matches_images, matches_other = re_match(response)
                     template_inputs._ocr_parsed_refs = {
-                        'all': matches_ref, 'images': matches_images, 'others': matches_other
+                        'all': matches_ref,
+                        'images': matches_images,
+                        'others': matches_other
                     }
                 except Exception as e:
                     logger.warning(f'[UnlimitedOCR] Official re_match failed: {e}')
@@ -593,10 +585,9 @@ class UnlimitedOCR(DeepseekOCR):
                 image = inputs.images[0] if isinstance(inputs.images[0], Image.Image) else None
                 if image is not None:
                     os.makedirs(os.path.join(output_dir, 'images'), exist_ok=True)
-                    
-                    draw_fn = get_class_from_dynamic_module(
-                        'modeling_unlimitedocr.process_image_with_refs',
-                        self.model_info.model_dir)
+
+                    draw_fn = get_class_from_dynamic_module('modeling_unlimitedocr.process_image_with_refs',
+                                                            self.model_info.model_dir)
                     if draw_fn is not None:
                         result_img = draw_fn(image, parsed_refs['all'], output_dir)
                         result_img.save(os.path.join(output_dir, 'result_with_boxes.jpg'))
@@ -616,11 +607,10 @@ class UnlimitedOCR(DeepseekOCR):
     def _load_dynamic_modules(self):
         if self._BasicImageTransform is None:
             model_dir = self.model_info.model_dir
-            self._BasicImageTransform = get_class_from_dynamic_module(
-                'modeling_unlimitedocr.BasicImageTransform', model_dir)
-            self._dynamic_preprocess = get_class_from_dynamic_module(
-                'modeling_unlimitedocr.dynamic_preprocess', model_dir)
-
+            self._BasicImageTransform = get_class_from_dynamic_module('modeling_unlimitedocr.BasicImageTransform',
+                                                                      model_dir)
+            self._dynamic_preprocess = get_class_from_dynamic_module('modeling_unlimitedocr.dynamic_preprocess',
+                                                                     model_dir)
 
 
 register_template(
