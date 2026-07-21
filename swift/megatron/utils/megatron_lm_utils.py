@@ -19,6 +19,7 @@ from megatron.core.dist_checkpointing.strategies.fully_parallel import (FullyPar
 from megatron.core.dist_checkpointing.strategies.torch import TorchDistLoadShardedStrategy, TorchDistSaveShardedStrategy
 from megatron.core.distributed import DistributedDataParallel as DDP
 from megatron.core.distributed import DistributedDataParallelConfig
+from megatron.core.distributed import FullyShardedDataParallel as megatron_FSDP
 from megatron.core.fusions.fused_bias_dropout import bias_dropout_add_fused_train
 from megatron.core.fusions.fused_bias_gelu import bias_gelu
 from megatron.core.fusions.fused_bias_swiglu import bias_swiglu
@@ -215,6 +216,10 @@ def _preprocess_common_before_consistancy_check(common_state_dict):
 
 def get_sharded_sd_metadata(args):
     sharded_sd_metadata = {'singleton_local_shards': False, 'chained_optim_avoid_prefix': True}
+    if getattr(args, 'use_megatron_fsdp', False):
+        # Megatron-FSDP shards the distributed optimizer state as DTensors.
+        sharded_sd_metadata['distrib_optim_sharding_type'] = 'fsdp_dtensor'
+        return sharded_sd_metadata
     force_pre_mcore_014 = not is_torch_min_version('2.6a0')
     if force_pre_mcore_014 and not args.dist_ckpt_save_pre_mcore_014:
         args.dist_ckpt_save_pre_mcore_014 = True
@@ -545,9 +550,13 @@ def wrap_model(args, models, wrap_with_ddp: bool = True):
     # Setup stream for DDP initialization with proper synchronization.
     ddp_stream = torch.cuda.Stream()
     ddp_stream.wait_stream(torch.cuda.current_stream())
+    if getattr(args, 'use_megatron_fsdp', False):
+        DP = megatron_FSDP
+    else:
+        DP = DDP
     with torch.cuda.stream(ddp_stream):
         models = [
-            DDP(
+            DP(
                 config=config,
                 ddp_config=ddp_config,
                 module=model_chunk,
@@ -602,7 +611,10 @@ def get_optimizer_param_scheduler(args, optimizer):
 
 def should_disable_forward_pre_hook(args):
     """Block forward pre-hook for certain configurations."""
-    return args.use_distributed_optimizer and args.overlap_param_gather
+    # Megatron-FSDP manages its own param all-gather, so the distributed optimizer's
+    # forward pre-hook must not be disabled/enabled for it.
+    return (not getattr(args, 'use_megatron_fsdp', False) and args.use_distributed_optimizer
+            and args.overlap_param_gather)
 
 
 def enable_forward_pre_hook(model_chunks):
