@@ -1021,12 +1021,6 @@ def test_deepseek_ocr_2():
 
 
 def test_ovis_ocr2():
-    # OvisOCR2 is a Qwen3.5-VL document-parsing model; its official inference path is vLLM only.
-    # The expected output below is the byte-for-byte result of the official vLLM example
-    # (LLM + apply_chat_template(enable_thinking=False), min_pixels=448*448, max_pixels=2880*2880).
-    # We reuse the Qwen3.5 template with thinking disabled by default (`ovis_ocr2` template), so the
-    # Swift output only differs by the leading canonical empty `<think>\n\n</think>\n\n` block,
-    # which we strip before comparison.
     engine = TransformersEngine('ATH-MaaS/OvisOCR2')
     assert engine.model_info.model_type == 'ovis_ocr2'
     assert engine.template.template_meta.template_type == 'ovis_ocr2'
