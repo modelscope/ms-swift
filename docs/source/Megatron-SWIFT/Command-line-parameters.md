@@ -142,7 +142,7 @@
 - ddp_backend: 分布式后端，可选为'nccl', 'gloo'。默认为nccl。
 - ddp_timeout: 默认为18000000，单位为秒。
 - 🔥use_distributed_optimizer: 使用分布式优化器（即zero1）。默认为True。
-- 🔥use_megatron_fsdp: 使用 Megatron-FSDP 作为数据并行的实现（替代DDP）。默认为False。开启后会强制`use_distributed_optimizer=True`，仅支持`sgd`/`adam`优化器，且要求`CUDA_DEVICE_MAX_CONNECTIONS`大于1（若检测到为1会自动改为32）。
+- use_megatron_fsdp: 使用 Megatron-FSDP 作为数据并行的实现（替代DDP）。默认为False。开启后会强制`use_distributed_optimizer=True`，仅支持`sgd`/`adam`优化器，且要求`CUDA_DEVICE_MAX_CONNECTIONS`大于1（若检测到为1会自动改为32）。
 - data_parallel_sharding_strategy: Megatron-FSDP 的数据并行切分策略。可选为'no_shard', 'optim', 'optim_grads', 'optim_grads_params'，默认为'optim_grads_params'。仅在`use_megatron_fsdp=True`时生效。
 - 🔥tensor_model_parallel_size: tp数，默认为1。
 - 🔥pipeline_model_parallel_size: pp数，默认为1。

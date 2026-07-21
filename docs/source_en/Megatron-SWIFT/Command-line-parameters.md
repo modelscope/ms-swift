@@ -148,7 +148,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - ddp_backend: Distributed backend. Options are 'nccl' or 'gloo'. Defaults to nccl.
 - ddp_timeout: Defaults to 18000000, in seconds.
 - 🔥use_distributed_optimizer: Use a distributed optimizer (i.e., ZeRO-1). Default is True.
-- 🔥use_megatron_fsdp: Use Megatron-FSDP as the data-parallel implementation (in place of DDP). Default is False. When enabled, it forces `use_distributed_optimizer=True`, only supports the `sgd`/`adam` optimizers, and requires `CUDA_DEVICE_MAX_CONNECTIONS` greater than 1 (it will be automatically set to 32 if detected as 1).
+- use_megatron_fsdp: Use Megatron-FSDP as the data-parallel implementation (in place of DDP). Default is False. When enabled, it forces `use_distributed_optimizer=True`, only supports the `sgd`/`adam` optimizers, and requires `CUDA_DEVICE_MAX_CONNECTIONS` greater than 1 (it will be automatically set to 32 if detected as 1).
 - data_parallel_sharding_strategy: The data-parallel sharding strategy for Megatron-FSDP. Options are 'no_shard', 'optim', 'optim_grads', 'optim_grads_params'; default is 'optim_grads_params'. Only takes effect when `use_megatron_fsdp=True`.
 - 🔥tensor_model_parallel_size: TP (Tensor Parallelism) size, default is 1.
 - 🔥pipeline_model_parallel_size: PP (Pipeline Parallelism) size, default is 1.
