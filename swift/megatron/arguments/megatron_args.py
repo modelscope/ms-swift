@@ -914,9 +914,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         # FSDP requires CUDA_DEVICE_MAX_CONNECTIONS > 1 (or unset). SWIFT sets it to '1' by default,
         # so override it here before distributed initialization.
         if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') == '1':
-            os.environ['CUDA_DEVICE_MAX_CONNECTIONS'] = '32'
-            logger.info('Megatron-FSDP requires CUDA_DEVICE_MAX_CONNECTIONS > 1; '
-                        "setting CUDA_DEVICE_MAX_CONNECTIONS to '32'.")
+            raise ValueError('Megatron-FSDP requires `CUDA_DEVICE_MAX_CONNECTIONS > 1`, '
+                             'for example you can set `CUDA_DEVICE_MAX_CONNECTIONS=32`')
 
     def _init_attention_backend(self):
         if self.attention_backend.startswith('flash_'):
