@@ -101,9 +101,46 @@ def test_save_pil_image_dimension_collision():
         assert saved_b.size == (width_b, height_b)
 
 
+def test_load_video_minicpmv_handles_zero_fps():
+    import numpy as np
+    import sys
+    import types
+    from unittest import mock
+
+    from swift.template import vision_utils
+
+    n_frames = 8
+
+    class _FakeVideoReader:
+
+        def __len__(self):
+            return n_frames
+
+        def get_avg_fps(self):
+            # decord returns 0.0 when the container carries no / broken fps metadata.
+            return 0.0
+
+        def get_batch(self, idx):
+            arr = np.zeros((len(list(idx)), 4, 4, 3), dtype='uint8')
+            return types.SimpleNamespace(asnumpy=lambda: arr)
+
+    fake_decord = types.SimpleNamespace(
+        VideoReader=lambda *args, **kwargs: _FakeVideoReader(),
+        cpu=lambda *args, **kwargs: None,
+    )
+
+    with mock.patch.dict(sys.modules, {'decord': fake_decord}), \
+            mock.patch.object(vision_utils, 'load_file', lambda video: video):
+        # A 0-fps video used to raise "range() arg 3 must not be zero" here.
+        frames = vision_utils.load_video_minicpmv_mplug_owl3(b'video-bytes', max_num_frames=4)
+
+    assert len(frames) == 4
+
+
 if __name__ == '__main__':
     test_template()
     test_mllm()
     test_llm_dataset_map()
     test_mllm_dataset_map()
     test_save_pil_image_dimension_collision()
+    test_load_video_minicpmv_handles_zero_fps()

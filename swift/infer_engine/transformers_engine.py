@@ -55,6 +55,7 @@ class TransformersEngine(InferEngine):
             *,
             template: Optional[Template] = None,
             adapters: Optional[List[str]] = None,
+            adapter_names: Optional[List[str]] = None,
             max_batch_size: int = 1,  # 0/1: no limit
             reranker_use_activation: bool = True,
             # model kwargs
@@ -104,8 +105,16 @@ class TransformersEngine(InferEngine):
             if template is None:
                 raise ValueError('`template` is required when `model` is a nn.Module')
         super().__init__(template)
-        for adapter in self.adapters:
-            self._add_adapter(safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token))
+        if isinstance(adapter_names, str):
+            adapter_names = [adapter_names]
+        if adapter_names and len(adapter_names) != len(self.adapters):
+            raise ValueError(f'The length of adapter_names ({len(adapter_names)}) must match the length of '
+                             f'adapters ({len(self.adapters)})')
+        for i, adapter in enumerate(self.adapters):
+            adapter_name = None if adapter_names is None else adapter_names[i]
+            self._add_adapter(
+                safe_snapshot_download(adapter, use_hf=self.use_hf, hub_token=self.hub_token),
+                adapter_name=adapter_name)
         self.engine = self.model  # dummy
         self.generation_config = getattr(self.model, 'generation_config', None)
         self._queue = Queue()
