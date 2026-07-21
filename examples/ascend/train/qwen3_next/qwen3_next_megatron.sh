@@ -11,7 +11,7 @@ megatron sft \
     --target_modules all-linear \
     --tensor_model_parallel_size 2 \
     --pipeline_model_parallel_size 2 \
-    --export_model_parallel_size 4 \
+    --expert_model_parallel_size 4 \
     --model_type qwen3_next \
     --sequence_parallel true \
     --micro_batch_size 1 \
