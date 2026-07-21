@@ -1494,6 +1494,20 @@ register_model(
         requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis_ocr2, [
+            ModelGroup([
+                Model('ATH-MaaS/OvisOCR2', 'ATH-MaaS/OvisOCR2'),
+            ]),
+        ],
+        Qwen3_5Loader,
+        template=TemplateType.ovis_ocr2,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen3_5ForConditionalGeneration'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision']))
+
 
 class Qwen2_5OmniLoader(ModelLoader):
 
