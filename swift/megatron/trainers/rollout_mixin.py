@@ -20,6 +20,7 @@ from copy import copy
 from dacite import from_dict
 from dataclasses import asdict
 from megatron.core import mpu
+from megatron.core.rerun_state_machine import RerunDataIterator
 from transformers import AutoConfig
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -151,6 +152,24 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         self._rollout_group = None  # Lazily initialized rollout group (TP×PP×CP)
         self._rollout_groups_created = False  # Flag for group creation (all ranks must create together)
         self._bridge = None
+
+    def _replace_data_iterator(self, data_iterator):
+        if not self.unwrapped_models[0].training:
+            buffered_inputs = self._build_rollout_buffer(data_iterator)
+            return RerunDataIterator(iter(buffered_inputs[0]))
+
+        if self._step % self.steps_per_generation == 0:
+            self._buffered_inputs = self._build_rollout_buffer(data_iterator)
+        encoded_batches = self._buffered_inputs[self._step % self.steps_per_generation]
+        self._on_train_step_batch(encoded_batches)
+        self._step += 1
+        return RerunDataIterator(iter(encoded_batches))
+
+    def _build_rollout_buffer(self, data_iterator) -> List[List[Dict]]:
+        raise NotImplementedError
+
+    def _on_train_step_batch(self, encoded_batches: List[Dict]) -> None:
+        pass
 
     def _get_rollout_group(self):
         """Get or create the rollout process group (TP×PP×CP)."""
@@ -879,6 +898,8 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
         so it works after ``_dynamic_sampling`` has filtered / resampled samples.
         """
         if not self.log_completions:
+            return
+        if not self.unwrapped_models[0].training:
             return
         messages = gather_object([s.messages for s in samples])
         completions = []
