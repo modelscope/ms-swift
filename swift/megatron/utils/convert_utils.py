@@ -241,7 +241,7 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
     if text_position_ids is None:
         text_position_ids = mg_inputs.get('position_ids')
     if args.padding_free:
-        mg_inputs['packed_seq_params'] = get_packed_seq_params(text_position_ids)
+        mg_inputs['packed_seq_params'] = get_packed_seq_params(args, text_position_ids)
     mg_language_model.config.fp8 = None  # compat fp8
     mg_modules = _find_modules(mg_language_model, ignore_modules=['visual'])
     for key in ['labels', 'seq_lens', 'attention_mask_2d']:
@@ -271,7 +271,11 @@ def test_convert_precision(args, hf_model, mg_model, template, test_convert_dtyp
             if mg_logits is not None:
                 mg_logits = gather_from_sequence_parallel_region(
                     mg_logits.transpose(0, 1), group=mpu.get_context_parallel_group())
-                mg_logits = _undo_attention_load_balancing(mg_logits, args.context_parallel_size)
+                # Contiguous CP already gathers ranks in original token order, so the
+                # zigzag un-balancing must be skipped (it is only correct for zigzag split).
+                if getattr(args, 'cp_partition_mode', 'zigzag') != 'contiguous':
+                    mg_logits = _undo_attention_load_balancing(mg_logits, args.context_parallel_size,
+                                                               mg_inputs.get('packed_seq_params'))
                 mg_logits = mg_logits.transpose(0, 1)
     mg_logits = broadcast_mg_logits(mg_logits)
     if hf_model is None:

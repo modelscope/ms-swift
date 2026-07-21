@@ -4,6 +4,8 @@ In reinforcement-learning scenarios, the model may need to interact with the env
 This interactive training requires the model to carry out continuous reasoning based on the feedback from the environment.
 This document explains in detail how to customise the multi-turn training workflow in GRPO training.
 
+> GKD also supports multi-turn training, sharing the same `MultiTurnScheduler` infrastructure as GRPO.
+
 The figure below shows a typical multi-turn training process, where the model may perform several rollout rounds that include environment interaction, tool calls, and so on:
 
 ![Multi-turn example](../../../../resources/grpo_multi_turn.png)
@@ -152,7 +154,7 @@ Specify the scheduler via `multi_turn_scheduler` in the `swift rollout` command:
 ```bash
 swift rollout \
     --model Qwen/Qwen3-1.7B \
-    --use_async_engine true \
+    --vllm_use_async_engine true \
     --multi_turn_scheduler thinking_tips_scheduler \
     --vllm_max_model_len 32768 \
     --vllm_gpu_memory_utilization 0.8 \
@@ -169,7 +171,7 @@ AsyncEngine reduces compute bubbles in multi-turn inference:
 
 <img src="https://raw.githubusercontent.com/modelscope/ms-swift/main/docs/resources/asyncengine.png" width="400" />
 
-Use the `use_async_engine` argument in the `rollout` command to specify the engine type (async is the default).
+Use the `vllm_use_async_engine` argument in the `rollout` command to specify the engine type (async is the default).
 
 > Note: The async engine is only available in server mode.
 
@@ -194,8 +196,6 @@ This assumes the model's history is not modified during interaction.
 
 In some scenarios you may need to dynamically change the history during rollout (e.g., compressing context).
 In that case each turn should be treated as a separate trajectory.
-
-> Note: this "split one trajectory into multiple training samples" mode will be removed in **swift 4.4**; only the "one rollout = one trajectory sample" form will be retained.
 
 #### Approach 1: Using hooks
 
