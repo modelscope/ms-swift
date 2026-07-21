@@ -15,9 +15,10 @@ if is_torch_npu_available():
     # Enable Megatron on Ascend NPU
     from mindspeed.megatron_adaptor import repatch
 
-    from swift.model.npu_patcher import patch_mindspeed_te_cp_implementation
+    from swift.model.npu_patcher import patch_mindspeed_fla_gdn_implementation, patch_mindspeed_te_cp_implementation
 else:
     repatch = None
+    patch_mindspeed_fla_gdn_implementation = None
     patch_mindspeed_te_cp_implementation = None
 
 logger = get_logger()
@@ -52,6 +53,7 @@ class MegatronSft(SwiftSft):
                 megatron_args['use_flash_attn'] = True
             patch_mindspeed_te_cp_implementation(megatron_args)
             repatch(megatron_args)
+            patch_mindspeed_fla_gdn_implementation()
         template_cls = args.template_meta.template_cls
         if args.model_meta.is_multimodal and template_cls and template_cls.use_model:
             kwargs = {'return_dummy_model': True}

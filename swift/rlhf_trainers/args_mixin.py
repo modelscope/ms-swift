@@ -436,6 +436,26 @@ class GRPOArgumentsMixin(RolloutTrainerArgumentsMixin):
     # enabled when a teacher (teacher_model / teacher_model_server) is set on a GRPO run.
     teacher_kl_coef: float = 1.0
 
+    # RLSD (Self-Distilled RLVR), https://arxiv.org/abs/2604.03128
+    # Token-level advantage reweighting using the teacher-vs-student logprob gap. Reuses the OPSD
+    # self-distillation teacher forward (teacher = current policy conditioned on the ground-truth
+    # answer via a per-sample ``teacher_prompt`` column). Set ``advantage_reweight='rlsd'`` to enable.
+    advantage_reweight: Optional[Literal['rlsd']] = None
+    rlsd_lambda: float = 0.5  # mixing weight: 0 -> pure GRPO, 1 -> full RLSD reweighting
+    rlsd_reweight_clip_range: float = 0.2  # eps_w: clip evidence weight to [1-eps_w, 1+eps_w]
+    rlsd_lambda_warmup_steps: int = 0  # linear warmup of lambda from 0 to rlsd_lambda
+    rlsd_lambda_decay_steps: int = 0  # linear decay of lambda to 0 over this many steps
+    rlsd_negative_only: bool = False  # only reweight sequences with advantage < 0
+
+    # SDAR (Self-Distilled Agentic RL), https://arxiv.org/abs/2605.15155
+    # Confidence-gated teacher distillation auxiliary loss added to the GRPO policy loss:
+    #   L_SDAR = token-mean( sigmoid(sdar_gate_beta*(logP_T-logP_S)) * (logP_T-logP_S) ),
+    #   loss   = policy_loss + sdar_loss_coef * L_SDAR.
+    # Reuses the OPSD self-distillation teacher (teacher = current policy conditioned on a privileged
+    # per-sample ``teacher_prompt`` column). Enabled when ``sdar_loss_coef > 0``.
+    sdar_loss_coef: float = 0.0  # 0 disables SDAR; reference uses 0.1 (0.01 for ALFWorld)
+    sdar_gate_beta: float = 5.0  # sigmoid gate temperature (higher -> sharper gating)
+
     # REAL https://arxiv.org/abs/2602.05630
     real_tau: float = 0.5
 
