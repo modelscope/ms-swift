@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_ckpt_dir
-from swift.template import Template, get_template
+from swift.template import Template, Tool, get_template
 from swift.utils import Processor, ProcessorMixin, get_logger
 from .base import BaseInferEngine
 from .protocol import (ChatCompletionMessageToolCall, ChatCompletionResponse, ChatCompletionStreamResponse,
@@ -187,9 +187,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             use_tqdm = not request_config.stream and len(infer_requests) > 1
         return self._batch_infer_stream(tasks, request_config.stream, use_tqdm, metrics)
 
-    def _get_toolcall(self, response: str) -> Optional[List[ChatCompletionMessageToolCall]]:
+    def _get_toolcall(self,
+                      response: str,
+                      tools: Optional[List[Tool]] = None) -> Optional[List[ChatCompletionMessageToolCall]]:
         try:
-            functions = self.template.agent_template.get_toolcall(response)
+            functions = self.template.agent_template.get_toolcall_with_tools(response, tools)
         except Exception:
             functions = None
         if functions:

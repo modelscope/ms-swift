@@ -186,7 +186,7 @@ class SglangEngine(InferEngine):
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         response = self.template.decode_generate_ids(output['output_ids'], template_inputs=inputs['template_inputs'])
-        toolcall = self._get_toolcall(response)
+        toolcall = self._get_toolcall(response, inputs['template_inputs'].tools)
         token_ids = output['output_ids'] if return_details else None
         choice = ChatCompletionResponseChoice(
             index=0,
@@ -290,7 +290,8 @@ class SglangEngine(InferEngine):
         if is_finished:
             finish_reason = finish_reason['type']
             toolcall = self._get_toolcall(
-                self.template.decode_generate_ids(output['output_ids'], **infer_streamer.decode_kwargs))
+                self.template.decode_generate_ids(output['output_ids'], **infer_streamer.decode_kwargs),
+                infer_streamer.decode_kwargs['template_inputs'].tools)
         meta_info = output['meta_info']
         usage_info = self._get_usage_info(meta_info['prompt_tokens'], meta_info['completion_tokens'])
         # TODO: logprobs

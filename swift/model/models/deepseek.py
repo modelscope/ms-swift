@@ -116,6 +116,11 @@ register_model(
                 Model('moonshotai/Kimi-K2-Thinking', 'moonshotai/Kimi-K2-Thinking'),
             ], TemplateType.kimi_k2),
             ModelGroup([
+                Model('TeleAI/TeleChat3-105B-A4.7B-Thinking'),
+            ],
+                       TemplateType.telechat3,
+                       requires=['transformers>=4.46.3']),
+            ModelGroup([
                 Model('deepseek-ai/DeepSeek-V3.1-Base', 'deepseek-ai/DeepSeek-V3.1-Base'),
                 Model('deepseek-ai/DeepSeek-V3.1', 'deepseek-ai/DeepSeek-V3.1'),
                 Model('deepseek-ai/DeepSeek-V3.1-Terminus', 'deepseek-ai/DeepSeek-V3.1-Terminus'),

@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.infer_engine import Function
-from swift.template import Prompt, split_str_parts_by
+from swift.template import Prompt, Tool, split_str_parts_by
 
 
 @dataclass
@@ -167,6 +167,10 @@ class BaseAgentTemplate(ReactCompatMixin, ABC):
             tool_content with any necessary prefix prepended.
         """
         return tool_content
+
+    def get_toolcall_with_tools(self, response: str, tools: Optional[List[Tool]] = None) -> List[Function]:
+        """Parse tool calls with request tools; legacy parsers ignore the schemas."""
+        return self.get_toolcall(response)
 
     @staticmethod
     def _get_tool_name(tool):
