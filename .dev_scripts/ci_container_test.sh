@@ -220,6 +220,10 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
             fi
         fi
         pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
+        # The CI image bakes an old wandb whose protobuf codegen does not
+        # survive the protobuf 7.x pulled in above, so `import wandb` dies
+        # with "cannot import name ... from wandb_telemetry_pb2". Refresh it.
+        pip install -U wandb -i https://mirrors.aliyun.com/pypi/simple/
         pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
         pip uninstall autoawq -y
         pip install optimum
