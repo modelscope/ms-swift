@@ -260,6 +260,7 @@ def enable_npu_fused_linear_ce(model: torch.nn.Module):
         logger.warning(f"Fused LM-Head CE does not support architecture: {target_model.__class__.__name__}")
         return False
 
+
 QWEN2_PATCHES = {
     'Qwen2RMSNorm': NpuRMSNorm,
     'apply_rotary_pos_emb': npu_apply_rotary_pos_emb,
