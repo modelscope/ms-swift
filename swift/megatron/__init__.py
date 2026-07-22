@@ -4,13 +4,8 @@ try:
     from transformers.utils import is_torch_npu_available
 
     if is_torch_npu_available():
-        import torch_npu
-        device_name = torch_npu.npu.get_device_name()
-        if 'Ascend910_95' in device_name or 'Ascend950' in device_name:
-            import fla.utils
-            # MindSpeed still imports this flag after it was removed from upstream FLA.
-            if not hasattr(fla.utils, 'USE_CUDA_GRAPH'):
-                fla.utils.USE_CUDA_GRAPH = False
+        from swift.model.npu_patch.mindspeed import prepare_mindspeed_gdn_import
+        prepare_mindspeed_gdn_import()
         # Enable Megatron on Ascend NPU
         import mindspeed.megatron_adaptor  # F401
     from .init import init_megatron_env

@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import sys
+from types import ModuleType
 from typing import Any
 
 from swift.utils.logger import get_logger
@@ -12,6 +13,44 @@ logger = get_logger()
 
 _ORIGINAL_MINDSPEED_TE_CP_CLASS = None
 _FLA_GDN_PATCH_TARGET = 'fla.ops.gated_delta_rule.chunk_gated_delta_rule'
+
+
+def prepare_mindspeed_gdn_import() -> None:
+    try:
+        import fla.utils
+    except ModuleNotFoundError as e:
+        if e.name not in {'fla', 'fla.utils'}:
+            raise
+        gdn_module = ModuleType('mindspeed.core.ssm.chunk_gated_delta_rule')
+
+        def torch_chunk_gated_delta_rule(
+                q, k, v, g, beta, scale=None, initial_state=None, output_final_state=False,
+                use_qk_l2norm_in_kernel=False, cu_seqlens=None, chunk_size=64, head_first=False, **kwargs):
+            if cu_seqlens is not None:
+                raise ValueError('Torch GDN fallback does not support cu_seqlens.')
+            from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import torch_chunk_gated_delta_rule as torch_gdn
+            return torch_gdn(
+                q,
+                k,
+                v,
+                g=g,
+                beta=beta,
+                chunk_size=chunk_size,
+                initial_state=initial_state,
+                output_final_state=output_final_state,
+                use_qk_l2norm_in_kernel=use_qk_l2norm_in_kernel,
+            )
+
+        gdn_module.chunk_gated_delta_rule = torch_chunk_gated_delta_rule
+        gdn_module._ms_swift_torch_fallback = True
+        sys.modules[gdn_module.__name__] = gdn_module
+    else:
+        import torch_npu
+        device_name = torch_npu.npu.get_device_name()
+        # MindSpeed still imports this flag after it was removed from upstream FLA.
+        if not hasattr(fla.utils, 'USE_CUDA_GRAPH'):
+            if 'Ascend910_95' in device_name or 'Ascend950' in device_name:
+                fla.utils.USE_CUDA_GRAPH = False
 
 
 def _apply_gdn_patch(MindSpeedPatchesManager, patch, implementation) -> None:
@@ -45,6 +84,13 @@ def _apply_gdn_patch(MindSpeedPatchesManager, patch, implementation) -> None:
 
 def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
     patch = MindSpeedPatchesManager.patches_info.get(_FLA_GDN_PATCH_TARGET)
+
+    mindspeed_gdn_module = sys.modules.get('mindspeed.core.ssm.chunk_gated_delta_rule')
+    if getattr(mindspeed_gdn_module, '_ms_swift_torch_fallback', False):
+        torch_gdn = mindspeed_gdn_module.chunk_gated_delta_rule
+        _apply_gdn_patch(MindSpeedPatchesManager, patch, torch_gdn)
+        logger.info('Using torch chunk_gated_delta_rule for Megatron GDN because FLA is unavailable.')
+        return
 
     import torch_npu
     device_name = torch_npu.npu.get_device_name()
@@ -94,7 +140,7 @@ def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
 
 
 def patch_mindspeed_fla_gdn_implementation() -> None:
-    """Use MindSpeed GDN on Ascend arch35 and prefer upstream FLA elsewhere."""
+    """Use torch GDN without FLA, MindSpeed GDN on arch35, and upstream FLA elsewhere."""
     from mindspeed.patch_utils import MindSpeedPatchesManager
 
     try:
