@@ -65,9 +65,19 @@ def prepare_mindspeed_gdn_import() -> None:
             raise
         gdn_module = ModuleType('mindspeed.core.ssm.chunk_gated_delta_rule')
 
-        def torch_chunk_gated_delta_rule(
-                q, k, v, g, beta, scale=None, initial_state=None, output_final_state=False,
-                use_qk_l2norm_in_kernel=False, cu_seqlens=None, chunk_size=64, head_first=False, **kwargs):
+        def torch_chunk_gated_delta_rule(q,
+                                         k,
+                                         v,
+                                         g,
+                                         beta,
+                                         scale=None,
+                                         initial_state=None,
+                                         output_final_state=False,
+                                         use_qk_l2norm_in_kernel=False,
+                                         cu_seqlens=None,
+                                         chunk_size=64,
+                                         head_first=False,
+                                         **kwargs):
             if cu_seqlens is not None:
                 raise ValueError('Torch GDN fallback does not support cu_seqlens.')
             from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import torch_chunk_gated_delta_rule as torch_gdn
@@ -143,8 +153,7 @@ def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
             _ORIGINAL_MINDSPEED_GDN = mindspeed_gdn
         _apply_gdn_patch(MindSpeedPatchesManager, patch, _mindspeed_gdn_with_safe_varlen)
         logger.info(
-            'Using MindSpeed chunk_gated_delta_rule with safe varlen fallback for Megatron GDN on Ascend arch35.'
-        )
+            'Using MindSpeed chunk_gated_delta_rule with safe varlen fallback for Megatron GDN on Ascend arch35.')
         return
 
     fla_error = None
