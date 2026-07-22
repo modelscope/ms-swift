@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
 import torch
+import os
 import transformers
 from packaging import version
 from peft.utils.other import ModulesToSaveWrapper
@@ -384,6 +385,18 @@ class TunerMixin:
                 args.galore_target_modules = find_all_linears(model)
             if args.galore_with_embedding:
                 args.galore_target_modules += find_embedding(model)
+
+        if hasattr(torch, 'npu'):
+            is_sft = type(args).__name__ == 'SftArguments'
+            is_fused_ce = os.getenv('NPU_FUSED_LINEAR_CE', '0').strip() == '1'
+            if is_sft and is_fused_ce:
+                from swift.model.npu_patch.model import enable_npu_fused_linear_ce, apply_swift_trainer_patch
+                enable_npu_fused_linear_ce(model)
+                apply_swift_trainer_patch()
+                logger.info_once("NPU_FUSED_LINEAR_CE is enabled")
+            elif not is_sft and is_fused_ce:
+                logger.warning("NPU_FUSED_LINEAR_CE is enabled but current task is not SFT. "
+                               "Fused LINEAR CE will safely fall back to standard LM-Head.")
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
         return model
