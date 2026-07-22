@@ -61,6 +61,8 @@ class TrainArgumentsMixin:
             training dataset (with a random factor).
         max_epochs (Optional[int]): The total number of training epochs to perform. Overrides `num_train_epochs`.
             Defaults to None.
+        save_epochs (Optional[int]): Save a checkpoint every `save_epochs` epochs. When set, `save_strategy` is
+            automatically set to 'epoch'. Defaults to None.
         aligner_lr (Optional[float]): A specific learning rate for the aligner part of the model. Defaults to None.
         vit_lr (Optional[float]): A specific learning rate for the Vision Transformer part of the model. Defaults to
             None.
@@ -154,6 +156,7 @@ class TrainArgumentsMixin:
     train_dataloader_shuffle: bool = True
     group_by_length: bool = False
     max_epochs: Optional[int] = None
+    save_epochs: Optional[int] = None
     aligner_lr: Optional[float] = None
     vit_lr: Optional[float] = None
     use_logits_to_keep: Optional[bool] = None
@@ -240,6 +243,10 @@ class TrainArgumentsMixin:
             self.callbacks.append('activation_cpu_offload')
 
     def __post_init__(self):
+        if self.save_epochs is not None:
+            if self.save_epochs < 1:
+                raise ValueError('`save_epochs` must be greater than or equal to 1.')
+            self.save_strategy = 'epoch'
         if hasattr(self, 'output_dir'):
             self.output_dir = os.path.abspath(os.path.expanduser(self.output_dir))
         if is_mp() and self.use_liger_kernel:
