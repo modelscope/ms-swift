@@ -32,6 +32,7 @@ class PrintCallback(MegatronCallback):
         self.jsonl_writer = JsonlWriter(logging_path, enable_async=True, write_on_rank='last')
 
     def on_train_end(self):
+        self.jsonl_writer.close()
         self.training_bar.close()
         self.training_bar = None
 
