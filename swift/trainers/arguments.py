@@ -159,6 +159,8 @@ class TrainArgumentsMixin:
     use_logits_to_keep: Optional[bool] = None
     ds3_gather_for_generation: bool = True
     resume_only_model: bool = False
+    mem_snapshot_path: str = None
+    mem_snapshot_interval: int = None
 
     # plugins
     optimizer: Optional[str] = None
@@ -238,6 +240,8 @@ class TrainArgumentsMixin:
         fsdp_config = getattr(self, 'fsdp_config', {})
         if isinstance(fsdp_config, dict) and fsdp_config.get('activation_cpu_offload', False):
             self.callbacks.append('activation_cpu_offload')
+        if self.mem_snapshot_path is not None and self.mem_snapshot_interval is not None and self.mem_snapshot_interval > 0:
+            self.callbacks.append('mem_snapshot')
 
     def __post_init__(self):
         if hasattr(self, 'output_dir'):
