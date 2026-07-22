@@ -178,4 +178,3 @@ def npu_fused_lm_forward(self, *args, **kwargs):
         hidden_states=outputs.hidden_states if hasattr(outputs, 'hidden_states') else None,
         attentions=outputs.attentions if hasattr(outputs, 'attentions') else None,
     )
-
