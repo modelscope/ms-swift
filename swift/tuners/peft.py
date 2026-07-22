@@ -362,6 +362,25 @@ def hot_patch_peft_module():
     LoraModel.__init_origin__ = LoraModel.__init__
     LoraModel.__init__ = __new_init__
 
+    # Re-apply lora_dtype after peft's `_cast_adapter_dtype` (issue #9694).
+    # `PeftModel.__init__` calls `LoraModel._cast_adapter_dtype(autocast_adapter_dtype=True)`
+    # *after* `__new_init__` has already converted the adapter to `lora_dtype`; that call
+    # upcasts float16/bfloat16 adapters back to float32, silently discarding `lora_dtype`.
+    # Re-run the conversion afterwards so the requested `lora_dtype` takes effect.
+    if hasattr(LoraModel, '_cast_adapter_dtype'):
+        LoraModel._cast_adapter_dtype_origin = LoraModel._cast_adapter_dtype
+
+        def _cast_adapter_dtype(self, adapter_name: str, autocast_adapter_dtype: bool = True):
+            self._cast_adapter_dtype_origin(
+                adapter_name=adapter_name, autocast_adapter_dtype=autocast_adapter_dtype)
+            active_config = self.peft_config.get(adapter_name)
+            if active_config is not None and getattr(active_config, 'lora_dtype', None):
+                for name, module in self.model.named_modules():
+                    if isinstance(module, LoraLayer):
+                        _convert_dtype(module, adapter_name, active_config.lora_dtype)
+
+        LoraModel._cast_adapter_dtype = _cast_adapter_dtype
+
     # Support LoRA+
     PeftModel.create_optimizer_param_groups = create_optimizer_param_groups
     PeftModel.load_adapter_origin = PeftModel.load_adapter
