@@ -275,6 +275,7 @@ ENV:
 - 🔥num_train_epochs: 训练的epoch数，默认为3。
 - 🔥save_strategy: 保存模型的策略，可选为'no'、'steps'、'epoch'，默认为'steps'。
 - 🔥save_steps: 默认为500。
+- save_epochs: 每N个epoch保存一次checkpoint，并自动使用`save_strategy='epoch'`。当启用epoch评估时，评估跟随相同的间隔。默认为None。
 - 🔥eval_strategy: 评估策略。默认为None，跟随`save_strategy`的策略。
   - 若不使用`val_dataset`和`eval_dataset`且`split_dataset_ratio`为0，则默认为'no'。
 - 🔥eval_steps: 默认为None，如果存在评估数据集，则跟随`save_steps`的策略。

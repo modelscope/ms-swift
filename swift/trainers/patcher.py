@@ -74,6 +74,13 @@ class DefaultFlowCallbackNew(DefaultFlowCallback):
     def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         control = super().on_epoch_end(args, state, control, **kwargs)
         evaluation_strategy = args.eval_strategy if hasattr(args, 'eval_strategy') else args.evaluation_strategy
+        save_epochs = getattr(args, 'save_epochs', None)
+        if save_epochs is not None:
+            epoch = math.ceil(state.epoch)
+            should_save = epoch > 0 and epoch % save_epochs == 0
+            control.should_save = should_save
+            if evaluation_strategy == IntervalStrategy.EPOCH:
+                control.should_evaluate = should_save
         if args.max_epochs is not None and args.max_epochs <= math.ceil(state.epoch):
             logger.info('Training has reached `max_epochs`. The model will be saved and the training will be exited.')
             if evaluation_strategy != IntervalStrategy.NO:

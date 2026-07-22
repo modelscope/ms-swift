@@ -561,6 +561,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     # checkpoint
     output_dir: Optional[str] = None
     save_steps: int = 500
+    save_epochs: Optional[int] = None
     no_save_optim: bool = False
     no_save_rng: bool = False
     mcore_model: Optional[str] = None
@@ -788,6 +789,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self._check_mcore_bridge()
 
     def __post_init__(self):
+        if self.save_epochs is not None:
+            if self.save_epochs < 1:
+                raise ValueError('`save_epochs` must be greater than or equal to 1.')
+            self.save_strategy = 'epoch'
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
@@ -1043,7 +1048,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         if self.save_strategy == 'epoch':
             if hasattr(train_dataset, '__len__'):
                 dataset_sample = len(train_dataset) // step_batch_size * step_batch_size * num_generations
-                self.save_steps = dataset_sample // self.global_batch_size
+                self.save_steps = dataset_sample // self.global_batch_size * (self.save_epochs or 1)
                 self.eval_steps = self.save_steps
             else:
                 raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
