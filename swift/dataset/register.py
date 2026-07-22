@@ -81,7 +81,7 @@ def _register_d_info(d_info: Dict[str, Any], *, base_dir: Optional[str] = None) 
     return dataset_meta
 
 
-def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> List[DatasetMeta]:
+def register_dataset_info(dataset_info: Union[str, list, None] = None) -> List[DatasetMeta]:
     """Register dataset from the `dataset_info.json` or a custom dataset info file
     This is used to deal with the datasets defined in the json info file.
 
@@ -103,6 +103,9 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> L
                 dataset_info = json.load(f)
         else:
             dataset_info = json.loads(dataset_info)  # json
+    if not isinstance(dataset_info, list):
+        raise ValueError(f'`dataset_info` should be a JSON list of dataset entries (e.g. `[{{...}}]`), but got '
+                         f'type `{type(dataset_info).__name__}`. Please wrap the entry in a list.')
     if len(dataset_info) == 0:
         return []
     res = []
@@ -110,6 +113,8 @@ def register_dataset_info(dataset_info: Union[str, List[str], None] = None) -> L
         res.append(_register_d_info(d_info, base_dir=base_dir))
 
     if log_msg is None:
-        log_msg = dataset_info if len(dataset_info) < 5 else list(dataset_info.keys())
+        # dataset_info is a list here; slice it (the old `.keys()` dated to when
+        # it was a dict and now raises AttributeError for 5+ entries).
+        log_msg = dataset_info if len(dataset_info) < 5 else dataset_info[:5]
     logger.info(f'Successfully registered `{log_msg}`.')
     return res
