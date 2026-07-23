@@ -46,6 +46,4 @@ def apply_all_patches() -> None:
     _APPLIED = True
 
 
-__all__ = [
-    'NPUCastError', 'apply_all_patches', 'apply_mindspeed_patches', 'patch_mindspeed_fla_gdn_implementation'
-]
+__all__ = ['NPUCastError', 'apply_all_patches', 'apply_mindspeed_patches', 'patch_mindspeed_fla_gdn_implementation']

@@ -247,8 +247,7 @@ def patch_mindspeed_te_cp_implementation(megatron_args: dict[str, Any]) -> None:
 def patch_mindspeed_te_layernorm_linear_frozen_weight() -> None:
     """Route frozen MindSpeed TE LayerNormLinear weights through Megatron's frozen-weight path."""
     try:
-        ms_te_layernorm_linear = importlib.import_module(
-            'mindspeed.te.pytorch.module.layernorm_column_parallel_linear')
+        ms_te_layernorm_linear = importlib.import_module('mindspeed.te.pytorch.module.layernorm_column_parallel_linear')
         from megatron.core.tensor_parallel.layers import linear_with_frozen_weight
     except ImportError as e:
         logger.warning('Failed to import MindSpeed TE LayerNormLinear modules: %s', e)
