@@ -585,6 +585,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     ddp_timeout: int = 18000000
     ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
     use_distributed_optimizer: bool = True
+    # megatron-fsdp
+    use_megatron_fsdp: bool = False
+    data_parallel_sharding_strategy: Literal['no_shard', 'optim', 'optim_grads',
+                                             'optim_grads_params'] = 'optim_grads_params'
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     decoder_first_pipeline_num_layers: Optional[int] = None
@@ -893,8 +897,25 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             raise ValueError('Tensor parallel communication/GEMM overlap can happen only when '
                              'sequence parallelism is enabled')
 
+        self._check_megatron_fsdp()
         self._init_distributed()
         self._check_muon()
+
+    def _check_megatron_fsdp(self):
+        if not self.use_megatron_fsdp:
+            return
+        # Megatron-FSDP is only compatible with the distributed optimizer.
+        if not self.use_distributed_optimizer:
+            logger.info('Megatron-FSDP is only compatible with use_distributed_optimizer=True; setting it to True.')
+            self.use_distributed_optimizer = True
+        # Only sgd/adam are supported by Megatron-FSDP.
+        if self.optimizer not in ('sgd', 'adam'):
+            raise ValueError(f'Megatron-FSDP does not support the "{self.optimizer}" optimizer yet.')
+        # FSDP requires CUDA_DEVICE_MAX_CONNECTIONS > 1 (or unset). SWIFT sets it to '1' by default,
+        # so override it here before distributed initialization.
+        if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') == '1':
+            raise ValueError('Megatron-FSDP requires `CUDA_DEVICE_MAX_CONNECTIONS > 1`, '
+                             'for example you can set `CUDA_DEVICE_MAX_CONNECTIONS=32`')
 
     def _init_attention_backend(self):
         if self.attention_backend.startswith('flash_'):

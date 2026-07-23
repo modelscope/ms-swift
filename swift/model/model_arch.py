@@ -63,7 +63,7 @@ class MLLMModelArch:
     deepseek_janus = 'deepseek_janus'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
-    unlimited_ocr = 'unlimited-ocr'
+    unlimited_ocr = 'unlimited_ocr'
     kimi_k25 = 'kimi_k25'
 
     mplug_owl2 = 'mplug_owl2'
@@ -479,9 +479,9 @@ register_model_arch(
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.unlimited_ocr,
-        language_model=['model.model.embed_tokens', 'model.model.layers', 'model.model.norm', 'model.lm_head'],
-        vision_tower=['model.model.vision_model', 'model.model.sam_model'],
-        aligner=['model.model.projector'],
+        language_model=['model.embed_tokens', 'model.layers', 'model.norm', 'lm_head'],
+        vision_tower=['model.vision_model', 'model.sam_model'],
+        aligner=['model.projector'],
     ))
 
 register_model_arch(
@@ -579,6 +579,7 @@ if transformers_ge_4_52:
             language_model=['model.language_model', 'lm_head'],
             aligner='model.visual.merger',
             vision_tower='model.visual',
+            mlp='model.language_model.layers.{}.mlp',
         ))
 else:
     register_model_arch(
@@ -587,6 +588,7 @@ else:
             language_model=['model', 'lm_head'],
             aligner='visual.merger',
             vision_tower='visual',
+            mlp='model.layers.{}.mlp',
         ))
 
 register_model_arch(
@@ -595,6 +597,7 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
         vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
     ))
 
 register_model_arch(

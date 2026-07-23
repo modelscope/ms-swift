@@ -4,6 +4,8 @@ try:
     from transformers.utils import is_torch_npu_available
 
     if is_torch_npu_available():
+        from swift.model.npu_patch.mindspeed import prepare_mindspeed_gdn_import
+        prepare_mindspeed_gdn_import()
         # Enable Megatron on Ascend NPU
         import mindspeed.megatron_adaptor  # F401
     from .init import init_megatron_env

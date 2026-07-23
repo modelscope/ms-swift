@@ -644,6 +644,16 @@ register_template(
         agent_template='qwen3_5',
         is_thinking=True))
 
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.ovis_ocr2,
+        template_cls=Qwen3_5Template,
+        default_system=None,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        agent_template='qwen3_5',
+        is_thinking=False))
+
 
 class Qwen3VLEmbTemplate(Qwen3VLTemplate):
 
