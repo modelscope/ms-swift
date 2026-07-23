@@ -5,7 +5,7 @@ import sys
 from transformers.utils import strtobool
 
 from .fsdp import NPUCastError
-from .mindspeed import patch_mindspeed_fla_gdn_implementation, patch_mindspeed_te_cp_implementation
+from .mindspeed import apply_mindspeed_patches, patch_mindspeed_fla_gdn_implementation
 
 _APPLIED = False
 _ENABLE_NPU_MODEL_PATCH_ARGS = ('--enable_npu_model_patch', '--enable-npu-model-patch')
@@ -47,6 +47,5 @@ def apply_all_patches() -> None:
 
 
 __all__ = [
-    'NPUCastError', 'apply_all_patches', 'patch_mindspeed_fla_gdn_implementation',
-    'patch_mindspeed_te_cp_implementation'
+    'NPUCastError', 'apply_all_patches', 'apply_mindspeed_patches', 'patch_mindspeed_fla_gdn_implementation'
 ]

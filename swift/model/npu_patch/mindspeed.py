@@ -4,6 +4,7 @@ from __future__ import annotations
 import importlib
 import inspect
 import sys
+from functools import wraps
 from typing import Any
 
 from swift.utils.logger import get_logger
@@ -131,3 +132,73 @@ def patch_mindspeed_te_cp_implementation(megatron_args: dict[str, Any]) -> None:
         megatron_args.get('context_parallel_size', 1),
         cp_algo,
     )
+
+
+def patch_mindspeed_te_layernorm_linear_frozen_weight() -> None:
+    """Route frozen MindSpeed TE LayerNormLinear weights through Megatron's frozen-weight path."""
+    try:
+        ms_te_layernorm_linear = importlib.import_module(
+            'mindspeed.te.pytorch.module.layernorm_column_parallel_linear')
+        from megatron.core.tensor_parallel.layers import linear_with_frozen_weight
+    except ImportError as e:
+        logger.warning('Failed to import MindSpeed TE LayerNormLinear modules: %s', e)
+        return
+
+    linear_impl_name = 'linear_with_grad_accumulation_and_async_allreduce'
+    trainable_weight_impl = getattr(ms_te_layernorm_linear, linear_impl_name, None)
+    if trainable_weight_impl is None:
+        logger.warning('MindSpeed TE LayerNormLinear does not expose %s; skip frozen-weight patch.', linear_impl_name)
+        return
+    if getattr(trainable_weight_impl, '_swift_supports_frozen_weight', False):
+        return
+
+    @wraps(trainable_weight_impl)
+    def linear_with_frozen_weight_dispatch(
+        input,
+        weight,
+        bias,
+        gradient_accumulation_fusion,
+        allreduce_dgrad,
+        sequence_parallel,
+        grad_output_buffer=None,
+        wgrad_deferral_limit=0,
+        async_grad_allreduce=None,
+        tp_group=None,
+    ):
+        if weight.requires_grad:
+            return trainable_weight_impl(
+                input=input,
+                weight=weight,
+                bias=bias,
+                gradient_accumulation_fusion=gradient_accumulation_fusion,
+                allreduce_dgrad=allreduce_dgrad,
+                sequence_parallel=sequence_parallel,
+                grad_output_buffer=grad_output_buffer,
+                wgrad_deferral_limit=wgrad_deferral_limit,
+                async_grad_allreduce=async_grad_allreduce,
+                tp_group=tp_group,
+            )
+        return linear_with_frozen_weight(
+            input=input,
+            weight=weight,
+            bias=bias,
+            gradient_accumulation_fusion=gradient_accumulation_fusion,
+            allreduce_dgrad=allreduce_dgrad,
+            sequence_parallel=sequence_parallel,
+            async_grad_allreduce=async_grad_allreduce,
+            tp_group=tp_group,
+        )
+
+    linear_with_frozen_weight_dispatch._swift_supports_frozen_weight = True
+    setattr(ms_te_layernorm_linear, linear_impl_name, linear_with_frozen_weight_dispatch)
+    logger.info('Patched MindSpeed TE LayerNormLinear to use Megatron frozen-weight backward for frozen weights.')
+
+
+def apply_mindspeed_patches(megatron_args: dict[str, Any]) -> None:
+    """Apply MindSpeed compatibility patches around its runtime repatch in the required order."""
+    from mindspeed.megatron_adaptor import repatch
+
+    patch_mindspeed_te_cp_implementation(megatron_args)
+    repatch(megatron_args)
+    patch_mindspeed_te_layernorm_linear_frozen_weight()
+    patch_mindspeed_fla_gdn_implementation()
