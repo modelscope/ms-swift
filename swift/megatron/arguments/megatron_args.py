@@ -723,6 +723,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mrl_dims: Optional[Union[dict, str]] = None
     save_strategy: Literal['steps', 'epoch'] = 'steps'
     callbacks: List[str] = field(default_factory=list)
+    nsys_profile_start: int = -1  # 1-based; 0 = disabled
+    nsys_profile_end: int = -1
+    profiler_type: str = 'none'  # nsys or torch
+    profile_rank: Optional[List[int]] = None  # global ranks to profile; None = all ranks
 
     @staticmethod
     def load_args_config(ckpt_dir: Optional[str]) -> Dict[str, Any]:
@@ -854,6 +858,9 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 self.gradient_accumulation_fusion = False
         self.callbacks += ['print', 'default_flow']
         self.callbacks += self.report_to
+        if self.profiler_type != 'none':
+            cb = 'torch_profiler' if self.profiler_type == 'torch' else 'nsys'
+            self.callbacks.append(cb)
         if self.save_total_limit is not None:
             if self.async_save:
                 raise ValueError('async_save is not supported with save_total_limit.')
