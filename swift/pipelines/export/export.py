@@ -6,7 +6,7 @@ from swift.pipelines import SwiftPipeline
 from swift.tuners import swift_to_peft_format
 from swift.utils import get_logger
 from .cached_dataset import export_cached_dataset
-from .merge_lora import merge_lora
+from .merge_lora import export_language_model, merge_lora
 from .ollama import export_to_ollama
 from .quant import quantize_model
 
@@ -27,6 +27,8 @@ class SwiftExport(SwiftPipeline):
                 args.output_dir = None
             merge_lora(args)
             args.output_dir = output_dir  # recover
+        if args.export_language_model_only and not args.merge_lora:
+            export_language_model(args)
         if args.quant_method:
             quantize_model(args)
         elif args.to_ollama:

@@ -1,9 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import copy
 import os
 import shutil
 import torch
 import torch.nn.functional as F
 from accelerate.utils import find_device
+from collections import OrderedDict
 from functools import wraps
 from packaging import version
 from peft import PeftModel
@@ -13,7 +15,7 @@ from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import (is_torch_bf16_gpu_available, is_torch_cuda_available, is_torch_mps_available,
                                 is_torch_npu_available, strtobool)
 from types import MethodType
-from typing import List, Optional, TypeVar, Union
+from typing import Dict, List, Optional, TypeVar, Union
 
 from swift.utils import (HfConfigFactory, Processor, deep_getattr, get_dist_setting, get_env_args, get_logger, is_mp,
                          to_device)
@@ -286,6 +288,119 @@ if requires_patch:
     _patch_conv3d()
 
 
+def _get_language_model_prefixes(model: PreTrainedModel) -> List[str]:
+    model_arch = getattr(getattr(model, 'model_meta', None), 'model_arch', None)
+    prefixes = getattr(model_arch, 'language_model', None) or []
+    if isinstance(prefixes, str):
+        prefixes = [prefixes]
+    return prefixes
+
+
+def _get_language_model_target_prefix(source_prefix: str) -> str:
+    if source_prefix == 'language_model':
+        return 'model'
+    suffix = '.language_model'
+    if source_prefix.endswith(suffix):
+        return source_prefix[:-len(suffix)]
+    raise ValueError(
+        f'Cannot export language-model-only checkpoint for language_model prefix `{source_prefix}`. '
+        'Only `language_model` and `*.language_model` prefixes are currently supported.')
+
+
+def get_language_model_state_dict(model: PreTrainedModel) -> Dict[str, torch.Tensor]:
+    prefixes = _get_language_model_prefixes(model)
+    if not prefixes:
+        raise ValueError('`export_language_model_only` requires a multimodal model with language_model prefixes.')
+
+    source_prefix = prefixes[0].rstrip('.')
+    target_prefix = _get_language_model_target_prefix(source_prefix)
+    state_dict = model.state_dict()
+    output_state_dict = OrderedDict()
+    for key, value in state_dict.items():
+        new_key = None
+        if key.startswith(f'{source_prefix}.'):
+            new_key = f'{target_prefix}.{key[len(source_prefix) + 1:]}'
+        elif key == source_prefix:
+            new_key = target_prefix
+        else:
+            for prefix in prefixes[1:]:
+                prefix = prefix.rstrip('.')
+                if key == prefix or key.startswith(f'{prefix}.'):
+                    new_key = key
+                    break
+        if new_key is None:
+            continue
+        if new_key in output_state_dict:
+            raise ValueError(f'Duplicate key `{new_key}` while exporting language-model-only checkpoint.')
+        output_state_dict[new_key] = value
+
+    if not output_state_dict:
+        raise ValueError(f'No language model weights found with prefixes: {prefixes}.')
+    return output_state_dict
+
+
+def _infer_language_model_architectures(model: PreTrainedModel) -> Optional[List[str]]:
+    candidates = []
+    config = getattr(model, 'config', None)
+    if config is not None:
+        architectures = getattr(config, 'architectures', None) or []
+        candidates.extend(architectures)
+    candidates.append(model.__class__.__name__)
+
+    for arch in candidates:
+        if arch.endswith('ForCausalLM'):
+            return [arch]
+        if arch.endswith('ForConditionalGeneration'):
+            return [arch[:-len('ForConditionalGeneration')] + 'ForCausalLM']
+    return None
+
+
+def get_language_model_config(model: PreTrainedModel) -> PretrainedConfig:
+    text_config = HfConfigFactory.get_text_config(model.config)
+    if text_config is model.config:
+        raise ValueError('`export_language_model_only` requires a multimodal config with a text config.')
+
+    text_config = copy.deepcopy(text_config)
+    architectures = _infer_language_model_architectures(model)
+    if architectures is not None:
+        text_config.architectures = architectures
+    return text_config
+
+
+def save_language_model_checkpoint(model: PreTrainedModel,
+                                   output_dir: str,
+                                   *,
+                                   safe_serialization: bool = True,
+                                   max_shard_size: Union[int, str] = '5GB') -> None:
+    try:
+        from huggingface_hub import save_torch_state_dict
+    except ImportError as e:
+        raise ImportError('`export_language_model_only` requires `huggingface_hub.save_torch_state_dict`.') from e
+
+    os.makedirs(output_dir, exist_ok=True)
+    state_dict = get_language_model_state_dict(model)
+    text_config = get_language_model_config(model)
+    text_config.save_pretrained(output_dir)
+    generation_config = getattr(model, 'generation_config', None)
+    if generation_config is not None:
+        generation_config.save_pretrained(output_dir)
+    save_torch_state_dict(
+        state_dict,
+        output_dir,
+        max_shard_size=max_shard_size,
+        safe_serialization=safe_serialization,
+        metadata={'format': 'pt'} if safe_serialization else None)
+
+
+def save_processor_checkpoint(processor: Processor, output_dir: str, *, language_model_only: bool = False) -> None:
+    if language_model_only:
+        tokenizer = getattr(processor, 'tokenizer', None)
+        if tokenizer is not None:
+            tokenizer.save_pretrained(output_dir)
+            return
+    processor.save_pretrained(output_dir)
+
+
 def save_checkpoint(model: Optional[PreTrainedModel],
                     processor: Processor,
                     output_dir: str,
@@ -293,9 +408,13 @@ def save_checkpoint(model: Optional[PreTrainedModel],
                     safe_serialization: bool = True,
                     max_shard_size: Union[int, str] = '5GB',
                     model_dirs: List[str] = None,
-                    additional_saved_files: Optional[List[str]] = None) -> None:
+                    additional_saved_files: Optional[List[str]] = None,
+                    language_model_only: bool = False) -> None:
     if model is not None:
-        if model.__class__.__name__ != 'SentenceTransformer':
+        if language_model_only:
+            save_language_model_checkpoint(
+                model, output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
+        elif model.__class__.__name__ != 'SentenceTransformer':
             model.save_pretrained(output_dir, safe_serialization=safe_serialization, max_shard_size=max_shard_size)
         else:
             model.save_pretrained(output_dir, safe_serialization=safe_serialization)
@@ -303,7 +422,7 @@ def save_checkpoint(model: Optional[PreTrainedModel],
             from swift.utils import copy_files_by_pattern
             copy_files_by_pattern(model.model_dir, output_dir, '*.py')
             copy_files_by_pattern(model.model_dir, output_dir, '*.json')
-    processor.save_pretrained(output_dir)
+    save_processor_checkpoint(processor, output_dir, language_model_only=language_model_only)
 
     if model_dirs is None:
         model_dirs = []
@@ -311,7 +430,10 @@ def save_checkpoint(model: Optional[PreTrainedModel],
         model_dirs = model_dirs.copy()
     if model and model.model_dir and model.model_dir not in model_dirs:
         model_dirs.append(model.model_dir)
-    for src_file in (additional_saved_files or []) + ['preprocessor_config.json', 'args.json']:
+    src_files = (additional_saved_files or []) + ['args.json']
+    if not language_model_only:
+        src_files.append('preprocessor_config.json')
+    for src_file in src_files:
         tgt_path = os.path.join(output_dir, src_file)
         if os.path.exists(tgt_path) and src_file == 'args.json':
             continue

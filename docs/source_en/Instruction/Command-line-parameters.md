@@ -826,6 +826,7 @@ Export Arguments include the [basic arguments](#base-arguments) and [merge argum
 - to_ollama: Generate the Modelfile required by Ollama. Default is False.
 - 🔥to_mcore: Convert weights from HF format to Megatron format. Default is False.
 - to_hf: Convert weights from Megatron format to HF format. Default is False.
+- export_language_model_only: Export only the language model part of a multimodal model and write a text model config. This is intended for text-only inference backends that expect CausalLM-style weight names. Default is False.
 - mcore_model: Path to the mcore format model. Default is None.
 - mcore_adapter: The adapter path for mcore format models, default is None.
 - thread_count: The number of model slices when `--to_mcore true` is set. Defaults to None, and is automatically configured based on the model size, ensuring that the largest slice is less than 10GB.
