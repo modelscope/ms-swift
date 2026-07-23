@@ -121,6 +121,16 @@ class TrainArgumentsMixin:
             shared memory and then asynchronously persisted to disk. Currently does not support the safetensors format.
             It is recommended to use this with `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to prevent CUDA OOM
             errors during training. Defaults to False.
+
+        enable_profiler (bool): Master switch to enable or disable performance profiling. Default is False.
+        profiler_save_path (Optional[str]): Directory path where the profiling results and trace files will be saved.
+        profiler_all_ranks (bool): If True, collects profiling data from all distributed processes.
+        profiler_ranks (List[int]): A list of specific rank IDs to collect profiling data from.
+        profiler_contents (List[str]): List of data categories to record, such as "cpu", "cuda", "memory", or "stack".
+        profiler_discrete (bool): If True, records data for each step independently.
+        profiler_tool (Optional[str]): Specifies the backend tool used for profiling.
+        profiler_steps (Optional[List[int]]): A list of specific training steps during which profiling should be active.
+
     """
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
@@ -205,6 +215,16 @@ class TrainArgumentsMixin:
 
     # dlrover flash_checkpoint
     use_flash_ckpt: bool = False
+
+    # profiler
+    enable_profiler: bool = False
+    profiler_save_path: Optional[str] = None
+    profiler_all_ranks: bool = False
+    profiler_ranks: List[int] = field(default_factory=list)
+    profiler_contents: List[str] = field(default_factory=list)  # e.g., "cpu", "cuda", "stack", "memory"."shape"
+    profiler_discrete: bool = False
+    profiler_tool: Optional[str] = 'torch'
+    profiler_steps: Optional[List[int]] = field(default_factory=list)  # Steps to profile
 
     @staticmethod
     def _patch_liger_kernel():
