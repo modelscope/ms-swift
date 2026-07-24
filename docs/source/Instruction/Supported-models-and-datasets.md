@@ -707,7 +707,6 @@
 |[allenai/OLMoE-1B-7B-0924](https://modelscope.cn/models/allenai/OLMoE-1B-7B-0924)|olmoe|olmoe_0924||-|&#x2714;|-|[allenai/OLMoE-1B-7B-0924](https://huggingface.co/allenai/OLMoE-1B-7B-0924)|
 |[allenai/OLMoE-1B-7B-0924-Instruct](https://modelscope.cn/models/allenai/OLMoE-1B-7B-0924-Instruct)|olmoe|olmoe_0924||-|&#x2714;|-|[allenai/OLMoE-1B-7B-0924-Instruct](https://huggingface.co/allenai/OLMoE-1B-7B-0924-Instruct)|
 |[allenai/OLMoE-1B-7B-0924-SFT](https://modelscope.cn/models/allenai/OLMoE-1B-7B-0924-SFT)|olmoe|olmoe_0924||-|&#x2714;|-|[allenai/OLMoE-1B-7B-0924-SFT](https://huggingface.co/allenai/OLMoE-1B-7B-0924-SFT)|
-|[PaddlePaddle/Unlimited-OCR](https://modelscope.cn/models/PaddlePaddle/Unlimited-OCR)|unlimited-ocr|unlimited_ocr||transformers==4.46.3, easydict|&#x2718;|vision|[PaddlePaddle/Unlimited-OCR](https://huggingface.co/PaddlePaddle/Unlimited-OCR)|
 |[answerdotai/ModernBERT-base](https://modelscope.cn/models/answerdotai/ModernBERT-base)|modern_bert|dummy||transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-base](https://huggingface.co/answerdotai/ModernBERT-base)|
 |[answerdotai/ModernBERT-large](https://modelscope.cn/models/answerdotai/ModernBERT-large)|modern_bert|dummy||transformers>=4.48|&#x2718;|bert|[answerdotai/ModernBERT-large](https://huggingface.co/answerdotai/ModernBERT-large)|
 |[iic/gte-modernbert-base](https://modelscope.cn/models/iic/gte-modernbert-base)|modern_bert_gte|dummy||transformers>=4.48|&#x2718;|bert, embedding|[Alibaba-NLP/gte-modernbert-base](https://huggingface.co/Alibaba-NLP/gte-modernbert-base)|
@@ -1053,6 +1052,7 @@
 |[deepseek-ai/Janus-Pro-7B](https://modelscope.cn/models/deepseek-ai/Janus-Pro-7B)|deepseek_janus_pro|deepseek_janus_pro||-|&#x2718;|vision|[deepseek-ai/Janus-Pro-7B](https://huggingface.co/deepseek-ai/Janus-Pro-7B)|
 |[deepseek-ai/DeepSeek-OCR](https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR)|deepseek_ocr|deepseek_ocr||transformers==4.46.3, easydict|&#x2718;|vision|[deepseek-ai/DeepSeek-OCR](https://huggingface.co/deepseek-ai/DeepSeek-OCR)|
 |[deepseek-ai/DeepSeek-OCR-2](https://modelscope.cn/models/deepseek-ai/DeepSeek-OCR-2)|deepseek_ocr2|deepseek_ocr2||transformers==4.46.3, easydict|&#x2718;|vision|[deepseek-ai/DeepSeek-OCR-2](https://huggingface.co/deepseek-ai/DeepSeek-OCR-2)|
+|[PaddlePaddle/Unlimited-OCR](https://modelscope.cn/models/PaddlePaddle/Unlimited-OCR)|unlimited_ocr|unlimited_ocr||transformers==4.46.3, easydict|&#x2718;|vision|[PaddlePaddle/Unlimited-OCR](https://huggingface.co/PaddlePaddle/Unlimited-OCR)|
 |[OpenBMB/MiniCPM-V](https://modelscope.cn/models/OpenBMB/MiniCPM-V)|minicpmv|minicpmv||timm, transformers<4.42|&#x2718;|vision|[openbmb/MiniCPM-V](https://huggingface.co/openbmb/MiniCPM-V)|
 |[OpenBMB/MiniCPM-V-2](https://modelscope.cn/models/OpenBMB/MiniCPM-V-2)|minicpmv|minicpmv||timm, transformers<4.42|&#x2718;|vision|[openbmb/MiniCPM-V-2](https://huggingface.co/openbmb/MiniCPM-V-2)|
 |[OpenBMB/MiniCPM-Llama3-V-2_5](https://modelscope.cn/models/OpenBMB/MiniCPM-Llama3-V-2_5)|minicpmv2_5|minicpmv2_5|llama3|timm, transformers>=4.36|&#x2718;|vision|[openbmb/MiniCPM-Llama3-V-2_5](https://huggingface.co/openbmb/MiniCPM-Llama3-V-2_5)|

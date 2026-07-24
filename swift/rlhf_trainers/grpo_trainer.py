@@ -50,7 +50,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from swift.dataset import RowPreprocessor
 from swift.rewards import orms, rm_plugins
 from swift.rl_core.advantage import (apply_rlsd_reweight, compute_advantages, compute_advantages_dynamic,
-                                     compute_reward_metrics, compute_teacher_kl_per_token,
+                                     compute_reward_metrics, compute_sdar_loss, compute_teacher_kl_per_token,
                                      expand_advantage_to_per_token)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
@@ -264,6 +264,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             grpo_batch: GRPOBatch = batch_encoded['grpo_batch']
             base_advantages = torch.stack([data.advantages.to(device) for data in batch])
             use_rlsd = (self.advantage_reweight == 'rlsd' and grpo_batch.teacher_per_token_logps is not None)
+            use_sdar = (self.sdar_loss_coef > 0 and grpo_batch.teacher_per_token_logps is not None)
             if use_rlsd:
                 # RLSD (Self-Distilled RLVR): multiplicative, sign-aware, clipped token-level reweight
                 # of the per-sequence advantage using the teacher-vs-student logprob gap, in place of the
@@ -280,6 +281,13 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     negative_only=self.rlsd_negative_only,
                 )
                 self._metrics[mode]['rlsd_lambda'].append(lam)
+            elif use_sdar:
+                # SDAR (Self-Distilled Agentic RL): the GRPO advantage is left unchanged (plain
+                # per-token broadcast, no additive teacher term). The teacher-vs-student signal is
+                # consumed by the confidence-gated distillation loss in _compute_loss_and_metrics,
+                # mirroring the reference SkillSDRayTrainer ("advantages are NOT replaced; teacher
+                # log-probs are passed through to the actor for the loss").
+                grpo_batch.advantages = expand_advantage_to_per_token(base_advantages, grpo_batch.completion_mask)
             else:
                 # Expand the per-sequence base advantage to per-token [B, T] here (not by broadcast
                 # in the loss), so the OPD-RL signed teacher log-ratio is added per token
@@ -1136,6 +1144,23 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             loss = (per_token_loss * completion_mask).sum() / normalizer
         else:
             raise ValueError(f'Unknown loss type: {self.loss_type}')
+
+        # SDAR (Self-Distilled Agentic RL): confidence-gated teacher distillation auxiliary loss.
+        # Added to the reduced GRPO policy loss (loss = policy_loss + sdar_loss_coef * L_SDAR),
+        # mirroring the reference actor (SDAR/verl/workers/actor/dp_actor.py:446-459). Uses the
+        # current-forward student logps (per_token_logps, retains grad) and the OPSD teacher logps
+        # on the same sampled tokens (detached, remapped to the student frame).
+        if self.sdar_loss_coef > 0 and grpo_batch.teacher_per_token_logps is not None:
+            sdar_loss, sdar_metrics = compute_sdar_loss(
+                student_log_probs=per_token_logps,
+                teacher_log_probs=grpo_batch.teacher_per_token_logps,
+                response_mask=completion_mask,
+                gate_beta=self.sdar_gate_beta,
+            )
+            loss = loss + self.sdar_loss_coef * sdar_loss
+            for _sdar_key, _sdar_val in sdar_metrics.items():
+                self._metrics[mode][_sdar_key].append(_sdar_val)
+            self._metrics[mode]['sdar/coef'].append(self.sdar_loss_coef)
 
         completion_token_count = completion_mask.sum().clamp(min=1.0)
 
@@ -2138,6 +2163,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         self.rlsd_lambda_warmup_steps = args.rlsd_lambda_warmup_steps
         self.rlsd_lambda_decay_steps = args.rlsd_lambda_decay_steps
         self.rlsd_negative_only = args.rlsd_negative_only
+
+        # SDAR (Self-Distilled Agentic RL), https://arxiv.org/abs/2605.15155
+        # Confidence-gated teacher distillation auxiliary loss (added to the GRPO policy loss).
+        self.sdar_loss_coef = args.sdar_loss_coef
+        self.sdar_gate_beta = args.sdar_gate_beta
 
     def _rlsd_effective_lambda(self) -> float:
         """RLSD lambda schedule (mirrors RLSD/verl/trainer/opsd_trainer.py:1952-1961).
