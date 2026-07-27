@@ -4,6 +4,8 @@ from __future__ import annotations
 import importlib
 import inspect
 import sys
+from functools import wraps
+from types import ModuleType
 from typing import Any
 
 from swift.utils.logger import get_logger
@@ -11,7 +13,97 @@ from swift.utils.logger import get_logger
 logger = get_logger()
 
 _ORIGINAL_MINDSPEED_TE_CP_CLASS = None
+_ORIGINAL_MINDSPEED_GDN = None
 _FLA_GDN_PATCH_TARGET = 'fla.ops.gated_delta_rule.chunk_gated_delta_rule'
+
+
+def _mindspeed_gdn_with_safe_varlen(q,
+                                    k,
+                                    v,
+                                    g,
+                                    beta,
+                                    scale=None,
+                                    initial_state=None,
+                                    output_final_state=False,
+                                    use_qk_l2norm_in_kernel=False,
+                                    cu_seqlens=None,
+                                    chunk_size=64,
+                                    head_first=False):
+    kwargs = {
+        'scale': scale,
+        'output_final_state': output_final_state,
+        'use_qk_l2norm_in_kernel': use_qk_l2norm_in_kernel,
+        'chunk_size': chunk_size,
+        'head_first': head_first,
+    }
+    if cu_seqlens is None:
+        return _ORIGINAL_MINDSPEED_GDN(q, k, v, g, beta, initial_state=initial_state, **kwargs)
+
+    # MindSpeed's arch35 varlen backward uses the local sequence length as the packed gate stride.
+    # Keep the same implementation but run each sequence independently to avoid the invalid indexing.
+    import torch
+    sequence_dim = 2 if head_first else 1
+    offsets = cu_seqlens.detach().cpu().tolist()
+    outputs, final_states = [], []
+    for i, (start, end) in enumerate(zip(offsets, offsets[1:])):
+        length = end - start
+        inputs = [x.narrow(sequence_dim, start, length) for x in (q, k, v, g, beta)]
+        state = None if initial_state is None else initial_state[i:i + 1]
+        output, final_state = _ORIGINAL_MINDSPEED_GDN(*inputs, initial_state=state, **kwargs)
+        outputs.append(output)
+        if output_final_state:
+            final_states.append(final_state)
+    output = torch.cat(outputs, dim=sequence_dim)
+    final_state = torch.cat(final_states) if output_final_state else None
+    return output, final_state
+
+
+def prepare_mindspeed_gdn_import() -> None:
+    try:
+        import fla.utils
+    except ModuleNotFoundError as e:
+        if e.name not in {'fla', 'fla.utils'}:
+            raise
+        gdn_module = ModuleType('mindspeed.core.ssm.chunk_gated_delta_rule')
+
+        def torch_chunk_gated_delta_rule(q,
+                                         k,
+                                         v,
+                                         g,
+                                         beta,
+                                         scale=None,
+                                         initial_state=None,
+                                         output_final_state=False,
+                                         use_qk_l2norm_in_kernel=False,
+                                         cu_seqlens=None,
+                                         chunk_size=64,
+                                         head_first=False,
+                                         **kwargs):
+            if cu_seqlens is not None:
+                raise ValueError('Torch GDN fallback does not support cu_seqlens.')
+            from transformers.models.qwen3_5_moe.modeling_qwen3_5_moe import torch_chunk_gated_delta_rule as torch_gdn
+            return torch_gdn(
+                q,
+                k,
+                v,
+                g=g,
+                beta=beta,
+                chunk_size=chunk_size,
+                initial_state=initial_state,
+                output_final_state=output_final_state,
+                use_qk_l2norm_in_kernel=use_qk_l2norm_in_kernel,
+            )
+
+        gdn_module.chunk_gated_delta_rule = torch_chunk_gated_delta_rule
+        gdn_module._ms_swift_torch_fallback = True
+        sys.modules[gdn_module.__name__] = gdn_module
+    else:
+        import torch_npu
+        device_name = torch_npu.npu.get_device_name()
+        # MindSpeed still imports this flag after it was removed from upstream FLA.
+        if not hasattr(fla.utils, 'USE_CUDA_GRAPH'):
+            if 'Ascend910_95' in device_name or 'Ascend950' in device_name:
+                fla.utils.USE_CUDA_GRAPH = False
 
 
 def _apply_gdn_patch(MindSpeedPatchesManager, patch, implementation) -> None:
@@ -45,6 +137,25 @@ def _apply_gdn_patch(MindSpeedPatchesManager, patch, implementation) -> None:
 
 def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
     patch = MindSpeedPatchesManager.patches_info.get(_FLA_GDN_PATCH_TARGET)
+
+    mindspeed_gdn_module = sys.modules.get('mindspeed.core.ssm.chunk_gated_delta_rule')
+    if getattr(mindspeed_gdn_module, '_ms_swift_torch_fallback', False):
+        torch_gdn = mindspeed_gdn_module.chunk_gated_delta_rule
+        _apply_gdn_patch(MindSpeedPatchesManager, patch, torch_gdn)
+        logger.info('Using torch chunk_gated_delta_rule for Megatron GDN because FLA is unavailable.')
+        return
+
+    import torch_npu
+    device_name = torch_npu.npu.get_device_name()
+    if 'Ascend910_95' in device_name or 'Ascend950' in device_name:
+        from mindspeed.core.ssm.chunk_gated_delta_rule import chunk_gated_delta_rule as mindspeed_gdn
+        global _ORIGINAL_MINDSPEED_GDN
+        if _ORIGINAL_MINDSPEED_GDN is None:
+            _ORIGINAL_MINDSPEED_GDN = mindspeed_gdn
+        _apply_gdn_patch(MindSpeedPatchesManager, patch, _mindspeed_gdn_with_safe_varlen)
+        logger.info(
+            'Using MindSpeed chunk_gated_delta_rule with safe varlen fallback for Megatron GDN on Ascend arch35.')
+        return
 
     fla_error = None
     if (patch is not None and patch.orig_func is not None and patch.orig_func.__module__.startswith('fla.')):
@@ -82,7 +193,7 @@ def _patch_mindspeed_fla_gdn_implementation(MindSpeedPatchesManager) -> None:
 
 
 def patch_mindspeed_fla_gdn_implementation() -> None:
-    """Best-effort preference for upstream FLA while preserving the current GDN implementation."""
+    """Use torch GDN without FLA, MindSpeed GDN on arch35, and upstream FLA elsewhere."""
     from mindspeed.patch_utils import MindSpeedPatchesManager
 
     try:
@@ -131,3 +242,72 @@ def patch_mindspeed_te_cp_implementation(megatron_args: dict[str, Any]) -> None:
         megatron_args.get('context_parallel_size', 1),
         cp_algo,
     )
+
+
+def patch_mindspeed_te_layernorm_linear_frozen_weight() -> None:
+    """Route frozen MindSpeed TE LayerNormLinear weights through Megatron's frozen-weight path."""
+    try:
+        ms_te_layernorm_linear = importlib.import_module('mindspeed.te.pytorch.module.layernorm_column_parallel_linear')
+        from megatron.core.tensor_parallel.layers import linear_with_frozen_weight
+    except ImportError as e:
+        logger.warning('Failed to import MindSpeed TE LayerNormLinear modules: %s', e)
+        return
+
+    linear_impl_name = 'linear_with_grad_accumulation_and_async_allreduce'
+    trainable_weight_impl = getattr(ms_te_layernorm_linear, linear_impl_name, None)
+    if trainable_weight_impl is None:
+        logger.warning('MindSpeed TE LayerNormLinear does not expose %s; skip frozen-weight patch.', linear_impl_name)
+        return
+    if getattr(trainable_weight_impl, '_swift_supports_frozen_weight', False):
+        return
+
+    @wraps(trainable_weight_impl)
+    def linear_with_frozen_weight_dispatch(
+        input,
+        weight,
+        bias,
+        gradient_accumulation_fusion,
+        allreduce_dgrad,
+        sequence_parallel,
+        grad_output_buffer=None,
+        wgrad_deferral_limit=0,
+        async_grad_allreduce=None,
+        tp_group=None,
+    ):
+        if weight.requires_grad:
+            return trainable_weight_impl(
+                input=input,
+                weight=weight,
+                bias=bias,
+                gradient_accumulation_fusion=gradient_accumulation_fusion,
+                allreduce_dgrad=allreduce_dgrad,
+                sequence_parallel=sequence_parallel,
+                grad_output_buffer=grad_output_buffer,
+                wgrad_deferral_limit=wgrad_deferral_limit,
+                async_grad_allreduce=async_grad_allreduce,
+                tp_group=tp_group,
+            )
+        return linear_with_frozen_weight(
+            input=input,
+            weight=weight,
+            bias=bias,
+            gradient_accumulation_fusion=gradient_accumulation_fusion,
+            allreduce_dgrad=allreduce_dgrad,
+            sequence_parallel=sequence_parallel,
+            async_grad_allreduce=async_grad_allreduce,
+            tp_group=tp_group,
+        )
+
+    linear_with_frozen_weight_dispatch._swift_supports_frozen_weight = True
+    setattr(ms_te_layernorm_linear, linear_impl_name, linear_with_frozen_weight_dispatch)
+    logger.info('Patched MindSpeed TE LayerNormLinear to use Megatron frozen-weight backward for frozen weights.')
+
+
+def apply_mindspeed_patches(megatron_args: dict[str, Any]) -> None:
+    """Apply MindSpeed compatibility patches around its runtime repatch in the required order."""
+    from mindspeed.megatron_adaptor import repatch
+
+    patch_mindspeed_te_cp_implementation(megatron_args)
+    repatch(megatron_args)
+    patch_mindspeed_te_layernorm_linear_frozen_weight()
+    patch_mindspeed_fla_gdn_implementation()
