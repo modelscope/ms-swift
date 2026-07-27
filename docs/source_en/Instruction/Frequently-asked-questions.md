@@ -20,7 +20,7 @@ For more instructions, please search for the corresponding parameters in [Comman
 File "/your_workspace/ms-swift/swift/1lm/dataset/preprocessor/core.py", line 69, in _check_messages raise
 ValueError(f'assistant_message; {assistant_message}')
 ValueError: assistant_message: {'role' :'assistant', 'content': ''}
-``` 
+```
 If it's for inference, you can simply delete the empty assistant message.
 
 ### Q3: Issues related to loading datasets from the cache
@@ -61,7 +61,7 @@ docker pull modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/mode
 docker run --gpus all -p 8000:8000 -dit --name ms modelscope-registry.cn-hangzhou.cr.aliyuncs.com/modelscope-repo/modelscope:ubuntu22.04-cuda13.0.3-py312-torch2.11.0-vllm0.23.0-modelscope1.38.1-swift4.4.1 /bin/bash
 # Enter the container
 docker exec -it ms /bin/bash
-``` 
+```
 After starting the container, pull the latest SWIFT code and install it.
 
 ### Q2: What models does SWIFT support? How do I download models? How do I set the model storage path?
@@ -152,7 +152,7 @@ The value corresponding to `--loss_type` is the key corresponding to the custom 
 - Sequence parallel can be used simultaneously with the Liger kernel.
 - When custom loss functions are ineffective under sequence parallel, it may be because sequence parallel uses its own loss function. You can modify [per_token_loss_func_sp](https://github.com/modelscope/ms-swift/blob/main/swift/trainers/utils.py) as needed.
 
-### Q17: Expanding the Vocabulary 
+### Q17: Expanding the Vocabulary
 Expanding the vocabulary using the SWIFT framework requires setting the command-line argument `--new_special_tokens <path/to/tokens.txt>` in conjunction with `--modules_to_save embed_tokens lm_head` to unfreeze the corresponding parameters for training. See [Example](https://github.com/modelscope/ms-swift/tree/main/examples/train/new_special_tokens) for details.
 
 ### Q18: Tuners Related Issues
@@ -167,7 +167,7 @@ Expanding the vocabulary using the SWIFT framework requires setting the command-
 
 ### Q20: Classification Training Related Issues
 - Requires setting `--num_labels` and `--problem_type`. Detailed explanations can be found in the [Command Line Parameters Documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
-- For the multi-label classification data format, see [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html). <br> 
+- For the multi-label classification data format, see [Custom Dataset](https://swift.readthedocs.io/en/latest/Customization/Custom-dataset.html). <br>
 Note: The label and message fields are at the same level in the dataset.
 
 ### Q21: Thinking Model Training
@@ -236,7 +236,7 @@ You can also specify specific LoRA replacement parameters using `--target_parame
 --finetune false                        # Mark as fine-tuning mode (instead of continuing training)
 --no_load_optim                         # Do not load optimizer state (optional)
 --no_load_rng                           # Do not restore random number state (optional)
-``` 
+```
 For LoRA breakpoint resume training, you need to additionally set `--mcore_adapter`. Otherwise, it's the same as full parameter training. See [Megatron-SWIFT command line parameter documentation](https://swift.readthedocs.io/en/latest/Megatron-SWIFT/Command-line-parameters.html) for details.
 - Megatron-SWIFT does not support QLoRA training.
 
@@ -248,7 +248,7 @@ For LoRA breakpoint resume training, you need to additionally set `--mcore_adapt
 ### Q33: Quantization Model Training Related Issues
 - QLoRA fine-tuning reference [example](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora).
 - Quantization methods such as GPTQ (int type) prevent parameters from participating in differentiation, thus full parameter fine-tuning is not possible. Only additional structures like LoRA can be attached for updates.
-- Merging models trained with QLoRA reference [QLoRA example](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora). 
+- Merging models trained with QLoRA reference [QLoRA example](https://github.com/modelscope/ms-swift/tree/main/examples/train/qlora).
 - Megatron-SWIFT does not support QLoRA training.
 
 ### Q34: Training of Some Special Models
@@ -281,13 +281,13 @@ No, it is not supported. liger does not instantiate logits, so it cannot obtain 
 ### Q40: Encountering errors related to gradient_accumulation_fusion, even installing APEX doesn't resolve the issue.
 ```shell
 RuntimeError: ColumnParallelLinear was called with gradient_accumulation_fusion set to True but the custom CUDA extension fused_weight_gradient_mlp_cuda module is not found. To use gradient_accumulation_fusion you must install APEX with --cpp_ext and --cuda_ext. For example: pip install --global-option="--cpp_ext" --global-option="--cuda_ext ." Note that the extension requires CUDA>=11. Otherwise, you must turn off gradient accumulation fusion.
-``` 
+```
 Disable gradient accumulation fusion by using `--gradient_accumulation_fusion false`.
 
 ### Q41: When fine-tuning VLM for several tasks simultaneously, how to configure it when the video sampling rules for different tasks are inconsistent?
 Search for `--interleave_prob` in the [Command Line Parameters documentation](https://swift.readthedocs.io/en/latest/Instruction/Command-line-parameters.html).
 
-### Q42: During multimodal packing pre-training, memory usage seems to increase slightly after each PyTorch allocator cache flushes since the last step, which can easily lead to OutOfMemoryError (OOM) with many steps. 
+### Q42: During multimodal packing pre-training, memory usage seems to increase slightly after each PyTorch allocator cache flushes since the last step, which can easily lead to OutOfMemoryError (OOM) with many steps.
 Add the environment variable `PYTORCH_CUDA_ALLOC_CONF='expandable_segments:True'` to reduce memory fragmentation.
 
 ### Q43: Can `--use_logits_to_keep` be used on large multimodal models?
@@ -313,7 +313,7 @@ TypeError: __init__() got an unexpected keyword argument 'corda_config'
 ```
 This is caused by a mismatch between the Peft versions of the training and merging ends. The merging end needs to upgrade Peft to the same (or higher) version as the training end.
 
-### Q48: safetensors_rust.SafetensorError: Error while deserializing header: HeaderTooLarge 
+### Q48: safetensors_rust.SafetensorError: Error while deserializing header: HeaderTooLarge
 Insufficient disk space; the model was not fully saved, and the weight data was truncated.
 
 ### Q49: AttributeError: module 'numpy' has no attribute 'object'
@@ -345,7 +345,7 @@ Swift supports inference via Python scripts, command line, and UI interfaces. Fo
 If infer_backend is transformers, set the command-line parameter `--max_batch_size 16`. Note that this parameter sets the batch size per card, not globally. Or refer to the [demo](https://github.com/modelscope/ms-swift/blob/main/examples/infer/demo.py).
 
 ### Q4: How to set up streaming inference in SWIFT?
-Use `--stream true`. The inference results will be written to a JSONL file line by line. <br> 
+Use `--stream true`. The inference results will be written to a JSONL file line by line. <br>
 Note:
 - Streaming inference does not support DDP.
 
@@ -376,9 +376,9 @@ Set the command-line argument `--max_pixels xxx`, the environment variable `MAX_
 
 ### Q12: How to output the probability value logprobs parameter in SWIFT inference?
 Command line inference setting: `--logprobs true`; Python script inference setting:
-```shell 
+```shell
 request_config = RequestConfig(..., logprobs=True, top_logprobs=2)
-``` 
+```
 See [test_logprobs.py](https://github.com/modelscope/ms-swift/blob/main/tests/infer/test_logprobs.py) for details.
 
 ### Q13: How to output last_hidden_state in SWIFT inference?
@@ -405,16 +405,16 @@ This [script](https://github.com/modelscope/ms-swift/blob/main/examples/train/rf
 - Swift is compatible with different versions of qwen-vl-utils; switching this dependency version is not required when using qwen2.5-vl and qwen3-vl models.
 
 ### Q20: safetensors_rust.SafetensorError: Error while deserializing header:MetadataIncompleteBuffer
-Model weights are corrupted. 
+Model weights are corrupted.
 
 ### Q21: vLLM error message:
 ```shell
 ValueError: the decoder prompt contains a(n) video item with length 16758, which exceeds the pre-allocated encoder cache size 16384. Please reduce the input size or increase the encoder cache size by setting --limit-mm-per-prompt at startup.
-``` 
+```
 This is usually caused by an excessively long multimodal input, exceeding the pre-allocated encoder cache size of vLLM. The encoder cache size can be adjusted using `--limit_mm_per_prompt`; another possible solution is to pass the following in the Swift CLI:
 ```shell
 --vllm_engine_kwargs '{"max_num_batched_tokens": 20000}'
-``` 
+```
 This increases `max_num_batched_tokens`, indirectly affecting the encoder cache size allocation.
 
 ## Export
@@ -473,8 +473,8 @@ If you need to disable thinking, currently you can only disable thinking when sw
 ### Q9: How to output multiple results at one time?
 Pass in the parameter `n` in `RequestConfig`, as shown below:
 ```shell
-response = client.infer([request], request_config=RequestConfig( 
-    n=3,              # Generate 3 items 
+response = client.infer([request], request_config=RequestConfig(
+    n=3,              # Generate 3 items
     temperature=0.8,  # Needs randomness to produce different results
 ))
 # response contains 3 different answers
@@ -527,7 +527,7 @@ Currently, only native visualization is supported. Other backends are not yet su
 ### Q8: Ifeval evaluation error:
 ```shell
 [Errno 20] Not a directory: '/root/nltk_data/tokenizers/punkt_tab.zip/punkt_tab/english/collocations.tab'
-``` 
+```
 You need to unzip `unzip /path/to/nltk_data/tokenizers/punkt_tab.zip`.
 
 ### Q9: How do I specify the offline dataset path for eval_backend='OpenCompass'?
