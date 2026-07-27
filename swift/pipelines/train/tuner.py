@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
+import re
 import torch
 import transformers
 from packaging import version
@@ -250,10 +251,13 @@ def prepare_adapter(args: SftArguments, model, *, template=None, train_dataset=N
     elif args.tuner_type == 'adapter':
         model_arch = model.model_meta.model_arch
         mlp_key = model_arch.mlp
-        mlp_key = mlp_key.split('.{}.')[1]
+        # Match the full module path (scoped to the language model) rather than the bare
+        # `mlp` suffix. Otherwise vision-tower MLPs (e.g. `visual.blocks.*.mlp`) would also
+        # be matched, causing a hidden_size mismatch on multimodal models.
+        target_modules = re.escape(mlp_key).replace(re.escape('{}'), r'\d+')
         adapter_config = AdapterConfig(
-            dim=model.config.hidden_size,
-            target_modules=[mlp_key],
+            dim=model.config.get_text_config().hidden_size,
+            target_modules=target_modules,
             hidden_pos=0,
             adapter_length=args.adapter_length,
             act_layer=args.adapter_act)
