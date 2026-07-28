@@ -22,6 +22,7 @@ from dataclasses import asdict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from transformers import AutoConfig
+from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
@@ -376,6 +377,10 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
         if args.rlhf_type == 'gkd' and args.lmbda == 0:
             return
+
+        if is_torch_npu_available():
+            from swift.model.npu_patch.vllm_ascend import validate_vllm_ascend_megatron_lora_training
+            validate_vllm_ascend_megatron_lora_training(self.unwrapped_models, args)
 
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
