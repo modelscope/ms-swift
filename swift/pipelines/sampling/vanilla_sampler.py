@@ -38,7 +38,7 @@ class VanillaSampler(Sampler):
         self.infer_engine = None
         if _Engine:
             self.infer_engine = _Engine(
-                self.args.model, model_type=self.args.model_type, template=self.template, 
+                self.args.model, model_type=self.args.model_type, template=self.template,
                 torch_dtype=self.args.torch_dtype, **self.args.engine_kwargs)
             self.infer_engine.strict = False
 
