@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import ast
 import datasets
+import json
 import numpy as np
 import os
 from collections import Counter
@@ -12,7 +13,7 @@ from datasets import Sequence, Value
 from itertools import chain
 from modelscope.hub.utils.utils import get_cache_dir
 from packaging import version
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from swift.template import history_to_messages
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
@@ -449,6 +450,7 @@ class MessagesPreprocessor(RowPreprocessor):
             repair_messages: Callable[[Union[str, List[Dict[str, str]]]],
                                       Optional[List[Dict[str, str]]]] = default_repair_messages,
             inner_key: Optional[str] = None,
+            message_format: Literal['auto', 'swift', 'openai', 'anthropic'] = 'auto',
             **kwargs):
         super().__init__(columns=columns, **kwargs)
         self.role_keys = ['role', 'from'] if role_key is None else [role_key]
@@ -461,6 +463,7 @@ class MessagesPreprocessor(RowPreprocessor):
         self.system_role = system_role
         self.repair_messages = repair_messages
         self.inner_key = inner_key
+        self.message_format = message_format
 
         message_keys = ['messages', 'conversation', 'conversations']
         for key in message_keys:
@@ -508,6 +511,112 @@ class MessagesPreprocessor(RowPreprocessor):
                 message['role'] = 'tool_response'
 
     @staticmethod
+    def _parse_arguments(arguments: Any) -> Any:
+        if not isinstance(arguments, str):
+            return arguments
+        try:
+            return json.loads(arguments)
+        except json.JSONDecodeError:
+            return arguments
+
+    @classmethod
+    def openai_to_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert OpenAI tool-call messages to the SWIFT canonical roles."""
+        new_messages = []
+        for message in messages:
+            if message.get('role') != 'assistant' or not message.get('tool_calls'):
+                new_messages.append(message)
+                continue
+
+            content = message.get('content')
+            if content:
+                new_messages.append({
+                    key: value
+                    for key, value in message.items() if key in {'role', 'content', 'loss', 'loss_scale'}
+                })
+            for tool_call in message['tool_calls']:
+                function = tool_call.get('function', tool_call)
+                tool_message = {
+                    'role': 'tool_call',
+                    'content': {
+                        'name': function['name'],
+                        'arguments': cls._parse_arguments(function.get('arguments', {})),
+                    },
+                }
+                for key in ['loss', 'loss_scale']:
+                    if key in message:
+                        tool_message[key] = message[key]
+                new_messages.append(tool_message)
+        return new_messages
+
+    @staticmethod
+    def _anthropic_block_content(content: Any) -> Any:
+        if not isinstance(content, list):
+            return content
+        text = ''.join(block.get('text', '') for block in content if block.get('type') == 'text')
+        return text
+
+    @classmethod
+    def anthropic_to_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Convert Anthropic content blocks to the SWIFT canonical roles."""
+        new_messages = []
+        for message in messages:
+            content = message.get('content')
+            if not isinstance(content, list):
+                new_messages.append(message)
+                continue
+
+            pending_text = []
+            message_metadata = {key: message[key] for key in ['loss', 'loss_scale'] if key in message}
+
+            def flush_text():
+                if pending_text:
+                    new_messages.append({'role': message['role'], 'content': ''.join(pending_text), **message_metadata})
+                    pending_text.clear()
+
+            for block in content:
+                block_type = block.get('type')
+                if block_type == 'text':
+                    pending_text.append(block.get('text', ''))
+                elif block_type == 'tool_use':
+                    flush_text()
+                    new_messages.append({
+                        'role': 'tool_call',
+                        'content': {
+                            'name': block['name'],
+                            'arguments': block.get('input', {}),
+                        },
+                        **message_metadata,
+                    })
+                elif block_type == 'tool_result':
+                    flush_text()
+                    new_messages.append({
+                        'role': 'tool_response',
+                        'content': cls._anthropic_block_content(block.get('content', '')),
+                        **message_metadata,
+                    })
+            flush_text()
+        return new_messages
+
+    def normalize_provider_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        message_format = self.message_format
+        if message_format == 'auto':
+            if any(message.get('tool_calls') for message in messages):
+                message_format = 'openai'
+            elif any(
+                    isinstance(message.get('content'), list) and any(
+                        block.get('type') in {'tool_use', 'tool_result'} for block in message['content'])
+                    for message in messages):
+                message_format = 'anthropic'
+            else:
+                message_format = 'swift'
+        if message_format == 'openai':
+            return self.openai_to_messages(messages)
+        if message_format == 'anthropic':
+            return self.anthropic_to_messages(messages)
+        return messages
+
+    @staticmethod
     def _to_std_key(messages: List[Dict[str, str]], std_key: str, optional_keys: List[str]) -> None:
         for message in messages:
             for key in optional_keys:
@@ -524,6 +633,7 @@ class MessagesPreprocessor(RowPreprocessor):
         messages: Optional[List[Dict[str, str]]] = self.repair_messages(messages)
         if not messages or isinstance(messages, str):
             return
+        messages = self.normalize_provider_messages(messages)
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)
         system = row.pop('system', None)
@@ -533,6 +643,18 @@ class MessagesPreprocessor(RowPreprocessor):
             self.to_std_messages(messages, system)  # inplace
         row['messages'] = messages
         return row
+
+
+class OpenAIMessagesPreprocessor(MessagesPreprocessor):
+
+    def __init__(self, **kwargs):
+        super().__init__(message_format='openai', **kwargs)
+
+
+class AnthropicMessagesPreprocessor(MessagesPreprocessor):
+
+    def __init__(self, **kwargs):
+        super().__init__(message_format='anthropic', **kwargs)
 
 
 class ClsPreprocessor(ResponsePreprocessor):

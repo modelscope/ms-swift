@@ -6,8 +6,8 @@ from . import dataset
 from .loader import DATASET_TYPE, DatasetLoader, DatasetSyntax, load_dataset
 from .media import MediaResource
 from .packing import IterablePackingDataset, PackingDataset
-from .preprocessor import (AlpacaPreprocessor, AutoPreprocessor, MessagesPreprocessor, ResponsePreprocessor,
-                           RowPreprocessor)
+from .preprocessor import (AlpacaPreprocessor, AnthropicMessagesPreprocessor, AutoPreprocessor, MessagesPreprocessor,
+                           OpenAIMessagesPreprocessor, ResponsePreprocessor, RowPreprocessor)
 from .register import (DATASET_MAPPING, DatasetMeta, SubsetDataset, get_dataset_list, register_dataset,
                        register_dataset_info)
 from .utils import (AddLengthPreprocessor, EncodePreprocessor, LazyLLMDataset, get_temporary_cache_files_directory,

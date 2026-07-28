@@ -1,6 +1,7 @@
 import unittest
 
-from swift.dataset import EncodePreprocessor, MessagesPreprocessor, PackingDataset, load_dataset
+from swift.dataset import (AnthropicMessagesPreprocessor, EncodePreprocessor, MessagesPreprocessor,
+                           OpenAIMessagesPreprocessor, PackingDataset, load_dataset)
 from swift.model import get_processor
 from swift.template import get_template
 
@@ -122,10 +123,14 @@ class TestDataPreprocess(unittest.TestCase):
                 },
             ]
         }
+        tool_row = OpenAIMessagesPreprocessor().preprocess(tool_row)
         encoded = self.template.encode(tool_row, return_length=True)
         self.assertIn('input_ids', encoded)
         self.assertIn('labels', encoded)
         self.assertGreater(len(encoded['input_ids']), 0)
+        supervised_ids = [token_id for token_id, label in zip(encoded['input_ids'], encoded['labels']) if label != -100]
+        supervised_text = self.processor.decode(supervised_ids)
+        self.assertIn('get_weather', supervised_text)
 
     def test_packing_dataset(self):
         dataset, _ = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#20'], num_proc=1, strict=False)
@@ -201,6 +206,116 @@ class TestRejectedMessagesPreprocess(unittest.TestCase):
         }
         result = MessagesPreprocessor().preprocess(row)
         self.assertEqual(result['rejected_messages'][-1]['content'], 'bad')
+
+
+class TestProviderMessagesPreprocess(unittest.TestCase):
+
+    def test_openai_parallel_tool_calls(self):
+        row = {
+            'messages': [{
+                'role':
+                'assistant',
+                'content':
+                '',
+                'tool_calls': [{
+                    'id': 'call_weather',
+                    'type': 'function',
+                    'function': {
+                        'name': 'get_weather',
+                        'arguments': '{"city": "Beijing"}'
+                    },
+                }, {
+                    'id': 'call_time',
+                    'type': 'function',
+                    'function': {
+                        'name': 'get_time',
+                        'arguments': '{"timezone": "Asia/Shanghai"}'
+                    },
+                }],
+                'loss':
+                True,
+            }, {
+                'role': 'tool',
+                'tool_call_id': 'call_weather',
+                'content': 'sunny',
+            }]
+        }
+        result = OpenAIMessagesPreprocessor().preprocess(row)
+        self.assertEqual([message['role'] for message in result['messages']], ['tool_call', 'tool_call', 'tool'])
+        self.assertEqual(result['messages'][0]['content'], {'name': 'get_weather', 'arguments': {'city': 'Beijing'}})
+        self.assertTrue(result['messages'][0]['loss'])
+
+    def test_openai_is_auto_detected(self):
+        row = {
+            'messages': [{
+                'role': 'assistant',
+                'content': None,
+                'tool_calls': [{
+                    'function': {
+                        'name': 'search',
+                        'arguments': {
+                            'query': 'ms-swift'
+                        }
+                    }
+                }],
+            }]
+        }
+        result = MessagesPreprocessor().preprocess(row)
+        self.assertEqual(result['messages'], [{
+            'role': 'tool_call',
+            'content': {
+                'name': 'search',
+                'arguments': {
+                    'query': 'ms-swift'
+                }
+            },
+        }])
+
+    def test_anthropic_content_blocks(self):
+        row = {
+            'messages': [{
+                'role':
+                'assistant',
+                'content': [{
+                    'type': 'text',
+                    'text': 'I will check.'
+                }, {
+                    'type': 'tool_use',
+                    'id': 'toolu_weather',
+                    'name': 'get_weather',
+                    'input': {
+                        'city': 'Beijing'
+                    },
+                }],
+            }, {
+                'role':
+                'user',
+                'content': [{
+                    'type': 'tool_result',
+                    'tool_use_id': 'toolu_weather',
+                    'content': [{
+                        'type': 'text',
+                        'text': 'sunny'
+                    }],
+                }],
+            }]
+        }
+        result = AnthropicMessagesPreprocessor().preprocess(row)
+        self.assertEqual(result['messages'], [{
+            'role': 'assistant',
+            'content': 'I will check.'
+        }, {
+            'role': 'tool_call',
+            'content': {
+                'name': 'get_weather',
+                'arguments': {
+                    'city': 'Beijing'
+                }
+            },
+        }, {
+            'role': 'tool_response',
+            'content': 'sunny'
+        }])
 
 
 if __name__ == '__main__':
