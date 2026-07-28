@@ -37,8 +37,14 @@ class SwiftRLHF(SwiftSft):
             if task_type == 'seq_cls' and num_labels is None:
                 num_labels = 1
         else:
-            from transformers import AutoConfig
-            model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+            from transformers import AutoConfig, PretrainedConfig
+            try:
+                model_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
+            except Exception:
+                # Some custom model_types (e.g. qwen3_asr) are registered into transformers
+                # only when the corresponding ModelLoader imports its plugin package,
+                # which happens later; fall back to the raw config dict here.
+                model_config = PretrainedConfig.from_dict(PretrainedConfig.get_config_dict(model_dir)[0])
             if hasattr(model_config, 'architectures') and model_config.architectures:
                 if any('sequenceclassification' in arch.lower() for arch in model_config.architectures):
                     task_type = 'seq_cls'
