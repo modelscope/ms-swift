@@ -1,7 +1,8 @@
 import os
+from typing import Union
+
 from transformers import FeatureExtractionMixin, PreTrainedTokenizerBase
 from transformers import ProcessorMixin as HfProcessorMixin
-from typing import Union
 
 try:
     from transformers import BaseImageProcessor

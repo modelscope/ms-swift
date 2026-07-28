@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 from functools import wraps
-from transformers import PreTrainedModel
 from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import git_clone_github, safe_snapshot_download
+from transformers import PreTrainedModel
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -25,8 +25,9 @@ class ValleyLoader(ModelLoader):
         return super().get_config(model_dir)
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers.modeling_outputs import CausalLMOutputWithPast
         from valley_eagle.model.language_model.valley_qwen2 import ValleyQwen2ForCausalLM
+
+        from transformers.modeling_outputs import CausalLMOutputWithPast
         config.mm_vision_tower = safe_snapshot_download('AI-ModelScope/siglip-so400m-patch14-384', check_local=True)
         config.eagle_vision_tower = safe_snapshot_download('Qwen/Qwen2-VL-7B-Instruct', check_local=True)
         auto_model_cls = ValleyQwen2ForCausalLM

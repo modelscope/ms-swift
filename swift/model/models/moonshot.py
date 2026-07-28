@@ -1,8 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from transformers import PreTrainedModel
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
+import logging
 
 from swift.template import TemplateType
+from transformers import PreTrainedModel
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -54,4 +55,32 @@ register_model(
         model_arch=ModelArch.kimi_k25,
         architectures=['KimiK25ForConditionalGeneration'],
         requires=['transformers>=4.57.1,<5.0.0'],
+    ))
+
+
+class KimiK3Loader(ModelLoader):
+
+    def get_processor(self, model_dir: str, config):
+        processor = super().get_processor(model_dir, config)
+        # The remote-code tokenizer (tokenization_kimi.py) warns on every
+        # `encode(..., add_special_tokens=False)` call, which spams streaming
+        # inference; silence that logger.
+        tokenizer = self._get_tokenizer(processor)
+        logging.getLogger(type(tokenizer).__module__).setLevel(logging.ERROR)
+        return processor
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.kimi_k3,
+        [ModelGroup([
+            Model('moonshotai/Kimi-K3', 'moonshotai/Kimi-K3'),
+        ])],
+        KimiK3Loader,
+        template=TemplateType.kimi_k3,
+        # Same module layout as Kimi-K2.5: language_model / mm_projector / vision_tower.
+        model_arch=ModelArch.kimi_k25,
+        architectures=['KimiK3ForConditionalGeneration'],
+        requires=['transformers>=5', 'tiktoken'],
+        tags=['vision'],
     ))

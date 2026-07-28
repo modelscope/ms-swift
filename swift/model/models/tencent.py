@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
-from transformers import PreTrainedModel
-
 from swift.template import TemplateType
+from transformers import PreTrainedModel
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

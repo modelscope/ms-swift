@@ -6,8 +6,8 @@ import torch
 from dataclasses import asdict, dataclass, field
 from functools import reduce
 from packaging import version
-from transformers import Trainer as HfTrainer
 
+from transformers import Trainer as HfTrainer
 from .lora_layers import *  # noqa
 from .utils import SwiftAdapter, SwiftConfig, SwiftOutput, set_adapter
 

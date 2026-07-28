@@ -7,11 +7,6 @@ import torch.nn.functional as F
 from importlib import import_module
 from packaging import version
 from PIL import Image
-from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
-                          PreTrainedTokenizerBase)
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
-from transformers.models.auto.tokenization_auto import get_tokenizer_config
-from transformers.utils.versions import require_version
 from types import MethodType
 from typing import Optional, Tuple, Type, Union
 
@@ -19,6 +14,11 @@ from swift.sequence_parallel import sequence_parallel
 from swift.template import TemplateType
 from swift.utils import (Processor, get_cu_seqlens_from_position_ids, get_device_count, get_dist_setting, get_env_args,
                          get_logger, is_deepspeed_enabled, safe_snapshot_download, to_device)
+from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
+from transformers.models.auto.tokenization_auto import get_tokenizer_config
+from transformers.utils.versions import require_version
 from ..constant import LLMModelType, MLLMModelType, RMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -1541,6 +1541,7 @@ class Qwen2_5OmniLoader(ModelLoader):
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         from qwen_omni_utils import vision_process
+
         from transformers import Qwen2_5OmniProcessor
         processor = Qwen2_5OmniProcessor.from_pretrained(model_dir, trust_remote_code=True)
         global_vars = patch_qwen_vl_utils(vision_process)
@@ -1751,6 +1752,7 @@ class Qwen3OmniLoader(ModelLoader):
 
     def get_processor(self, model_dir: str, config: PretrainedConfig) -> Processor:
         from qwen_omni_utils import vision_process
+
         from transformers import Qwen3OmniMoeProcessor
         processor = Qwen3OmniMoeProcessor.from_pretrained(model_dir, trust_remote_code=True)
         config.thinker_config.audio_token_id = processor.tokenizer.encode('<|audio_pad|>')[0]
@@ -1870,6 +1872,7 @@ class Qwen3TTSLoader(ModelLoader):
 
     def get_config(self, model_dir: str):
         from qwen_tts.core.models import Qwen3TTSConfig, Qwen3TTSForConditionalGeneration, Qwen3TTSProcessor
+
         from transformers import AutoProcessor
         AutoConfig.register('qwen3_tts', Qwen3TTSConfig)
         AutoModel.register(Qwen3TTSConfig, Qwen3TTSForConditionalGeneration)

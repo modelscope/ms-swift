@@ -11,13 +11,13 @@ from modelscope.hub.api import HubApi
 from peft import PeftModel
 from torch import nn
 from torch.nn import CrossEntropyLoss, Module
-from transformers import PreTrainedModel
 from types import FunctionType, MethodType
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from swift.model import ModelMeta
 from swift.sequence_parallel import ChunkedCrossEntropyLoss, GatherLoss, sequence_parallel
 from swift.utils import deep_getattr, get_dist_setting, get_logger
+from transformers import PreTrainedModel
 
 if TYPE_CHECKING:
     from .arguments import TrainingArguments
@@ -371,6 +371,7 @@ def get_resume_dir(output_dir):
 def replace_index_file(output_dir: str):
     import json
     import os
+
     from transformers.utils import SAFE_WEIGHTS_INDEX_NAME, WEIGHTS_INDEX_NAME
     index_file = os.path.join(output_dir, WEIGHTS_INDEX_NAME)
 

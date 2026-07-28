@@ -2,9 +2,9 @@
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from transformers import PreTrainedTokenizerBase
 from typing import List, Optional, Type, Union
 
+from transformers import PreTrainedTokenizerBase
 from .base import Template
 from .utils import Prompt, Word
 
