@@ -49,7 +49,7 @@
 <img src="asset/discord_qr.jpg" width="200" height="200">  |  <img src="asset/wechat.png" width="200" height="200">
 
 ## 📝 简介
-🍲 **ms-swift**是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持600+纯文本大模型与400+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen3、Qwen3.5、InternLM3、GLM4.5、Mistral、DeepSeek-R1、Llama4等模型，多模态大模型包括：Qwen3-VL、Qwen3-Omni、Llava、InternVL3.5、MiniCPM-V-4、Ovis2.5、GLM4.5-V、DeepSeek-VL2等模型。
+🍲 **ms-swift**是魔搭社区提供的大模型与多模态大模型微调部署框架，现已支持600+纯文本大模型与400+多模态大模型的训练（预训练、微调、人类对齐）、推理、评测、量化与部署。其中大模型包括：Qwen3、Qwen3.5、InternLM3、GLM4.5、Mistral、DeepSeek-R1、Llama4等模型，多模态大模型包括：Qwen3-VL、Qwen3-Omni、Kimi-K3、Llava、InternVL3.5、MiniCPM-V-4、Ovis2.5、GLM4.5-V、DeepSeek-VL2等模型。
 
 🍔 除此之外，ms-swift汇集了最新的训练技术，包括集成Megatron并行技术，包括TP、PP、CP、EP等为训练提供加速，以及众多GRPO算法族强化学习的算法，包括：GRPO、DAPO、GSPO、SAPO、CISPO、RLOO、Reinforce++等提升模型智能。ms-swift支持广泛的训练任务，包括DPO、KTO、RM、CPO、SimPO、ORPO等偏好学习算法，以及Embedding、Reranker、序列分类任务。ms-swift提供了大模型训练全链路的支持，包括使用vLLM、SGLang和LMDeploy对推理、评测、部署模块提供加速，以及使用GPTQ、AWQ、BNB、FP8技术对大模型进行量化。
 
@@ -73,6 +73,7 @@
 - **模型量化**：支持AWQ、GPTQ、FP8和BNB的量化导出，导出的模型支持使用vLLM/SGLang/LmDeploy推理加速。
 
 ## 🎉 新闻
+- 🎁 2026.07.22: 支持moonshotai多模态模型[Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3)的推理，包含XTML对话模板、思考通道（`reasoning_effort`）与工具调用（`--agent_template kimi_k3`）。
 - 🎁 2026.06.10: Megatron-Ray支持GRPO和GKD训练，查看[文档](docs/source/Instruction/Ray.md)和[示例](examples/ray)。
 - 🎁 2026.03.03: **ms-swift v4.0**大版本正式发布，release note参考[这里](https://github.com/modelscope/ms-swift/releases/tag/v4.0.0)，您的建议可以在[这个issue](https://github.com/modelscope/ms-swift/issues/7250)中反馈给我们，感谢您的支持。
 - 🎁 2025.11.14: Megatron GRPO现已支持！查看[文档](./docs/source/Megatron-SWIFT/GRPO.md)和[示例](examples/megatron/grpo)。
