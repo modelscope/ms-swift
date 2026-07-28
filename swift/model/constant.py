@@ -101,6 +101,7 @@ class LLMModelType:
     dbrx = 'dbrx'
     grok = 'grok'
     mamba = 'mamba'
+    nemotron_h = 'nemotron_h'
     polylm = 'polylm'
     aya = 'aya'
     mimo = 'mimo'
