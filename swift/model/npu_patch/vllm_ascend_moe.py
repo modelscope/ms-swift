@@ -127,9 +127,81 @@ def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
     adaptor_cls.npu_moe_init_routing = staticmethod(patched_npu_moe_init_routing)
 
 
+def _patch_vllm_ascend_moe_sleep_layout(worker_cls=None) -> None:
+    """Keep processed MoE parameters in their runtime layout after wake-up.
+
+    vLLM-Ascend 0.18 transposes unquantized ``w13_weight``/``w2_weight``
+    parameters in ``NPUWorker.wake_up``.  This prepares the parameters for a
+    checkpoint-format full-weight reload, but corrupts inference when the
+    caller only reloads a LoRA adapter: untouched routed-expert weights remain
+    in the checkpoint layout and grouped matmul observes a hidden-size
+    mismatch.
+
+    The allocator restores the original parameter storage before that
+    transpose.  Preserve and reinstall those original Parameters so sleep/wake
+    itself is layout-neutral.  SWIFT's full-weight sync already handles both
+    processed and preprocessed expert layouts explicitly.
+    """
+    if worker_cls is None:
+        try:
+            from vllm_ascend.worker.worker import NPUWorker
+        except (ImportError, AttributeError):
+            return
+        worker_cls = NPUWorker
+
+    origin_wake_up = getattr(worker_cls, 'wake_up', None)
+    if origin_wake_up is None or getattr(origin_wake_up, '_swift_moe_sleep_layout_patched', False):
+        return
+
+    try:
+        origin_source = inspect.getsource(origin_wake_up)
+    except (OSError, TypeError):
+        return
+    layout_rewrite_tokens = ('w2_weight', 'w13_weight', 'transpose(1, 2)', 'setattr(parent_module, param_name')
+    if not all(token in origin_source for token in layout_rewrite_tokens):
+        return
+
+    def wake_up(self, tags=None):
+        restore_weights = tags is None or 'weights' in tags
+        model = self.model_runner.model
+        saved_moe_parameters = {}
+        if restore_weights:
+            saved_moe_parameters = {
+                name: param
+                for name, param in model.named_parameters() if 'w13_weight' in name or 'w2_weight' in name
+            }
+
+        result = origin_wake_up(self, tags=tags)
+
+        restored = 0
+        for name, original_param in saved_moe_parameters.items():
+            try:
+                current_param = model.get_parameter(name)
+            except AttributeError:
+                continue
+            expected_transposed_shape = (
+                original_param.shape[:-2] + (original_param.shape[-1], original_param.shape[-2]))
+            if current_param is original_param or current_param.shape != expected_transposed_shape:
+                continue
+            parts = name.split('.')
+            parent_module = model.get_submodule('.'.join(parts[:-1]))
+            setattr(parent_module, parts[-1], original_param)
+            restored += 1
+
+        if restored:
+            logger.warning_once(
+                f'Preserved the vLLM-Ascend runtime layout of {restored} FusedMoE parameters across sleep/wake.')
+        return result
+
+    wake_up._swift_origin = origin_wake_up
+    wake_up._swift_moe_sleep_layout_patched = True
+    worker_cls.wake_up = wake_up
+
+
 def patch_vllm_ascend_moe_runtime() -> None:
     """Apply MoE runtime patches that are independent of GRPO weight sync."""
     _patch_vllm_ascend_device_op_nonquant_routing()
+    _patch_vllm_ascend_moe_sleep_layout()
 
 
 def _is_qwen_moe_model(model) -> bool:
