@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
+from typing import Callable
 
 import torch
 import torch.nn.functional as F
