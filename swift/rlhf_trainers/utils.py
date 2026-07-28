@@ -2047,13 +2047,6 @@ def build_routed_experts_batch(
     Shared by all backends. Each ``sample`` is an :class:`OnPolicySample` carrying
     ``routed_experts`` (per-sample, seq-first) and ``encoded['length']``. Returns
     ``None`` when no sample provides routing (and mode is not ``R3``).
-
-    ``expected_lens`` carries the per-sample encode lengths captured *before*
-    ``template.data_collator`` ran. This matters under Megatron CP:
-    ``_handle_megatron_cp`` mutates each ``encoded`` in place, rounding
-    ``encoded['length']`` up to a multiple of ``cp_size * 2``, so reading it here
-    would compare vLLM's unpadded routing against a padded length. When omitted,
-    it falls back to ``encoded['length']``.
     """
     if not samples or all(getattr(s, 'routed_experts', None) is None for s in samples):
         return None
