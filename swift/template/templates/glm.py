@@ -240,7 +240,6 @@ class GLM4VTemplate(GLM4vPackingTemplateMixin, Template):
 
             video_fnames = inputs.videos
             import numpy as np
-
             from transformers.image_utils import load_image
             from transformers.video_utils import load_video
             video_metadata = []

@@ -5,10 +5,10 @@ import torch
 import torch.nn as nn
 from bisect import bisect_right
 from contextlib import contextmanager, nullcontext
-from typing import Callable, List, Optional, Tuple
-
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.trainer_utils import set_seed
+from typing import Callable, List, Optional, Tuple
+
 from .logger import get_logger
 from .utils import deep_getattr
 

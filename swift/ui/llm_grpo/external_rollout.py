@@ -8,11 +8,11 @@ import time
 from datetime import datetime
 from functools import partial
 from json import JSONDecodeError
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 from typing import Type
 
 from swift.arguments import RolloutArguments
 from swift.utils import get_device_count, get_logger
-from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 from ..base import BaseUI
 from ..llm_train import run_command_in_background_with_popen
 from .external_runtime import RolloutRuntime

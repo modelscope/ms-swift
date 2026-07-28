@@ -3,10 +3,10 @@ import torch.nn as nn
 import trl
 import warnings
 from packaging import version
+from transformers import PreTrainedModel
 from typing import Optional, Union
 
 from swift.trainers import SwiftMixin
-from transformers import PreTrainedModel
 from .rlhf_mixin import RLHFTrainerMixin
 
 if version.parse(trl.__version__) >= version.parse('0.26.0'):

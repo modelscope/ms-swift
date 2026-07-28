@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch.nn as nn
 from peft import PeftModel
+from transformers import Trainer as HfTrainer
 from typing import List, Optional, Tuple
 
 from swift.utils import get_logger
-from transformers import Trainer as HfTrainer
 from .base import OptimizerCallback
 
 logger = get_logger()

@@ -3,10 +3,10 @@ from dataclasses import fields
 from mcore_bridge import ModelConfig
 from mcore_bridge import get_mcore_model as _get_mcore_model
 from mcore_bridge import hf_to_mcore_config
+from transformers.utils import is_torch_npu_available
 from typing import Any, Generator, Optional, Tuple
 
 from swift.utils import get_logger
-from transformers.utils import is_torch_npu_available
 
 logger = get_logger()
 

@@ -21,6 +21,7 @@ from PIL import Image
 from pydantic import BaseModel, field_validator
 from torch import nn
 from torch.utils.data import DataLoader, RandomSampler
+from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Any, Dict, Iterable, List, Optional, Tuple, TypeVar, Union
 
@@ -30,7 +31,6 @@ from swift.tuners.lora import LoraConfig
 from swift.utils import (gc_collect, get_cu_seqlens_from_position_ids, get_logger, get_packed_seq_params,
                          get_torch_device, is_swanlab_available, is_vllm_available, is_wandb_available, swanlab_get_run,
                          synchronize, to_device)
-from transformers.utils import is_torch_npu_available
 
 if is_wandb_available():
     import wandb
@@ -310,7 +310,6 @@ def prepare_deepspeed(model, accelerator, deepspeed_config=None, deepspeed_plugi
         import os
         from accelerate.utils import DeepSpeedPlugin
         from copy import deepcopy
-
         from transformers.integrations.deepspeed import HfTrainerDeepSpeedConfig
     except ImportError:
         pass

@@ -88,7 +88,6 @@ class ResourcePool:
         import os
         import ray
         from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
         from transformers.utils import is_torch_npu_available
 
         @ray.remote(num_gpus=0.01, num_cpus=0.01)

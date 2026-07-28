@@ -2,10 +2,10 @@
 import torch
 from dataclasses import dataclass, field
 from PIL import Image
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from typing import Any, Dict, List, Literal, Optional
 
 from swift.utils import get_env_args
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType, RMTemplateType
 from ..register import TemplateMeta, register_template

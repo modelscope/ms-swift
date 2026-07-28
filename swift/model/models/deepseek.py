@@ -1,12 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 import torch
+from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from types import MethodType
 from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, git_clone_github
-from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
