@@ -132,6 +132,37 @@ class TestDataPreprocess(unittest.TestCase):
         supervised_text = self.processor.decode(supervised_ids)
         self.assertIn('get_weather', supervised_text)
 
+    def test_nested_tool_arguments(self):
+        tool_row = {
+            'messages': [{
+                'role': 'user',
+                'content': 'Compare the weather in Beijing and Shanghai.',
+            }, {
+                'role':
+                'assistant',
+                'content':
+                None,
+                'tool_calls': [{
+                    'type': 'function',
+                    'function': {
+                        'name': 'get_weather',
+                        'arguments': '{"cities":["Beijing","Shanghai"],"options":{"units":["celsius","fahrenheit"]}}',
+                    },
+                }],
+            }]
+        }
+        tool_row = OpenAIMessagesPreprocessor().preprocess(tool_row)
+        arguments = tool_row['messages'][-1]['content']['arguments']
+        self.assertEqual(arguments['cities'], ['Beijing', 'Shanghai'])
+        self.assertEqual(arguments['options'], {'units': ['celsius', 'fahrenheit']})
+
+        encoded = self.template.encode(tool_row)
+        supervised_ids = [token_id for token_id, label in zip(encoded['input_ids'], encoded['labels']) if label != -100]
+        supervised_text = self.processor.decode(supervised_ids)
+        self.assertIn('get_weather', supervised_text)
+        self.assertIn('Beijing', supervised_text)
+        self.assertIn('Shanghai', supervised_text)
+
     def test_packing_dataset(self):
         dataset, _ = load_dataset(['AI-ModelScope/alpaca-gpt4-data-zh#20'], num_proc=1, strict=False)
         encoded_dataset = self._encode_dataset(dataset)
