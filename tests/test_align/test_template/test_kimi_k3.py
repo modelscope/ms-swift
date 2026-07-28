@@ -74,8 +74,14 @@ def test_kimi_k3_multimodal_encode_align():
     # swift-style messages (inline <image> tag + inline <think> convention)
     swift_inputs = {
         'messages': [
-            {'role': 'user', 'content': '<image>What is in this image?'},
-            {'role': 'assistant', 'content': '<think>a solid color block</think>A solid color block.'},
+            {
+                'role': 'user',
+                'content': '<image>What is in this image?'
+            },
+            {
+                'role': 'assistant',
+                'content': '<think>a solid color block</think>A solid color block.'
+            },
         ],
         'images': [image],
     }
@@ -84,11 +90,24 @@ def test_kimi_k3_multimodal_encode_align():
 
     # official-style messages (content parts, reasoning_content channel)
     official_messages = [
-        {'role': 'user', 'content': [
-            {'type': 'image', 'image': image},
-            {'type': 'text', 'text': 'What is in this image?'},
-        ]},
-        {'role': 'assistant', 'reasoning_content': 'a solid color block', 'content': 'A solid color block.'},
+        {
+            'role': 'user',
+            'content': [
+                {
+                    'type': 'image',
+                    'image': image
+                },
+                {
+                    'type': 'text',
+                    'text': 'What is in this image?'
+                },
+            ]
+        },
+        {
+            'role': 'assistant',
+            'reasoning_content': 'a solid color block',
+            'content': 'A solid color block.'
+        },
     ]
     batch = _official_encode(processor, official_messages, add_generation_prompt=False)
     official_ids = _to_id_list(batch['input_ids'])
@@ -119,12 +138,14 @@ def test_kimi_k3_text_infer_align():
     encoded = template.encode(swift_inputs)
     swift_ids = _to_id_list(encoded['input_ids'])
 
-    official_ids = tokenizer.apply_chat_template(
-        [{'role': 'user', 'content': 'Tell me three random numbers.'}],
-        tokenize=True,
-        add_generation_prompt=True,
-        thinking=True,
-        thinking_effort=None)
+    official_ids = tokenizer.apply_chat_template([{
+        'role': 'user',
+        'content': 'Tell me three random numbers.'
+    }],
+                                                 tokenize=True,
+                                                 add_generation_prompt=True,
+                                                 thinking=True,
+                                                 thinking_effort=None)
     assert swift_ids == official_ids, \
         (f'infer mismatch\n swift   : {tokenizer.decode(swift_ids)}\n'
          f' official: {tokenizer.decode(official_ids)}')
@@ -137,24 +158,42 @@ def test_kimi_k3_text_multiturn_align():
 
     swift_inputs = {
         'messages': [
-            {'role': 'user', 'content': 'Tell me three random numbers.'},
-            {'role': 'assistant', 'content': '<think>473, 921, 235, 215, 222.</think>473, 921, 235'},
-            {'role': 'user', 'content': 'What are the other two?'},
+            {
+                'role': 'user',
+                'content': 'Tell me three random numbers.'
+            },
+            {
+                'role': 'assistant',
+                'content': '<think>473, 921, 235, 215, 222.</think>473, 921, 235'
+            },
+            {
+                'role': 'user',
+                'content': 'What are the other two?'
+            },
         ]
     }
     encoded = template.encode(swift_inputs)
     swift_ids = _to_id_list(encoded['input_ids'])
 
-    official_ids = tokenizer.apply_chat_template(
-        [
-            {'role': 'user', 'content': 'Tell me three random numbers.'},
-            {'role': 'assistant', 'reasoning_content': '473, 921, 235, 215, 222.', 'content': '473, 921, 235'},
-            {'role': 'user', 'content': 'What are the other two?'},
-        ],
-        tokenize=True,
-        add_generation_prompt=True,
-        thinking=True,
-        thinking_effort=None)
+    official_ids = tokenizer.apply_chat_template([
+        {
+            'role': 'user',
+            'content': 'Tell me three random numbers.'
+        },
+        {
+            'role': 'assistant',
+            'reasoning_content': '473, 921, 235, 215, 222.',
+            'content': '473, 921, 235'
+        },
+        {
+            'role': 'user',
+            'content': 'What are the other two?'
+        },
+    ],
+                                                 tokenize=True,
+                                                 add_generation_prompt=True,
+                                                 thinking=True,
+                                                 thinking_effort=None)
     assert swift_ids == official_ids, \
         (f'multi-turn mismatch\n swift   : {tokenizer.decode(swift_ids)}\n'
          f' official: {tokenizer.decode(official_ids)}')
@@ -166,26 +205,38 @@ def test_kimi_k3_thinking_effort_align():
     tokenizer = template.tokenizer
 
     swift_inputs = {
-        'messages': [{'role': 'user', 'content': 'Prove that sqrt(2) is irrational.'}],
-        'chat_template_kwargs': {'thinking_effort': 'high'},
+        'messages': [{
+            'role': 'user',
+            'content': 'Prove that sqrt(2) is irrational.'
+        }],
+        'chat_template_kwargs': {
+            'thinking_effort': 'high'
+        },
     }
     encoded = template.encode(swift_inputs)
     swift_ids = _to_id_list(encoded['input_ids'])
 
-    official_ids = tokenizer.apply_chat_template(
-        [{'role': 'user', 'content': 'Prove that sqrt(2) is irrational.'}],
-        tokenize=True,
-        add_generation_prompt=True,
-        thinking=True,
-        thinking_effort='high')
+    official_ids = tokenizer.apply_chat_template([{
+        'role': 'user',
+        'content': 'Prove that sqrt(2) is irrational.'
+    }],
+                                                 tokenize=True,
+                                                 add_generation_prompt=True,
+                                                 thinking=True,
+                                                 thinking_effort='high')
     assert swift_ids == official_ids, \
         (f'thinking_effort mismatch\n swift   : {tokenizer.decode(swift_ids)}\n'
          f' official: {tokenizer.decode(official_ids)}')
 
     # `reasoning_effort` (the K3 API field name) is accepted as an alias.
     swift_inputs2 = {
-        'messages': [{'role': 'user', 'content': 'Prove that sqrt(2) is irrational.'}],
-        'chat_template_kwargs': {'reasoning_effort': 'high'},
+        'messages': [{
+            'role': 'user',
+            'content': 'Prove that sqrt(2) is irrational.'
+        }],
+        'chat_template_kwargs': {
+            'reasoning_effort': 'high'
+        },
     }
     encoded2 = template.encode(swift_inputs2)
     assert _to_id_list(encoded2['input_ids']) == official_ids
@@ -203,32 +254,91 @@ def test_kimi_k3_tool_call_align():
             'description': 'Get the weather for a city',
             'parameters': {
                 'type': 'object',
-                'properties': {'city': {'type': 'string'}},
+                'properties': {
+                    'city': {
+                        'type': 'string'
+                    }
+                },
                 'required': ['city'],
             },
         },
     }]
     swift_messages = [
-        {'role': 'user', 'content': 'Weather in Beijing and Shanghai?'},
-        {'role': 'assistant', 'content': '<think>Need two calls.</think>I will check both cities.'},
-        {'role': 'tool_call', 'content': '{"name": "get_weather", "arguments": {"city": "Beijing"}}'},
-        {'role': 'tool_call', 'content': '{"name": "get_weather", "arguments": {"city": "Shanghai"}}'},
-        {'role': 'tool', 'content': 'Beijing: sunny'},
-        {'role': 'tool', 'content': 'Shanghai: rain'},
-        {'role': 'assistant', 'content': '<think>Summarize.</think>Beijing sunny, Shanghai rainy.'},
+        {
+            'role': 'user',
+            'content': 'Weather in Beijing and Shanghai?'
+        },
+        {
+            'role': 'assistant',
+            'content': '<think>Need two calls.</think>I will check both cities.'
+        },
+        {
+            'role': 'tool_call',
+            'content': '{"name": "get_weather", "arguments": {"city": "Beijing"}}'
+        },
+        {
+            'role': 'tool_call',
+            'content': '{"name": "get_weather", "arguments": {"city": "Shanghai"}}'
+        },
+        {
+            'role': 'tool',
+            'content': 'Beijing: sunny'
+        },
+        {
+            'role': 'tool',
+            'content': 'Shanghai: rain'
+        },
+        {
+            'role': 'assistant',
+            'content': '<think>Summarize.</think>Beijing sunny, Shanghai rainy.'
+        },
     ]
     official_messages = [
-        {'role': 'user', 'content': 'Weather in Beijing and Shanghai?'},
-        {'role': 'assistant', 'reasoning_content': 'Need two calls.', 'content': 'I will check both cities.',
-         'tool_calls': [
-             {'id': 'call_1', 'type': 'function',
-              'function': {'name': 'get_weather', 'arguments': '{"city": "Beijing"}'}},
-             {'id': 'call_2', 'type': 'function',
-              'function': {'name': 'get_weather', 'arguments': '{"city": "Shanghai"}'}},
-         ]},
-        {'role': 'tool', 'tool_call_id': 'call_1', 'content': 'Beijing: sunny'},
-        {'role': 'tool', 'tool_call_id': 'call_2', 'content': 'Shanghai: rain'},
-        {'role': 'assistant', 'reasoning_content': 'Summarize.', 'content': 'Beijing sunny, Shanghai rainy.'},
+        {
+            'role': 'user',
+            'content': 'Weather in Beijing and Shanghai?'
+        },
+        {
+            'role':
+            'assistant',
+            'reasoning_content':
+            'Need two calls.',
+            'content':
+            'I will check both cities.',
+            'tool_calls': [
+                {
+                    'id': 'call_1',
+                    'type': 'function',
+                    'function': {
+                        'name': 'get_weather',
+                        'arguments': '{"city": "Beijing"}'
+                    }
+                },
+                {
+                    'id': 'call_2',
+                    'type': 'function',
+                    'function': {
+                        'name': 'get_weather',
+                        'arguments': '{"city": "Shanghai"}'
+                    }
+                },
+            ]
+        },
+        {
+            'role': 'tool',
+            'tool_call_id': 'call_1',
+            'content': 'Beijing: sunny'
+        },
+        {
+            'role': 'tool',
+            'tool_call_id': 'call_2',
+            'content': 'Shanghai: rain'
+        },
+        {
+            'role': 'assistant',
+            'reasoning_content': 'Summarize.',
+            'content': 'Beijing sunny, Shanghai rainy.'
+        },
     ]
 
     def _official(messages, add_generation_prompt, **kwargs):
@@ -279,12 +389,18 @@ def test_kimi_k3_tool_call_align():
     encoded = template.encode({
         'messages': swift_messages[:1],
         'tools': tools,
-        'chat_template_kwargs': {'thinking_effort': 'low'},
+        'chat_template_kwargs': {
+            'thinking_effort': 'low'
+        },
     })
     swift_ids2 = _to_id_list(encoded['input_ids'])
     official_ids2 = tokenizer.apply_chat_template(
-        official_messages[:1], tools=tools, tokenize=True, add_generation_prompt=True,
-        thinking=True, thinking_effort='low')
+        official_messages[:1],
+        tools=tools,
+        tokenize=True,
+        add_generation_prompt=True,
+        thinking=True,
+        thinking_effort='low')
     assert swift_ids2 == official_ids2, \
         (f'tools+thinking_effort mismatch\n swift   : {tokenizer.decode(swift_ids2)}\n'
          f' official: {tokenizer.decode(official_ids2)}')
