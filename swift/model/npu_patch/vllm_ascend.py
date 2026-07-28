@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import sys
 
-from swift.model.npu_patch.vllm_ascend_lora import (patch_vllm_ascend_lora_runtime,
-                                                    validate_vllm_ascend_lora_training,
+from swift.model.npu_patch.vllm_ascend_lora import (patch_vllm_ascend_lora_runtime, validate_vllm_ascend_lora_training,
                                                     validate_vllm_ascend_megatron_lora_training)
 from swift.model.npu_patch.vllm_ascend_memory import patch_vllm_ascend_memory_runtime
 from swift.model.npu_patch.vllm_ascend_moe import (patch_vllm_ascend_moe_expert_weight_loader,

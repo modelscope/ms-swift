@@ -168,8 +168,7 @@ def _patch_vllm_ascend_moe_sleep_layout(worker_cls=None) -> None:
         if restore_weights:
             saved_moe_parameters = {
                 name: param
-                for name, param in model.named_parameters()
-                if 'w13_weight' in name or 'w2_weight' in name
+                for name, param in model.named_parameters() if 'w13_weight' in name or 'w2_weight' in name
             }
 
         result = origin_wake_up(self, tags=tags)

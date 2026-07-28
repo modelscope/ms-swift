@@ -18,16 +18,14 @@ def validate_vllm_ascend_lora_training(model, args) -> None:
     tuner = getattr(model, 'base_model', None)
     targeted_parameter_names = getattr(tuner, 'targeted_parameter_names',
                                        getattr(args, 'target_parameters', None) or [])
-    routed_expert_parameters = sorted(
-        name for name in targeted_parameter_names if 'experts' in name.split('.'))
+    routed_expert_parameters = sorted(name for name in targeted_parameter_names if 'experts' in name.split('.'))
     if not routed_expert_parameters:
         return
 
-    raise ValueError(
-        'vLLM-Ascend does not support LoRA on fused routed experts, but the training model targets '
-        f'these expert parameters: {routed_expert_parameters}. With `vllm_enable_lora=true`, rollout '
-        'would omit their LoRA updates and diverge from training. Set `vllm_enable_lora=false` or '
-        'remove the routed-expert entries from `target_parameters`.')
+    raise ValueError('vLLM-Ascend does not support LoRA on fused routed experts, but the training model targets '
+                     f'these expert parameters: {routed_expert_parameters}. With `vllm_enable_lora=true`, rollout '
+                     'would omit their LoRA updates and diverge from training. Set `vllm_enable_lora=false` or '
+                     'remove the routed-expert entries from `target_parameters`.')
 
 
 def validate_vllm_ascend_megatron_lora_training(models, args) -> None:
@@ -44,11 +42,10 @@ def validate_vllm_ascend_megatron_lora_training(models, args) -> None:
     if not routed_expert_modules:
         return
 
-    raise ValueError(
-        'vLLM-Ascend does not support LoRA on fused routed experts, but the Megatron training model has '
-        f'trainable expert LoRA modules: {routed_expert_modules}. With `vllm_enable_lora=true`, rollout '
-        'would omit their LoRA updates and diverge from training. Set `vllm_enable_lora=false` or choose '
-        '`target_modules` that do not match routed-expert layers.')
+    raise ValueError('vLLM-Ascend does not support LoRA on fused routed experts, but the Megatron training model has '
+                     f'trainable expert LoRA modules: {routed_expert_modules}. With `vllm_enable_lora=true`, rollout '
+                     'would omit their LoRA updates and diverge from training. Set `vllm_enable_lora=false` or choose '
+                     '`target_modules` that do not match routed-expert layers.')
 
 
 def _exclude_unsupported_fused_moe_lora_modules(
