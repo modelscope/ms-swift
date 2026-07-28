@@ -96,8 +96,6 @@ def matmul_lora(X, W, W_quant, A, B, s, bias=None, out=None):
 
     W = fast_dequantize(W, W_quant, use_global_buffer=True)
     out = torch_matmul(X, W.t(), out=out)
-    if W_quant is not None:
-        del W
     if bias is not None:
         out.add_(bias.to(dtype))
 
@@ -277,14 +275,12 @@ class LoRA_MLP(torch.autograd.Function):
         # dX += matmul_lora(de, gateW.t(), gateW_quant, gateB, gateA, gateS)
         upW = fast_dequantize(upW.t(), upW_quant)
         dX = torch.matmul(df, upW.t(), out=X if ctx.inplace else None)
-        del upW
         # dX += df @ upB.to(dtype).t() @ (upS * upA.to(dtype).t())
         dX.addmm_(df @ upB.t(), upA.t(), alpha=upS)
 
         gateW = fast_dequantize(gateW.t(), gateW_quant)
         # dX += de @ gateW.t()
         dX.addmm_(de, gateW.t())
-        del gateW
         # dX += de @ gateB.to(dtype).t() @ (gateS * gateA.to(dtype).t())
         dX.addmm_(de @ gateB.t(), gateA.t(), alpha=gateS)
         # gateW, gateW_quant, gateA, gateB, gateS,
@@ -513,7 +509,6 @@ class LoRA_QKV(torch.autograd.Function):
         # dQ
         QW = fast_dequantize(QW.t(), QW_quant)
         dX = torch.matmul(dQ, QW.t(), out=X if ctx.inplace else None)
-        del QW
         # dX += (dQ @ QB.to(dtype).t() @ (QS * QA.to(dtype).t()))
         dX.addmm_(dQ @ QB.t(), QA.t(), alpha=QS)
 
@@ -521,7 +516,6 @@ class LoRA_QKV(torch.autograd.Function):
         KW = fast_dequantize(KW.t(), KW_quant)
         # dX += dK @ KW.t()
         dX.addmm_(dK, KW.t())
-        del KW
         # dX += dK @ KB.to(dtype).t() @ (KS * KA.to(dtype).t())
         dX.addmm_(dK @ KB.t(), KA.t(), alpha=KS)
 
@@ -529,7 +523,6 @@ class LoRA_QKV(torch.autograd.Function):
         VW = fast_dequantize(VW.t(), VW_quant)
         # dX += dV @ VW.t()
         dX.addmm_(dV, VW.t())
-        del VW
         # dX += dV @ VB.to(dtype).t() @ (VS * VA.to(dtype).t())
         dX.addmm_(dV @ VB.t(), VA.t(), alpha=VS)
 
@@ -660,7 +653,6 @@ class LoRA_W(torch.autograd.Function):
         # Get derivative for dX
         W = fast_dequantize(W.t(), W_quant)
         dX = dY @ W.t()
-        del W
         # dX += dY @ B.to(dtype).t() @ (S * A.to(dtype).t())
         dX.addmm_(dY @ B.t(), A.t(), alpha=S)
 
