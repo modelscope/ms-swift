@@ -2040,12 +2040,20 @@ def build_routed_experts_batch(
     template: Template,
     device: torch.device,
     router_replay_mode: str = 'disabled',
+    expected_lens: Optional[List[Optional[int]]] = None,
 ) -> Optional[torch.Tensor]:
     """Build the batched ``routed_experts`` model input from per-sample R3 routing.
 
     Shared by all backends. Each ``sample`` is an :class:`OnPolicySample` carrying
     ``routed_experts`` (per-sample, seq-first) and ``encoded['length']``. Returns
     ``None`` when no sample provides routing (and mode is not ``R3``).
+
+    ``expected_lens`` carries the per-sample encode lengths captured *before*
+    ``template.data_collator`` ran. This matters under Megatron CP:
+    ``_handle_megatron_cp`` mutates each ``encoded`` in place, rounding
+    ``encoded['length']`` up to a multiple of ``cp_size * 2``, so reading it here
+    would compare vLLM's unpadded routing against a padded length. When omitted,
+    it falls back to ``encoded['length']``.
     """
     if not samples or all(getattr(s, 'routed_experts', None) is None for s in samples):
         return None
@@ -2058,16 +2066,20 @@ def build_routed_experts_batch(
         current_seq_lengths[n_samples - 1] = seq_lengths[n_samples - 1:].sum()
 
     routed_tensors: List[torch.Tensor] = []
-    for sample, cur_seq_len in zip(samples, current_seq_lengths):
+    for i, (sample, cur_seq_len) in enumerate(zip(samples, current_seq_lengths)):
         routed_value = getattr(sample, 'routed_experts', None)
         if routed_value is None:
             if router_replay_mode == 'R3':
                 raise AssertionError('When router_replay_mode = R3, routed_experts must be in rollout data')
             return None
         routed = _normalize_routed_experts_tensor(routed_value)
-        expected_len = (sample.encoded or {}).get('length')
+        if expected_lens is not None:
+            expected_len = expected_lens[i]
+        else:
+            expected_len = sample.encoded.get('length')
         experts_seq_len = int(routed.shape[0])
         if router_replay_mode == 'R3' and expected_len is not None:
+            # vLLM may omit the final token's routing, hence ``expected_len - 1``.
             if experts_seq_len not in (expected_len, expected_len - 1):
                 raise AssertionError(f'The seq_len of routed_experts({experts_seq_len}) does not match encoded length '
                                      f'({expected_len}); expected same length or one less.')
@@ -2112,6 +2124,9 @@ def collate_to_grpo_micro_batch(
     distributed communication happens here.
     """
     encoded_list = [s.encoded for s in samples]
+    # Snapshot encode lengths before ``data_collator``: under Megatron CP it mutates each
+    # ``encoded`` in place, rounding ``length`` up to a multiple of ``cp_size * 2``.
+    expected_lens = [e.get('length') for e in encoded_list]
     model_inputs = to_device(template.data_collator(encoded_list, padding_to=padding_to), device)
 
     labels = model_inputs['labels']
@@ -2137,6 +2152,7 @@ def collate_to_grpo_micro_batch(
         template=template,
         device=device,
         router_replay_mode=router_replay_mode,
+        expected_lens=expected_lens,
     )
     if routed_experts is not None:
         model_inputs['routed_experts'] = routed_experts
