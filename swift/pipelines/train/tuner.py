@@ -391,7 +391,7 @@ class TunerMixin:
                 args.galore_target_modules += find_embedding(model)
 
         if hasattr(torch, 'npu'):
-            is_sft = type(args).__name__ == 'SftArguments'
+            is_sft = isinstance(args, SftArguments)
             is_fast_lora = os.getenv('ENABLE_FAST_LORA', '0').strip() == '1'
             if args.is_adapter and args.tuner_type == 'lora' and is_sft and is_fast_lora:
                 from swift.model.npu_patch.model import enable_npu_fast_lora
