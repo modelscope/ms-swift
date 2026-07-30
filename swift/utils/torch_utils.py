@@ -416,4 +416,4 @@ def get_max_reserved_memory() -> float:
         mems = [get_torch_device().max_memory_reserved(device=device) for device in devices]
     except AttributeError:
         return 0  # fix mps
-    return sum(mems) / 1024**3
+    return max(mems) / 1024**3
