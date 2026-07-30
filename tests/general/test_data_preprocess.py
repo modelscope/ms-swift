@@ -3,7 +3,8 @@ import unittest
 from swift.dataset import (AnthropicMessagesPreprocessor, EncodePreprocessor, MessagesPreprocessor,
                            OpenAIMessagesPreprocessor, PackingDataset, load_dataset)
 from swift.model import get_processor
-from swift.template import get_template
+from swift.template import get_template, load_image
+from swift.template.template_inputs import StdTemplateInputs
 
 
 class TestDataPreprocess(unittest.TestCase):
@@ -347,6 +348,79 @@ class TestProviderMessagesPreprocess(unittest.TestCase):
             'role': 'tool_response',
             'content': 'sunny'
         }])
+
+    def test_anthropic_multimodal_content_blocks(self):
+        row = {
+            'messages': [{
+                'role':
+                'user',
+                'content': [{
+                    'type': 'text',
+                    'text': 'What is in this image? '
+                }, {
+                    'type': 'image',
+                    'source': {
+                        'type':
+                        'base64',
+                        'media_type':
+                        'image/png',
+                        'data': ('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ'
+                                 '/pLvAAAAAElFTkSuQmCC'),
+                    },
+                }],
+            }, {
+                'role': 'assistant',
+                'content': [{
+                    'type': 'tool_use',
+                    'id': 'toolu_image',
+                    'name': 'inspect_image',
+                    'input': {},
+                }],
+            }, {
+                'role':
+                'user',
+                'content': [{
+                    'type':
+                    'tool_result',
+                    'tool_use_id':
+                    'toolu_image',
+                    'content': [{
+                        'type': 'image',
+                        'source': {
+                            'type': 'url',
+                            'url': 'https://example.com/result.png',
+                        },
+                    }, {
+                        'type': 'text',
+                        'text': 'A sunny beach.',
+                    }],
+                }],
+            }]
+        }
+        result = AnthropicMessagesPreprocessor().preprocess(row)
+        self.assertEqual(result['messages'], [{
+            'role': 'user',
+            'content': 'What is in this image? <image>',
+        }, {
+            'role': 'tool_call',
+            'content': {
+                'name': 'inspect_image',
+                'arguments': {}
+            },
+        }, {
+            'role': 'tool_response',
+            'content': '<image>A sunny beach.',
+        }])
+        self.assertEqual(result['images'], [
+            ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ'
+             '/pLvAAAAAElFTkSuQmCC'),
+            'https://example.com/result.png',
+        ])
+        self.assertEqual(load_image(result['images'][0]).size, (1, 1))
+
+        template_inputs = StdTemplateInputs.from_dict(result)
+        self.assertEqual(template_inputs.images, result['images'])
+        self.assertEqual(template_inputs.messages[-1]['content'], '<image>A sunny beach.')
 
 
 if __name__ == '__main__':

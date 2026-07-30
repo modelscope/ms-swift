@@ -550,15 +550,44 @@ class MessagesPreprocessor(RowPreprocessor):
         return new_messages
 
     @staticmethod
-    def _anthropic_block_content(content: Any) -> Any:
-        if not isinstance(content, list):
-            return content
-        text = ''.join(block.get('text', '') for block in content if block.get('type') == 'text')
-        return text
+    def _anthropic_image_source(block: Dict[str, Any]) -> str:
+        source = block.get('source') or {}
+        source_type = source.get('type')
+        if source_type == 'base64':
+            media_type = source.get('media_type')
+            data = source.get('data')
+            if not media_type or not data:
+                raise ValueError(f'Invalid Anthropic base64 image block: {block}')
+            return f'data:{media_type};base64,{data}'
+        if source_type == 'url':
+            url = source.get('url')
+            if not url:
+                raise ValueError(f'Invalid Anthropic URL image block: {block}')
+            return url
+        raise ValueError(f'Unsupported Anthropic image source type: {source_type}')
 
     @classmethod
-    def anthropic_to_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _anthropic_block_content(cls, content: Any, media: Dict[str, List[Any]]) -> Any:
+        if not isinstance(content, list):
+            return content
+        parts = []
+        for block in content:
+            block_type = block.get('type')
+            if block_type == 'text':
+                parts.append(block.get('text', ''))
+            elif block_type == 'image':
+                parts.append('<image>')
+                media['images'].append(cls._anthropic_image_source(block))
+            else:
+                raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+        return ''.join(parts)
+
+    @classmethod
+    def anthropic_to_messages(cls,
+                              messages: List[Dict[str, Any]],
+                              media: Optional[Dict[str, List[Any]]] = None) -> List[Dict[str, Any]]:
         """Convert Anthropic content blocks to the SWIFT canonical roles."""
+        media = media if media is not None else {'images': []}
         new_messages = []
         for message in messages:
             content = message.get('content')
@@ -566,20 +595,27 @@ class MessagesPreprocessor(RowPreprocessor):
                 new_messages.append(message)
                 continue
 
-            pending_text = []
+            pending_content = []
             message_metadata = {key: message[key] for key in ['loss', 'loss_scale'] if key in message}
 
-            def flush_text():
-                if pending_text:
-                    new_messages.append({'role': message['role'], 'content': ''.join(pending_text), **message_metadata})
-                    pending_text.clear()
+            def flush_content():
+                if pending_content:
+                    new_messages.append({
+                        'role': message['role'],
+                        'content': ''.join(pending_content),
+                        **message_metadata
+                    })
+                    pending_content.clear()
 
             for block in content:
                 block_type = block.get('type')
                 if block_type == 'text':
-                    pending_text.append(block.get('text', ''))
+                    pending_content.append(block.get('text', ''))
+                elif block_type == 'image':
+                    pending_content.append('<image>')
+                    media['images'].append(cls._anthropic_image_source(block))
                 elif block_type == 'tool_use':
-                    flush_text()
+                    flush_content()
                     new_messages.append({
                         'role': 'tool_call',
                         'content': {
@@ -589,23 +625,27 @@ class MessagesPreprocessor(RowPreprocessor):
                         **message_metadata,
                     })
                 elif block_type == 'tool_result':
-                    flush_text()
+                    flush_content()
                     new_messages.append({
                         'role': 'tool_response',
-                        'content': cls._anthropic_block_content(block.get('content', '')),
+                        'content': cls._anthropic_block_content(block.get('content', ''), media),
                         **message_metadata,
                     })
-            flush_text()
+                else:
+                    raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
+            flush_content()
         return new_messages
 
-    def normalize_provider_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def normalize_provider_messages(self, messages: List[Dict[str, Any]],
+                                    media: Dict[str, List[Any]]) -> List[Dict[str, Any]]:
         message_format = self.message_format
         if message_format == 'auto':
             if any(message.get('tool_calls') for message in messages):
                 message_format = 'openai'
             elif any(
                     isinstance(message.get('content'), list) and any(
-                        block.get('type') in {'tool_use', 'tool_result'} for block in message['content'])
+                        block.get('type') in {'tool_use', 'tool_result'}
+                        or block.get('type') == 'image' and 'source' in block for block in message['content'])
                     for message in messages):
                 message_format = 'anthropic'
             else:
@@ -613,7 +653,7 @@ class MessagesPreprocessor(RowPreprocessor):
         if message_format == 'openai':
             return self.openai_to_messages(messages)
         if message_format == 'anthropic':
-            return self.anthropic_to_messages(messages)
+            return self.anthropic_to_messages(messages, media)
         return messages
 
     @staticmethod
@@ -633,7 +673,12 @@ class MessagesPreprocessor(RowPreprocessor):
         messages: Optional[List[Dict[str, str]]] = self.repair_messages(messages)
         if not messages or isinstance(messages, str):
             return
-        messages = self.normalize_provider_messages(messages)
+        media = {'images': []}
+        messages = self.normalize_provider_messages(messages, media)
+        for key, value in media.items():
+            if value:
+                assert not row.get(key), f'Cannot mix Anthropic content blocks with the top-level `{key}` field.'
+                row[key] = value
         self._to_std_key(messages, 'role', self.role_keys)
         self._to_std_key(messages, 'content', self.content_keys)
         system = row.pop('system', None)
