@@ -17,6 +17,82 @@ from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, 
 logger = get_logger()
 
 
+def _get_mtp_transformer_layer_spec(loader, transformer_layer_spec, vp_stage=None):
+    """Get a decoder layer spec for building an MTP-only pipeline stage.
+
+    Megatron builds an MTP layer from a decoder layer spec. A custom pipeline
+    layout may place MTP in a stage without decoder layers, in which case the
+    local transformer block cannot provide that spec. Build a temporary view of
+    the layout that moves the last preceding decoder stage into the MTP stage,
+    ask the model-specific loader for its specs, then restore the original
+    layout. The returned spec is only used as a template; the actual decoder
+    layout is not changed.
+    """
+    layer_specs = getattr(transformer_layer_spec, 'layer_specs', None)
+    if layer_specs is None or len(layer_specs) > 0:
+        return transformer_layer_spec
+
+    config = loader.config
+    layout = getattr(config, 'pipeline_model_parallel_layout', None)
+    if layout is None:
+        return transformer_layer_spec
+
+    from megatron.core import mpu
+    from megatron.core.transformer.enums import LayerType
+
+    pp_rank = mpu.get_pipeline_model_parallel_rank()
+    vp_rank = vp_stage or 0
+    current_stage = layout.layout[pp_rank][vp_rank]
+    if LayerType.mtp not in current_stage:
+        return transformer_layer_spec
+
+    fallback_layout = deepcopy(layout)
+    donor_stage = None
+    for candidate_vp_rank in range(fallback_layout.virtual_pipeline_model_parallel_size):
+        for candidate_pp_rank in range(fallback_layout.pipeline_model_parallel_size):
+            if (candidate_pp_rank, candidate_vp_rank) == (pp_rank, vp_rank):
+                break
+            candidate_stage = fallback_layout.layout[candidate_pp_rank][candidate_vp_rank]
+            if LayerType.decoder in candidate_stage:
+                donor_stage = candidate_stage
+        else:
+            continue
+        break
+
+    if donor_stage is None:
+        raise ValueError('Unable to build an MTP-only pipeline stage: no preceding decoder layer was found.')
+
+    # Move the last decoder stage's decoder layers while preserving any other
+    # layer types in that stage. Keeping the decoder group together also
+    # preserves model-specific intra-stage validation, such as DSA index sharing.
+    donor_num_decoders = donor_stage.count(LayerType.decoder)
+    donor_stage[:] = [layer_type for layer_type in donor_stage if layer_type != LayerType.decoder]
+    fallback_stage = fallback_layout.layout[pp_rank][vp_rank]
+    mtp_idx = fallback_stage.index(LayerType.mtp)
+    fallback_stage[mtp_idx:mtp_idx] = [LayerType.decoder] * donor_num_decoders
+    fallback_layout.flatten_layout = []
+    for candidate_vp_rank in range(fallback_layout.virtual_pipeline_model_parallel_size):
+        for candidate_pp_rank in range(fallback_layout.pipeline_model_parallel_size):
+            fallback_layout.flatten_layout.extend(fallback_layout.layout[candidate_pp_rank][candidate_vp_rank])
+
+    config.pipeline_model_parallel_layout = fallback_layout
+    try:
+        mtp_transformer_layer_spec = loader.get_transformer_layer_spec(vp_stage=vp_stage)
+    finally:
+        config.pipeline_model_parallel_layout = layout
+
+    if not mtp_transformer_layer_spec.layer_specs:
+        raise ValueError('Unable to build an MTP-only pipeline stage: no decoder layer spec was generated.')
+
+    # Keep this in sync with ModelLoader.build_model. These replacements are
+    # normally applied to the local transformer block, which is empty here.
+    loader._set_shared_expert_gate(mtp_transformer_layer_spec)
+    loader._set_transformer_layer(mtp_transformer_layer_spec)
+    loader._replace_mla_attention(mtp_transformer_layer_spec)
+    loader._replace_router(mtp_transformer_layer_spec)
+    return mtp_transformer_layer_spec
+
+
 def _patch__batched_p2p_ops():
     from megatron.core.pipeline_parallel import p2p_communication
 
@@ -116,7 +192,21 @@ def _patch_unified_memory():
 def _patch_mcore_bridge():
     import mcore_bridge
     from mcore_bridge import GPTBridge
+    from mcore_bridge.model.register import ModelLoader
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')
+
+    origin_get_mtp_block_spec = ModelLoader.get_mtp_block_spec
+
+    if not getattr(origin_get_mtp_block_spec, '_swift_supports_mtp_only_stage', False):
+
+        def get_mtp_block_spec(self, transformer_layer_spec, vp_stage=None):
+            transformer_layer_spec = _get_mtp_transformer_layer_spec(
+                self, transformer_layer_spec, vp_stage=vp_stage)
+            return origin_get_mtp_block_spec(self, transformer_layer_spec, vp_stage=vp_stage)
+
+        get_mtp_block_spec._swift_supports_mtp_only_stage = True
+        ModelLoader.get_mtp_block_spec = get_mtp_block_spec
+
     origin_save_weights = GPTBridge.save_weights
 
     def save_weights(
