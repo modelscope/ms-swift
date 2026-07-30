@@ -379,6 +379,11 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         self.vllm_use_async_engine = False
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
+        self.dynamic_num_samples = False
+        self.base_sync_done = False
+        self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
+        self._cached_vllm_param_names = None
         # split model parameters into batches for synchronized weight transfer / ref sync
         if not args.use_vllm:
             infer_template = copy(self.template)
@@ -441,11 +446,6 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
-
-        self.dynamic_num_samples = False  # grpo multi-turn
-        self.base_sync_done = False
-        self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
-        self._cached_vllm_param_names = None
 
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode"""
