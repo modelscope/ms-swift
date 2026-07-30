@@ -28,6 +28,10 @@ class ExportArguments(MergeArguments, BaseArguments):
             to False. Note: You can specify the validation set content through
             `--split_dataset_ratio` or `--val_dataset`.
         to_ollama (bool): Whether to generate the `Modelfile` required by Ollama. Defaults to False.
+        to_model_summary (bool): Whether to print the model architecture / parameter statistics and the
+            tokenizer & template information. Combine with `--return_dummy_model true` to inspect the full
+            architecture without loading any pretrained weights, or with `--load_model false` to only inspect
+            the tokenizer/template. Defaults to False.
         to_mcore (bool): Whether to convert Hugging Face format weights to Megatron-Core format. Defaults to False.
         to_hf (bool): Whether to convert Megatron-Core format weights to Hugging Face format. Defaults to False.
         mcore_model (Optional[str]): The path to the Megatron-Core format model. Defaults to None.
@@ -63,6 +67,9 @@ class ExportArguments(MergeArguments, BaseArguments):
     # ollama
     to_ollama: bool = False
 
+    # model summary (architecture / tokenizer / template inspection)
+    to_model_summary: bool = False
+
     # megatron
     to_mcore: bool = False
     to_hf: bool = False
@@ -87,6 +94,16 @@ class ExportArguments(MergeArguments, BaseArguments):
             return
         super().load_args_from_ckpt()
 
+    def _init_model_summary(self):
+        if not self.to_model_summary:
+            return
+        if self.merge_lora:
+            raise ValueError('`--to_model_summary true` does not support `--merge_lora true`, because merging LoRA '
+                             'requires the pretrained weights to be loaded.')
+        if self.quant_method is not None:
+            raise ValueError('`--to_model_summary true` does not support `--quant_method`, because quantization '
+                             'requires the pretrained weights to be loaded.')
+
     def _init_output_dir(self):
         if self.output_dir is None:
             ckpt_dir = self.ckpt_dir or f'./{self.model_suffix}'
@@ -107,6 +124,8 @@ class ExportArguments(MergeArguments, BaseArguments):
                 suffix = 'hf'
             elif self.to_cached_dataset:
                 suffix = 'cached_dataset'
+            elif self.to_model_summary:
+                suffix = 'model_summary'
             else:
                 return
 
@@ -137,6 +156,7 @@ class ExportArguments(MergeArguments, BaseArguments):
                 set_default_ddp_config()
                 init_process_group(backend=self.ddp_backend, timeout=self.ddp_timeout)
 
+        self._init_model_summary()
         BaseArguments.__post_init__(self)
         self._init_output_dir()
         self.test_convert_dtype = HfConfigFactory.to_torch_dtype(self.test_convert_dtype)
