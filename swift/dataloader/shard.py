@@ -21,7 +21,7 @@ class BatchSamplerShard:
         lengths=None,
     ):
         self.tp_size = tp_size
-        self.total_samples = total_samples // self.world_size
+        self._global_total_samples = total_samples
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.drop_last = drop_last
@@ -41,6 +41,25 @@ class BatchSamplerShard:
     @property
     def world_size(self):
         return (dist.get_world_size() // self.tp_size) if dist.is_initialized() else 1
+
+    @property
+    def total_samples(self):
+        """This rank's share of the samples, resolved as LAZILY as rank/world_size are.
+
+        Dividing in __init__ instead silently assumed the process group was already up by then, which
+        is not true for every caller: swift.dev's run_sft builds the dataloader before it builds the
+        model, and building the model is what initializes the group, so world_size answered 1 and each
+        rank kept the FULL count. That has two consequences, neither of which looks like a sharding
+        bug: __len__ reports world_size x too many micro-batches (so an epoch-driven step budget and
+        the lr schedule derived from it are inflated by that factor), and __iter__ strides past the end
+        of the dataset into `IndexError: Invalid key: N is out of bounds` once a run actually consumes
+        its whole shard -- a short run stops before reaching it and looks fine.
+
+        The value is identical to the old one whenever the group IS up at construction time, which
+        covers legacy (mixin.py builds this inside get_train_dataloader) and the subclass that pins
+        world_size to a passed-in DP size.
+        """
+        return self._global_total_samples // self.world_size
 
     def __iter__(self):
         if self.shuffle:
