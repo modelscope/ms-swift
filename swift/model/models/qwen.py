@@ -31,12 +31,29 @@ dtype_mapping = {torch.float16: 'fp16', torch.bfloat16: 'bf16', torch.float32: '
 
 causal_conv1d = None
 chunk_gated_delta_rule = None
+
+
+def _try_import_flash_linear_attention_kernels() -> None:
+    global causal_conv1d, chunk_gated_delta_rule
+    if causal_conv1d is None:
+        try:
+            from fla.modules.convolution import causal_conv1d as _causal_conv1d
+            causal_conv1d = _causal_conv1d
+        except Exception:
+            pass
+    if chunk_gated_delta_rule is None:
+        try:
+            from fla.ops.gated_delta_rule import chunk_gated_delta_rule as _chunk_gated_delta_rule
+            chunk_gated_delta_rule = _chunk_gated_delta_rule
+        except Exception:
+            pass
+
+
 try:
     from transformers.utils.import_utils import is_flash_linear_attention_available
 
     if is_flash_linear_attention_available():
-        from fla.modules.convolution import causal_conv1d
-        from fla.ops.gated_delta_rule import chunk_gated_delta_rule
+        _try_import_flash_linear_attention_kernels()
 except Exception:
     pass
 
@@ -1167,6 +1184,7 @@ def _get_local_padding_mask(attention_mask: torch.Tensor, local_seq_len: int):
 
 
 def _ensure_linear_attention_kernels(mod: torch.nn.Module) -> None:
+    _try_import_flash_linear_attention_kernels()
     mod._swift_fla_causal_conv1d_fn = causal_conv1d
     mod.chunk_gated_delta_rule = getattr(mod, 'chunk_gated_delta_rule', None) or chunk_gated_delta_rule
     if mod.chunk_gated_delta_rule is None or mod._swift_fla_causal_conv1d_fn is None:
@@ -1476,6 +1494,20 @@ register_model(
         requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision', 'video']))
 
+register_model(
+    ModelMeta(
+        MLLMModelType.ovis_ocr2, [
+            ModelGroup([
+                Model('ATH-MaaS/OvisOCR2', 'ATH-MaaS/OvisOCR2'),
+            ]),
+        ],
+        Qwen3_5Loader,
+        template=TemplateType.ovis_ocr2,
+        model_arch=ModelArch.qwen2_vl,
+        architectures=['Qwen3_5ForConditionalGeneration'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision']))
+
 
 class Qwen2_5OmniLoader(ModelLoader):
 
@@ -1671,7 +1703,7 @@ def _compat_qwen3_omni_mixed_data(model, processor):
                 attention_mask,
             )
             if labels is not None:
-                loss += self.config.router_aux_loss_coef * aux_loss.to(
+                loss += self.config.text_config.router_aux_loss_coef * aux_loss.to(
                     loss.device)  # make sure to reside in the same device
 
         return Qwen3OmniMoeThinkerCausalLMOutputWithPast(
@@ -1810,20 +1842,25 @@ def _patch_qwen3_tts_forward(model):
             input_embeddings = input_embeddings + codec_i_embedding
 
         outputs = self.talker(
-            inputs_embeds=input_embeddings[:, :-1, :],
-            attention_mask=attention_mask[:, :-1],
+            inputs_embeds=input_embeddings,
+            attention_mask=attention_mask,
+            labels=codec_0_labels,
             output_hidden_states=True,
         )
 
         # Compute sub_talker_loss from hidden states at codec positions
-        hidden_states = outputs.hidden_states[0][-1]
-        talker_hidden_states = hidden_states[codec_mask[:, :-1]]
+        hidden_states = outputs.hidden_states[0][-1][:, :-1, :]
+        talker_hidden_states = hidden_states[codec_mask[:, 1:]]
         talker_codec_ids = codec_ids[codec_mask]
 
-        _, sub_talker_loss = self.talker.forward_sub_talker_finetune(talker_codec_ids, talker_hidden_states)
+        sub_talker_logits, _ = self.talker.forward_sub_talker_finetune(talker_codec_ids, talker_hidden_states)
+        sub_talker_loss = F.cross_entropy(
+            sub_talker_logits.reshape(-1, sub_talker_logits.shape[-1]).float(),
+            talker_codec_ids[:, 1:].reshape(-1).to(sub_talker_logits.device),
+        )
 
-        # Attach sub_talker_loss to outputs for the custom loss function
-        outputs.sub_talker_loss = sub_talker_loss
+        outputs['loss'] = outputs.loss + 0.3 * sub_talker_loss
+
         return outputs
 
     model.forward = MethodType(tts_forward, model)

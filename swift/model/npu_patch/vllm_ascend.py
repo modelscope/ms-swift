@@ -4,6 +4,7 @@
 Keep this file thin.  The real patches are split by responsibility:
 
 * ``vllm_ascend_moe``: MoE routing and GRPO weight-sync layout handling.
+* ``vllm_ascend_lora``: LoRA packed-projection layout compatibility.
 * ``vllm_ascend_memory``: small torch-npu/vLLM-Ascend memory API compatibility.
 Callers should import from this module so the public entrypoints stay stable,
 while reviewers can audit each patch family in its own file.  The caller is
@@ -13,6 +14,8 @@ from __future__ import annotations
 
 import sys
 
+from swift.model.npu_patch.vllm_ascend_lora import (patch_vllm_ascend_lora_runtime, validate_vllm_ascend_lora_training,
+                                                    validate_vllm_ascend_megatron_lora_training)
 from swift.model.npu_patch.vllm_ascend_memory import patch_vllm_ascend_memory_runtime
 from swift.model.npu_patch.vllm_ascend_moe import (patch_vllm_ascend_moe_expert_weight_loader,
                                                    patch_vllm_ascend_moe_runtime, should_skip_vllm_ascend_moe_post_load,
@@ -51,6 +54,7 @@ def patch_vllm_ascend_runtime(*, colocate: bool = False) -> None:
     compatibility patches below.
     """
     _patch_flash_attn_optional_import()
+    patch_vllm_ascend_lora_runtime()
     patch_vllm_ascend_moe_runtime()
     patch_vllm_ascend_memory_runtime()
 
@@ -60,4 +64,6 @@ __all__ = [
     'patch_vllm_ascend_runtime',
     'should_skip_vllm_ascend_moe_post_load',
     'use_vllm_ascend_moe_preprocessed_weight',
+    'validate_vllm_ascend_lora_training',
+    'validate_vllm_ascend_megatron_lora_training',
 ]

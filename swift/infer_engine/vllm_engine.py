@@ -284,18 +284,28 @@ class VllmEngine(InferEngine):
     def _prepare_engine_kwargs(self, max_model_len, engine_kwargs) -> None:
         if engine_kwargs is None:
             engine_kwargs = {}
-        if self.task_type == 'embedding':
-            self.task = 'embed'
-        elif self.task_type == 'seq_cls':
-            self.task = 'classify'
-        elif self.task_type in ('reranker', 'generative_reranker'):
-            self.task = 'score'
+        encode_task_mapping = {
+            'embedding': 'embed',
+            'seq_cls': 'classify',
+            'reranker': 'score',
+            'generative_reranker': 'score',
+        }
+        vllm_task = encode_task_mapping.get(self.task_type)
         disable_log_stats = engine_kwargs.pop('disable_log_stats', True)
         if self.use_async_engine:
             engine_cls = AsyncEngineArgs
         else:
             engine_cls = EngineArgs
         parameters = inspect.signature(engine_cls).parameters
+        if vllm_task:
+            if 'runner' in parameters:
+                engine_kwargs['runner'] = 'pooling'
+            elif 'task' in parameters:
+                engine_kwargs['task'] = vllm_task
+            else:
+                raise ValueError(
+                    f'task_type={self.task_type} requires a vLLM version that supports `runner` or `task`. '
+                    'Please upgrade vLLM.')
         if self.use_async_engine and 'disable_log_requests' in parameters:
             engine_kwargs['disable_log_requests'] = True
         if 'enable_lora' in parameters and self.enable_lora:
@@ -321,10 +331,8 @@ class VllmEngine(InferEngine):
                     engine_kwargs[key] = value
             else:
                 logger.warning(f'The current version of vLLM does not support `{key}`. Ignored.')
-        for key in ['task', 'seed']:
-            val = getattr(self, key, None)
-            if val is not None:
-                engine_kwargs[key] = val
+        if self.seed is not None:
+            engine_kwargs['seed'] = self.seed
 
         model_info = self.model_info
         arch_mapping = {'deepseek_vl2': ['DeepseekVLV2ForCausalLM'], 'chatglm4v': ['GLM4VForCausalLM']}
