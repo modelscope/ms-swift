@@ -584,6 +584,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - top_k: Top-k parameter for rollout sampling. -1 means no top-k filtering is applied. Default is -1.
 - top_p: Top-p parameter for rollout sampling. 1.0 means no top-p filtering is applied. Default is 1.0.
+- min_p: Min-p parameter for rollout sampling. Tokens whose probability is below `min_p` times the probability of the most likely token are filtered out. 0.0 means no min-p filtering is applied. Default is 0.0. Only effective with the vLLM backend.
 
 #### GKD Arguments
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.

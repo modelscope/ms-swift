@@ -572,6 +572,7 @@ RLHF参数继承于[训练参数](#训练参数)。
 - temperature: 默认为0.9，该参数将在PPO、GRPO、GKD中使用。
 - top_k: rollout采样的top-k参数，-1表示不进行top-k过滤。默认为-1。
 - top_p: rollout采样的top-p参数，1.0表示不进行top-p过滤。默认为1.0。
+- min_p: rollout采样的min-p参数，概率低于最高概率token概率`min_p`倍的token将被过滤，0.0表示不进行min-p过滤。默认为0.0。仅对vLLM后端生效。
 
 #### GKD参数
 - lmbda: 默认为0.5。该参数在GKD中使用。控制学生数据比例的 lambda 参数（即策略内学生生成输出所占的比例）。若lmbda为0，则不使用学生生成数据。
