@@ -25,25 +25,25 @@ MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 def test_vllm_mode_encode_has_no_labels_no_shift():
     """Under set_mode('vllm') the dev Template must NOT emit labels and must NOT apply the
     next-token shift (rollout inputs are inference, not training)."""
-    from swift.dev.template import Template as DevTemplate
+    from swift.dev.template import DevMixin
     from swift.model import get_model_processor
     from swift.template import get_template
 
     _, proc = get_model_processor(MODEL, load_model=False)
-    tpl = DevTemplate.from_template(get_template(proc, template_type='qwen2_5', max_length=256))
+    tpl = _dev_template(get_template(proc, template_type='qwen2_5', max_length=256))
     msgs = [{'role': 'user', 'content': 'hi'}, {'role': 'assistant', 'content': 'hello there'}]
 
     # training mode: labels present AND shifted
     tpl.set_mode('train')
     enc_train = tpl.encode({'messages': msgs})
     assert enc_train.get('labels') is not None
-    assert enc_train.get(DevTemplate.SHIFTED_KEY) is True  # shift fired
+    assert enc_train.get(DevMixin.SHIFTED_KEY) is True  # shift fired
 
     # vllm mode: no labels, shift guard skipped
     tpl.set_mode('vllm')
     enc_vllm = tpl.encode({'messages': msgs})
     assert enc_vllm.get('labels') is None, 'vLLM-mode encode must not produce labels'
-    assert not enc_vllm.get(DevTemplate.SHIFTED_KEY), 'vLLM-mode must not apply next-token shift'
+    assert not enc_vllm.get(DevMixin.SHIFTED_KEY), 'vLLM-mode must not apply next-token shift'
 
 
 def test_group_advantages_reuse_twinkle():
@@ -153,8 +153,8 @@ def test_rollout_shifted_key_matches_template():
     Gate the divergence: if Template.SHIFTED_KEY is ever renamed, the RL feature would stop being
     recognized as already-shifted and the processor would no longer drop it."""
     from swift.dev.rollout import SHIFTED_KEY
-    from swift.dev.template import Template as DevTemplate
-    assert SHIFTED_KEY == DevTemplate.SHIFTED_KEY
+    from swift.dev.template import DevMixin
+    assert SHIFTED_KEY == DevMixin.SHIFTED_KEY
 
 
 def test_extract_chosen_logps_raises_on_missing_logprobs():
@@ -311,3 +311,10 @@ def test_vllm_logprobs_match_train_forward_logps():
             f'same-weights same-temperature. >0.05 => shift/temperature/BPE misalignment (product bug).')
     finally:
         engine.shutdown()
+
+
+def _dev_template(legacy):
+    """Derive dev's template from an already-built legacy one, exactly as build_template does."""
+    from swift.dev.template import shifted_template_class
+    legacy.__class__ = shifted_template_class(type(legacy))
+    return legacy

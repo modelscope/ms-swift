@@ -15,7 +15,7 @@ import dataclasses
 import pytest
 from types import SimpleNamespace
 
-from swift.dev.cli.megatron import (ABSENT, DERIVED, DEV_ONLY, RENAMES, SUPERSEDED, _decay_style_to_swift,
+from swift.dev.cli.megatron import (ABSENT, DERIVED, RENAMES, SUPERSEDED, _decay_style_to_swift,
                                     _derive_gradient_accumulation_steps, audit_coverage, megatron_args_to_configs)
 from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                TrainConfig, TunerConfig)
@@ -101,7 +101,7 @@ class TestCoverageGuard:
         for cls in _CONFIGS:
             buckets = report[cls.__name__]
             flat = [
-                n for key in ('name_hit', 'renamed', 'derived', 'superseded', 'dev_only', 'absent', 'unaccounted')
+                n for key in ('name_hit', 'renamed', 'derived', 'superseded', 'absent', 'unaccounted')
                 for n in buckets[key]
             ]
             assert sorted(flat) == sorted(f.name for f in dataclasses.fields(cls)), cls.__name__
@@ -112,9 +112,6 @@ class TestCoverageGuard:
         DistributedConfig, 7 CheckpointConfig, 1 ModelConfig, and 0 for Template/Dataset. If an
         upstream rename shifts these, this fails and the note gets revisited instead of the numbers
         quietly rotting.
-
-        dev_only is NOT part of the gap: those fields were invented by dev, so there is no legacy flag
-        for the CLI to carry over and nothing for a user to have expected.
 
         ModelConfig went 0 -> 1 when attn_impl became a rename. It is a genuine gap, not bookkeeping:
         legacy describes the attention kernel with a DIFFERENT flag per backend (transformers
@@ -130,9 +127,8 @@ class TestCoverageGuard:
         assert gap['TrainConfig'] == 35
         assert gap['DistributedConfig'] == 8
         assert gap['CheckpointConfig'] == 7
-        # legacy_encode is dev's own switch, so TemplateConfig has no mapping gap at all.
+        # Every TemplateConfig field maps by name onto the Megatron surface.
         assert gap['TemplateConfig'] == 0
-        assert report['TemplateConfig']['dev_only'] == ['legacy_encode']
         assert gap['ModelConfig'] == 1
         assert report['ModelConfig']['renamed'] == ['attn_impl']
         assert gap['DatasetConfig'] == 0
@@ -141,8 +137,8 @@ class TestCoverageGuard:
         """A stale entry (renamed/derived/absent naming a field that no longer exists) would mask a
         real gap, so the tables are checked against the Configs themselves."""
         fields_by_cfg = {c.__name__: {f.name for f in dataclasses.fields(c)} for c in _CONFIGS}
-        for table, label in ((RENAMES, 'RENAMES'), (DERIVED, 'DERIVED'), (SUPERSEDED, 'SUPERSEDED'),
-                             (DEV_ONLY, 'DEV_ONLY'), (ABSENT, 'ABSENT')):
+        for table, label in ((RENAMES, 'RENAMES'), (DERIVED, 'DERIVED'), (SUPERSEDED, 'SUPERSEDED'), (ABSENT,
+                                                                                                      'ABSENT')):
             for cfg_name, entries in table.items():
                 assert cfg_name in fields_by_cfg, f'{label}: unknown Config {cfg_name}'
                 unknown = set(entries) - fields_by_cfg[cfg_name]

@@ -1,12 +1,13 @@
-"""dev's label convention (`NextTokenShiftMixin`) plus the opt-in encode rewrite (`Template`).
+"""dev's minimal adapter over swift's Template: the twinkle contract only (`DevMixin`).
 
-Default path: `shifted_template_class(type(legacy))` mixes the shift into the legacy class, keeping
-its own encode/collate/media behaviour. Opt-in path (TemplateConfig.legacy_encode=False): `Template`
-and the per-family subclasses selected through `PROCESSOR_TEMPLATE_MAPPING` (keyed by legacy
-template_type), not imported by name, so only the base class and the mapping are re-exported here.
+`build_template` derives `Shifted<LegacyClass>` via `shifted_template_class`, so the legacy class --
+and every method its family overrode (encode/collate/media) -- stays in place and only the twinkle
+contract is added on top. There is a single encode implementation (swift's) for both the dataset and
+the model; this package is development-only scaffolding and disappears once `DevMixin` moves into
+swift's Template proper.
 """
 from __future__ import annotations
 
-from .template import PROCESSOR_TEMPLATE_MAPPING, NextTokenShiftMixin, Template, shifted_template_class
+from .template import DevMixin, shifted_template_class
 
-__all__ = ['Template', 'NextTokenShiftMixin', 'shifted_template_class', 'PROCESSOR_TEMPLATE_MAPPING']
+__all__ = ['DevMixin', 'shifted_template_class']

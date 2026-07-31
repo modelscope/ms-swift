@@ -72,18 +72,6 @@ SUPERSEDED: Dict[str, Dict[str, str]] = {
     },
 }
 
-# --- dev-invented fields: no legacy/Megatron flag exists to map, by construction. -----------------
-# Distinct from ABSENT: those are knobs the Megatron surface HAS and this CLI cannot carry over (a
-# real gap). These were added by dev itself, so there is nothing to drop on the floor and nothing
-# for a user's flag to mean -- the dev default is the only possible source. Registered so the audit
-# does not report them as a mapping gap.
-DEV_ONLY: Dict[str, Tuple[str, ...]] = {
-    'TemplateConfig': (
-        # Selects legacy's template assembly as the encode source; see the field's own comment in
-        # TemplateConfig for why that is the default.
-        'legacy_encode', ),
-}
-
 # --- Fields with no counterpart on the Megatron surface: dev default stands. ----------------------
 # Registered explicitly so the audit can tell "deliberately absent" from "forgotten". Each entry is
 # a field the Megatron CLI cannot set; the dev default applies. Grouped by reason in the comments.
@@ -214,14 +202,13 @@ def audit_coverage(arg_names: Optional[set] = None) -> Dict[str, Dict[str, List[
     """Classify every dev Config field against the Megatron arg surface.
 
     Returns ``{ConfigName: {'name_hit': [...], 'renamed': [...], 'derived': [...],
-    'superseded': [...], 'dev_only': [...], 'absent': [...], 'unaccounted': [...]}}``.
+    'superseded': [...], 'absent': [...], 'unaccounted': [...]}}``.
     ``unaccounted`` MUST be empty: a field there is one this mapping would silently leave at its dev
     default while the user thinks their CLI flag took effect. The guard test asserts exactly that, so
     a newly added Config field fails loudly here instead of during a training run.
 
-    ``superseded`` and ``dev_only`` are checked BEFORE ``name_hit``: the former exists on both
-    surfaces but dev routes the setting through another Config field; the latter was invented by dev,
-    so no legacy flag exists to map and it is NOT counted as a mapping gap.
+    ``superseded`` is checked BEFORE ``name_hit``: the field exists on both surfaces but dev routes
+    the setting through another Config field, so the same-name copy would be misleading.
 
     arg_names defaults to the real MegatronSftArguments field set; tests may inject a set.
     """
@@ -234,14 +221,12 @@ def audit_coverage(arg_names: Optional[set] = None) -> Dict[str, Dict[str, List[
         renames = RENAMES.get(cfg_name, {})
         derived = set(DERIVED.get(cfg_name, ()))
         superseded = set(SUPERSEDED.get(cfg_name, {}))
-        dev_only = set(DEV_ONLY.get(cfg_name, ()))
         absent = set(ABSENT.get(cfg_name, ()))
         buckets: Dict[str, List[str]] = {
             'name_hit': [],
             'renamed': [],
             'derived': [],
             'superseded': [],
-            'dev_only': [],
             'absent': [],
             'unaccounted': []
         }
@@ -252,8 +237,6 @@ def audit_coverage(arg_names: Optional[set] = None) -> Dict[str, Dict[str, List[
                 buckets['derived'].append(f.name)
             elif f.name in superseded:
                 buckets['superseded'].append(f.name)
-            elif f.name in dev_only:
-                buckets['dev_only'].append(f.name)
             elif f.name in arg_names:
                 # Same name on both surfaces -> the plain copy in _fill_from_args handles it.
                 buckets['name_hit'].append(f.name)

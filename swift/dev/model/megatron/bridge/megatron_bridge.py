@@ -197,6 +197,14 @@ class MegatronBridgeBackend:
         # moe_token_dispatcher_type follows the same variable_seq_lengths gate (MoE only).
         overrides.setdefault('calculate_per_token_loss', True)
         overrides.setdefault('moe_token_dispatcher_type', 'alltoall' if strategy.variable_seq_lengths else 'allgather')
+        # Same fusion-flag alignment as the mcore backend (see mcore.py for the rationale): legacy
+        # Megatron-SWIFT defaults these True, mcore's TransformerConfig defaults them False, and
+        # bias_activation_fusion in particular changes SwiGLU arithmetic in low precision. Only fold in
+        # flags the provider actually declares; gradient_accumulation_fusion is left out for the
+        # APEX-availability reason documented in mcore.py.
+        for _fusion_flag in ('bias_activation_fusion', 'masked_softmax_fusion', 'bias_dropout_fusion'):
+            if hasattr(provider, _fusion_flag):
+                overrides.setdefault(_fusion_flag, True)
 
         provider.apply_overrides_and_finalize(dtype=strategy.params_type, overrides=overrides)
         provider.bridge = _MCoreCompatBridgeShim(bridge, hf_config)

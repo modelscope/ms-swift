@@ -74,7 +74,37 @@ class InputProcessor(TwinkleInputProcessor):
         for feat in cleaned:
             if feat.get('position_ids') is None and feat.get('input_ids') is not None:
                 feat['position_ids'] = list(range(len(feat['input_ids'])))
+        self._fill_optional_sequence_fields(cleaned)
         return super().prepare_inputs(cleaned, **kwargs)
+
+    # Sequence-level fields that only multimodal samples carry (e.g. mm_token_type_ids): the dev
+    # Template emits them for image/video rows and omits them for pure-text rows, exactly like
+    # legacy (qwen.py `if requires_mm_token_type_ids and any(mm_mask)`). twinkle's
+    # _collate_macro_batch takes the UNION of all sample keys and then indexes every sample with
+    # `item[key]`, so a mixed image+text batch KeyErrors on the text rows. legacy instead pads such
+    # fields up to the full batch, filling absent rows with the padding value (measured: a 2-image /
+    # 2-text batch collates mm_token_type_ids to shape (4, L) with the text rows all-zero). We
+    # reproduce that here: fill each absent row with `padding_map[key]` repeated to input_ids length.
+    #
+    # Scope is derived, not hardcoded to mm_token_type_ids: any padding_map key that is NOT a
+    # VLM_CONCAT_FIELD (those are concatenated on the patch axis, never padded to batch) and is
+    # missing on some-but-not-all rows. pixel_values / image_grid_thw stay untouched -- twinkle's
+    # VLM_CONCAT_FIELDS path already concatenates them, matching legacy _data_collator_mm_data.
+    def _fill_optional_sequence_fields(self, batch: List[InputFeature]) -> None:
+        if len(batch) < 2:
+            return
+        seq_fields = set(self.padding_map) - set(self.VLM_CONCAT_FIELDS) - self._DROP_KEYS
+        present = {k for feat in batch for k in feat if k in seq_fields}
+        for key in present:
+            missing = [feat for feat in batch if feat.get(key) is None]
+            if not missing or len(missing) == len(batch):
+                continue  # all-present (no gap) or all-absent (nothing to align to) -> leave as is
+            pad_value = self.padding_map[key]
+            for feat in missing:
+                input_ids = feat.get('input_ids')
+                if input_ids is None:
+                    continue
+                feat[key] = torch.full((len(input_ids), ), pad_value, dtype=torch.long)
 
     # Override twinkle's collate_fn stage to inject template hook
     def collate_fn(self, inputs: List[InputFeature], **kwargs) -> List[InputFeature]:

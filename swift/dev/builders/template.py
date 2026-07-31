@@ -8,28 +8,25 @@ if TYPE_CHECKING:
 
 
 def build_template(template_config: TemplateConfig, processor: Any) -> Any:
-    """TemplateConfig + processor -> a template whose labels are next-token shifted.
+    """TemplateConfig + processor -> a swift Template whose labels are next-token shifted.
 
     Wraps the legacy get_template (which resolves template_type + injects
-    max_length/system/truncation/loss_scale) and adds dev's label convention on top. Two shapes,
-    chosen by `legacy_encode`:
+    max_length/system/truncation/loss_scale) and derives `Shifted<LegacyClass>` from the class it
+    returns, adding only dev's twinkle contract (`DevMixin`: the label convention + batch_encode).
 
-      True (default) -- KEEP the legacy class and derive `Shifted<LegacyClass>` from it, so the
-        family's own `_encode`/`replace_tag`/`_data_collator`/`_get_position_ids`/... all still
-        dispatch and only `encode` is added.
-      False -- re-class into dev's own Template subclass (`PROCESSOR_TEMPLATE_MAPPING` by
-        template_type), i.e. dev's chat-template encode rewrite. Opt-in: see TemplateConfig.
+    Deriving rather than re-classing is the whole point: overwriting `__class__` drops every method
+    the legacy subclass overrode -- measured on Qwen3.5: 14, including `_encode`, `replace_tag`,
+    `_data_collator`, `_get_position_ids`, `packing_row` -- and silently routes `super()._encode()`
+    to the BASE legacy `_encode` instead of the family's. Two of those overrides sit on legacy's OWN
+    call path, so they are not neutralised by delegating `_encode`: `replace_tag` (base.py, inside
+    `_swift_encode`), whose media preprocessing `fetch_image`s in place, and
+    `Gemma3VisionTemplate._swift_prepare_inputs`. Text survives re-classing (`qwen2_5`/`qwen3` ARE the
+    base class); multimodal does not.
 
-    Why the default is not "re-class + delegate _encode to legacy": re-classing REPLACES the legacy
-    class, so every method the legacy subclass overrode stops dispatching -- measured on Qwen3.5,
-    14 of them -- and `super()._encode()` lands on the BASE legacy `_encode` instead of the family's.
-    Two of those overrides are on legacy's OWN call path and so are not neutralised by delegating
-    `_encode` at all: `replace_tag` (base.py:1000/1035, inside `_swift_encode`), whose dev version
-    deliberately does no media preprocessing while legacy's `fetch_image`s in place, and
-    `Gemma3VisionTemplate._swift_prepare_inputs` (base.py:1492). Text happens to survive that
-    (`qwen2_5`/`qwen3` ARE the base class, so nothing is dropped); multimodal does not.
+    The returned template is used by BOTH the dataset (encode/lengths/packing) and the model (twinkle
+    calls `batch_encode`), so one implementation produces the training tokens.
     """
-    from swift.dev.template import PROCESSOR_TEMPLATE_MAPPING, shifted_template_class
+    from swift.dev.template import shifted_template_class
     from swift.template import get_template
 
     # follow legacy, TODO: refactor
@@ -55,15 +52,9 @@ def build_template(template_config: TemplateConfig, processor: Any) -> Any:
         # comparison could line up.
         add_non_thinking_prefix=template_config.add_non_thinking_prefix,
     )
-    if template_config.legacy_encode:
-        # Derive in place rather than copy.copy + re-class: there is nothing to preserve a separate
-        # instance for, and the derived class keeps the legacy one as its base.
-        legacy.__class__ = shifted_template_class(type(legacy))
-        template = legacy
-    else:
-        from swift.dev.template import Template as DevTemplate
-        tt = legacy.template_meta.template_type
-        cls = PROCESSOR_TEMPLATE_MAPPING.get(tt, DevTemplate)
-        template = cls.from_template(legacy)
+    # Derive in place rather than copy.copy + re-class: there is nothing to preserve a separate
+    # instance for, and the derived class keeps the legacy one as its base.
+    legacy.__class__ = shifted_template_class(type(legacy))
+    template = legacy
     template.set_mode('train')
     return template

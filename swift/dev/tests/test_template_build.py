@@ -18,25 +18,19 @@ def test_default_path_shifts_labels_without_replacing_the_legacy_class():
     """End of the real pipeline: legacy's own class stays in the MRO, and labels come out shifted."""
     from swift.dev.builders import build_template
     from swift.dev.configs import TemplateConfig
-    from swift.dev.template import NextTokenShiftMixin
-    from swift.dev.template import Template as DevTemplate
+    from swift.dev.template import DevMixin
     from swift.model import get_model_processor
     from swift.template import get_template
     from swift.template.base import Template as LegacyBase
 
     _, proc = get_model_processor(MODEL, load_model=False)
     cfg = TemplateConfig(template='qwen2_5', max_length=256)
-    assert cfg.legacy_encode is True, 'legacy assembly is the default; the rest of this test assumes it'
     tpl = build_template(cfg, proc)
 
     legacy_cls = type(get_template(proc, template_type='qwen2_5', max_length=256))
     mro = type(tpl).__mro__
     assert legacy_cls in mro, f'legacy class {legacy_cls.__name__} was replaced, not extended'
-    assert NextTokenShiftMixin in mro
-    # The encode rewrite must not be in the picture at all on this path -- delegating its _encode to
-    # legacy is NOT equivalent, since replace_tag/_swift_prepare_inputs sit on legacy's own call path
-    # and would keep overriding it.
-    assert DevTemplate not in mro, 'default path must not route through dev Template'
+    assert DevMixin in mro
 
     msgs = [{'role': 'user', 'content': 'hi'}, {'role': 'assistant', 'content': 'hello there'}]
     encoded = tpl.encode({'messages': msgs})
@@ -47,7 +41,7 @@ def test_default_path_shifts_labels_without_replacing_the_legacy_class():
     assert list(encoded['input_ids']) == list(legacy_encoded['input_ids'])
     # dev's whole delta: legacy's labels, moved one position left (contract 1).
     assert list(encoded['labels']) == list(legacy_encoded['labels'])[1:] + [-100]
-    assert encoded[NextTokenShiftMixin.SHIFTED_KEY] is True
+    assert encoded[DevMixin.SHIFTED_KEY] is True
 
 
 def test_derived_class_keeps_family_methods_and_survives_pickling():
@@ -58,7 +52,7 @@ def test_derived_class_keeps_family_methods_and_survives_pickling():
     dataset_num_proc > 1. pickle resolves a class by module + qualname, so a `type(...)` result that
     is not reachable as a module attribute fails there and nowhere else.
     """
-    from swift.dev.template import NextTokenShiftMixin, shifted_template_class
+    from swift.dev.template import DevMixin, shifted_template_class
 
     class _Family:
         """Stands in for e.g. Qwen3_5Template: a legacy subclass with its own overrides."""
@@ -72,7 +66,7 @@ def test_derived_class_keeps_family_methods_and_survives_pickling():
             return ['family-placeholder']
 
     cls = shifted_template_class(_Family)
-    assert cls.__mro__[1:3] == (NextTokenShiftMixin, _Family)
+    assert cls.__mro__[1:3] == (DevMixin, _Family)
     assert cls.replace_tag is _Family.replace_tag, 'family override stopped dispatching'
     # Cached per base: a fresh class per call would make isinstance across two templates of the same
     # family false and multiply the pickle registrations.
@@ -136,37 +130,3 @@ def test_module_getattr_rejects_unrelated_names():
         except AttributeError:
             continue
         raise AssertionError(f'__getattr__ answered {name!r} instead of raising AttributeError')
-
-
-def test_opt_in_path_still_routes_through_the_dev_encode_rewrite():
-    """legacy_encode=False must reach dev's own Template -- otherwise that code is unreachable.
-
-    Driven through a fake get_template so the branch is tested on its own, without a VL download.
-    """
-    from swift.dev.builders import template as builder_mod
-    from swift.dev.configs import TemplateConfig
-    from swift.dev.template import PROCESSOR_TEMPLATE_MAPPING
-    from swift.dev.template import Template as DevTemplate
-
-    class _Meta:
-        template_type = 'qwen2_5_vl'
-
-    class _Family:
-        template_meta = _Meta()
-
-        def set_mode(self, mode):
-            self.mode = mode
-
-    import swift.template as legacy_template_mod
-    original = legacy_template_mod.get_template
-    legacy_template_mod.get_template = lambda *a, **kw: _Family()
-    try:
-        cfg = TemplateConfig(template='qwen2_5_vl', legacy_encode=False)
-        tpl = builder_mod.build_template(cfg, processor=None)
-    finally:
-        legacy_template_mod.get_template = original
-
-    expected = PROCESSOR_TEMPLATE_MAPPING['qwen2_5_vl']
-    assert type(tpl) is expected, 'the VL mapping must still pick the family subclass'
-    assert isinstance(tpl, DevTemplate)
-    assert tpl.mode == 'train'

@@ -23,6 +23,25 @@ def build_model(model_config: ModelConfig,
     return _build_transformers_model(model_config, distributed_config, train_config, tuner_config)
 
 
+def _mixed_precision_for(torch_dtype: Optional[str]) -> str:
+    """torch_dtype -> twinkle's mixed_precision mode. Shared by both backends so they cannot drift.
+
+    float16 -> 'fp16' and bfloat16 -> 'bf16' mirror legacy, whose TrainingArguments carry fp16/bf16
+    for those dtypes.
+
+    float32 -> 'no' is a DELIBERATE divergence: legacy sets fp16=True for a float32 run (measured:
+    fp16=True, bf16=False, torch_dtype=float32), so "full precision" there still autocasts to fp16.
+    dev takes float32 at face value instead of quietly training in half precision. A float32 dev vs
+    legacy loss comparison is therefore NOT expected to match -- they are different objectives, not a
+    bug. bf16 remains the aligned baseline for numerical comparisons.
+    """
+    if torch_dtype == 'float32':
+        return 'no'
+    if torch_dtype == 'float16':
+        return 'fp16'
+    return 'bf16'
+
+
 def is_megatron_backend(distributed_config: DistributedConfig) -> bool:
     backend = distributed_config.backend
     if backend in (None, 'hf'):
@@ -63,7 +82,10 @@ def _build_transformers_model(model_config: ModelConfig,
     elif distributed_config.fsdp:
         strategy = 'native_fsdp'
     kwargs['strategy'] = resolve_strategy(strategy)
-    kwargs['mixed_precision'] = 'bf16'
+    # Derived from torch_dtype, exactly like the Megatron branch below. This used to be hardcoded to
+    # 'bf16', so --torch_dtype float16 silently trained in bf16 and --torch_dtype float32 did too --
+    # the flag reached from_pretrained but never the autocast mode.
+    kwargs['mixed_precision'] = _mixed_precision_for(model_config.torch_dtype)
 
     # DDP find_unused_parameters: mirror HF Trainer's three-way derivation
     find_unused = distributed_config.ddp_find_unused_parameters
@@ -82,7 +104,19 @@ def _build_transformers_model(model_config: ModelConfig,
     # bookkeeping though: a None mesh silently changes the training objective to an avg-of-avg, so it
     # is load-bearing that run_sft calls twinkle.initialize first (see _initialize_twinkle, and the
     # 2-GPU aggregation test that pins the result).
-    return TransformersModel(**kwargs)
+    model = TransformersModel(**kwargs)
+
+    # twinkle's TransformersModel.__init__ calls gradient_checkpointing_enable() unconditionally
+    # (model/transformers/transformers.py), so the user's --gradient_checkpointing false was silently
+    # ignored -- and the find_unused_parameters derivation above already assumes the flag is honored,
+    # so the two disagreed. Turn it back off here when the config says so.
+    # NOTE: this is a post-hoc undo, not the right shape. The fix belongs upstream as a twinkle
+    # constructor argument (gradient_checkpointing=...); switch to passing it once that lands, so the
+    # model is never built in a state the caller did not ask for.
+    if train_config is not None and not train_config.gradient_checkpointing:
+        model.model.gradient_checkpointing_disable()
+
+    return model
 
 
 def _resolve_bridge_backend(name: str):
@@ -151,11 +185,7 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
 
     device_mesh = build_device_mesh(distributed_config)
 
-    mixed_precision = 'bf16'
-    if model_config.torch_dtype == 'float32':
-        mixed_precision = 'no'
-    elif model_config.torch_dtype == 'float16':
-        mixed_precision = 'fp16'
+    mixed_precision = _mixed_precision_for(model_config.torch_dtype)
 
     # A few high-frequency Megatron knobs flow straight into MegatronModel.__init__. Forward
     # only when set (None -> twinkle's own default), so the bit-exact SFT baseline is unchanged

@@ -208,6 +208,20 @@ def _run_sft_body(
     # (Megatron additionally requires variable_seq_lengths=True, else set_processor raises).
     model.set_processor(InputProcessor, padding_free=template_config.padding_free)
 
+    # Install the SAME template the dataset encodes with, so ONE implementation (swift's, carrying
+    # every TemplateConfig field) produces the training tokens. The model encodes each batch itself
+    # whenever the dataloader yields raw messages -- which is the default eager path, where
+    # AddLengthPreprocessor keeps the raw row and only adds `lengths`. Without this the model falls
+    # back to the bare twinkle Template that _construct_default_optimizer_group builds from model_id
+    # alone, which knows no TemplateConfig at all: `--system` was silently ignored and every sample
+    # differed from legacy by the system segment.
+    #
+    # Must run AFTER apply_tuner for the same reason as set_processor (the adapter group is fresh and
+    # carries twinkle's defaults). An INSTANCE is passed on purpose -- construct_class returns a
+    # Template instance unchanged, so the configured template survives; the processor takes the class
+    # instead because it needs device_mesh injected.
+    model.set_template(template)
+
     # 4/5. loss + optimizer/scheduler. Megatron computes CE internally (vocab-parallel) inside
     # forward_backward, so set_loss is a no-op there; skip it and let the default group's loss
     # stand. configure_optimizer is Megatron-aware (routes to the Megatron distributed optimizer).
@@ -255,6 +269,9 @@ def _run_sft_body(
         # Write a minimal args.json so `swift infer <ckpt>` is self-describing (no manual
         # --model_type/--template). Without it swift falls back to config-based matching, which is
         # ambiguous for qwen2 (qwen2 vs qwen2_gte) / qwen2_5 (many). Aligns with legacy sft output.
+        # Master-only: loop.save creates checkpoint-final only on the master rank
+        # (twinkle save_pretrained guards on Platform.is_master()), so the other ranks have no such
+        # directory and an unguarded open() there raised FileNotFoundError under multi-GPU DDP.
         _write_ckpt_args_json(ckpt_dir, processor, model_config, template_config, tuner_config)
     return history
 
@@ -278,6 +295,13 @@ def _write_ckpt_args_json(ckpt_dir: str,
     """
     import json
     import os
+    import torch.distributed as dist
+
+    # Only the master rank's checkpoint-final exists (twinkle saves there alone), so writing on any
+    # other rank hits a missing directory. Guard, and still makedirs so a lone master run is robust.
+    if dist.is_available() and dist.is_initialized() and dist.get_rank() != 0:
+        return
+    os.makedirs(ckpt_dir, exist_ok=True)
 
     model_meta = getattr(processor, 'model_meta', None)
     model_type = getattr(model_meta, 'model_type', None)

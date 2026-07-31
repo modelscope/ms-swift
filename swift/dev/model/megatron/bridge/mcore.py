@@ -34,6 +34,14 @@ class MCoreBridgeBackend:
         # MoE dispatch: variable_seq_lengths gates alltoall vs allgather (MoE models only).
         if 'moe_token_dispatcher_type' not in config_kwargs:
             config_kwargs['moe_token_dispatcher_type'] = ('alltoall' if strategy.variable_seq_lengths else 'allgather')
+        # Align fusion flags with legacy: mcore's TransformerConfig defaults them False, while legacy
+        # Megatron-SWIFT defaults them True and copies that onto ModelConfig. Leaving them unset makes
+        # dev run unfused kernels where legacy runs fused ones, which is not numerically equivalent in
+        # low precision (notably bias_activation_fusion's SwiGLU path). gradient_accumulation_fusion is
+        # excluded on purpose: it hard-fails without the optional APEX extension, whereas legacy falls
+        # back to unfused, so forcing it here would break setups legacy tolerates.
+        for _fusion_flag in ('bias_activation_fusion', 'masked_softmax_fusion', 'bias_dropout_fusion'):
+            config_kwargs.setdefault(_fusion_flag, True)
         model_config = ModelConfig(
             use_cpu_initialization=True,
             params_dtype=strategy.params_type,
