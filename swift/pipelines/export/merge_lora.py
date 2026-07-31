@@ -34,6 +34,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
     else:
         # If the model is quantized, perform the merge on the original (unquantized) model.
         # https://github.com/huggingface/peft/issues/2321
+        origin_quant_method = args.quant_method
         args.quant_method = None
         origin_device_map = args.device_map
         args.device_map = device_map or args.device_map
@@ -55,6 +56,7 @@ def merge_lora(args: ExportArguments, device_map=None, replace_if_exists=False) 
             additional_saved_files=model.model_meta.additional_saved_files)
         logger.info(f'Successfully merged LoRA and saved in `{output_dir}`.')
         args.device_map = origin_device_map
+        args.quant_method = origin_quant_method
 
     args.model = output_dir
     args.model_dir = output_dir
