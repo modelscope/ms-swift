@@ -1012,7 +1012,7 @@ def _get_moe_model_registry():
     return _moe_model_registry_cache
 
 
-def patch_vllm_moe_model_weight_loader(model):
+def patch_vllm_moe_model_weight_loader(model, *, load_preprocessed_weight: bool = False):
     """
     Patch vLLM MoE model to add weight_loader attribute to expert weights.
 
@@ -1022,6 +1022,8 @@ def patch_vllm_moe_model_weight_loader(model):
 
     Args:
         model: The vLLM model to patch.
+        load_preprocessed_weight: Whether Ascend MoE expert loaders should write
+            checkpoint layout for a subsequent post-load processing pass.
     """
     # Check if already patched (idempotent). On NPU/vLLM-Ascend, sleep/wake
     # and full-model reload can recreate expert Parameters while keeping this
@@ -1062,16 +1064,14 @@ def patch_vllm_moe_model_weight_loader(model):
         return
 
     def maybe_patch_vllm_ascend_moe_expert_weight_loader(experts, name, param):
-        quant_method = getattr(experts, 'quant_method', None)
-        if not is_torch_npu_available() or not type(quant_method).__module__.startswith('vllm_ascend'):
+        if not is_torch_npu_available():
             return
-        from swift.model.npu_patch.vllm_ascend import (patch_vllm_ascend_moe_expert_weight_loader,
-                                                       use_vllm_ascend_moe_preprocessed_weight)
+        from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_moe_expert_weight_loader
         patch_vllm_ascend_moe_expert_weight_loader(
             experts,
             name,
             param,
-            load_preprocessed_weight=use_vllm_ascend_moe_preprocessed_weight(original_model),
+            load_preprocessed_weight=load_preprocessed_weight,
         )
 
     for layer in inner_model.layers:
@@ -1099,10 +1099,6 @@ def patch_vllm_moe_model_weight_loader(model):
 def finish_vllm_weight_reload(vllm_model, model_config, target_device):
     if vllm_model is None or model_config is None or target_device is None:
         return
-    if is_torch_npu_available():
-        from swift.model.npu_patch.vllm_ascend import should_skip_vllm_ascend_moe_post_load
-        if should_skip_vllm_ascend_moe_post_load(vllm_model):
-            return
     try:
         from vllm.model_executor.model_loader.utils import process_weights_after_loading
         process_weights_after_loading(vllm_model, model_config, target_device)

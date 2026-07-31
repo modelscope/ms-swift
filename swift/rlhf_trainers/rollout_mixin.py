@@ -973,38 +973,62 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         gather_if_zero3 = get_gather_if_zero3_context(self)
 
-        # Colocate: patch MoE weight_loader once before loading all groups
+        ascend_reload_runner = None
+        if self.vllm_mode == 'colocate' and is_torch_npu_available():
+            from swift.model.npu_patch.vllm_ascend import get_vllm_ascend_reload_runner
+            ascend_reload_runner = get_vllm_ascend_reload_runner(self.engine)
         if self.vllm_mode == 'colocate':
-            from swift.model.npu_patch.vllm_ascend_moe import configure_vllm_ascend_moe_weight_sync
-            configure_vllm_ascend_moe_weight_sync(self.engine.inner_model, self.model, is_fsdp2=self._is_fsdp2)
-            patch_vllm_moe_model_weight_loader(self.engine.inner_model)
+            if ascend_reload_runner is None:
+                # Legacy vLLM-Ascend and GPU keep the existing in-place reload
+                # path. The Ascend fallback loader writes directly into the
+                # processed MoE layout and guards its redundant post-load.
+                patch_vllm_moe_model_weight_loader(self.engine.inner_model)
 
-        for i, parameter_group in enumerate(self.parameter_groups):
-            parameter_group_no_lora = self.parameter_groups_no_lora[i]
+        def iter_state_dicts():
+            for i, parameter_group in enumerate(self.parameter_groups):
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
 
-            if not self._is_fsdp2:
-                parameters = [
-                    parameter for name, parameter in self.model.named_parameters()
-                    if not parameter_group or name in parameter_group
-                ]
-            else:
-                parameters = []
+                if not self._is_fsdp2:
+                    parameters = [
+                        parameter for name, parameter in self.model.named_parameters()
+                        if not parameter_group or name in parameter_group
+                    ]
+                else:
+                    parameters = []
 
-            with gather_if_zero3(parameters):
-                if should_merge:
-                    with patch_lora_merge(self.model, parameter_group):
-                        self.model.merge_adapter()
-
-                try:
-                    state_dict = self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
-                    self._load_state_dict_to_vllm(state_dict)
-                finally:
+                with gather_if_zero3(parameters):
                     if should_merge:
-                        with patch_lora_unmerge(self.model):
-                            self.model.unmerge_adapter()
+                        with patch_lora_merge(self.model, parameter_group):
+                            self.model.merge_adapter()
+
+                    try:
+                        yield self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
+                    finally:
+                        if should_merge:
+                            with patch_lora_unmerge(self.model):
+                                self.model.unmerge_adapter()
+
+        state_dicts = iter_state_dicts()
+        if ascend_reload_runner is not None:
+            def iter_weights():
+                for state_dict in state_dicts:
+                    yield from state_dict.items()
+
+            weights = iter_weights()
+            try:
+                ascend_reload_runner.reload_weights(weights_iterator=weights, is_checkpoint_format=True)
+            finally:
+                weights.close()
+                state_dicts.close()
+        else:
+            try:
+                for state_dict in state_dicts:
+                    self._load_state_dict_to_vllm(state_dict)
+            finally:
+                state_dicts.close()
 
         # Re-run process_weights_after_loading once after ALL groups loaded
-        if self.vllm_mode == 'colocate':
+        if self.vllm_mode == 'colocate' and ascend_reload_runner is None:
             _model_config = self.engine.engine.model_config
             llm_model = self.engine.inner_model
             finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.accelerator.device)
