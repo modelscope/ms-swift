@@ -21,11 +21,8 @@ from swift.utils.logger import get_logger
 
 logger = get_logger()
 
-_VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR = '_swift_vllm_ascend_moe_weight_sync_layout'
-_VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR = '_swift_vllm_ascend_moe_skip_post_load'
-_VLLM_ASCEND_MOE_PROCESSED_LAYOUT = 'megatron_processed'
-_VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT = 'fsdp2_preprocessed'
-_QWEN_MOE_MODEL_TYPES = {'qwen3_moe', 'qwen3_5_moe'}
+_VLLM_ASCEND_MOE_PROCESSED_WEIGHT_LOADED_ATTR = '_swift_vllm_ascend_moe_processed_weight_loaded'
+_VLLM_ASCEND_MOE_POST_LOAD_PATCHED_ATTR = '_swift_vllm_ascend_moe_post_load_patched'
 
 
 def _patch_vllm_ascend_device_op_nonquant_routing() -> None:
@@ -204,40 +201,38 @@ def patch_vllm_ascend_moe_runtime() -> None:
     _patch_vllm_ascend_moe_sleep_layout()
 
 
-def _is_qwen_moe_model(model) -> bool:
-    return getattr(getattr(model, 'config', None), 'model_type', None) in _QWEN_MOE_MODEL_TYPES
+def _is_vllm_ascend_unquantized_fused_moe_method(quant_method) -> bool:
+    """Return whether the layer uses Ascend's unquantized FusedMoE method."""
+    quant_method_module = type(quant_method).__module__ if quant_method is not None else ''
+    if not quant_method_module.startswith('vllm_ascend'):
+        return False
+    try:
+        from vllm.model_executor.layers.fused_moe import UnquantizedFusedMoEMethod
+    except (ImportError, AttributeError):
+        return False
+    return isinstance(quant_method, UnquantizedFusedMoEMethod)
 
 
-def configure_vllm_ascend_moe_weight_sync(vllm_model, train_model, *, is_fsdp2: bool) -> None:
-    """Record the vLLM-Ascend MoE sync layout required by this training backend."""
-    fsdp2_qwen_moe = is_fsdp2 and _is_qwen_moe_model(train_model)
-    layout = _VLLM_ASCEND_MOE_PROCESSED_LAYOUT
-    # Current vLLM-Ascend 0.18 non-quantized Qwen MoE forward keeps
-    # ``need_trans=False`` and feeds ``w13_weight`` directly to
-    # ``npu_grouped_matmul``.  After FSDP2 runtime sync, write Qwen MoE weights
-    # directly into the runtime [hidden, I_tp] direction and skip checkpoint
-    # post-load processing; otherwise post-load transposes them back to
-    # [I_tp, hidden] and the first rollout fails with a hidden-size mismatch
-    # such as 2048 vs 192/384.
-    setattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR, layout)
-    setattr(vllm_model, _VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR, fsdp2_qwen_moe)
+def _patch_vllm_ascend_moe_post_load(experts) -> None:
+    """Skip post-load only for an expert layer already written in runtime layout."""
+    quant_method = getattr(experts, 'quant_method', None)
+    if not _is_vllm_ascend_unquantized_fused_moe_method(quant_method):
+        return
+    if getattr(quant_method, _VLLM_ASCEND_MOE_POST_LOAD_PATCHED_ATTR, False):
+        return
 
+    origin_process_weights = getattr(quant_method, 'process_weights_after_loading', None)
+    if origin_process_weights is None:
+        return
 
-def configure_vllm_ascend_moe_preprocessed_weight_sync(vllm_model) -> None:
-    """Record that reload writes the layout expected before vLLM-Ascend post-processing."""
-    setattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR, _VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT)
-    setattr(vllm_model, _VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR, False)
+    def process_weights_after_loading(layer):
+        if getattr(layer, _VLLM_ASCEND_MOE_PROCESSED_WEIGHT_LOADED_ATTR, False):
+            setattr(layer, _VLLM_ASCEND_MOE_PROCESSED_WEIGHT_LOADED_ATTR, False)
+            return
+        return origin_process_weights(layer)
 
-
-def use_vllm_ascend_moe_preprocessed_weight(vllm_model) -> bool:
-    """Return whether runtime sync should write the pre-process MoE layout."""
-    return getattr(vllm_model, _VLLM_ASCEND_MOE_SYNC_LAYOUT_ATTR,
-                   _VLLM_ASCEND_MOE_PROCESSED_LAYOUT) == _VLLM_ASCEND_MOE_PREPROCESSED_LAYOUT
-
-
-def should_skip_vllm_ascend_moe_post_load(vllm_model) -> bool:
-    """Return whether vLLM post-load processing should be skipped after sync."""
-    return bool(getattr(vllm_model, _VLLM_ASCEND_MOE_SKIP_POST_LOAD_ATTR, False))
+    quant_method.process_weights_after_loading = process_weights_after_loading
+    setattr(quant_method, _VLLM_ASCEND_MOE_POST_LOAD_PATCHED_ATTR, True)
 
 
 def expand_fused_moe_expert_names_for_vllm_ascend(name: str):
@@ -320,10 +315,13 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
         w13_weight after process: [local_experts, hidden, 2 * intermediate_per_tp]
         w2_weight after process : [local_experts, intermediate_per_tp, hidden]
 
-    ``load_preprocessed_weight`` selects the server full-reload target.  FSDP2
-    Qwen MoE colocate runtime sync keeps the processed target and deliberately
-    skips the post-load transpose because current vLLM-Ascend non-quantized
-    grouped matmul consumes the [hidden, I_tp] direction in this path.
+    ``load_preprocessed_weight`` selects the server full-reload target.
+    Colocate runtime sync keeps the processed target because current
+    vLLM-Ascend non-quantized grouped matmul consumes the [hidden, I_tp]
+    direction in this path.  A layer-local marker is set only after this
+    wrapper actually copies such a tensor.  Its unquantized FusedMoE post-load
+    wrapper consumes that marker and skips only the redundant transpose for
+    this expert layer; all other model post-load processing still runs.
 
     This wrapper keeps the normal vLLM loader for initial checkpoint load,
     quantized experts, and non-Ascend backends.  It only handles the 3D
@@ -332,23 +330,19 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
     """
     if 'w13_weight' not in name and 'w2_weight' not in name:
         return
-    quant_method = getattr(experts, 'quant_method', None)
-    quant_method_module = type(quant_method).__module__ if quant_method is not None else ''
-    if not quant_method_module.startswith('vllm_ascend'):
+    if not _is_vllm_ascend_unquantized_fused_moe_method(getattr(experts, 'quant_method', None)):
         return
+    _patch_vllm_ascend_moe_post_load(experts)
+    setattr(experts, _VLLM_ASCEND_MOE_PROCESSED_WEIGHT_LOADED_ATTR, False)
 
     def make_ascend_moe_weight_loader(experts, origin_weight_loader):
 
         def load_processed_ascend_weight(param, loaded_weight, weight_name, shard_id, expert_id, return_success=False):
-            quant_method = getattr(experts, 'quant_method', None)
-            quant_method_module = type(quant_method).__module__ if quant_method is not None else ''
             # Only the GRPO runtime-sync path needs special handling here.
             # SWIFT provides HF/Megatron tensors, while vLLM-Ascend stores MoE
             # experts as 3D per-local-expert tensors.  Initial checkpoint load
             # and other layouts continue to use the original vLLM loader.
-            is_runtime_sync_into_processed_param = (
-                param.data.dim() == 3 and loaded_weight.dim() in {2, 3}
-                and quant_method_module.startswith('vllm_ascend'))
+            is_runtime_sync_into_processed_param = param.data.dim() == 3 and loaded_weight.dim() in {2, 3}
             if not is_runtime_sync_into_processed_param:
                 return origin_weight_loader(param, loaded_weight, weight_name, shard_id, expert_id, return_success)
 
@@ -357,15 +351,15 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
 
             loaded_expert_sample = loaded_weight[0] if loaded_weight.dim() == 3 else loaded_weight
 
-            def prepare_fsdp2_preprocessed_target_layout():
-                """FSDP2 path: write weights before vLLM-Ascend post-load processing."""
+            def prepare_preprocessed_target_layout():
+                """Write weights before vLLM-Ascend post-load processing."""
                 if is_w13_shard and param.data.shape[1] == loaded_expert_sample.shape[-1]:
                     param.data = param.data.transpose(1, 2).contiguous()
                 elif is_w2_shard and param.data.shape[2] == loaded_expert_sample.shape[0]:
                     param.data = param.data.transpose(1, 2).contiguous()
 
-            def prepare_megatron_processed_target_layout():
-                """Megatron path: write weights into vLLM-Ascend runtime layout."""
+            def prepare_processed_target_layout():
+                """Write weights into the vLLM-Ascend runtime layout."""
                 if (is_w13_shard and param.data.shape[-1] == loaded_expert_sample.shape[-1]
                         and param.data.shape[-2] != loaded_expert_sample.shape[-1]):
                     param.data = param.data.transpose(1, 2).contiguous()
@@ -375,8 +369,8 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
 
             tp_rank = experts.tp_rank
 
-            def copy_fsdp2_preprocessed_expert(local_expert_id: int, loaded_expert_weight) -> bool:
-                """Copy FSDP2 fused expert weights into pre-process vLLM-Ascend layout."""
+            def copy_preprocessed_expert(local_expert_id: int, loaded_expert_weight) -> bool:
+                """Copy expert weights into the pre-process vLLM-Ascend layout."""
                 param_data = param.data[local_expert_id]
                 if is_w13_shard:
                     # Target: [2 * intermediate_per_tp, hidden].
@@ -395,8 +389,8 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
 
                 return False
 
-            def copy_megatron_processed_expert(local_expert_id: int, loaded_expert_weight) -> bool:
-                """Copy Megatron/HF expert shards into processed vLLM-Ascend layout."""
+            def copy_processed_expert(local_expert_id: int, loaded_expert_weight) -> bool:
+                """Copy expert shards into the processed vLLM-Ascend layout."""
                 param_data = param.data[local_expert_id]
                 if is_w13_shard:
                     # Target: [hidden, 2 * intermediate_per_tp].
@@ -416,11 +410,11 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
                 return False
 
             if load_preprocessed_weight:
-                prepare_fsdp2_preprocessed_target_layout()
-                copy_one_expert = copy_fsdp2_preprocessed_expert
+                prepare_preprocessed_target_layout()
+                copy_one_expert = copy_preprocessed_expert
             else:
-                prepare_megatron_processed_target_layout()
-                copy_one_expert = copy_megatron_processed_expert
+                prepare_processed_target_layout()
+                copy_one_expert = copy_processed_expert
 
             if loaded_weight.dim() == 3:
                 copied = False
@@ -429,6 +423,8 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
                     if local_expert_id == -1:
                         continue
                     copied = copy_one_expert(local_expert_id, loaded_expert_weight) or copied
+                if copied and not load_preprocessed_weight:
+                    setattr(experts, _VLLM_ASCEND_MOE_PROCESSED_WEIGHT_LOADED_ATTR, True)
                 return copied if return_success else None
 
             local_expert_id = experts._map_global_expert_id_to_local_expert_id(expert_id)
@@ -436,6 +432,8 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
                 return False if return_success else None
 
             if copy_one_expert(local_expert_id, loaded_weight):
+                if not load_preprocessed_weight:
+                    setattr(experts, _VLLM_ASCEND_MOE_PROCESSED_WEIGHT_LOADED_ATTR, True)
                 return True if return_success else None
 
             return origin_weight_loader(param, loaded_weight, weight_name, shard_id, expert_id, return_success)
@@ -455,12 +453,8 @@ def patch_vllm_ascend_moe_expert_weight_loader(experts,
 
 
 __all__ = [
-    'configure_vllm_ascend_moe_preprocessed_weight_sync',
-    'configure_vllm_ascend_moe_weight_sync',
     'expand_fused_moe_expert_names_for_vllm_ascend',
     'expand_fused_moe_expert_weight_for_vllm_ascend',
     'patch_vllm_ascend_moe_expert_weight_loader',
     'patch_vllm_ascend_moe_runtime',
-    'should_skip_vllm_ascend_moe_post_load',
-    'use_vllm_ascend_moe_preprocessed_weight',
 ]
