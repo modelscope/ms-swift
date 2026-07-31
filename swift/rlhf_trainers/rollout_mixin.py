@@ -1010,6 +1010,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         state_dicts = iter_state_dicts()
         if ascend_reload_runner is not None:
+
             def iter_weights():
                 for state_dict in state_dicts:
                     yield from state_dict.items()
