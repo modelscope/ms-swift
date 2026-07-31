@@ -359,6 +359,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             temperature=args.temperature,
             top_p=args.top_p,
             top_k=args.top_k,
+            min_p=args.min_p,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
             return_details=True,

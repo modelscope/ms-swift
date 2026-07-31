@@ -142,6 +142,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
             temperature=args.temperature,
             top_p=getattr(args, 'top_p', 1.0),
             top_k=getattr(args, 'top_k', -1),
+            min_p=getattr(args, 'min_p', 0.0),
             repetition_penalty=getattr(args, 'repetition_penalty', 1.0),
             stop=getattr(args, 'stop_words', None),
             return_details=True,

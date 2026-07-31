@@ -191,6 +191,7 @@ class RequestConfig:
     temperature: Optional[float] = None
     top_k: Optional[int] = None
     top_p: Optional[float] = None
+    min_p: Optional[float] = None
     repetition_penalty: Optional[float] = None
     num_beams: int = 1
     stop: Optional[List[str]] = field(default_factory=list)
