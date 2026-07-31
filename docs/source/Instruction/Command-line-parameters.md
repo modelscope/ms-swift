@@ -806,6 +806,7 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - to_ollama: 产生ollama所需的Modelfile文件。默认为False。
 - 🔥to_mcore: HF格式权重转成Megatron格式。默认为False。
 - to_hf: Megatron格式权重转成HF格式。默认为False。
+- export_language_model_only: 只导出多模态模型中的语言模型部分，并写出文本模型配置。适用于只接受CausalLM格式权重名的文本推理后端。默认为False。
 - mcore_model: mcore格式模型路径。默认为None。
 - mcore_adapter: mcore格式模型的adapter路径，默认为None。
 - thread_count: `--to_mcore true`时的模型切片数。默认为None，根据模型大小自动设置，使得最大分片小于10GB。
