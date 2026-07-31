@@ -56,8 +56,8 @@ class NPUFusedLinearCrossEntropy(torch.autograd.Function):
         # Disable global autograd graph to manually manage the chunked gradient computation
         with torch.no_grad():
             for i in range(0, BT, CHUNK_SIZE):
-                x_chunk = x[i: i + CHUNK_SIZE]
-                y_chunk = y[i: i + CHUNK_SIZE]
+                x_chunk = x[i:i + CHUNK_SIZE]
+                y_chunk = y[i:i + CHUNK_SIZE]
 
                 # Skip-FLOPs: Bypass matrix multiplication if the entire chunk is ignored (e.g., Prompt/Padding)
                 if (y_chunk == -100).all():
@@ -65,12 +65,14 @@ class NPUFusedLinearCrossEntropy(torch.autograd.Function):
 
                 x_chunk_data = x_chunk.detach()
                 w_data = weight.detach()
-                # Enable localized gradient tracking for the current chunk sandbox
+                # Enable localized gradient tracking for the current chunk sandbox.
+                # The gradient is taken w.r.t. `logits_chunk` (a fresh leaf marked
+                # requires_grad), so that `torch.autograd.grad(...)` below succeeds.
+                # `x_chunk_data` / `w_data` stay detached because their gradients are
+                # computed manually via the chain rule further down.
                 with torch.enable_grad():
-                    x_chunk.requires_grad_(True)
-
                     # 1. Local Fused Linear (NPU Cube Engine full speed)
-                    logits_chunk = F.linear(x_chunk_data, w_data)
+                    logits_chunk = F.linear(x_chunk_data, w_data).requires_grad_(True)
 
                     # Apply model-specific scaling (e.g., Gemma-2 softcapping, Cohere scaling)
                     if logit_scaling != 0:
@@ -89,7 +91,7 @@ class NPUFusedLinearCrossEntropy(torch.autograd.Function):
                     grad_logits = grad_logits.to(x.dtype)
 
                 # 4. Chain Rule: Backpropagate gradients to input and weight, then GC destroys logits_chunk
-                grad_input[i: i + CHUNK_SIZE] = torch.matmul(grad_logits, weight)
+                grad_input[i:i + CHUNK_SIZE] = torch.matmul(grad_logits, weight)
                 grad_weight += torch.matmul(grad_logits.t(), x_chunk)
 
         # Save gradients for the backward pass
@@ -112,12 +114,15 @@ class NPUFusedLinearCrossEntropy(torch.autograd.Function):
         return grad_input_3d, grad_weight_final, None, None, None, None
 
 
-def npu_fused_lm_head_loss(hidden_states, weight, labels, logit_softcapping=0.0, logit_scaling=0.0,
+def npu_fused_lm_head_loss(hidden_states,
+                           weight,
+                           labels,
+                           logit_softcapping=0.0,
+                           logit_scaling=0.0,
                            num_items_in_batch=None):
     """Wrapper for the Fused Linear Cross Entropy."""
-    return NPUFusedLinearCrossEntropy.apply(
-        hidden_states, weight, labels, logit_softcapping, logit_scaling, num_items_in_batch
-    )
+    return NPUFusedLinearCrossEntropy.apply(hidden_states, weight, labels, logit_softcapping, logit_scaling,
+                                            num_items_in_batch)
 
 
 def npu_fused_lm_forward(self, *args, **kwargs):
@@ -151,8 +156,7 @@ def npu_fused_lm_forward(self, *args, **kwargs):
             shift_labels,
             logit_softcapping=logit_softcapping,
             logit_scaling=logit_scaling,
-            num_items_in_batch=num_items
-        )
+            num_items_in_batch=num_items)
 
         # ---------------------------------------------------------------------
         # [Crucial Explanation]: Why return `torch.empty(0)`?
