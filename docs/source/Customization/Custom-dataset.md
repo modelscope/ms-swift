@@ -30,6 +30,12 @@ OpenAI工具调用格式:
 {"messages": [{"role": "user", "content": "天气如何？"}, {"role": "assistant", "content": null, "tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Beijing\"}"}}]}, {"role": "tool", "content": "晴"}]}
 ```
 
+OpenAI Chat Completions多模态工具调用格式:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "比较这两张图片。"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,{base64_encoded}"}}, {"type": "image_url", "image_url": "https://example.com/input.png"}]}, {"role": "assistant", "content": [{"type": "text", "text": "我来检查。"}], "tool_calls": [{"type": "function", "function": {"name": "inspect_images", "arguments": "{\"detail\":\"high\"}"}}]}]}
+```
+- OpenAI的`image_url`内容块会按原始顺序转换为`<image>`占位符和顶层`images`字段。该示例使用Chat Completions格式；Responses API的`input_text`和`input_image`内容块采用不同的数据结构。
+
 Anthropic工具调用格式:
 ```jsonl
 {"messages": [{"role": "assistant", "content": [{"type": "text", "text": "我来查询。"}, {"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": {"city": "Beijing"}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": "晴"}]}]}

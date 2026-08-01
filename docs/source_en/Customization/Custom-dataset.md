@@ -31,6 +31,12 @@ OpenAI tool-call format:
 {"messages": [{"role": "user", "content": "How is the weather?"}, {"role": "assistant", "content": null, "tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Beijing\"}"}}]}, {"role": "tool", "content": "Sunny"}]}
 ```
 
+OpenAI Chat Completions multimodal tool-call format:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "Compare these images."}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,{base64_encoded}"}}, {"type": "image_url", "image_url": "https://example.com/input.png"}]}, {"role": "assistant", "content": [{"type": "text", "text": "I will inspect them."}], "tool_calls": [{"type": "function", "function": {"name": "inspect_images", "arguments": "{\"detail\":\"high\"}"}}]}]}
+```
+- OpenAI `image_url` blocks are converted to `<image>` placeholders and the top-level `images` field in their original order. This example uses the Chat Completions format; Responses API `input_text` and `input_image` blocks use a different schema.
+
 Anthropic tool-use format:
 ```jsonl
 {"messages": [{"role": "assistant", "content": [{"type": "text", "text": "I will check."}, {"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": {"city": "Beijing"}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": "Sunny"}]}]}

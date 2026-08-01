@@ -6,6 +6,9 @@ from swift.model import get_processor
 from swift.template import get_template, load_image
 from swift.template.template_inputs import StdTemplateInputs
 
+PNG_BASE64 = ('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ'
+              '/pLvAAAAAElFTkSuQmCC')
+
 
 class TestDataPreprocess(unittest.TestCase):
     """Lightweight data preprocessing tests (no model forward/backward).
@@ -303,6 +306,52 @@ class TestProviderMessagesPreprocess(unittest.TestCase):
             },
         }])
 
+    def test_openai_multimodal_content_blocks(self):
+        base64_image = f'data:image/png;base64,{PNG_BASE64}'
+        image_url = 'https://example.com/input.png'
+        row = {
+            'messages': [{
+                'role':
+                'user',
+                'content': [{
+                    'type': 'text',
+                    'text': 'Compare these images: ',
+                }, {
+                    'type': 'image_url',
+                    'image_url': {
+                        'url': base64_image,
+                    },
+                }, {
+                    'type': 'image_url',
+                    'image_url': image_url,
+                }],
+            }, {
+                'role':
+                'assistant',
+                'content': [{
+                    'type': 'text',
+                    'text': 'I will inspect them.',
+                }],
+                'tool_calls': [{
+                    'type': 'function',
+                    'function': {
+                        'name': 'inspect_images',
+                        'arguments': '{"detail":"high"}',
+                    },
+                }],
+            }]
+        }
+        result = OpenAIMessagesPreprocessor().preprocess(row)
+        self.assertEqual([message['role'] for message in result['messages']], ['user', 'assistant', 'tool_call'])
+        self.assertEqual(result['messages'][-1]['content'], {'name': 'inspect_images', 'arguments': {'detail': 'high'}})
+
+        template_inputs = StdTemplateInputs.from_dict(result)
+        self.assertEqual(template_inputs.messages[0]['content'], 'Compare these images: <image><image>')
+        self.assertEqual(template_inputs.messages[1]['content'], 'I will inspect them.')
+        self.assertEqual(template_inputs.images, [base64_image, image_url])
+        self.assertIn('inspect_images', template_inputs.messages[-1]['content'])
+        self.assertEqual(load_image(template_inputs.images[0]).size, (1, 1))
+
     def test_anthropic_content_blocks(self):
         row = {
             'messages': [{
@@ -360,12 +409,9 @@ class TestProviderMessagesPreprocess(unittest.TestCase):
                 }, {
                     'type': 'image',
                     'source': {
-                        'type':
-                        'base64',
-                        'media_type':
-                        'image/png',
-                        'data': ('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ'
-                                 '/pLvAAAAAElFTkSuQmCC'),
+                        'type': 'base64',
+                        'media_type': 'image/png',
+                        'data': PNG_BASE64,
                     },
                 }],
             }, {
@@ -412,8 +458,7 @@ class TestProviderMessagesPreprocess(unittest.TestCase):
             'content': '<image>A sunny beach.',
         }])
         self.assertEqual(result['images'], [
-            ('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ'
-             '/pLvAAAAAElFTkSuQmCC'),
+            f'data:image/png;base64,{PNG_BASE64}',
             'https://example.com/result.png',
         ])
         self.assertEqual(load_image(result['images'][0]).size, (1, 1))
