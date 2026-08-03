@@ -11,7 +11,7 @@ pip install git+https://github.com/modelscope/mcore-bridge.git
 pip install git+https://github.com/modelscope/ms-swift.git
 
 # Megatron-LM在以下commit hash下进行测试
-# pip install git+https://github.com/NVIDIA/Megatron-LM.git@c6449f0b23be397449f21c0967c5fc90785e55ea
+# pip install git+https://github.com/NVIDIA/Megatron-LM.git@fd1121b8ff7e3a4f83a28d35aed172d7bc0260e1
 ```
 
 ## 精度对齐
@@ -192,7 +192,7 @@ megatron sft \
 --pipeline_model_parallel_size 8 \
 --pipeline_model_parallel_layout Et*5|t*5|t*6|t*6|t*6|t*5|t*5|t*5mL \
 ```
-- Packing/CP的支持：需安装mcore-bridge/ms-swift main分支。参考这两个PR：[ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705)、[mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140)。若要使用CP，你需要额外设置（需结合packing一起使用`--packing true`，并注意这个PR的合并[megatron-core#5706](https://github.com/NVIDIA/Megatron-LM/pull/5706)）：
+- Packing/CP的支持：需安装mcore-bridge/ms-swift main分支。参考这两个PR：[ms-swift#9705](https://github.com/modelscope/ms-swift/pull/9705)、[mcore-bridge#140](https://github.com/modelscope/mcore-bridge/pull/140)。若要使用CP，你需要额外设置：
 ```
 --sequence_packing_scheduler dp_balanced \
 --cp_partition_mode contiguous \

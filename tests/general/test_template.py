@@ -72,8 +72,75 @@ def test_mllm_dataset_map():
     _test_dataset_map('Qwen/Qwen2-VL-7B-Instruct', 'modelscope/coco_2014_caption:validation#100')
 
 
+def test_save_pil_image_dimension_collision():
+    from PIL import Image
+
+    from swift.template.base import Template
+
+    # Two images that share the same flattened pixel bytes but differ in shape.
+    width_a, height_a = 120, 80
+    width_b, height_b = 80, 120
+    assert width_a * height_a == width_b * height_b
+    pixels = bytearray()
+    for i in range(width_a * height_a):
+        row = i // width_a
+        pixels.extend((255, 60, 60) if row % 10 < 5 else (60, 60, 255))
+    img_bytes = bytes(pixels)
+    image_a = Image.frombytes('RGB', (width_a, height_a), img_bytes)
+    image_b = Image.frombytes('RGB', (width_b, height_b), img_bytes)
+    assert image_a.tobytes() == image_b.tobytes()
+
+    path_a = Template._save_pil_image(image_a)
+    path_b = Template._save_pil_image(image_b)
+
+    # Different dimensions must not collide onto the same cache file.
+    assert path_a != path_b
+    with Image.open(path_a) as saved_a:
+        assert saved_a.size == (width_a, height_a)
+    with Image.open(path_b) as saved_b:
+        assert saved_b.size == (width_b, height_b)
+
+
+def test_load_video_minicpmv_handles_zero_fps():
+    import numpy as np
+    import sys
+    import types
+    from unittest import mock
+
+    from swift.template import vision_utils
+
+    n_frames = 8
+
+    class _FakeVideoReader:
+
+        def __len__(self):
+            return n_frames
+
+        def get_avg_fps(self):
+            # decord returns 0.0 when the container carries no / broken fps metadata.
+            return 0.0
+
+        def get_batch(self, idx):
+            arr = np.zeros((len(list(idx)), 4, 4, 3), dtype='uint8')
+            return types.SimpleNamespace(asnumpy=lambda: arr)
+
+    fake_decord = types.SimpleNamespace(
+        VideoReader=lambda *args, **kwargs: _FakeVideoReader(),
+        cpu=lambda *args, **kwargs: None,
+    )
+
+    with mock.patch.dict(sys.modules, {'decord': fake_decord}), \
+            mock.patch.object(vision_utils, 'load_file', lambda video: video):
+        # A 0-fps video used to raise "range() arg 3 must not be zero" here.
+        frames = vision_utils.load_video_minicpmv_mplug_owl3(b'video-bytes', max_num_frames=4)
+
+    assert len(frames) == 4
+
+
 if __name__ == '__main__':
     test_template()
     test_mllm()
     test_llm_dataset_map()
     test_mllm_dataset_map()
+    test_save_pil_image_dimension_collision()
+    test_load_video_minicpmv_handles_zero_fps()

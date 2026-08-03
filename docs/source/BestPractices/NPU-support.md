@@ -278,45 +278,32 @@ python -c "import mindspeed.megatron_adaptor; from swift.megatron.init import in
 
 ### Qwen3.5 FLA补丁说明
 
-当前仓库已经内置了面向昇腾 NPU 的 Qwen3.5 linear attention patch，无需用户再额外修改 `transformers` 或 `fla` 源码。该 patch 的目标不是直接替换整个 `flash-linear-attention` 包，而是在 `Qwen3.5` 实际调用的 `chunk_gated_delta_rule` 路径上，将底层 GPU Triton 算子重定向到 MindSpeed 的 NPU 实现。
+Qwen3.5 在昇腾 NPU 上直接使用 `flash-linear-attention`（FLA）的原生 Triton-Ascend GDN backend。ms-swift 不再内置或维护一份 MindSpeed `chunk_gated_delta_rule` 副本。
 
-补丁生效时，ms-swift 会执行以下替换：
+ms-swift 只保留两处 NPU 兼容处理：
 
-1. 将 `transformers.utils.is_flash_linear_attention_available` 与 `transformers.utils.import_utils.is_flash_linear_attention_available` 置为 `True`，使 `transformers.models.qwen3_5.modeling_qwen3_5` 可以按 FLA fast path 完成初始化。
-2. 将 `transformers.models.qwen3_5.modeling_qwen3_5.chunk_gated_delta_rule` 以及 `transformers.models.qwen3_5_moe.modeling_qwen3_5_moe.chunk_gated_delta_rule` 重定向到 ms-swift 内置实现 `swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule`。
-3. `swift.model.chunk_gated_delta_rule` 内部继续调用 MindSpeed 提供的原生 Triton 算子，包括：
-   - `mindspeed.ops.triton.chunk_delta_h`
-   - `mindspeed.ops.triton.chunk_o`
-   - `mindspeed.ops.triton.chunk_scaled_dot_kkt`
-   - `mindspeed.ops.triton.cumsum`
-   - `mindspeed.ops.triton.solve_tril`
-   - `mindspeed.ops.triton.wy_fast`
-4. 保留了 torch 原生 l2norm 小算子实现，减轻每层每步的 launch 开销以及冷启动中的 compile/autotune 开销，提升模型在 NPU 上的性能表现。
-5. 对于 FLA 中依赖 `torch.cuda.current_device()` 初始化的 `FusedRMSNormGated`，NPU 上会保留 Qwen3.5 的原生 torch 路径，避免 CUDA-only 初始化逻辑带来的兼容性问题。
+1. Transformers 的 FLA 可用性检查包含 CUDA 条件，ms-swift 会在 NPU 上按 FLA 的公共 causal-conv 与 GDN 入口是否可导入补充判断。具体 NPU backend 的选择与校验由 FLA 自己负责。
+2. Transformers 当前使用 `torch.cuda.current_device()` 初始化 `FusedRMSNormGated`，因此 NPU 上仍保留 Qwen3.5 原生 torch norm；这不影响 GDN 使用 FLA。
 
 可以将这条调用链理解为：
 
 ```text
 Qwen3.5 modeling.chunk_gated_delta_rule
-    -> swift.model.chunk_gated_delta_rule.chunk_gated_delta_rule
-    -> MindSpeed Triton kernels
+    -> fla.ops.gated_delta_rule.chunk_gated_delta_rule
+    -> fla.ops.gated_delta_rule.backends.triton_ascend
 ```
 
-因此：
-
-- 该 patch 主要覆盖的是 **Qwen3.5 linear attention 的 gated-delta-rule 路径**；
-- 它并不等价于“将整个 fla 包完整替换为 MindSpeed”；
-- 若需要这条路径生效，请确保当前环境中可以正确导入 MindSpeed 和 triton ascend
-- 精度对齐验证版本：torch 2.9.0 + MindSpeed 0.16.0 + flash-linear-attention 0.4.2 + triton-ascend 3.2.1 + transformers 5.2.0
+- 当前请安装 FLA main 分支最新版本以获得 NPU GDN 支持。
+- 当前验证环境：torch 2.9.0+cpu、torch-npu 2.9.0.post2、FLA 0.5.2 main、triton-ascend 3.2.1、transformers 5.12.1。
 
 
 当前 Qwen3.5 在 NPU 上如果走 transformers 后端或 Megatron-SWIFT 后端训练，还需要额外注意版本和功能约束：
 
-1. 当前 NPU 文档中约定的 MindSpeed 训练组合是 `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`。在这个组合下，`megatron-core` 已包含 `core.ssm.gated_delta_net` 原生 GDN 内核，`mcore-bridge` 默认会按 `USE_MCORE_GDN=1` 走 Megatron-Core/MindSpeed GDN 路径。若显式设置 `USE_MCORE_GDN=0`，则会回退到由 `mcore-bridge` 包装的 transformers 版 GDN，并配合 ms-swift 内置的 Qwen3.5 FLA NPU 补丁，把 `chunk_gated_delta_rule` 重定向到 MindSpeed Triton 算子。
+1. 当前 NPU 文档中约定的 MindSpeed 训练组合是 `Megatron-LM v0.16.0 + MindSpeed core_r0.16.0`。在这个组合下，`mcore-bridge` 默认按 `USE_MCORE_GDN=1` 走 Megatron-Core/MindSpeed GDN；若显式设置 `USE_MCORE_GDN=0`，则走 transformers 版 GDN。该路径会优先尝试使用上述 FLA Triton-Ascend backend；FLA 不可用时仅记录 warning 并保留当前 MindSpeed/Megatron 选择的 GDN 实现，不主动替换为 Torch 实现，因此 FLA 不是普通 Megatron 训练的强依赖。
 
-2. 目前无论使用 transformers 后端还是 Megatron-SWIFT 后端，也无论 Megatron-SWIFT 下使用 `USE_MCORE_GDN=1` 还是 `USE_MCORE_GDN=0`，都不要在 Qwen3.5 的 NPU 路径上开启序列相关特性，包括 SP（sequence parallel，序列并行）、CP（context parallel，上下文并行）或 packing/padding-free。相关 FLA Triton 算子在 NPU 侧还没有完整的原生支持，开启这类特性可能触发算子缺失、样本边界处理不完整或并行切分不匹配问题。
+2. MindSpeed 初始化以及训练参数 `repatch()` 可能会替换 FLA 的公共 GDN 入口。ms-swift 会在构建 `mcore-bridge` 前和 `repatch()` 后，优先从 MindSpeed patch manager 保存的 `orig_func` 恢复 FLA 原始 callable；仅在成功恢复 FLA 时才同步刷新 `mcore-bridge` 已缓存的 callable。如果 FLA 缺失或恢复失败，则不修改当前 GDN callable，并记录 warning。packed/varlen 能力取决于保留的实现；如果它不支持非空 `cu_seqlens`，实际 GDN 调用会直接失败，此时需要安装可用的 FLA。
 
-3. 因此当前建议：transformers 后端避免设置 `--sequence_parallel_size` 大于 `1`，并避免使用 `--packing true` / `--padding_free true`；Megatron-SWIFT 后端`--context_parallel_size` 保持为 `1`，并同样避免使用 `--packing true` / `--padding_free true`。只有在目标 MindSpeed/FLA 版本明确补齐支持并完成分层验证后，才重新开启这些特性。
+3. 已在 8 卡 Atlas 900 A2 上完成 Qwen3.5-4B 的 Transformers/FSDP LoRA 验证：BF16、`alpaca-gpt4-data-zh`、`packing=true`、`max_length=512`、每卡 batch size 1、梯度累积 1，共训练 300 steps；全程 loss/grad_norm 为有限值，并成功保存 checkpoint。相同配置下，NPU 与 GPU 对照实验的 loss 变化趋势对齐。
 
 ### 环境查看
 

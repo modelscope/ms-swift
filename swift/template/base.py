@@ -812,8 +812,12 @@ class Template(ProcessorMixin):
 
     @staticmethod
     def _save_pil_image(image: Image.Image) -> str:
+        # `Image.tobytes()` only returns the flattened pixel stream, without mode or shape.
+        # Include them in the cache key so images that share pixel bytes but differ in
+        # mode/size do not collide onto the same cached file.
         img_bytes = image.tobytes()
-        img_hash = hashlib.sha256(img_bytes).hexdigest()
+        meta = f'{image.mode}-{image.width}x{image.height}-'.encode()
+        img_hash = hashlib.sha256(meta + img_bytes).hexdigest()
         tmp_dir = os.path.join(get_cache_dir(), 'tmp', 'images')
         logger.info_once(f'create tmp_dir: {tmp_dir}')
         os.makedirs(tmp_dir, exist_ok=True)

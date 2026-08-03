@@ -644,6 +644,16 @@ register_template(
         agent_template='qwen3_5',
         is_thinking=True))
 
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.ovis_ocr2,
+        template_cls=Qwen3_5Template,
+        default_system=None,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        agent_template='qwen3_5',
+        is_thinking=False))
+
 
 class Qwen3VLEmbTemplate(Qwen3VLTemplate):
 
@@ -860,13 +870,12 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             else:
                 video_audios_mask.append(False)
         video_audios_mask = torch.tensor(video_audios_mask)
-        do_resize = self.version == 'omni_v3'
         media_inputs = processor(
             text='',
             audio=inputs.audios or None,
             images=inputs.images or None,
             videos=inputs.videos or None,
-            do_resize=do_resize,
+            do_resize=False,
             return_tensors='pt')
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
@@ -1234,18 +1243,6 @@ class Qwen3TTSTemplate(Template):
             inputs.pop('ref_mels')
             inputs['speaker_embedding'] = speaker_embedding
         outputs = model(**inputs)
-        logits = outputs.logits
-        shift_labels = inputs['codec_0_labels'][:, 1:].contiguous()
-        talker_loss = F.cross_entropy(
-            logits.reshape(-1, logits.shape[-1]).float(),
-            shift_labels.reshape(-1).to(logits.device),
-            ignore_index=-100,
-        )
-        sub_talker_loss = getattr(outputs, 'sub_talker_loss', None)
-        if sub_talker_loss is not None:
-            outputs['loss'] = talker_loss + 0.3 * sub_talker_loss
-        else:
-            outputs['loss'] = talker_loss
         return outputs
 
     def save_callback(self, model, output_dir):

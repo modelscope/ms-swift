@@ -156,6 +156,7 @@ class MLLMModelType:
     ovis1_6 = 'ovis1_6'
     ovis2 = 'ovis2'
     ovis2_5 = 'ovis2_5'
+    ovis_ocr2 = 'ovis_ocr2'
     midashenglm = 'midashenglm'
 
     chatglm4v = 'chatglm4v'
@@ -208,7 +209,7 @@ class MLLMModelType:
     deepseek_janus_pro = 'deepseek_janus_pro'
     deepseek_ocr = 'deepseek_ocr'
     deepseek_ocr2 = 'deepseek_ocr2'
-    unlimited_ocr = 'unlimited-ocr'
+    unlimited_ocr = 'unlimited_ocr'
 
     minicpmv = 'minicpmv'
     minicpmv2_5 = 'minicpmv2_5'
@@ -235,6 +236,7 @@ class MLLMModelType:
     step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     kimi_k25 = 'kimi_k25'
+    kimi_k3 = 'kimi_k3'
     keye_vl = 'keye_vl'
     keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
