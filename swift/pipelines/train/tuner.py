@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
-import os
 import re
 import torch
 import transformers
@@ -391,6 +390,7 @@ class TunerMixin:
                 args.galore_target_modules += find_embedding(model)
 
         if hasattr(torch, 'npu'):
+            import os
             is_sft = type(args).__name__ == 'SftArguments'
             is_fused_ce = os.getenv('NPU_FUSED_LINEAR_CE', '0').strip() == '1'
             if is_sft and is_fused_ce:
