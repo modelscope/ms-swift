@@ -10,8 +10,6 @@ from copy import copy, deepcopy
 from packaging import version
 from PIL import Image
 from tqdm import tqdm
-from transformers import AutoConfig, GenerationConfig
-from transformers.utils import is_torch_npu_available
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
@@ -19,6 +17,8 @@ from swift.model import DEEPSEEK_V4_MODEL_TYPES, get_processor
 from swift.template import Template
 from swift.utils import (disable_deepspeed_zero3, get_device, get_dist_setting, get_logger, is_dist,
                          safe_snapshot_download)
+from transformers import AutoConfig, GenerationConfig
+from transformers.utils import is_torch_npu_available
 from .infer_engine import InferEngine
 from .patch import patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,

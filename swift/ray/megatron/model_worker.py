@@ -33,9 +33,8 @@ class MegatronModelWorker:
     @classmethod
     def from_pretrained(cls, args, model_dir):
         """Load an inference-only model (ref / teacher) from disk."""
-        from transformers import AutoConfig
-
         from swift.megatron.model import get_mcore_model
+        from transformers import AutoConfig
 
         hf_config = AutoConfig.from_pretrained(model_dir, trust_remote_code=True)
         models = get_mcore_model(args, hf_config)

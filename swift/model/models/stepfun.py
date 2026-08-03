@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 from functools import wraps
-from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 
 from swift.template import TemplateType
 from swift.utils import Processor, git_clone_github, safe_snapshot_download
+from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

@@ -3,10 +3,10 @@ import re
 import torch
 from dataclasses import dataclass, field
 from torch import nn
-from transformers.utils import strtobool
 from typing import Any, Dict, List, Literal, Optional, Type
 
 from swift.utils import is_deepspeed_enabled
+from transformers.utils import strtobool
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import Template, TemplateMeta, register_template
 from ..template_inputs import StdTemplateInputs

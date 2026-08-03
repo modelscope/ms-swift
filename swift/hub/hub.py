@@ -11,11 +11,11 @@ from huggingface_hub.hf_api import api, future_compatible
 from packaging import version
 from pathlib import Path
 from requests.exceptions import HTTPError
-from transformers import trainer
-from transformers.utils import strtobool
 from typing import List, Literal, Optional, Union
 
 from swift.utils import get_logger, ms_logger_context, use_hf_hub
+from transformers import trainer
+from transformers.utils import strtobool
 
 logger = get_logger()
 

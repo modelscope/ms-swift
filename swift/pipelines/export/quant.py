@@ -1,13 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 import torch.nn as nn
-import transformers
 from collections import defaultdict
 from contextlib import contextmanager
 from packaging import version
 from tqdm import tqdm
 from typing import Dict, List, Optional
 
+import transformers
 from swift.arguments import ExportArguments
 from swift.dataset import load_dataset
 from swift.model import save_checkpoint

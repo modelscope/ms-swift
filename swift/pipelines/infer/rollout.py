@@ -32,7 +32,6 @@ from fastapi import FastAPI
 from itertools import chain
 from multiprocessing import Pipe, Process
 from multiprocessing.connection import Connection
-from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, List, Optional, Union
 
 from swift.arguments import RolloutArguments
@@ -48,6 +47,7 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
 from swift.rollout import RolloutScheduler, multi_turns
 from swift.utils import (gc_collect, get_logger, get_physical_device_count, get_seed, ipc_collect, is_torch_rocm,
                          is_vllm_ascend_available, is_vllm_metax_available, synchronize)
+from transformers.utils import is_torch_npu_available
 from ..base import SwiftPipeline
 
 try:

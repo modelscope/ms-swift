@@ -17,10 +17,10 @@ from peft.tuners.lora import LoraModel as _LoraModel
 from peft.tuners.lora.tp_layer import LoraParallelLinear as _LoraParallelLinear
 from peft.tuners.tuners_utils import BaseTunerLayer
 from peft.utils import _get_submodules, get_quantization_config
-from transformers import Conv1D
 from typing import Dict, List, Optional
 
 from swift.utils import get_logger
+from transformers import Conv1D
 from .peft import LoraConfig
 from .utils import ActivationMixin, ModulesToSaveWrapper, SwiftAdapter
 

@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from transformers import PreTrainedModel
-
 from swift.template import TemplateType
 from swift.utils import get_logger
+from transformers import PreTrainedModel
 from ..constant import LLMModelType
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model

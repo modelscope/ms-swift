@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from transformers import AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, safe_snapshot_download
+from transformers import AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

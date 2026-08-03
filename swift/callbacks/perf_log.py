@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import time
 import torch
-from transformers import TrainerControl, TrainerState
 from typing import TYPE_CHECKING
 
 from swift.utils import (empty_cache, get_current_device, get_device_count, get_dist_setting, get_env_args, get_logger,
                          synchronize)
+from transformers import TrainerControl, TrainerState
 from .base import TrainerCallback
 
 if TYPE_CHECKING:

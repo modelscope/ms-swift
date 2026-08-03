@@ -1,13 +1,13 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 from dataclasses import dataclass
-from transformers.utils.versions import require_version
 from typing import Literal, Optional
 
 from swift.trainers import Seq2SeqTrainingArguments, TrainerFactory
 from swift.trainers.utils import prepare_deepspeed_elastic_config
 from swift.utils import (add_version_to_work_dir, get_device_count, get_logger, get_pai_tensorboard_dir, is_mp,
                          is_pai_training_job, is_swanlab_available, json_parse_to_dict, to_abspath)
+from transformers.utils.versions import require_version
 from .base_args import BaseArguments
 from .tuner_args import TunerArguments
 
@@ -70,6 +70,7 @@ class SwanlabArguments:
             self.swanlab_exp_name = self.output_dir
         import swanlab
         from swanlab.integration.transformers import SwanLabCallback
+
         from transformers.integrations import INTEGRATION_TO_CALLBACK
         if self.swanlab_token:
             swanlab.login(self.swanlab_token)
