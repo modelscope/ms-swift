@@ -46,6 +46,7 @@ class LLMModelType:
     deepseek_v3 = 'deepseek_v3'
     deepseek_v32 = 'deepseek_v32'
     deepseek_v4 = 'deepseek_v4'
+    deepseek_v4_flash = 'deepseek_v4_flash'
 
     openbuddy_llama = 'openbuddy_llama'
     openbuddy_mistral = 'openbuddy_mistral'
@@ -287,3 +288,9 @@ class ModelType(LLMModelType, MLLMModelType, BertModelType, RMModelType):
             chain.from_iterable(
                 _get_model_name_list(model_type_cls)
                 for model_type_cls in [LLMModelType, MLLMModelType, BertModelType, RMModelType]))
+
+
+# DeepSeek-V4 releases share one architecture (and one mcore model type) but differ in
+# chat template, so they are registered as separate model types. Code that special-cases
+# the V4 architecture should match against this set rather than a single model type.
+DEEPSEEK_V4_MODEL_TYPES = frozenset({LLMModelType.deepseek_v4, LLMModelType.deepseek_v4_flash})

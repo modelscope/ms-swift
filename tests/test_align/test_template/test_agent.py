@@ -586,8 +586,10 @@ def test_deepseek_v4():
         }, {
             'role':
             'assistant',
+            # The `\n\n` before the tool_calls block is added by the template
+            # (`DeepSeekV4AgentTemplate._add_tool_call_prefix`), not by the data.
             'content':
-            '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>\n\n'
+            '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>'
         }, {
             'role':
             'tool_call',

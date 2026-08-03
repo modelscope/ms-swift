@@ -70,6 +70,7 @@ class LLMTemplateType:
     deepseek_r1 = 'deepseek_r1'
     deepseek_v3_1 = 'deepseek_v3_1'
     deepseek_v4 = 'deepseek_v4'
+    deepseek_v4_flash = 'deepseek_v4_flash'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'

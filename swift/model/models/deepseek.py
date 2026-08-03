@@ -184,6 +184,24 @@ register_model(
         architectures=['DeepseekV4ForCausalLM'],
     ))
 
+# DeepSeek-V4-Flash-0731 shares the V4 architecture (the extra `mtp.*` DSpark speculative
+# module is ignored on load), but its `reasoning_effort` levels differ, so it gets its own
+# template. `architectures` is deliberately left empty: it would collide with `deepseek_v4`
+# in the architecture-based `model_type` inference and turn a renamed local checkpoint
+# directory into an ambiguity error for both. The model id is matched by name instead,
+# which covers hub ids as well as the modelscope/HF cache layouts.
+register_model(
+    ModelMeta(
+        LLMModelType.deepseek_v4_flash,
+        [
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4-Flash-0731', 'deepseek-ai/DeepSeek-V4-Flash-0731'),
+            ]),
+        ],
+        template=TemplateType.deepseek_v4_flash,
+        mcore_model_type='deepseek_v4',
+    ))
+
 
 class DeepseekVLLoader(ModelLoader):
 

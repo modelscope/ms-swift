@@ -15,7 +15,7 @@ from transformers.utils import is_torch_npu_available
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
-from swift.model import get_processor
+from swift.model import DEEPSEEK_V4_MODEL_TYPES, get_processor
 from swift.template import Template
 from swift.utils import (disable_deepspeed_zero3, get_device, get_dist_setting, get_logger, is_dist,
                          safe_snapshot_download)
@@ -266,7 +266,7 @@ class VllmEngine(InferEngine):
         def _from_pretrained(*args, **kwargs):
             config = deepcopy(self.config)
             if self._version_ge('0.19'):
-                if self.model_type == 'deepseek_v4':
+                if self.model_type in DEEPSEEK_V4_MODEL_TYPES:
                     return _old_from_pretrained(*args, **kwargs)
                 if self._config_cls is None:
                     hf_config = _old_from_pretrained(*args, **kwargs)

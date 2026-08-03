@@ -2,7 +2,7 @@
 from transformers.utils import is_torch_npu_available
 
 from . import models
-from .constant import LLMModelType, MLLMModelType, ModelType
+from .constant import DEEPSEEK_V4_MODEL_TYPES, LLMModelType, MLLMModelType, ModelType
 from .model_arch import MODEL_ARCH_MAPPING, ModelArch, ModelKeys, MultiModelKeys, get_model_arch, register_model_arch
 from .model_meta import Model, ModelGroup, ModelInfo, ModelMeta, get_matched_model_meta, get_model_name
 from .patcher import get_lm_head_model, patch_module_forward
