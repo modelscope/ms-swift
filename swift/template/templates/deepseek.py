@@ -7,10 +7,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass, field
 from PIL import Image, ImageOps
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from typing import Any, Dict, List, Optional
 
 from swift.utils import get_env_args, get_logger
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template

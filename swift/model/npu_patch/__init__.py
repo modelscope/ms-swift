@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import sys
-
 from transformers.utils import strtobool
+
 from .fsdp import NPUCastError
 from .mindspeed import apply_mindspeed_patches, patch_mindspeed_fla_gdn_implementation
 

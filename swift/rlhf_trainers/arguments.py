@@ -2,7 +2,6 @@
 import trl
 from dataclasses import dataclass
 from packaging import version
-
 from transformers.utils.versions import require_version
 
 if version.parse(trl.__version__) <= version.parse('0.28'):

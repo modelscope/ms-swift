@@ -12,14 +12,14 @@ from lmdeploy.api import autoget_backend_config
 from lmdeploy.serve import async_engine
 from packaging import version
 from PIL import Image
+from transformers import GenerationConfig
+from transformers.utils.versions import require_version
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_processor
 from swift.template import Template
 from swift.utils import get_logger, get_seed, safe_snapshot_download
-from transformers import GenerationConfig
-from transformers.utils.versions import require_version
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,

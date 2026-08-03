@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from typing import TYPE_CHECKING
-
 from transformers import TrainerCallback as HfTrainerCallback
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from swift.trainers import Trainer, TrainingArguments

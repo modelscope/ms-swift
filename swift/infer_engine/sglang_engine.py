@@ -8,13 +8,13 @@ from copy import deepcopy
 from PIL import Image
 from sglang.srt.sampling.sampling_params import SamplingParams
 from sglang.srt.server_args import ServerArgs
+from transformers import GenerationConfig
 from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Union
 
 from swift.metrics import Metric
 from swift.model import get_processor
 from swift.template import Template
 from swift.utils import get_logger, safe_snapshot_download
-from transformers import GenerationConfig
 from .infer_engine import InferEngine
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
                        ChatCompletionStreamResponse, ChatMessage, DeltaMessage, EmbeddingResponse,

@@ -170,8 +170,8 @@ class RolloutReplica:
         """
         from ray.runtime_env import RuntimeEnv
         from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
         from transformers.utils import is_torch_npu_available
+
         from .vllm_server import VllmServer
 
         visible_key = 'ASCEND_RT_VISIBLE_DEVICES' if is_torch_npu_available() else 'CUDA_VISIBLE_DEVICES'

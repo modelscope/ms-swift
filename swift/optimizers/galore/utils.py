@@ -4,12 +4,12 @@ import torch
 from dataclasses import dataclass
 from torch import nn
 from torch.optim import Optimizer
+from transformers import Trainer as HfTrainer
+from transformers import get_scheduler
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
 from swift.trainers import calculate_max_steps
 from swift.utils import get_logger
-from transformers import Trainer as HfTrainer
-from transformers import get_scheduler
 from ..base import OptimizerCallback
 
 try:

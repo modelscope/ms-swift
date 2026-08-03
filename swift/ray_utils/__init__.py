@@ -7,7 +7,6 @@ from .base import RayHelper
 def try_init_ray():
     import argparse
     import json
-
     from transformers.utils import strtobool
 
     parser = argparse.ArgumentParser()

@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from transformers.utils import is_torch_npu_available
+
 from . import models
 from .constant import DEEPSEEK_V4_MODEL_TYPES, LLMModelType, MLLMModelType, ModelType
 from .model_arch import MODEL_ARCH_MAPPING, ModelArch, ModelKeys, MultiModelKeys, get_model_arch, register_model_arch

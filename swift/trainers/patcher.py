@@ -3,12 +3,12 @@ import math
 import os
 import time
 from tqdm import tqdm
-
-from swift.utils import append_to_jsonl, format_time, get_logger, get_max_reserved_memory, is_pai_training_job
 from transformers import trainer
 from transformers.trainer_callback import (DefaultFlowCallback, PrinterCallback, ProgressCallback, TrainerControl,
                                            TrainerState)
 from transformers.trainer_utils import IntervalStrategy, has_length
+
+from swift.utils import append_to_jsonl, format_time, get_logger, get_max_reserved_memory, is_pai_training_job
 from .arguments import TrainingArguments
 
 logger = get_logger()

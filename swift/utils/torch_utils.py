@@ -13,9 +13,9 @@ from contextlib import contextmanager
 from datasets.utils.filelock import FileLock
 from datetime import timedelta
 from modelscope.hub.utils.utils import get_cache_dir
+from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 from typing import Any, Mapping, Optional, Union
 
-from transformers.utils import is_torch_cuda_available, is_torch_mps_available, is_torch_npu_available
 from .env import get_dist_setting, get_node_setting, is_dist, is_local_master, is_master, is_mp
 
 

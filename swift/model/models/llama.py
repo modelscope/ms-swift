@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import sys
+from transformers import PreTrainedModel
 
 from swift.template import TemplateType
 from swift.utils import get_device, git_clone_github
-from transformers import PreTrainedModel
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

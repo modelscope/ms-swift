@@ -27,10 +27,10 @@ from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler
 from megatron.core.transformer.module import Float16Module
 from megatron.core.utils import get_torch_version, is_te_min_version, is_torch_min_version
 from packaging import version
+from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, Optional
 
 from swift.utils import check_json_format, get_logger, init_process_group, is_master, set_device
-from transformers.utils import is_torch_npu_available
 from .patcher import patch_merge_fn
 
 logger = get_logger()
