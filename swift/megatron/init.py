@@ -9,7 +9,6 @@ from copy import copy, deepcopy
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
-from transformers.utils.versions import require_version
 
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
@@ -115,7 +114,6 @@ def _patch_unified_memory():
 
 
 def _patch_mcore_bridge():
-    require_version('mcore-bridge>=1.5.0', 'please install mcore-bridge via `pip install mcore-bridge -U`')
     import mcore_bridge
     from mcore_bridge import GPTBridge
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')
@@ -207,7 +205,6 @@ def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_unified_memory()
-    _patch_mcore_bridge()
     if is_torch_npu_available():
         from swift.model.npu_patcher import patch_mindspeed_fla_gdn_implementation
         patch_mindspeed_fla_gdn_implementation()

@@ -844,6 +844,7 @@
 |[AIDC-AI/Ovis2-34B](https://modelscope.cn/models/AIDC-AI/Ovis2-34B)|ovis2|ovis2|hermes|transformers>=4.46.2, moviepy<2|&#x2718;|vision|[AIDC-AI/Ovis2-34B](https://huggingface.co/AIDC-AI/Ovis2-34B)|
 |[AIDC-AI/Ovis2.5-2B](https://modelscope.cn/models/AIDC-AI/Ovis2.5-2B)|ovis2_5|ovis2_5|hermes|transformers>=4.46.2, moviepy<2|&#x2714;|vision|[AIDC-AI/Ovis2.5-2B](https://huggingface.co/AIDC-AI/Ovis2.5-2B)|
 |[AIDC-AI/Ovis2.5-9B](https://modelscope.cn/models/AIDC-AI/Ovis2.5-9B)|ovis2_5|ovis2_5|hermes|transformers>=4.46.2, moviepy<2|&#x2714;|vision|[AIDC-AI/Ovis2.5-9B](https://huggingface.co/AIDC-AI/Ovis2.5-9B)|
+|[ATH-MaaS/OvisOCR2](https://modelscope.cn/models/ATH-MaaS/OvisOCR2)|ovis_ocr2|ovis_ocr2|qwen3_5|transformers>=5.0.0.dev, qwen_vl_utils>=0.0.14, decord|&#x2718;|vision|[ATH-MaaS/OvisOCR2](https://huggingface.co/ATH-MaaS/OvisOCR2)|
 |[mispeech/midashenglm-7b](https://modelscope.cn/models/mispeech/midashenglm-7b)|midashenglm|midashenglm|hermes|transformers>=4.52, soundfile|&#x2718;|audio|[mispeech/midashenglm-7b](https://huggingface.co/mispeech/midashenglm-7b)|
 |[ZhipuAI/glm-4v-9b](https://modelscope.cn/models/ZhipuAI/glm-4v-9b)|chatglm4v|chatglm4v|chatglm4|transformers>=4.42,<4.45|&#x2718;|-|[zai-org/glm-4v-9b](https://huggingface.co/zai-org/glm-4v-9b)|
 |[ZhipuAI/cogagent-9b-20241220](https://modelscope.cn/models/ZhipuAI/cogagent-9b-20241220)|chatglm4v|chatglm4v|chatglm4|transformers>=4.42|&#x2718;|-|[zai-org/cogagent-9b-20241220](https://huggingface.co/zai-org/cogagent-9b-20241220)|
@@ -1083,6 +1084,7 @@
 |[moonshotai/Kimi-K2.5](https://modelscope.cn/models/moonshotai/Kimi-K2.5)|kimi_k25|kimi_k25|kimi_k25|transformers>=4.57.1,<5.0.0|&#x2714;|-|[moonshotai/Kimi-K2.5](https://huggingface.co/moonshotai/Kimi-K2.5)|
 |[moonshotai/Kimi-K2.6](https://modelscope.cn/models/moonshotai/Kimi-K2.6)|kimi_k25|kimi_k25|kimi_k25|transformers>=4.57.1,<5.0.0|&#x2714;|-|[moonshotai/Kimi-K2.6](https://huggingface.co/moonshotai/Kimi-K2.6)|
 |[moonshotai/Kimi-K2.7-Code](https://modelscope.cn/models/moonshotai/Kimi-K2.7-Code)|kimi_k25|kimi_k25|kimi_k25|transformers>=4.57.1,<5.0.0|&#x2714;|-|[moonshotai/Kimi-K2.7-Code](https://huggingface.co/moonshotai/Kimi-K2.7-Code)|
+|[moonshotai/Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3)|kimi_k3|kimi_k3|kimi_k3|transformers>=5, tiktoken|&#x2718;|vision|[moonshotai/Kimi-K3](https://huggingface.co/moonshotai/Kimi-K3)|
 |[Kwai-Keye/Keye-VL-8B-Preview](https://modelscope.cn/models/Kwai-Keye/Keye-VL-8B-Preview)|keye_vl|keye_vl||keye_vl_utils|&#x2718;|vision|[Kwai-Keye/Keye-VL-8B-Preview](https://huggingface.co/Kwai-Keye/Keye-VL-8B-Preview)|
 |[Kwai-Keye/Keye-VL-1_5-8B](https://modelscope.cn/models/Kwai-Keye/Keye-VL-1_5-8B)|keye_vl_1_5|keye_vl_1_5||keye_vl_utils>=1.5.2, transformers==4.52.4|&#x2718;|vision|[Kwai-Keye/Keye-VL-1_5-8B](https://huggingface.co/Kwai-Keye/Keye-VL-1_5-8B)|
 |[rednote-hilab/dots.ocr](https://modelscope.cn/models/rednote-hilab/dots.ocr)|dots_ocr|dots_ocr||transformers>=4.51.0|&#x2718;|-|[rednote-hilab/dots.ocr](https://huggingface.co/rednote-hilab/dots.ocr)|

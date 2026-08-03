@@ -579,6 +579,7 @@ if transformers_ge_4_52:
             language_model=['model.language_model', 'lm_head'],
             aligner='model.visual.merger',
             vision_tower='model.visual',
+            mlp='model.language_model.layers.{}.mlp',
         ))
 else:
     register_model_arch(
@@ -587,6 +588,7 @@ else:
             language_model=['model', 'lm_head'],
             aligner='visual.merger',
             vision_tower='visual',
+            mlp='model.layers.{}.mlp',
         ))
 
 register_model_arch(
@@ -595,6 +597,7 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
         vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
     ))
 
 register_model_arch(

@@ -585,6 +585,10 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     ddp_timeout: int = 18000000
     ddp_backend: Literal['nccl', 'gloo'] = 'nccl'
     use_distributed_optimizer: bool = True
+    # megatron-fsdp
+    use_megatron_fsdp: bool = False
+    data_parallel_sharding_strategy: Literal['no_shard', 'optim', 'optim_grads',
+                                             'optim_grads_params'] = 'optim_grads_params'
     tensor_model_parallel_size: int = 1
     pipeline_model_parallel_size: int = 1
     decoder_first_pipeline_num_layers: Optional[int] = None
@@ -668,7 +672,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     mtp_decoder_input_detach: bool = False
     mtp_shared_weights: bool = False
 
-    # mcore-bridge
+    # mcore-bridge / megatron-bridge
+    bridge_backend: Literal['mcore-bridge', 'megatron-bridge'] = 'mcore-bridge'
     model: Optional[str] = None
     model_type: Optional[str] = None
     save_safetensors: bool = True
@@ -729,7 +734,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             with open(args_path, 'r', encoding='utf-8') as f:
                 old_args = json.load(f)
             keys = list(f.name for f in fields(MegatronTunerMixin))
-            keys += ['mcore_model', 'task_type', 'num_labels']
+            keys += ['mcore_model', 'task_type', 'num_labels', 'bridge_backend']
             for key in keys:
                 old_value = old_args.get(key)
                 if old_value is not None:
@@ -765,13 +770,30 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
                 raise ValueError('`tuner_type="lora_llm"` is not supported when `language_model_only=True`. '
                                  'Please use `tuner_type="lora"` instead.')
 
+    def _check_bridge_backend(self):
+        """Validate bridge_backend and associated constraints."""
+        if self.bridge_backend == 'megatron-bridge':
+            try:
+                import megatron.bridge
+            except ImportError:
+                raise ImportError('bridge_backend="megatron-bridge" requires the `megatron-bridge` package. '
+                                  'Install it via `pip install megatron-bridge` or use bridge_backend="mcore-bridge".')
+            if self.tuner_type != 'full':
+                raise ValueError('LoRA training is not yet supported with bridge_backend="megatron-bridge". '
+                                 'Please use bridge_backend="mcore-bridge" for LoRA, or set tuner_type="full".')
+        else:
+            require_version('mcore-bridge>=1.5.0', 'Please install mcore-bridge via `pip install mcore-bridge -U`')
+            from swift.megatron.init import _patch_mcore_bridge
+            _patch_mcore_bridge()
+            self._check_mcore_bridge()
+
     def __post_init__(self):
         if self.tuner_type != 'full':
             require_version('peft>=0.15', 'Please install peft>=0.15 to use LoRA in Megatron-SWIFT.')
         RLHFMegatronArgumentsMixin.__post_init__(self)
         MegatronTunerMixin.__post_init__(self)
         os.environ.setdefault('CUDA_DEVICE_MAX_CONNECTIONS', '1')
-        self._check_mcore_bridge()
+        self._check_bridge_backend()
         if self.recompute_granularity == 'none':
             self.recompute_granularity = None
         if self.recompute_granularity == 'selective' and self.recompute_method is not None:
@@ -792,9 +814,18 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
         self.model_type = self.model_info.model_type
         self.model_dir = self.model_info.model_dir
         self.is_multimodal = self.model_meta.is_multimodal
-        self.megatron_model_meta = get_model_meta(self._get_mcore_model_type(self.model_meta))
-        if self.megatron_model_meta is None:
-            raise ValueError(f'Model: {self.model} is not supported.')
+        if self.bridge_backend == 'megatron-bridge':
+            self.megatron_model_meta = None
+            if self.is_multimodal:
+                raise ValueError('Multimodal training is not yet supported with bridge_backend="megatron-bridge". '
+                                 'Please use bridge_backend="mcore-bridge" for multimodal models.')
+            if self.task_type not in (None, 'causal_lm'):
+                raise ValueError(f'task_type={self.task_type!r} is not yet supported with '
+                                 f'bridge_backend="megatron-bridge".')
+        else:
+            self.megatron_model_meta = get_model_meta(self._get_mcore_model_type(self.model_meta))
+            if self.megatron_model_meta is None:
+                raise ValueError(f'Model: {self.model} is not supported.')
         self._init_teacher_model()
         if self.apply_wd_to_qk_layernorm and self.model_type not in {'qwen3_next', 'qwen3_5', 'qwen3_5_moe'}:
             raise ValueError('apply_wd_to_qk_layernorm is only supported for qwen3_next, qwen3_5 and qwen3_5_moe')
@@ -866,8 +897,25 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             raise ValueError('Tensor parallel communication/GEMM overlap can happen only when '
                              'sequence parallelism is enabled')
 
+        self._check_megatron_fsdp()
         self._init_distributed()
         self._check_muon()
+
+    def _check_megatron_fsdp(self):
+        if not self.use_megatron_fsdp:
+            return
+        # Megatron-FSDP is only compatible with the distributed optimizer.
+        if not self.use_distributed_optimizer:
+            logger.info('Megatron-FSDP is only compatible with use_distributed_optimizer=True; setting it to True.')
+            self.use_distributed_optimizer = True
+        # Only sgd/adam are supported by Megatron-FSDP.
+        if self.optimizer not in ('sgd', 'adam'):
+            raise ValueError(f'Megatron-FSDP does not support the "{self.optimizer}" optimizer yet.')
+        # FSDP requires CUDA_DEVICE_MAX_CONNECTIONS > 1 (or unset). SWIFT sets it to '1' by default,
+        # so override it here before distributed initialization.
+        if os.environ.get('CUDA_DEVICE_MAX_CONNECTIONS') == '1':
+            raise ValueError('Megatron-FSDP requires `CUDA_DEVICE_MAX_CONNECTIONS > 1`, '
+                             'for example you can set `CUDA_DEVICE_MAX_CONNECTIONS=32`')
 
     def _init_attention_backend(self):
         if self.attention_backend.startswith('flash_'):
@@ -939,9 +987,12 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.teacher_model, model_type=self.teacher_model_type, use_hf=self.use_hf, hub_token=self.hub_token)
         self.teacher_model_type = self.teacher_model_info.model_type
         self.teacher_model_dir = self.teacher_model_info.model_dir
-        self.teacher_megatron_model_meta = get_model_meta(self._get_mcore_model_type(self.teacher_model_meta))
-        if self.teacher_megatron_model_meta is None:
-            raise ValueError(f'Model: {self.teacher_model} is not supported.')
+        if self.bridge_backend == 'megatron-bridge':
+            self.teacher_megatron_model_meta = None
+        else:
+            self.teacher_megatron_model_meta = get_model_meta(self._get_mcore_model_type(self.teacher_model_meta))
+            if self.teacher_megatron_model_meta is None:
+                raise ValueError(f'Model: {self.teacher_model} is not supported.')
 
     def _init_vpp_size(self):
         if self.pipeline_model_parallel_layout is not None:
@@ -1024,6 +1075,8 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
             self.eval_iters = 0
 
     def _init_multimodal_full(self):
+        if not self.is_multimodal:
+            return
         visual_cls = self.megatron_model_meta.visual_cls
         if self.tuner_type == 'full' and self.is_multimodal and visual_cls is not None and not self.language_model_only:
             vision_tower = [f'visual.{vit}' for vit in getattr(visual_cls, '_vision_tower', [])]
