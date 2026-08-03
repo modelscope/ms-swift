@@ -415,7 +415,7 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         return loss, None, None
 
     @contextmanager
-    def offload_context(self, reload: bool = True):
+    def offload_context(self):
         """Offload student model and optimizer to CPU during vLLM on-policy generation."""
         if self.args.offload_model:
             self.offload_model(self.accelerator.unwrap_model(self.model))
@@ -425,9 +425,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         try:
             yield
         finally:
-            if reload and self.args.offload_model:
+            if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
-            if reload and getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+            if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
 
     def _get_random_num(self) -> float:

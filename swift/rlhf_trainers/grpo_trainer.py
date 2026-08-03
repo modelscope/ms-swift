@@ -1829,7 +1829,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     (self.args.steps_per_generation * sequence_parallel.world_size) != 0)
 
     @contextmanager
-    def offload_context(self, reload: bool = True):
+    def offload_context(self):
         if self.args.offload_model:
             self.offload_model(self.accelerator.unwrap_model(self.model))
             if self.ref_model:
@@ -1840,15 +1840,12 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         try:
             yield
         finally:
-            # reload (load back) model when exiting context.
-            # During vLLM init (prepare_rollout, before FSDP2 sharding) the model
-            # is still full-sized: reloading it onto a single card exceeds HBM.
-            # Skip reload there and let train()'s accelerator.prepare() shard+load.
-            if reload and self.args.offload_model:
+            # reload (load back) model when exiting context
+            if self.args.offload_model:
                 self.load_model(self.accelerator.unwrap_model(self.model))
                 if self.ref_model:
                     self.load_model(self.ref_model)
-            if reload and getattr(self, 'optimizer', None) and self.args.offload_optimizer:
+            if getattr(self, 'optimizer', None) and self.args.offload_optimizer:
                 self.load_optimizer()
 
     def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:

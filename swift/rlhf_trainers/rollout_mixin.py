@@ -430,10 +430,15 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                     for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
                 ])
             self.enable_offload = args.offload_model or args.offload_optimizer
-            # reload=False: at init the model is still full (FSDP2 sharding has
-            # not happened yet). Skip reloading it back onto a single card here;
-            # train()'s accelerator.prepare() will shard and load it.
-            rollout_cm = self.offload_context(reload=False) if self.enable_offload else nullcontext()
+            # At init (prepare_rollout, before accelerator.prepare()) an FSDP2
+            # model is still full-sized on CPU — sharding hasn't happened yet.
+            # Skip the offload context entirely: both the offload and the reload
+            # are pointless here, and reloading the full model onto a single card
+            # would OOM. train()'s accelerator.prepare() will shard and load it.
+            if self.enable_offload and not self._is_fsdp2:
+                rollout_cm = self.offload_context()
+            else:
+                rollout_cm = nullcontext()
 
             with rollout_cm, self._disable_sp_context():
                 self.engine = self._prepare_vllm_engine()
@@ -1480,7 +1485,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                         state[key] = value.to(device, non_blocking=True)
 
     @contextmanager
-    def offload_context(self, reload: bool = True):
+    def offload_context(self):
         """
         Context manager for model/optimizer offloading.
 
