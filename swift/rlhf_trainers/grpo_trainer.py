@@ -2059,6 +2059,11 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
     def _prepare_liger_loss(self):
         self.use_liger_loss = self.args.use_liger_kernel
         if self.use_liger_loss:
+            from transformers.utils.versions import require_version
+            require_version(
+                'liger-kernel>=0.8.0',
+                'GRPO fused loss requires liger-kernel>=0.8.0 because older fused PPO/GRPO backward paths can '
+                'produce non-finite gradients with recent PyTorch versions.')
             from liger_kernel.chunked_loss import LigerFusedLinearGRPOLoss
             self.liger_grpo_loss = LigerFusedLinearGRPOLoss(
                 beta=self.beta,

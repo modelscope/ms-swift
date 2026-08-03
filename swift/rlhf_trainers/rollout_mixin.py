@@ -56,6 +56,33 @@ DataType = List[Dict[str, Union[torch.Tensor, Any]]]
 logger = get_logger()
 
 
+def _raise_if_non_finite_lora_parameters(named_tensors) -> None:
+    finite_checks = []
+    for name, tensor in named_tensors:
+        if 'lora_' not in name or not torch.is_tensor(tensor) or tensor.numel() == 0:
+            continue
+        finite_checks.append((name, torch.isfinite(tensor.detach()).all()))
+
+    checks_by_device = {}
+    for name, check in finite_checks:
+        checks_by_device.setdefault(check.device, []).append((name, check))
+
+    non_finite = []
+    for checks in checks_by_device.values():
+        if torch.stack([check for _, check in checks]).all().item():
+            continue
+        non_finite.extend(name for name, check in checks if not check.item())
+
+    if non_finite:
+        preview = ', '.join(non_finite[:10])
+        remaining = len(non_finite) - 10
+        if remaining > 0:
+            preview += f', ... ({remaining} more)'
+        raise FloatingPointError(
+            'Non-finite LoRA parameters detected before vLLM weight synchronization. Refusing to merge or load '
+            f'invalid adapter weights: {preview}')
+
+
 @dataclass
 class DataCache:
     """Cache container for rollout results"""
@@ -676,11 +703,11 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         for i, parameter_group in enumerate(self.parameter_groups):
             if not self._is_fsdp2:
-                parameters = [
-                    parameter for name, parameter in self.model.named_parameters()
-                    if not parameter_group or name in parameter_group
-                ]
+                named_parameters = [(name, parameter) for name, parameter in self.model.named_parameters()
+                                    if not parameter_group or name in parameter_group]
+                parameters = [parameter for _, parameter in named_parameters]
             else:
+                named_parameters = []
                 parameters = []
 
             with gather_if_zero3(parameters), patch_lora_merge(self.model, parameter_group):
@@ -695,12 +722,15 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                     }
 
                 if not self._is_fsdp2:
+                    _raise_if_non_finite_lora_parameters(named_parameters)
                     self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
                 cur_lora_params = {
                     name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
                     for name, param in cur_lora_params.items()
                 }
+                if self._is_fsdp2:
+                    _raise_if_non_finite_lora_parameters(cur_lora_params.items())
                 lora_params.update(cur_lora_params)
                 if not self._is_fsdp2:
                     with patch_lora_unmerge(self.model):
@@ -939,6 +969,8 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 raw_state_dict[name] = param.data
 
         # Process: clean names, filter adapters (keep LoRA for FSDP2 to merge at tensor level)
+        if should_merge_lora:
+            _raise_if_non_finite_lora_parameters(raw_state_dict.items())
         state_dict = self._process_state_dict_for_vllm(raw_state_dict, is_peft, keep_lora_weights=should_merge_lora)
 
         # FSDP2 + LoRA: merge at tensor level (avoids issues with merge/unmerge on DTensor)
@@ -998,15 +1030,16 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 parameter_group_no_lora = self.parameter_groups_no_lora[i]
 
                 if not self._is_fsdp2:
-                    parameters = [
-                        parameter for name, parameter in self.model.named_parameters()
-                        if not parameter_group or name in parameter_group
-                    ]
+                    named_parameters = [(name, parameter) for name, parameter in self.model.named_parameters()
+                                        if not parameter_group or name in parameter_group]
+                    parameters = [parameter for _, parameter in named_parameters]
                 else:
+                    named_parameters = []
                     parameters = []
 
                 with gather_if_zero3(parameters):
                     if should_merge:
+                        _raise_if_non_finite_lora_parameters(named_parameters)
                         with patch_lora_merge(self.model, parameter_group):
                             self.model.merge_adapter()
 

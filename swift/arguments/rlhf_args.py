@@ -543,8 +543,14 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
                              'Please set NPROC_PER_NODE equal to num_processes.')
         if self.use_liger_kernel:
             liger_kernel_version = version.parse(importlib.metadata.version('liger-kernel'))
-            if liger_kernel_version < version.parse('0.7.0'):
-                raise ValueError('Please update liger-kernel to 0.7.0 or later: pip install -U liger-kernel')
+            if liger_kernel_version < version.parse('0.8.0'):
+                import torch
+                torch_version = version.parse(torch.__version__.split('+', 1)[0])
+                raise ValueError(
+                    'GRPO with `use_liger_kernel` requires liger-kernel>=0.8.0. '
+                    f'Found liger-kernel={liger_kernel_version}, torch={torch_version}. Older fused PPO/GRPO '
+                    'backward paths can produce non-finite gradients with recent PyTorch versions. '
+                    'Please run: pip install -U "liger-kernel>=0.8.0"')
             if self.delta is not None:
                 raise ValueError('Liger loss does not support two-sided GRPO loss yet.')
             if self.sequence_parallel_size > 1:
