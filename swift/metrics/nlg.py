@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from transformers import EvalPrediction
 from typing import Dict, List
 
 from swift.utils import Serializer, get_logger
+from transformers import EvalPrediction
 from .base import EvalMetrics
 from .utils import MeanMetric
 

@@ -843,6 +843,10 @@ App参数继承于[部署参数](#部署参数), [Web-UI参数](#Web-UI参数)�
 - 特定模型参数可以通过`--model_kwargs`或者环境变量进行设置，例如: `--model_kwargs '{"fps_max_frames": 12}'`或者`FPS_MAX_FRAMES=12`。
 - 注意：若你在训练时指定了特定模型参数，请在推理时也设置对应的参数，这可以提高训练效果。
 
+### deepseek_v4, deepseek_v4_flash, glm5_2, hy_v3_preview
+- 🔥REASONING_EFFORT: 思考强度，仅在开启思考时生效。取值范围因模型而异：`deepseek_v4`为'high'/'max'（默认'high'）；`deepseek_v4_flash`为'low'/'high'/'max'（默认'low'）；`glm5_2`为'high'/'max'（默认'max'）；`hy_v3_preview`为'no_think'/'low'/'high'（默认'high'）。
+  - 也可以在数据集或推理请求中传入`chat_template_kwargs`进行样本级设置，例如`{"chat_template_kwargs": {"reasoning_effort": "max"}}`，优先级高于环境变量。
+
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
 参数含义与`qwen_vl_utils<0.0.12`或者`qwen_omni_utils`库中含义一致，可以查看[这里](https://github.com/QwenLM/Qwen2.5-VL/blob/main/qwen-vl-utils/src/qwen_vl_utils/vision_process.py#L24)。ms-swift通过修改这些常数值来控制图片分辨率和视频帧率，避免训练时OOM。
 

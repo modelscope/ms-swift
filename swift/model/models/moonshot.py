@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import logging
-from transformers import PreTrainedModel
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
+from transformers import PreTrainedModel
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

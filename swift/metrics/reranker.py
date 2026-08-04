@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
-from transformers import EvalPrediction
 from typing import Dict
 
 from swift.utils import get_logger
+from transformers import EvalPrediction
 from .base import EvalMetrics
 from .utils import Metric
 

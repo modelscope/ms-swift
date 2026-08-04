@@ -2,7 +2,6 @@
 import os
 import shutil
 import torch.distributed as dist
-from transformers.utils import strtobool
 from typing import List, Optional, Union
 
 from swift.megatron.arguments import MegatronExportArguments
@@ -11,6 +10,7 @@ from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import load_mcore_checkpoint, prepare_mcore_model, save_mcore_checkpoint
 from swift.pipelines import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_master
+from transformers.utils import strtobool
 
 logger = get_logger()
 
@@ -55,12 +55,15 @@ class MegatronExport(SwiftPipeline):
                 mg_model = peft_model.merge_and_unload()
         logger.info('Converting weights and saving the model...')
         save_peft_format = args.tuner_type == 'lora' and not args.merge_lora
+        # `to_hf` may load from a mcore checkpoint, so pass the source HF dir explicitly.
+        save_missing_weights = (args.save_missing_weights and args.model_info is not None and args.model_info.model_dir)
         bridge.save_weights(
             [mg_model],
             args.output_dir,
             peft_format=save_peft_format,
             args=args,
             processor=self.processor,
+            save_missing_weights=save_missing_weights,
         )
         if is_master():
             if args.ckpt_dir:

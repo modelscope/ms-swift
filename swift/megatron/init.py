@@ -7,12 +7,13 @@ import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from tqdm import tqdm
-from transformers.modeling_utils import custom_object_save
-from transformers.utils import is_torch_npu_available
+from typing import Union
 
 from swift.model import DEEPSEEK_V4_MODEL_TYPES, get_model_processor, save_checkpoint
 from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
                          get_multimodal_target_regex, is_master, split_list)
+from transformers.modeling_utils import custom_object_save
+from transformers.utils import is_torch_npu_available
 
 logger = get_logger()
 
@@ -127,8 +128,15 @@ def _patch_mcore_bridge():
         max_shard_size: str = '5GB',
         args=None,
         processor=None,
+        save_missing_weights: Union[bool, str] = False,
     ) -> None:
-        origin_save_weights(self, mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size)
+        origin_save_weights(
+            self,
+            mg_models,
+            output_dir,
+            peft_format=peft_format,
+            max_shard_size=max_shard_size,
+            save_missing_weights=save_missing_weights)
         if processor is None or args is None:
             return
         hf_config = self.config.hf_config

@@ -2,14 +2,14 @@
 import inspect
 import torch
 import torch.distributed as dist
-import transformers
 from packaging import version
 from PIL import Image
-from transformers import PreTrainedModel
 from types import MethodType
 
+import transformers
 from swift.template import TemplateType
 from swift.utils import is_deepspeed_enabled, to_device
+from transformers import PreTrainedModel
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

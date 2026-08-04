@@ -14,11 +14,11 @@ from datasets import Dataset as HfDataset
 from functools import partial
 from modelscope import Model, MsDataset, snapshot_download
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AutoTokenizer
 from typing import Any, Dict, List
 
 from swift import (InferArguments, RLHFArguments, SftArguments, Trainer, TrainingArguments, get_logger, infer_main,
                    rlhf_main, sft_main)
+from transformers import AutoTokenizer
 
 NO_EVAL_HUMAN = True
 

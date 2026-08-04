@@ -808,6 +808,7 @@ class BaseMegatronTrainer(ABC):
                     peft_format=args.tuner_type == 'lora',
                     args=args,
                     processor=self.template.processor,
+                    save_missing_weights=args.save_missing_weights,
                 )
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.tuner_type != 'full' and args.merge_lora:
@@ -829,6 +830,7 @@ class BaseMegatronTrainer(ABC):
                     peft_format=False,
                     args=args,
                     processor=self.template.processor,
+                    save_missing_weights=args.save_missing_weights,
                 )
                 self.unmerge_lora_adapters()
 

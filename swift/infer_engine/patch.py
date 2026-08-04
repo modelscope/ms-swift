@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from contextlib import contextmanager
 from functools import wraps
+
 from transformers import AutoConfig, AutoTokenizer, PretrainedConfig, PreTrainedTokenizerBase
 
 

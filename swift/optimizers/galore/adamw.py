@@ -4,9 +4,9 @@ import math
 import torch
 from torch import nn
 from torch.optim import Optimizer
-from transformers.utils.versions import require_version
 from typing import Callable, Iterable, Tuple
 
+from transformers.utils.versions import require_version
 from .galore_projector import GaLoreProjector
 
 

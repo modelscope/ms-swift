@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch.nn.functional as F
 from torch import Tensor
-from transformers import PreTrainedModel
 from types import MethodType
 
 from swift.template import TemplateType
 from swift.utils import get_logger
+from transformers import PreTrainedModel
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

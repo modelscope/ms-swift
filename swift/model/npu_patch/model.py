@@ -5,12 +5,12 @@ import torch
 import torch.nn.functional as F
 import torch_npu
 from torch import nn
+
+from swift.utils.logger import get_logger
 from transformers.models.qwen2 import modeling_qwen2
 from transformers.models.qwen3 import modeling_qwen3
 from transformers.models.qwen3_moe import modeling_qwen3_moe
 from transformers.models.qwen3_vl_moe import modeling_qwen3_vl_moe
-
-from swift.utils.logger import get_logger
 from .utils import apply_patch_map, import_optional_module
 
 logger = get_logger()

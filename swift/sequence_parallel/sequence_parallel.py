@@ -5,11 +5,11 @@ import torch
 import torch.distributed as dist
 from functools import lru_cache, partial
 from torch.distributed import init_device_mesh
-from transformers import PreTrainedTokenizer
 from types import SimpleNamespace
 from typing import Optional
 
 from swift.utils import HfConfigFactory, get_cu_seqlens_from_position_ids, get_device, get_dist_setting
+from transformers import PreTrainedTokenizer
 from .ulysses import DistributedAttention
 from .zigzag_ring_attn import zigzag_ring_flash_attn_varlen_func
 
