@@ -277,10 +277,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
             student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
             if has_opsd and self.use_liger_gkd_loss:
                 raise ValueError('OPSD is not supported with Liger GKD loss.')
-            encoded_inputs = to_device(template.data_collator(student_encoded_list), self.model.device)
+            encoded_inputs = to_device(template.data_collator(student_encoded_list), self.accelerator.device)
         if has_opsd:
             with self._template_context(template):
-                teacher_encoded = to_device(template.data_collator(teacher_encoded_list), self.model.device)
+                teacher_encoded = to_device(template.data_collator(teacher_encoded_list), self.accelerator.device)
         else:
             teacher_encoded = None
 
