@@ -800,6 +800,7 @@ class BaseMegatronTrainer(ABC):
         if args.save_safetensors:
             skip_saving_adapter = args.tuner_type == 'lora_llm' or (
                 args.tuner_type == 'lora' and args.merge_lora and not hasattr(self.bridge, '_support_hf_grouped_lora'))
+            save_missing_weights = args.save_missing_weights and args.model_dir
 
             if not skip_saving_adapter:
                 self.bridge.save_weights(
@@ -808,7 +809,7 @@ class BaseMegatronTrainer(ABC):
                     peft_format=args.tuner_type == 'lora',
                     args=args,
                     processor=self.template.processor,
-                    save_missing_weights=args.save_missing_weights,
+                    save_missing_weights=save_missing_weights,
                 )
             # merge-lora does not store lora, lora saving may report an error (Qwen3-VL-Moe)
             if args.tuner_type != 'full' and args.merge_lora:
@@ -830,7 +831,7 @@ class BaseMegatronTrainer(ABC):
                     peft_format=False,
                     args=args,
                     processor=self.template.processor,
-                    save_missing_weights=args.save_missing_weights,
+                    save_missing_weights=save_missing_weights,
                 )
                 self.unmerge_lora_adapters()
 

@@ -147,6 +147,22 @@ def _render(data, effort=None, enable_thinking=True, mode='train'):
     return template.safe_decode(encoded['input_ids'])
 
 
+def _read_golden(index: int) -> str:
+    """The reference output shipped in the model repo, or None when it is not available.
+
+    Only the tokenizer files are needed to run the rest of this module, so a checkout
+    without the `encoding/` directory should skip the golden comparison rather than fail.
+    """
+    from swift.model import get_processor
+    processor = get_processor(MODEL_ID)
+    path = os.path.join(processor.model_info.model_dir, 'encoding', 'tests', f'test_output_{index}.txt')
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding='utf-8') as f:
+        # The golden files end with a trailing newline that the encoder itself does not emit.
+        return f.read().rstrip('\n')
+
+
 THINKING_MESSAGES = [
     {
         'role': 'system',
@@ -183,9 +199,16 @@ THINKING_EXPECTED = (f'{BOS}{SYSTEM}'
 
 
 def test_deepseek_v4_flash_thinking():
-    """`low` is the default level and contributes no prefix."""
+    """`low` is the default level and contributes no prefix.
+
+    Also pins the rendering against `encoding/tests/test_output_2.txt`.
+    """
     assert _render({'messages': THINKING_MESSAGES}) == THINKING_EXPECTED
     assert _render({'messages': THINKING_MESSAGES}, effort='low') == THINKING_EXPECTED
+
+    golden = _read_golden(2)
+    if golden is not None:
+        assert THINKING_EXPECTED == golden, 'diverged from encoding/tests/test_output_2.txt'
 
 
 def test_deepseek_v4_flash_reasoning_effort():
@@ -291,6 +314,10 @@ def test_deepseek_v4_flash_tool_call():
         '<think>Got the weather data. Let me format a nice response.</think>'
         f'The weather in Beijing is currently sunny with a temperature of 22°C and 45% humidity.{EOS}')
     assert _render({'messages': TOOL_MESSAGES, 'tools': TOOLS}) == expected
+
+    golden = _read_golden(1)
+    if golden is not None:
+        assert expected == golden, 'diverged from encoding/tests/test_output_1.txt'
 
 
 def test_deepseek_v4_flash_tool_call_keeps_history_thinking():

@@ -7,10 +7,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from dataclasses import dataclass, field
 from PIL import Image, ImageOps
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from typing import Any, Dict, List, Optional
 
 from swift.utils import get_env_args, get_logger
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import TemplateMeta, register_template
@@ -679,20 +679,34 @@ class DeepseekV4Template(DeepseekV3_1Template):
 
     def init_env_args(self):
         super().init_env_args()
-        self.reasoning_effort = get_env_args('reasoning_effort', str, None)
+        self.reasoning_effort = self._check_reasoning_effort(get_env_args('reasoning_effort', str, None))
         if self.reasoning_effort is None:
             self.reasoning_effort = self.default_reasoning_effort if self.enable_thinking else None
         self.enable_thinking = self.reasoning_effort in self.reasoning_effort_prompts
         self.chat_template_kwargs['reasoning_effort'] = self.reasoning_effort
 
+    def _check_reasoning_effort(self, reasoning_effort):
+        """Drop an unknown level so that it falls back to the default instead of disabling thinking.
+
+        Every accepted level is a thinking level, so an unrecognized value would otherwise be
+        indistinguishable from "thinking off" and silently turn reasoning off.
+        """
+        if reasoning_effort is not None and reasoning_effort not in self.reasoning_effort_prompts:
+            logger.warning(f'Ignoring unknown reasoning_effort: {reasoning_effort!r}. '
+                           f'Expected one of {list(self.reasoning_effort_prompts)}.')
+            return None
+        return reasoning_effort
+
     def _get_reasoning_effort(self, inputs=None):
         reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        reasoning_effort = self._check_reasoning_effort(reasoning_effort)
         if reasoning_effort is None:
             reasoning_effort = self.reasoning_effort
         return reasoning_effort
 
     def _get_enable_thinking(self, inputs=None):
         reasoning_effort = None if inputs is None else inputs.chat_template_kwargs.get('reasoning_effort')
+        reasoning_effort = self._check_reasoning_effort(reasoning_effort)
         if reasoning_effort is not None:
             return reasoning_effort in self.reasoning_effort_prompts
         return super()._get_enable_thinking(inputs)
