@@ -725,8 +725,13 @@ class SwiftMixin:
                 self.unscale_gradients()
                 max_norm = args[0] if args else kwargs['max_norm']
                 norm_type = args[1] if len(args) > 1 else kwargs.get('norm_type', 2)
+                norm_type = float(norm_type)
                 grads = [p.grad for p in parameters if p.grad is not None]
-                grad_norms = torch._foreach_norm(grads, norm_type)
+                foreach_norm = getattr(torch, '_foreach_norm', None)
+                if foreach_norm is None:
+                    grad_norms = [torch.linalg.vector_norm(grad, ord=norm_type) for grad in grads]
+                else:
+                    grad_norms = foreach_norm(grads, norm_type)
                 grad_norm = torch.nn.utils.get_total_norm([norm.to(self.device) for norm in grad_norms], norm_type)
                 if hasattr(grad_norm, 'full_tensor'):
                     grad_norm = grad_norm.full_tensor()
