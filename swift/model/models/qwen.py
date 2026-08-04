@@ -1383,7 +1383,8 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
             attention_mask: Optional[torch.Tensor] = None,
             **kwargs,
         ):
-            if not sequence_parallel.enabled() and 'cu_seq_lens_q' not in kwargs:
+            # Transformers may propagate optional FlashAttention kwargs with None values in non-packing paths.
+            if not sequence_parallel.enabled() and kwargs.get('cu_seq_lens_q') is None:
                 kwargs = {}
                 if 'cache_position' in parameters:
                     kwargs['cache_position'] = cache_position
