@@ -65,10 +65,10 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         # Initialize logging components
         self._prepare_logging()
 
-        # Initialize liger loss if enabled
-        self._prepare_liger_loss()
-
         self._setup_teacher()
+
+        # Initialize liger loss after resolving the teacher mode
+        self._prepare_liger_loss()
 
         # Initialize rollout infrastructure for vLLM support
         self.prepare_rollout()
@@ -275,10 +275,12 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
 
         with self._template_context(template):
             student_encoded_list, teacher_encoded_list, has_opsd = encode_gkd_samples(samples, template)
-            encoded_inputs = to_device(template.data_collator(student_encoded_list), self.model.device)
+            if has_opsd and self.use_liger_gkd_loss:
+                raise ValueError('OPSD is not supported with Liger GKD loss.')
+            encoded_inputs = to_device(template.data_collator(student_encoded_list), self.accelerator.device)
         if has_opsd:
             with self._template_context(template):
-                teacher_encoded = to_device(template.data_collator(teacher_encoded_list), self.model.device)
+                teacher_encoded = to_device(template.data_collator(teacher_encoded_list), self.accelerator.device)
         else:
             teacher_encoded = None
 
@@ -450,6 +452,9 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         args = self.args
         self.use_liger_gkd_loss = False
         if getattr(args, 'use_liger_kernel', False):
+            if self.teacher_model is None:
+                raise ValueError('Liger GKD loss requires a local teacher model; teacher '
+                                 'API and self-distillation are not supported.')
             if not _liger_kernel_available:
                 raise ImportError(
                     'Liger kernel is not installed. Please install liger-kernel by running: pip install liger-kernel')

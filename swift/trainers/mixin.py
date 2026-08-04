@@ -712,12 +712,32 @@ class SwiftMixin:
     @contextmanager
     def _fix_grad_norm_nan():
         from accelerate import Accelerator
+        from accelerate.utils import DistributedType
         origin_clip_grad_norm_ = Accelerator.clip_grad_norm_
 
         def clip_grad_norm_(self, parameters, *args, **kwargs):
             # If NaN occurs, ignore weight updates.
             parameters = list(parameters)
-            grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
+            cpu_offloaded_fsdp2 = (
+                self.distributed_type == DistributedType.FSDP and self.is_fsdp2
+                and any(p.grad is not None and p.grad.is_cpu for p in parameters))
+            if cpu_offloaded_fsdp2:
+                self.unscale_gradients()
+                max_norm = args[0] if args else kwargs['max_norm']
+                norm_type = args[1] if len(args) > 1 else kwargs.get('norm_type', 2)
+                norm_type = float(norm_type)
+                grads = [p.grad for p in parameters if p.grad is not None]
+                foreach_norm = getattr(torch, '_foreach_norm', None)
+                if foreach_norm is None:
+                    grad_norms = [torch.linalg.vector_norm(grad, ord=norm_type) for grad in grads]
+                else:
+                    grad_norms = foreach_norm(grads, norm_type)
+                grad_norm = torch.nn.utils.get_total_norm([norm.to(self.device) for norm in grad_norms], norm_type)
+                if hasattr(grad_norm, 'full_tensor'):
+                    grad_norm = grad_norm.full_tensor()
+                torch.nn.utils.clip_grads_with_norm_(parameters, max_norm, grad_norm)
+            else:
+                grad_norm = origin_clip_grad_norm_(self, parameters, *args, **kwargs)
             if isinstance(grad_norm, torch.Tensor) and grad_norm.isnan().item():
                 for p in parameters:
                     p.grad = None

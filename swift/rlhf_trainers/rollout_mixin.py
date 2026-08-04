@@ -725,10 +725,12 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                     _raise_if_non_finite_lora_parameters(named_parameters)
                     self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
-                cur_lora_params = {
-                    name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
-                    for name, param in cur_lora_params.items()
-                }
+                for name, param in cur_lora_params.items():
+                    if hasattr(param, 'full_tensor'):
+                        if param.is_cpu:
+                            param = param.to(get_current_device())
+                        param = param.full_tensor()
+                    cur_lora_params[name] = param.detach()
                 if self._is_fsdp2:
                     _raise_if_non_finite_lora_parameters(cur_lora_params.items())
                 lora_params.update(cur_lora_params)
