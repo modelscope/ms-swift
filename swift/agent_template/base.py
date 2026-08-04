@@ -109,6 +109,19 @@ class ReactCompatMixin:
                 res.append(tool_message['content'])
         return assistant_content, res
 
+    def _format_react_standalone_tool_responses(self, tool_messages) -> 'Prompt':
+        assert len(tool_messages) > 0
+        res = []
+        for tool_message in tool_messages:
+            tool_content = tool_message['content']
+            res.extend(['\n', self.keyword.observation, '\n', tool_content])
+        return res
+
+    def _format_standalone_tool_responses(self, tool_messages) -> 'Prompt':
+        """Format observations that do not follow an assistant tool call."""
+        raise NotImplementedError(
+            f'Agent template {self.__class__.__name__} does not support standalone tool responses.')
+
     @staticmethod
     def _parse_tool_call(content) -> Dict[str, Any]:
         obj = BaseAgentTemplate._parse_json(content)
