@@ -1,12 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import sys
 import torch
-from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from types import MethodType
 from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger, git_clone_github
+from transformers import AutoModel, PretrainedConfig, PreTrainedModel
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -179,27 +179,13 @@ register_model(
                 Model('deepseek-ai/DeepSeek-V4-Pro', 'deepseek-ai/DeepSeek-V4-Pro'),
                 Model('deepseek-ai/DeepSeek-V4-Pro-Base', 'deepseek-ai/DeepSeek-V4-Pro-Base'),
             ]),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4-Flash-0731', 'deepseek-ai/DeepSeek-V4-Flash-0731'),
+            ],
+                       template=TemplateType.deepseek_v4_flash),
         ],
         template=TemplateType.deepseek_v4,
         architectures=['DeepseekV4ForCausalLM'],
-    ))
-
-# DeepSeek-V4-Flash-0731 shares the V4 architecture (the extra `mtp.*` DSpark speculative
-# module is ignored on load), but its `reasoning_effort` levels differ, so it gets its own
-# template. `architectures` is deliberately left empty: it would collide with `deepseek_v4`
-# in the architecture-based `model_type` inference and turn a renamed local checkpoint
-# directory into an ambiguity error for both. The model id is matched by name instead,
-# which covers hub ids as well as the modelscope/HF cache layouts.
-register_model(
-    ModelMeta(
-        LLMModelType.deepseek_v4_flash,
-        [
-            ModelGroup([
-                Model('deepseek-ai/DeepSeek-V4-Flash-0731', 'deepseek-ai/DeepSeek-V4-Flash-0731'),
-            ]),
-        ],
-        template=TemplateType.deepseek_v4_flash,
-        mcore_model_type='deepseek_v4',
     ))
 
 

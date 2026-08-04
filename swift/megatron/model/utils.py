@@ -3,11 +3,10 @@ from dataclasses import fields
 from mcore_bridge import ModelConfig
 from mcore_bridge import get_mcore_model as _get_mcore_model
 from mcore_bridge import hf_to_mcore_config
-from transformers.utils import is_torch_npu_available
 from typing import Any, Generator, Optional, Tuple
 
-from swift.model import DEEPSEEK_V4_MODEL_TYPES
 from swift.utils import get_logger
+from transformers.utils import is_torch_npu_available
 
 logger = get_logger()
 
@@ -178,7 +177,7 @@ class MegatronBridgeBackend:
                 from transformers.utils.quantization_config import FineGrainedFP8Config
                 hf_config.quantization_config = FineGrainedFP8Config()
                 expert_dtype = 'fp8'
-            if getattr(args, 'model_type', None) in DEEPSEEK_V4_MODEL_TYPES:
+            if getattr(args, 'model_type', None) == 'deepseek_v4':
                 HfConfigFactory.set_config_attr(hf_config, 'expert_dtype', expert_dtype)
 
             hf_config.save_pretrained(output_dir)
