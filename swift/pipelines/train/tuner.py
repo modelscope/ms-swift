@@ -403,7 +403,6 @@ class TunerMixin:
                                  f'is_adapter={args.is_adapter}, tuner_type={args.tuner_type}, '
                                  f'is_sft={is_sft}, use_npu_fast_lora={args.use_npu_fast_lora}.')
 
-
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
         return model
