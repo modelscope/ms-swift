@@ -1,6 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
-import os
 import re
 import torch
 import transformers
@@ -392,8 +391,7 @@ class TunerMixin:
 
         if hasattr(torch, 'npu'):
             is_sft = isinstance(args, SftArguments)
-            is_fast_lora = os.getenv('ENABLE_FAST_LORA', '0').strip() == '1'
-            if args.is_adapter and args.tuner_type == 'lora' and is_sft and is_fast_lora:
+            if args.is_adapter and args.tuner_type == 'lora' and is_sft and args.use_npu_fast_lora:
                 from swift.model.npu_patch.model import enable_npu_fast_lora
                 enabled_count = enable_npu_fast_lora(model)
                 if enabled_count:
@@ -402,7 +400,9 @@ class TunerMixin:
                     logger.info_once('NPU fast LoRA not enabled by enable_npu_fast_lora().')
             else:
                 logger.info_once(
-                    f'Skip enabling NPU fast LoRA: is_adapter={args.is_adapter}, tuner_type={args.tuner_type}.')
+                    'Skip enabling NPU fast LoRA: '
+                    f'is_adapter={args.is_adapter}, tuner_type={args.tuner_type}, '
+                    f'is_sft={is_sft}, use_npu_fast_lora={args.use_npu_fast_lora}.')
 
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
