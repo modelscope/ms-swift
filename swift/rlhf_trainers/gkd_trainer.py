@@ -453,7 +453,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
         self.use_liger_gkd_loss = False
         if getattr(args, 'use_liger_kernel', False):
             if self.teacher_model is None:
-                raise ValueError('Liger GKD loss requires a local teacher model; teacher '\n                                 'API and self-distillation are not supported.')
+                raise ValueError('Liger GKD loss requires a local teacher model; teacher '
+                                 'API and self-distillation are not supported.')
             if not _liger_kernel_available:
                 raise ImportError(
                     'Liger kernel is not installed. Please install liger-kernel by running: pip install liger-kernel')
