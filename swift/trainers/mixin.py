@@ -718,8 +718,9 @@ class SwiftMixin:
         def clip_grad_norm_(self, parameters, *args, **kwargs):
             # If NaN occurs, ignore weight updates.
             parameters = list(parameters)
-            cpu_offloaded_fsdp2 = (self.distributed_type == DistributedType.FSDP and self.is_fsdp2
-                                   and any(p.grad is not None and p.grad.is_cpu for p in parameters))
+            cpu_offloaded_fsdp2 = (
+                self.distributed_type == DistributedType.FSDP and self.is_fsdp2
+                and any(p.grad is not None and p.grad.is_cpu for p in parameters))
             if cpu_offloaded_fsdp2:
                 self.unscale_gradients()
                 max_norm = args[0] if args else kwargs['max_norm']
