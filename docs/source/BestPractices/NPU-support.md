@@ -564,6 +564,42 @@ swift sft \
     ...
 ```
 
+### Qwen2.5 / Qwen3 可选 fast LoRA 路径
+
+对于已适配的 Qwen2.5 / Qwen3 非 MoE 模型，可以在 Ascend NPU 上通过 `--use_npu_fast_lora true` 启用可选的 fast LoRA 路径。该能力默认关闭，属于显式 opt-in 开关，主要用于 `swift sft` 的 LoRA 训练场景。
+
+使用前请先确认以下条件：
+- 当前仅适用于受支持的 Qwen2.5 / Qwen3 非 MoE 模型。
+- 需要将 `--lora_dropout 0`，否则对应 LoRA projection 不满足 fast path 的实际生效条件。
+- 需要预先安装 `triton-ascend`。
+- 运行前需要设置 `TRITON_ALL_BLOCKS_PARALLEL=1`，使 Triton-Ascend 对这类无跨 block 依赖的 1D kernel 使用合适的 block 并行策略，避免在 Ascend 上出现编译或执行阶段的 `coreDim` / 调度问题。
+
+如果模型结构、LoRA 注入方式或运行环境不满足兼容条件，即使设置了 `--use_npu_fast_lora true`，也会自动回退到普通 LoRA 路径。
+
+例如：
+
+```shell
+# 实验环境: 4 * 昇腾910B3
+export TRITON_ALL_BLOCKS_PARALLEL=1
+NPROC_PER_NODE=4 \
+ASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \
+swift sft \
+    --model Qwen/Qwen3-8B \
+    --dataset AI-ModelScope/alpaca-gpt4-data-zh#2000 \
+    --split_dataset_ratio 0.01 \
+    --torch_dtype bfloat16 \
+    --num_train_epochs 1 \
+    --tuner_type lora \
+    --target_modules all-linear \
+    --lora_rank 8 \
+    --lora_alpha 32 \
+    --lora_dropout 0 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 8 \
+    --use_npu_fast_lora true \
+    --output_dir output/Qwen3-8B-fast-lora
+```
+
 ### Qwen3.5 单机多卡 LoRA 示例
 
 下面给出一个更新模型的 NPU LoRA 示例。这里使用 Qwen3.5-4B 做演示，4 卡数据并行通常比单卡更快；如果本地已经下载好模型和数据集，可以把 `--model`、`--dataset` 替换成本地路径。
