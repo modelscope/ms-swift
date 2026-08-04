@@ -92,7 +92,14 @@ class DeepSeekV4AgentTemplate(BaseAgentTemplate):
         return functions
 
     def _get_tool_responses(self, tool_messages):
-        return ''.join(f'<tool_result>{tool_message["content"]}</tool_result>' for tool_message in tool_messages)
+        # The official encoding merges tool results into one user turn, joining the
+        # `<tool_result>` blocks with a blank line.
+        return '\n\n'.join(f'<tool_result>{tool_message["content"]}</tool_result>' for tool_message in tool_messages)
+
+    def _add_tool_call_prefix(self, tool_content: str, pre_message=None) -> str:
+        # The official encoding always renders the tool_calls block as `\n\n` + block,
+        # right after the assistant's (possibly empty) textual content.
+        return '\n\n' + tool_content
 
     def _format_tool_responses(
         self,

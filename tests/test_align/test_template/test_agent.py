@@ -577,31 +577,40 @@ def test_deepseek_v4():
     data = {
         'tools':
         tools,
-        'messages': [{
-            'role': 'system',
-            'content': 'You are a helpful assistant.'
-        }, {
-            'role': 'user',
-            'content': "What's the weather in Beijing?"
-        }, {
-            'role':
-            'assistant',
-            'content':
-            '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>\n\n'
-        }, {
-            'role':
-            'tool_call',
-            'content':
-            '{"name": "get_weather", "arguments": "{\\"location\\": \\"Beijing\\", \\"unit\\": \\"celsius\\"}"}'
-        }, {
-            'role': 'tool_response',
-            'content': '{"temperature": 22, "condition": "sunny", "humidity": 45}'
-        }, {
-            'role':
-            'assistant',
-            'content': ('<think>Got the weather data. Let me format a nice response.</think>'
-                        'The weather in Beijing is currently sunny with a temperature of 22°C and 45% humidity.')
-        }]
+        'messages': [
+            {
+                'role': 'system',
+                'content': 'You are a helpful assistant.'
+            },
+            {
+                'role': 'user',
+                'content': "What's the weather in Beijing?"
+            },
+            {
+                'role':
+                'assistant',
+                # The `\n\n` before the tool_calls block is added by the template
+                # (`DeepSeekV4AgentTemplate._add_tool_call_prefix`), not by the data.
+                'content':
+                '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>'
+            },
+            {
+                'role':
+                'tool_call',
+                'content':
+                '{"name": "get_weather", "arguments": "{\\"location\\": \\"Beijing\\", \\"unit\\": \\"celsius\\"}"}'
+            },
+            {
+                'role': 'tool_response',
+                'content': '{"temperature": 22, "condition": "sunny", "humidity": 45}'
+            },
+            {
+                'role':
+                'assistant',
+                'content': ('<think>Got the weather data. Let me format a nice response.</think>'
+                            'The weather in Beijing is currently sunny with a temperature of 22°C and 45% humidity.')
+            }
+        ]
     }
 
     template.template_backend = 'swift'

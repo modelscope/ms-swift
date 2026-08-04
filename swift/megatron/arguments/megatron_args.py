@@ -677,6 +677,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     model: Optional[str] = None
     model_type: Optional[str] = None
     save_safetensors: bool = True
+    save_missing_weights: bool = False
     adapters: List[str] = field(default_factory=list)
     ref_model: Optional[str] = None
     ref_adapters: List[str] = field(default_factory=list)
