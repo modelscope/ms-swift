@@ -30,6 +30,7 @@ class InternvlTemplate(Template):
     def replace_tag(self, media_type: Literal['image', 'video', 'audio'], index: int,
                     inputs: StdTemplateInputs) -> List[Context]:
         if self.mode == 'vllm':
+            inputs.mm_processor_kwargs.setdefault('max_dynamic_patch', self.max_num)
             image_context = ['<image>\n']
         else:
             image_context = ['<img>', [-100], '</img>\n']
