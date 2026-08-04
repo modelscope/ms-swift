@@ -399,10 +399,10 @@ class TunerMixin:
                 else:
                     logger.info_once('NPU fast LoRA not enabled by enable_npu_fast_lora().')
             else:
-                logger.info_once(
-                    'Skip enabling NPU fast LoRA: '
-                    f'is_adapter={args.is_adapter}, tuner_type={args.tuner_type}, '
-                    f'is_sft={is_sft}, use_npu_fast_lora={args.use_npu_fast_lora}.')
+                logger.info_once('Skip enabling NPU fast LoRA: '
+                                 f'is_adapter={args.is_adapter}, tuner_type={args.tuner_type}, '
+                                 f'is_sft={is_sft}, use_npu_fast_lora={args.use_npu_fast_lora}.')
+
 
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
