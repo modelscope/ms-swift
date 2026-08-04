@@ -14,6 +14,8 @@ PR_CHANGED_FILES="${PR_CHANGED_FILES:-}"
 echo "PR modified files: $PR_CHANGED_FILES"
 PR_CHANGED_FILES=${PR_CHANGED_FILES//[ ]/#}
 echo "PR_CHANGED_FILES: $PR_CHANGED_FILES"
+CI_RUN_ID=${GITHUB_RUN_ID:-local-$$}
+CI_RUN_ATTEMPT=${GITHUB_RUN_ATTEMPT:-0}
 idx=0
 for gpu in $gpus
 do
@@ -21,7 +23,7 @@ do
   flock -n "$lock_fd" || { echo "WARN: gpu $gpu is in use!" >&2; idx=$((idx+1)); continue; }
   echo "get gpu lock $gpu"
 
-  CONTAINER_NAME="swift-ci-$idx"
+  CONTAINER_NAME="swift-ci-${CI_RUN_ID}-${CI_RUN_ATTEMPT}-${idx}"
   let is_get_file_lock=true
 
   # pull image if there are update
