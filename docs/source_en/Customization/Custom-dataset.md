@@ -11,9 +11,9 @@ The following is an introduction to the dataset formats that `AutoPreprocessor` 
 
 The standard dataset format for ms-swift accepts keys such as: 'messages', 'rejected_response', 'label', 'images', 'videos', 'audios', 'tools', and 'objects'. Among these, 'messages' is a required key. 'rejected_response' is used for DPO and other RLHF training, 'label' is used for KTO training and classification model training. The keys 'images', 'videos', and 'audios' are used to store paths or URLs for multimodal data, 'tools' is used for Agent tasks, and 'objects' is used for grounding tasks.
 
-There are three core preprocessors in ms-swift: `MessagesPreprocessor`, `AlpacaPreprocessor`, and `ResponsePreprocessor`. `MessagesPreprocessor` is used to convert datasets in the messages and sharegpt format into the standard format. `AlpacaPreprocessor` converts datasets in the alpaca format, while `ResponsePreprocessor` converts datasets in the query/response format. `AutoPreprocessor` automatically selects the appropriate preprocessor for the task.
+There are three core preprocessors in ms-swift: `MessagesPreprocessor`, `AlpacaPreprocessor`, and `ResponsePreprocessor`. `MessagesPreprocessor` is used to convert datasets in the messages and sharegpt format into the standard format. It also automatically normalizes OpenAI `tool_calls` and Anthropic `tool_use`/`tool_result`/`image` content blocks. The provider-specific `OpenAIMessagesPreprocessor` and `AnthropicMessagesPreprocessor` classes can be used when explicit format selection is preferred. `AlpacaPreprocessor` converts datasets in the alpaca format, while `ResponsePreprocessor` converts datasets in the query/response format. `AutoPreprocessor` automatically selects the appropriate preprocessor for the task.
 
-The following four formats will all be converted into the `messages` field of the ms-swift standard format under the processing of `AutoPreprocessor`, meaning they can all be directly used with `--dataset <dataset-path>`:
+The following formats will all be converted into the `messages` field of the ms-swift standard format under the processing of `AutoPreprocessor`, meaning they can all be directly used with `--dataset <dataset-path>`:
 
 Messages format (standard format):
 ```jsonl
@@ -25,6 +25,28 @@ ShareGPT format:
 ```jsonl
 {"system": "<system>", "conversation": [{"human": "<query1>", "assistant": "<response1>"}, {"human": "<query2>", "assistant": "<response2>"}]}
 ```
+
+OpenAI tool-call format:
+```jsonl
+{"messages": [{"role": "user", "content": "How is the weather?"}, {"role": "assistant", "content": null, "tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Beijing\"}"}}]}, {"role": "tool", "content": "Sunny"}]}
+```
+
+OpenAI Chat Completions multimodal tool-call format:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "Compare these images."}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,{base64_encoded}"}}, {"type": "image_url", "image_url": "https://example.com/input.png"}]}, {"role": "assistant", "content": [{"type": "text", "text": "I will inspect them."}], "tool_calls": [{"type": "function", "function": {"name": "inspect_images", "arguments": "{\"detail\":\"high\"}"}}]}]}
+```
+- OpenAI `image_url` blocks are converted to `<image>` placeholders and the top-level `images` field in their original order. This example uses the Chat Completions format; Responses API `input_text` and `input_image` blocks use a different schema.
+
+Anthropic tool-use format:
+```jsonl
+{"messages": [{"role": "assistant", "content": [{"type": "text", "text": "I will check."}, {"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": {"city": "Beijing"}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": "Sunny"}]}]}
+```
+
+Anthropic multimodal tool-use format:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "What is in this image?"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "{base64_encoded}"}}]}, {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_01", "name": "inspect_image", "input": {}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/result.png"}}, {"type": "text", "text": "A sunny beach."}]}]}]}
+```
+- Anthropic base64 and URL image sources are converted to `<image>` placeholders and the top-level `images` field in their original order.
 
 Query-Response format:
 ```jsonl

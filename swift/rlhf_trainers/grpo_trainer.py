@@ -159,7 +159,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * sequence_parallel.world_size
 
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
-        self.dynamic_num_samples = False
         # Record the number of samples that need to be padded for even distribution across processes
         self.rollout_pad_count = 0
 
