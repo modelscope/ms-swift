@@ -84,8 +84,6 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 async for item in await async_iter:
                     queue.put(item)
             except Exception as e:
-                if getattr(self, 'strict', True):
-                    raise
                 queue.put(e)
             else:
                 queue.put(None)
@@ -103,6 +101,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             if output is None or isinstance(output, Exception):
                 prog_bar.update()
                 self._update_metrics(pre_output, metrics)
+                if isinstance(output, Exception) and getattr(self, 'strict', True):
+                    raise output
                 return
             pre_output = output
             yield output
@@ -218,6 +218,11 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             logger.warning(
                 'The current model is unable to retrieve `max_model_len`. It is set to the default value of 8192.')
         max_max_tokens = max_model_len - num_tokens + self.max_tokens_offset
+        if max_max_tokens <= 0:
+            raise ValueError(
+                f'Input length ({num_tokens}) leaves no room for generation with max_model_len ({max_model_len}) '
+                f'and max_tokens_offset ({self.max_tokens_offset}). Please shorten the input or increase max_model_len.'
+            )
         if max_tokens is None:
             request_config.max_tokens = max_max_tokens
         elif max_max_tokens < request_config.max_tokens:
