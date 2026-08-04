@@ -21,6 +21,8 @@ from dacite import from_dict
 from dataclasses import asdict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
+from transformers import AutoConfig
+from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
@@ -38,8 +40,6 @@ from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
                          synchronize, to_device)
-from transformers import AutoConfig
-from transformers.utils import is_torch_npu_available
 from .utils import (gather_object, load_megatron_model_to_gpu, load_megatron_optimizer, offload_megatron_model_to_cpu,
                     offload_megatron_optimizer)
 

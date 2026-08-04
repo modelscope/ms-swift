@@ -203,7 +203,6 @@ def patch_kernels() -> bool:
         return False
     try:
         from kernels import get_local_kernel
-
         from transformers.integrations import hub_kernels
     except ImportError:
         return False

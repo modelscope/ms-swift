@@ -13,10 +13,10 @@ import webbrowser
 from datetime import datetime
 from functools import partial
 from packaging import version
+from transformers import is_tensorboard_available
 from typing import Dict, List, Tuple, Type
 
 from swift.utils import TB_COLOR, TB_COLOR_SMOOTH, format_time, get_logger, read_tensorboard_file, tensorboard_smoothing
-from transformers import is_tensorboard_available
 from ..base import BaseUI
 from .utils import close_loop, run_command_in_subprocess
 

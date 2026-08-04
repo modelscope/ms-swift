@@ -17,11 +17,11 @@ from peft import (AdaLoraConfig, BOFTConfig, BOFTModel, LoftQConfig, LoHaConfig,
 from peft.config import PeftConfigMixin
 from peft.tuners.adalora import AdaLoraModel, RankAllocator
 from peft.tuners.lora import Embedding
+from transformers import Trainer as HfTrainer
 from types import MethodType
 from typing import Dict, Optional
 
 from swift.utils import get_logger
-from transformers import Trainer as HfTrainer
 
 try:
     from peft import FourierFTModel

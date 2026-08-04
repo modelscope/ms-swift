@@ -2,12 +2,12 @@
 from contextlib import contextmanager
 from megatron.core import mpu
 from torch.distributed.nn import all_reduce
+from transformers.utils import ContextManagers
 
 from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import load_mcore_checkpoint
 from swift.rlhf_trainers.utils import identity_data_collator
 from swift.utils import get_current_device, get_logger, safe_snapshot_download
-from transformers.utils import ContextManagers
 from .base import BaseMegatronTrainer
 from .utils import compute_per_token_logps_fn, reconstruct_tensor_cp
 

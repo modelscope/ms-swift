@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
+from transformers import PreTrainedModel
+from transformers.utils import strtobool
 from types import MethodType
 
 from swift.template import TemplateType
 from swift.utils import get_env_args
-from transformers import PreTrainedModel
-from transformers.utils import strtobool
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

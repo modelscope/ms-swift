@@ -4,10 +4,10 @@ import torch
 from contextlib import contextmanager
 from functools import wraps
 from peft import PeftModel
+from transformers import Trainer as HfTrainer
 
 from swift.sequence_parallel import sequence_parallel
 from swift.utils import get_logger
-from transformers import Trainer as HfTrainer
 from .arguments import TrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
 

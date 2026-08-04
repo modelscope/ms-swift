@@ -22,6 +22,8 @@ from peft.utils.save_and_load import get_peft_model_state_dict
 from queue import Queue
 from torch.nn import ModuleList
 from torch.utils.data import DataLoader
+from transformers import PreTrainedModel, TrainerCallback
+from transformers.utils import is_torch_npu_available
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
@@ -36,8 +38,6 @@ from swift.template import Template
 from swift.tuners import Swift
 from swift.utils import (get_current_device, get_logger, is_deepspeed_enabled, is_vllm_available, remove_response,
                          to_device, unwrap_model_for_generation)
-from transformers import PreTrainedModel, TrainerCallback
-from transformers.utils import is_torch_npu_available
 from .arguments import GKDConfig, GRPOConfig, RolloutTrainerArgumentsMixin
 from .base_rollout_mixin import BaseRolloutTrainerMixin
 from .gkd_helpers import TeacherServerConfig, parse_teacher_model_server, resolve_dynamic_opd_self_distillation

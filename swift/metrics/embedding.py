@@ -2,11 +2,11 @@
 import numpy as np
 import os
 import torch
+from transformers import EvalPrediction
+from transformers.utils import strtobool
 from typing import Dict
 
 from swift.loss.embedding import _parse_multi_negative_sentences, _parse_pair_sentence
-from transformers import EvalPrediction
-from transformers.utils import strtobool
 from .base import EvalMetrics
 from .utils import Metric
 

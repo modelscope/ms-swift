@@ -1,7 +1,6 @@
 from torch.optim import Optimizer
-from typing import TYPE_CHECKING
-
 from transformers.trainer import Trainer as HfTrainer
+from typing import TYPE_CHECKING
 
 try:
     from torch.optim.lr_scheduler import _LRScheduler as LRScheduler

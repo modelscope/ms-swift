@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
-from typing import Optional, Tuple
-
 from transformers.integrations import deepspeed_config
 from transformers.utils import strtobool
+from typing import Optional, Tuple
+
 from .logger import get_logger
 
 logger = get_logger()
