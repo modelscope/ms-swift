@@ -644,9 +644,9 @@ class MessagesPreprocessor(RowPreprocessor):
                 message_format = 'openai'
             elif any(
                     isinstance(message.get('content'), list) and any(
-                        block.get('type') in {'tool_use', 'tool_result'}
-                        or block.get('type') == 'image' and 'source' in block for block in message['content'])
-                    for message in messages):
+                        isinstance(block, dict) and (block.get('type') in {'tool_use', 'tool_result'}
+                                                     or block.get('type') == 'image' and 'source' in block)
+                        for block in message['content']) for message in messages):
                 message_format = 'anthropic'
             else:
                 message_format = 'swift'
@@ -667,6 +667,11 @@ class MessagesPreprocessor(RowPreprocessor):
         if 'rejected_messages' in row:
             rejected = MessagesPreprocessor.preprocess(self, {'messages': row['rejected_messages']})
             row['rejected_messages'] = rejected['messages'] if rejected else None
+            rejected_images = rejected.get('images') if rejected else None
+            if rejected_images:
+                assert not row.get('rejected_images'), (
+                    'Cannot mix Anthropic content blocks with the top-level `rejected_images` field.')
+                row['rejected_images'] = rejected_images
         messages = row['messages']
         if self.inner_key is not None:
             messages = messages[self.inner_key]

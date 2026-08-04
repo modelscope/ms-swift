@@ -190,6 +190,31 @@ class TestDataPreprocess(unittest.TestCase):
 class TestRejectedMessagesPreprocess(unittest.TestCase):
     """MessagesPreprocessor handling of rejected_messages (no model required)."""
 
+    @staticmethod
+    def _anthropic_rejected_row(image_url):
+        return {
+            'messages': [{
+                'role': 'user',
+                'content': 'Q'
+            }, {
+                'role': 'assistant',
+                'content': 'good'
+            }],
+            'rejected_messages': [{
+                'role': 'user',
+                'content': [{
+                    'type': 'image',
+                    'source': {
+                        'type': 'url',
+                        'url': image_url,
+                    },
+                }],
+            }, {
+                'role': 'assistant',
+                'content': 'bad',
+            }],
+        }
+
     def test_empty_rejected_messages_does_not_crash(self):
         """A DPO row whose rejected_messages repair to empty must not crash.
 
@@ -242,8 +267,38 @@ class TestRejectedMessagesPreprocess(unittest.TestCase):
         result = MessagesPreprocessor().preprocess(row)
         self.assertEqual(result['rejected_messages'][-1]['content'], 'bad')
 
+    def test_anthropic_rejected_images_preserved(self):
+        image_url = 'https://example.com/rejected.png'
+        row = self._anthropic_rejected_row(image_url)
+        result = MessagesPreprocessor().preprocess(row)
+        self.assertEqual(result['rejected_messages'][0]['content'], '<image>')
+        self.assertEqual(result['rejected_images'], [image_url])
+
+    def test_anthropic_rejected_images_conflict(self):
+        row = self._anthropic_rejected_row('https://example.com/embedded.png')
+        row['rejected_images'] = ['https://example.com/top-level.png']
+        with self.assertRaisesRegex(AssertionError, 'rejected_images'):
+            MessagesPreprocessor().preprocess(row)
+
 
 class TestProviderMessagesPreprocess(unittest.TestCase):
+
+    def test_pretokenized_messages_are_not_anthropic(self):
+        row = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': [151644, 872, 198]
+                },
+                {
+                    'role': 'assistant',
+                    'content': [151645]
+                },
+            ]
+        }
+        result = MessagesPreprocessor().preprocess(row)
+        self.assertEqual(result['messages'][0]['content'], [151644, 872, 198])
+        self.assertEqual(result['messages'][1]['content'], [151645])
 
     def test_openai_parallel_tool_calls(self):
         row = {
