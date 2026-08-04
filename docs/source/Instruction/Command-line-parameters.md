@@ -339,6 +339,11 @@ ENV:
 - lora_dtype: 指定lora模块的dtype类型。支持'float16'、'bfloat16'、'float32'。默认为None，跟随peft行为。
 - 🔥use_dora: 默认为`False`，是否使用`DoRA`。
 - use_rslora: 默认为`False`，是否使用`RS-LoRA`。
+- use_npu_fast_lora: 默认为`False`。是否启用可选的 NPU fast LoRA 路径。
+  - 使用范围：仅在 Ascend NPU 环境下的 `swift sft` LoRA 训练中生效；当前仅适用于受支持的 Qwen2/Qwen3 非 MoE 模型。
+  - 使用条件：需要将 `lora_dropout` 设为 `0`，否则对应 LoRA projection 不满足 fast path 的实际生效条件。
+  - 环境依赖：需要预先安装 `triton-ascend`，并在运行前设置环境变量 `TRITON_ALL_BLOCKS_PARALLEL=1`，否则 fast LoRA 相关 Triton 内核可能无法正常导入或执行。
+  - 注意：该参数为显式 opt-in 开关，不会默认开启；即使开启后，若模型结构或 LoRA 注入方式不满足兼容条件，也会自动回退到普通 LoRA 路径。
 - 🔥lorap_lr_ratio: LoRA+参数，默认值`None`，建议值为`10~16`。使用lora时额外指定该参数可使用lora+。
 
 ##### LoRA-GA
