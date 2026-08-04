@@ -303,6 +303,28 @@ def patch_mindspeed_te_layernorm_linear_frozen_weight() -> None:
     logger.info('Patched MindSpeed TE LayerNormLinear to use Megatron frozen-weight backward for frozen weights.')
 
 
+def patch_mindspeed_te_grouped_linear_save_original_input() -> None:
+    """Allow BF16 MindSpeed grouped linear layers to use Megatron activation offloading."""
+    te_extension = importlib.import_module('megatron.core.extensions.transformer_engine')
+    set_save_original_input = te_extension.set_save_original_input
+    if getattr(set_save_original_input, '_swift_supports_mindspeed_bf16_grouped_linear', False):
+        return
+
+    @wraps(set_save_original_input)
+    def set_save_original_input_dispatch(module):
+        config = getattr(module, 'config', None)
+        is_mindspeed_grouped_linear = type(module).__module__ == 'mindspeed.te.pytorch.module.grouped_linear'
+        uses_quantized_tensors = bool(getattr(config, 'fp8', None) or getattr(config, 'fp4', None))
+        if is_mindspeed_grouped_linear and not uses_quantized_tensors:
+            # MindSpeed's BF16 TEGroupedLinearGMM saves the original input tensor directly.
+            return
+        return set_save_original_input(module)
+
+    set_save_original_input_dispatch._swift_supports_mindspeed_bf16_grouped_linear = True
+    te_extension.set_save_original_input = set_save_original_input_dispatch
+    logger.info('Patched Megatron set_save_original_input for MindSpeed BF16 grouped linear layers.')
+
+
 def patch_mindspeed_gdn_cp_helpers(megatron_args: dict[str, Any]) -> None:
     """Expose MindSpeed's backported GDN CP helpers to Megatron Core versions before 0.18."""
     if int(megatron_args.get('context_parallel_size', 1)) <= 1:
@@ -332,4 +354,5 @@ def apply_mindspeed_patches(megatron_args: dict[str, Any]) -> None:
     repatch(megatron_args)
     patch_mindspeed_gdn_cp_helpers(megatron_args)
     patch_mindspeed_te_layernorm_linear_frozen_weight()
+    patch_mindspeed_te_grouped_linear_save_original_input()
     patch_mindspeed_fla_gdn_implementation()
