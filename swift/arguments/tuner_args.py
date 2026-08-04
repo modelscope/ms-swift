@@ -139,9 +139,8 @@ class TunerArguments:
     use_rslora: bool = False
     use_dora: bool = False
     use_npu_fast_lora: bool = field(
-    default=False,
-    metadata={'help': 'Enable the optional NPU fast LoRA path for supported Qwen2/Qwen3 LoRA SFT training.'})
-
+        default=False,
+        metadata={'help': 'Enable the optional NPU fast LoRA path for supported Qwen2/Qwen3 LoRA SFT training.'})
 
     # lora_ga
     lora_ga_batch_size: int = 2
