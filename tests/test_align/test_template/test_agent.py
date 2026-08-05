@@ -771,8 +771,7 @@ def test_standalone_tool():
             },
             # OpenAI-style tool_calls without the 'content' key.
             {
-                'role':
-                'assistant',
+                'role': 'assistant',
                 'tool_calls': [{
                     'type': 'function',
                     'function': {
