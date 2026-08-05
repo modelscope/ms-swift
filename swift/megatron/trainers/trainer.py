@@ -80,12 +80,20 @@ class MegatronTrainer(BaseMegatronTrainer):
         if args.padding_free:
             num_samples = packed_seq_params.seq_lens.shape[0]
             cu_seqlens = packed_seq_params.cu_seqlens_q[:num_samples + 1] // args.context_parallel_size
-            for i in range(cu_seqlens.shape[0] - 1):
-                channel = None if channels is None else channels[i]
-                slice_ = slice(cu_seqlens[i], cu_seqlens[i + 1])
-                c_loss = losses[0, slice_][loss_mask[0, slice_]]
-                metrics[f'loss_{channel}'][0] += c_loss.detach().sum()
-                metrics[f'loss_{channel}'][1] += c_loss.shape[0]
+            device = losses.device
+            total_len = int(cu_seqlens[-1])
+            uniq_channels = [None] if channels is None else list(dict.fromkeys(channels))
+            ch_index = {c: i for i, c in enumerate(uniq_channels)}
+            if channels is None:
+                seg_ch = torch.zeros(num_samples, dtype=torch.long, device=device)
+            else:
+                seg_ch = torch.tensor([ch_index[c] for c in channels], dtype=torch.long, device=device)
+            token_ch = torch.repeat_interleave(seg_ch, cu_seqlens[1:] - cu_seqlens[:-1], output_size=total_len)
+            mask = loss_mask[0, :total_len].float()
+            stats = torch.zeros(len(uniq_channels), 2, dtype=torch.float32, device=device)
+            stats.index_add_(0, token_ch, torch.stack([losses[0, :total_len].detach().float() * mask, mask], dim=-1))
+            for c, idx in ch_index.items():
+                metrics[f'loss_{c}'] = stats[idx]
         else:
             for i in range(losses.shape[0]):
                 channel = None if channels is None else channels[i]

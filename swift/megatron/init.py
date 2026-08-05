@@ -9,6 +9,7 @@ from copy import copy, deepcopy
 from tqdm import tqdm
 from transformers.modeling_utils import custom_object_save
 from transformers.utils import is_torch_npu_available
+from typing import Union
 
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
@@ -127,8 +128,15 @@ def _patch_mcore_bridge():
         max_shard_size: str = '5GB',
         args=None,
         processor=None,
+        save_missing_weights: Union[bool, str] = False,
     ) -> None:
-        origin_save_weights(self, mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size)
+        origin_save_weights(
+            self,
+            mg_models,
+            output_dir,
+            peft_format=peft_format,
+            max_shard_size=max_shard_size,
+            save_missing_weights=save_missing_weights)
         if processor is None or args is None:
             return
         hf_config = self.config.hf_config
@@ -205,6 +213,9 @@ def init_megatron_env():
     os.environ.pop('VLLM_USE_MODELSCOPE', None)
     logging_level = logging.root.level
     _patch_unified_memory()
+    if is_torch_npu_available():
+        from swift.model.npu_patcher import patch_mindspeed_fla_gdn_implementation
+        patch_mindspeed_fla_gdn_implementation()
     _patch__batched_p2p_ops()
     logging.root.setLevel(logging_level)  # revert logger level
     try:

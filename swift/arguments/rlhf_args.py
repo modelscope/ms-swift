@@ -568,6 +568,103 @@ class RLHFArguments(TeacherModelArguments, GRPOArguments, PPOArguments, RewardMo
             raise NotImplementedError('Currently, async_generate is not supported with multi-turn functionality.')
 
         self._check_opd_rl()
+        self._check_rlsd()
+        self._check_sdar()
+
+    def _check_rlsd(self):
+        """Validate RLSD (Self-Distilled RLVR) advantage reweighting parameters.
+
+        RLSD reweights the per-sequence GRPO advantage per token using the teacher-vs-student
+        logprob gap. It relies on an OPSD teacher forward driven by a per-sample ``teacher_prompt``
+        column (privileged context, e.g. question + reference solution / GT answer). It also needs
+        an environment reward (``reward_funcs``) because the reweight direction uses ``sign(A)``.
+
+        Two teacher modes are supported (mirroring the reference's ``freeze_teacher_model`` flag):
+
+        * **Dynamic self-distillation** (no ``--teacher_model``, default): teacher = current policy
+          evaluated on the privileged prompt (paper's same-model, two-contexts Δ_t; equivalent to
+          the reference's ``freeze_teacher_model=false``).
+        * **Frozen local teacher** (``--teacher_model <ckpt>``): a separate model scores the
+          privileged prompt under ``no_grad`` and is never in the optimizer, so it stays frozen
+          throughout training. Point ``--teacher_model`` at the initial policy checkpoint to
+          reproduce the reference's ``freeze_teacher_model=true`` (frozen θ₀ anchor).
+        """
+        if self.advantage_reweight != 'rlsd':
+            return
+        if not (0.0 <= self.rlsd_lambda <= 1.0):
+            raise ValueError(f'rlsd_lambda must be in [0, 1], got {self.rlsd_lambda}.')
+        if self.rlsd_reweight_clip_range < 0:
+            raise ValueError(f'rlsd_reweight_clip_range (eps_w) must be >= 0, got {self.rlsd_reweight_clip_range}.')
+        if not self.reward_funcs:
+            raise ValueError('advantage_reweight=rlsd requires reward_funcs: the reweight direction uses '
+                             'sign(A) of the GRPO advantage, which needs an environment reward.')
+        if self.use_liger_kernel:
+            raise ValueError('advantage_reweight=rlsd is not compatible with use_liger_kernel '
+                             '(the fused loss path bypasses the per-token RLSD reweight).')
+        if self.loss_type in ['real', 'fipo']:
+            raise ValueError(f'advantage_reweight=rlsd does not support loss_type={self.loss_type!r} '
+                             '(it reduces the advantage to a per-sequence scalar).')
+        if self.off_policy_sequence_mask_delta is not None:
+            raise ValueError('advantage_reweight=rlsd does not support off_policy_sequence_mask_delta.')
+        # Local frozen teacher (--teacher_model) is allowed: it drives the OPSD teacher forward on
+        # the privileged prompt via the same code path as OPD-RL, and use_rlsd bypasses OPD-RL's
+        # additive term (grpo_trainer.py:266) so there is no double-count. The API-teacher path
+        # (--teacher_model_server) scores tokens over a remote inference call whose tokenizer
+        # alignment with the student is not guaranteed, so keep it gated for RLSD's per-token reweight.
+        if self.teacher_model_server is not None:
+            raise ValueError('advantage_reweight=rlsd does not support --teacher_model_server (remote API '
+                             'teacher). Use --teacher_model <local ckpt> for a frozen local teacher, or omit '
+                             'both to use dynamic self-distillation (teacher = current policy).')
+        if self.beta not in (0, 0.0):
+            logger.warning(f'advantage_reweight=rlsd: the reference RLSD config disables KL (beta=0), '
+                           f'but beta={self.beta}. Consider setting --beta 0.')
+        if self.teacher_model is not None:
+            logger.info(f'advantage_reweight=rlsd: frozen-teacher mode — --teacher_model={self.teacher_model!r} scores '
+                        f'the `teacher_prompt` column under no_grad and stays frozen throughout training (matches the '
+                        f'RLSD reference freeze_teacher_model=true when this checkpoint is the initial policy).')
+        else:
+            logger.info('advantage_reweight=rlsd: dynamic self-distillation mode — expecting a `teacher_prompt` '
+                        'column in the dataset; teacher = current policy on the privileged prompt.')
+
+    def _check_sdar(self):
+        """Validate SDAR (Self-Distilled Agentic RL) confidence-gated distillation parameters.
+
+        SDAR adds a confidence-gated teacher distillation auxiliary loss to the GRPO policy loss:
+        ``loss = policy_loss + sdar_loss_coef * token-mean(sigmoid(gate_beta*Δ) * Δ)`` with
+        ``Δ = logP_T - logP_S``. It reuses the OPSD teacher forward driven by a per-sample
+        ``teacher_prompt`` column (privileged / skill-augmented context). Unlike RLSD it does NOT
+        modify the advantage, and the reference keeps a small KL (so KL is not forced off).
+
+        Two teacher modes are supported (mirroring the reference's self-distillation setup):
+
+        * **Dynamic self-distillation** (no ``--teacher_model``, default): teacher = current policy
+          on the privileged ``teacher_prompt`` (the reference ALFWorld/Search/WebShop setting).
+        * **Frozen local teacher** (``--teacher_model <ckpt>``): a separate model scores the
+          privileged prompt under ``no_grad`` and stays frozen throughout training.
+        """
+        if self.sdar_loss_coef <= 0:
+            return
+        if self.sdar_gate_beta <= 0:
+            raise ValueError(f'sdar_gate_beta must be > 0, got {self.sdar_gate_beta}.')
+        if self.use_liger_kernel:
+            raise ValueError('sdar_loss_coef>0 is not compatible with use_liger_kernel (the fused Liger '
+                             'loss path bypasses the per-token loss where the SDAR term is added).')
+        if self.advantage_reweight == 'rlsd':
+            raise ValueError('sdar_loss_coef>0 cannot be combined with advantage_reweight=rlsd: SDAR adds a '
+                             'confidence-gated distillation loss while RLSD reweights the advantage — pick one '
+                             'teacher-distillation mechanism.')
+        if self.teacher_model_server is not None:
+            raise ValueError('sdar_loss_coef>0 does not support --teacher_model_server (remote API teacher). '
+                             'Use --teacher_model <local ckpt> for a frozen local teacher, or omit both to use '
+                             'dynamic self-distillation (teacher = current policy on the `teacher_prompt`).')
+        if self.teacher_model is not None:
+            logger.info(f'SDAR (sdar_loss_coef={self.sdar_loss_coef}): frozen-teacher mode — '
+                        f'--teacher_model={self.teacher_model!r} scores the `teacher_prompt` column under no_grad '
+                        f'and stays frozen throughout training.')
+        else:
+            logger.info(f'SDAR (sdar_loss_coef={self.sdar_loss_coef}): dynamic self-distillation mode — expecting '
+                        'a `teacher_prompt` column in the dataset; teacher = current policy on the privileged '
+                        'prompt. Without teacher logps the SDAR loss is skipped (behaves as plain GRPO).')
 
     def _check_opd_rl(self):
         """Fail-fast OPD-RL (teacher distillation on GRPO) parameter compatibility.
