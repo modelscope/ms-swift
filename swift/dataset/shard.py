@@ -8,10 +8,10 @@ SHARD_STATE_ATTR = 'streaming_shard_state'
 class StreamingShardState:
     """How a streaming dataset is split across the ranks of a data-parallel group.
 
-    Rank `r` keeps the blocks of `block_size` consecutive samples whose block index is
-    `r` modulo `world_size`. Blocks rather than single samples because a block sized like
-    the amount of raw data the loader consumes per emitted item reproduces the grouping
-    rank 0 would have scattered, which keeps the data each rank sees unchanged.
+    Rank `r` keeps the blocks of `block_size` consecutive raw samples whose block index is
+    `r` modulo `world_size`. Without packing, this reproduces the blocks rank 0 would have
+    scattered when preprocessing is deterministic and maps every raw sample to one output.
+    Preprocessing that drops or expands samples can change the per-rank assignment.
 
     None of the three values are known when the dataset is built: Megatron-SWIFT initializes
     its model parallel state after the dataset is prepared, with sequence parallel the relevant
