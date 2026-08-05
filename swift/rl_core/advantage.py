@@ -222,8 +222,10 @@ def compute_teacher_kl_per_token(
         ``[B, T]`` per-token teacher KL (masked outside the response).
     """
     d = teacher_per_token_logps - policy_per_token_logps
+    # Mask before exp so padding sentinel values cannot overflow and produce inf * 0.
+    d = d.masked_fill(~completion_mask.bool(), 0.0)
     per_token = torch.exp(d) - d - 1
-    return per_token * completion_mask
+    return per_token
 
 
 def compute_teacher_logratio(
@@ -245,7 +247,7 @@ def compute_teacher_logratio(
         ``[B, T]`` per-token signed log-ratio (masked outside the response).
     """
     d = teacher_per_token_logps - policy_per_token_logps
-    return d * completion_mask
+    return d.masked_fill(~completion_mask.bool(), 0.0)
 
 
 def expand_advantage_to_per_token(
@@ -277,6 +279,135 @@ def expand_advantage_to_per_token(
         signed = compute_teacher_logratio(teacher_per_token_logps, policy_per_token_logps, completion_mask)
         per_token_adv = per_token_adv + teacher_kl_coef * signed
     return per_token_adv
+
+
+def apply_rlsd_reweight(
+    base_advantages: torch.Tensor,
+    completion_mask: torch.Tensor,
+    teacher_per_token_logps: torch.Tensor,
+    policy_per_token_logps: torch.Tensor,
+    lam: float,
+    clip_range: float,
+    negative_only: bool = False,
+) -> torch.Tensor:
+    """RLSD (Self-Distilled RLVR) token-level advantage reweighting.
+
+    Redistributes the per-sequence GRPO advantage *inside* each trajectory using the
+    teacher-vs-student log-prob gap, without ever flipping the sign of the environment
+    reward (the reweight is strictly positive). Mirrors ``_build_stgca_advantages`` in
+    the reference implementation (RLSD/verl/workers/actor/dp_opsd_actor.py)::
+
+        delta_t  = stop_grad(logP_T(y_t) - logP_S(y_t))
+        w_t      = exp(sign(A) * delta_t)
+        reweight = (1 - lam) + lam * clip(w_t, 1 - clip_range, 1 + clip_range)
+        A_hat_t  = A * stop_grad(reweight)
+
+    ``lam`` mixes between pure GRPO (``lam=0`` -> plain broadcast) and full RLSD reweighting
+    (``lam=1``). The teacher is the "informed self": the same policy conditioned on the
+    ground-truth answer, scoring the *same* sampled tokens (``teacher_per_token_logps``).
+    ``policy_per_token_logps`` is the student side (the batch-time old logps).
+
+    Args:
+        base_advantages: ``[B]`` per-sequence GRPO advantage.
+        completion_mask: ``[B, T]`` response-token mask.
+        teacher_per_token_logps: ``[B, T]`` teacher logp on sampled tokens.
+        policy_per_token_logps: ``[B, T]`` student (old) logp on the same tokens.
+        lam: Effective mixing weight (already schedule-adjusted).
+        clip_range: Evidence-weight clip epsilon ``eps_w``.
+        negative_only: When True, only reweight sequences with ``A < 0`` (incorrect
+            responses); ``A >= 0`` sequences keep pure GRPO advantages.
+
+    Returns:
+        ``[B, T]`` per-token reweighted advantage (masked outside the response).
+    """
+    mask = completion_mask
+    base_bt = base_advantages.unsqueeze(1).expand_as(mask)
+    delta = (teacher_per_token_logps.detach() - policy_per_token_logps.detach()) * mask
+    sign_a = torch.sign(base_bt)
+    weights = torch.exp(sign_a * delta) * mask
+    clipped = torch.clamp(weights, min=1.0 - clip_range, max=1.0 + clip_range)
+    reweight = (1.0 - lam) + lam * clipped
+    if negative_only:
+        seq_neg = (base_advantages < 0).float().unsqueeze(1)
+        reweight = seq_neg * reweight + (1.0 - seq_neg)
+    return base_bt * reweight.detach() * mask
+
+
+def _sdar_agg_loss(loss_mat: torch.Tensor, loss_mask: torch.Tensor, loss_agg_mode: str) -> torch.Tensor:
+    """Masked loss aggregation mirroring verl ``agg_loss`` (verl/trainer/ppo/core_algos.py).
+
+    Supported modes: ``token-mean`` (default), ``seq-mean-token-sum``, ``seq-mean-token-mean``.
+    """
+    if loss_agg_mode == 'token-mean':
+        return (loss_mat * loss_mask).sum() / loss_mask.sum().clamp(min=1.0)
+    if loss_agg_mode == 'seq-mean-token-sum':
+        seq_losses = (loss_mat * loss_mask).sum(dim=-1)
+        return seq_losses.mean()
+    if loss_agg_mode == 'seq-mean-token-mean':
+        seq_losses = (loss_mat * loss_mask).sum(dim=-1) / loss_mask.sum(dim=-1).clamp(min=1.0)
+        return seq_losses.mean()
+    raise ValueError(f'Unknown loss_agg_mode: {loss_agg_mode}')
+
+
+def compute_sdar_loss(
+    student_log_probs: torch.Tensor,
+    teacher_log_probs: torch.Tensor,
+    response_mask: torch.Tensor,
+    gate_beta: float = 5.0,
+    loss_agg_mode: str = 'token-mean',
+) -> Tuple[torch.Tensor, Dict[str, float]]:
+    """SDAR (Self-Distilled Agentic RL) confidence-gated teacher distillation loss.
+
+    Exact port of ``compute_sdar_loss`` in the reference (SDAR/verl/trainer/ppo/sdar_utils.py).
+    Token-level gated distillation where the gate is derived from the teacher-vs-student
+    log-prob gap, so tokens where the teacher is more confident receive a stronger
+    distillation signal::
+
+        delta_t = logP_T(y_t) - logP_S(y_t)
+        g_t     = sigmoid(gate_beta * delta_t)                 # detached, no grad
+        L_SDAR  = agg( g_t * (logP_T(y_t) - logP_S(y_t)) )     # student keeps grad
+
+    The gate ``g_t`` and the teacher log-probs are detached, so gradients flow only through
+    the student log-probs. This auxiliary loss is *added* to the GRPO policy loss
+    (``loss = policy_loss + sdar_loss_coef * L_SDAR``); it does not modify the advantage.
+
+    Args:
+        student_log_probs: ``[B, T]`` current-policy logP_theta(y_t | x, y_<t) (retains grad).
+        teacher_log_probs: ``[B, T]`` teacher logP(y_t | x, r, y_<t) on the same sampled tokens.
+            The teacher sees skill-augmented / privileged input ``r``; frozen (no grad).
+        response_mask: ``[B, T]`` mask for valid response tokens.
+        gate_beta: sigmoid gate temperature; higher = sharper gating.
+        loss_agg_mode: aggregation mode (default ``token-mean``, matching the reference).
+
+    Returns:
+        ``(loss, metrics)`` where ``loss`` is a scalar and ``metrics`` holds gating statistics.
+    """
+    teacher_log_probs = teacher_log_probs.detach()
+
+    delta_t = teacher_log_probs - student_log_probs.detach()
+
+    gate = torch.sigmoid(gate_beta * delta_t).detach()
+
+    kl_per_token = teacher_log_probs - student_log_probs
+
+    gated_kl = gate * kl_per_token
+
+    loss = _sdar_agg_loss(gated_kl, response_mask, loss_agg_mode)
+
+    with torch.no_grad():
+        mask_sum = response_mask.sum().clamp(min=1)
+        gate_mean = (gate * response_mask).sum() / mask_sum
+        gate_active = ((gate > 0.5).float() * response_mask).sum() / mask_sum
+        gap_mean = (delta_t * response_mask).sum() / mask_sum
+
+    metrics = {
+        'sdar/gate_mean': gate_mean.item(),
+        'sdar/gate_active_ratio': gate_active.item(),
+        'sdar/teacher_gap_mean': gap_mean.item(),
+        'sdar/loss': loss.detach().item(),
+    }
+
+    return loss, metrics
 
 
 @dataclass

@@ -7,7 +7,6 @@ from contextlib import contextmanager
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
-from megatron.core.rerun_state_machine import RerunDataIterator
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
@@ -305,10 +304,9 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                     is_main_process=self.is_main_process,
                     tag_key=self.args.teacher_tag_key)
 
-        # Encode micro-batches
-        total_microbatches = self.args.num_microbatches * self.steps_per_generation
-        micro_batch_size = len(samples) // total_microbatches
-        assert micro_batch_size == self.args.micro_batch_size
+        micro_batch_size = self.args.micro_batch_size
+        total_microbatches = len(samples) // micro_batch_size
+        assert total_microbatches * micro_batch_size == len(samples)
         all_encoded_batches = []
         for i in range(total_microbatches):
             start_idx = i * micro_batch_size
@@ -322,37 +320,26 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self._compute_teacher_logits(all_encoded_batches)
         return all_encoded_batches
 
-    def _replace_data_iterator(self, data_iterator):
+    def _build_rollout_buffer(self, data_iterator):
         num_microbatches = self.args.num_microbatches
-        steps_per_generation = self.steps_per_generation
+        num_gen_steps = self.steps_per_generation if self.unwrapped_models[0].training else 1
+        total_microbatches = num_microbatches * num_gen_steps
+        global_batch = []
+        for _ in range(total_microbatches):
+            raw_batch = next(data_iterator)
+            if self.truncation_strategy == 'delete' and self.resample_data_iterator is not None:
+                raw_batch = self.resample_encode_failed_inputs(raw_batch)
+            global_batch.extend(raw_batch)
 
-        if self._step % steps_per_generation == 0:
-            total_microbatches = num_microbatches * steps_per_generation
-            global_batch = []
-            for _ in range(total_microbatches):
-                raw_batch = next(data_iterator)
-                if self.truncation_strategy == 'delete' and self.resample_data_iterator is not None:
-                    raw_batch = self.resample_encode_failed_inputs(raw_batch)
-                global_batch.extend(raw_batch)
+        all_encoded_batches = self._generate_and_score_completions(global_batch)
+        return [all_encoded_batches[i * num_microbatches:(i + 1) * num_microbatches] for i in range(num_gen_steps)]
 
-            all_encoded_batches = self._generate_and_score_completions(global_batch)
-            self._buffered_inputs = [
-                all_encoded_batches[i * num_microbatches:(i + 1) * num_microbatches]
-                for i in range(steps_per_generation)
-            ]
-
-        step_idx = self._step % steps_per_generation
-        encoded_batches = self._buffered_inputs[step_idx]
-
+    def _on_train_step_batch(self, encoded_batches):
         # Self-distillation teacher == current student weights. Recompute per train step (weights are
         # constant within a step) instead of once per generation cycle, so it tracks student updates
         # across steps_per_generation. Runs outside the pipeline schedule, so PP > 1 is supported.
         if self._is_self_distillation:
             self._compute_teacher_logits_local(encoded_batches)
-
-        self._step += 1
-
-        return RerunDataIterator(iter(encoded_batches))
 
     def loss_func(self,
                   output_tensor: torch.Tensor,

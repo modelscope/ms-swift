@@ -7,6 +7,7 @@ from .glm4 import (ChatGLM4AgentTemplate, GLM4_5AgentTemplate, GLM4_7AgentTempla
                    GLM5_1AgentTemplate)
 from .hermes import HermesAgentTemplate, HunyuanHermesAgentTemplate
 from .hy_v3 import HyV3AgentTemplate, HyV3PreviewAgentTemplate
+from .kimi_k3 import KimiK3AgentTemplate
 from .kimi_k25 import KimiK25AgentTemplate
 from .llama import Llama3AgentTemplate, Llama4AgentTemplate
 from .minicpm5 import MiniCPM5AgentTemplate
@@ -57,5 +58,6 @@ agent_template_map = {
     'mistral': MistralAgentTemplate,
     'youtu': YoutuAgentTemplate,
     'kimi_k25': KimiK25AgentTemplate,
+    'kimi_k3': KimiK3AgentTemplate,
     'minicpm5': MiniCPM5AgentTemplate,
 }

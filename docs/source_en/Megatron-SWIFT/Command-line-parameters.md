@@ -148,6 +148,9 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - ddp_backend: Distributed backend. Options are 'nccl' or 'gloo'. Defaults to nccl.
 - ddp_timeout: Defaults to 18000000, in seconds.
 - 🔥use_distributed_optimizer: Use a distributed optimizer (i.e., ZeRO-1). Default is True.
+- use_megatron_fsdp: Use Megatron-FSDP as the data-parallel implementation (in place of DDP). Default is False. When enabled, it forces `use_distributed_optimizer=True`, only supports the `sgd`/`adam` optimizers, and requires `CUDA_DEVICE_MAX_CONNECTIONS` greater than 1.
+  - Note: Try not to use Megatron-FSDP together with tensor parallelism or context parallelism, since they require conflicting `CUDA_DEVICE_MAX_CONNECTIONS` settings for best performance: sequence parallelism requires setting `CUDA_DEVICE_MAX_CONNECTIONS` to 1, while Megatron-FSDP requires not setting it to 1 (for better parallelization).
+- data_parallel_sharding_strategy: The data-parallel sharding strategy for Megatron-FSDP. Options are 'no_shard', 'optim', 'optim_grads', 'optim_grads_params'; default is 'optim_grads_params'. Only takes effect when `use_megatron_fsdp=True`.
 - 🔥tensor_model_parallel_size: TP (Tensor Parallelism) size, default is 1.
 - 🔥pipeline_model_parallel_size: PP (Pipeline Parallelism) size, default is 1.
 - 🔥decoder_first_pipeline_num_layers: The number of Transformer layers in the first pipeline stage of the decoder. Default is None, which means the Transformer layers are evenly distributed across all pipeline stages.
@@ -159,6 +162,7 @@ For guidance on selecting parallelization strategies, please refer to the [Train
 - align_param_gather: When set to True, all PP stages will launch parameter all-gather operations simultaneously. Otherwise, each PP stage will launch independently as needed. Defaults to True.
 - 🔥sequence_parallel: Enables sequence parallel optimization; this option takes effect only when `tensor_model_parallel_size` is set. Default is False.
 - 🔥context_parallel_size: CP (Context Parallelism) size, default is 1.
+- cp_comm_type: The inter-GPU communication type for context parallelism. Accepted values are `"p2p"`, `"all_gather"`, `"a2a"`, or `"a2a+p2p"`. Defaults to `None`.
 - cp_partition_mode: How THD sequence rows are partitioned across context-parallel ranks.
 - sequence_packing_scheduler: Scheduler for sequence packing and dynamic context parallel. Optional values are "dp_balanced" and "default_dynamic_cp". dp_balanced: DP-balanced scheduler for sequence packing. default_dynamic_cp: Dynamic-CP scheduler for packed sequence balancing. Defaults to None.
 - tp_comm_overlap: Overlap tensor parallel communication with GEMM (General Matrix Multiplication) kernels (to reduce communication time). Default is False.

@@ -37,6 +37,9 @@ class ExportArguments(MergeArguments, BaseArguments):
         test_convert_precision (bool): Whether to test the precision error of weight conversion between Hugging Face
             and Megatron-Core formats. Defaults to False.
         test_convert_dtype (str): The dtype to use for the conversion precision test. Defaults to 'float32'.
+        save_missing_weights (bool): Whether to copy weights that exist in the source checkpoint but are not
+            supported by Megatron-Core (e.g. the `mtp.*` DSpark weights of DeepSeek-V4-Flash) into the exported
+            model, so that they are not lost. Defaults to False.
         push_to_hub (bool): Whether to push the output to the Model Hub. Defaults to False. See examples for more
             details.
         hub_model_id (Optional[str]): The model ID for pushing to the Hub (e.g., 'user_name/repo_name' or 'repo_name').
@@ -71,6 +74,7 @@ class ExportArguments(MergeArguments, BaseArguments):
     thread_count: Optional[int] = None
     test_convert_precision: bool = False
     test_convert_dtype: str = 'float32'
+    save_missing_weights: bool = False
 
     # push to ms hub
     push_to_hub: bool = False

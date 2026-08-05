@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import os
 import torch
 from PIL import Image
@@ -23,6 +24,25 @@ except Exception:
 
 class GRPOVllmEngine(VllmEngine):
 
+    def _get_grpo_lora_request(self, adapter_request: Optional[AdapterRequest] = None):
+        if not adapter_request and self.enable_lora:
+            lora_loaded = VLLM_LORA_INT_ID in self.engine.list_loras()
+            if lora_loaded:
+                adapter_request = LoRARequest(
+                    lora_name=VLLM_LORA_NAME, lora_int_id=VLLM_LORA_INT_ID, lora_path=VLLM_LORA_PATH)
+        return adapter_request
+
+    async def _get_grpo_lora_request_async(self, adapter_request: Optional[AdapterRequest] = None):
+        if not adapter_request and self.enable_lora:
+            loaded_loras = self.engine.list_loras()
+            if inspect.isawaitable(loaded_loras):
+                loaded_loras = await loaded_loras
+            lora_loaded = VLLM_LORA_INT_ID in loaded_loras
+            if lora_loaded:
+                adapter_request = LoRARequest(
+                    lora_name=VLLM_LORA_NAME, lora_int_id=VLLM_LORA_INT_ID, lora_path=VLLM_LORA_PATH)
+        return adapter_request
+
     def infer(
         self,
         infer_requests: List[Union[InferRequest, Dict[str, Any]]],
@@ -32,11 +52,7 @@ class GRPOVllmEngine(VllmEngine):
         use_tqdm: Optional[bool] = None,
         adapter_request: Optional[AdapterRequest] = None,
     ) -> List[RolloutOutput]:
-        if not adapter_request and self.enable_lora:
-            lora_loaded = VLLM_LORA_INT_ID in self.engine.list_loras()
-            if lora_loaded:
-                adapter_request = LoRARequest(
-                    lora_name=VLLM_LORA_NAME, lora_int_id=VLLM_LORA_INT_ID, lora_path=VLLM_LORA_PATH)
+        adapter_request = self._get_grpo_lora_request(adapter_request)
 
         res = super().infer(
             infer_requests,
@@ -78,6 +94,22 @@ class GRPOVllmEngine(VllmEngine):
                 res[i] = RolloutOutput(response=result)
 
         return res
+
+    async def infer_async(
+        self,
+        infer_request: InferRequest,
+        request_config: Optional[RequestConfig] = None,
+        *,
+        adapter_request: Optional[AdapterRequest] = None,
+        pre_infer_hook=None,
+    ):
+        adapter_request = await self._get_grpo_lora_request_async(adapter_request)
+        return await super().infer_async(
+            infer_request,
+            request_config,
+            adapter_request=adapter_request,
+            pre_infer_hook=pre_infer_hook,
+        )
 
     async def _batch_infer_stream(self,
                                   tasks,
