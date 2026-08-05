@@ -228,8 +228,12 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         pip uninstall autoawq -y
         pip install optimum
         pip install diffusers
+        # The pin must ride into the package install itself: a bare
+        # `pip install .` re-resolves trl (>=4.56.2 floor) against
+        # framework.txt's <5.15.0 and jumps to transformers 5.x, whose
+        # layout the test suite does not support yet.
         pip install "transformers<5.0" "peft<0.19"
-        pip install .
+        pip install "transformers<5.0" .
         pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
     fi
 else
