@@ -5,7 +5,7 @@ from typing import List, Optional, Union
 
 from swift.arguments import SftArguments
 from swift.dataset import (AddLengthPreprocessor, DatasetLoader, EncodePreprocessor, IterablePackingDataset,
-                           LazyLLMDataset, PackingDataset)
+                           LazyLLMDataset, PackingDataset, set_shard_state, shard_streaming_dataset)
 from swift.infer_engine import prepare_generation_config
 from swift.ray_utils import RayHelper
 from swift.sequence_parallel import sequence_parallel
@@ -133,6 +133,10 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             if i == 1 and predict_with_generate:
                 # val_dataset
                 continue
+            shard_state = None
+            if i == 0 and args.streaming and args.streaming_shard:
+                # before encode/packing: the point is to encode only 1/world_size of the samples
+                dataset, shard_state = shard_streaming_dataset(dataset)
             if not args.streaming and args.truncation_strategy != 'split':
                 dataset = LazyLLMDataset(dataset, template.encode, strict=args.strict, random_state=args.data_seed)
             if args.packing:
@@ -153,6 +157,8 @@ class SwiftSft(SwiftPipeline, TunerMixin):
                     num_proc=args.dataset_num_proc,
                     load_from_cache_file=args.load_from_cache_file,
                     strict=args.strict)
+            if shard_state is not None:
+                set_shard_state(dataset, shard_state)
             datasets[i] = dataset
         return datasets
 

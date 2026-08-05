@@ -46,6 +46,10 @@ class DataArguments:
         streaming (bool): Enables streaming to read and process the dataset on-the-fly. `--max_steps` must be set as the
             dataset length is unknown. This allows preprocessing to overlap with training but can become a bottleneck
             with a large `world_size` as preprocessing only runs on rank 0. Defaults to False.
+        streaming_shard (bool): Splits the streaming training set across data-parallel ranks so that every rank
+            preprocesses its own share, instead of rank 0 preprocessing everything and scattering the batches.
+            Removes the rank 0 bottleneck at the cost of every rank reading the raw stream. Not supported with
+            `deepspeed_autotp_size`. Only effective when `streaming` is True. Defaults to False.
         interleave_prob (Optional[List[float]]): If set, combines datasets using `interleave_datasets` with the
             provided probabilities instead of `concatenate_datasets`. Typically used for streaming. Defaults to None.
         stopping_strategy (str): The stopping strategy for `interleave_datasets`. Can be "first_exhausted" or
@@ -84,6 +88,7 @@ class DataArguments:
     dataset_shuffle: bool = True
     val_dataset_shuffle: bool = False
     streaming: bool = False
+    streaming_shard: bool = False
     interleave_prob: Optional[List[float]] = None
     stopping_strategy: Literal['first_exhausted', 'all_exhausted'] = 'first_exhausted'
     shuffle_buffer_size: int = 1000
@@ -108,6 +113,9 @@ class DataArguments:
 
     def __post_init__(self):
         self.columns = json_parse_to_dict(self.columns)
+        if self.streaming_shard and not self.streaming:
+            self.streaming_shard = False
+            logger.info('Because args.streaming is False, setting streaming_shard: False')
         if len(self.val_dataset) > 0 or self.streaming and self.split_dataset_ratio > 0:
             self.split_dataset_ratio = 0.
             if len(self.val_dataset) > 0:

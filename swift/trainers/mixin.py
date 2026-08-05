@@ -43,6 +43,7 @@ from typing import Callable, Dict, List, Optional
 
 from swift.callbacks import callbacks_map
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
+from swift.dataset import get_shard_state
 from swift.hub import get_hub
 from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
@@ -1286,11 +1287,16 @@ class DataLoaderMixin:
                 'persistent_workers': self.args.dataloader_persistent_workers,
                 'prefetch_factor': self.args.dataloader_prefetch_factor
             }
-            if dist.is_initialized() and dataloader_params['prefetch_factor']:
+            shard_state = get_shard_state(dataset)
+            if shard_state is None and dist.is_initialized() and dataloader_params['prefetch_factor']:
                 dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
             dataloader = DataLoader(dataset, batch_size=batch_size, **dataloader_params)
             dataloader = SequenceParallelDispatcher(
-                dataloader, sequence_parallel, self.accelerator.device, skip_batches=skip_batches)
+                dataloader,
+                sequence_parallel,
+                self.accelerator.device,
+                skip_batches=skip_batches,
+                shard_state=shard_state)
             return dataloader
 
     def get_train_dataloader(self, skip_batches=0):
@@ -1338,10 +1344,13 @@ class DataLoaderMixin:
                 dataloader = DataLoaderShard(train_dataset, device=self.accelerator.device, **dataloader_params)
             else:
                 # IterableDataset
-                if dist.is_initialized() and dataloader_params['prefetch_factor']:
+                shard_state = get_shard_state(train_dataset)
+                # only rank0 prefetches when dispatching, so it prefetches on behalf of every rank
+                if shard_state is None and dist.is_initialized() and dataloader_params['prefetch_factor']:
                     dataloader_params['prefetch_factor'] = dataloader_params['prefetch_factor'] * dist.get_world_size()
                 dataloader = DataLoader(train_dataset, batch_size=self._train_batch_size, **dataloader_params)
-                dataloader = DataLoaderDispatcher(dataloader, self.accelerator.device, skip_batches=skip_batches)
+                dataloader = DataLoaderDispatcher(
+                    dataloader, self.accelerator.device, skip_batches=skip_batches, shard_state=shard_state)
         return dataloader
 
     @contextmanager

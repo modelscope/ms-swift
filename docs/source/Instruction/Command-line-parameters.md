@@ -76,7 +76,15 @@
 - val_dataset_shuffle: 是否对val_dataset进行随机操作。默认为False。
 - streaming: 流式读取并处理数据集，默认False。（流式数据集的随机并不彻底，可能导致loss波动剧烈。）
   - 注意：需要额外设置`--max_steps`，因为流式数据集无法获得其长度。你可以通过设置`--save_strategy epoch`并设置较大的max_steps来实现与`--num_train_epochs`等效的训练。或者，你也可以设置`max_epochs`确保训练到对应epochs时退出训练，并对权重进行验证和保存。
-  - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈。
+  - 注意：流式数据集可以跳过预处理等待，将预处理时间与训练时间重叠。流式数据集的预处理默认只在rank0上进行，并通过数据分发的方式同步到其他进程，**其通常效率不如非流式数据集采用的数据分片读取方式**。当训练的world_size较大时，预处理和数据分发将成为训练瓶颈，此时可以设置`--streaming_shard true`。
+- streaming_shard: 将流式训练集切分到各个数据并行rank上，每个rank只预处理属于自己的那一份，不再由rank0统一预处理并分发，默认为False。该参数只在`--streaming true`时生效。
+  - 预处理吞吐随rank数扩展。多模态数据（图像读取与encode开销大）与多机训练的收益最明显——多机时除rank0所在节点外，其他节点的CPU本来是闲置的。单机内CPU核心无论如何都是共享的，所以单机的收益主要来自去掉rank0的串行分发，而不是多出来的核；但不开packing时例外，默认路径无论节点有多少核都只用一个进程做encode。
+  - 开启后每个rank都会真正用上自己的`--dataset_num_proc`个encode子进程（默认路径下只有rank0在用，其余rank的子进程从头空转到尾）。因此单节点的CPU与内存占用会按「本节点rank数 × dataset_num_proc」增长；若节点CPU或内存吃紧，请调小`dataset_num_proc`。
+  - 切分以"连续样本块"为单位，块大小取dataloader每产出一个item所消耗的原始样本数（即per_device_train_batch_size；packing时为`packing_interval`），rank `r`保留第`r`、`r+world_size`、`r+2*world_size`……块。这样取块的意义在于：每个rank拿到的正是rank0本来要分发给它的那些样本，**因此在不开packing时，各rank训练到的样本与样本顺序和默认路径完全一致**。开packing时每个rank会各自重新装包，样本集合不变，但样本到pack的分组会变化。
+  - 代价：每个rank都会完整读取一遍原始数据流（只有昂贵的encode被切分）。若原始数据是"jsonl存路径 + 外部图像"这类形态，重复读取的只是廉价的文本解析；若原始数据本身内嵌大量二进制（例如内嵌图片bytes的parquet），多机场景下需要先评估重复读取的开销。
+  - 切分与数据文件的个数、大小无关，各rank的样本数最多相差一个块。任一rank的分片耗尽时所有rank同步停止，每个rank最多丢弃一个step的尾部数据（默认路径同样会丢尾部）。
+  - 只对训练集生效，验证集仍走默认路径。
+  - 不支持与`--deepspeed_autotp_size`同时使用：流式路径不会把同一个batch复制给张量并行的各个rank（这一限制早于本参数，默认路径同样存在）。
 - interleave_prob: 默认值为 None。在组合多个数据集时，默认使用datasets库的 `concatenate_datasets` 函数；如果设置了该参数，则会使用 `interleave_datasets` 函数。该参数通常用于流式数据集的组合，并会作为参数传入 `interleave_datasets` 函数中。该参数不对`--val_dataset`生效。
 - stopping_strategy: 可选为"first_exhausted", "all_exhausted"，默认为"first_exhausted"。传入`interleave_datasets`函数中。该参数不对`--val_dataset`生效。
 - shuffle_buffer_size: 该参数用于指定**流式数据集**的随机buffer大小，默认为1000。该参数只在`dataset_shuffle`设置为true时有效。

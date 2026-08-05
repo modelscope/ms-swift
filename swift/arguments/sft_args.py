@@ -275,6 +275,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             if self.deepspeed_autotp_size is not None:
                 assert self.deepspeed is not None, (
                     'To use `deepspeed_autotp_size`, you need to additionally set the `--deepspeed` argument.')
+                assert not self.streaming_shard, (
+                    '`streaming_shard` splits the data by global rank, which would feed the ranks of a '
+                    'tensor parallel group different samples. Please set `--streaming_shard false`.')
                 self.deepspeed.setdefault('tensor_parallel', {})['autotp_size'] = self.deepspeed_autotp_size
                 self.deepspeed.setdefault('zero_optimization', {})['gather_16bit_weights_on_model_save'] = True
             if 'deepspeed_elastic' in set(getattr(self, 'callbacks', []) or []):
