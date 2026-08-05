@@ -133,18 +133,19 @@ class TestPeft(unittest.TestCase):
             self.assertTrue(key in state_dict2)
             self.assertTrue(all(torch.isclose(state_dict[key], state_dict2[key]).flatten().detach().cpu()))
 
-    @unittest.skip
     def test_peft_lora_dtype(self):
         model = SbertForSequenceClassification(SbertConfig())
         model2 = copy.deepcopy(model)
         model3 = copy.deepcopy(model)
         lora_config = LoraConfig(target_modules=['query', 'key', 'value'], lora_dtype='float16')
         model = Swift.prepare_model(model, lora_config)
+        self.assertTrue(
+            model.base_model.bert.encoder.layer[0].attention.self.key.lora_A.default.weight.dtype == torch.float16)
         model.save_pretrained(self.tmp_dir, safe_serialization=False)
         self.assertTrue(os.path.exists(os.path.join(self.tmp_dir, 'additional_config.json')))
         model2 = Swift.from_pretrained(model2, self.tmp_dir)
         self.assertTrue(model2.base_model.model.bert.encoder.layer[0].attention.self.key.lora_A.default.weight.dtype ==
-                        torch.float32)
+                        torch.float16)
         self.assertTrue(model2.peft_config['default'].lora_dtype == 'float16')
         state_dict = model.state_dict()
         state_dict2 = model2.state_dict()

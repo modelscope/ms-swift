@@ -584,6 +584,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - top_k: Top-k parameter for rollout sampling. -1 means no top-k filtering is applied. Default is -1.
 - top_p: Top-p parameter for rollout sampling. 1.0 means no top-p filtering is applied. Default is 1.0.
+- min_p: Min-p parameter for rollout sampling. Tokens whose probability is below `min_p` times the probability of the most likely token are filtered out. 0.0 means no min-p filtering is applied. Default is 0.0. Only effective with the vLLM backend.
 
 #### GKD Arguments
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
@@ -696,6 +697,14 @@ The hyperparameters for the reward function can be found in the [Built-in Reward
   - Note: `gdpo` mode does not support `kl_in_reward=True`. If both are set, `kl_in_reward` will be automatically set to `False`.
   - GDPO is designed for multi-reward optimization: When using multiple reward functions, GDPO normalizes each reward function separately within groups (subtract mean, divide by std), then performs weighted aggregation using `reward_weights`, and finally applies batch-level normalization. This approach better preserves the relative differences between rewards and prevents different reward combinations from collapsing into identical advantage values.
 - teacher_kl_coef: Coefficient for teacher KL in OPD-RL, i.e. `adv_t = base_adv + teacher_kl_coef * teacher_kl`. Default is 1.0.
+- advantage_reweight: Advantage reweighting algorithm. Default is None (disabled). Option: `rlsd` ([RLSD, Self-Distilled RLVR](https://arxiv.org/abs/2604.03128)), which redistributes the per-sequence GRPO advantage across tokens using the teacher-vs-student log-probability gap on the same sampled tokens, i.e. `delta_t = logP_T(y_t) - logP_S(y_t)`, `w_t = exp(sign(A) * delta_t)`, `reweight = (1 - λ) + λ * clip(w_t)`, `A_hat_t = A * reweight`. The reweight is strictly positive and never flips the sign of the environment reward. When enabled it requires `reward_funcs` (the reweight direction uses `sign(A)`) and a `teacher_prompt` column in the dataset (the privileged prompt, e.g. question + reference solution / ground-truth answer); it is incompatible with `use_liger_kernel`, `loss_type in [real, fipo]`, `off_policy_sequence_mask_delta`, and `teacher_model_server`. Teacher modes: without `--teacher_model` it runs dynamic self-distillation (teacher = current policy scored on the privileged prompt); with `--teacher_model <ckpt>` it uses a frozen local teacher (scored under no_grad, never updated during training).
+- rlsd_lambda: RLSD mixing weight, `reweight = (1 - λ) + λ * clip(w_t)`. `0` reduces to plain GRPO, `1` is full RLSD reweighting. Must be in [0, 1]. Default is 0.5.
+- rlsd_reweight_clip_range: Evidence-weight clip range eps_w. Clips `w_t = exp(sign(A) * delta_t)` to `[1 - eps_w, 1 + eps_w]` to prevent overly large multipliers from the teacher/student log-prob gap. Must be >= 0. Default is 0.2.
+- rlsd_lambda_warmup_steps: Number of steps to linearly warm up λ from 0 to `rlsd_lambda`. Default is 0 (no warmup).
+- rlsd_lambda_decay_steps: Number of steps to linearly decay λ from `rlsd_lambda` to 0 after warmup. Default is 0 (no decay; λ stays constant).
+- rlsd_negative_only: Whether to reweight only sequences with negative advantage (`A < 0`, i.e. incorrect responses); sequences with non-negative advantage keep plain GRPO advantages. Default is False.
+- sdar_loss_coef: Coefficient for the SDAR ([Self-Distilled Agentic RL](https://arxiv.org/abs/2605.15155)) confidence-gated teacher distillation auxiliary loss, added to the GRPO policy loss: `loss = policy_loss + sdar_loss_coef * L_SDAR`, where `L_SDAR = token-mean(sigmoid(sdar_gate_beta * delta_t) * delta_t)` and `delta_t = logP_T(y_t) - logP_S(y_t)`. The gate and teacher log-probs are detached, so gradients flow only through the student. It reuses the OPSD self-distillation teacher (teacher = current policy conditioned on a privileged `teacher_prompt` column) for the per-token teacher log-probs, and unlike RLSD leaves the GRPO advantage unchanged. Enabled when `> 0`; incompatible with `use_liger_kernel`, `advantage_reweight=rlsd`, and `teacher_model_server`. Default is 0.0 (disabled); the reference uses 0.1 (0.01 for ALFWorld).
+- sdar_gate_beta: Temperature of the SDAR sigmoid gate `sigmoid(sdar_gate_beta * delta_t)`; higher values sharpen the gating. Must be > 0. Default is 5.0.
 - sync_ref_model: Whether to synchronize the reference model. Default is False.
   - ref_model_mixup_alpha: The Parameter controls the mix between the current policy and the previous reference policy during updates. The reference policy is updated according to the equation: $π_{ref} = α * π_θ + (1 - α) * π_{ref_{prev}}$. Default is 0.6.
   - ref_model_sync_steps：The parameter determines how frequently the current policy is synchronized with the reference policy. Default is 512.
@@ -856,6 +865,11 @@ In addition to the parameters listed above, some models support additional model
 
 - Model-specific parameters can be set via `--model_kwargs` or environment variables. For example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 - Note: If you specify model-specific parameters during training, please also set the corresponding parameters during inference to achieve optimal performance.
+
+
+### deepseek_v4, deepseek_v4_flash, glm5_2, hy_v3_preview
+- 🔥REASONING_EFFORT: Thinking effort, effective only when thinking is enabled. The accepted values vary by model: `'high'`/`'max'` for `deepseek_v4` (default `'high'`); `'low'`/`'high'`/`'max'` for `deepseek_v4_flash` (default `'low'`); `'high'`/`'max'` for `glm5_2` (default `'max'`); `'no_think'`/`'low'`/`'high'` for `hy_v3_preview` (default `'high'`).
+  - It can also be set per sample by passing `chat_template_kwargs` in the dataset or the inference request, e.g. `{"chat_template_kwargs": {"reasoning_effort": "max"}}`, which takes precedence over the environment variable.
 
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5
