@@ -93,8 +93,10 @@ class DataLoaderDispatcher:
         """How many consecutive raw samples make up one shard block.
 
         Sizing a block like the amount of raw data the loader consumes per emitted item means
-        each rank ends up with the blocks rank 0 would have scattered to it, so turning the
-        split on does not regroup the data.
+        each rank ends up with the blocks rank 0 would have scattered to it, so without packing
+        the per-rank sample sequence is unchanged. With packing it only lines the packing
+        windows up -- rank 0 scatters individual packs, not whole packing rounds -- so the
+        samples are the same but their grouping into packs is not.
         """
         # IterablePackingDataset consumes packing_interval raw samples per packing round
         packing_interval = getattr(self.base_dataloader.dataset, 'packing_interval', None)
