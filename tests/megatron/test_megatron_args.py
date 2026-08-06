@@ -89,27 +89,31 @@ class TestMegatronArgs(unittest.TestCase):
         for field_name in expected_fields:
             self.assertIn(field_name, field_names, f'MegatronArguments missing field: {field_name}')
 
-    def test_local_attention_disables_padding_free(self):
+    def test_non_flash_attention_disables_padding_free(self):
         self._skip_if_no_megatron()
         from swift.megatron.model.utils import _check_padding_free
 
-        args = SimpleNamespace(padding_free=True)
-        config = SimpleNamespace(attention_backend=SimpleNamespace(name='local'))
-        _check_padding_free(args, config)
-        self.assertFalse(args.padding_free)
+        for attention_backend in ('local', 'unfused'):
+            with self.subTest(attention_backend=attention_backend):
+                args = SimpleNamespace(padding_free=True)
+                config = SimpleNamespace(attention_backend=SimpleNamespace(name=attention_backend))
+                _check_padding_free(args, config)
+                self.assertFalse(args.padding_free)
 
     @patch('transformers.utils.is_torch_npu_available', return_value=True)
-    def test_local_attention_keeps_npu_attention_mask(self, _):
+    def test_non_flash_attention_keeps_npu_attention_mask(self, _):
         self._skip_if_no_megatron()
         from swift.megatron.trainers.utils import _should_use_npu_generated_attention_mask
 
-        args = SimpleNamespace(
-            task_type='causal_lm',
-            padding_free=False,
-            attention_backend=SimpleNamespace(name='local'),
-            use_flash_attn=True,
-        )
-        self.assertFalse(_should_use_npu_generated_attention_mask(args))
+        for attention_backend in ('local', 'unfused'):
+            with self.subTest(attention_backend=attention_backend):
+                args = SimpleNamespace(
+                    task_type='causal_lm',
+                    padding_free=False,
+                    attention_backend=SimpleNamespace(name=attention_backend),
+                    use_flash_attn=True,
+                )
+                self.assertFalse(_should_use_npu_generated_attention_mask(args))
 
 
 if __name__ == '__main__':

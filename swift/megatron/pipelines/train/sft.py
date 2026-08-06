@@ -43,7 +43,7 @@ class MegatronSft(SwiftSft):
         if apply_mindspeed_patches is not None:
             megatron_args = asdict(self.args)
             # MindSpeed requires passing `use_flash_attn` to Megatron to select the attention implementation.
-            args.use_flash_attn = args.attention_backend.name != 'local'
+            args.use_flash_attn = args.attention_backend.name not in {'local', 'unfused'}
             megatron_args['use_flash_attn'] = args.use_flash_attn
             apply_mindspeed_patches(megatron_args)
         template_cls = args.template_meta.template_cls
