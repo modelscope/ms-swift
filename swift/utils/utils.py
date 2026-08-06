@@ -489,8 +489,12 @@ def shutdown_event_loop_in_daemon(thread: threading.Thread = None, loop: asyncio
     """
     if loop is None or thread is None:
         return
+    if loop.is_closed():
+        return
     loop.call_soon_threadsafe(loop.stop)
     thread.join(timeout=5)
+    if not thread.is_alive():
+        loop.close()
 
 
 def remove_response(messages) -> Optional[str]:
