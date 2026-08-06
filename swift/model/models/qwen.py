@@ -1228,6 +1228,18 @@ def _get_qwen3_5_cu_seqlens_q():
     return None
 
 
+def _has_multiple_sequences(cu_seqlens) -> bool:
+    """Return whether cumulative sequence lengths describe an actual packed batch."""
+    if cu_seqlens is None:
+        return False
+    if torch.is_tensor(cu_seqlens):
+        return cu_seqlens.numel() > 2
+    try:
+        return len(cu_seqlens) > 2
+    except TypeError:
+        return False
+
+
 def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     mod: torch.nn.Module,
     hidden_states: torch.Tensor,
@@ -1383,8 +1395,10 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
             attention_mask: Optional[torch.Tensor] = None,
             **kwargs,
         ):
-            # Transformers may propagate optional FlashAttention kwargs with None values in non-packing paths.
-            if not sequence_parallel.enabled() and kwargs.get('cu_seq_lens_q') is None:
+            # A single sequence can carry degenerate varlen metadata [0, seq_len]. It does not need the Swift
+            # padding-free kernels, which may be unavailable on platforms where the Transformers path still works.
+            cu_seqlens = kwargs.get('cu_seq_lens_q')
+            if not sequence_parallel.enabled() and not _has_multiple_sequences(cu_seqlens):
                 kwargs = {}
                 if 'cache_position' in parameters:
                     kwargs['cache_position'] = cache_position
