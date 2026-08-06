@@ -129,8 +129,10 @@ ABSENT: Dict[str, Tuple[str, ...]] = {
         # plugins (galore/lisa) have no Megatron surface at all.
         'target_parameters',
         'lorap_lr_ratio',
+        'lorap_emb_lr',
         'use_dora',
         'init_weights',
+        'trainable_token_indices',
         'lora_ga_batch_size',
         'lora_ga_iters',
         'lora_ga_max_length',

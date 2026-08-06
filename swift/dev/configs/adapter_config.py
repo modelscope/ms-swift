@@ -7,7 +7,14 @@ from typing import List, Literal, Optional
 
 @dataclass
 class TunerConfig:
-    """LoRA, AdaLoRA, VeRA, BOFT, FourierFT, ReFT, LLaMAPro, and Adapter settings."""
+    """LoRA (+QLoRA/DoRA/rsLoRA/LoRA+/LoRA-GA), AdaLoRA, TrainableTokens, GaLore, and LISA settings.
+
+    Scope note: only the tuners that see real-world use on text/multimodal LLMs are covered here.
+    The image-generation-oriented methods (LoHa/LoKr/OFT/BOFT ...) are intentionally left out --
+    swift does not do text-to-image. Quantization knobs (QLoRA = 4bit + LoRA) are NOT duplicated
+    here; they live in QuantizeConfig (quant_method/quant_bits/bnb_4bit_*), since quantization is
+    applied at model-load time rather than by the tuner.
+    """
 
     # === Base ===
     tuner_backend: Literal['peft', 'unsloth'] = 'peft'
@@ -36,33 +43,22 @@ class TunerConfig:
     lora_dropout: float = 0.05
     lora_bias: Literal['none', 'all'] = 'none'
     lora_dtype: Literal['float16', 'bfloat16', 'float32', None] = None
-    lorap_lr_ratio: Optional[float] = None
     use_rslora: bool = False
     use_dora: bool = False
+    # Lora: 'true'/'false'/'gaussian'/'pissa'/'pissa_niter_[number of iters]'/'olora'/'lora-ga'
+    # ('loftq' also exists upstream but needs a loftq_config, which is not modelled here.)
     init_weights: str = 'true'
 
-    # === LoRA-GA ===
-    lora_ga_batch_size: int = 2
-    lora_ga_iters: int = 2
-    lora_ga_max_length: int = 1024
-    lora_ga_direction: str = 'ArB2r'
-    lora_ga_scale: str = 'stable'
-    lora_ga_stable_gamma: int = 16
+    # === LoRA+ ===
+    # Scales lora_B's lr to lr * lorap_lr_ratio. None disables LoRA+ (plain LoRA lr for every group).
+    # Requires --optimizer lorap to take effect; see swift/optimizers/lorap.py.
+    lorap_lr_ratio: Optional[float] = None
+    lorap_emb_lr: float = 1e-6
 
-    # === FourierFT ===
-    fourier_n_frequency: int = 2000
-    fourier_scaling: float = 300.0
-
-    # === BOFT ===
-    boft_block_size: int = 4
-    boft_block_num: int = 0
-    boft_dropout: float = 0.0
-
-    # === VeRA ===
-    vera_rank: int = 256
-    vera_projection_prng_key: int = 0
-    vera_dropout: float = 0.0
-    vera_d_initial: float = 0.1
+    # === TrainableTokens ===
+    # Trains only the given embedding rows instead of the whole embedding matrix -- the standard way
+    # to learn newly added special tokens. Can be used standalone or alongside LoRA.
+    trainable_token_indices: Optional[List[int]] = None
 
     # === AdaLoRA ===
     adalora_target_r: int = 8
@@ -73,18 +69,6 @@ class TunerConfig:
     adalora_beta1: float = 0.85
     adalora_beta2: float = 0.85
     adalora_orth_reg_weight: float = 0.5
-
-    # === LLaMAPro ===
-    llamapro_num_new_blocks: int = 4
-    llamapro_num_groups: Optional[int] = None
-
-    # === ReFT ===
-    reft_layers: Optional[List[int]] = None
-    reft_rank: int = 4
-    reft_intervention_type: Literal['NoreftIntervention', 'LoreftIntervention', 'ConsreftIntervention',
-                                    'LobireftIntervention', 'DireftIntervention',
-                                    'NodireftIntervention'] = 'LoreftIntervention'
-    reft_args: Optional[str] = None
 
     # === GaLore ===
     use_galore: bool = False
@@ -102,7 +86,3 @@ class TunerConfig:
     galore_cos_threshold: float = 0.4
     galore_gamma_proj: int = 2
     galore_queue_size: int = 5
-
-    # === LISA ===
-    lisa_activated_layers: int = 0
-    lisa_step_interval: int = 20

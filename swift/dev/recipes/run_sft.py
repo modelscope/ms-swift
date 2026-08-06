@@ -154,8 +154,11 @@ def _run_sft_body(
 
     # 3. dataloader (list[InputFeature]; twinkle processor collates). One call loads train + val
     # (split-off or separate val_dataset) with a single load_dataset; either loader may be None.
+    # template_config is passed so DatasetConfig.cached_dataset (pre-encoded splits written by
+    # `swift export --to_cached_dataset`) gets legacy's max_length / truncation_strategy='delete'
+    # length filter applied on load.
     dataloader, eval_dataloader = build_dataset(
-        dataset_config, template, train_config, distributed_config=distributed_config)
+        dataset_config, template, train_config, distributed_config=distributed_config, template_config=template_config)
 
     if train_config.max_steps and train_config.max_steps > 0:
         total_opt_steps = train_config.max_steps

@@ -5,7 +5,7 @@ import numpy as np
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import DatasetConfig, DistributedConfig, TrainConfig
+    from swift.dev.configs import DatasetConfig, DistributedConfig, TemplateConfig, TrainConfig
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,8 @@ def build_dataset(dataset_config: DatasetConfig,
                   train_config: TrainConfig,
                   distributed_config: DistributedConfig,
                   *,
-                  encode: bool = True) -> Any:
+                  encode: bool = True,
+                  template_config: Optional[TemplateConfig] = None) -> Any:
     """Load train (+val) once and return ``(train_loader, val_loader)`` (either may be None).
 
     A single call mirrors legacy ``BaseArguments.load_dataset`` (base_args.py): one ``load_dataset``
@@ -24,6 +25,13 @@ def build_dataset(dataset_config: DatasetConfig,
     encode: whether to pre-tokenize now (SFT: True) or keep the raw messages and defer tokenization
       to the training/rollout phase (RL such as GRPO/GKD: False). Mirrors legacy
       ``SwiftSft._get_dataset``'s ``pre_process = not (rlhf_type in {grpo, gkd})``.
+
+    ``DatasetConfig.cached_dataset`` / ``cached_val_dataset`` point at directories written by
+    ``swift export --to_cached_dataset`` (see swift/pipelines/export/cached_dataset.py). Those rows
+    went through the SAME preprocessing chain and already carry a ``lengths`` column, so they are
+    concatenated in AFTER encoding and never re-encoded -- mirroring legacy
+    ``SwiftSft._prepare_dataset``, which appends get_cached_dataset()'s splits alongside the freshly
+    encoded ones.
     """
     from swift.dataset import load_dataset
 
@@ -46,6 +54,11 @@ def build_dataset(dataset_config: DatasetConfig,
             shuffle=dataset_config.val_dataset_shuffle,
             **load_kwargs)
 
+    # Pre-encoded splits from disk. Loaded here (before the per-split builders) so each split can be
+    # merged with its freshly-encoded counterpart, and so a run with ONLY cached_dataset still
+    # produces a loader.
+    cached_train, cached_val = _load_cached_datasets(dataset_config, template_config)
+
     encode_mode = _encode_mode(dataset_config, template) if encode else None
     train_loader = _build_split_loader(
         train_raw,
@@ -55,7 +68,8 @@ def build_dataset(dataset_config: DatasetConfig,
         distributed_config,
         encode=encode,
         encode_mode=encode_mode,
-        is_val=False)
+        is_val=False,
+        cached=cached_train)
     val_loader = _build_split_loader(
         val_raw,
         template,
@@ -64,8 +78,43 @@ def build_dataset(dataset_config: DatasetConfig,
         distributed_config,
         encode=encode,
         encode_mode=encode_mode,
-        is_val=True)
+        is_val=True,
+        cached=cached_val)
     return train_loader, val_loader
+
+
+def _load_cached_datasets(dataset_config: DatasetConfig, template_config: Any) -> tuple:
+    """Load ``cached_dataset`` / ``cached_val_dataset`` via the legacy loader.
+
+    Reuses ``swift.pipelines.utils.get_cached_dataset`` rather than reimplementing it, so the
+    3.x ``length``->``lengths`` rename, the ``truncation_strategy='delete'`` length filter and the
+    ``path#sample_count`` subsampling syntax stay in ONE place. That function reads a flat legacy
+    args object, so a small shim carries the six attributes it touches across the two dev Configs
+    that own them (dataset_config: paths/seed/shuffle, template_config: max_length/truncation).
+
+    Returns ``(train_datasets, val_datasets)`` as lists (possibly empty), not concatenated -- the
+    per-split builder merges them with the encoded split.
+    """
+    if not dataset_config.cached_dataset and not dataset_config.cached_val_dataset:
+        return [], []
+    from types import SimpleNamespace
+
+    from swift.pipelines.utils import get_cached_dataset
+
+    # max_length / truncation_strategy live on TemplateConfig; template_config is optional here so
+    # callers that have no template config still load caches (then no length filter is applied,
+    # which is what truncation_strategy=None means in legacy too).
+    args = SimpleNamespace(
+        cached_dataset=dataset_config.cached_dataset,
+        cached_val_dataset=dataset_config.cached_val_dataset,
+        data_seed=dataset_config.data_seed,
+        dataset_shuffle=dataset_config.dataset_shuffle,
+        max_length=getattr(template_config, 'max_length', None),
+        truncation_strategy=getattr(template_config, 'truncation_strategy', None),
+    )
+    train_datasets, val_datasets = get_cached_dataset(args)
+    logger.info(f'cached_dataset: {len(train_datasets)} train split(s), {len(val_datasets)} val split(s)')
+    return train_datasets, val_datasets
 
 
 def _encode_mode(dataset_config: DatasetConfig, template: Any) -> Literal['stream', 'eager', 'lazy']:
@@ -109,17 +158,26 @@ def _load_kwargs(dataset_config: DatasetConfig) -> dict:
     )
 
 
-def _build_split_loader(raw: Any, template: Any, dataset_config: DatasetConfig, train_config: TrainConfig,
-                        distributed_config: DistributedConfig, *, encode: bool, encode_mode: Optional[str],
-                        is_val: bool) -> Any:
-    """Encode -> optional pack -> dataloader for one already-loaded split (None passes through)."""
+def _build_split_loader(raw: Any,
+                        template: Any,
+                        dataset_config: DatasetConfig,
+                        train_config: TrainConfig,
+                        distributed_config: DistributedConfig,
+                        *,
+                        encode: bool,
+                        encode_mode: Optional[str],
+                        is_val: bool,
+                        cached: Optional[list] = None) -> Any:
+    """Encode -> merge cached -> optional pack -> dataloader for one split (None+no cache -> None)."""
     from swift.dev.dataloader import build_dataloader, identity_collate
 
-    if raw is None:
+    if raw is None and not cached:
         return None
 
     # 1. encode. encode=False keeps raw rows; otherwise use the mode resolved by build_dataset.
-    if not encode:
+    if raw is None:
+        enc = None
+    elif not encode:
         enc = raw
     else:
         enc = _encode(
@@ -129,6 +187,14 @@ def _build_split_loader(raw: Any, template: Any, dataset_config: DatasetConfig, 
             num_proc=dataset_config.dataset_num_proc,
             strict=dataset_config.strict,
             data_seed=dataset_config.data_seed)
+
+    # 1.5 merge the pre-encoded splits from disk. They are appended AFTER encoding because they were
+    #     already encoded when exported -- re-running the preprocessor would either waste the work
+    #     (AddLengthPreprocessor) or corrupt rows (EncodePreprocessor on already-tokenized input).
+    #     Legacy does the same in SwiftSft._prepare_dataset: cached splits join the freshly encoded
+    #     ones in one concat_datasets.
+    if cached:
+        enc = _concat_with_cached(enc, cached, encode_mode=encode_mode)
 
     # 2. optional packing. Dependency on encode is asymmetric:
     #    - map-style PackingDataset reads a `lengths` column at construction (packing.py:78), which
@@ -198,6 +264,79 @@ def _build_split_loader(raw: Any, template: Any, dataset_config: DatasetConfig, 
         dp_shard_in_loader=dp_shard_in_loader,
         device_mesh=device_mesh,
     )
+
+
+def _concat_with_cached(enc: Any, cached: list, *, encode_mode: Optional[str]) -> Any:
+    """Concatenate the freshly-encoded split with pre-encoded splits loaded from disk.
+
+    Both sides must be map-style HF datasets for ``concatenate_datasets`` to work. That holds for
+    the eager path (AddLengthPreprocessor returns a Dataset) but NOT for:
+      - lazy mode, where ``enc`` is a ``LazyLLMDataset`` wrapper, and
+      - streaming, an IterableDataset,
+    neither of which can be concatenated with a Dataset. Mixing `dataset` with `cached_dataset` is
+    therefore rejected in those modes instead of failing obscurely inside datasets. Using
+    cached_dataset ALONE is fine in any mode -- the cache is already map-style and encoded.
+
+    The two sides can also disagree on Arrow FEATURES even when the columns match: a `messages`
+    column round-tripped through save_to_disk keeps the schema it was written with, while a freshly
+    loaded one is re-inferred (typed struct vs List(Json)), and concatenate_datasets refuses to align
+    those. So the cached splits are cast to the fresh split's features first, and a genuinely
+    incompatible cache (different columns / dtypes -- e.g. exported with another template) is
+    reported as such instead of surfacing a raw pyarrow error.
+    """
+    from swift.dataset import DatasetLoader
+
+    if enc is None:
+        _, cached = _align_features(None, cached)
+        return DatasetLoader.concat_datasets(cached)
+    if encode_mode in ('lazy', 'stream'):
+        raise ValueError(
+            f'cached_dataset cannot be combined with `dataset` when encode_mode={encode_mode!r}: the freshly '
+            'loaded split is a lazy/iterable wrapper and cannot be concatenated with the map-style cached '
+            'dataset. Either set DatasetConfig.lazy_tokenize=False (streaming=False) to encode eagerly, or '
+            'pass only cached_dataset (already encoded on disk).')
+    enc, cached = _align_features(enc, cached)
+    return DatasetLoader.concat_datasets([enc] + cached)
+
+
+def _align_features(enc: Any, cached: list) -> tuple:
+    """Make ``enc`` and the cached splits share one Arrow schema, returning both sides aligned.
+
+    ``messages`` is the hard case. datasets represents a list-of-dicts column either as a plain Arrow
+    struct (``list<struct<role,content>>``) or as the ``arrow.json`` EXTENSION type (the ``Json``
+    feature), and which one you get depends on how the split was produced -- a fresh
+    ``AddLengthPreprocessor`` map yields the struct, while the same data round-tripped through
+    ``save_to_disk`` comes back as arrow.json. ``concatenate_datasets`` refuses to align the two.
+
+    The asymmetry that decides the direction: pyarrow CAN cast struct -> arrow.json (it serializes),
+    but NOT arrow.json -> struct (it sees an opaque string). So when the two disagree, both sides are
+    cast to the CACHED (Json) schema rather than to the fresh one. Columns that genuinely differ
+    (a cache exported under another template) are reported instead of raising a raw pyarrow error.
+    """
+    cached = list(cached)
+    if not cached:
+        return enc, cached
+    enc_features = getattr(enc, 'features', None)
+    cache_features = getattr(cached[0], 'features', None)
+    if enc_features is None or cache_features is None or enc_features == cache_features:
+        return enc, cached
+    if set(enc_features) != set(cache_features):
+        raise ValueError(f'cached_dataset columns {sorted(cache_features)} do not match the training split '
+                         f'{sorted(enc_features)}. The cache was produced with a different template/config; '
+                         're-export it with the same TemplateConfig, or drop the mismatched path.')
+    # Cast the fresh split onto the cache's schema (struct -> Json is castable; the reverse is not).
+    try:
+        enc = enc.cast(cache_features)
+    except Exception as e:
+        raise ValueError(f'cached_dataset could not be aligned with the training split: {e}. Re-export the '
+                         'cache with the current TemplateConfig, or train on the cache alone.') from e
+    aligned = []
+    for ds in cached:
+        features = getattr(ds, 'features', None)
+        if features is not None and features != cache_features:
+            ds = ds.cast(cache_features)
+        aligned.append(ds)
+    return enc, aligned
 
 
 def _extract_lengths(enc: Any) -> list:

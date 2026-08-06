@@ -1,3 +1,4 @@
+from .adapter_config import TunerConfig
 from .checkpoint_config import CheckpointConfig
 from .dataset_config import DatasetConfig
 from .distributed_config import DistributedConfig
@@ -9,7 +10,6 @@ from .rlhf_config import RLHFConfig
 from .rollout_config import RolloutConfig
 from .template_config import TemplateConfig
 from .train_config import TrainConfig
-from .tuner_config import TunerConfig
 from .validate import validate_configs
 
 __all__ = [

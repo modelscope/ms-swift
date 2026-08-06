@@ -147,6 +147,12 @@ def _check_data_sharding(dataset_config: 'DatasetConfig') -> None:
 
 def _check_streaming(dataset_config: 'DatasetConfig', checkpoint_config: Optional['CheckpointConfig']) -> None:
     """Streaming/iterable datasets cannot be resumed deterministically (no epoch-aware skip)."""
+    # A cached_dataset is a map-style Dataset written by save_to_disk, so it cannot participate in
+    # the streaming pipeline. Legacy asserts the same in SwiftSft._prepare_dataset
+    # ('Cached dataset does not support streaming.').
+    if dataset_config.streaming and (dataset_config.cached_dataset or dataset_config.cached_val_dataset):
+        raise ValueError('cached_dataset does not support streaming=True: the exported cache is a map-style '
+                         'dataset loaded via load_from_disk. Set streaming=False, or drop cached_dataset.')
     if checkpoint_config is None:
         return
     if dataset_config.streaming and checkpoint_config.resume_from_checkpoint:
