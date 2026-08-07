@@ -232,6 +232,8 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             self.eval_strategy = 'no'
         self.training_args = TrainerFactory.get_training_args(self)
         self.training_args.remove_unused_columns = False
+        # The generic HF log patch only sees training_args, so pass the fixed-length TGS size through.
+        self.training_args.seq_length = self.packing_length or self.max_length
         self._add_version()
 
         if 'swanlab' in self.report_to:
@@ -416,9 +418,6 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
                 self.eval_metric = 'reranker'
         if self.eval_metric == 'nlg':
             require_version('jieba', 'Setting `--eval_metric nlg` requires installing the jieba dependency.')
-        self._init_metric_for_best_model()
-
-    def _init_metric_for_best_model(self):
         if self.metric_for_best_model is None:
             self.metric_for_best_model = 'rouge-l' if self.predict_with_generate else 'loss'
         if self.greater_is_better is None and self.metric_for_best_model is not None:
