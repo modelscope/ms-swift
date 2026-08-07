@@ -103,6 +103,10 @@ _T = TypeVar('_T')
 
 def _check_path(path: str) -> Union[str, None]:
     """If it is a path, return the string; if it is base64, return None."""
+    if not isinstance(path, str):
+        # bytes audio/image data is not a path; let the caller fall back to it
+        # instead of crashing on the str-only checks below (e.g. startswith).
+        return None
     MAX_PATH_HEURISTIC = 2000
     if len(path) > MAX_PATH_HEURISTIC:
         return
