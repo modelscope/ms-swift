@@ -9,6 +9,7 @@ import re
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import warnings
 from collections import defaultdict
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
@@ -1086,9 +1087,12 @@ class Template(ProcessorMixin):
                         f'num_media: {num_media}, num_media_tags: {num_media_tags}, total_content: {total_content}. '
                         'We will only replace the frontmost media_tags while keeping the subsequent media_tags.')
 
-    def _encode_context_list(self,
-                             context_list: List[Context],
-                             loss_scale_list: Optional[List[float]] = None) -> Tuple[List[int], List[int], List[float]]:
+    def _encode_context_list(
+        self,
+        context_list: List[Context],
+        loss_scale_list: Optional[List[float]] = None,
+        audio_path_list: Optional[List[str]] = None,
+    ) -> Tuple[List[int], List[int], List[float]]:
         is_binary_loss_scale = self.is_binary_loss_scale
         if is_binary_loss_scale is None:
             is_binary_loss_scale = self.loss_scale.is_binary_loss_scale
@@ -1097,13 +1101,35 @@ class Template(ProcessorMixin):
         loss_scale: List[float] = []
         if loss_scale_list is None:
             loss_scale_list = [0.] * len(context_list)
-        for i, (context, loss_weight) in enumerate(zip(context_list, loss_scale_list)):
-            if isinstance(context, str):
-                token_list = self._tokenize(context)
+
+        audio_ptr = 0
+        for context, loss_weight in zip(context_list, loss_scale_list):
+            if (isinstance(context, str) and '<|AUDIO|>' in context and getattr(self.tokenizer, 'model_meta', None)
+                    and getattr(self.tokenizer.model_meta, 'model_type', None) == 'qwen2_audio'):
+                if audio_path_list is None or audio_ptr >= len(audio_path_list):
+                    warnings.warn('Found <|AUDIO|> but no matching audio input; fallback to text tokenization',
+                                  RuntimeWarning)
+                    token_list = self._tokenize(context)
+                else:
+                    import librosa
+                    sample_rate = self.processor.feature_extractor.sampling_rate
+                    wav, _ = librosa.load(audio_path_list[audio_ptr], sr=sample_rate, mono=True)
+                    encoded = self.processor(
+                        text=context,
+                        audio=wav,
+                        sampling_rate=sample_rate,
+                        return_tensors=None,
+                        add_special_tokens=False,
+                    )
+                    token_list = encoded['input_ids']
+                    if len(token_list) > 0 and isinstance(token_list[0], list):
+                        token_list = token_list[0]
+                    audio_ptr += 1
             else:
-                token_list = context
+                token_list = self._tokenize(context) if isinstance(context, str) else context
+
             input_ids += token_list
-            if loss_scale_list[i] > 0.0:
+            if loss_weight > 0.0:
                 labels += token_list
             else:
                 labels += [-100] * len(token_list)
@@ -1511,7 +1537,11 @@ class Template(ProcessorMixin):
                 loss_scale = encoded['prompt_loss_scale'] + encoded['answer_loss_scale']
         else:
             res_context_list, loss_scale_list = self._simplify_context_list(res_context_list, loss_scale_list, inputs)
-            input_ids, labels, loss_scale = self._encode_context_list(res_context_list, loss_scale_list)
+            if self.tokenizer.model_meta.model_type and self.tokenizer.model_meta.model_type == 'qwen2_audio':
+                input_ids, labels, loss_scale = self._encode_context_list(res_context_list, loss_scale_list,
+                                                                          inputs.audios)
+            else:
+                input_ids, labels, loss_scale = self._encode_context_list(res_context_list, loss_scale_list)
         self._add_dynamic_eos(input_ids, labels, loss_scale, self._encode_context_list(self.template_meta.suffix)[0])
 
         encoded['input_ids'] = input_ids
