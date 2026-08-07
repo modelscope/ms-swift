@@ -43,8 +43,10 @@ class SwiftSampling(SwiftPipeline):
             args.dataset, split_dataset_ratio=0., shuffle=args.dataset_shuffle, **dataset_kwargs)
         logger.info(f'Sampling_dataset: {sampling_dataset}')
         dataset_len = len(sampling_dataset)
-        piece_len = dataset_len // self.total_piece
-        sampling_dataset = sampling_dataset.select(range(piece_len * self.cur_piece, piece_len * (self.cur_piece + 1)))
+        piece_len, remainder = divmod(dataset_len, self.total_piece)
+        start = piece_len * self.cur_piece + min(self.cur_piece, remainder)
+        end = start + piece_len + int(self.cur_piece < remainder)
+        sampling_dataset = sampling_dataset.select(range(start, end))
         return sampling_dataset
 
     def run(self):
