@@ -388,6 +388,21 @@ class TunerMixin:
                 args.galore_target_modules = find_all_linears(model)
             if args.galore_with_embedding:
                 args.galore_target_modules += find_embedding(model)
+
+        if hasattr(torch, 'npu'):
+            is_sft = isinstance(args, SftArguments)
+            if args.is_adapter and args.tuner_type == 'lora' and is_sft and args.use_npu_fast_lora:
+                from swift.model.npu_patch.model import enable_npu_fast_lora
+                enabled_count = enable_npu_fast_lora(model)
+                if enabled_count:
+                    logger.info(f'Enabled NPU fast LoRA on {enabled_count} modules.')
+                else:
+                    logger.info_once('NPU fast LoRA not enabled by enable_npu_fast_lora().')
+            else:
+                logger.info_once('Skip enabling NPU fast LoRA: '
+                                 f'is_adapter={args.is_adapter}, tuner_type={args.tuner_type}, '
+                                 f'is_sft={is_sft}, use_npu_fast_lora={args.use_npu_fast_lora}.')
+
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
         return model
