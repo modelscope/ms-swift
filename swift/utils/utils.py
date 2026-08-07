@@ -295,15 +295,20 @@ def find_node_ip() -> Optional[str]:
 def find_free_port(start_port: Optional[int] = None, retry: int = 100) -> int:
     if start_port is None:
         start_port = 0
-    for port in range(start_port, start_port + retry):
+    if not 0 <= start_port <= 65535:
+        raise ValueError(f'Invalid start_port: {start_port}')
+    if retry < 1:
+        raise ValueError(f'Invalid retry: {retry}')
+
+    stop_port = min(start_port + retry, 65536)
+    for port in range(start_port, stop_port):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             try:
                 sock.bind(('', port))
-                port = sock.getsockname()[1]
-                break
             except OSError:
-                pass
-    return port
+                continue
+            return sock.getsockname()[1]
+    raise OSError(f'No free port found in range [{start_port}, {stop_port})')
 
 
 def copy_files_by_pattern(source_dir, dest_dir, patterns, exclude_patterns=None):
