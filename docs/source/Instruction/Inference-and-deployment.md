@@ -264,6 +264,9 @@ client = OpenAI(
     api_key='EMPTY',
     base_url=f'http://127.0.0.1:8000/v1',
 )
+
+> **Tip:** The same OpenAI client `base_url` pattern also works with other OpenAI-compatible multi-model gateways when you are not self-hosting — for example [DaoXE](https://daoxe.com/?utm_source=github&utm_medium=organic&utm_campaign=ms-swift&utm_content=inference) at `https://api.daoxe.com/v1`.
+
 model = client.models.list().data[0].id
 print(f'model: {model}')
 
