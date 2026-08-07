@@ -206,21 +206,38 @@ class TransformersEngine(InferEngine):
     @staticmethod
     def preprocess_logits(batched_logits: Optional[List[torch.Tensor]], batched_generate_ids: torch.Tensor,
                           top_logprobs: Optional[int]):
-        top_logprobs = top_logprobs or 1
         batch_size = batched_generate_ids.shape[0]
         if batched_logits is None:
             return None
-        batched_logprobs = []
-        for i in range(batch_size):
-            logprobs_list = []
-            generate_ids = batched_generate_ids[i]
-            for j, logits in enumerate(batched_logits):
-                token = generate_ids[j].item()
-                logprobs = torch.log_softmax(logits[i], -1)
-                tokens = [token] + logprobs.argsort(descending=True, dim=-1)[:top_logprobs].tolist()
-                logprobs_list.append({token: logprobs[token].item() for token in tokens})
-            batched_logprobs.append(logprobs_list)
-        return batched_logprobs
+        if not batched_logits:
+            return [[] for _ in range(batch_size)]
+
+        # Keep the existing internal contract: the sampled token and at least the top-1 token are retained.
+        num_top_logprobs = max(top_logprobs or 1, 0)
+        num_top_logprobs = min(num_top_logprobs, batched_logits[0].shape[-1])
+        token_ids_list = []
+        logprobs_list = []
+        for i, logits in enumerate(batched_logits):
+            sampled_ids = batched_generate_ids[:, i].to(logits.device)
+            logprobs = torch.log_softmax(logits, dim=-1)
+            sampled_logprobs = logprobs.gather(-1, sampled_ids[:, None]).squeeze(-1)
+
+            if num_top_logprobs:
+                top_logprob_values, top_ids = torch.topk(logprobs, num_top_logprobs, dim=-1)
+                sampled_ids = torch.cat((sampled_ids[:, None], top_ids), dim=-1)
+                sampled_logprobs = torch.cat((sampled_logprobs[:, None], top_logprob_values), dim=-1)
+            else:
+                sampled_ids = sampled_ids[:, None]
+                sampled_logprobs = sampled_logprobs[:, None]
+            token_ids_list.append(sampled_ids)
+            # The result is converted to Python values below, so retaining an autograd graph only wastes memory.
+            logprobs_list.append(sampled_logprobs.detach())
+
+        # Transfer only the selected token ids and logprobs instead of synchronizing once per token.
+        token_ids_list = torch.stack(token_ids_list, dim=1).cpu().tolist()
+        logprobs_list = torch.stack(logprobs_list, dim=1).cpu().tolist()
+        return [[dict(zip(token_ids, logprobs)) for token_ids, logprobs in zip(batch_ids, batch_logprobs)]
+                for batch_ids, batch_logprobs in zip(token_ids_list, logprobs_list)]
 
     @staticmethod
     def _update_batched_logprobs(batched_logprobs: List[torch.Tensor], logits_streamer: Optional[LogitsStreamer],
