@@ -1,16 +1,19 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import base64
+import ipaddress
 import math
 import numpy as np
 import os
 import re
 import requests
+import socket
 import torch
 from io import BytesIO
 from PIL import Image
 from requests.adapters import HTTPAdapter
 from typing import Any, Callable, List, TypeVar, Union
 from urllib3.util.retry import Retry
+from urllib.parse import urljoin, urlparse
 
 from swift.utils import get_env_args
 
@@ -125,6 +128,40 @@ def _check_path(path: str) -> Union[str, None]:
     return data
 
 
+_MAX_MEDIA_URL_REDIRECTS = 5
+
+
+def _assert_media_url_allowed(url: str) -> None:
+    """Guard multimodal media fetches against SSRF.
+
+    ``load_file`` is reachable from the ``swift deploy`` OpenAI-compatible server
+    (``image_url`` / ``audio_url`` / ``video_url`` in a chat request), which binds
+    ``0.0.0.0`` with no API key by default. Fetching an unvalidated URL server-side
+    lets an unauthenticated client reach loopback, private, or cloud-metadata
+    endpoints. Reject any host that resolves to a non-public address, unless
+    ``SWIFT_ALLOW_INTERNAL_MEDIA_URLS`` is set for a trusted deployment.
+    """
+    if os.getenv('SWIFT_ALLOW_INTERNAL_MEDIA_URLS', '').strip().lower() in ('1', 'true', 'yes'):
+        return
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https'):
+        raise ValueError(f'Refusing to fetch media from unsupported URL scheme {parsed.scheme!r}: {url!r}')
+    host = parsed.hostname
+    if not host:
+        raise ValueError(f'Refusing to fetch media from a URL without a host: {url!r}')
+    port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+    try:
+        addr_infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+    except socket.gaierror as e:
+        raise ValueError(f'Cannot resolve media URL host {host!r}: {e}') from e
+    for info in addr_infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast
+                or ip.is_unspecified):
+            raise ValueError(f'Refusing to fetch media from non-public address {ip} (host {host!r}). '
+                             'Set SWIFT_ALLOW_INTERNAL_MEDIA_URLS=1 to allow internal/loopback URLs.')
+
+
 def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
     res = path
     if isinstance(path, str):
@@ -138,7 +175,18 @@ def load_file(path: Union[str, bytes, _T]) -> Union[BytesIO, _T]:
                 timeout = float(os.getenv('SWIFT_TIMEOUT', '20'))
                 request_kwargs = {'timeout': timeout} if timeout > 0 else {}
 
-                response = session.get(path, **request_kwargs)
+                # Follow redirects manually and re-validate every hop, so a public URL
+                # cannot bounce into an internal/metadata address (SSRF).
+                url = path
+                for _ in range(_MAX_MEDIA_URL_REDIRECTS + 1):
+                    _assert_media_url_allowed(url)
+                    response = session.get(url, allow_redirects=False, **request_kwargs)
+                    location = response.headers.get('location')
+                    if not response.is_redirect or not location:
+                        break
+                    url = urljoin(url, location)
+                else:
+                    raise ValueError(f'Too many redirects while fetching media URL: {path!r}')
                 response.raise_for_status()
                 content = response.content
                 res = BytesIO(content)
@@ -298,6 +346,12 @@ def load_video_minicpmv_mplug_owl3(video: Union[str, bytes], max_num_frames):
 
 def _load_audio_librosa(audio: Union[str, bytes], sampling_rate: int, mono: bool = True):
     import librosa
+    if isinstance(audio, str) and audio.startswith(('http://', 'https://')):
+        # Validate up front: the audioread fallback below hands the raw URL to ffmpeg,
+        # which would re-fetch it without going through load_file. Without this, an
+        # internal URL that load_file rejects gets caught by ``except Exception`` and
+        # re-fetched unvalidated, bypassing the SSRF guard.
+        _assert_media_url_allowed(audio)
     try:
         audio_io = load_file(audio)
         return librosa.load(audio_io, sr=sampling_rate, mono=mono)
