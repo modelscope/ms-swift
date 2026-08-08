@@ -84,9 +84,9 @@ def apply_liger(model_type: str):
             apply_liger_kernel_to_paligemma()
         else:
             raise ValueError(f'Unsupported liger model_type: {model_type}')
-    except ImportError:
+    except ImportError as err:
         raise ImportError('Please upgrade liger-kernel to apply liger kernel to this model '
-                          'by running `pip install -U liger-kernel`')
+                          'by running `pip install -U liger-kernel`') from err
 
 
 def get_target_modules(args, model) -> Union[str, List[str]]:
@@ -130,7 +130,7 @@ def get_vera_target_modules(model, config):
     modules_dict = {
         name: module.weight.shape
         for name, module in model.named_modules()
-        if isinstance(module, torch.nn.Linear) and any([t in name for t in target_modules])
+        if isinstance(module, torch.nn.Linear) and any(t in name for t in target_modules)
     }  # only Linear for now
     if len(set(modules_dict.values())) > 1:
         v = [t for t in target_modules if 'v' in t]
@@ -140,7 +140,7 @@ def get_vera_target_modules(model, config):
         v = v[0]
         shape = [shape for name, shape in modules_dict.items() if v in name][0]
         names = [_name for _name, _shape in modules_dict.items() if _shape == shape]
-        config.target_modules = [t for t in target_modules if any([t in name for name in names])]
+        config.target_modules = [t for t in target_modules if any(t in name for name in names)]
     return config
 
 
@@ -388,6 +388,19 @@ class TunerMixin:
                 args.galore_target_modules = find_all_linears(model)
             if args.galore_with_embedding:
                 args.galore_target_modules += find_embedding(model)
+
+        if hasattr(torch, 'npu'):
+            import os
+            is_sft = type(args).__name__ == 'SftArguments'
+            is_fused_ce = os.getenv('NPU_FUSED_LINEAR_CE', '0').strip() == '1'
+            if is_sft and is_fused_ce:
+                from swift.model.npu_patch.model import apply_swift_trainer_patch, enable_npu_fused_linear_ce
+                enable_npu_fused_linear_ce(model)
+                apply_swift_trainer_patch()
+                logger.info_once('NPU_FUSED_LINEAR_CE is enabled')
+            elif not is_sft and is_fused_ce:
+                logger.warning('NPU_FUSED_LINEAR_CE is enabled but current task is not SFT. '
+                               'Fused LINEAR CE will safely fall back to standard LM-Head.')
         if is_deepspeed_zero3_enabled():
             _patch_modules_to_save_zero3()
         return model
