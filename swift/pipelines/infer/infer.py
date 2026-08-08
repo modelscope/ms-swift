@@ -37,6 +37,7 @@ class SwiftInfer(SwiftPipeline):
         else:
             self.template = args.get_template()
             self.infer_engine = self.get_infer_engine(args, self.template)
+        self.infer_engine.strict = args.strict
         self.random_state = np.random.RandomState(args.data_seed)
 
     def __getattr__(self, key: str):
@@ -301,6 +302,9 @@ class SwiftInfer(SwiftPipeline):
         if not (args.infer_backend == 'vllm' and rank >= 0
                 and args.rank % args.vllm_tensor_parallel_size != 0):  # DP & TP
             for data, resp, labels in zip(val_dataset, resp_list, labels_list):
+                if isinstance(resp, Exception):
+                    logger.warning(f'Skipping an inference sample due to error: {resp}')
+                    continue
                 response = resp.choices[0].message.content
                 data['messages'].append({'role': 'assistant', 'content': response})
                 data = {'response': response, 'labels': labels, 'logprobs': resp.choices[0].logprobs, **data}
