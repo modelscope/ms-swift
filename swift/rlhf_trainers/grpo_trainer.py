@@ -764,6 +764,14 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 if is_opsd:
                     teacher_model_inputs, teacher_grpo_batch = self._collate_teacher_opsd_batch(batch, template)
 
+            need_local_teacher = should_compute_local_teacher_logps(
+                has_teacher_explicit=self._has_teacher_explicit(),
+                is_dynamic_self_distillation=self._is_dynamic_self_distillation,
+                use_teacher_api=self.use_teacher_api,
+                has_opsd_batch=is_opsd,
+            )
+            need_old_policy = self._needs_old_per_token_logps(grpo_batch, need_local_teacher)
+
             model_inputs.pop('labels', None)
             batch_encoded_inputs = {'model_inputs': model_inputs, 'grpo_batch': grpo_batch}
             if self.dynamic_num_samples and self.is_multimodal:
@@ -774,10 +782,16 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 batch_encoded_inputs['_chunk_samples'] = batch
             origin_data = batch if (self.dynamic_num_samples and self.is_multimodal) else None
 
-            with torch.no_grad(), disable_gradient_checkpointing(self.model, self.args.gradient_checkpointing_kwargs):
-                grpo_batch.old_per_token_logps = (
-                    self._get_per_token_logps_and_entropies(
-                        self.model, model_inputs, grpo_batch, origin_data=origin_data)[0])
+            need_student_inference = need_old_policy or (self.beta != 0.0 and self.ref_model is None)
+            student_inference_context = (disable_gradient_checkpointing(
+                self.model, self.args.gradient_checkpointing_kwargs) if need_student_inference else nullcontext())
+            with torch.no_grad(), student_inference_context:
+                if need_old_policy:
+                    grpo_batch.old_per_token_logps = (
+                        self._get_per_token_logps_and_entropies(
+                            self.model, model_inputs, grpo_batch, origin_data=origin_data)[0])
+                else:
+                    grpo_batch.old_per_token_logps = None
                 if self.beta == 0.0:
                     ref_per_token_logps = None
                 elif self.ref_model is not None:
@@ -792,12 +806,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                 self.model, model_inputs, grpo_batch, origin_data=origin_data)[0]
                 grpo_batch.ref_per_token_logps = ref_per_token_logps
                 # OPD-RL: local teacher logp on the sampled tokens (API path filled later).
-                if should_compute_local_teacher_logps(
-                        has_teacher_explicit=self._has_teacher_explicit(),
-                        is_dynamic_self_distillation=self._is_dynamic_self_distillation,
-                        use_teacher_api=self.use_teacher_api,
-                        has_opsd_batch=is_opsd,
-                ):
+                if need_local_teacher:
                     grpo_batch.teacher_per_token_logps = self._compute_teacher_logps(
                         model_inputs,
                         grpo_batch,
@@ -1820,12 +1829,28 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         return super().training_step(model, inputs, num_items_in_batch)
 
     def old_policy(self):
-        if self.template.sequence_parallel_size == 1:
-            return (self.num_iterations > 1
-                    or self.args.gradient_accumulation_steps % self.args.steps_per_generation != 0)
-        else:
-            return (self.num_iterations > 1 or self.args.gradient_accumulation_steps %
-                    (self.args.steps_per_generation * sequence_parallel.world_size) != 0)
+        if not self.model.training:
+            return False
+
+        # gradient_accumulation_steps is SP-scaled in __init__, so both values
+        # below are expressed in the trainer's internal micro-step unit.
+        generate_every = (self.args.steps_per_generation * self.template.sequence_parallel_size
+                          * self.num_iterations)
+        return self.args.gradient_accumulation_steps % generate_every != 0
+
+    def _needs_old_per_token_logps(self, grpo_batch: GRPOBatch, need_local_teacher: bool) -> bool:
+        """Whether ``old_per_token_logps`` must exist before the training loss forward."""
+        need_liger_rollout_old = False
+        liger_rollout_correction_enabled = (self.use_liger_loss
+                                            and self.rollout_importance_sampling_mode is not None
+                                            and not self.disable_rollout_importance_sampling)
+        if liger_rollout_correction_enabled:
+            local_has_rollout_logps = grpo_batch.rollout_per_token_logps is not None
+            need_liger_rollout_old = all(gather_object([local_has_rollout_logps]))
+
+        need_old_policy = (self.old_policy() or (self.kl_in_reward and self.beta != 0.0) or need_local_teacher
+                           or (self._has_teacher and self.use_teacher_api) or need_liger_rollout_old)
+        return need_old_policy
 
     @contextmanager
     def offload_context(self):
