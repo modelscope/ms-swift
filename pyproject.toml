@@ -1,0 +1,168 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ms_swift"
+dynamic = ["version", "readme"]
+description = "Swift: Scalable lightWeight Infrastructure for Fine-Tuning"
+requires-python = ">=3.8"
+license = { text = "Apache License 2.0" }
+authors = [
+  { name = "DAMO ModelScope teams", email = "contact@modelscope.cn" },
+]
+keywords = ["transformers", "LLM", "lora", "megatron", "grpo", "sft"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "accelerate",
+  "addict; python_version>='3.10'",
+  "aiohttp",
+  "attrdict; python_version<'3.10'",
+  "binpacking",
+  "charset_normalizer",
+  "cpm_kernels",
+  "dacite",
+  "datasets>=3.0,<4.8.5; python_version>='3.9'",
+  "datasets>=2.0,<3; python_version<'3.9'",
+  "einops",
+  "fastapi",
+  "gradio>=3.40.0,<6.0",
+  "importlib-metadata; python_version<'3.10'",
+  "json_repair",
+  "matplotlib",
+  "modelscope>=1.23",
+  "nltk",
+  "numpy",
+  "openai",
+  "oss2",
+  "pandas",
+  "peft>=0.11,<0.20",
+  "pillow",
+  "PyYAML>=5.4",
+  "requests",
+  "rouge",
+  "safetensors",
+  "scipy",
+  "sentencepiece",
+  "simplejson>=3.3.0",
+  "sortedcontainers>=1.5.9",
+  "tensorboard",
+  "tiktoken",
+  "tqdm",
+  "transformers>=4.33,<5.9.0",
+  "transformers_stream_generator",
+  "trl>=0.15,<1.0; python_version>='3.10'",
+  "uvicorn",
+  "zstandard",
+]
+
+[project.optional-dependencies]
+all = [
+  "evalscope[opencompass,vlmeval]>=1.0.0; python_version>='3.10'",
+  "swanlab",
+  "ray",
+]
+eval = [
+  "evalscope[opencompass,vlmeval]>=1.0.0; python_version>='3.10'",
+]
+swanlab = [
+  "swanlab",
+]
+ray = [
+  "ray",
+]
+megatron = [
+  "mcore-bridge>=1.2.0; python_version>='3.12'",
+  "megatron-core>=0.15; python_version>='3.12'",
+  "peft>=0.15; python_version>='3.12'",
+]
+tests = [
+  "expecttest",
+  "flake8",
+  "isort>=4.3.21",
+  "pre-commit",
+  "yapf==0.30.0",
+]
+docs = [
+  "docutils>=0.16.0",
+  "myst_parser",
+  "recommonmark",
+  "sphinx>=5.3.0",
+  "sphinx-book-theme",
+  "sphinx-copybutton",
+  "sphinx-rtd-theme",
+  "sphinx_markdown_tables",
+  "sphinxcontrib-mermaid",
+]
+
+[project.urls]
+Homepage = "https://github.com/modelscope/ms-swift"
+
+[project.scripts]
+swift = "swift.cli.main:cli_main"
+megatron = "swift.cli._megatron.main:cli_main"
+
+[tool.setuptools]
+include-package-data = true
+zip-safe = false
+
+[tool.setuptools.packages.find]
+exclude = ["tests", "tests.*"]
+
+[tool.setuptools.package-data]
+"*" = [
+  "utils/*",
+  "dataset/data/*.*",
+  "config/*.json",
+  "loss_scale/config/*.json",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "swift.version.__version__" }
+readme = { file = ["README.md"], content-type = "text/markdown" }
+
+[tool.isort]
+line_length = 120
+multi_line_output = 0
+known_standard_library = ["setuptools"]
+known_first_party = ["swift"]
+known_third_party = ["json", "yaml"]
+no_lines_before = ["STDLIB", "LOCALFOLDER"]
+default_section = "THIRDPARTY"
+
+[tool.yapf]
+based_on_style = "pep8"
+column_limit = 120
+blank_line_before_nested_class_or_def = true
+split_before_expression_after_opening_paren = true
+split_before_arithmetic_operator = true
+
+[tool.codespell]
+skip = "*.ipynb"
+quiet-level = 3
+ignore-words-list = "patten,nd,ty,mot,hist,formating,winn,gool,datas,wan,confids"
+
+[tool.flake8]
+max-line-length = 120
+select = ["B", "C", "E", "F", "P", "T4", "W", "B9"]
+ignore = ["F401", "F403", "F405", "F821", "W503", "E251", "W504", "E126"]
+exclude = ["docs/src", "*.pyi", ".git", "peft.py"]
+
+[tool.darglint]
+ignore = ["DAR101"]
+
+[tool.easy_install]
+index-url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+
+[tool.uv]
+package = true
