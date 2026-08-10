@@ -1191,6 +1191,21 @@ def revert_runtime_names_to_checkpoint(model, state_dict):
     for name, param in state_dict.items():
         try:
             new_name, _ = rename_source_key(name, reverse_renamings, [])
+            # Guard against over-matching reverse rules. Prefix-anchored
+            # renamings such as ``^model.language_model <-> model`` invert to
+            # ``^model -> model.language_model``; that reverse rule ALSO matches
+            # runtime names that are already in checkpoint form (e.g. Qwen3.5-MoE
+            # ``model.language_model.layers...``), re-expanding the prefix into
+            # ``model.language_model.language_model...`` and corrupting every key.
+            # A genuine runtime->checkpoint revert is idempotent: re-applying the
+            # reverse rules must not change the name again. If it keeps growing,
+            # the name was already a checkpoint name and must be left untouched,
+            # otherwise vLLM weight sync fails with KeyError on e.g.
+            # 'language_model.language_model...experts.w13_weight'.
+            if new_name != name:
+                reapplied, _ = rename_source_key(new_name, reverse_renamings, [])
+                if reapplied != new_name:
+                    new_name = name
         except Exception:
             new_name = name
         new_state_dict[new_name] = param
