@@ -1,13 +1,12 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
-from contextlib import contextmanager
-from typing import Optional
-
 import trl
+from contextlib import contextmanager
 from packaging import version
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from transformers import Trainer as HfTrainer
+from typing import Optional
 
 from swift.callbacks import callbacks_map
 from swift.trainers import SwiftMixin
