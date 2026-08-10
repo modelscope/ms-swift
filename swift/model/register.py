@@ -444,6 +444,12 @@ class ModelLoader(BaseModelLoader):
             elif hf_model_type == 'glm_moe_dsa':
                 from transformers.models.glm_moe_dsa.modeling_glm_moe_dsa import GlmMoeDsaMoE
                 z3_leaf_modules = [GlmMoeDsaMoE]
+            elif hf_model_type == 'mimo_v2':
+                # trust_remote_code model: MiMoV2MoE is not in transformers.models.*
+                for module in model.modules():
+                    if type(module).__name__ == 'MiMoV2MoE':
+                        z3_leaf_modules = [type(module)]
+                        break
 
         if z3_leaf_modules:
             from deepspeed.utils import set_z3_leaf_modules
