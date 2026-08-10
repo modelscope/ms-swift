@@ -388,3 +388,15 @@ register_model(
         architectures=['SAILVLModel'],
         requires=['transformers<=4.51.3'],
         tags=['vision']))
+
+register_model(
+    ModelMeta(
+        MLLMModelType.mimo_v2,
+        [ModelGroup([
+            Model('XiaomiMiMo/MiMo-V2.5', 'XiaomiMiMo/MiMo-V2.5'),
+        ], TemplateType.mimo_v2)],
+        ModelLoader,
+        model_arch=ModelArch.mimo_v2,
+        architectures=['MiMoV2ForCausalLM'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>0.0.6', 'decord'],
+        tags=['vision', 'video', 'audio']))

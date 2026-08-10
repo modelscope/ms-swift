@@ -843,7 +843,6 @@ register_model_arch(
         vision_tower='model.vision_tower',
     ))
 
-
 register_model_arch(
     MultiModelKeys(
         MLLMModelArch.mimo_v2,

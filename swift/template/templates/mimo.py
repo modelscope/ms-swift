@@ -1,8 +1,8 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
 from qwen_vl_utils import fetch_image, fetch_video
+from typing import Any, Dict, List, Optional
 
 from ..base import Template
 from ..constant import MLLMTemplateType
@@ -56,8 +56,7 @@ class MiMoV2Template(Template):
         if self.mode == 'sglang':
             batched = encoded if isinstance(encoded, list) else [encoded]
             for item in batched:
-                for old, new in [('images', 'image_data'), ('audios', 'audio_data'),
-                                 ('videos', 'video_data')]:
+                for old, new in [('images', 'image_data'), ('audios', 'audio_data'), ('videos', 'video_data')]:
                     if old in item:
                         item[new] = item.pop(old)
                 for key in ['labels', 'loss_scale', 'channel']:
@@ -94,8 +93,8 @@ class MiMoV2Template(Template):
             def _get_new_tokens(i):
                 return [media_token] * (media_grid_thw[i].prod() // merge_length)
 
-            input_ids, labels, loss_scale = self._extend_tokens(
-                input_ids, labels, loss_scale, idx_list, _get_new_tokens)
+            input_ids, labels, loss_scale = self._extend_tokens(input_ids, labels, loss_scale, idx_list,
+                                                                _get_new_tokens)
             encoded.update(media_inputs)
 
         encoded['input_ids'] = input_ids
