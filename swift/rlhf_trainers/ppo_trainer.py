@@ -1,16 +1,18 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import inspect
-import trl
 from contextlib import contextmanager
+from typing import Optional
+
+import trl
 from packaging import version
 from torch.utils.data import DataLoader
 from transformers import PreTrainedModel
 from transformers import Trainer as HfTrainer
-from typing import Optional
 
+from swift.callbacks import callbacks_map
 from swift.trainers import SwiftMixin
 from swift.utils import patch_getattr
-from swift.callbacks import callbacks_map
+
 
 if version.parse(trl.__version__) >= version.parse('0.26.0'):
     from trl.experimental.ppo import PPOTrainer as HFPPOTrainer
