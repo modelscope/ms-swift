@@ -13,12 +13,6 @@ logger = get_logger()
 class NemotronHLoader(ModelLoader):
     default_trust_remote_code = False
 
-    def get_model(self, model_dir: str, *args, **kwargs) -> PreTrainedModel:
-        logger.info('[IMPORTANT] Nemotron-H is a hybrid Mamba2 + Attention + MoE model. For best speed, install '
-                    '`causal-conv1d>=1.2.0` and `mamba-ssm`; otherwise it falls back to a slower naive kernel.')
-        return super().get_model(model_dir, *args, **kwargs)
-
-
 register_model(
     ModelMeta(
         LLMModelType.nemotron_h,

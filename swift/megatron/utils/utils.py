@@ -1,5 +1,4 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import os
 import re
 import torch
 import torch.distributed as dist
