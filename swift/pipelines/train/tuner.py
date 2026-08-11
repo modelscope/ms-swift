@@ -114,7 +114,6 @@ def get_target_modules(args, model) -> Union[str, List[str]]:
 
 # PEFT >= 0.20 hard-rejects LoRA on these Mamba modules
 # (peft/tuners/tuners_utils.py::_check_lora_target_modules_mamba, set: {out_proj, conv1d}).
-# `nemotron_h` is not in PEFT's own mamba_model_types but shares the same mixer layout.
 _MAMBA_MODEL_TYPES = {'falcon_h1', 'mamba', 'mamba2', 'falcon_mamba', 'nemotron_h'}
 _MAMBA_INCOMPATIBLE_MODULES = {'out_proj', 'conv1d'}
 
