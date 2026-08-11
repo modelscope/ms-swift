@@ -10,6 +10,7 @@ from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from packaging import version
+from transformers import PreTrainedModel, Trainer
 from trl import SFTTrainer as HFSFTTrainer
 from trl.trainer.utils import RepeatSampler
 from typing import Any, Dict, List, Optional, Union
@@ -22,7 +23,6 @@ from swift.template import TemplateInputs
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_logger, is_swanlab_available, is_wandb_available, remove_response,
                          swanlab_get_run, to_device)
-from transformers import PreTrainedModel, Trainer
 from .rollout_mixin import DataType, RolloutTrainerMixin
 from .utils import get_gather_if_zero3_context, identity_data_collator, profiling_decorator
 
@@ -494,9 +494,8 @@ class GKDTrainer(RolloutTrainerMixin, SwiftMixin, HFGKDTrainer):
     def log(self, logs: Dict[str, float], start_time: Optional[float] = None) -> None:
         """Override log method to include completion table logging (aligned with GRPO)."""
         # Call parent log method
-        from packaging import version
-
         import transformers
+        from packaging import version
         if version.parse(transformers.__version__) >= version.parse('4.47.0.dev0'):
             super().log(logs, start_time)
         else:

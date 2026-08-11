@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch.nn.functional as F
+from transformers import AutoModel, AutoModelForSequenceClassification, PreTrainedModel
 
 from swift.template import TemplateType
 from swift.utils import get_logger
-from transformers import AutoModel, AutoModelForSequenceClassification, PreTrainedModel
 from ..constant import BertModelType, LLMModelType
 from ..model_meta import Model, ModelGroup, ModelMeta
 from ..register import ModelLoader, register_model

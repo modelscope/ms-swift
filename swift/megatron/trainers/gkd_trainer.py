@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from functools import partial
 from mcore_bridge import set_random_seed
 from megatron.core import mpu
+from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
 
 from swift.megatron.arguments import MegatronArguments
@@ -17,7 +18,6 @@ from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_output, build_opsd
 from swift.rlhf_trainers.gkd_loss import DataSource, TeacherOutput, gkd_loss
 from swift.template import Template
 from swift.utils import get_logger, to_device
-from transformers.utils import ContextManagers
 from ..utils import forward_step_helper, get_padding_to
 from .gkd_utils import cp_reduce, tp_gather_topk, vocab_parallel_topk
 from .rlhf_mixin import MegatronRLHFTrainer

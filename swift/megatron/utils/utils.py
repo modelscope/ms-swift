@@ -10,12 +10,12 @@ from megatron.core.packed_seq_params import PackedSeqParams
 from megatron.core.ssm.mamba_context_parallel import _undo_attention_load_balancing
 from megatron.core.transformer.moe.router import TopKRouter
 from torch import nn
+from transformers.utils import is_torch_npu_available
 
 from swift.tuners import LoraConfig, Swift
 from swift.utils import (activate_parameters, deep_getattr, find_layers, freeze_parameters, get_logger,
                          get_model_parameter_info)
 from swift.utils import get_packed_seq_params as _get_packed_seq_params
-from transformers.utils import is_torch_npu_available
 
 logger = get_logger()
 

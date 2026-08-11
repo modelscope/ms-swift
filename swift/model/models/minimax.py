@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import json
 import os
+from transformers import AutoProcessor, PretrainedConfig, PreTrainedModel
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_device, get_device_count, get_dist_setting, get_logger
-from transformers import AutoProcessor, PretrainedConfig, PreTrainedModel
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

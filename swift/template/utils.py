@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import re
 import torch
+from transformers import PreTrainedTokenizerBase, StoppingCriteria
 from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 from swift.utils import get_logger
-from transformers import PreTrainedTokenizerBase, StoppingCriteria
 
 logger = get_logger()
 

@@ -3,10 +3,10 @@ import os
 import safetensors.torch
 import torch
 from peft import LoraConfig, PeftModel, get_peft_model
+from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import TYPE_CHECKING, Optional
 
 from swift.utils import deep_getattr, get_logger, get_multimodal_target_regex
-from transformers.integrations import is_deepspeed_zero3_enabled
 from .base import Tuner
 
 logger = get_logger()

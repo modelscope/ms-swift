@@ -3,13 +3,13 @@ import gradio as gr
 import os
 from functools import partial
 from packaging import version
+from transformers.utils import strtobool
 from typing import List, Optional, Union
 
 import swift
 from swift.arguments import (DeployArguments, EvalArguments, ExportArguments, RLHFArguments, SamplingArguments,
                              WebUIArguments)
 from swift.pipelines import SwiftPipeline
-from transformers.utils import strtobool
 from .llm_eval import LLMEval
 from .llm_export import LLMExport
 from .llm_grpo import LLMGRPO

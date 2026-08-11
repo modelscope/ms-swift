@@ -5,9 +5,9 @@ import torch
 import unittest
 from modelscope import AutoModel, Preprocessor
 from peft.utils import SAFETENSORS_WEIGHTS_NAME
+from transformers import PreTrainedModel
 
 from swift.tuners import LoRAConfig, NEFTuneConfig, Swift
-from transformers import PreTrainedModel
 
 
 class TestNEFT(unittest.TestCase):

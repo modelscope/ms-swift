@@ -450,8 +450,9 @@ def test_deepseek_v4_flash_tool_call_roundtrip():
 
 def test_deepseek_v4_flash_is_text_only():
     """Guards the "no multimodal path" assumption the tests above rely on."""
-    from swift.model import get_model_info_meta
     from transformers import AutoConfig
+
+    from swift.model import get_model_info_meta
     model_info, model_meta = get_model_info_meta(MODEL_ID)
     # 0731 shares the `deepseek_v4` model_type and only overrides the template via its ModelGroup.
     assert model_meta.model_type == 'deepseek_v4'

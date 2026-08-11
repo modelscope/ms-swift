@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import numpy as np
 import torch
+from transformers.trainer_utils import EvalPrediction
 from typing import Dict, List, Literal
 
-from transformers.trainer_utils import EvalPrediction
 from .base import EvalMetrics
 
 

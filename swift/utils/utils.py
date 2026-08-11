@@ -20,10 +20,10 @@ import torch
 import torch.distributed as dist
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
-
 from transformers import HfArgumentParser, enable_full_determinism, set_seed
 from transformers.utils import strtobool
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, TypeVar, Union
+
 from .env import is_dist, is_master
 from .logger import get_logger
 from .np_utils import stat_array

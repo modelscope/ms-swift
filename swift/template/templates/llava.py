@@ -1,10 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
+import transformers
 from dataclasses import dataclass, field
 from packaging import version
 from typing import Any, Dict, List, Literal, Optional
 
-import transformers
 from swift.utils import get_env_args
 from ..base import Template
 from ..constant import MLLMTemplateType

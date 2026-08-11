@@ -2,20 +2,20 @@
 import math
 import os
 import torch
+import transformers
 from contextlib import contextmanager, nullcontext
 from functools import partial
 from packaging import version
 from peft import PeftModel
-from types import MethodType
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
-import transformers
-from swift.utils import (HfConfigFactory, Processor, get_generative_reranker_logits, get_logger, is_unsloth_available,
-                         patch_getattr)
 from transformers import (AutoConfig, AutoModel, AutoModelForCausalLM, AutoModelForSequenceClassification,
                           AutoTokenizer, GenerationConfig, PretrainedConfig, PreTrainedModel, PreTrainedTokenizerBase)
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.utils import strtobool
+from types import MethodType
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
+from swift.utils import (HfConfigFactory, Processor, get_generative_reranker_logits, get_logger, is_unsloth_available,
+                         patch_getattr)
 from .constant import ModelType
 from .model_meta import MODEL_MAPPING, BaseModelLoader, ModelInfo, ModelMeta, get_model_info_meta
 from .patcher import (get_lm_head_model, patch_attach_align_device_hook_on_blocks, patch_automodel,

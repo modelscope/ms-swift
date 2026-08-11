@@ -8,10 +8,10 @@ from accelerate.utils import gather_object
 from enum import Enum
 from torch import nn
 from torch.nn import MSELoss
+from transformers.utils import strtobool
 
 from swift.sequence_parallel import sequence_parallel
 from swift.utils import get_dist_setting
-from transformers.utils import strtobool
 from .base import BaseLoss
 
 

@@ -1,10 +1,10 @@
 import os
 import shutil
 import tempfile
+import transformers
 import unittest
 from packaging import version
 
-import transformers
 from swift import ExportArguments, export_main
 
 if __name__ == '__main__':

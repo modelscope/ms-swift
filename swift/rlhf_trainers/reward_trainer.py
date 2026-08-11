@@ -7,12 +7,12 @@ from accelerate.utils import gather_object
 from collections import defaultdict
 from contextlib import nullcontext
 from packaging import version
+from transformers import PreTrainedModel
 from trl import RewardTrainer as HFRewardTrainer
 from typing import Any, Dict, Tuple, Union
 
 from swift.trainers import SwiftMixin
 from swift.utils import get_logger, swanlab_get_run
-from transformers import PreTrainedModel
 from .rlhf_mixin import RLHFTrainerMixin
 
 try:

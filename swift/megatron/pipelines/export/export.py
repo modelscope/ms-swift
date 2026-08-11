@@ -2,6 +2,7 @@
 import os
 import shutil
 import torch.distributed as dist
+from transformers.utils import strtobool
 from typing import List, Optional, Union
 
 from swift.megatron.arguments import MegatronExportArguments
@@ -10,7 +11,6 @@ from swift.megatron.model import get_mcore_model
 from swift.megatron.utils import load_mcore_checkpoint, prepare_mcore_model, save_mcore_checkpoint
 from swift.pipelines import SwiftPipeline, prepare_model_template
 from swift.utils import disable_safe_ddp_context_use_barrier, get_logger, is_master
-from transformers.utils import strtobool
 
 logger = get_logger()
 

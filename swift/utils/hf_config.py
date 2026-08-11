@@ -1,9 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 
 import torch
+from transformers import PretrainedConfig
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from transformers import PretrainedConfig
 from .utils import deep_getattr
 
 

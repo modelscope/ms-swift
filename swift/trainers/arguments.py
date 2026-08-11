@@ -4,12 +4,12 @@ import math
 import os
 import platform
 from dataclasses import dataclass, field
+from transformers.training_args import TrainingArguments as HfTrainingArguments
+from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 from typing import Dict, List, Literal, Optional, Union
 
 from swift.loss import loss_map
 from swift.utils import get_dist_setting, get_logger, is_liger_available, is_mp, json_parse_to_dict
-from transformers.training_args import TrainingArguments as HfTrainingArguments
-from transformers.training_args_seq2seq import Seq2SeqTrainingArguments as HfSeq2SeqTrainingArguments
 
 logger = get_logger()
 
