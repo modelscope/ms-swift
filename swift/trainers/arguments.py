@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import inspect
 import math
 import os
 import platform
@@ -121,6 +122,9 @@ class TrainArgumentsMixin:
             shared memory and then asynchronously persisted to disk. Currently does not support the safetensors format.
             It is recommended to use this with `PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"` to prevent CUDA OOM
             errors during training. Defaults to False.
+
+        logging_dir (Optional[str]): The directory for TensorBoard logs. Defaults to `f'{output_dir}/runs'`.
+        warmup_ratio (float): The ratio of total training steps used for a linear warmup. Defaults to 0.
     """
     per_device_train_batch_size: int = 1
     per_device_eval_batch_size: int = 1
@@ -206,6 +210,33 @@ class TrainArgumentsMixin:
     # dlrover flash_checkpoint
     use_flash_ckpt: bool = False
 
+    # `logging_dir` was removed in transformers>=5.15 in favor of the `TENSORBOARD_LOGGING_DIR` environment
+    # variable, and `warmup_ratio` (deprecated since 5.12) in favor of a float-valued `warmup_steps`. They
+    # are declared here so that swift's CLI stays the same on either version; `_handle_hf_removed_args`
+    # does the bridging.
+    logging_dir: Optional[str] = None
+    warmup_ratio: float = 0.
+
+    @staticmethod
+    def _hf_has_field(name: str) -> bool:
+        return name in inspect.signature(HfTrainingArguments).parameters
+
+    def _handle_hf_removed_args(self):
+        if self.warmup_ratio:
+            # Rejected on every version: transformers silently lets `warmup_ratio` override an explicit
+            # `warmup_steps` (5.12) or the other way round (4.x), so the combination is never unambiguous.
+            if self.warmup_steps:
+                raise ValueError('`warmup_ratio` and `warmup_steps` cannot be set at the same time.')
+            # `warmup_steps` is a float that switches on magnitude: values below 1 are read as a ratio of
+            # the total steps, so a ratio of exactly 1 is silently taken as a single step instead.
+            if self.warmup_ratio >= 1:
+                raise ValueError(f'warmup_ratio: {self.warmup_ratio} must be less than 1. '
+                                 'Use `--warmup_steps` to specify an absolute number of warmup steps.')
+            if not self._hf_has_field('warmup_ratio'):
+                self.warmup_steps = self.warmup_ratio
+                self.warmup_ratio = 0.
+                logger.info(f'Setting args.warmup_steps: {self.warmup_steps} (converted from `warmup_ratio`).')
+
     @staticmethod
     def _patch_liger_kernel():
         # fix logits_to_keep
@@ -265,6 +296,7 @@ class TrainArgumentsMixin:
             self.mrl_dims = json_parse_to_dict(self.mrl_dims)
             self.mrl_dims = {int(k): float(v) for k, v in self.mrl_dims.items()}
         self._init_liger()
+        self._handle_hf_removed_args()
         if self.dataloader_num_workers is None:
             if platform.system() == 'Windows':
                 self.dataloader_num_workers = 0

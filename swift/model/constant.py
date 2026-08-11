@@ -264,6 +264,7 @@ class MLLMModelType:
     paddleocr_vl = 'paddleocr_vl'
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
+    muse_glimmer = 'muse_glimmer'
 
     jina_reranker_m0 = 'jina_reranker_m0'
 

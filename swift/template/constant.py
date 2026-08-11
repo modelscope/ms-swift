@@ -274,6 +274,7 @@ class MLLMTemplateType:
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
     minimax_m3_vl = 'minimax_m3_vl'
+    muse_glimmer = 'muse_glimmer'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

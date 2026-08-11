@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
-from transformers import PretrainedConfig, PreTrainedModel
-from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from types import MethodType
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_logger
+from transformers import PretrainedConfig, PreTrainedModel
+from transformers.dynamic_module_utils import get_class_from_dynamic_module
 from ..constant import MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
@@ -388,3 +388,24 @@ register_model(
         architectures=['SAILVLModel'],
         requires=['transformers<=4.51.3'],
         tags=['vision']))
+
+
+class MuseGlimmerLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import MuseGlimmerForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or MuseGlimmerForConditionalGeneration
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.muse_glimmer, [ModelGroup([
+            Model('AI-ModelScope/Muse-Glimmer-30B'),
+        ])],
+        MuseGlimmerLoader,
+        template=TemplateType.muse_glimmer,
+        model_arch=ModelArch.muse_glimmer,
+        architectures=['MuseGlimmerForConditionalGeneration'],
+        requires=['transformers>=5.15'],
+        tags=['vision', 'video']))

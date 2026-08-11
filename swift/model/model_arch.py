@@ -1,8 +1,9 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-import transformers
 from dataclasses import dataclass, field
 from packaging import version
 from typing import List, Optional, Union
+
+import transformers
 
 transformers_ge_4_52 = version.parse(transformers.__version__) >= version.parse('4.52')
 
@@ -97,6 +98,7 @@ class MLLMModelArch:
     step3_vl = 'step3_vl'
     paddleocr_vl = 'paddleocr_vl'
     minimax_m3_vl = 'minimax_m3_vl'
+    muse_glimmer = 'muse_glimmer'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -597,6 +599,16 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner=['model.visual.merger', 'model.visual.deepstack_merger_list'],
         vision_tower='model.visual',
+        mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.muse_glimmer,
+        language_model=['model.language_model', 'lm_head'],
+        # Two-stage aligner: vision_adapter (fc1/fc2) then vision_projection to the text hidden size.
+        aligner=['model.vision_adapter', 'model.vision_projection'],
+        vision_tower='model.vision_tower',
         mlp='model.language_model.layers.{}.mlp',
     ))
 
