@@ -27,8 +27,7 @@ class MuseGlimmerTemplate(Template):
     # ` to=user<|message|>` opens the final answer, while ` to=self<|message|>...<|eom|>` is a thinking
     # turn followed by `<|start|>assistant to=user<|message|>`. Those markers are protocol rather than
     # content, so the thinking turn is rewritten into `<think>` tags and the markers are dropped.
-    thinking_pattern = re.compile(r'\s*to=self<\|message\|>(.*?)<\|eom\|>\s*<\|start\|>assistant(?=\s*to=)',
-                                  re.DOTALL)
+    thinking_pattern = re.compile(r'\s*to=self<\|message\|>(.*?)<\|eom\|>\s*<\|start\|>assistant(?=\s*to=)', re.DOTALL)
     marker_pattern = re.compile(r'\s*to=\w+<\|message\|>|<\|eom\|>|<\|start\|>assistant')
 
     def decode_generate_ids(self, generate_ids, **kwargs) -> Any:
