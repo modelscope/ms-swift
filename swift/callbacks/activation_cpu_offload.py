@@ -3,12 +3,12 @@ import functools
 import torch
 from torch.distributed.fsdp import FSDPModule as FSDP2
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from transformers.trainer_callback import TrainerControl, TrainerState
-from transformers.training_args import TrainingArguments
-from transformers.utils import is_torch_npu_available
 from typing import Any, Optional
 
 from swift.utils import get_logger
+from transformers.trainer_callback import TrainerControl, TrainerState
+from transformers.training_args import TrainingArguments
+from transformers.utils import is_torch_npu_available
 from .base import TrainerCallback
 
 logger = get_logger()

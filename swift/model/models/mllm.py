@@ -400,8 +400,9 @@ class MuseGlimmerLoader(ModelLoader):
 
 register_model(
     ModelMeta(
-        MLLMModelType.muse_glimmer, [ModelGroup([
-            Model('AI-ModelScope/Muse-Glimmer-30B'),
+        MLLMModelType.muse_glimmer,
+        [ModelGroup([
+            Model('meta-models/Muse-Glimmer-30B', 'meta-models/Muse-Glimmer-30B'),
         ])],
         MuseGlimmerLoader,
         template=TemplateType.muse_glimmer,

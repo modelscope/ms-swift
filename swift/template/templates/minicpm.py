@@ -2,13 +2,13 @@
 import math
 import numpy as np
 import torch
-import transformers
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
 from torch import nn
 from typing import Any, Dict, List, Literal, Optional
 
+import transformers
 from swift.utils import get_env_args, get_packed_seq_params
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType

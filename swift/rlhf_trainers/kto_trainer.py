@@ -4,11 +4,11 @@ import torch.nn as nn
 import trl
 from packaging import version
 from peft import PeftModel
-from transformers import PreTrainedModel
 from typing import Dict, Optional, Union
 
 from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import get_logger
+from transformers import PreTrainedModel
 from .rlhf_mixin import RLHFTrainerMixin
 
 logger = get_logger()

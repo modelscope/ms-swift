@@ -16,7 +16,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.utils.checkpoint
-import transformers
 import warnings
 from contextlib import contextmanager
 from copy import copy
@@ -26,6 +25,8 @@ from modelscope import check_local_model_is_latest
 from packaging import version
 from peft import PeftModel
 from torch.utils.data import DataLoader
+
+import transformers
 from transformers import PreTrainedModel
 from transformers.integrations import is_deepspeed_zero3_enabled
 from transformers.modeling_utils import unwrap_model
@@ -597,6 +598,7 @@ class SwiftMixin:
 
     def _save_flash_checkpoint(self, model, trial, metrics=None):
         from dlrover.trainer.torch.flash_checkpoint.hf_trainer import HfDdpCheckpointer, HfDeepSpeedCheckpointer
+
         from transformers.trainer import DeepSpeedSchedulerWrapper
         from transformers.trainer_utils import SaveStrategy
         run_dir = self._get_output_dir(trial=trial)

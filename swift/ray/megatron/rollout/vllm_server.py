@@ -20,10 +20,10 @@ import asyncio
 import os
 import socket
 import torch
-from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, List, Optional, Tuple
 
 from swift.utils import gc_collect, get_logger
+from transformers.utils import is_torch_npu_available
 from ..checkpoint_engine import CheckpointEngineMixin
 
 logger = get_logger()

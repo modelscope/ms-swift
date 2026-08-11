@@ -1,8 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
-from transformers import AutoTokenizer, PretrainedConfig
-
 from swift.template import TemplateType
 from swift.utils import Processor
+from transformers import AutoTokenizer, PretrainedConfig
 from ..constant import LLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta

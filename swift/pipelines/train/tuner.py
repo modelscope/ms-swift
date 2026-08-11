@@ -2,19 +2,19 @@
 import inspect
 import re
 import torch
-import transformers
 from packaging import version
 from peft.utils.other import ModulesToSaveWrapper
-from transformers import TrainingArguments
-from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import List, Union
 
+import transformers
 from swift.arguments import SftArguments
 from swift.trainers import calculate_max_steps
 from swift.tuner_plugin import Tuner, tuners_map
 from swift.tuners import Swift
 from swift.utils import (activate_parameters, find_all_linears, find_embedding, find_norm, freeze_parameters,
                          get_logger, get_multimodal_target_regex)
+from transformers import TrainingArguments
+from transformers.integrations import is_deepspeed_zero3_enabled
 
 logger = get_logger()
 

@@ -6,16 +6,16 @@ import os
 import shutil
 import torch
 import torch.nn.functional as F
-import transformers
 from dataclasses import dataclass, field
 from functools import partial
 from packaging import version
 from PIL import Image
 from torch import nn
-from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import Any, Dict, List, Literal, Optional
 
+import transformers
 from swift.utils import get_env_args, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
+from transformers.integrations import is_deepspeed_zero3_enabled
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
@@ -1256,6 +1256,7 @@ class Qwen3TTSTemplate(Template):
         config_dict['talker_config']['spk_id'] = {speaker_name: 3000}
         config_dict['talker_config']['spk_is_dialect'] = {speaker_name: False}
         from safetensors.torch import save_file
+
         from transformers.modeling_utils import unwrap_model
 
         base_model = unwrap_model(model)

@@ -18,12 +18,12 @@ from modelscope.hub.utils.utils import get_cache_dir
 from peft import PeftModel
 from PIL import Image
 from torch.nn.utils.rnn import pad_sequence
-from transformers import StoppingCriteriaList
-from transformers.integrations import is_deepspeed_zero3_enabled
-from transformers.utils import strtobool
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.utils import Processor, ProcessorMixin, get_env_args, get_logger, remove_response, retry_decorator, to_device
+from transformers import StoppingCriteriaList
+from transformers.integrations import is_deepspeed_zero3_enabled
+from transformers.utils import strtobool
 from .template_inputs import StdTemplateInputs, TemplateInputs
 from .utils import Context, ContextType, StopWordsCriteria, fetch_one, findall, get_last_user_round, split_str_parts_by
 from .vision_utils import _check_path, load_audio, load_batch, load_image, rescale_image

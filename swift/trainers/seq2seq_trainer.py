@@ -8,14 +8,14 @@ from contextlib import contextmanager, nullcontext
 from peft import PeftModel
 from torch import nn
 from torch.nn.utils.rnn import pad_sequence
-from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
-from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
-from transformers.utils import is_peft_available
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine import InferRequest, RequestConfig, TransformersEngine
 from swift.sequence_parallel import sequence_parallel
 from swift.utils import HfConfigFactory, JsonlWriter, Serializer, gc_collect, get_logger, unwrap_model_for_generation
+from transformers import Seq2SeqTrainer as HfSeq2SeqTrainer
+from transformers.models.auto.modeling_auto import MODEL_FOR_CAUSAL_LM_MAPPING_NAMES
+from transformers.utils import is_peft_available
 from .arguments import Seq2SeqTrainingArguments
 from .mixin import DataLoaderMixin, SwiftMixin
 from .utils import per_token_loss_func, per_token_loss_func_sp

@@ -7,13 +7,13 @@ import torch.distributed as dist
 from contextlib import contextmanager
 from copy import copy, deepcopy
 from tqdm import tqdm
-from transformers.modeling_utils import custom_object_save
-from transformers.utils import is_torch_npu_available
 from typing import Union
 
 from swift.model import get_model_processor, save_checkpoint
 from swift.utils import (HfConfigFactory, disable_safe_ddp_context_use_barrier, get_logger, get_modules_to_not_convert,
                          get_multimodal_target_regex, is_master, split_list)
+from transformers.modeling_utils import custom_object_save
+from transformers.utils import is_torch_npu_available
 
 logger = get_logger()
 

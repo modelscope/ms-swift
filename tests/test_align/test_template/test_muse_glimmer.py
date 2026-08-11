@@ -2,7 +2,7 @@ import os
 
 os.environ['SWIFT_DEBUG'] = '1'
 
-MODEL = 'AI-ModelScope/Muse-Glimmer-30B'
+MODEL = 'meta-models/Muse-Glimmer-30B'
 
 
 def _get_processor_template():

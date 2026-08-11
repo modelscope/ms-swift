@@ -5,9 +5,9 @@ import tempfile
 import torch
 import unittest
 from modelscope import snapshot_download
-from transformers.utils import is_torch_npu_available
 
 from swift.tuners import ResTuningConfig, Swift, SwiftModel
+from transformers.utils import is_torch_npu_available
 
 
 def get_npu_or_cpu_device():

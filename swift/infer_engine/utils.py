@@ -10,12 +10,12 @@ from dataclasses import dataclass
 from itertools import repeat
 from packaging import version
 from queue import Queue
-from transformers import GenerationConfig, LogitsProcessor
-from transformers.generation.streamers import BaseStreamer
 from typing import List, Optional, Union
 
 from swift.model.register import fix_do_sample_warning
 from swift.utils import get_device, synchronize
+from transformers import GenerationConfig, LogitsProcessor
+from transformers.generation.streamers import BaseStreamer
 from .protocol import RequestConfig
 
 

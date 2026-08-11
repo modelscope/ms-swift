@@ -6,14 +6,14 @@ import warnings
 from accelerate.utils import gather_object
 from contextlib import contextmanager, nullcontext
 from peft import PeftModel
-from transformers import PreTrainedModel
-from transformers.utils.versions import require_version
 from trl import DPOTrainer as HFDPOTrainer
 from trl.trainer.dpo_config import DPOConfig
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.trainers import DataLoaderMixin, SwiftMixin
 from swift.utils import get_logger, to_device
+from transformers import PreTrainedModel
+from transformers.utils.versions import require_version
 from .rlhf_mixin import RLHFTrainerMixin
 
 try:

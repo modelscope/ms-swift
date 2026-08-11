@@ -6,7 +6,6 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
-import transformers
 from accelerate.utils import find_device
 from contextlib import contextmanager
 from functools import wraps
@@ -14,14 +13,15 @@ from packaging import version
 from peft import PeftModel
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.nn.parallel import DistributedDataParallel as DDP
-from transformers import PreTrainedModel, dynamic_module_utils, trainer
-from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
+import transformers
 from swift.utils import (HfConfigFactory, deep_getattr, get_device_count, get_dist_setting, get_last_valid_indices,
                          get_logger, get_position_ids_from_cu_seqlens, is_mp, is_mp_ddp, safe_ddp_context, to_device,
                          to_float_dtype)
+from transformers import PreTrainedModel, dynamic_module_utils, trainer
+from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 
 logger = get_logger()
 

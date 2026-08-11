@@ -9,12 +9,12 @@ from copy import deepcopy
 from datetime import datetime
 from functools import partial
 from json import JSONDecodeError
-from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 from typing import List, Type
 
 from swift.arguments import DeployArguments, InferArguments
 from swift.infer_engine import InferClient, InferRequest, RequestConfig
 from swift.utils import get_device_count, get_logger
+from transformers.utils import is_torch_cuda_available, is_torch_npu_available
 from ..base import BaseUI
 from ..llm_train import run_command_in_background_with_popen
 from .model import Model

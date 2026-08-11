@@ -3,13 +3,13 @@ import os
 import torch
 import torch.distributed as dist
 from dataclasses import asdict
-from transformers.utils import is_torch_npu_available
 from typing import List, Optional, Union
 
 from swift.megatron.arguments import MegatronSftArguments
 from swift.megatron.trainers import MegatronEmbeddingTrainer, MegatronRerankerTrainer, MegatronTrainer
 from swift.pipelines import SwiftSft
 from swift.utils import append_to_jsonl, get_logger, is_last_rank, plot_images
+from transformers.utils import is_torch_npu_available
 
 if is_torch_npu_available():
     # Enable Megatron on Ascend NPU

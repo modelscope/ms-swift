@@ -32,14 +32,11 @@ import time
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import transformers
 from accelerate.utils import gather, gather_object, is_peft_model, set_seed
 from collections import defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from copy import deepcopy
 from packaging import version
-from transformers import PreTrainedModel
-from transformers.trainer import Trainer as HfTrainer
 from trl import GRPOTrainer as HFGRPOTrainer
 from trl.models import prepare_deepspeed
 from trl.trainer import grpo_trainer
@@ -47,6 +44,7 @@ from trl.trainer.grpo_trainer import RepeatSampler, nanmax, nanmin
 from trl.trainer.utils import selective_log_softmax
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import transformers
 from swift.dataset import RowPreprocessor
 from swift.rewards import orms, rm_plugins
 from swift.rl_core.advantage import (apply_rlsd_reweight, compute_advantages, compute_advantages_dynamic,
@@ -64,6 +62,8 @@ from swift.trainers import SwiftMixin, disable_gradient_checkpointing
 from swift.utils import (JsonlWriter, get_cu_seqlens_from_position_ids, get_logger, is_swanlab_available,
                          is_wandb_available, nanstd, remove_response, seed_worker, to_device,
                          unwrap_model_for_generation)
+from transformers import PreTrainedModel
+from transformers.trainer import Trainer as HfTrainer
 from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,

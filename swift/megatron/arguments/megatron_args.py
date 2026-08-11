@@ -8,14 +8,14 @@ from mcore_bridge.model import get_mcore_model_type, get_model_meta
 from megatron.core import mpu
 from megatron.core.transformer.enums import AttnBackend
 from packaging import version
-from transformers.utils import is_torch_npu_available
-from transformers.utils.versions import require_version
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from swift.arguments import ModelArguments
 from swift.megatron.utils import initialize_megatron
 from swift.model import get_model_info_meta
 from swift.utils import get_dist_setting, get_logger, json_parse_to_dict
+from transformers.utils import is_torch_npu_available
+from transformers.utils.versions import require_version
 
 mcore_016 = version.parse(megatron.core.__version__) >= version.parse('0.16.0rc0')
 logger = get_logger()

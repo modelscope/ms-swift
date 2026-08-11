@@ -1,11 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
 import sys
-from transformers import AutoModel, AutoModelForSequenceClassification, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict
 
 from swift.template import TemplateType
 from swift.utils import Processor, get_device, git_clone_github, safe_snapshot_download
+from transformers import AutoModel, AutoModelForSequenceClassification, PretrainedConfig, PreTrainedModel
 from ..constant import LLMModelType, MLLMModelType
 from ..model_arch import ModelArch
 from ..model_meta import Model, ModelGroup, ModelMeta
