@@ -47,7 +47,8 @@ from swift.hub import get_hub
 from swift.loss import loss_map
 from swift.metrics import MeanMetric, compute_acc, eval_metrics_map
 from swift.model import get_llm_model, get_lm_head_model, save_checkpoint
-from swift.model.patcher import gather_sequence_parallel_outputs, revert_padding_free, transformers_seq_cls_forward
+from swift.model.patcher import (gather_sequence_parallel_outputs, revert_padding_free, select_last_packed_states,
+                                 transformers_seq_cls_forward)
 from swift.optimizers import OptimizerCallback, optimizers_map
 from swift.sequence_parallel import SequenceParallelDispatcher, SequenceParallelSampler, sequence_parallel
 from swift.template import Template, update_generation_config_eos_token
@@ -836,17 +837,21 @@ class SwiftMixin:
                 if pf_enabled:
                     if sp_enabled:
 
-                        def revert_padding_free_hook(module, args, input, output):
+                        def padding_free_hook(module, args, input, output):
                             # Use full packed position ids cached by sequence_parallel.prepare_inputs
                             position_ids = sequence_parallel.real_position_ids
                             tmp_input = {'position_ids': position_ids}
+                            if task_type == 'embedding':
+                                return select_last_packed_states(output, tmp_input)
                             return revert_padding_free(output, tmp_input, padding_side)
                     else:
 
-                        def revert_padding_free_hook(module, args, input, output):
+                        def padding_free_hook(module, args, input, output):
+                            if task_type == 'embedding':
+                                return select_last_packed_states(output, input)
                             return revert_padding_free(output, input, padding_side)
 
-                    hooks.append(revert_padding_free_hook)
+                    hooks.append(padding_free_hook)
 
                 if hooks:
                     _register_llm_hooks_in_order(llm_model, hooks)

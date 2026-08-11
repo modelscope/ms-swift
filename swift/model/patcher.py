@@ -572,6 +572,45 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
     return outputs
 
 
+def select_last_packed_states(outputs: Dict[str, Any], inputs: Dict[str, Any]):
+    """Keep only the last hidden state of each sequence in a packed batch.
+
+    Embedding models only need one hidden state per sequence. Re-padding the
+    complete packed output before pooling can allocate a large temporary tensor,
+    especially for multimodal batches with uneven sequence lengths.
+    """
+    hidden_state_key = None
+    if 'last_hidden_state' in outputs:
+        hidden_state_key = 'last_hidden_state'
+    elif 'logits' in outputs:
+        hidden_state_key = 'logits'
+    elif 'token_embeddings' in outputs:
+        hidden_state_key = 'token_embeddings'
+
+    if hidden_state_key is None:
+        raise NotImplementedError()
+
+    hidden_states = outputs[hidden_state_key]
+    if hidden_states.shape[0] != 1:
+        raise ValueError(f'Expected a padding-free batch dimension of 1, but got shape {hidden_states.shape}.')
+
+    if 'cu_seq_lens_q' in inputs:
+        cu_seq_lens_q = inputs['cu_seq_lens_q']
+        sequence_end_indices = cu_seq_lens_q[1:].to(device=hidden_states.device, dtype=torch.long) - 1
+    elif 'position_ids' in inputs and inputs['position_ids'].shape[0] == 1:
+        position_ids = inputs['position_ids'][0]
+        resets = torch.where(position_ids[1:] < position_ids[:-1])[0] + 1
+        sequence_end_indices = torch.cat([resets - 1, position_ids.new_tensor([position_ids.shape[0] - 1])])
+        sequence_end_indices = sequence_end_indices.to(device=hidden_states.device, dtype=torch.long)
+    else:
+        raise ValueError("select_last_packed_states requires 'cu_seq_lens_q' or 'position_ids' in inputs, "
+                         'but neither was found.')
+
+    # Preserve a singleton sequence dimension for patch_output_normalizer.
+    outputs[hidden_state_key] = hidden_states[0].index_select(0, sequence_end_indices).unsqueeze(1)
+    return outputs
+
+
 def gather_sequence_parallel_outputs(
     outputs: Dict[str, Any],
     tensor_keys: Optional[List[str]] = None,
