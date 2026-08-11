@@ -1,7 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import torch
 from dataclasses import dataclass, field
-from qwen_vl_utils import fetch_image, fetch_video
 from typing import Any, Dict, List, Optional
 
 from ..base import Template
@@ -32,6 +31,8 @@ class MiMoV2Template(Template):
     norm_bbox = 'none'
 
     def replace_tag(self, media_type, index, inputs: StdTemplateInputs) -> List[Context]:
+        from qwen_vl_utils import fetch_image, fetch_video
+
         assert media_type in {'image', 'video'}
         kwargs = {'image_patch_size': self.processor.image_processor.patch_size}
         if media_type == 'image':
