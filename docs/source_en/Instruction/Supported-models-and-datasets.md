@@ -506,7 +506,7 @@ The table below introduces the models integrated with ms-swift:
 |[deepseek-ai/DeepSeek-V4-Flash-Base](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash-Base)|deepseek_v4|deepseek_v4|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Flash-Base](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Base)|
 |[deepseek-ai/DeepSeek-V4-Pro](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Pro)|deepseek_v4|deepseek_v4|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Pro](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)|
 |[deepseek-ai/DeepSeek-V4-Pro-Base](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Pro-Base)|deepseek_v4|deepseek_v4|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Pro-Base](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro-Base)|
-|[deepseek-ai/DeepSeek-V4-Flash-0731](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash-0731)|deepseek_v4_flash|deepseek_v4_flash|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)|
+|[deepseek-ai/DeepSeek-V4-Flash-0731](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash-0731)|deepseek_v4|deepseek_v4_flash|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)|
 |[OpenBuddy/openbuddy-llama-65b-v8-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16)|openbuddy_llama|openbuddy||-|&#x2714;|-|[OpenBuddy/openbuddy-llama-65b-v8-bf16](https://huggingface.co/OpenBuddy/openbuddy-llama-65b-v8-bf16)|
 |[OpenBuddy/openbuddy-llama2-13b-v8.1-fp16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16)|openbuddy_llama|openbuddy||-|&#x2714;|-|[OpenBuddy/openbuddy-llama2-13b-v8.1-fp16](https://huggingface.co/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16)|
 |[OpenBuddy/openbuddy-llama2-70b-v10.1-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16)|openbuddy_llama|openbuddy||-|&#x2714;|-|[OpenBuddy/openbuddy-llama2-70b-v10.1-bf16](https://huggingface.co/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16)|
@@ -1173,6 +1173,7 @@ The table below introduces the models integrated with ms-swift:
 |[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr||transformers>=4.49.0|&#x2718;|-|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
 |[stepfun-ai/Step3-VL-10B-Base](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B-Base)|step3_vl|step3_vl|hermes|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B-Base](https://huggingface.co/stepfun-ai/Step3-VL-10B-Base)|
 |[stepfun-ai/Step3-VL-10B](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B)|step3_vl|step3_vl|hermes|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B](https://huggingface.co/stepfun-ai/Step3-VL-10B)|
+|[meta-models/Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B)|muse_glimmer|muse_glimmer||transformers>=5.15|&#x2718;|vision, video|-|
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0||-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
 
 

@@ -388,7 +388,6 @@ register_model(
         architectures=['SAILVLModel'],
         requires=['transformers<=4.51.3'],
         tags=['vision']))
-
 register_model(
     ModelMeta(
         MLLMModelType.mimo_v2,
@@ -400,3 +399,25 @@ register_model(
         architectures=['MiMoV2ForCausalLM'],
         requires=['transformers>=4.57', 'qwen_vl_utils>0.0.6', 'decord'],
         tags=['vision', 'video', 'audio']))
+
+
+class MuseGlimmerLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import MuseGlimmerForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or MuseGlimmerForConditionalGeneration
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.muse_glimmer,
+        [ModelGroup([
+            Model('meta-models/Muse-Glimmer-30B', 'meta-models/Muse-Glimmer-30B'),
+        ])],
+        MuseGlimmerLoader,
+        template=TemplateType.muse_glimmer,
+        model_arch=ModelArch.muse_glimmer,
+        architectures=['MuseGlimmerForConditionalGeneration'],
+        requires=['transformers>=5.15'],
+        tags=['vision', 'video']))
