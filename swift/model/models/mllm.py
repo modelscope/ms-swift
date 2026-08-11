@@ -399,6 +399,8 @@ register_model(
         architectures=['MiMoV2ForCausalLM'],
         requires=['transformers>=4.57', 'qwen_vl_utils>0.0.6', 'decord'],
         tags=['vision', 'video', 'audio']))
+
+
 class MuseGlimmerLoader(ModelLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
