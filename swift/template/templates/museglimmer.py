@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
@@ -21,6 +22,23 @@ class MuseGlimmerTemplate(Template):
     # Mirrors the `knowledge_cutoff` / `reasoning_strength` defaults of chat_template.jinja.
     knowledge_cutoff = '2026-01-04'
     reasoning_strength = 'high'
+
+    # The generation prompt ends at `<|start|>assistant`, so the model emits its own recipient marker:
+    # ` to=user<|message|>` opens the final answer, while ` to=self<|message|>...<|eom|>` is a thinking
+    # turn followed by `<|start|>assistant to=user<|message|>`. Those markers are protocol rather than
+    # content, so the thinking turn is rewritten into `<think>` tags and the markers are dropped.
+    thinking_pattern = re.compile(r'\s*to=self<\|message\|>(.*?)<\|eom\|>\s*<\|start\|>assistant(?=\s*to=)',
+                                  re.DOTALL)
+    marker_pattern = re.compile(r'\s*to=\w+<\|message\|>|<\|eom\|>|<\|start\|>assistant')
+
+    def decode_generate_ids(self, generate_ids, **kwargs) -> Any:
+        response = super().decode_generate_ids(generate_ids, **kwargs)
+        if self.is_training or not isinstance(response, str):
+            return response
+        response = self.thinking_pattern.sub(lambda m: f'<think>{m.group(1)}</think>', response)
+        # Streaming hands out increments, so a thinking turn split across chunks cannot be matched as a
+        # whole; dropping the bare markers at least keeps the protocol out of the user-visible text.
+        return self.marker_pattern.sub('', response)
 
     def _get_system_suffix(self) -> str:
         # The jinja template appends the reasoning hint and the recipient list to every system
