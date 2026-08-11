@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 import re
 import torch
 import torch.distributed as dist
@@ -237,6 +238,7 @@ def get_packed_seq_params(args, position_ids: torch.Tensor) -> PackedSeqParams:
         max_seqlen_q=params['max_length_q'],
         max_seqlen_kv=params['max_length_k'],
         qkv_format='thd',
+        total_tokens=position_ids.numel(),
     )
     if hasattr(packed, 'cp_partition_mode'):
         packed.cp_partition_mode = args.cp_partition_mode

@@ -269,6 +269,7 @@ class VllmEngine(InferEngine):
                 if self.model_type == 'deepseek_v4':
                     return _old_from_pretrained(*args, **kwargs)
                 if self._config_cls is None:
+                    kwargs = {**kwargs, 'trust_remote_code': self.model_meta.loader.default_trust_remote_code}
                     hf_config = _old_from_pretrained(*args, **kwargs)
                     self._config_cls = hf_config.__class__
                 if not isinstance(config, self._config_cls):

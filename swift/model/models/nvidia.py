@@ -24,9 +24,10 @@ register_model(
         LLMModelType.nemotron_h,
         [
             ModelGroup([
-                Model('nv-community/EA-NVIDIA-Nemotron-3.5-Nano-30B-A3B-BF16-07202026',
-                      'nv-community/EA-NVIDIA-Nemotron-3.5-Nano-30B-A3B-BF16-07202026'),
-                Model('nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16', 'nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16'),
+                Model('nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16',
+                      'nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16'),
+                Model('nv-community/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4',
+                      'nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4'),
             ]),
         ],
         NemotronHLoader,
