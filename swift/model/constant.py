@@ -241,6 +241,7 @@ class MLLMModelType:
     keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
     sail_vl2 = 'sail_vl2'
+    mimo_v2 = 'mimo_v2'
 
     phi3_vision = 'phi3_vision'
     phi4_multimodal = 'phi4_multimodal'
