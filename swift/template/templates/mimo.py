@@ -2,7 +2,6 @@
 import sys
 import torch
 from dataclasses import dataclass, field
-from torchaudio.transforms import MelSpectrogram
 from typing import Any, Dict, List, Optional
 
 from ..base import Template
@@ -27,6 +26,8 @@ class MiMoV2TemplateMeta(ChatmlTemplateMeta):
 
 
 def _wav_to_log_mel(wav: torch.Tensor, *, sr, n_mels, n_fft, hop, win, f_min, f_max) -> torch.Tensor:
+    from torchaudio.transforms import MelSpectrogram
+
     mel_transform = MelSpectrogram(
         sample_rate=sr,
         n_fft=n_fft,
