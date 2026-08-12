@@ -422,7 +422,11 @@ class MathORM(ORM):
     @staticmethod
     def compare_consecutive(first, second):
         cleaned_list = [MathORM.clean_latex(latex) for latex in [first, second]]
+        if cleaned_list[0] == cleaned_list[1]:
+            return True
         parsed_exprs = [MathORM.parse_expression(latex) for latex in cleaned_list]
+        if any(expr is None for expr in parsed_exprs):
+            return False
         if hasattr(parsed_exprs[0], 'equals') and hasattr(parsed_exprs[1], 'equals'):
             value = parsed_exprs[0].equals(parsed_exprs[1])
         else:
