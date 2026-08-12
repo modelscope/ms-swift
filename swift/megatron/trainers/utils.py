@@ -11,6 +11,7 @@ from megatron.core.optimizer import ChainedOptimizer
 from typing import Any, Optional
 
 from swift.dataloader import DataLoaderDispatcher
+from swift.dataset import get_shard_state
 from swift.megatron.utils import get_batch_on_this_cp_rank, get_packed_seq_params
 from swift.utils import empty_cache, get_current_device, get_logger, to_device
 
@@ -344,7 +345,7 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
         persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
     )
-    return MegatronDataLoaderDispatcher(base_dataloader)
+    return MegatronDataLoaderDispatcher(base_dataloader, shard_state=get_shard_state(dataset))
 
 
 _NPU_ATTENTION_MASK_2D_MODEL_TYPES = {'qwen3_5', 'qwen3_5_moe'}

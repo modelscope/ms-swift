@@ -152,11 +152,9 @@ class SequenceParallelSampler(Sampler):
 class SequenceParallelDispatcher(DataLoaderDispatcher):
     """Dispatcher for sequence parallel training"""
 
-    def __init__(self, dataloader, sp_instance, device=None, skip_batches: int = 0):
-        super().__init__(dataloader)
+    def __init__(self, dataloader, sp_instance, device=None, skip_batches: int = 0, shard_state=None):
+        super().__init__(dataloader, device=device, skip_batches=skip_batches, shard_state=shard_state)
         self.sp_instance = sp_instance
-        self.device = device
-        self.skip_batches = skip_batches
 
     @property
     def rank(self):

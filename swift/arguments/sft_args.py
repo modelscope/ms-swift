@@ -219,6 +219,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         if len(self.dataset) == 0 and len(self.cached_dataset) == 0:
             raise ValueError(f'self.dataset: {self.dataset}, self.cached_dataset: {self.cached_dataset}. '
                              'Please input the training dataset.')
+        if self.streaming_shard and getattr(self, 'rlhf_type', None) in {'grpo', 'gkd'}:
+            raise ValueError('`streaming_shard` is not supported for GRPO or GKD because their encoding is deferred '
+                             'past the dataset post-processing stage.')
 
         self._handle_pai_compat()
 
@@ -275,6 +278,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             if self.deepspeed_autotp_size is not None:
                 assert self.deepspeed is not None, (
                     'To use `deepspeed_autotp_size`, you need to additionally set the `--deepspeed` argument.')
+                if self.streaming_shard:
+                    raise ValueError('`streaming_shard` splits the data by global rank, which would feed the ranks of '
+                                     'a tensor parallel group different samples. Please set `--streaming_shard false`.')
                 self.deepspeed.setdefault('tensor_parallel', {})['autotp_size'] = self.deepspeed_autotp_size
                 self.deepspeed.setdefault('zero_optimization', {})['gather_16bit_weights_on_model_save'] = True
             if 'deepspeed_elastic' in set(getattr(self, 'callbacks', []) or []):

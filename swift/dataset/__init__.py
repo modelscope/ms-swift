@@ -10,6 +10,7 @@ from .preprocessor import (AlpacaPreprocessor, AnthropicMessagesPreprocessor, Au
                            OpenAIMessagesPreprocessor, ResponsePreprocessor, RowPreprocessor)
 from .register import (DATASET_MAPPING, DatasetMeta, SubsetDataset, get_dataset_list, register_dataset,
                        register_dataset_info)
+from .shard import StreamingShardState, get_shard_state, set_shard_state, shard_streaming_dataset
 from .utils import (AddLengthPreprocessor, EncodePreprocessor, LazyLLMDataset, get_temporary_cache_files_directory,
                     sample_dataset)
 
