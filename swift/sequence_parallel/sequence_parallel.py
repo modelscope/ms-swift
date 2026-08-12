@@ -222,7 +222,12 @@ class SequenceParallel:
                         position_ids = kwargs.get('position_ids')
                         if self.real_position_ids is not None:
                             position_ids = self.real_position_ids
-                        if position_ids is not None:
+                        # Our -1 padding makes transformers' `_is_packed_sequence` see a single varlen sequence
+                        # whenever the batch has one row -- no matter whether padding_free is on -- yet since
+                        # 5.15.0 it derives the lengths from `position_ids == position_ids.min()` instead of `== 0`
+                        # (huggingface/transformers#47525), reading that -1 as the only sequence start. Supply the
+                        # lengths ourselves, and only for that same single-row case.
+                        if position_ids is not None and query.shape[0] == 1:
                             position_ids = self.pad(position_ids, padding_value=-1, position_ids=position_ids)
                             cu_seqlens = get_cu_seqlens_from_position_ids(position_ids)
                             max_seqlen = (cu_seqlens[1:] - cu_seqlens[:-1]).max().item()
