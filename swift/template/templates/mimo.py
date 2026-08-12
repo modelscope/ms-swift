@@ -2,7 +2,6 @@
 import sys
 import torch
 from dataclasses import dataclass, field
-from qwen_vl_utils import fetch_image, fetch_video
 from torchaudio.transforms import MelSpectrogram
 from typing import Any, Dict, List, Optional
 
@@ -70,6 +69,8 @@ class MiMoV2Template(Template):
         return getattr(self.config, 'audio_config', None) or {}
 
     def replace_tag(self, media_type, index, inputs: StdTemplateInputs) -> List[Context]:
+        from qwen_vl_utils import fetch_image, fetch_video
+
         assert media_type in {'image', 'video', 'audio'}
         if media_type == 'audio':
             return ['<|mimo_audio_start|><|audio_pad|><|mimo_audio_end|>']
