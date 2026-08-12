@@ -51,6 +51,46 @@ def is_megatron_backend(distributed_config: DistributedConfig) -> bool:
     raise ValueError(f"DistributedConfig.backend must be one of {{'megatron', 'hf'}}, got {backend!r}.")
 
 
+def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig) -> None:
+    """Route a seq_cls/reranker model to a num_labels-wide SequenceClassification head.
+
+    twinkle's TransformersModel forwards ``model_cls`` + ``config`` to ``from_pretrained``. We build
+    the config here and set the classification attrs ON IT (not as from_pretrained kwargs): HF only
+    auto-parses ``num_labels`` when ``config`` is None, so with an explicit config those kwargs are
+    rejected -- they must live on the config object.
+
+    - num_labels: reranker scores one relevance value, so it defaults to 1; seq_cls must pass its N.
+    - problem_type: recorded on the config for HF/legacy inference parity; the training loss is
+      chosen explicitly by the recipe (configure_seq_cls_loss), not inferred here.
+    - pad_token_id: the SequenceClassification head locates the last non-pad token by it; without it
+      HF raises for batch>1. Fall back to eos when the tokenizer has no pad.
+    - tie_word_embeddings=False: the LM head is dropped for a fresh score head, mirroring legacy
+      (register.py sets this for seq_cls/reranker).
+    """
+    from transformers import AutoConfig
+    config = AutoConfig.from_pretrained(model_config.model, trust_remote_code=True)
+
+    num_labels = model_config.num_labels
+    if num_labels is None:
+        if model_config.task_type == 'reranker':
+            num_labels = 1
+        else:
+            raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
+    config.num_labels = num_labels
+    if model_config.problem_type is not None:
+        config.problem_type = model_config.problem_type
+    config.tie_word_embeddings = False
+
+    if getattr(config, 'pad_token_id', None) is None:
+        from swift.model import get_model_processor
+        _, processor = get_model_processor(model_config.model, load_model=False)
+        tokenizer = processor if not hasattr(processor, 'tokenizer') else processor.tokenizer
+        config.pad_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+
+    kwargs['model_cls'] = 'AutoModelForSequenceClassification'
+    kwargs['config'] = config
+
+
 def _build_transformers_model(model_config: ModelConfig,
                               distributed_config: DistributedConfig,
                               train_config: Optional[TrainConfig] = None,
@@ -72,6 +112,12 @@ def _build_transformers_model(model_config: ModelConfig,
         kwargs['attn_implementation'] = model_config.attn_impl
     if model_config.model_revision:
         kwargs['revision'] = model_config.model_revision
+
+    # seq_cls / reranker ride a num_labels-wide SequenceClassification head instead of the LM head.
+    # (reranker = num_labels=1; a plain reranker maps to this same head with a reranker loss.)
+    # generative_reranker keeps the CausalLM + a forward-time lm_head patch, so it is NOT here.
+    if model_config.task_type in ('seq_cls', 'reranker'):
+        _apply_seq_cls_head(kwargs, model_config)
 
     # strategy: deepspeed/fsdp config selects the twinkle strategy (default: accelerate).
     from swift.dev.naming import resolve_strategy
@@ -214,6 +260,22 @@ def _build_megatron_model(model_config: ModelConfig, distributed_config: Distrib
     # in Ray mode build_model runs on the driver, which is not where the model is built. The raw
     # string is forwarded so DevMegatronStrategy (worker-side) can apply the pin itself.
     extra_kwargs['attn_impl'] = model_config.attn_impl
+
+    # task_type / num_labels flow straight into mcore-bridge's ModelConfig (get_model_config forwards
+    # **kwargs), which builds the head: seq_cls -> OutputLayerLinear(hidden, num_labels),
+    # generative_reranker -> yes/no-diff vocab head. The bridge has no plain 'reranker' task, so map
+    # it to seq_cls with num_labels=1 (the reranker loss, set later, makes it a reranker); this is
+    # the same head legacy Megatron uses. embedding/causal_lm pass through untouched.
+    task_type = model_config.task_type
+    if task_type == 'reranker':
+        extra_kwargs['task_type'] = 'seq_cls'
+        extra_kwargs['num_labels'] = model_config.num_labels or 1
+    elif task_type in ('seq_cls', 'embedding', 'generative_reranker'):
+        extra_kwargs['task_type'] = task_type
+        if task_type == 'seq_cls':
+            if model_config.num_labels is None:
+                raise ValueError('ModelConfig.num_labels is required for task_type="seq_cls".')
+            extra_kwargs['num_labels'] = model_config.num_labels
 
     backend = _resolve_bridge_backend(distributed_config.bridge_backend)
     # In Ray mode the model lives in a remote DeviceGroup named 'model'; in local (torchrun) mode

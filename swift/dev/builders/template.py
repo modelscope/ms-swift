@@ -1,13 +1,13 @@
 """build_template: TemplateConfig + processor -> dev Template (VL subclass via mapping)."""
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from swift.dev.configs import TemplateConfig
 
 
-def build_template(template_config: TemplateConfig, processor: Any) -> Any:
+def build_template(template_config: TemplateConfig, processor: Any, *, task_type: Optional[str] = None) -> Any:
     """TemplateConfig + processor -> a swift Template whose labels are next-token shifted.
 
     Wraps the legacy get_template (which resolves template_type + injects
@@ -56,5 +56,12 @@ def build_template(template_config: TemplateConfig, processor: Any) -> Any:
     # instance for, and the derived class keeps the legacy one as its base.
     legacy.__class__ = shifted_template_class(type(legacy))
     template = legacy
+    # task_type drives BOTH legacy branches: `_encode` -> `_embedding_encode` (anchor_/positive_/
+    # negative_ prefixed keys + per-sequence labels) and `data_collator` -> `_embedding_data_collator`
+    # (flattens those prefixes into interleaved rows and concatenates the labels). Legacy takes it off
+    # model_info.task_type, which `get_template` never sees here (it is built from a processor loaded
+    # with load_model=False), so it defaults to 'causal_lm' and must be set explicitly.
+    if task_type is not None:
+        template.task_type = task_type
     template.set_mode('train')
     return template

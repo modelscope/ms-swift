@@ -1,5 +1,6 @@
 from .adapter_config import TunerConfig
 from .checkpoint_config import CheckpointConfig
+from .convert_config import ConvertConfig
 from .dataset_config import DatasetConfig
 from .distributed_config import DistributedConfig
 from .generation_config import GenerationConfig
@@ -14,6 +15,7 @@ from .validate import validate_configs
 
 __all__ = [
     'CheckpointConfig',
+    'ConvertConfig',
     'DatasetConfig',
     'DistributedConfig',
     'GenerationConfig',

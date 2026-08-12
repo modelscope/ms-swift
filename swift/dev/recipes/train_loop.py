@@ -63,6 +63,7 @@ class SFTLoop:
         output_dir: str = 'output',
         eval_dataloader: Any = None,
         eval_steps: Optional[int] = None,
+        task: str = 'causal_lm',
     ):
         self.model = model
         self.dataloader = dataloader
@@ -75,6 +76,10 @@ class SFTLoop:
         self.max_steps = max_steps
         self.eval_dataloader = eval_dataloader
         self.eval_steps = eval_steps
+        # Forwarded verbatim to twinkle's forward_backward/forward_only. task='embedding' swaps the
+        # lm_head for the pooling patch, so the loss reads outputs['embeddings'] instead of logits;
+        # 'causal_lm' (the default) keeps the SFT path byte-identical.
+        self.task = task
         # Megatron derives GA from the microbatch-list length inside forward_backward and stores
         # forward kwargs for metric accumulation; passing gradient_accumulation_steps in would
         # collide with its own accumulate() call. Detect once so fit() omits the kwarg for Megatron.
@@ -116,7 +121,7 @@ class SFTLoop:
         if self.eval_dataloader is None:
             return None
         for batch in self.eval_dataloader:
-            self.model.forward_only(inputs=batch)
+            self.model.forward_only(inputs=batch, task=self.task)
             # Fill eval_status loss/num_tokens for this batch. On the transformers backend the CE
             # loss is computed here (forward_only only stores inputs/outputs). On Megatron the
             # pipeline scheduler already produced the loss inside forward_only and calculate_loss
@@ -198,7 +203,7 @@ class SFTLoop:
                 self.dataloader.set_epoch(epoch)
             for batch in self.dataloader:
                 self.micro_step += 1
-                self.model.forward_backward(inputs=batch, gradient_accumulation_steps=ga)
+                self.model.forward_backward(inputs=batch, gradient_accumulation_steps=ga, task=self.task)
                 # Boundary computed loop-side (backend-agnostic); clip_grad_and_step self-guards via
                 # the same predicate on the worker, so calling it every micro-step is safe.
                 is_boundary = self._is_grad_sync_boundary()
@@ -259,7 +264,7 @@ class SFTLoop:
 
     def _megatron_step(self, microbatch_list: list) -> None:
         """One Megatron optimizer step over a microbatch list (GA internal to forward_backward)."""
-        self.model.forward_backward(inputs=microbatch_list)
+        self.model.forward_backward(inputs=microbatch_list, task=self.task)
         self.model.clip_grad_and_step(max_grad_norm=self.max_grad_norm)
         self._record_step()
 

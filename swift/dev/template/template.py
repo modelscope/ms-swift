@@ -46,6 +46,14 @@ class DevMixin:
             return labels
         return list(labels[1:]) + [-100]
 
+    # Tasks whose `labels` are NOT per-token targets, so the next-token shift must not fire.
+    # embedding: `_embedding_encode` emits one label PER SEQUENCE (1.0 marks the anchor that starts
+    #   an anchor/positive/negatives group, 0.0 the rest). Shifting would move the 1.0 marker off the
+    #   front and append -100, and InfonceLoss locates groups via torch.nonzero(labels) -- so groups
+    #   would split at the wrong offsets and train on silently wrong pairs.
+    # reranker/seq_cls: likewise per-sequence scores/classes rather than token targets.
+    _NO_SHIFT_TASK_TYPES = frozenset({'embedding', 'reranker', 'generative_reranker', 'seq_cls'})
+
     def encode(self, inputs, return_template_inputs: bool = False, return_length: bool = False):
         """Encode, then shift labels to next-token alignment (training mode only).
 
@@ -54,9 +62,12 @@ class DevMixin:
         `_encode` clears labels to None, so today the `labels is not None` check already skips the
         shift. We ALSO gate on `self.is_training` explicitly so a rollout input can never be silently
         shifted even if a future mode were to emit labels.
+
+        Task guard: only `causal_lm` labels are per-token. See ``_NO_SHIFT_TASK_TYPES``.
         """
         encoded = super().encode(inputs, return_template_inputs=return_template_inputs, return_length=return_length)
-        if (self.is_training and isinstance(encoded, dict) and encoded.get('labels') is not None
+        if (self.is_training and getattr(self, 'task_type', 'causal_lm') not in self._NO_SHIFT_TASK_TYPES
+                and isinstance(encoded, dict) and encoded.get('labels') is not None
                 and not encoded.get(self.SHIFTED_KEY)):
             encoded['labels'] = self._shift_labels_next_token(list(encoded['labels']))
             if encoded.get('loss_scale') is not None:
