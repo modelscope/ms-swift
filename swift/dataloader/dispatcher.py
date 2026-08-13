@@ -37,6 +37,11 @@ class DataLoaderDispatcher:
             for _ in tqdm(range(self.skip_batches), dynamic_ncols=True, desc='Skip Batches: '):
                 [next(base_iter) for _ in range(self.world_size)]
 
+    def set_epoch(self, epoch: int):
+        dataset = self.base_dataloader.dataset
+        if hasattr(dataset, 'set_epoch'):
+            dataset.set_epoch(epoch)
+
     def __iter__(self):
         base_iter = iter(self.base_dataloader)
         self._skip_batches(base_iter)

@@ -269,6 +269,8 @@ class BaseMegatronTrainer(ABC):
         while True:
             if not is_finished:
                 logger.info(f'The training of Epoch {epoch} starts...')
+            if hasattr(iterable, 'set_epoch'):
+                iterable.set_epoch(epoch)
             for x in iterable:
                 yield x
             # streaming
