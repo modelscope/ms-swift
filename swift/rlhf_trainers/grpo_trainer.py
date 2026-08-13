@@ -68,8 +68,7 @@ from .arguments import GRPOConfig
 from .rollout_mixin import DataType, RolloutTrainerMixin, SyncRefModelCallback
 from .utils import (_ForwardRedirection, collate_to_grpo_micro_batch, compute_chord_loss, encode_sample,
                     get_even_process_data, identity_data_collator, load_pil_img, make_chord_sft_dataset,
-                    pad_logps_back_to_batch,
-                    patch_save_last_checkpoint, profiling_context, profiling_decorator,
+                    pad_logps_back_to_batch, patch_save_last_checkpoint, profiling_context, profiling_decorator,
                     replace_assistant_response_with_ids, swanlab_get_run)
 
 try:
