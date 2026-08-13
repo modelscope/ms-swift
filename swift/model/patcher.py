@@ -19,9 +19,9 @@ from transformers.modeling_outputs import SequenceClassifierOutputWithPast
 from types import MethodType
 from typing import Any, Dict, List, Optional, Union
 
-from swift.utils import (HfConfigFactory, deep_getattr, get_device_count, get_dist_setting, get_last_valid_indices,
-                         get_logger, get_position_ids_from_cu_seqlens, is_mp, is_mp_ddp, safe_ddp_context, to_device,
-                         to_float_dtype)
+from swift.utils import (HfConfigFactory, deep_getattr, get_cu_seqlens_from_position_ids, get_device_count,
+                         get_dist_setting, get_last_valid_indices, get_logger, is_mp, is_mp_ddp, safe_ddp_context,
+                         to_device, to_float_dtype)
 
 logger = get_logger()
 
@@ -531,27 +531,14 @@ def revert_padding_free(outputs: Dict[str, Any], inputs: Dict[str, Any], padding
     last_hidden_state = outputs[hidden_state_key]
     last_hidden_state = last_hidden_state.squeeze(dim=0)
     if 'cu_seq_lens_q' in inputs:
-        position_ids = get_position_ids_from_cu_seqlens(inputs['cu_seq_lens_q'])
+        cu_seqlens = inputs['cu_seq_lens_q']
     elif 'position_ids' in inputs and inputs['position_ids'].shape[0] == 1:
-        position_ids = inputs['position_ids']
+        cu_seqlens = get_cu_seqlens_from_position_ids(inputs['position_ids'])
     else:
         raise ValueError(
             "revert_padding_free requires 'cu_seq_lens_q' or 'position_ids' in inputs, but neither was found.")
 
-    seq_lengths = []
-    pos = position_ids[0]
-    resets = torch.where(pos[1:] < pos[:-1])[0] + 1
-
-    if len(resets) == 0:
-        # Only one sequence in this batch item
-        seq_lengths = [pos.max().item() + 1]
-    else:
-        # Multiple sequences
-        start = 0
-        for end in resets:
-            seq_lengths.append(end - start)
-            start = end
-        seq_lengths.append(pos.shape[0] - start)
+    seq_lengths = (cu_seqlens[1:] - cu_seqlens[:-1]).tolist()
 
     max_length = max(seq_lengths)
     unpacked_logits = []
