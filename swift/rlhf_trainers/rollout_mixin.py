@@ -47,8 +47,9 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     add_base_layer_suffix_by_param_names, aggressive_empty_cache, check_vllm_version_ge,
                     expand_vllm_param_name_aliases, finish_vllm_weight_reload, get_even_process_data,
                     get_gather_if_zero3_context, parse_prompt_logprobs, patch_lora_merge, patch_lora_unmerge,
-                    patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp,
-                    profiling_context, profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments,
+                    patch_vllm_load_adapter,
+                    patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp, profiling_context,
+                    profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments,
                     vllm_supports_lora_load_inplace)
 from .vllm_client import VLLMInferClient
 
@@ -1379,7 +1380,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             torch.cuda.empty_cache()
             return
 
-        # Default: iterate over parameters
+        # Default: iterate over parameters AND buffers.
         for param in model.parameters():
             # After DeepSpeed distributed loading: param.data is empty and weights cannot be off-loaded.
             # The real weights are stored in ds_tensor.
@@ -1387,6 +1388,9 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 param.ds_tensor.data = param.ds_tensor.data.to('cpu', non_blocking=True)
             else:
                 param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+        for buf in model.buffers():
+            if buf is not None and buf.device.type != 'cpu':
+                buf.data = buf.data.to(torch.device('cpu'), non_blocking=True)
         torch.cuda.empty_cache()
 
     @torch.no_grad()
@@ -1398,13 +1402,16 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             model.to(device)
             return
 
-        # Default: iterate over parameters
+        # Default: iterate over parameters AND buffers
         for param in model.parameters():
             # Reverse logic of off-loading: move weights back to target device
             if is_deepspeed_enabled() and hasattr(param, 'ds_tensor'):
                 param.ds_tensor.data = param.ds_tensor.data.to(device, non_blocking=True)
             else:
                 param.data = param.data.to(device, non_blocking=True)
+        for buf in model.buffers():
+            if buf is not None and buf.device.type == 'cpu':
+                buf.data = buf.data.to(device, non_blocking=True)
 
     @torch.no_grad()
     def offload_optimizer(self):
