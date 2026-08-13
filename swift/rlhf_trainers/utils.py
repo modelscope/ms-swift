@@ -1012,7 +1012,7 @@ def _get_moe_model_registry():
     return _moe_model_registry_cache
 
 
-def patch_vllm_moe_model_weight_loader(model):
+def patch_vllm_moe_model_weight_loader(model, *, load_preprocessed_weight: bool = False):
     """
     Patch vLLM MoE model to add weight_loader attribute to expert weights.
 
@@ -1022,6 +1022,8 @@ def patch_vllm_moe_model_weight_loader(model):
 
     Args:
         model: The vLLM model to patch.
+        load_preprocessed_weight: Whether Ascend MoE expert loaders should write
+            checkpoint layout for a subsequent post-load processing pass.
     """
     # Check if already patched (idempotent). On NPU/vLLM-Ascend, sleep/wake
     # and full-model reload can recreate expert Parameters while keeping this
@@ -1062,16 +1064,14 @@ def patch_vllm_moe_model_weight_loader(model):
         return
 
     def maybe_patch_vllm_ascend_moe_expert_weight_loader(experts, name, param):
-        quant_method = getattr(experts, 'quant_method', None)
-        if not is_torch_npu_available() or not type(quant_method).__module__.startswith('vllm_ascend'):
+        if not is_torch_npu_available():
             return
-        from swift.model.npu_patch.vllm_ascend import (patch_vllm_ascend_moe_expert_weight_loader,
-                                                       use_vllm_ascend_moe_preprocessed_weight)
+        from swift.model.npu_patch.vllm_ascend import patch_vllm_ascend_moe_expert_weight_loader
         patch_vllm_ascend_moe_expert_weight_loader(
             experts,
             name,
             param,
-            load_preprocessed_weight=use_vllm_ascend_moe_preprocessed_weight(original_model),
+            load_preprocessed_weight=load_preprocessed_weight,
         )
 
     for layer in inner_model.layers:
@@ -1099,10 +1099,6 @@ def patch_vllm_moe_model_weight_loader(model):
 def finish_vllm_weight_reload(vllm_model, model_config, target_device):
     if vllm_model is None or model_config is None or target_device is None:
         return
-    if is_torch_npu_available():
-        from swift.model.npu_patch.vllm_ascend import should_skip_vllm_ascend_moe_post_load
-        if should_skip_vllm_ascend_moe_post_load(vllm_model):
-            return
     try:
         from vllm.model_executor.model_loader.utils import process_weights_after_loading
         process_weights_after_loading(vllm_model, model_config, target_device)
@@ -2058,6 +2054,7 @@ def build_routed_experts_batch(
     template: Template,
     device: torch.device,
     router_replay_mode: str = 'disabled',
+    expected_lens: Optional[List[Optional[int]]] = None,
 ) -> Optional[torch.Tensor]:
     """Build the batched ``routed_experts`` model input from per-sample R3 routing.
 
@@ -2076,16 +2073,20 @@ def build_routed_experts_batch(
         current_seq_lengths[n_samples - 1] = seq_lengths[n_samples - 1:].sum()
 
     routed_tensors: List[torch.Tensor] = []
-    for sample, cur_seq_len in zip(samples, current_seq_lengths):
+    for i, (sample, cur_seq_len) in enumerate(zip(samples, current_seq_lengths)):
         routed_value = getattr(sample, 'routed_experts', None)
         if routed_value is None:
             if router_replay_mode == 'R3':
                 raise AssertionError('When router_replay_mode = R3, routed_experts must be in rollout data')
             return None
         routed = _normalize_routed_experts_tensor(routed_value)
-        expected_len = (sample.encoded or {}).get('length')
+        if expected_lens is not None:
+            expected_len = expected_lens[i]
+        else:
+            expected_len = sample.encoded.get('length')
         experts_seq_len = int(routed.shape[0])
         if router_replay_mode == 'R3' and expected_len is not None:
+            # vLLM may omit the final token's routing, hence ``expected_len - 1``.
             if experts_seq_len not in (expected_len, expected_len - 1):
                 raise AssertionError(f'The seq_len of routed_experts({experts_seq_len}) does not match encoded length '
                                      f'({expected_len}); expected same length or one less.')
@@ -2130,6 +2131,9 @@ def collate_to_grpo_micro_batch(
     distributed communication happens here.
     """
     encoded_list = [s.encoded for s in samples]
+    # Snapshot encode lengths before ``data_collator``: under Megatron CP it mutates each
+    # ``encoded`` in place, rounding ``length`` up to a multiple of ``cp_size * 2``.
+    expected_lens = [e.get('length') for e in encoded_list]
     model_inputs = to_device(template.data_collator(encoded_list, padding_to=padding_to), device)
 
     labels = model_inputs['labels']
@@ -2155,6 +2159,7 @@ def collate_to_grpo_micro_batch(
         template=template,
         device=device,
         router_replay_mode=router_replay_mode,
+        expected_lens=expected_lens,
     )
     if routed_experts is not None:
         model_inputs['routed_experts'] = routed_experts

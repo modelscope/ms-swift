@@ -71,6 +71,7 @@ class LLMTemplateType:
     deepseek_r1 = 'deepseek_r1'
     deepseek_v3_1 = 'deepseek_v3_1'
     deepseek_v4 = 'deepseek_v4'
+    deepseek_v4_flash = 'deepseek_v4_flash'
 
     openbuddy = 'openbuddy'
     openbuddy2 = 'openbuddy2'
@@ -158,6 +159,7 @@ class MLLMTemplateType:
     ovis2_5 = 'ovis2_5'
     ovis_ocr2 = 'ovis_ocr2'
     mimo_vl = 'mimo_vl'
+    mimo_v2 = 'mimo_v2'
     midashenglm = 'midashenglm'
 
     llama3_1_omni = 'llama3_1_omni'
@@ -244,6 +246,7 @@ class MLLMTemplateType:
     step_audio2_mini = 'step_audio2_mini'
     kimi_vl = 'kimi_vl'
     kimi_k25 = 'kimi_k25'
+    kimi_k3 = 'kimi_k3'
     keye_vl = 'keye_vl'
     keye_vl_1_5 = 'keye_vl_1_5'
     dots_ocr = 'dots_ocr'
@@ -273,6 +276,7 @@ class MLLMTemplateType:
     hunyuan_ocr = 'hunyuan_ocr'
     step3_vl = 'step3_vl'
     minimax_m3_vl = 'minimax_m3_vl'
+    muse_glimmer = 'muse_glimmer'
 
 
 class TemplateType(LLMTemplateType, MLLMTemplateType, RMTemplateType):

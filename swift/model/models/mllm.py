@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import os
 import torch
 from transformers import PretrainedConfig, PreTrainedModel
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -388,3 +389,50 @@ register_model(
         architectures=['SAILVLModel'],
         requires=['transformers<=4.51.3'],
         tags=['vision']))
+
+
+class MimoV2Loader(ModelLoader):
+
+    def _postprocess_model(self, model_dir, model):
+        super()._postprocess_model(model_dir, model)
+        audio_tokenizer_dir = os.path.join(model_dir, 'audio_tokenizer')
+        audio_weight = os.path.join(audio_tokenizer_dir, 'model.safetensors')
+        if os.path.isfile(audio_weight) and hasattr(model, 'load_audio_tokenizer'):
+            if getattr(model, 'audio_tokenizer', None) is None:
+                model.load_audio_tokenizer(audio_tokenizer_dir)
+                logger.info(f'Loaded MiMo audio tokenizer from {audio_tokenizer_dir}')
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.mimo_v2,
+        [ModelGroup([
+            Model('XiaomiMiMo/MiMo-V2.5', 'XiaomiMiMo/MiMo-V2.5'),
+        ], TemplateType.mimo_v2)],
+        MimoV2Loader,
+        model_arch=ModelArch.mimo_v2,
+        architectures=['MiMoV2ForCausalLM'],
+        requires=['transformers>=4.57', 'qwen_vl_utils>0.0.6', 'decord', 'torchaudio'],
+        tags=['vision', 'video', 'audio']))
+
+
+class MuseGlimmerLoader(ModelLoader):
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import MuseGlimmerForConditionalGeneration
+        self.auto_model_cls = self.auto_model_cls or MuseGlimmerForConditionalGeneration
+        return super().get_model(model_dir, config, processor, model_kwargs)
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.muse_glimmer,
+        [ModelGroup([
+            Model('meta-models/Muse-Glimmer-30B', 'meta-models/Muse-Glimmer-30B'),
+        ])],
+        MuseGlimmerLoader,
+        template=TemplateType.muse_glimmer,
+        model_arch=ModelArch.muse_glimmer,
+        architectures=['MuseGlimmerForConditionalGeneration'],
+        requires=['transformers>=5.15'],
+        tags=['vision', 'video']))

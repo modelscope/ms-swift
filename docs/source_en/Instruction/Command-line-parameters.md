@@ -121,11 +121,12 @@ The command-line arguments will be introduced in four categories: basic argument
 - 🔥padding_free: Flattens data within a batch to avoid padding, reducing GPU memory usage and accelerating training (**sequences in the same batch remain invisible to each other**). Default is `False`. Currently supported in CPT/SFT/DPO/GRPO/KTO/GKD.
   - Note: Use `padding_free` together with `--attn_impl flash_attn` and `transformers>=4.44`. See [this PR](https://github.com/huggingface/transformers/pull/31629) for details. (Same as packing.)
   - **Compared to packing, padding_free avoids extra preprocessing time, but packing offers faster training and more stable memory usage**.
-- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py). ms-swift supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_empty_think'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
+- 🔥loss_scale: Loss weight configuration for training tokens. Default is `'default'`. loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies: 'ignore_empty_think', 'ignore_think_prefix', and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc. For available options, refer to [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py). ms-swift supports mixing basic strategies with other strategies, for example: `'default+ignore_empty_think'`, `'last_round+ignore_think_prefix'`. If no basic strategy is specified, it defaults to 'default', for example: 'hermes' is equivalent to 'default+hermes'.
   - 'default': All responses (including history) are calculated with weight 1 for cross-entropy loss (**system/user/multimodal tokens in messages and `tool_response` parts in Agent training are not included in loss calculation**). (**Default value for SFT**)
   - 'last_round': Only calculate loss for the last round response. The last round means all content after the last "user". (**Default value for RLHF**)
   - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
   - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'` (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
+  - 'ignore_think_prefix': Ignore loss computation for `'<think>\n'` at the start of a response (or `'<think>'` when no newline follows). The following reasoning content and `'</think>'` still contribute to the loss.
   - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
   - Note: Starting from `ms-swift >= 4.3.1`, multiple non-base strategies can be chained together (each strategy processes the output segments of the previous one, with weights multiplied accordingly). For example: `'last_round+hermes+ignore_empty_think'`, where `'last_round'` is the base strategy, and `'hermes+ignore_empty_think'` represents a chain of multiple non-base strategies that share the same base strategy.
 - disable_ignore_empty_think: Whether to disable the automatic appending of `ignore_empty_think` strategy to loss_scale for hybrid thinking models. Defaults to `False`, meaning for hybrid thinking models (e.g., Qwen3.5-4B), `+ignore_empty_think` is automatically appended to the loss_scale, so that empty `'<think>\n\n</think>\n\n'` blocks do not contribute to loss computation. If the user has already manually specified `ignore_empty_think` in the loss_scale, it will not be appended again. This parameter only takes effect during training and has no effect on pure thinking models or non-thinking models. Set to `True` to disable this default behavior.
@@ -584,6 +585,7 @@ RLHF arguments inherit from the [training arguments](#training-arguments).
 - temperature: Default is 0.9; this parameter will be used in PPO, GRPO and GKD.
 - top_k: Top-k parameter for rollout sampling. -1 means no top-k filtering is applied. Default is -1.
 - top_p: Top-p parameter for rollout sampling. 1.0 means no top-p filtering is applied. Default is 1.0.
+- min_p: Min-p parameter for rollout sampling. Tokens whose probability is below `min_p` times the probability of the most likely token are filtered out. 0.0 means no min-p filtering is applied. Default is 0.0. Only effective with the vLLM backend.
 
 #### GKD Arguments
 - lmbda: Default is 0.5. This parameter is used in GKD. It controls the lambda parameter for the proportion of student data (i.e., the proportion of student-generated outputs within the strategy). If lmbda is 0, student-generated data is not used.
@@ -864,6 +866,11 @@ In addition to the parameters listed above, some models support additional model
 
 - Model-specific parameters can be set via `--model_kwargs` or environment variables. For example: `--model_kwargs '{"fps_max_frames": 12}'` or `FPS_MAX_FRAMES=12`.
 - Note: If you specify model-specific parameters during training, please also set the corresponding parameters during inference to achieve optimal performance.
+
+
+### deepseek_v4, deepseek_v4_flash, glm5_2, hy_v3_preview
+- 🔥REASONING_EFFORT: Thinking effort, effective only when thinking is enabled. The accepted values vary by model: `'high'`/`'max'` for `deepseek_v4` (default `'high'`); `'low'`/`'high'`/`'max'` for `deepseek_v4_flash` (default `'low'`); `'high'`/`'max'` for `glm5_2` (default `'max'`); `'no_think'`/`'low'`/`'high'` for `hy_v3_preview` (default `'high'`).
+  - It can also be set per sample by passing `chat_template_kwargs` in the dataset or the inference request, e.g. `{"chat_template_kwargs": {"reasoning_effort": "max"}}`, which takes precedence over the environment variable.
 
 
 ### qwen2_vl, qvq, qwen2_5_vl, mimo_vl, keye_vl, keye_vl_1_5

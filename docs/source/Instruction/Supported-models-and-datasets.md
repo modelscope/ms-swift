@@ -505,6 +505,7 @@
 |[deepseek-ai/DeepSeek-V4-Flash-Base](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash-Base)|deepseek_v4|deepseek_v4|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Flash-Base](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Base)|
 |[deepseek-ai/DeepSeek-V4-Pro](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Pro)|deepseek_v4|deepseek_v4|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Pro](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)|
 |[deepseek-ai/DeepSeek-V4-Pro-Base](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Pro-Base)|deepseek_v4|deepseek_v4|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Pro-Base](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro-Base)|
+|[deepseek-ai/DeepSeek-V4-Flash-0731](https://modelscope.cn/models/deepseek-ai/DeepSeek-V4-Flash-0731)|deepseek_v4|deepseek_v4_flash|deepseek_v4|-|&#x2714;|-|[deepseek-ai/DeepSeek-V4-Flash-0731](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)|
 |[OpenBuddy/openbuddy-llama-65b-v8-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama-65b-v8-bf16)|openbuddy_llama|openbuddy||-|&#x2714;|-|[OpenBuddy/openbuddy-llama-65b-v8-bf16](https://huggingface.co/OpenBuddy/openbuddy-llama-65b-v8-bf16)|
 |[OpenBuddy/openbuddy-llama2-13b-v8.1-fp16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16)|openbuddy_llama|openbuddy||-|&#x2714;|-|[OpenBuddy/openbuddy-llama2-13b-v8.1-fp16](https://huggingface.co/OpenBuddy/openbuddy-llama2-13b-v8.1-fp16)|
 |[OpenBuddy/openbuddy-llama2-70b-v10.1-bf16](https://modelscope.cn/models/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16)|openbuddy_llama|openbuddy||-|&#x2714;|-|[OpenBuddy/openbuddy-llama2-70b-v10.1-bf16](https://huggingface.co/OpenBuddy/openbuddy-llama2-70b-v10.1-bf16)|
@@ -1086,6 +1087,7 @@
 |[moonshotai/Kimi-K2.5](https://modelscope.cn/models/moonshotai/Kimi-K2.5)|kimi_k25|kimi_k25|kimi_k25|transformers>=4.57.1,<5.0.0|&#x2714;|-|[moonshotai/Kimi-K2.5](https://huggingface.co/moonshotai/Kimi-K2.5)|
 |[moonshotai/Kimi-K2.6](https://modelscope.cn/models/moonshotai/Kimi-K2.6)|kimi_k25|kimi_k25|kimi_k25|transformers>=4.57.1,<5.0.0|&#x2714;|-|[moonshotai/Kimi-K2.6](https://huggingface.co/moonshotai/Kimi-K2.6)|
 |[moonshotai/Kimi-K2.7-Code](https://modelscope.cn/models/moonshotai/Kimi-K2.7-Code)|kimi_k25|kimi_k25|kimi_k25|transformers>=4.57.1,<5.0.0|&#x2714;|-|[moonshotai/Kimi-K2.7-Code](https://huggingface.co/moonshotai/Kimi-K2.7-Code)|
+|[moonshotai/Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3)|kimi_k3|kimi_k3|kimi_k3|transformers>=5, tiktoken|&#x2718;|vision|[moonshotai/Kimi-K3](https://huggingface.co/moonshotai/Kimi-K3)|
 |[Kwai-Keye/Keye-VL-8B-Preview](https://modelscope.cn/models/Kwai-Keye/Keye-VL-8B-Preview)|keye_vl|keye_vl||keye_vl_utils|&#x2718;|vision|[Kwai-Keye/Keye-VL-8B-Preview](https://huggingface.co/Kwai-Keye/Keye-VL-8B-Preview)|
 |[Kwai-Keye/Keye-VL-1_5-8B](https://modelscope.cn/models/Kwai-Keye/Keye-VL-1_5-8B)|keye_vl_1_5|keye_vl_1_5||keye_vl_utils>=1.5.2, transformers==4.52.4|&#x2718;|vision|[Kwai-Keye/Keye-VL-1_5-8B](https://huggingface.co/Kwai-Keye/Keye-VL-1_5-8B)|
 |[rednote-hilab/dots.ocr](https://modelscope.cn/models/rednote-hilab/dots.ocr)|dots_ocr|dots_ocr||transformers>=4.51.0|&#x2718;|-|[rednote-hilab/dots.ocr](https://huggingface.co/rednote-hilab/dots.ocr)|
@@ -1172,6 +1174,8 @@
 |[Tencent-Hunyuan/HunyuanOCR](https://modelscope.cn/models/Tencent-Hunyuan/HunyuanOCR)|hunyuan_ocr|hunyuan_ocr||transformers>=4.49.0|&#x2718;|-|[tencent/HunyuanOCR](https://huggingface.co/tencent/HunyuanOCR)|
 |[stepfun-ai/Step3-VL-10B-Base](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B-Base)|step3_vl|step3_vl|hermes|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B-Base](https://huggingface.co/stepfun-ai/Step3-VL-10B-Base)|
 |[stepfun-ai/Step3-VL-10B](https://modelscope.cn/models/stepfun-ai/Step3-VL-10B)|step3_vl|step3_vl|hermes|transformers>=4.57.0|&#x2718;|vision|[stepfun-ai/Step3-VL-10B](https://huggingface.co/stepfun-ai/Step3-VL-10B)|
+|[XiaomiMiMo/MiMo-V2.5](https://modelscope.cn/models/XiaomiMiMo/MiMo-V2.5)|mimo_v2|mimo_v2||transformers>=4.57|&#x2718;|vision, video, audio|-|
+|[meta-models/Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B)|muse_glimmer|muse_glimmer||transformers>=5.15|&#x2718;|vision, video|-|
 |[JinaAI/jina-reranker-m0](https://modelscope.cn/models/JinaAI/jina-reranker-m0)|jina_reranker_m0|jina_reranker_m0||-|&#x2718;|reranker, vision|[JinaAI/jina-reranker-m0](https://huggingface.co/JinaAI/jina-reranker-m0)|
 
 

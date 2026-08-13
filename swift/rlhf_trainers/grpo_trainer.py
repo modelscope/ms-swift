@@ -160,7 +160,6 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
             self.args.gradient_accumulation_steps = self.args.gradient_accumulation_steps * sequence_parallel.world_size
 
         # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
-        self.dynamic_num_samples = False
         # Record the number of samples that need to be padded for even distribution across processes
         self.rollout_pad_count = 0
 
@@ -549,7 +548,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for s in batch:
             s.encoded = encode_teacher_view(s, template)
         teacher_model_inputs, teacher_grpo_batch = collate_to_grpo_micro_batch(
-            batch, template, device=self.model.device, use_logits_to_keep=True)
+            batch, template, device=self.accelerator.device, use_logits_to_keep=True)
         teacher_model_inputs.pop('labels', None)
         # Restore the student encoding so downstream code (advantages/loss) keeps the student frame.
         for s in batch:
@@ -758,7 +757,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     encoded_inputs.pop('_extra_kwargs', None)  # pop add_eos
                     s.encoded = encoded_inputs
                 model_inputs, grpo_batch = collate_to_grpo_micro_batch(
-                    batch, template, device=self.model.device, use_logits_to_keep=True)
+                    batch, template, device=self.accelerator.device, use_logits_to_keep=True)
                 # OPSD: the local teacher forwards its own (teacher_prompt + same response)
                 # encoding, so collate a separate teacher micro-batch (different length).
                 has_opsd_batch = build_opsd_samples(batch)
@@ -2056,7 +2055,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 for ed in encoded_data:
                     ed.pop('_extra_kwargs', None)
                 chunk_model_inputs.update(
-                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.model.device))
+                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.accelerator.device))
                 chunk_model_inputs.pop('labels', None)
 
         return chunk_model_inputs, chunk_grpo_batch

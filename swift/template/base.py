@@ -354,6 +354,48 @@ class Template(ProcessorMixin):
             else:
                 i += 1
 
+    def _preprocess_standalone_tools(self, inputs: StdTemplateInputs) -> None:
+        """Fold tool observations without a preceding assistant call into the query.
+
+        The SWIFT encoder consumes alternating query/assistant pairs. A native chat
+        template can nevertheless accept a tool result directly after a user message.
+        Agent templates provide the exact observation syntax, which is appended to the
+        current query before pairing it with the following assistant response.
+        """
+        if self.template_backend != 'swift':
+            return
+        messages = inputs.messages
+        i = 0
+        while i < len(messages):
+            if (messages[i]['role'] != 'tool' or i > 0 and messages[i - 1]['role'] in {'assistant', 'tool'}):
+                i += 1
+                continue
+
+            i_start = i
+            while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
+                i += 1
+            tool_messages = messages[i_start:i + 1]
+
+            if i_start == 0:
+                raise ValueError('A standalone tool message must follow a user message.')
+            query_message = messages[i_start - 1]
+            if query_message['role'] != 'user':
+                raise ValueError(
+                    f'A standalone tool message must follow a user message. Previous message: {query_message}')
+            query_content = query_message.get('content') or ''
+            if not isinstance(query_content, str):
+                raise ValueError('Standalone tool messages currently require text-only user content. '
+                                 f'Content: {query_content}')
+
+            agent_template = self.agent_template
+            agent_template.template_meta = self.template_meta
+            tool_context = agent_template._format_standalone_tool_responses(tool_messages)
+            if not all(isinstance(context, str) for context in tool_context):
+                raise ValueError(f'Standalone tool formatting must produce text contexts: {tool_context}')
+            query_message['content'] = query_content + ''.join(tool_context)
+            del messages[i_start:i + 1]
+            i = i_start
+
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
         return {}
 
@@ -1242,6 +1284,7 @@ class Template(ProcessorMixin):
             None. The input messages list is updated in-place.
         """
         self._preprocess_tool_call(inputs)
+        self._preprocess_standalone_tools(inputs)
         messages = inputs.messages
         if len(messages) < 2:
             return

@@ -95,8 +95,10 @@ class MLLMModelArch:
     step_audio2_mini = 'step_audio2_mini'
     hunyuan_vl = 'hunyuan_vl'
     step3_vl = 'step3_vl'
+    mimo_v2 = 'mimo_v2'
     paddleocr_vl = 'paddleocr_vl'
     minimax_m3_vl = 'minimax_m3_vl'
+    muse_glimmer = 'muse_glimmer'
 
 
 class ModelArch(LLMModelArch, MLLMModelArch):
@@ -602,6 +604,16 @@ register_model_arch(
 
 register_model_arch(
     MultiModelKeys(
+        MLLMModelArch.muse_glimmer,
+        language_model=['model.language_model', 'lm_head'],
+        # Two-stage aligner: vision_adapter (fc1/fc2) then vision_projection to the text hidden size.
+        aligner=['model.vision_adapter', 'model.vision_projection'],
+        vision_tower='model.vision_tower',
+        mlp='model.language_model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
         MLLMModelArch.qwen2_5_omni,
         language_model=['thinker.model', 'thinker.lm_head'],
         vision_tower=['thinker.audio_tower', 'thinker.visual'],
@@ -840,6 +852,15 @@ register_model_arch(
         language_model=['model.language_model', 'lm_head'],
         aligner='model.multi_modal_projector',
         vision_tower='model.vision_tower',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.mimo_v2,
+        language_model=['model', 'lm_head'],
+        aligner='visual.merger',
+        vision_tower=['visual', 'audio_encoder'],
+        mlp='model.layers.{}.mlp',
     ))
 
 

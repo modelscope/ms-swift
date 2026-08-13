@@ -163,7 +163,7 @@ class RLHFTrainerMixin:
             labels = labels.to(logits.device)
             loss_mask = loss_mask.to(logits.device)
             mean_logits = reduce_logits
-            per_token_logps = torch.gather(logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
+            per_token_logps = selective_log_softmax(logits, labels)
             position_ids = sequence_parallel.real_position_ids
             total_per_token_logps, total_loss_mask = GatherLoss.apply(per_token_logps, loss_mask, 1, position_ids)
             total_mean_logits = sequence_parallel.gather(mean_logits, dim=1, position_ids=position_ids)

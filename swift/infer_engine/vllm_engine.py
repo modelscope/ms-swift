@@ -516,7 +516,7 @@ class VllmEngine(InferEngine):
 
     def _prepare_generation_config(self, request_config: RequestConfig) -> SamplingParams:
         kwargs = {'max_tokens': request_config.max_tokens}
-        for key in ['temperature', 'top_k', 'top_p', 'repetition_penalty']:
+        for key in ['temperature', 'top_k', 'top_p', 'min_p', 'repetition_penalty']:
             new_value = getattr(request_config, key)
             if new_value is None:
                 kwargs[key] = getattr(self.generation_config, key)

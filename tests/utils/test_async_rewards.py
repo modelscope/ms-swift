@@ -34,6 +34,8 @@ class TestAsyncRewardFunctions(unittest.TestCase):
         # Give the thread time to finish
         thread.join(timeout=2)
         self.assertFalse(thread.is_alive())
+        self.assertTrue(loop.is_closed())
+        shutdown_event_loop_in_daemon(thread, loop)
 
     def test_run_async_function_in_daemon_loop(self):
         """Test running an async function in the daemon event loop."""

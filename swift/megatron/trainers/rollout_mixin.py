@@ -22,6 +22,7 @@ from dataclasses import asdict
 from megatron.core import mpu
 from megatron.core.rerun_state_machine import RerunDataIterator
 from transformers import AutoConfig
+from transformers.utils import is_torch_npu_available
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, RolloutOutput
@@ -141,6 +142,7 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
             temperature=args.temperature,
             top_p=getattr(args, 'top_p', 1.0),
             top_k=getattr(args, 'top_k', -1),
+            min_p=getattr(args, 'min_p', 0.0),
             repetition_penalty=getattr(args, 'repetition_penalty', 1.0),
             stop=getattr(args, 'stop_words', None),
             return_details=True,
@@ -376,6 +378,10 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
         if args.rlhf_type == 'gkd' and args.lmbda == 0:
             return
+
+        if is_torch_npu_available():
+            from swift.model.npu_patch.vllm_ascend import validate_vllm_ascend_megatron_lora_training
+            validate_vllm_ascend_megatron_lora_training(self.unwrapped_models, args)
 
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
@@ -618,10 +624,17 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
         if self.vllm_mode == 'colocate':
             llm_model = self.engine.inner_model
-            patch_vllm_moe_model_weight_loader(llm_model)
-            llm_model.load_weights(weight_iterator)
-            _model_config = self.engine.engine.model_config
-            finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device)
+            ascend_reload_runner = None
+            if is_torch_npu_available():
+                from swift.model.npu_patch.vllm_ascend import get_vllm_ascend_reload_runner
+                ascend_reload_runner = get_vllm_ascend_reload_runner(self.engine)
+            if ascend_reload_runner is not None:
+                ascend_reload_runner.reload_weights(weights_iterator=weight_iterator, is_checkpoint_format=True)
+            else:
+                patch_vllm_moe_model_weight_loader(llm_model)
+                llm_model.load_weights(weight_iterator)
+                _model_config = self.engine.engine.model_config
+                finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.device)
         elif self.vllm_mode == 'server':
             self._load_weights_to_server_in_buckets(weight_iterator)
             if self.is_main_process:
