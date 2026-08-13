@@ -205,6 +205,10 @@ class IterablePackingDataset(IterableDataset):
             for x in iterable:
                 yield x
 
+    def set_epoch(self, epoch: int):
+        if hasattr(self.dataset, 'set_epoch'):
+            self.dataset.set_epoch(epoch)
+
     def __iter__(self):
         try:
             next(iter(self.dataset))
