@@ -1258,6 +1258,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 for key, val in self._metrics[mode].items()
             }
             avg_metric.update(addition_metrics)
+            # Reward metrics are produced once per rollout, while the same rollout can be
+            # consumed by multiple optimization steps. Once handed to Megatron's logging
+            # aggregator, clear them so they are neither reported repeatedly nor averaged
+            # together with every rollout seen since the start of training.
+            self._metrics[mode].clear()
 
         avg_metric = self._all_reduce_metric(avg_metric)
         reporting_metric = {**avg_metric, **custom_metrics}
