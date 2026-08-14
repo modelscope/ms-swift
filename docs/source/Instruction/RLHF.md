@@ -61,7 +61,7 @@ $
 - $m$: margin项，鼓励模型根据不同难度的样本进行区分，需要数据集中提供`margin`列，默认为0，来自[论文](https://arxiv.org/pdf/2307.09288)
 
 
-训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/rm.sh).
+训练脚本参考[这里](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/rm).
 
 ## PPO
 [论文arvix](https://arxiv.org/abs/2203.02155)
