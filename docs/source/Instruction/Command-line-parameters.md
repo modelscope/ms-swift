@@ -509,7 +509,7 @@ Vera使用`target_modules`、`target_regex`、`modules_to_save`三个参数，�
 - check_model: 检查本地模型文件有损坏或修改并给出提示，默认为True。**如果是断网环境，请设置为False**。
 - 🔥create_checkpoint_symlink: 额外创建checkpoint软链接，方便书写自动化训练脚本。best_model和last_model的软链接路径分别为f'{output_dir}/best'和f'{output_dir}/last'。
 - 🔥packing: 使用`padding_free`的方式将不同长度的数据样本打包成**近似**统一长度的样本（packing能保证不对完整的序列进行切分），实现训练时各节点与进程的负载均衡（避免长文本拖慢短文本的训练速度），从而提高GPU利用率，保持显存占用稳定。当使用 `--attn_impl flash_attn` 时，可确保packed样本内的不同序列之间相互独立，互不可见。该参数默认为`False`，目前支持 CPT/SFT/DPO/KTO/GKD以及embedding/reranker/seq_cls任务的packing。注意：**packing会导致数据集样本数减少，请自行调节梯度累加数和学习率**。
-  - 注意：Qwen3-Next的packing请使用Megatron-SWIFT。Qwen3.5的transformers生态padding_free/packing支持请使用"ms-swift>=4.3.1"（或使用Megatron-SWIFT），具体参考[Qwen3.5最佳实践](../BestPractices/Qwen3_5-Best-Practice.md)。
+  - 注意：Qwen3-Next的packing请使用Megatron-SWIFT。Qwen3.5的transformers生态padding_free/packing支持请使用"ms-swift>=4.3.1"（或使用Megatron-SWIFT），具体参考[Qwen3.5/Qwen3.6/Qwen3.8最佳实践](../BestPractices/Qwen3_8-Best-Practice.md)。
 - packing_length: packing的长度。默认为None，设置为max_length。
 - packing_num_proc: packing的进程数，默认为1。需要注意的是，不同的`packing_num_proc`，最终形成的packed数据集是不同的。（该参数在流式packing时不生效）。通常不需要修改该值，packing速度远快于tokenize速度。
 - packing_strategy: packing 算法，可选为'binpack'和'sequential'，默认为'binpack'。'binpack'使用 best-fit-decreasing 装箱（会按长度重排样本）；'sequential'使用保序的贪心装箱（next-fit：仅维护一个开放 pack，放不下即 flush），按输入顺序逐条装箱，使样本顺序与每个 pack 的边界跟随顺序采样器（建议配合 packing_num_proc=1 以保证全局顺序）。
