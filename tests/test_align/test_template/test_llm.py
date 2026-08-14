@@ -754,11 +754,10 @@ def test_qwen3_8():
     }]
     # The previous round's thinking must survive in the prompt.
     assert '简单加法' in template.safe_decode(template.encode({'messages': messages})['input_ids'])
-    # Note: the jinja backend is not compared here. Qwen3.8's chat_template dropped the fallback
-    # that splits `<think>` out of `content`, so with thinking preserved it wraps history in an
-    # extra empty `<think></think>`. swift keeps the inline form, which is swift's data contract.
-    response = _infer_model(engine, messages=messages)
-    assert response
+    swift_response = _infer_model(engine, messages=messages)
+    engine.template.template_backend = 'jinja'
+    jinja_response = _infer_model(engine, messages=messages)
+    assert swift_response == jinja_response
 
 
 def test_qwen3_8_reasoning_effort():
