@@ -261,12 +261,6 @@ class VllmEngine(InferEngine):
     def _get_hf_config_overrides(self) -> Dict[str, Any]:
         overrides = {}
         config = self.config
-        # Compare against the on-disk config: Swift's `self.config` has already been
-        # mutated by the model loader, and it carries no record of which fields the user
-        # actually overrode, so the checkpoint is the only reliable baseline.
-        # Honour the loader's `default_trust_remote_code`: some loaders (nvidia, baidu,
-        # minimax) deliberately opt out, so hardcoding True would execute remote code
-        # they chose to avoid.
         try:
             disk_config = AutoConfig.from_pretrained(
                 self.model_dir, trust_remote_code=self.model_meta.loader.default_trust_remote_code)
@@ -279,11 +273,6 @@ class VllmEngine(InferEngine):
                 return None
             return value if value != HfConfigFactory.get_config_attr(disk_config, key) else None
 
-        # `--rope_scaling` / `--max_model_len` rewrite RoPE; vLLM has no engine-arg for it.
-        # transformers>=5 renamed the field to `rope_parameters` (`rope_scaling` is an
-        # alias) and expects the normalized `rope_type` key, while Swift may still produce
-        # the legacy `type`; without normalizing, vLLM's `_get_and_verify_max_len` raises
-        # KeyError('rope_type').
         rope_key = 'rope_parameters' if hasattr(config, 'rope_parameters') else 'rope_scaling'
         rope_scaling = _changed(rope_key)
         if rope_scaling:
@@ -291,11 +280,9 @@ class VllmEngine(InferEngine):
             if 'rope_type' not in rope_scaling and 'type' in rope_scaling:
                 rope_scaling['rope_type'] = rope_scaling['type']
             overrides[rope_key] = rope_scaling
-        # Grown by `--new_special_tokens`; must match the resized embedding.
         vocab_size = _changed('vocab_size')
         if vocab_size is not None:
             overrides['vocab_size'] = vocab_size
-        # Encode tasks (seq_cls / reranker) drive the pooling head shape.
         if self.task_type in {'seq_cls', 'reranker'}:
             for key in ['num_labels', 'problem_type']:
                 value = getattr(config, key, None)
