@@ -735,6 +735,50 @@ def test_minicpm5():
     assert swift_response == jinja_response
 
 
+def test_qwen3_8():
+    engine = TransformersEngine('Qwen/Qwen3.8-27B')
+    template = engine.template
+    assert template.template_meta.template_type == 'qwen3_8'
+    # Unlike Qwen3.5/Qwen3.6, Qwen3.8 keeps historical thinking by default.
+    assert template.template_meta.preserve_thinking is True
+    assert template._get_preserve_thinking() is True
+    messages = [{
+        'role': 'user',
+        'content': '1+1等于几'
+    }, {
+        'role': 'assistant',
+        'content': '<think>\n简单加法。\n</think>\n\n等于2。'
+    }, {
+        'role': 'user',
+        'content': '那再加3呢'
+    }]
+    # The previous round's thinking must survive in the prompt.
+    assert '简单加法' in template.safe_decode(template.encode({'messages': messages})['input_ids'])
+    # Note: the jinja backend is not compared here. Qwen3.8's chat_template dropped the fallback
+    # that splits `<think>` out of `content`, so with thinking preserved it wraps history in an
+    # extra empty `<think></think>`. swift keeps the inline form, which is swift's data contract.
+    response = _infer_model(engine, messages=messages)
+    assert response
+
+
+def test_qwen3_8_reasoning_effort():
+    engine = TransformersEngine('Qwen/Qwen3.8-27B')
+    template = engine.template
+    # The reasoning-effort instruction is only injected while thinking is enabled.
+    template.enable_thinking = True
+    messages = [{'role': 'user', 'content': '你好'}]
+    # `medium` injects no instruction, `xhigh`(default)/`low` prepend one to the system message.
+    for reasoning_effort in ['xhigh', 'medium', 'low']:
+        data = {'messages': messages, 'chat_template_kwargs': {'reasoning_effort': reasoning_effort}}
+        template.template_backend = 'swift'
+        swift_input_ids = template.encode(data)['input_ids']
+        template.template_backend = 'jinja'
+        jinja_input_ids = template.encode(data)['input_ids']
+        assert swift_input_ids == jinja_input_ids, reasoning_effort
+        text = template.safe_decode(swift_input_ids)
+        assert ('Reasoning effort is set to' in text) is (reasoning_effort != 'medium'), reasoning_effort
+
+
 if __name__ == '__main__':
     from swift.infer_engine import RequestConfig, TransformersEngine
     from swift.utils import get_logger, seed_everything
@@ -792,4 +836,6 @@ if __name__ == '__main__':
     # test_youtu_llm()
     # test_glm4_moe_lite()
     # test_olmoe()
-    test_minicpm5()
+    # test_minicpm5()
+    test_qwen3_8()
+    test_qwen3_8_reasoning_effort()
