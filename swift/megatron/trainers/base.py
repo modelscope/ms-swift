@@ -822,10 +822,7 @@ class BaseMegatronTrainer(ABC):
                 for fname in ['latest_checkpointed_iteration.txt', 'args.json']:
                     src_path = os.path.join(origin_output_dir, fname)
                     self.copy_path(src_path, os.path.join(output_dir, fname))
-                # common.pt: only produced by legacy checkpoints. Since Megatron-LM #5160
-                # ("deprecate common strategy") the torch_dist backend stores the common
-                # (non-sharded) state as a `common_state` ShardedObject inside the *.distcp
-                # shards instead, so the file is legitimately absent -- skip it in that case.
+                # common.pt
                 common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
                 if os.path.exists(common_path):
                     tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
