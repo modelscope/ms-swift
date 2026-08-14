@@ -173,6 +173,10 @@ class Template(ProcessorMixin):
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
+            # Models that keep historical thinking themselves always preserve it, unless the user
+            # explicitly opts out above.
+            preserve_thinking = self.template_meta.preserve_thinking
+        if preserve_thinking is None:
             enable_thinking = self._get_enable_thinking(inputs)
             if self.template_meta.is_thinking or enable_thinking:
                 if self.is_training and self.loss_scale.base_strategy != 'last_round':
@@ -1229,7 +1233,8 @@ class Template(ProcessorMixin):
             # Determine the starting index for processing messages
             # During inference or when using 'last_round' strategy, only process the last round
             # Otherwise, process all messages (start_idx = -1 means start from the beginning)
-            if not self.is_training or self.loss_scale.base_strategy == 'last_round':
+            if ((not self.is_training or self.loss_scale.base_strategy == 'last_round')
+                    and not self.template_meta.preserve_thinking):
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
