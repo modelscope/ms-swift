@@ -1228,6 +1228,62 @@ def _get_qwen3_5_cu_seqlens_q():
     return None
 
 
+_QWEN3_5_CURRENT_CACHE = 'current'
+_QWEN3_5_LEGACY_CACHE = 'legacy'
+
+
+def _get_qwen3_5_linear_cache_layout(cache_params, layer_idx: int) -> Tuple[Optional[str], bool]:
+    """Identify a compatible GDN cache without treating generic attention caches as linear state."""
+    if cache_params is None or layer_idx < 0:
+        return None, False
+
+    layers = getattr(cache_params, 'layers', None)
+    try:
+        layer_cache = layers[layer_idx] if layers is not None and layer_idx < len(layers) else None
+    except TypeError:
+        layer_cache = None
+    if (layer_cache is not None and callable(getattr(layer_cache, 'update_conv_state', None))
+            and callable(getattr(layer_cache, 'update_recurrent_state', None))
+            and callable(getattr(cache_params, 'update_conv_state', None))
+            and callable(getattr(cache_params, 'update_recurrent_state', None))
+            and callable(getattr(cache_params, 'has_previous_state', None))):
+        return _QWEN3_5_CURRENT_CACHE, bool(cache_params.has_previous_state(layer_idx))
+
+    conv_states = getattr(cache_params, 'conv_states', None)
+    recurrent_states = getattr(cache_params, 'recurrent_states', None)
+    has_flat_state = (
+        isinstance(conv_states, list) and isinstance(recurrent_states, list) and layer_idx < len(conv_states)
+        and layer_idx < len(recurrent_states))
+    if not has_flat_state:
+        return None, False
+
+    try:
+        has_previous_state = cache_params.has_previous_state
+    except AttributeError:
+        return None, False
+    if callable(has_previous_state):
+        return None, False
+    return _QWEN3_5_LEGACY_CACHE, bool(has_previous_state)
+
+
+def _update_qwen3_5_linear_cache_state(
+    cache_params,
+    cache_layout: str,
+    layer_idx: int,
+    state: torch.Tensor,
+    *,
+    recurrent: bool,
+) -> None:
+    if cache_layout == _QWEN3_5_CURRENT_CACHE:
+        update = cache_params.update_recurrent_state if recurrent else cache_params.update_conv_state
+        update(state, layer_idx)
+    elif cache_layout == _QWEN3_5_LEGACY_CACHE:
+        states = cache_params.recurrent_states if recurrent else cache_params.conv_states
+        states[layer_idx] = state
+    else:
+        raise ValueError(f'Unexpected Qwen3.5 linear cache layout: {cache_layout!r}')
+
+
 def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     mod: torch.nn.Module,
     hidden_states: torch.Tensor,
@@ -1237,6 +1293,12 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     attention_mask: Optional[torch.Tensor] = None,
     **kwargs,
 ) -> torch.Tensor:
+    cache_layout, has_previous_state = _get_qwen3_5_linear_cache_layout(cache_params, mod.layer_idx)
+    if has_previous_state:
+        raise NotImplementedError(
+            'Qwen3.5 linear attention packing/padding-free/sequence-parallel only supports empty-cache '
+            'training/prefill; continuation or decode with initialized cache state is not supported.')
+
     _ensure_linear_attention_kernels(mod)
     apply_mask_to_padding_states = mod.__class__._apply_mask_to_padding_states
 
@@ -1245,13 +1307,6 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
         local_attention_mask = _get_local_padding_mask(attention_mask, hidden_states.shape[1])
     hidden_states = apply_mask_to_padding_states(hidden_states, local_attention_mask)
     batch_size, seq_len, _ = hidden_states.shape
-
-    has_previous_state = bool(cache_params is not None and getattr(cache_params, 'has_previous_state', False))
-    use_precomputed_states = has_previous_state and seq_len == 1 and cache_position is not None
-    if use_precomputed_states:
-        raise NotImplementedError(
-            'Qwen3.5 linear attention sequence parallel only supports training/prefill paths; decode with '
-            'cached states is not supported.')
 
     mixed_qkv = mod.in_proj_qkv(hidden_states)
     z = mod.in_proj_z(hidden_states).reshape(batch_size, seq_len, mod.num_v_heads, mod.head_v_dim)
@@ -1300,9 +1355,9 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     else:
         cu_seqlens = kwargs.get('cu_seq_lens_q')
 
-    if cache_params is not None:
-        cache_params.conv_states[mod.layer_idx] = F.pad(
-            mixed_qkv.transpose(1, 2).contiguous(), (mod.conv_kernel_size - mixed_qkv.shape[1], 0))
+    if cache_layout is not None:
+        new_conv_state = F.pad(mixed_qkv.transpose(1, 2).contiguous(), (mod.conv_kernel_size - mixed_qkv.shape[1], 0))
+        _update_qwen3_5_linear_cache_state(cache_params, cache_layout, mod.layer_idx, new_conv_state, recurrent=False)
     mixed_qkv, _ = mod._swift_fla_causal_conv1d_fn(
         x=mixed_qkv,
         weight=conv_weight,
@@ -1335,15 +1390,16 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
         'g': g,
         'beta': beta,
         'initial_state': None,
-        'output_final_state': cache_params is not None,
+        'output_final_state': cache_layout is not None,
         'use_qk_l2norm_in_kernel': True,
     }
     if cu_seqlens is not None:
         chunk_kwargs['cu_seqlens'] = cu_seqlens
     core_attn_out, last_recurrent_state = mod.chunk_gated_delta_rule(query, key, value, **chunk_kwargs)
 
-    if cache_params is not None:
-        cache_params.recurrent_states[mod.layer_idx] = last_recurrent_state
+    if cache_layout is not None:
+        _update_qwen3_5_linear_cache_state(
+            cache_params, cache_layout, mod.layer_idx, last_recurrent_state, recurrent=True)
 
     if sp_enabled:
         core_attn_out = head_to_seq_shard(core_attn_out)
