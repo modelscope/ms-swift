@@ -22,6 +22,7 @@ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 \
 accelerate launch --config_file "./examples/ascend/train/qwen3_8/qwen3_8_27b_fsdp2.json" \
     swift/cli/sft.py \
     --model "${MODEL}" \
+    --model_type qwen3_5 \
     --tuner_type lora \
     --lora_rank 8 \
     --lora_alpha 32 \
@@ -31,13 +32,14 @@ accelerate launch --config_file "./examples/ascend/train/qwen3_8/qwen3_8_27b_fsd
               'swift/self-cognition' \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
-    --per_device_train_batch_size 2 \
+    --per_device_train_batch_size 4 \
     --gradient_accumulation_steps 1 \
     --gradient_checkpointing true \
     --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
     --learning_rate 1e-4 \
     --warmup_ratio 0.05 \
-    --max_length 4096 \
+    --max_length 2048 \
+    --max_steps 50 \
     --num_train_epochs 1 \
     --eval_strategy no \
     --save_strategy steps \
