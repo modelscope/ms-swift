@@ -166,17 +166,7 @@ def split_str_parts_by(text: str, delimiters: List[str], regex_mode: bool = Fals
 
 
 def get_last_user_round(messages):
-    """Get the index of the last round's user or tool message.
-
-    A round is a (query, assistant) pair; the query role is 'user' or 'tool'.
-    For agent / tool-call data the last round's query is usually a
-    tool response, so 'tool' must be counted here too -- otherwise the last
-    round is mis-identified and 'last_round' loss scaling ends up training on
-    every assistant turn instead of only the final one. Consecutive tools are
-    already merged into one message by ``_swift_prepare_inputs`` (which runs
-    before this is called from ``LossScale.__call__``), so parallel tool calls
-    count as a single round-start.
-    """
+    """Get the index of the last user or tool message."""
     for i in range(len(messages) - 1, -1, -1):
         if messages[i]['role'] in ('user', 'tool'):
             return i
