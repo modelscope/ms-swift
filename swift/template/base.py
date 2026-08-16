@@ -173,6 +173,10 @@ class Template(ProcessorMixin):
         if preserve_thinking is None:
             preserve_thinking = self.preserve_thinking
         if preserve_thinking is None:
+            # Models that keep historical thinking themselves always preserve it, unless the user
+            # explicitly opts out above.
+            preserve_thinking = self.template_meta.preserve_thinking
+        if preserve_thinking is None:
             enable_thinking = self._get_enable_thinking(inputs)
             if self.template_meta.is_thinking or enable_thinking:
                 if self.is_training and self.loss_scale.base_strategy != 'last_round':
@@ -353,6 +357,48 @@ class Template(ProcessorMixin):
                 i = i_start + 1
             else:
                 i += 1
+
+    def _preprocess_standalone_tools(self, inputs: StdTemplateInputs) -> None:
+        """Fold tool observations without a preceding assistant call into the query.
+
+        The SWIFT encoder consumes alternating query/assistant pairs. A native chat
+        template can nevertheless accept a tool result directly after a user message.
+        Agent templates provide the exact observation syntax, which is appended to the
+        current query before pairing it with the following assistant response.
+        """
+        if self.template_backend != 'swift':
+            return
+        messages = inputs.messages
+        i = 0
+        while i < len(messages):
+            if (messages[i]['role'] != 'tool' or i > 0 and messages[i - 1]['role'] in {'assistant', 'tool'}):
+                i += 1
+                continue
+
+            i_start = i
+            while i + 1 < len(messages) and messages[i + 1]['role'] == 'tool':
+                i += 1
+            tool_messages = messages[i_start:i + 1]
+
+            if i_start == 0:
+                raise ValueError('A standalone tool message must follow a user message.')
+            query_message = messages[i_start - 1]
+            if query_message['role'] != 'user':
+                raise ValueError(
+                    f'A standalone tool message must follow a user message. Previous message: {query_message}')
+            query_content = query_message.get('content') or ''
+            if not isinstance(query_content, str):
+                raise ValueError('Standalone tool messages currently require text-only user content. '
+                                 f'Content: {query_content}')
+
+            agent_template = self.agent_template
+            agent_template.template_meta = self.template_meta
+            tool_context = agent_template._format_standalone_tool_responses(tool_messages)
+            if not all(isinstance(context, str) for context in tool_context):
+                raise ValueError(f'Standalone tool formatting must produce text contexts: {tool_context}')
+            query_message['content'] = query_content + ''.join(tool_context)
+            del messages[i_start:i + 1]
+            i = i_start
 
     def prepare_engine_kwargs(self) -> Dict[str, Any]:
         return {}
@@ -1187,7 +1233,8 @@ class Template(ProcessorMixin):
             # Determine the starting index for processing messages
             # During inference or when using 'last_round' strategy, only process the last round
             # Otherwise, process all messages (start_idx = -1 means start from the beginning)
-            if not self.is_training or self.loss_scale.base_strategy == 'last_round':
+            if ((not self.is_training or self.loss_scale.base_strategy == 'last_round')
+                    and not self.template_meta.preserve_thinking):
                 start_idx = get_last_user_round(messages)
             else:
                 start_idx = -1
@@ -1242,6 +1289,7 @@ class Template(ProcessorMixin):
             None. The input messages list is updated in-place.
         """
         self._preprocess_tool_call(inputs)
+        self._preprocess_standalone_tools(inputs)
         messages = inputs.messages
         if len(messages) < 2:
             return

@@ -154,10 +154,15 @@ def git_clone_github(github_url: str,
 def download_ms_file(url: str, local_path: str, cookies=None) -> None:
     if cookies is None:
         cookies = ModelScopeConfig.get_cookies()
-    resp = requests.get(url, cookies=cookies, stream=True)
-    with open(local_path, 'wb') as f:
-        for data in tqdm(resp.iter_lines()):
-            f.write(data)
+    with requests.get(url, cookies=cookies, stream=True) as resp:
+        resp.raise_for_status()
+        total_size = int(resp.headers.get('content-length', 0))
+        with open(local_path, 'wb') as f, tqdm(
+                total=total_size, unit='B', unit_scale=True, unit_divisor=1024,
+                desc=os.path.basename(local_path)) as pbar:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+                pbar.update(len(chunk))
 
 
 def _resolve_kernel_variant_str(repo_id: str) -> Optional[str]:
@@ -237,12 +242,12 @@ def download_file(url: str) -> str:
     file_path = os.path.join(cache_dir, file_name)
     if os.path.exists(file_path):
         return file_path
-    resp = requests.get(url, stream=True)
-    resp.raise_for_status()
-    total_size = int(resp.headers.get('content-length', 0))
-    with open(file_path, 'wb') as f, tqdm(
-            total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=file_name) as pbar:
-        for chunk in resp.iter_content(chunk_size=8192):
-            f.write(chunk)
-            pbar.update(len(chunk))
+    with requests.get(url, stream=True) as resp:
+        resp.raise_for_status()
+        total_size = int(resp.headers.get('content-length', 0))
+        with open(file_path, 'wb') as f, tqdm(
+                total=total_size, unit='B', unit_scale=True, unit_divisor=1024, desc=file_name) as pbar:
+            for chunk in resp.iter_content(chunk_size=8192):
+                f.write(chunk)
+                pbar.update(len(chunk))
     return file_path

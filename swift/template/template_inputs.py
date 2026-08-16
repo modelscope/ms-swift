@@ -11,6 +11,44 @@ from .utils import Messages, Tool, get_last_user_round, messages_to_history
 logger = get_logger()
 
 
+def normalize_openai_tool_calls(messages: Messages) -> Messages:
+    """Convert OpenAI assistant ``tool_calls`` into SWIFT canonical messages."""
+    normalized = []
+    for message in messages:
+        tool_calls = message.get('tool_calls') if message.get('role') == 'assistant' else None
+        if not tool_calls:
+            normalized.append(message)
+            continue
+
+        content = message.get('content')
+        if content:
+            normalized.append({
+                key: value
+                for key, value in message.items() if key in {'role', 'content', 'loss', 'loss_scale'}
+            })
+        for tool_call in tool_calls:
+            # no function field, back to tool_call
+            function = tool_call.get('function', tool_call)
+            arguments = function.get('arguments', {})
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments)
+                except json.JSONDecodeError:
+                    pass
+            tool_message = {
+                'role': 'tool_call',
+                'content': {
+                    'name': function['name'],
+                    'arguments': arguments,
+                },
+            }
+            for key in ['loss', 'loss_scale']:
+                if key in message:
+                    tool_message[key] = message[key]
+            normalized.append(tool_message)
+    return normalized
+
+
 @dataclass
 class StdTemplateInputs:
     # only user/tool/assistant
@@ -62,7 +100,9 @@ class StdTemplateInputs:
         for key in ['label', 'channel', 'margin', 'rejected_response']:
             if key in inputs:
                 kwargs[key] = inputs[key]
-        messages = inputs['messages']
+        # Dataset loading performs the same conversion, but Template.encode also
+        # accepts dictionaries directly and must not require a placeholder content.
+        messages = normalize_openai_tool_calls(inputs['messages'])
         tools = inputs.get('tools')
         objects = inputs.get('objects') or {}
         chat_template_kwargs = inputs.get('chat_template_kwargs') or {}
@@ -76,8 +116,9 @@ class StdTemplateInputs:
         for message in messages:
             if message['role'] == 'tool_response':
                 message['role'] = 'tool'
-            if message['role'] in {'tool_call', 'tool'} and not isinstance(message['content'], str):
-                message['content'] = json.dumps(message['content'], ensure_ascii=False)
+            content = message.get('content')
+            if message['role'] in {'tool_call', 'tool'} and not isinstance(content, str):
+                message['content'] = json.dumps(content, ensure_ascii=False)
 
         media_kwargs = StdTemplateInputs.remove_messages_media(messages)
         for k in list(media_kwargs.keys()):
@@ -108,8 +149,8 @@ class StdTemplateInputs:
     def remove_messages_media(messages: Messages) -> Dict[str, Any]:
         res = {'images': [], 'audios': [], 'videos': []}
         for message in messages:
-            content = message['content']
-            if isinstance(content, str):
+            content = message.get('content')
+            if content is None or isinstance(content, str):
                 continue
             elif (isinstance(content, list) and content
                   and isinstance(content[0], int)) or (isinstance(content, dict) and 'token_ids' in content):
