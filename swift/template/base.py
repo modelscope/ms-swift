@@ -1817,8 +1817,9 @@ class Template(ProcessorMixin):
         res = self._data_collator(new_batch, padding_to=padding_to)
 
         # reward modeling
-        margin = [b['margin'] for b in batch if b.get('margin') is not None]
-        if margin:
+        has_margin = any(b.get('margin') is not None for b in batch)
+        if has_margin:
+            margin = [0.0 if b.get('margin') is None else b['margin'] for b in batch]
             res['margin'] = torch.tensor(margin, dtype=torch.float)
 
         return res
