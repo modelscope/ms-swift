@@ -46,6 +46,10 @@ class RewardTrainer(RLHFTrainerMixin, SwiftMixin, HFRewardTrainer):
         rewards = model(**inputs).logits
         rewards_chosen, rewards_rejected = torch.split(rewards, batch_size, dim=0)
         if margin is not None:
+            margin = margin.to(device=rewards_chosen.device, dtype=rewards_chosen.dtype)
+            if margin.numel() != batch_size:
+                raise ValueError(f'Expected {batch_size} margins, got {margin.numel()}.')
+            margin = margin.reshape_as(rewards_chosen)
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected - margin).mean()
         else:
             loss = -nn.functional.logsigmoid(rewards_chosen - rewards_rejected).mean()
