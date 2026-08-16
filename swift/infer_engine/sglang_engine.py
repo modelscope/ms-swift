@@ -268,17 +268,19 @@ class SglangEngine(InferEngine):
 
     async def _infer_stream_async(self, inputs: Dict[str, Any], generation_config: Dict[str, Any],
                                   **kwargs) -> AsyncIterator[ChatCompletionStreamResponse]:
+        request_id = f'chatcmpl-{random_uuid()}'
         engine_inputs = {k: v for k, v in inputs.items() if k != 'template_inputs'}
         result_generator = await self.engine.async_generate(
             **engine_inputs, sampling_params=generation_config, stream=True)
         infer_streamer = InferStreamer(self.template, template_inputs=inputs['template_inputs'])
         async for output in result_generator:
-            res = self._create_chat_completion_stream_response(output, infer_streamer)
+            res = self._create_chat_completion_stream_response(output, infer_streamer, request_id)
             if res is None:
                 continue
             yield res
 
-    def _create_chat_completion_stream_response(self, output, infer_streamer) -> Optional[ChatCompletionStreamResponse]:
+    def _create_chat_completion_stream_response(self, output, infer_streamer,
+                                                request_id) -> Optional[ChatCompletionStreamResponse]:
         assert output is not None
         meta_info = output['meta_info']
         finish_reason = meta_info['finish_reason']
@@ -299,4 +301,4 @@ class SglangEngine(InferEngine):
             delta=DeltaMessage(role='assistant', content=delta_text, tool_calls=toolcall),
             finish_reason=finish_reason,
             logprobs=None)
-        return ChatCompletionStreamResponse(model=self.model_name, choices=[choice], usage=usage_info)
+        return ChatCompletionStreamResponse(model=self.model_name, choices=[choice], usage=usage_info, id=request_id)
