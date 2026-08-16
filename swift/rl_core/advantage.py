@@ -7,6 +7,16 @@ from typing import Dict, List, Optional, Tuple
 from swift.utils import nanstd
 
 
+def get_local_rollout_values(values: torch.Tensor, sample_counts: List[int], rollout_rank: int) -> torch.Tensor:
+    """Select the values owned by one rank from a rollout-group concatenation."""
+    total_samples = sum(sample_counts)
+    assert values.shape[0] == total_samples, (
+        f'Expected {total_samples} rollout values from sample counts, but got {values.shape[0]}')
+    start_idx = sum(sample_counts[:rollout_rank])
+    end_idx = start_idx + sample_counts[rollout_rank]
+    return values[start_idx:end_idx]
+
+
 def compute_advantages(
     rewards_per_func: torch.Tensor,
     reward_weights: torch.Tensor,

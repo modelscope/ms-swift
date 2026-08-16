@@ -13,7 +13,7 @@ from swift.infer_engine.protocol import RequestConfig, RolloutInferRequest, Roll
 from swift.megatron.arguments import MegatronArguments
 from swift.megatron.utils import RouterReplayHelper, get_padding_to, set_router_replay_data
 from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics, compute_teacher_kl_per_token,
-                                     expand_advantage_to_per_token)
+                                     expand_advantage_to_per_token, get_local_rollout_values)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
 from swift.rl_core.resample import resample_encode_failed_inputs
@@ -308,7 +308,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         # Step 2: Compute KL from logps if kl_in_reward is enabled
         kl_values = None
         if self.kl_in_reward and self.beta != 0.0:
-            kl_values = self._compute_kl_from_batches(mini_batch_data)
+            kl_values = self._compute_kl_from_batches(mini_batch_data, len(samples), rollout_group)
 
         # Step 3: Compute the per-sequence base advantage (with ref-KL penalty if kl_in_reward).
         advantages = self._compute_advantages(samples, rewards_per_func, kl_values=kl_values)
@@ -818,7 +818,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             tok_sum += grpo_batch.completion_mask.sum().item()
         self._metrics[mode]['teacher_kl'].append(kl_sum / max(tok_sum, 1.0))
 
-    def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]]) -> torch.Tensor:
+    def _compute_kl_from_batches(self, mini_batch_data: List[Dict[str, Any]], local_num_samples: int,
+                                 rollout_group: torch.distributed.ProcessGroup) -> torch.Tensor:
         """
         Compute per-sample KL divergence from encoded batches for kl_in_reward.
 
@@ -829,6 +830,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 - old_per_token_logps: [batch_size, max_seq_len] in batch format
                 - ref_per_token_logps: [batch_size, max_seq_len] in batch format
                 - completion_mask: [batch_size, max_seq_len] mask for completion tokens
+            local_num_samples: Number of samples owned by the current rank
+            rollout_group: Process group whose samples were concatenated into the batches
 
         Returns:
             kl_values: Per-sample KL values, shape [total_samples]
@@ -845,8 +848,13 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             sample_kl = (per_token_kl * grpo_batch.completion_mask).sum(-1)  # [batch_size]
             kl_list.append(sample_kl)
 
-        # Concatenate all KL values and gather across ranks
+        # mini_batch_data contains the whole rollout group's samples on every rank. Select
+        # only the values originally owned by this rank before the global gather, matching
+        # the ownership and ordering used when rewards are gathered in _compute_advantages.
         kl_values = torch.cat(kl_list, dim=0)
+        sample_counts = gather_object([local_num_samples], group=rollout_group)
+        rollout_rank = torch.distributed.get_rank(group=rollout_group)
+        kl_values = get_local_rollout_values(kl_values, sample_counts, rollout_rank)
         kl_values = gather(kl_values)
 
         return kl_values
