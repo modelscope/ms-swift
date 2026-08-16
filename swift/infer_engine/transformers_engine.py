@@ -248,7 +248,8 @@ class TransformersEngine(InferEngine):
             'streamer': streamer,
             **inputs,
         }
-        adapter_names = self._get_adapter_names(adapter_request)
+        batch_size = inputs['attention_mask'].shape[0]
+        adapter_names = self._get_adapter_names(adapter_request, batch_size)
         if adapter_names is not None:
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
@@ -266,7 +267,6 @@ class TransformersEngine(InferEngine):
         generate_kwargs = self.template.prepare_generate_kwargs(generate_kwargs, model=self.model)
         thread = Thread(target=_model_generate, kwargs=generate_kwargs)
         thread.start()
-        batch_size = inputs['attention_mask'].shape[0]
         all_is_finished = False
         is_finished = [False] * batch_size
         infer_streamers = [InferStreamer(self.template, template_inputs=template_inputs[i]) for i in range(batch_size)]
@@ -337,22 +337,22 @@ class TransformersEngine(InferEngine):
             if any(res):
                 yield res
 
-    def _get_adapter_names(self, adapter_request: Optional[AdapterRequest]) -> Optional[List[str]]:
+    def _get_adapter_names(self, adapter_request: Optional[AdapterRequest], batch_size: int) -> Optional[List[str]]:
         if adapter_request is None:
             if self._adapters_pool:
-                return ['__base__']
+                return ['__base__'] * batch_size
             return
         adapter_name = adapter_request.name
         if adapter_name not in self._adapters_pool:
             self._adapters_pool[adapter_name] = adapter_request
             self._add_adapter(adapter_request.path, adapter_name)
-        return [adapter_name]
+        return [adapter_name] * batch_size
 
     def _infer_forward(self, inputs: Dict[str, Any], adapter_request: Optional[AdapterRequest],
                        request_config: RequestConfig, **kwargs):
         call_kwargs = {}
         top_logprobs = request_config.top_logprobs or 20
-        adapter_names = self._get_adapter_names(adapter_request)
+        adapter_names = self._get_adapter_names(adapter_request, inputs['attention_mask'].shape[0])
         if adapter_names is not None:
             call_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
@@ -411,7 +411,7 @@ class TransformersEngine(InferEngine):
                     template_inputs) -> List[ChatCompletionResponse]:
         # bos_token TODO: encoder-decoder
         generate_kwargs = {'generation_config': generation_config, **inputs}
-        adapter_names = self._get_adapter_names(adapter_request)
+        adapter_names = self._get_adapter_names(adapter_request, inputs['attention_mask'].shape[0])
         if adapter_names is not None:
             generate_kwargs['adapter_names'] = adapter_names
         num_prompt_tokens = self._get_num_tokens(inputs)
