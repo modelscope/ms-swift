@@ -1490,8 +1490,8 @@ register_model(
                 Model('Qwen/Qwen3.6-35B-A3B-FP8', 'Qwen/Qwen3.6-35B-A3B-FP8'),
             ], TemplateType.qwen3_5),
             ModelGroup([
-                Model('Qwen/Qwen3.8-35B-A3B', 'Qwen/Qwen3.8-35B-A3B'),
-                Model('Qwen/Qwen3.8-35B-A3B-FP8', 'Qwen/Qwen3.8-35B-A3B-FP8'),
+                Model('Qwen/Qwen3.8-27B', 'Qwen/Qwen3.8-27B'),
+                Model('Qwen/Qwen3.8-27B-FP8', 'Qwen/Qwen3.8-27B-FP8'),
                 Model('Qwen/Qwen3.8-2.4T-A95B', 'Qwen/Qwen3.8-2.4T-A95B'),
                 Model('Qwen/Qwen3.8-2.4T-A95B-FP8', 'Qwen/Qwen3.8-2.4T-A95B-FP8'),
             ], TemplateType.qwen3_8),
