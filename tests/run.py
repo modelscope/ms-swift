@@ -14,6 +14,7 @@ import torch
 import unittest
 import yaml
 from fnmatch import fnmatch
+from importlib import metadata
 from model_tag import ModelTag, commit_model_ut_result
 from pathlib import Path
 from test_utils import get_case_model_info
@@ -214,6 +215,36 @@ def install_requirements(requirements):
         run_command(cmd)
 
 
+# Some suites pull modelscope remote code that pip installs the model's own
+# pinned requirements into this shared environment (the StructBERT model in
+# tests/tuners/test_merged_linear.py drags in transformers==4.48.3), and every
+# suite scheduled after it then runs against the wrong transformers. Snapshot
+# the versions right after env setup and put them back once a suite finishes.
+_CI_ENV_VERSIONS = {}
+
+
+def record_env_versions():
+    for pkg in ('transformers', 'peft', 'huggingface-hub'):
+        try:
+            _CI_ENV_VERSIONS[pkg] = metadata.version(pkg)
+        except metadata.PackageNotFoundError:
+            pass
+
+
+def restore_env_versions():
+    reinstall = []
+    for pkg, pinned in _CI_ENV_VERSIONS.items():
+        try:
+            current = metadata.version(pkg)
+        except metadata.PackageNotFoundError:
+            current = None
+        if current != pinned:
+            reinstall.append('%s==%s' % (pkg, pinned))
+    if reinstall:
+        logger.info('Suite changed env package versions, restoring: %s' % reinstall)
+        install_packages(reinstall)
+
+
 def wait_for_free_worker(workers):
     while True:
         for idx, worker in enumerate(workers):
@@ -229,6 +260,7 @@ def wait_for_free_worker(workers):
             else:  # worker process completed.
                 logger.info('Process end: %s' % (idx))
                 workers[idx] = None
+                restore_env_versions()
                 return idx
         time.sleep(0.001)
 
@@ -268,6 +300,7 @@ def parallel_run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, 
         install_requirements(env['requirements'])
     if 'dependencies' in env:
         install_packages(env['dependencies'])
+    record_env_versions()
     # case worker processes
     worker_processes = [None] * parallel
     for test_suite_file in isolated_cases:  # run case in subprocess
@@ -316,6 +349,7 @@ def run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, result_di
         install_requirements(env['requirements'])
     if 'dependencies' in env:
         install_packages(env['dependencies'])
+    record_env_versions()
 
     for test_suite_file in isolated_cases:  # run case in subprocess
         if test_suite_file in test_suite_env_map and test_suite_env_map[test_suite_file] == env_name:
@@ -328,6 +362,7 @@ def run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, result_di
                 result_dir,
             ]
             run_command_with_popen(cmd)
+            restore_env_versions()
         else:
             pass  # case not in run list.
 
@@ -342,6 +377,7 @@ def run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, result_di
     for suite in remain_suite_files:
         cmd.append(suite)
     run_command_with_popen(cmd)
+    restore_env_versions()
 
 
 def run_non_parallelizable_test_suites(suites, result_dir):
