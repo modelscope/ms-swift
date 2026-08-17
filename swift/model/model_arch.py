@@ -34,6 +34,7 @@ class MLLMModelArch:
     qwen3_omni = 'qwen3_omni'
     qwen3_asr = 'qwen3_asr'
     qwen3_tts = 'qwen3_tts'
+    qwen3_5 = 'qwen3_5'
 
     cogvlm = 'cogvlm'
     chatglm4v = 'chatglm4v'
@@ -861,6 +862,15 @@ register_model_arch(
         aligner='visual.merger',
         vision_tower=['visual', 'audio_encoder'],
         mlp='model.layers.{}.mlp',
+    ))
+
+register_model_arch(
+    MultiModelKeys(
+        MLLMModelArch.qwen3_5,
+        language_model=['language_model'],
+        aligner='visual.merger',
+        vision_tower='visual',
+        mlp='language_model.layers.{}.mlp',
     ))
 
 
