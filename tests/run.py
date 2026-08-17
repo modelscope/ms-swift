@@ -260,7 +260,10 @@ def wait_for_free_worker(workers):
             else:  # worker process completed.
                 logger.info('Process end: %s' % (idx))
                 workers[idx] = None
-                restore_env_versions()
+                # Restoring mutates the shared site-packages; safe only when
+                # no sibling worker is mid-run.
+                if all(w is None for w in workers):
+                    restore_env_versions()
                 return idx
         time.sleep(0.001)
 
@@ -314,9 +317,21 @@ def parallel_run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, 
                 result_dir,
             ]
             worker_idx = wait_for_free_worker(worker_processes)
+            if parallel > 1:
+                # An isolated suite can mutate the shared env mid-run (the
+                # StructBERT case pip-installs its own pinned requirements).
+                # Letting it overlap another worker breaks that worker's
+                # imports, so barrier it on both sides: nothing else runs
+                # while it runs, and the pins go back before the pool resumes.
+                wait_for_workers(worker_processes)
+                restore_env_versions()
+                worker_idx = 0
             worker_process = async_run_command_with_popen(cmd, worker_idx)
             os.set_blocking(worker_process.stdout.fileno(), False)
             worker_processes[worker_idx] = worker_process
+            if parallel > 1:
+                wait_for_workers(worker_processes)
+                restore_env_versions()
         else:
             pass  # case not in run list.
 
@@ -341,6 +356,10 @@ def parallel_run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, 
         worker_processes[worker_idx] = worker_process
 
     wait_for_workers(worker_processes)
+    # The pool is fully drained here, so restoring the pins cannot race
+    # another worker's imports (chunk suites are not expected to pip-install;
+    # the ones that do belong on the isolated list).
+    restore_env_versions()
 
 
 def run_case_in_env(env_name, env, test_suite_env_map, isolated_cases, result_dir):

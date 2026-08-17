@@ -1,5 +1,9 @@
 # isolate cases in env, we can install different dependencies in each env.
 isolated:  # test cases that may require excessive amount of GPU memory or run long time, which will be executed in dedicated process.
+  # loads StructBERT via modelscope remote code, which pip-installs the
+  # model's own pinned requirements (transformers==4.48.3) into the shared
+  # test env mid-run; it must run alone so nothing else imports mid-pollution.
+  - tests/tuners/test_merged_linear.py
 
 envs:
   default: # default env, case not in other env will in default, pytorch.
