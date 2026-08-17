@@ -577,8 +577,12 @@ class BaseMegatronTrainer(ABC):
         else:
             raise ValueError(f'Source path is neither a file nor a directory: {src_path}')
 
-    def _prepare_data_iterator(self, train_dataset, val_dataset=None, use_origin_cyclic: bool = False):
-        train_dataloader, val_dataloader = self._prepare_dataloader(train_dataset, val_dataset)
+    def _prepare_data_iterator(self,
+                               train_dataset,
+                               val_dataset=None,
+                               use_origin_cyclic: bool = False,
+                               seed: Optional[int] = None):
+        train_dataloader, val_dataloader = self._prepare_dataloader(train_dataset, val_dataset, seed=seed)
         train_data_iterator = iter(self.cyclic_iter(train_dataloader, use_origin_cyclic=use_origin_cyclic))
         val_data_iterator = None
         if val_dataset is not None:
@@ -973,11 +977,15 @@ class BaseMegatronTrainer(ABC):
                 total_metrics[key] = torch.tensor([0.0, 0.0], dtype=torch.float32, device=torch.cuda.current_device())
             total_metrics[key] += val
 
-    def _prepare_dataloader(self, train_dataset, val_dataset=None):
+    def _prepare_dataloader(self, train_dataset, val_dataset=None, seed: Optional[int] = None):
         args = self.args
         val_dataloader = None
+        generator = None
+        if seed is not None:
+            generator = torch.Generator()
+            generator.manual_seed(seed)
         if args.streaming:
-            train_dataloader = build_streaming_dataloader(args, train_dataset, self.data_collator)
+            train_dataloader = build_streaming_dataloader(args, train_dataset, self.data_collator, generator=generator)
             if val_dataset is not None:
                 val_dataloader = build_streaming_dataloader(args, val_dataset, self.data_collator)
             return train_dataloader, val_dataloader
@@ -991,8 +999,9 @@ class BaseMegatronTrainer(ABC):
             data_sharding=args.data_sharding,
             shuffle=args.train_dataloader_shuffle,
             group_by_length=args.group_by_length,
+            seed=seed or 0,
         )
-        train_dataloader = self._create_dataloader(train_dataset, train_batch_sampler)
+        train_dataloader = self._create_dataloader(train_dataset, train_batch_sampler, generator=generator)
         if val_dataset is not None:
             val_batch_sampler = MegatronPretrainingSampler(
                 total_samples=len(val_dataset),
@@ -1004,7 +1013,7 @@ class BaseMegatronTrainer(ABC):
             val_dataloader = self._create_dataloader(val_dataset, val_batch_sampler)
         return train_dataloader, val_dataloader
 
-    def _create_dataloader(self, dataset, batch_sampler):
+    def _create_dataloader(self, dataset, batch_sampler, generator=None):
         args = self.args
 
         dataloader = torch.utils.data.DataLoader(
@@ -1015,6 +1024,7 @@ class BaseMegatronTrainer(ABC):
             persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
             prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
             collate_fn=self.data_collator,
+            generator=generator,
         )
         return dataloader
 
