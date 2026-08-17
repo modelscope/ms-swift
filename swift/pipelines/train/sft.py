@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import os
+import torch.distributed as dist
 from datasets import Dataset as HfDataset
 from typing import List, Optional, Union
 
@@ -182,7 +183,12 @@ class SwiftSft(SwiftPipeline, TunerMixin):
             eval_dataset=val_dataset,
             **self._get_trainer_kwargs(),
         )
-        return self.train(trainer)
+        res = self.train(trainer)
+        # Exceptions may cause the process to hang, preventing the exception from being propagated.
+        # Therefore, destroy_process_group() should not be placed inside the finally block.
+        if dist.is_initialized():
+            dist.destroy_process_group()
+        return res
 
     def _get_trainer_kwargs(self):
         return {}
