@@ -220,7 +220,7 @@ def _patch_mcore_bridge():
                 if args.model_type == 'deepseek_v4':
                     HfConfigFactory.set_config_attr(hf_config, 'expert_dtype', expert_dtype)
                 hf_config.save_pretrained(output_dir)
-                if getattr(self.hf_model, '_auto_class') is not None:
+                if self.hf_model._auto_class is not None:
                     try:
                         custom_object_save(self.hf_model, output_dir, config=hf_config)
                     except FileNotFoundError as e:

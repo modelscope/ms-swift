@@ -1,0 +1,32 @@
+[tool.ruff]
+line-length = 120
+exclude = [
+    "docs/src",
+    "*.pyi",
+    ".git",
+    "peft.py",
+]
+
+[tool.ruff.lint]
+# flake8: B=bugbear, C4=comprehensions, E=pycodestyle errors, F=pyflakes, W=pycodestyle warnings
+# isort and double-quote-string-fixer are still handled by a separate hook in the pre-commit and are not included in ruff.
+select = ["B", "C4", "E", "F", "W"]
+ignore = [
+    "F401", "F403", "F405", "F821",
+    "B905", "B007", "B023", "B904",
+    "B006", "B028", "B030", "B026", "B018", "B027", "B024", "B011", "B008", "B004",
+    "C419", "C416", "C408", "C401", "C403", "C400", "C414",
+    "E501",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Long strings (including Chinese characters) in the test file are not subject to E501.
+"tests/**/*.py" = ["E501"]
+# Examples of lenient table of contents checks
+"examples/**/*.py" = ["E501", "E402"]
+# The notebook does not check import positions and line lengths.
+"*.ipynb" = ["E402", "E501"]
+# agent_template contains a long prompt string.
+"swift/agent_template/**/*.py" = ["E501"]
+# scripts containing long report generation strings
+"scripts/**/*.py" = ["E501"]

@@ -1,8 +1,9 @@
 repos:
-  - repo: https://github.com/pycqa/flake8.git
-    rev: 7.3.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit.git
+    rev: v0.12.0
     hooks:
-      - id: flake8
+      - id: ruff
+        args: [--fix]
   - repo: https://github.com/PyCQA/isort.git
     rev: 8.0.1
     hooks:

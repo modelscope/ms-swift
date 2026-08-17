@@ -154,14 +154,14 @@ class SCETuning(SwiftAdapter):
 
         # 3. inject the tuners
         for tuner_id, t_module in enumerate(target_module_ins_list):
-            setattr(t_module, f'forward_origin_{adapter_name}', getattr(t_module, 'forward'))
+            setattr(t_module, f'forward_origin_{adapter_name}', t_module.forward)
             if config.tuner_mode in ('encoder', 'identity'):
                 _forward = _forward_encoder_mode
             elif config.tuner_mode == 'decoder':
                 _forward = _forward_decoder_mode
             else:
                 raise Exception(f'Error tuner_mode: {config.tuner_mode}')
-            setattr(t_module, 'forward', types.MethodType(_forward, t_module))
+            t_module.forward = types.MethodType(_forward, t_module)
             tuner_op = SCETunerModule(
                 name=config.tuner_op,
                 adapter_name=adapter_name,
@@ -170,7 +170,7 @@ class SCETuning(SwiftAdapter):
                 tuner_length=int(dims[tuner_id] * config.down_ratio))
             setattr(t_module, f'scetuner_{adapter_name}', tuner_op)
             if len(hint_module_ins_list) > 0:
-                setattr(t_module, 'hint', hint_module_ins_list[tuner_id])
+                t_module.hint = hint_module_ins_list[tuner_id]
 
         def state_dict_callback(state_dict, adapter_name, **kwargs):
             state_dict_new = {key: value for key, value in state_dict.items() if f'scetuner_{adapter_name}' in key}

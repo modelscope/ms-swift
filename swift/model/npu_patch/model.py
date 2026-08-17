@@ -273,7 +273,7 @@ def _patch_transformers_flash_linear_attention_available_for_npu() -> None:
             return _is_flash_linear_attention_importable_on_npu()
 
         _is_flash_linear_attention_available._ms_swift_npu_patched = True
-        setattr(module, 'is_flash_linear_attention_available', _is_flash_linear_attention_available)
+        module.is_flash_linear_attention_available = _is_flash_linear_attention_available
 
 
 QWEN3_5_PATCHES = {
@@ -514,7 +514,7 @@ def apply_patch() -> None:
     # Keep only that operation on the native Qwen3.5 path; GDN comes from FLA.
     for module in (modeling_qwen3_5, modeling_qwen3_5_moe):
         if module is not None:
-            setattr(module, 'FusedRMSNormGated', None)
+            module.FusedRMSNormGated = None
 
     if modeling_qwen3_5 is not None:
         patch_groups.append(('qwen3_5', modeling_qwen3_5, QWEN3_5_PATCHES, {}))

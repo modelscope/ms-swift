@@ -59,7 +59,7 @@ class GenerationArguments:
             self.stream = False
 
     def get_request_config(self):
-        if getattr(self, 'task_type') != 'causal_lm':
+        if self.task_type != 'causal_lm':
             return
 
         return RequestConfig(

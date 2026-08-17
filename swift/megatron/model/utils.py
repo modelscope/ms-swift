@@ -73,7 +73,7 @@ def get_mcore_model_config(args, hf_config):
         kwargs.update(args.megatron_extra_kwargs)
     config = ModelConfig(**kwargs)
     if is_torch_npu_available() and getattr(args, 'attention_backend', 'flash') != 'local':
-        setattr(config, 'use_flash_attn', True)
+        config.use_flash_attn = True
     _check_attention_backend(args, config)
     _check_padding_free(args, config)
     return config

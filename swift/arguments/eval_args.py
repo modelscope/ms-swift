@@ -83,7 +83,7 @@ class EvalArguments(DeployArguments):
         from evalscope.backend.opencompass import OpenCompassBackendManager
         from evalscope.constants import EvalBackend
         res = {
-            EvalBackend.NATIVE: list(sorted(BENCHMARK_REGISTRY.keys())),
+            EvalBackend.NATIVE: sorted(BENCHMARK_REGISTRY.keys()),
             EvalBackend.OPEN_COMPASS: sorted(OpenCompassBackendManager.list_datasets()),
         }
         try:

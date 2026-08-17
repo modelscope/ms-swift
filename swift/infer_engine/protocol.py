@@ -504,7 +504,7 @@ class RolloutOutput(BaseModel):
 
         response_loss_mask (Optional[List[List[int]]]):
             (Optional) Loss masks corresponding to each rollout turn.
-            If provided, the training process will skip computing loss masks for the response (as controlled by the `loss_scale` parameter). # noqa
+            If provided, the training process will skip computing loss masks for the response (as controlled by the `loss_scale` parameter). # noqa: E501
 
         rollout_infos (Dict[str, Any]):
             (Optional) Additional rollout information. This must be JSON-serializable.

@@ -36,7 +36,7 @@ class NEFTune(SwiftAdapter):
             if isinstance(sub_module, torch.nn.Embedding):
 
                 def neftune_hook(module, args, output):
-                    if module.training and getattr(module, 'nef_activated'):
+                    if module.training and module.nef_activated:
                         dims = torch.tensor(output.size(-1) * output.size(-2))
                         mag_norm = config.noise_alpha / torch.sqrt(dims)
                         output = output + torch.zeros_like(output).uniform_(-mag_norm, mag_norm)

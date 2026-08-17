@@ -383,12 +383,12 @@ class BaseUI:
                 elif key in ('template', 'model_type', 'ref_model_type', 'reward_model_type'):
                     if key == 'ref_model_type':
                         if is_ref_model:
-                            values.append(gr.update(value=getattr(model_meta, 'model_type')))
+                            values.append(gr.update(value=model_meta.model_type))
                         else:
                             values.append(gr.update())
                     elif key == 'reward_model_type':
                         if is_reward_model:
-                            values.append(gr.update(value=getattr(model_meta, 'model_type')))
+                            values.append(gr.update(value=model_meta.model_type))
                         else:
                             values.append(gr.update())
                     else:

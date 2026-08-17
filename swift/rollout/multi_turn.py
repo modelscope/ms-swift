@@ -217,7 +217,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
         There are two supported strategies:
 
         1. Use the built-in `loss_scale` parameter in ms-swift and do not return response token ids.
-        2. Return response_token_ids along with a corresponding response_loss_mask (of equal length) to indicate the loss mask for each token. # noqa
+        2. Return response_token_ids along with a corresponding response_loss_mask (of equal length) to indicate the loss mask for each token. # noqa: E501
     """
 
     async def run(self, infer_request: 'RolloutInferRequest', request_config: 'RequestConfig',
@@ -413,7 +413,7 @@ class MultiTurnScheduler(RolloutScheduler, ABC):
             Dict[str, Any]: A dictionary containing inference results with the following structure:
                 - infer_request (required): Main inference request object
                 - response_token_ids (Optional[List[int]]): Token IDs of response for current rollout turn
-                - response_loss_mask (Optional[List[int]]): Loss mask for response tokens (same length as response_token_ids) # noqa
+                - response_loss_mask (Optional[List[int]]): Loss mask for response tokens (same length as response_token_ids) # noqa: E501
                 - rollout_logprobs (Optional[List[float]]): Log probabilities for response tokens.
                     If not provided, will be extracted from response_choice.logprobs as fallback.
                     Useful when modifying response content (e.g., adding prompts) to avoid logprob misalignment.
@@ -480,7 +480,7 @@ class ThinkingModelTipsScheduler(MultiTurnScheduler):
     4. Returns a list of RolloutOutput objects, one for each round.
     5. Please set `--loss_scale last_round` for training last round response.
 
-    The scheduler will automatically inject a tip prompt if the answer is incorrect, encouraging the model to recheck its reasoning. # noqa
+    The scheduler will automatically inject a tip prompt if the answer is incorrect, encouraging the model to recheck its reasoning. # noqa: E501
     """
 
     def __init__(self, *args, **kwargs):

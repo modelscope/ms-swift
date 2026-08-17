@@ -1400,7 +1400,7 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
         try:
             modeling_module = import_module(module_name)
             gated_delta_net_cls = getattr(modeling_module, class_name)
-            apply_mask_to_padding_states = getattr(modeling_module, 'apply_mask_to_padding_states')
+            apply_mask_to_padding_states = modeling_module.apply_mask_to_padding_states
             torch_chunk_gated_delta_rule = getattr(modeling_module, 'torch_chunk_gated_delta_rule', None)
             gated_delta_net_specs.append(
                 (gated_delta_net_cls, apply_mask_to_padding_states, torch_chunk_gated_delta_rule))

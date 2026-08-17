@@ -86,7 +86,7 @@ class SwiftSft(SwiftPipeline, TunerMixin):
 
     def _save_val_dataset(self, val_dataset):
         args = self.args
-        output_dir = getattr(args, 'output_dir', None) or getattr(args, 'save')
+        output_dir = getattr(args, 'output_dir', None) or args.save
         if is_master() and isinstance(val_dataset, HfDataset) and not args.val_dataset:
             os.makedirs(output_dir, exist_ok=True)
             val_dataset_path = os.path.join(output_dir, 'val_dataset.jsonl')
