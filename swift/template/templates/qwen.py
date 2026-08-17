@@ -15,7 +15,7 @@ from torch import nn
 from transformers.integrations import is_deepspeed_zero3_enabled
 from typing import Any, Dict, List, Literal, Optional
 
-from swift.utils import get_env_args, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
+from swift.utils import get_env_args, get_logger, get_packed_seq_params, is_deepspeed_enabled, to_float_dtype
 from ..base import Template
 from ..constant import LLMTemplateType, MLLMTemplateType
 from ..register import register_template
@@ -25,6 +25,8 @@ from ..utils import Context, Word, findall
 from ..vision_utils import load_audio, load_batch, load_video_ovis2, load_video_ovis2_5
 from .llama import Llama3TemplateMeta
 from .utils import DEFAULT_SYSTEM, ChatmlTemplateMeta
+
+logger = get_logger()
 
 
 @dataclass
@@ -717,6 +719,57 @@ register_template(
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='qwen3_5',
         is_thinking=False))
+
+
+class Qwen3_5EmbTemplate(Qwen3_5Template):
+
+    def _post_encode(self, model, inputs: Dict[str, Any]) -> Dict[str, Any]:
+        if not self.is_training:
+            return inputs
+        input_ids = inputs['input_ids']
+        base_model = self.get_base_model(model)
+        inputs_embeds = base_model.language_model.embed_tokens(input_ids)
+        inputs_embeds = self._get_inputs_embeds_hf(inputs_embeds, inputs, model.visual, self.processor, model.config)
+        return {'inputs_embeds': inputs_embeds}
+
+    def init_processor(self, processor) -> None:
+        super().init_processor(processor)
+
+        base_eos_token = '<|endoftext|>'
+        sparse_info_path = os.path.join(self.model_info.model_dir, 'sparse_info.json')
+        num_eos_tokens = 0
+        if os.path.exists(sparse_info_path):
+            try:
+                with open(sparse_info_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    raw_num = data.get('num_eos_tokens', 0)
+                    if raw_num is not None:
+                        num_eos_tokens = int(raw_num)
+            except (json.JSONDecodeError, ValueError, TypeError) as e:
+                logger.warning(f"Failed to parse sparse_info.json: {e}")
+        self.num_eos_tokens = num_eos_tokens
+
+        if num_eos_tokens > 0:
+            self.template_meta.suffix = [base_eos_token] * num_eos_tokens
+            logger.info(f"Set suffix to {num_eos_tokens} tokens of '{base_eos_token}' based on sparse_info.json")
+
+    def _preprocess_inputs(self, inputs: StdTemplateInputs) -> None:
+        super()._preprocess_inputs(inputs)
+        if inputs.messages:
+            last_msg = inputs.messages[-1]
+            if last_msg['role'] != 'assistant':
+                inputs.messages.append({'role': 'assistant', 'content': ''})
+
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_5_emb,
+        template_cls=Qwen3_5EmbTemplate,
+        default_system="Represent the user's input.",
+        suffix=['<|endoftext|>'],
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        is_thinking=True))
 
 
 class Qwen3VLEmbTemplate(Qwen3VLTemplate):

@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import importlib.metadata
+import importlib.util
 import inspect
 import os
 import torch
@@ -1558,6 +1559,85 @@ register_model(
         architectures=['Qwen3_5ForConditionalGeneration'],
         requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
         tags=['vision']))
+
+
+def _read_num_eos_tokens(model_dir: str) -> int:
+    import json
+    sparse_info_path = os.path.join(model_dir, 'sparse_info.json')
+    if not os.path.exists(sparse_info_path):
+        return 0
+    try:
+        with open(sparse_info_path, 'r', encoding='utf-8') as f:
+            return int(json.load(f).get('num_eos_tokens', 0))
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return 0
+
+
+def _register_embedding_pooling_hook(model: PreTrainedModel, num_eos_tokens: int):
+    from swift.utils.torch_utils import get_last_valid_indices
+
+    def _pooling_hook(module, args, kwargs, output):
+        attention_mask = kwargs.get('attention_mask', None)
+        hidden_states = output.last_hidden_state
+        if attention_mask is None:
+            last_indices = torch.tensor(
+                hidden_states.shape[1] - 1, device=hidden_states.device).repeat(hidden_states.shape[0])
+        else:
+            last_indices = get_last_valid_indices(attention_mask)
+        target_indices = last_indices - num_eos_tokens
+        batch_indices = torch.arange(hidden_states.shape[0], device=hidden_states.device)
+        embeddings = hidden_states[batch_indices, target_indices]
+        embeddings = F.normalize(embeddings, p=2, dim=1)
+        return {'last_hidden_state': embeddings.contiguous()}
+
+    model.register_forward_hook(_pooling_hook, with_kwargs=True)
+
+
+class Qwen3_5EmbLoader(Qwen3_5Loader):
+
+    def _check_qwen_vl_utils(self):
+        os.environ.setdefault('IMAGE_MAX_TOKEN_NUM', '1800')
+        os.environ.setdefault('FPS', '1')
+        os.environ.setdefault('FPS_MAX_FRAMES', '64')
+        super()._check_qwen_vl_utils()
+
+    def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        self.auto_model_cls = self.auto_model_cls or AutoModel
+
+        _patch_qwen3_5_linear_attention_sequence_parallel()
+
+        model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+
+        inner = getattr(model, 'model', None) or model
+        visual = getattr(inner, 'visual', None)
+
+        if visual is not None:
+            patch_get_input_embeddings(visual, 'patch_embed')
+            _compat_qwen3_vl_mixed_data(inner, processor)
+        else:
+            logger.debug('No visual module found. Skipping visual patches.')
+
+        num_eos_tokens = _read_num_eos_tokens(model_dir)
+        if num_eos_tokens > 0:
+            _register_embedding_pooling_hook(model, num_eos_tokens)
+
+        return model
+
+
+register_model(
+    ModelMeta(
+        MLLMModelType.qwen3_5_emb, [
+            ModelGroup([
+                Model('iic/UEmbed-2B', 'iic/UEmbed-2B'),
+            ]),
+        ],
+        Qwen3_5EmbLoader,
+        template=TemplateType.qwen3_5_emb,
+        model_arch=ModelArch.qwen3_5,
+        architectures=['Qwen3_5ForConditionalGeneration'],
+        additional_saved_files=['sparse_info.json', 'sparse_weights.pt'],
+        requires=['transformers>=5.0.0.dev', 'qwen_vl_utils>=0.0.14', 'decord'],
+        tags=['vision', 'video']))
 
 
 class Qwen2_5OmniLoader(ModelLoader):
