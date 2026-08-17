@@ -1,6 +1,14 @@
-# Qwen3.5 Best Practices
+# Qwen3.5/Qwen3.6/Qwen3.8 Best Practices
 
-ms-swift supports training [Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/MoE models using transformers/Megatron backends. Qwen3.5 is a multimodal model with hybrid thinking, combining linear attention and full attention. This article will introduce how to perform inference, instruction fine-tuning, and reinforcement learning on Qwen3.5 Dense/MoE models.
+ms-swift supports training Qwen3.5/Qwen3.6/Qwen3.8 models using transformers/Megatron backends. All three series are multimodal models with hybrid thinking. This article will introduce how to perform inference, instruction fine-tuning, and reinforcement learning on these models.
+
+Qwen3.5/Qwen3.6/Qwen3.8 share exactly the same model structure, so the training and inference arguments, memory usage, and parallelism strategies are all interchangeable. The following scripts use Qwen3.5 as an example; the other two series work the same way, simply replace `--model`.
+
+Their chat templates differ as follows:
+- Qwen3.6 uses the same template as Qwen3.5 (`--template qwen3_5`, matched automatically, no need to set it).
+- Qwen3.8 uses a dedicated template `qwen3_8` (matched automatically). Compared with Qwen3.5/Qwen3.6:
+  - **`reasoning_effort` is supported**: it accepts `xhigh` (default)/`medium`/`low`, and injects the corresponding thinking-effort instruction into the system message (`medium` injects nothing). You can pass `chat_template_kwargs` in the dataset or the inference request for per-sample control, e.g. `{"chat_template_kwargs": {"reasoning_effort": "low"}}`.
+  - **Historical thinking content is preserved by default**: Qwen3.5/Qwen3.6 discard the `<think>` content of previous rounds during inference by default, while Qwen3.8 keeps it.
 
 ## Environment Setup
 
