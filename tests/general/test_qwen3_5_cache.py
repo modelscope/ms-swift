@@ -97,9 +97,9 @@ class TestQwen35Cache(unittest.TestCase):
         for cache in (_CurrentCache(previous=True), _LegacyCache(previous=True)):
             with self.subTest(cache=type(cache).__name__):
                 mod = SimpleNamespace(layer_idx=0)
-                with patch.object(
-                        qwen, '_ensure_linear_attention_kernels',
-                        side_effect=AssertionError('kernel setup called')) as ensure:
+                kernel_setup = ('_get_linear_attention_kernels' if hasattr(qwen, '_get_linear_attention_kernels') else
+                                '_ensure_linear_attention_kernels')
+                with patch.object(qwen, kernel_setup, side_effect=AssertionError('kernel setup called')) as ensure:
                     with self.assertRaisesRegex(NotImplementedError, 'initialized cache state'):
                         qwen._run_qwen3_5_gated_delta_net_sequence_parallel_forward(
                             mod, torch.empty(1, 1, 1), cache_params=cache)

@@ -269,6 +269,8 @@ class BaseMegatronTrainer(ABC):
         while True:
             if not is_finished:
                 logger.info(f'The training of Epoch {epoch} starts...')
+            if hasattr(iterable, 'set_epoch'):
+                iterable.set_epoch(epoch)
             for x in iterable:
                 yield x
             # streaming
@@ -822,9 +824,10 @@ class BaseMegatronTrainer(ABC):
                     self.copy_path(src_path, os.path.join(output_dir, fname))
                 # common.pt
                 common_path = os.path.join(origin_output_dir, f'iter_{iteration:07d}', 'common.pt')
-                tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
-                os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
-                self.copy_path(common_path, tgt_common_path)
+                if os.path.exists(common_path):
+                    tgt_common_path = os.path.join(output_dir, f'iter_{iteration:07d}', 'common.pt')
+                    os.makedirs(os.path.dirname(tgt_common_path), exist_ok=True)
+                    self.copy_path(common_path, tgt_common_path)
                 self.bridge.save_weights(
                     self.unwrapped_models,
                     output_dir,

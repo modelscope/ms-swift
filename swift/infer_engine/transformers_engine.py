@@ -255,7 +255,8 @@ class TransformersEngine(InferEngine):
 
         logits_streamer = None
         if generation_config.output_logits:
-            generate_kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
+            logits_streamer = LogitsStreamer()
+            generate_kwargs['logits_processor'] = LogitsProcessorList([logits_streamer])
 
         def _model_generate(**kwargs):
             if is_torch_npu_available():

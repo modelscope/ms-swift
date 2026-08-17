@@ -1558,6 +1558,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                      input_ids: torch.Tensor,
                                      compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Get per token logps via local forward pass, returns rmpad format [1, total_nnz] for padding_free mode"""
+        if 'use_cache' in self.model_kwarg_keys:
+            model_inputs['use_cache'] = False
+
         if 'logits_to_keep' in self.model_kwarg_keys:
             model_inputs['logits_to_keep'] = logits_to_keep + 1
 

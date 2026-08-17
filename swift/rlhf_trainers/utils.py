@@ -1108,6 +1108,13 @@ def finish_vllm_weight_reload(vllm_model, model_config, target_device):
 
 _cached_reverse_renamings = None
 
+# Models whose vLLM ``load_weights`` path expects *checkpoint-style* per-expert MoE
+# keys, while HF runtime packs them via ``WeightConverter`` (e.g. MergeModulelist).
+# For these, rename-only revert is insufficient — experts must be unpacked back to
+# HF checkpoint keys. Other MoE families (Qwen2/3-MoE, Mixtral, ...) keep fused
+# runtime tensors for the existing MoE weight-loader patch.
+_VLLM_CHECKPOINT_STYLE_PACKED_MOE_MODEL_TYPES = frozenset({'nemotron_h'})
+
 
 def _build_reverse_renamings(model):
     """Build and cache reverse WeightRenaming rules for the given model.
@@ -1161,10 +1168,16 @@ def revert_runtime_names_to_checkpoint(model, state_dict):
     that sends runtime names can land on the wrong vLLM module and raise
     "There is no module or parameter named ...".
 
-    We revert only the *renaming* part (``WeightRenaming``). Tensor-level
-    ``WeightConverter`` ops (e.g. MoE fuse/split) are intentionally skipped and
+    Default path: revert only the *renaming* part (``WeightRenaming``). Tensor-level
+    ``WeightConverter`` ops (e.g. Qwen/Mixtral MoE fuse) are intentionally skipped and
     left to the existing MoE weight-loader patch, which expects the fused runtime
     layout.
+
+    Exception: models in ``_VLLM_CHECKPOINT_STYLE_PACKED_MOE_MODEL_TYPES`` (currently
+    ``nemotron_h``) need transformers ``revert_weight_conversion`` (rename + expert
+    unpack) so the payload matches the HF checkpoint layout that vLLM's
+    ``hf_to_vllm_mapper`` / ``load_weights`` expect. We do **not** emit vLLM-internal
+    names (``embed_tokens``, fused ``w13``, …) — vLLM renames/loads those itself.
 
     Safe by construction: models whose vLLM mapper accepts runtime names also
     carry the checkpoint-name rules (required by ``vllm serve``), so reverting to
@@ -1177,6 +1190,11 @@ def revert_runtime_names_to_checkpoint(model, state_dict):
             model = model.get_base_model()
         except Exception:
             pass
+
+    model_type = getattr(getattr(model, 'config', None), 'model_type', None)
+    if model_type in _VLLM_CHECKPOINT_STYLE_PACKED_MOE_MODEL_TYPES:
+        from transformers.core_model_loading import revert_weight_conversion
+        return revert_weight_conversion(model, state_dict)
 
     reverse_renamings = _build_reverse_renamings(model)
     if not reverse_renamings:

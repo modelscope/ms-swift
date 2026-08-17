@@ -1,6 +1,14 @@
-# Qwen3.5 最佳实践
+# Qwen3.5/Qwen3.6/Qwen3.8 最佳实践
 
-ms-swift 支持使用transformers/Megatron后端对[Qwen3.5](https://github.com/QwenLM/Qwen3.5) Dense/Moe模型进行训练。Qwen3.5 属于混合思考的多模态模型，结合了linear attention和full attention。本文将介绍如何对Qwen3.5 Dense/Moe模型进行推理、指令微调以及强化学习。
+ms-swift 支持使用transformers/Megatron后端对 Qwen3.5/Qwen3.6/Qwen3.8 模型进行训练。这三个系列均属于混合思考的多模态模型，本文将介绍如何对这些模型进行推理、指令微调以及强化学习。
+
+Qwen3.5/Qwen3.6/Qwen3.8 的模型结构完全相同，因此训练与推理的参数、显存占用、并行策略等均可通用。以下脚本以 Qwen3.5 为例，另外两个系列同理，只需替换 `--model` 即可。
+
+三者的对话模板（template）存在以下差异：
+- Qwen3.6 与 Qwen3.5 使用相同的模板（`--template qwen3_5`，自动匹配，无需设置）。
+- Qwen3.8 使用独立的模板 `qwen3_8`（自动匹配），与 Qwen3.5/Qwen3.6 的区别为：
+  - **支持 `reasoning_effort`**：可取 `xhigh`（默认）/`medium`/`low`，会向 system 中注入对应的思考强度指令（`medium` 不注入）。可在数据集或推理请求中传入 `chat_template_kwargs` 进行样本级设置，例如 `{"chat_template_kwargs": {"reasoning_effort": "low"}}`。
+  - **默认保留历史思考内容**：Qwen3.5/Qwen3.6 在推理时默认丢弃历史轮的 `<think>` 内容，而 Qwen3.8 默认保留
 
 
 ## 环境设置

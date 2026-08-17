@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 
 class TestMathAccuracy(unittest.TestCase):
@@ -254,6 +255,19 @@ class TestMathAccuracy(unittest.TestCase):
 
         self.assertEqual(len(rewards), 1)
         self.assertEqual(rewards[0], 1.0)
+
+
+class TestMathORM(unittest.TestCase):
+
+    def test_different_values_are_rejected_when_parsing_fails(self):
+        from swift.rewards.orm import MathORM
+        with patch.object(MathORM, 'parse_expression', return_value=None):
+            self.assertFalse(MathORM.compare_consecutive('not-a-number', '42'))
+
+    def test_identical_cleaned_values_are_accepted_when_parsing_fails(self):
+        from swift.rewards.orm import MathORM
+        with patch.object(MathORM, 'parse_expression', return_value=None):
+            self.assertTrue(MathORM.compare_consecutive('{42}', '42'))
 
 
 if __name__ == '__main__':

@@ -634,6 +634,59 @@ class Qwen3_5Template(Qwen3VLTemplate):
         super()._swift_prepare_inputs(inputs)
 
 
+class Qwen3_8Template(Qwen3_5Template):
+    reasoning_effort_instructions = {
+        'xhigh': ('Reasoning effort is set to xhigh. Please think carefully through the task, validate key '
+                  'assumptions, consider plausible alternatives, and prioritize correctness, consistency, '
+                  'and clarity in the final answer.'),
+        'medium':
+        '',
+        'low': ('Reasoning effort is set to low. Keep your thinking brief and focused, moving directly to the '
+                'conclusion without unnecessary elaboration.'),
+    }
+    default_reasoning_effort = 'xhigh'
+
+    def _get_reasoning_instructions(self, inputs: Optional[StdTemplateInputs] = None) -> str:
+        # HF injects the instruction whenever thinking is on (its jinja default). Follow swift's
+        # resolved `enable_thinking` so that `--enable_thinking false` (which also emits the
+        # `<think>\n\n</think>` non-thinking prefix) consistently drops the instruction too.
+        if not self._get_enable_thinking(inputs):
+            return ''
+        reasoning_effort = None
+        if inputs is not None:
+            reasoning_effort = inputs.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is None:
+            reasoning_effort = self.chat_template_kwargs.get('reasoning_effort')
+        if reasoning_effort is None:
+            reasoning_effort = self.default_reasoning_effort
+        if reasoning_effort not in self.reasoning_effort_instructions:
+            raise ValueError(f'Unexpected reasoning effort {reasoning_effort}. Supported types are '
+                             f'{list(self.reasoning_effort_instructions.keys())}.')
+        return self.reasoning_effort_instructions[reasoning_effort]
+
+    def _get_system(self, inputs: StdTemplateInputs) -> Optional[str]:
+        system = super()._get_system(inputs)
+        reasoning_instructions = self._get_reasoning_instructions(inputs)
+        if not reasoning_instructions:
+            return system
+        if system:
+            return f'{reasoning_instructions}\n\n{system}'
+        return reasoning_instructions
+
+    def _jinja_encode(self, inputs: StdTemplateInputs):
+        for message in inputs.messages:
+            content = message.get('content')
+            if (message.get('role') != 'assistant' or not isinstance(content, str)
+                    or message.get('reasoning_content') is not None):
+                continue
+            if not content.startswith('<think>') or '</think>' not in content:
+                continue
+            reasoning_content, _, rest = content.partition('</think>')
+            message['reasoning_content'] = reasoning_content[len('<think>'):].strip()
+            message['content'] = rest.lstrip('\n')
+        return super()._jinja_encode(inputs)
+
+
 register_template(
     QwenTemplateMeta(
         MLLMTemplateType.qwen3_5,
@@ -642,6 +695,17 @@ register_template(
         thinking_prefix='<think>\n',
         non_thinking_prefix='<think>\n\n</think>\n\n',
         agent_template='qwen3_5',
+        is_thinking=True))
+
+register_template(
+    QwenTemplateMeta(
+        MLLMTemplateType.qwen3_8,
+        template_cls=Qwen3_8Template,
+        default_system=None,
+        thinking_prefix='<think>\n',
+        non_thinking_prefix='<think>\n\n</think>\n\n',
+        agent_template='qwen3_5',
+        preserve_thinking=True,
         is_thinking=True))
 
 register_template(
