@@ -1,5 +1,6 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import concurrent.futures
+import inspect
 import logging
 import os
 import torch
@@ -73,6 +74,22 @@ def _patch_torch_FileSystemReader():
     FileSystemReader.read_data = read_data
 
 
+def _dcp_validation_returns_errors(default_planner) -> bool:
+    """Whether `_validate_global_plan` is expected to return a list of error messages."""
+    try:
+        # The caller is what defines the contract, so it is the most reliable thing to inspect.
+        source = inspect.getsource(default_planner.DefaultSavePlanner._create_global_plan)
+        return 'validation_errors' in source
+    except (OSError, TypeError):
+        pass
+    annotation = inspect.signature(default_planner._validate_global_plan).return_annotation
+    if annotation is inspect.Signature.empty:
+        logger.warning(f'Could not determine the `_validate_global_plan` contract of torch=={torch.__version__}; '
+                       'assuming the legacy boolean form.')
+        return False
+    return annotation not in (bool, 'bool')
+
+
 def _patch_validate_non_overlapping_shards_metadata():
     # too slow
     from torch.distributed._shard.sharded_tensor import api
@@ -85,8 +102,19 @@ def _patch_validate_non_overlapping_shards_metadata():
     api.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
     api2.validate_non_overlapping_shards_metadata = validate_non_overlapping_shards_metadata
 
-    def _validate_global_plan(*args, **kwargs):
-        return True
+    # The return contract changed across torch versions: it used to be a bool (falsy meaning
+    # "invalid"), while newer versions return a list of error messages (empty meaning "valid").
+    # Returning the wrong type is not harmless -- a bool sends the newer caller into its error
+    # branch, where `'; '.join(True)` raises `TypeError: can only join an iterable` and buries the
+    # real reason for the failure.
+    if _dcp_validation_returns_errors(default_planner):
+
+        def _validate_global_plan(*args, **kwargs):
+            return []
+    else:
+
+        def _validate_global_plan(*args, **kwargs):
+            return True
 
     default_planner._validate_global_plan = _validate_global_plan
 

@@ -21,6 +21,7 @@ class LLMTemplateType:
     qwen3_reranker = 'qwen3_reranker'
     qwq_preview = 'qwq_preview'
     qwq = 'qwq'
+    nemotron_h = 'nemotron_h'
     yufeng_xguard = 'yufeng_xguard'
     marco_o1 = 'marco_o1'
     modelscope_agent = 'modelscope_agent'
@@ -149,6 +150,7 @@ class MLLMTemplateType:
     qwen3_vl_emb = 'qwen3_vl_emb'
     qwen3_vl_reranker = 'qwen3_vl_reranker'
     qwen3_5 = 'qwen3_5'
+    qwen3_5_emb = 'qwen3_5_emb'
 
     qwen2_gme = 'qwen2_gme'
     qvq = 'qvq'

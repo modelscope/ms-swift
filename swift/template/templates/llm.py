@@ -566,3 +566,13 @@ register_template(
         suffix=['<|endoftext|>'],
         stop_words=['<|endoftext|>'],
     ))
+
+register_template(
+    QwenTemplateMeta(
+        LLMTemplateType.nemotron_h,
+        default_system=None,
+        is_thinking=True,
+        thinking_prefix='<think>\n',
+        stop_words=['<|im_end|>'],
+        agent_template='hermes',
+    ))

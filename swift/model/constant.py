@@ -101,6 +101,7 @@ class LLMModelType:
     dbrx = 'dbrx'
     grok = 'grok'
     mamba = 'mamba'
+    nemotron_h = 'nemotron_h'
     polylm = 'polylm'
     aya = 'aya'
     mimo = 'mimo'
@@ -151,6 +152,7 @@ class MLLMModelType:
     qwen3_vl_reranker = 'qwen3_vl_reranker'
     qwen3_5 = 'qwen3_5'
     qwen3_5_moe = 'qwen3_5_moe'
+    qwen3_5_emb = 'qwen3_5_emb'
 
     qwen2_gme = 'qwen2_gme'
     ovis1_6 = 'ovis1_6'
