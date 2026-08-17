@@ -559,16 +559,23 @@ def print_table_result(df):
 
 def main(args):
     runner = TimeCostTextTestRunner()
+    # Snapshot the dep versions this process starts with. A suite can
+    # pip-install its model's own pinned requirements into the shared env
+    # (modelscope remote code), which would otherwise poison every later
+    # suite in the same chunk.
+    record_env_versions()
     if args.suites is not None and len(args.suites) > 0:
         logger.info('Running: %s' % ' '.join(args.suites))
         test_suite = gather_test_suites_in_files(args.test_dir, args.suites, args.list_tests)
     else:
         test_suite = gather_test_cases(os.path.abspath(args.test_dir), args.pattern, args.list_tests)
     if not args.list_tests:
-        result = runner.run(test_suite)
+        result_list = []
+        for sub_suite in test_suite:
+            result_list.extend(collect_test_results(runner.run(sub_suite)))
+            restore_env_versions()
         logger.info('Running case completed, pid: %s, suites: %s' % (os.getpid(), args.suites))
-        result = collect_test_results(result)
-        df = test_cases_result_to_df(result)
+        df = test_cases_result_to_df(result_list)
         if args.result_dir is not None:
             save_test_result(df, args)
         else:
