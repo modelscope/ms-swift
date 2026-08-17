@@ -205,7 +205,7 @@ class BaseMegatronTrainer(ABC):
         if args.mcore_model is None:
             self.bridge.load_weights(models, args.model_dir)
         peft_models = [prepare_mcore_model(args, model) for model in models]
-        if args.tuner_type == 'lora' and args.adapters and args.mcore_adapter is None:
+        if args.tuner_type in {'lora', 'lora_llm'} and args.adapters and args.mcore_adapter is None:
             assert len(args.adapters) == 1, 'Currently only support one adapter.'
             self.bridge.load_weights(models, args.adapters[0], peft_format=True, adapter_name='default')
         return peft_models
