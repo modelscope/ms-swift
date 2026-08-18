@@ -229,7 +229,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         pip install optimum
         pip install diffusers
         pip install .
-        pip install gptqmodel bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
+        pip install bitsandbytes deepspeed -i https://mirrors.aliyun.com/pypi/simple/
     fi
 else
     echo "Running case in release image, run case directly!"
