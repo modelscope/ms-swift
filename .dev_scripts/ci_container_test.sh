@@ -188,7 +188,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
             fi
         fi
         ensure_npu_runtime
-        uv pip install -r requirements/framework.txt -U "transformers<5.0" "peft<0.19" "modelscope==1.37.0"
+        uv pip install -r requirements/framework.txt -U "modelscope"
         ensure_npu_runtime
         uv pip install decord einops -U
         uv pip uninstall autoawq
@@ -228,7 +228,6 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         pip uninstall autoawq -y
         pip install optimum
         pip install diffusers
-        pip install "transformers<5.0" "peft<0.19"
         pip install .
         pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
     fi
