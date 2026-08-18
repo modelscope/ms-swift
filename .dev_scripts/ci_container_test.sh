@@ -199,7 +199,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         uv pip install msgspec -i "$NPU_PIP_INDEX"
         uv pip install zmq -i "$NPU_PIP_INDEX"
         uv pip install .
-        echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
+        echo "NPU CI skips gptqmodel because it is a CUDA/GPTQ optional dependency."
         uv pip install bitsandbytes deepspeed -U
         if [ -f requirements/npu.txt ]; then
             uv pip install -r requirements/npu.txt
@@ -229,7 +229,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         pip install optimum
         pip install diffusers
         pip install .
-        pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
+        pip install gptqmodel bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
     fi
 else
     echo "Running case in release image, run case directly!"
