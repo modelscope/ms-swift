@@ -93,6 +93,10 @@ register_dataset(
 def _repair_ms_bench(messages: str) -> Optional[List[Dict[str, str]]]:
     if isinstance(messages, str):
         messages = ast.literal_eval(messages)
+    if not messages:
+        # A row with no messages can't be repaired; skip it like the MOSS case
+        # below instead of crashing the whole dataset load on messages[0].
+        return None
     default_system = 'You are a helpful assistant.'
     messages: List[Dict[str, str]]
     if messages[0]['from'] == 'system' and messages[0]['value'] == default_system:
