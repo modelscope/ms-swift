@@ -39,7 +39,7 @@ try:
 except ImportError:
     sort_checkpoints = None
 from types import MethodType
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, override
 
 from swift.callbacks import callbacks_map
 from swift.dataloader import BatchSamplerShard, DataLoaderDispatcher, DataLoaderShard
@@ -1266,6 +1266,7 @@ class DataLoaderMixin:
                 'num_workers': self.args.dataloader_num_workers,
                 'pin_memory': self.args.dataloader_pin_memory,
                 'persistent_workers': self.args.dataloader_persistent_workers,
+                'multiprocessing_context': self.args.dataloader_multiprocessing_context
             }
 
             if not isinstance(dataset, torch.utils.data.IterableDataset):
@@ -1284,6 +1285,7 @@ class DataLoaderMixin:
                 'num_workers': self.args.dataloader_num_workers,
                 'pin_memory': self.args.dataloader_pin_memory,
                 'persistent_workers': self.args.dataloader_persistent_workers,
+                'multiprocessing_context': self.args.dataloader_multiprocessing_context,
                 'prefetch_factor': self.args.dataloader_prefetch_factor
             }
             if dist.is_initialized() and dataloader_params['prefetch_factor']:
@@ -1309,6 +1311,7 @@ class DataLoaderMixin:
                 'num_workers': args.dataloader_num_workers,
                 'pin_memory': args.dataloader_pin_memory,
                 'persistent_workers': args.dataloader_persistent_workers,
+                'multiprocessing_context': args.dataloader_multiprocessing_context,
                 'prefetch_factor': args.dataloader_prefetch_factor
             }
             batch_sampler_params = {
@@ -1352,6 +1355,15 @@ class DataLoaderMixin:
             yield
         finally:
             self.args.group_by_length = group_by_length
+
+    @override
+    def _get_dataloader(self, *args, **kwargs):
+        # Fix multiprocessing context here since Transformers doesn't (yet—recent main does) provide an option
+        dataloader = super()._get_dataloader(*args, **kwargs)
+        base = getattr(dataloader, 'base_dataloader', dataloader)
+        if (hasattr(base, 'multiprocessing_context') and base.multiprocessing_context is None):
+            base.multiprocessing_context = self.args.dataloader_multiprocessing_context
+        return dataloader
 
     def get_eval_dataloader(self, eval_dataset=None):
         dataloader = None

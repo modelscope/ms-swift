@@ -48,6 +48,9 @@ class TrainArgumentsMixin:
             to ['tensorboard']. If you specify `--report_to wandb`, you can set the project name through `WANDB_PROJECT`
             and specify the API KEY corresponding to your account through `WANDB_API_KEY`.
         dataloader_num_workers (Optional[int]): The number of subprocesses to use for data loading. Defaults to None.
+        dataloader_multiprocessing_context (Optional[Literal['fork', 'spawn', 'forkserver']]): The multiprocessing
+            context to use for data loading workers. If None, the default multiprocessing context is used. Defaults to
+            None.
         dataloader_persistent_workers (bool): If True, the data loader workers will not be shut down after a dataset
             has been consumed once. Defaults to False.
         dataloader_prefetch_factor (Optional[int]): The number of batches loaded in advance by each worker. Defaults
@@ -148,6 +151,7 @@ class TrainArgumentsMixin:
     lr_scheduler_kwargs: Optional[Union[dict, str]] = None
     report_to: List[str] = field(default_factory=lambda: ['tensorboard'])
     dataloader_num_workers: Optional[int] = None
+    dataloader_multiprocessing_context: Optional[Literal['fork', 'spawn', 'forkserver']] = None
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: Optional[int] = None
     use_liger_kernel: bool = False

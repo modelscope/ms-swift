@@ -514,6 +514,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     seed: int = 42
     train_dataloader_shuffle: bool = True
     dataloader_num_workers: int = 4
+    dataloader_multiprocessing_context: Optional[Literal['fork', 'spawn', 'forkserver']] = None
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: int = 2
