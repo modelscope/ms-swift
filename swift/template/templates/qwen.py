@@ -746,7 +746,7 @@ class Qwen3_5EmbTemplate(Qwen3_5Template):
                     if raw_num is not None:
                         num_eos_tokens = int(raw_num)
             except (json.JSONDecodeError, ValueError, TypeError) as e:
-                logger.warning(f"Failed to parse sparse_info.json: {e}")
+                logger.warning(f'Failed to parse sparse_info.json: {e}')
         self.num_eos_tokens = num_eos_tokens
 
         if num_eos_tokens > 0:
