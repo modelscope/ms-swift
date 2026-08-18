@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+exclude = ["docs/src", "*.pyi", ".git", "peft.py"]
+
+[tool.ruff.lint]
+select = ["B", "C", "E", "F", "W", "I"]
+ignore = ["F401", "F403", "F405", "F821", "E251"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["swift"]
+known-third-party = ["json", "yaml"]
+no-lines-before = ["standard-library", "local-folder"]
+default-section = "third-party"
+
+[tool.ruff.format]
+quote-style = "double"

@@ -192,7 +192,7 @@ def test_megatron_assemble_teacher_outputs_api_topk_rolls_labels():
     """
     try:
         from swift.megatron.trainers.gkd_trainer import MegatronGKDTrainer
-    except Exception as e:  # noqa: megatron-core not installed in this env
+    except Exception as e:  # noqa
         print(f'SKIP test_megatron_assemble_teacher_outputs_api_topk_rolls_labels: {e}')
         return
 
