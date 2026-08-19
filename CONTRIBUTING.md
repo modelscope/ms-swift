@@ -38,10 +38,16 @@ SWIFT has conventional variable naming conventions and development approaches. P
 3. Choose well-known open-source libraries, avoid using closed-source libraries or unstable open-source libraries, and avoid repeating the existing code.
 
 After the PR is submitted, SWIFT will perform two types of tests:
-- Code Lint Test: A static code compliance check test. please make sure that you have performed code lint locally in advance.
+- Code Lint Test: A static code compliance check test using [ruff](https://docs.astral.sh/ruff/). Please make sure that you have performed code lint locally in advance.
 ```shell
-pip install pre-commit # In the swift folder
-pre-commit run --all-files # Fix the errors reported by pre-commit until all checks are successful
+pip install pre-commit ruff  # In the swift folder
+pre-commit run --all-files   # Fix the errors reported by pre-commit until all checks are successful
+
+# You can also run ruff directly:
+ruff check .                 # Check lint issues (read-only)
+ruff check --fix .            # Check and auto-fix lint issues
+ruff format --check .        # Check formatting (read-only)
+ruff format .                # Format code
 ```
 - CI Tests: Smoke tests and unit tests, please refer to the next section.
 
