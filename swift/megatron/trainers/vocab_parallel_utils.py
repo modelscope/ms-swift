@@ -12,7 +12,7 @@ correctly handle the distributed computation by:
 """
 
 import torch
-from megatron.core import mpu
+from megatron.core import mpu, tensor_parallel
 from typing import Optional, Tuple
 
 
@@ -138,59 +138,20 @@ def vocab_parallel_gather_logps(
 ) -> torch.Tensor:
     """Gather log probabilities for target labels from vocab-parallel logits.
 
-    When using TP, each rank only has a partition of the vocabulary. This function:
-    1. Computes log_softmax with vocab-parallel support (if log_probs not provided)
-    2. Gathers log probs for target tokens
-    3. All-reduces to combine results from all TP ranks
+    Uses Megatron's vocab-parallel cross entropy so backward retains the softmax
+    gradient on every TP vocab shard.
 
     Args:
         logits: Logits tensor [batch, seq, partition_vocab_size]
         labels: Token labels [batch, seq], -100 for masked positions
-        log_probs: Pre-computed log_softmax (optional, to avoid recomputation)
+        log_probs: Deprecated and ignored. Kept for backward compatibility.
 
     Returns:
         per_token_logps: [batch, seq] log probabilities for target tokens
     """
-    tp_size = mpu.get_tensor_model_parallel_world_size()
-    tp_rank = mpu.get_tensor_model_parallel_rank()
-
-    # Compute log_probs if not provided
-    if log_probs is None:
-        log_probs = vocab_parallel_log_softmax(logits)
-
-    # Get the local vocab range for this TP rank
-    partition_vocab_size = log_probs.shape[-1]
-    if tp_size > 1:
-        vocab_start = tp_rank * partition_vocab_size
-        vocab_end = vocab_start + partition_vocab_size
-        # Check which labels fall within this TP rank's vocab partition
-        local_labels = labels - vocab_start
-        # Mask for labels within local vocab range
-        in_range_mask = (labels >= vocab_start) & (labels < vocab_end)
-        # Clamp local_labels to valid range for gather
-        local_labels = local_labels.clamp(min=0, max=partition_vocab_size - 1)
-    else:
-        local_labels = labels
-        in_range_mask = torch.ones_like(labels, dtype=torch.bool)
-        local_labels = local_labels.clamp(min=0)
-
-    # Gather log probs for target tokens
-    gathered_logps = torch.gather(log_probs, dim=-1, index=local_labels.unsqueeze(-1)).squeeze(-1)
-
-    # For TP: only the rank that owns the target token has the correct log prob
-    # Other ranks have incorrect values, so we need to zero them out
-    if tp_size > 1:
-        gathered_logps = gathered_logps * in_range_mask.float()
-        # All-reduce to sum contributions from all ranks
-        # (only one rank has non-zero value for each token)
-        torch.distributed.all_reduce(
-            gathered_logps, op=torch.distributed.ReduceOp.SUM, group=mpu.get_tensor_model_parallel_group())
-
-    # Apply loss mask (labels == -100 are masked)
-    loss_mask = labels != -100
-    per_token_logps = gathered_logps * loss_mask.float()
-
-    return per_token_logps
+    safe_labels = labels.masked_fill(labels == -100, 0)
+    per_token_logps = -tensor_parallel.vocab_parallel_cross_entropy(vocab_parallel_logits=logits, target=safe_labels)
+    return per_token_logps * (labels != -100)
 
 
 def compute_logps_and_entropy_from_logits(
@@ -201,8 +162,8 @@ def compute_logps_and_entropy_from_logits(
 ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
     """Compute per-token log probabilities and optionally entropy from logits.
 
-    This is a unified method that efficiently computes both logps and entropy
-    in a single pass when both are needed, sharing the log_softmax computation.
+    Log probabilities use Megatron's vocab-parallel cross entropy for a correct
+    distributed backward. The full log_softmax is computed only when entropy is requested.
 
     Note: In Megatron, labels are already shifted (via torch.roll in get_batch_on_this_tp_rank),
     so logits and labels are already aligned. No additional shift is needed here.
@@ -222,15 +183,10 @@ def compute_logps_and_entropy_from_logits(
             - per_token_logps: [batch, seq] or [1, total_tokens] log probabilities for target tokens
             - per_token_entropy: Same shape as per_token_logps, or None if compute_entropy=False
     """
-    # Compute log_softmax (shared for both logps and entropy)
-    log_probs = vocab_parallel_log_softmax(logits)
-
-    # Gather logps for target tokens
-    per_token_logps = vocab_parallel_gather_logps(logits, labels, log_probs=log_probs)
-
-    # Compute entropy if requested (reuse log_probs to avoid redundant computation)
     per_token_entropy = None
     if compute_entropy:
+        log_probs = vocab_parallel_log_softmax(logits)
         per_token_entropy = vocab_parallel_entropy(log_probs, chunk_size=entropy_chunk_size)
 
+    per_token_logps = vocab_parallel_gather_logps(logits, labels)
     return per_token_logps, per_token_entropy
