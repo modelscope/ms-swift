@@ -1263,9 +1263,13 @@ def patch_vllm_load_adapter():
             # loading weights, throwing an exception if validation fails.
             peft_helper.validate_legal(self.lora_config)
             # For some models like Qwen2VL, we need to use hf_to_vllm_mapper
-            # to ensure correct loading of lora weights.
+            # to ensure correct loading of lora weights. Drop the QKV/MLP fusion
+            # substr maps so constituent names (e.g. `q_proj`) survive for the
+            # LoRA manager to pack, matching vllm's own worker_manager._load_adapter.
             model = self._adapter_manager.model
             hf_to_vllm_mapper = getattr(model, 'hf_to_vllm_mapper', None)
+            if hf_to_vllm_mapper is not None and hasattr(hf_to_vllm_mapper, 'get_unstacked_mapper'):
+                hf_to_vllm_mapper = hf_to_vllm_mapper.get_unstacked_mapper()
 
             lora_request_kwargs = {
                 'peft_helper': peft_helper,
