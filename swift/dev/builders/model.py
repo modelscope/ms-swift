@@ -91,6 +91,34 @@ def _apply_seq_cls_head(kwargs: dict, model_config: ModelConfig) -> None:
     kwargs['config'] = config
 
 
+def _apply_unsloth_kwargs(kwargs: dict, model_config: ModelConfig, tuner_config: TunerConfig,
+                          train_config: Optional[TrainConfig]) -> None:
+    """Add the UnslothModel-only kwargs to an otherwise unchanged TransformersModel kwargs dict.
+
+    unsloth rebuilds the module graph around a causal-LM checkpoint, so the num_labels head built by
+    _apply_seq_cls_head has nowhere to land -- reject those task types instead of silently training a
+    plain causal LM against a classification loss.
+
+    QLoRA is NOT wired here: build_model never receives a QuantizeConfig, so a 4bit base has to be
+    requested by constructing UnslothModel(load_in_4bit=True) directly until that config is plumbed
+    through this builder.
+    """
+    if model_config.task_type in ('seq_cls', 'reranker', 'generative_reranker'):
+        raise NotImplementedError(f'tuner_backend="unsloth" supports causal_lm only; task_type='
+                                  f'{model_config.task_type!r} needs a head unsloth does not build.')
+    kwargs['full_finetuning'] = tuner_config.tuner_type == 'full'
+    # unsloth compiles its kernels and RoPE cache for a fixed length; leave its own 2048 default in
+    # place when the config says nothing.
+    if model_config.max_model_len:
+        kwargs['max_seq_length'] = model_config.max_model_len
+    if model_config.device_map:
+        kwargs['device_map'] = model_config.device_map
+    # unsloth installs its offloaded checkpointing inside get_peft_model, which would silently undo
+    # the gradient_checkpointing_disable() below.
+    if train_config is not None and not train_config.gradient_checkpointing:
+        kwargs['use_gradient_checkpointing'] = False
+
+
 def _build_transformers_model(model_config: ModelConfig,
                               distributed_config: DistributedConfig,
                               train_config: Optional[TrainConfig] = None,
@@ -150,7 +178,16 @@ def _build_transformers_model(model_config: ModelConfig,
     # bookkeeping though: a None mesh silently changes the training objective to an avg-of-avg, so it
     # is load-bearing that run_sft calls twinkle.initialize first (see _initialize_twinkle, and the
     # 2-GPU aggregation test that pins the result).
-    model = TransformersModel(**kwargs)
+    #
+    # tuner_backend='unsloth' swaps the class: unsloth owns both construction (its Triton kernels /
+    # optional 4bit base) and LoRA installation -- see swift/dev/model/unsloth_model.py. Everything
+    # derived above (dtype, strategy, mixed_precision, ddp_config) is passed through unchanged.
+    if tuner_config is not None and tuner_config.tuner_backend == 'unsloth':
+        from swift.dev.model import UnslothModel
+        _apply_unsloth_kwargs(kwargs, model_config, tuner_config, train_config)
+        model = UnslothModel(**kwargs)
+    else:
+        model = TransformersModel(**kwargs)
 
     # twinkle's TransformersModel.__init__ calls gradient_checkpointing_enable() unconditionally
     # (model/transformers/transformers.py), so the user's --gradient_checkpointing false was silently
