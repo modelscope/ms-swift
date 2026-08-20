@@ -160,7 +160,6 @@ def _patch_mcore_bridge():
         save_missing_weights: Union[bool, str] = False,
     ) -> None:
         kwargs = {}
-        kwargs['save_missing_weights'] = save_missing_weights
         if 'save_missing_weights' in origin_parameters:
             kwargs['save_missing_weights'] = save_missing_weights
         elif save_missing_weights:
