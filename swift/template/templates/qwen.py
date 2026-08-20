@@ -899,7 +899,13 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
             if isinstance(video, list):  # image list
                 from qwen_omni_utils import vision_process
                 video_inputs['sample_fps'] = vision_process.FPS
-            _video = fetch_video(video_inputs, **kwargs)
+            _video, sample_fps = fetch_video(video_inputs, return_video_sample_fps=True, **kwargs)
+            # Record the fps actually used when sampling frames (mirrors the VL v2_5 path). Without
+            # it the HF processor falls back to fps=1.0, so `video_second_per_grid` (temporal spacing
+            # driving TMRoPE + the audio/video token interleaving under `use_audio_in_video`) ignores
+            # the real fps. Needed in every mode: the transformers/train path recomputes it from this
+            # value in `_encode`, and vllm re-runs the HF processor on the forwarded mm_processor_kwargs.
+            inputs.mm_processor_kwargs.setdefault('fps', []).append(sample_fps)
             if isinstance(_video, torch.Tensor):
                 _video = _video.to(torch.uint8)
             inputs.videos[index] = _video
@@ -997,6 +1003,15 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         media_inputs.pop('input_ids')
         media_inputs.pop('attention_mask')
         media_inputs = to_float_dtype(media_inputs, self.model_info.torch_dtype)
+        # The processor receives pre-sampled frames (no fps) and computes `video_second_per_grid`
+        # from the default fps=1.0. Override it with the fps actually used during sampling so the
+        # temporal position ids / audio-video token interleaving honor the user-configured fps.
+        fps = inputs.mm_processor_kwargs.get('fps')
+        if inputs.videos and fps and 'video_second_per_grid' in media_inputs:
+            video_processor = getattr(processor, 'video_processor', None) or processor.image_processor
+            media_inputs['video_second_per_grid'] = [
+                video_processor.temporal_patch_size / tmp for tmp in fps
+            ]
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
