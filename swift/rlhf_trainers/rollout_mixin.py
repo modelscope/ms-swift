@@ -49,7 +49,7 @@ from .utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LORA_PATH, FlattenedT
                     get_gather_if_zero3_context, parse_prompt_logprobs, patch_lora_merge, patch_lora_unmerge,
                     patch_vllm_load_adapter, patch_vllm_moe_model_weight_loader, prepare_deepspeed, prepare_fsdp,
                     profiling_context, profiling_decorator, revert_runtime_names_to_checkpoint, set_expandable_segments,
-                    vllm_supports_lora_load_inplace)
+                    sleep_vllm_engine, vllm_supports_lora_load_inplace)
 from .vllm_client import VLLMInferClient
 
 DataType = List[Dict[str, Union[torch.Tensor, Any]]]
@@ -1196,6 +1196,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
+            rollout_failed = False
             try:
                 if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
                         and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
@@ -1220,16 +1221,14 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 else:
                     with self.multi_turn_completion_length_context():
                         outputs = self._infer_single_or_multi_turn(samples, self.request_config)
+            except BaseException:
+                rollout_failed = True
+                raise
             finally:
                 # vLLM must release its memory before offload_context reloads the trainer model.
                 # Keep this cleanup on the exception path as well to avoid masking rollout failures with an OOM.
                 if self.vllm_mode == 'colocate' and args.sleep_level > 0:
-                    try:
-                        self.engine.engine.reset_prefix_cache()
-                    finally:
-                        self.engine.engine.sleep(level=args.sleep_level)
-                        aggressive_empty_cache()
-                        set_expandable_segments(True)
+                    sleep_vllm_engine(self.engine.engine, args.sleep_level, suppress_errors=rollout_failed)
         return outputs
 
     def _preprocess_inputs(self, samples: List[OnPolicySample]) -> List[OnPolicySample]:
