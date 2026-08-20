@@ -214,11 +214,16 @@ class InitModelStrategy:
         logger.info(f'initialization strategy: {init_strategy}')
 
         init_func = InitModelStrategy._INIT_STRATEGY_MAP[init_strategy]
+        model_type = getattr(getattr(model, 'config', None), 'model_type', None)
 
         for name, param in model.named_parameters():
             if InitModelStrategy.is_uninitialized(param):
                 logger.info(f'Initializing parameters: {name}.')
-                init_func(param)
+                if model_type in {'qwen3_5', 'qwen3_5_moe'} and name.endswith('A_log'):
+                    with torch.no_grad():
+                        param.uniform_(0.01, 16).log_()
+                else:
+                    init_func(param)
 
 
 def get_default_device_map():
