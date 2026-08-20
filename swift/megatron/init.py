@@ -147,6 +147,7 @@ def _patch_mcore_bridge():
     from mcore_bridge import GPTBridge
     logger.info(f'mcore_bridge.__version__: {mcore_bridge.__version__}')
     origin_save_weights = GPTBridge.save_weights
+    origin_parameters = inspect.signature(origin_save_weights).parameters
 
     def save_weights(
         self,
@@ -158,13 +159,15 @@ def _patch_mcore_bridge():
         processor=None,
         save_missing_weights: Union[bool, str] = False,
     ) -> None:
+        kwargs = {}
+        kwargs['save_missing_weights'] = save_missing_weights
+        if 'save_missing_weights' in origin_parameters:
+            kwargs['save_missing_weights'] = save_missing_weights
+        elif save_missing_weights:
+            logger.warning('The installed `mcore-bridge` does not support `save_missing_weights`. '
+                           'Please upgrade it via `pip install mcore-bridge -U`. Ignoring this parameter.')
         origin_save_weights(
-            self,
-            mg_models,
-            output_dir,
-            peft_format=peft_format,
-            max_shard_size=max_shard_size,
-            save_missing_weights=save_missing_weights)
+            self, mg_models, output_dir, peft_format=peft_format, max_shard_size=max_shard_size, **kwargs)
         if processor is None or args is None:
             return
         hf_config = self.config.hf_config
