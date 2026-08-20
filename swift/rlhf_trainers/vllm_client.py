@@ -78,7 +78,7 @@ class VLLMInferClient:
 
         def check_single_server(i):
             start_time = time.time()
-            url = f'{self.base_urls[i]}/health/'
+            url = f'{self.base_urls[i]}/health'
             while True:
                 try:
                     response = requests.get(url, timeout=retry_interval)
