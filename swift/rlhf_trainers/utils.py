@@ -1680,9 +1680,9 @@ def sleep_vllm_engine(engine, sleep_level: int, suppress_errors: bool = False) -
         try:
             callback()
         except Exception as error:
-            cleanup_error = cleanup_error or error
-            if suppress_errors:
-                get_logger().warning(f'Failed to {operation} during vLLM cleanup: {error}')
+            if cleanup_error is None:
+                cleanup_error = error
+            get_logger().warning(f'Failed to {operation} during vLLM cleanup: {error}')
     if cleanup_error is not None and not suppress_errors:
         raise cleanup_error
 
