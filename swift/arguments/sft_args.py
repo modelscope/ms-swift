@@ -209,7 +209,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         TunerArguments.__post_init__(self)
         self._check_padding_free()
         if self.vit_gradient_checkpointing is None:
-            self.vit_gradient_checkpointing = not self.freeze_vit
+            self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'
