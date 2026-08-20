@@ -1,6 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import importlib.util
 import os
 
 from swift.utils.logger import get_logger
@@ -11,10 +12,28 @@ _DEFAULT_NPU_HCCL_CONNECT_TIMEOUT = '600'
 _TORCH_NPU_GETENV_MODULE = 'torch_npu.utils.patch_getenv'
 
 
+def _bootstrap_vllm_ascend_custom_opp_env() -> None:
+    """Expose wheel-bundled custom OPPs before torch-npu initializes CANN."""
+    spec = importlib.util.find_spec('vllm_ascend')
+    if spec is None or spec.origin is None:
+        return
+
+    vendor_path = os.path.join(
+        os.path.dirname(spec.origin), '_cann_ops_custom', 'vendors', 'custom_transformer')
+    if not os.path.isdir(vendor_path):
+        return
+
+    current_paths = [path for path in os.environ.get('ASCEND_CUSTOM_OPP_PATH', '').split(':') if path]
+    if vendor_path in current_paths:
+        return
+    os.environ['ASCEND_CUSTOM_OPP_PATH'] = ':'.join([vendor_path, *current_paths])
+    logger.info('Registered the vLLM-Ascend wheel custom OPP path before torch-npu initialization.')
+
+
 def _patch_torch_npu_getenv() -> None:
     try:
         from torch_npu.utils import patch_getenv
-    except Exception:
+    except Exception:  # noqa: BLE001
         return
 
     orig_environ_get = getattr(patch_getenv, '_orig_environ_get', None)
@@ -42,6 +61,7 @@ def _patch_torch_npu_getenv() -> None:
 
 
 def apply_patch() -> None:
+    _bootstrap_vllm_ascend_custom_opp_env()
     _patch_torch_npu_getenv()
 
     if 'HCCL_CONNECT_TIMEOUT' in os.environ:

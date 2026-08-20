@@ -2,6 +2,8 @@
 """vLLM-Ascend LoRA compatibility patches."""
 from __future__ import annotations
 
+import inspect
+
 import torch
 
 from swift.utils.logger import get_logger
@@ -10,9 +12,34 @@ _QWEN3_5_QKVZ_SUFFIX = '.linear_attn.in_proj_qkvz'
 logger = get_logger()
 
 
+def _supports_vllm_ascend_fused_moe_lora() -> bool:
+    """Return whether the installed plugin provides an Ascend MoE LoRA wrapper."""
+    try:
+        from vllm_ascend.lora.fused_moe import AscendFusedMoEWithLoRA
+    except (ImportError, AttributeError):
+        return False
+    return AscendFusedMoEWithLoRA is not None
+
+
+def _supports_native_packed_lora_expansion(wrapper_cls) -> bool:
+    """Detect vLLM's generic packed-LoRA expansion by implementation capability."""
+    set_lora = getattr(wrapper_cls, 'set_lora', None)
+    if not callable(set_lora) or not callable(getattr(wrapper_cls, 'expand_packed_lora', None)):
+        return False
+    code = getattr(set_lora, '__code__', None)
+    if code is not None and 'expand_packed_lora' in code.co_names:
+        return True
+    try:
+        return 'expand_packed_lora' in inspect.getsource(set_lora)
+    except (OSError, TypeError):
+        return False
+
+
 def validate_vllm_ascend_lora_training(model, args) -> None:
     """Reject training configurations whose expert LoRA cannot run in vLLM-Ascend."""
     if args.tuner_type != 'lora' or not args.vllm_enable_lora or not model.model_info.is_moe_model:
+        return
+    if _supports_vllm_ascend_fused_moe_lora():
         return
 
     tuner = getattr(model, 'base_model', None)
@@ -31,6 +58,8 @@ def validate_vllm_ascend_lora_training(model, args) -> None:
 def validate_vllm_ascend_megatron_lora_training(models, args) -> None:
     """Reject Megatron expert LoRA that vLLM-Ascend cannot apply during rollout."""
     if args.tuner_type != 'lora' or not args.vllm_enable_lora or not args.model_info.is_moe_model:
+        return
+    if _supports_vllm_ascend_fused_moe_lora():
         return
 
     routed_expert_modules = sorted({
@@ -78,9 +107,11 @@ def _exclude_unsupported_fused_moe_lora_modules(
 
 def _patch_vllm_ascend_fused_moe_lora_modules() -> None:
     """Keep vLLM's CUDA-only FusedMoE LoRA wrapper out of the NPU path."""
+    if _supports_vllm_ascend_fused_moe_lora():
+        return
     try:
-        import vllm.lora.model_manager as model_manager
         import vllm.lora.utils as lora_utils
+        from vllm.lora import model_manager
     except ImportError:
         return
 
@@ -171,6 +202,8 @@ def patch_vllm_ascend_lora_runtime() -> None:
         return
 
     wrapper_cls = AscendMergedColumnParallelLinearWithLoRA
+    if _supports_native_packed_lora_expansion(wrapper_cls):
+        return
     if getattr(wrapper_cls, '_swift_qwen3_5_qkvz_lora_patched', False):
         return
     origin_set_lora = wrapper_cls.set_lora
