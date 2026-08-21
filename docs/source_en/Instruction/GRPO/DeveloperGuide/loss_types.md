@@ -122,6 +122,22 @@ The FIPO influence weight is detached by default and uses the same global token 
 
 **Normalization Dimension:** Global token dimension (total completion tokens across all processes)
 
+## M2PO
+
+`--loss_type m2po --m2_threshold 0.04 --beta 0`
+
+[M2PO](https://arxiv.org/abs/2510.01161) replaces PPO's fixed clipping interval with a batch-level
+second-moment constraint on the behavior-policy log-ratio. It considers only tokens in the active PPO trust-region
+quadrants, `(A > 0, ratio > 1)` and `(A < 0, ratio < 1)`, then masks the largest squared log-ratio outliers until the
+mean second moment of the remaining trust-region tokens is at most `m2_threshold`.
+
+When rollout log probabilities are available, the ratio is computed against `rollout_per_token_logps`; otherwise it
+falls back to `old_per_token_logps`. In distributed training, the threshold is selected jointly across the data
+parallel group. Following the paper, masked policy-loss terms are zeroed while the denominator remains the number of
+all valid completion tokens. The reference experiments use `m2_threshold=0.04` and `beta=0`.
+
+**Normalization Dimension:** Global valid-token dimension before M2PO masking.
+
 ## SAPO
 
 `--loss_type sapo`
