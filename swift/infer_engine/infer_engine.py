@@ -88,11 +88,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
             else:
                 queue.put(None)
 
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         thread = Thread(target=lambda: loop.run_until_complete(_run_async_iter()))
         thread.start()
         pre_output = None
@@ -136,11 +133,8 @@ class InferEngine(BaseInferEngine, ProcessorMixin):
                 return res
 
             new_tasks = [_new_run(task) for task in tasks]
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             return loop.run_until_complete(self.batch_run(new_tasks))
 
     @staticmethod

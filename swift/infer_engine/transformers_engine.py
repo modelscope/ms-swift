@@ -489,7 +489,7 @@ class TransformersEngine(InferEngine):
             'request_config': request_config,
             'adapter_request': adapter_request,
             'pre_infer_hook': pre_infer_hook
-        }, (queue, asyncio.get_event_loop())))
+        }, (queue, asyncio.get_running_loop())))
         await asyncio.sleep(0)
         if self._task_thread is None:
             self._start_infer_worker()
