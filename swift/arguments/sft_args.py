@@ -241,6 +241,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         self._init_output_dir()
         self._init_metric()
 
+        if self.save_epochs is not None:
+            self.save_strategy = 'epoch'
+
         if self.learning_rate is None:
             if self.tuner_type == 'full':
                 self.learning_rate = 1e-5

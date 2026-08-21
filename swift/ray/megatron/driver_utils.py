@@ -209,6 +209,7 @@ def build_dataset_from_dict(cfg: Dict[str, Any]):
         'num_train_epochs': args.num_train_epochs,
         'train_iters': args.train_iters,
         'save_strategy': args.save_strategy,
+        'save_epochs': args.save_epochs,
         'eval_iters': args.eval_iters,
         'num_generations': args.num_generations,
         'template': template,
@@ -254,10 +255,13 @@ def compute_iter_params(data_info: Dict[str, Any], dp_size: int) -> Dict[str, An
 
     result: Dict[str, Any] = {}
 
-    if data_info.get('save_strategy') == 'epoch' and train_len > 0:
-        ds_sample = train_len // step_batch_size * step_batch_size * num_gen
-        result['save_steps'] = ds_sample // gbs
-        result['eval_steps'] = result['save_steps']
+    if data_info.get('save_strategy') == 'epoch':
+        if data_info.get('save_epochs') is not None and train_ds is not None and not hasattr(train_ds, '__len__'):
+            raise ValueError('streaming dataset is not supported with `--save_strategy epoch`.')
+        if train_len > 0:
+            ds_sample = train_len // step_batch_size * step_batch_size * num_gen
+            result['save_steps'] = ds_sample // gbs * (data_info.get('save_epochs') or 1)
+            result['eval_steps'] = result['save_steps']
 
     train_iters = data_info.get('train_iters')
     if data_info.get('num_train_epochs') is not None and train_len > 0:
