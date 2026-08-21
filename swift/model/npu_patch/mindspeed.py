@@ -1,9 +1,11 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from __future__ import annotations
 
+import copy
 import importlib
 import inspect
 import sys
+import torch
 from functools import wraps
 from types import ModuleType
 from typing import Any
@@ -15,6 +17,139 @@ logger = get_logger()
 _ORIGINAL_MINDSPEED_TE_CP_CLASS = None
 _ORIGINAL_MINDSPEED_GDN = None
 _FLA_GDN_PATCH_TARGET = 'fla.ops.gated_delta_rule.chunk_gated_delta_rule'
+_MINDSPEED_FSDP_GRAD_REDUCE_MODULE = 'mindspeed.core.distributed.custom_fsdp.param_and_grad_buffer'
+
+
+def _wrap_mindspeed_fsdp_gradient_reduce(original_gradient_reduce):
+    """Treat a missing Megatron-FSDP gradient scale as the multiplicative identity."""
+
+    @wraps(original_gradient_reduce)
+    def gradient_reduce_with_none_scaling(self, bucket_group, *args, **kwargs):
+        restored_buffers = []
+        restored_configs = {}
+        seen_buffers = set()
+        for bucket_id in bucket_group:
+            grad_buffer = self.get_fsdp_buffer(bucket_id)
+            buffer_id = id(grad_buffer)
+            if buffer_id in seen_buffers or grad_buffer.gradient_scaling_factor is not None:
+                continue
+            seen_buffers.add(buffer_id)
+            restored_buffers.append(grad_buffer)
+            grad_buffer.gradient_scaling_factor = 1.0
+
+            # `None` means SUM without any pre-scaling. Keep that semantic even if
+            # average-in-collective was enabled on the shared DDP config.
+            ddp_config = grad_buffer.ddp_config
+            config_id = id(ddp_config)
+            if config_id not in restored_configs and ddp_config.average_in_collective:
+                restored_configs[config_id] = ddp_config
+                ddp_config.average_in_collective = False
+
+        try:
+            return original_gradient_reduce(self, bucket_group, *args, **kwargs)
+        finally:
+            for grad_buffer in restored_buffers:
+                grad_buffer.gradient_scaling_factor = None
+            for ddp_config in restored_configs.values():
+                ddp_config.average_in_collective = True
+
+    gradient_reduce_with_none_scaling._swift_handles_none_gradient_scaling = True
+    return gradient_reduce_with_none_scaling
+
+
+def patch_mindspeed_megatron_fsdp_gradient_scaling(megatron_args: dict[str, Any]) -> None:
+    """Patch the MindSpeed 0.16 Megatron-FSDP reducer that multiplies by ``None``."""
+    if not megatron_args.get('use_megatron_fsdp', False):
+        return
+
+    grad_buffer_module = importlib.import_module(
+        'megatron.core.distributed.fsdp.src.megatron_fsdp.param_and_grad_buffer')
+    grad_reduce = grad_buffer_module.GradReducePipeline._bucket_group_gradient_reduce
+    if getattr(grad_reduce, '_swift_handles_none_gradient_scaling', False):
+        return
+    if grad_reduce.__module__ != _MINDSPEED_FSDP_GRAD_REDUCE_MODULE:
+        logger.info('MindSpeed Megatron-FSDP gradient reducer is not active; skip the None-scaling patch.')
+        return
+
+    try:
+        source = inspect.getsource(grad_reduce)
+    except (OSError, TypeError) as e:
+        logger.warning('Cannot inspect the active MindSpeed Megatron-FSDP gradient reducer; skip patch: %s', e)
+        return
+    has_unconditional_scale = 'bucket.data.mul_(scaling_factor)' in source
+    has_none_guard = 'if scaling_factor is None' in source or 'if scaling_factor is not None' in source
+    if not has_unconditional_scale or has_none_guard:
+        logger.info('MindSpeed Megatron-FSDP gradient reducer already handles None scaling; skip patch.')
+        return
+
+    grad_buffer_module.GradReducePipeline._bucket_group_gradient_reduce = _wrap_mindspeed_fsdp_gradient_reduce(
+        grad_reduce)
+    logger.info('Patched MindSpeed Megatron-FSDP gradient reduction to handle scaling_factor=None.')
+
+
+def complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model) -> None:
+    """Add optimizer shards omitted by MindSpeed so all DP ranks use the same state keys."""
+    optimizer_state_dict = state_dict.get('optimizer')
+    if not optimizer_state_dict:
+        return
+    optimizer_state = optimizer_state_dict.get('state', {})
+    param_to_group_meta = optimizer_state_dict.get('param_to_group_meta', {})
+    if not param_to_group_meta:
+        return
+    if set(param_to_group_meta).issubset(optimizer_state):
+        optimizer_state_dict['state'] = {
+            **{key: optimizer_state[key] for key in param_to_group_meta},
+            **{key: value for key, value in optimizer_state.items() if key not in param_to_group_meta},
+        }
+        return
+    if not optimizer_state:
+        raise RuntimeError('Cannot infer Megatron-FSDP optimizer state fields from an empty local state dict.')
+
+    state_template = next(iter(optimizer_state.values()))
+    completed_state = {}
+    added_count = 0
+    for param_name in param_to_group_meta:
+        if param_name in optimizer_state:
+            completed_state[param_name] = optimizer_state[param_name]
+            continue
+
+        model_param_name = param_name[len('module.'):] if param_name.startswith('module.') else param_name
+        num_experts = getattr(getattr(model, 'config', None), 'num_moe_experts', None)
+        if num_experts:
+            from megatron.core.transformer.fsdp_dtensor_checkpoint import expert_param_local_key
+            model_param_name = expert_param_local_key(model_param_name, num_experts)
+        dist_param = model.get_parameter(model_param_name)
+        missing_state = {}
+        for state_key, template_value in state_template.items():
+            if isinstance(template_value, torch.Tensor) and state_key in {'exp_avg', 'exp_avg_sq', 'master_param'}:
+                missing_state[state_key] = torch.zeros_like(dist_param, dtype=template_value.dtype)
+            else:
+                missing_state[state_key] = copy.deepcopy(template_value)
+        completed_state[param_name] = missing_state
+        added_count += 1
+
+    completed_state.update({key: value for key, value in optimizer_state.items() if key not in completed_state})
+    optimizer_state_dict['state'] = completed_state
+    logger.info('Added %d empty local optimizer shards for MindSpeed Megatron-FSDP checkpointing.', added_count)
+
+
+def load_mindspeed_fsdp_dtensor_optimizer_state_dict(distributed_optimizers, state_dict) -> bool:
+    """Restore an FSDP DTensor optimizer state without MindSpeed's legacy checkpoint loader."""
+    is_fsdp_dtensor_state = isinstance(state_dict, dict) and 'state' in state_dict and 'param_to_group_meta' in state_dict
+    if not is_fsdp_dtensor_state:
+        return False
+    if len(distributed_optimizers) != 1:
+        raise RuntimeError(f'MindSpeed FSDP DTensor optimizer compatibility supports exactly one distributed '
+                           f'optimizer, got {len(distributed_optimizers)}.')
+
+    distributed_optimizer = distributed_optimizers[0]
+    logger.warning('Loading FSDP DTensor optimizer state with the Megatron-Core compatibility path because '
+                   'MindSpeed DistributedOptimizer.load_state_dict expects the legacy checkpoint structure.')
+    inner_state_dict = dict(state_dict)
+    inner_state_dict['param_groups'] = distributed_optimizer._param2group_meta_to_param_groups(
+        inner_state_dict.pop('param_to_group_meta'), distributed_optimizer.optimizer.param_groups)
+    distributed_optimizer.optimizer.load_state_dict(inner_state_dict)
+    return True
 
 
 def _mindspeed_gdn_with_safe_varlen(q,
@@ -352,6 +487,7 @@ def apply_mindspeed_patches(megatron_args: dict[str, Any]) -> None:
 
     patch_mindspeed_te_cp_implementation(megatron_args)
     repatch(megatron_args)
+    patch_mindspeed_megatron_fsdp_gradient_scaling(megatron_args)
     patch_mindspeed_gdn_cp_helpers(megatron_args)
     patch_mindspeed_te_layernorm_linear_frozen_weight()
     patch_mindspeed_te_grouped_linear_save_original_input()
