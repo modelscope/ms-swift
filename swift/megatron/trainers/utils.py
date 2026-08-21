@@ -334,7 +334,7 @@ class MegatronDataLoaderDispatcher(DataLoaderDispatcher):
         return mpu.get_data_parallel_group()
 
 
-def build_streaming_dataloader(args, dataset, collate_fn):
+def build_streaming_dataloader(args, dataset, collate_fn, generator=None):
     base_dataloader = torch.utils.data.DataLoader(
         dataset,
         num_workers=args.dataloader_num_workers,
@@ -343,6 +343,7 @@ def build_streaming_dataloader(args, dataset, collate_fn):
         batch_size=args.micro_batch_size,
         prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
         persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
+        generator=generator,
     )
     return MegatronDataLoaderDispatcher(base_dataloader)
 

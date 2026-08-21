@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 from contextlib import contextmanager
 from functools import partial
-from mcore_bridge import set_random_seed
 from megatron.core import mpu
 from transformers.utils import ContextManagers
 from typing import Dict, List, Optional
@@ -167,20 +166,7 @@ class MegatronGKDTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         """
         args = self.args
         resample_seed = getattr(args, 'seed', 42) + 1
-        try:
-            set_random_seed(
-                resample_seed,
-                args.data_parallel_random_init,
-                args.te_rng_tracker,
-            )
-            resample_data_iterator = self._prepare_data_iterator(train_dataset, use_origin_cyclic=True)[0]
-        finally:
-            set_random_seed(
-                args.seed,
-                args.data_parallel_random_init,
-                args.te_rng_tracker,
-            )
-        return resample_data_iterator
+        return self._prepare_data_iterator(train_dataset, use_origin_cyclic=True, seed=resample_seed)[0]
 
     def resample_encode_failed_inputs(self, inputs: List[Dict], max_resample_rounds: int = 10) -> List[Dict]:
         """Attempt to encode each input. If encoding fails, resample until we have enough valid samples.
