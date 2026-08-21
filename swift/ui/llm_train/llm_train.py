@@ -523,7 +523,7 @@ class LLMTrain(BaseUI):
             try:
                 import requests
                 headers = {'Accept': 'application/json'}
-                url = f'http://{host}:{port}/health/'
+                url = f'http://{host}:{port}/health'
                 response = requests.get(url, headers=headers)
                 res = response.json()
                 assert res['status'] == 'ok', 'statue must be ok'
