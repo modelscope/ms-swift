@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import unittest
 
-from swift.utils import append_to_jsonl, get_logger, read_from_jsonl, write_to_jsonl
+from swift.utils import JsonlWriter, append_to_jsonl, get_logger, read_from_jsonl, write_to_jsonl
 
 logger = get_logger()
 
@@ -36,6 +36,18 @@ class TestIOUtils(unittest.TestCase):
             append_to_jsonl(fpath, obj)
         new_obj_list = read_from_jsonl(fpath)
         self.assertTrue(new_obj_list == obj_list)
+
+    def test_async_jsonl_close(self):
+        fpath = os.path.join(self.tmp_dir, 'async.jsonl')
+        obj_list = [{'value': i} for i in range(100)]
+        writer = JsonlWriter(fpath, enable_async=True)
+        for obj in obj_list:
+            writer.append(obj)
+        writer.close()
+
+        self.assertEqual(read_from_jsonl(fpath), obj_list)
+        with self.assertRaises(RuntimeError):
+            writer.append({'value': 100})
 
 
 if __name__ == '__main__':
