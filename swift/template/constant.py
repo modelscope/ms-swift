@@ -137,6 +137,7 @@ class RMTemplateType:
 
 
 class MLLMTemplateType:
+    moss_vl = 'moss_vl'
     qwen_vl = 'qwen_vl'
     qwen_audio = 'qwen_audio'
     qwen2_vl = 'qwen2_vl'
