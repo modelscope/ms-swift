@@ -12,8 +12,10 @@ checkpoint returns all candidates for the caller to disambiguate.
 
 Not migrated here (bucket C -- see MODEL_MIGRATION.md): ``llama3_llava_next`` / ``llava1_6_mistral``
 / ``llava1_6_yi`` / ``llava_next_qwen`` (``LlavaLoader`` ``git_clone``s the haotian-liu/LLaVA-VL
-repos, force-loads a CLIP vision tower, resizes embeddings and monkeypatches forward/generate) and
-``llava_onevision1_5`` (dynamic-module class + ``_no_split_modules`` + ``patch_get_input_embeddings``).
+repos, force-loads a CLIP vision tower, resizes embeddings and monkeypatches forward/generate).
+
+``llava_onevision1_5`` *is* migrated (bottom of this file) -- unlike its older siblings it needs no
+external repo, only the checkpoint's own remote code.
 """
 from __future__ import annotations
 
@@ -151,4 +153,52 @@ class LlavaNextVideoYiHfLoader(LlavaNextVideoHfLoader):
     def process_config(self, config):
         config.video_token_index = 64003
         config.image_token_index = 64004
+        return config
+
+
+@register_model
+class LlavaOnevision1_5Loader(ModelLoader):
+    """LLaVA-OneVision-1.5: a Qwen2.5-VL-style stack whose model code ships *in the checkpoint*
+    (``modeling_llavaonevision1_5.py``), so it loads via ``AutoModelForCausalLM`` + the g7
+    ``trust_remote_code`` flag. Legacy reached the class through ``get_class_from_dynamic_module``
+    only so it could set ``_no_split_modules`` on it -- with that dropped, plain remote-code loading
+    is enough.
+
+    ``process_config`` keeps the one real fixup: ``vision_start_token_id = 151652``, which the shipped
+    config omits and the template needs to locate image spans.
+
+    Dropped, per PATCH_INVENTORY: ``_no_split_modules`` (an HF ``device_map`` hint -- twinkle owns
+    placement) and ``patch_get_input_embeddings(model.visual, 'patch_embed')`` (only needed under
+    reentrant gradient checkpointing).
+
+    Note ``requires`` is a *floor* (``transformers>=4.53.0``) plus the ``qwen_vl_utils`` package, both
+    satisfied on transformers 5.5 -- this family was never version-dead, unlike the older
+    ``llava1_6_*`` / ``llava_next_qwen`` siblings that need an external repo clone.
+    """
+
+    model_type = 'llava_onevision1_5'
+    model_cls = 'transformers:AutoModelForCausalLM'
+    trust_remote_code = True
+    architectures = ['LLaVAOneVision1_5_ForConditionalGeneration']
+    template = 'llava_onevision1_5'
+    requires = ['transformers>=4.53.0', 'qwen_vl_utils']
+    tags = ['vision']
+    is_multimodal = True
+    models = [
+        'lmms-lab/LLaVA-OneVision-1.5-4B-Instruct',
+        'lmms-lab/LLaVA-OneVision-1.5-8B-Instruct',
+        'lmms-lab/LLaVA-OneVision-1.5-4B-Base',
+        'lmms-lab/LLaVA-OneVision-1.5-8B-Base',
+    ]
+
+    @property
+    def model_arch(self) -> ModelArch:
+        return ModelArch(
+            language_model=['model.language_model', 'lm_head'],
+            aligner=['model.visual.merger'],
+            vision_tower=['model.visual'],
+        )
+
+    def process_config(self, config):
+        config.vision_start_token_id = 151652
         return config

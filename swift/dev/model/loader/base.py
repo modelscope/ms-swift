@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import torch
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from transformers import AutoConfig, AutoProcessor, AutoTokenizer, PretrainedConfig, PreTrainedModel
 from typing import Any, Dict, Iterator, List, Literal, Optional, Sequence, Tuple, Type, Union
@@ -362,6 +363,14 @@ class ModelLoader:
     config_cls: Optional[str] = None
     processor_cls: Optional[str] = None
     model_cls: Optional[str] = None
+    # Set True for a remote-code checkpoint (a custom `modeling_*.py` loaded through HF's
+    # dynamic-module path). It makes `build_config` / `build_processor` / `build_model` pass
+    # `trust_remote_code=True`, so an `AutoConfig` / `AutoProcessor` / `AutoModel*` resolves the
+    # checkpoint's own classes instead of failing to find an in-tree one. In-tree families leave it
+    # False (the default) -- passing it would be harmless, but the flag also documents, per family,
+    # exactly which checkpoints ship code we execute. Injected via `setdefault` so an explicit caller
+    # kwarg always wins, and it replaces legacy's scattered `get_class_from_dynamic_module` calls.
+    trust_remote_code: bool = False
 
     def __init__(self, model_info, **kwargs):
         # `model_info` describes one concrete checkpoint, so it arrives per instance rather than
@@ -384,10 +393,14 @@ class ModelLoader:
         return self._model_info
 
     def build_config(self, model_dir: str, **kwargs) -> PretrainedConfig:
+        if self.trust_remote_code:
+            kwargs.setdefault('trust_remote_code', True)
         config_cls = _import_cls(self.config_cls) if self.config_cls else AutoConfig
         return config_cls.from_pretrained(model_dir, **kwargs)
 
     def build_processor(self, model_dir: str, config: PretrainedConfig, **kwargs):
+        if self.trust_remote_code:
+            kwargs.setdefault('trust_remote_code', True)
         if self.processor_cls:
             processor_cls = _import_cls(self.processor_cls)
         elif (os.path.exists(os.path.join(model_dir, 'preprocessor_config.json'))
@@ -401,6 +414,8 @@ class ModelLoader:
 
     def build_model(self, model_dir: str, config: PretrainedConfig, processor, **kwargs) -> PreTrainedModel:
         assert self.model_cls is not None, f'{type(self).__name__} must declare `model_cls`.'
+        if self.trust_remote_code:
+            kwargs.setdefault('trust_remote_code', True)
         return _import_cls(self.model_cls).from_pretrained(model_dir, config=config, **kwargs)
 
     def process_config(self, config):
@@ -412,34 +427,85 @@ class ModelLoader:
     def process_model(self, model):
         return model
 
+    @staticmethod
+    @contextmanager
+    def ignore_check_imports():
+        """Skip transformers' remote-code dependency check for the duration of a load.
 
-def apply_z3_leaf_modules(model, moe_block: List[str]) -> None:
-    """Mark a MoE sparse/expert block as a DeepSpeed ZeRO-3 leaf module.
+        ``check_imports`` scans a downloaded ``modeling_*.py`` for third-party imports and raises if
+        one is not installed. Some remote-code checkpoints declare imports that are never reached on
+        the paths we execute, and without relaxing the check the dynamic import fails outright -- so
+        this gates loading rather than papering over behaviour. Used by ``minimax_vl`` and
+        ``florence`` (legacy's ``patch_ignore_check_imports``).
+        """
+        import transformers.dynamic_module_utils as dynamic_module_utils
+        _origin_check = dynamic_module_utils.check_imports
+        dynamic_module_utils.check_imports = lambda filename: []
+        try:
+            yield
+        finally:
+            dynamic_module_utils.check_imports = _origin_check
 
-    ZeRO-3 partitions parameters across ranks and re-gathers them per submodule forward; for a MoE
-    block only a token-dependent subset of experts runs, so ZeRO-3 must treat the whole block as one
-    leaf (gather all experts up front) or it deadlocks on the experts that stay dark. ``moe_block``
-    holds the block's *leaf class name(s)* (Mixtral ``MixtralSparseMoeBlock``); we match them against
-    the live modules' ``type(...).__name__`` rather than importing, so a remote-code block with no
-    static import path works too (legacy needed ``get_class_from_dynamic_module`` per such model).
-    Matching on the class name -- not the attribute name -- is also what lets llama4 work: it names
-    both its sparse ``Llama4TextMoe`` and its dense ``Llama4TextMLP`` ``self.feed_forward``, so an
-    attribute-name match would wrongly mark the dense MLP as a leaf.
+    @staticmethod
+    def delegate_to_submodel(model, submodel_name: str, func_list: Optional[List[str]] = None) -> None:
+        """Proxy a wrapper model's top-level methods to its inner LLM sub-module.
 
-    Call this from the DeepSpeed ZeRO-3 *strategy setup* -- only when ZeRO-3 is active, and before
-    ``deepspeed.initialize`` partitions the parameters. The "is this ZeRO-3" decision is the
-    strategy's (it reads the planned ``DistributedConfig.deepspeed``); it is deliberately NOT taken
-    from transformers' ``is_deepspeed_zero3_enabled()``, which only reports True after HF
-    ``TrainingArguments`` has instantiated transformers' ``HfDeepSpeedConfig``. dev drives DeepSpeed
-    through twinkle/accelerate with no HF Trainer, so that global stays unset and the probe would
-    silently return False -- skipping the leaf setting and re-introducing the very deadlock this
-    prevents.
-    """
-    if not moe_block:
-        return
-    leaves = set(moe_block)
-    classes = {type(module) for module in model.modules() if type(module).__name__ in leaves}
-    if not classes:
-        return
-    from deepspeed.utils import set_z3_leaf_modules
-    set_z3_leaf_modules(model, list(classes))
+        Many MLLM checkpoints are a thin wrapper whose real language model hangs off an attribute
+        (``model.llm`` for Ovis, ``model.language_model`` elsewhere): the wrapper itself has no usable
+        ``forward`` / ``generate`` / ``get_input_embeddings``, so those calls must be forwarded to the
+        sub-module. This is the faithful half of legacy ``use_submodel_func``; the device-shuffling
+        half (moving ``res.logits`` / ``loss`` back onto the input device, and the ``fix device_map``
+        branch) is dropped -- it patched HF ``device_map`` sharding, which dev does not use (twinkle
+        owns placement). Called from a subclass ``process_model``; ``func_list`` defaults to the
+        legacy set.
+        """
+        from functools import wraps
+        from types import MethodType
+        if func_list is None:
+            func_list = ['generate', 'get_input_embeddings', 'gradient_checkpointing_enable', 'forward']
+        submodel = getattr(model, submodel_name)
+
+        def _make(func_name: str):
+            _old_func = getattr(submodel, func_name).__func__
+
+            @wraps(_old_func)
+            def _new_func(self, *args, **kwargs):
+                return _old_func(submodel, *args, **kwargs)
+
+            return _new_func
+
+        for key in func_list:
+            setattr(model, key, MethodType(_make(key), model))
+
+    @staticmethod
+    def apply_z3_leaf_modules(model, moe_block: List[str]) -> None:
+        """Mark a MoE sparse/expert block as a DeepSpeed ZeRO-3 leaf module.
+
+        ZeRO-3 partitions parameters across ranks and re-gathers them per submodule forward; for a
+        MoE block only a token-dependent subset of experts runs, so ZeRO-3 must treat the whole block
+        as one leaf (gather all experts up front) or it deadlocks on the experts that stay dark.
+        ``moe_block`` holds the block's *leaf class name(s)* (Mixtral ``MixtralSparseMoeBlock``); we
+        match them against the live modules' ``type(...).__name__`` rather than importing, so a
+        remote-code block with no static import path works too (legacy needed
+        ``get_class_from_dynamic_module`` per such model). Matching on the class name -- not the
+        attribute name -- is also what lets llama4 work: it names both its sparse ``Llama4TextMoe``
+        and its dense ``Llama4TextMLP`` ``self.feed_forward``, so an attribute-name match would
+        wrongly mark the dense MLP as a leaf.
+
+        Call this from the DeepSpeed ZeRO-3 *strategy setup* -- only when ZeRO-3 is active, and before
+        ``deepspeed.initialize`` partitions the parameters. The "is this ZeRO-3" decision is the
+        strategy's (it reads the planned ``DistributedConfig.deepspeed``); it is deliberately NOT
+        taken from transformers' ``is_deepspeed_zero3_enabled()``, which only reports True after HF
+        ``TrainingArguments`` has instantiated transformers' ``HfDeepSpeedConfig``. dev drives
+        DeepSpeed through twinkle/accelerate with no HF Trainer, so that global stays unset and the
+        probe would silently return False -- skipping the leaf setting and re-introducing the very
+        deadlock this prevents.
+        """
+        if not moe_block:
+            return
+        leaves = set(moe_block)
+        classes = {type(module) for module in model.modules() if type(module).__name__ in leaves}
+        if not classes:
+            return
+        from deepspeed.utils import set_z3_leaf_modules
+        set_z3_leaf_modules(model, list(classes))
