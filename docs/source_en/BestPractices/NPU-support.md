@@ -44,7 +44,8 @@ Recommended base environment versions:
 | CANN      | >= 8.5.1        |
 | torch     | >= 2.7.1        |
 | torch_npu | >= 2.7.1.post4  |
-Note: The officially recommended version compatibility matrix for the vLLM Ascend series has been updated to CANN 9.0.0, torch 2.9.0, torch_npu 2.9.0, vllm-ascend 0.18.0 for A3, and vllm-ascend 0.19.1 for A5. For details, see the [vLLM Ascend installation guide](https://docs.vllm.ai/projects/ascend/en/v0.18.0/installation.html).
+
+Install vLLM-Ascend together with CANN, torch, and torch_npu as one compatibility set. For details, see the [vLLM-Ascend 0.23.0 installation guide](https://docs.vllm.ai/projects/ascend/en/v0.23.0/installation.html).
 
 For base environment setup, see the [Ascend PyTorch installation guide](https://gitcode.com/Ascend/pytorch). The examples in this document were verified on 8 * Ascend 910B3 64G.
 
@@ -197,7 +198,7 @@ After entering the container, run `source /usr/local/Ascend/ascend-toolkit/set_e
 
 ```shell
 # Create a new conda virtual environment (optional)
-conda create -n swift-npu python=3.11 -y
+conda create -n swift-npu python=3.12 -y
 conda activate swift-npu
 
 # Source the CANN environment before the following steps
@@ -212,8 +213,10 @@ git clone https://github.com/modelscope/ms-swift.git
 cd ms-swift
 pip install -e .
 
-# Install torch_npu
-pip install torch_npu==2.9.0 decorator
+# Install the matching PyTorch/TorchNPU runtime
+pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0
+pip install torch_npu==2.10.0.post4 decorator \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 # If you want to use deepspeed (to reduce memory usage, with some speed overhead)
 pip install deepspeed
 
@@ -221,8 +224,10 @@ pip install deepspeed
 pip install evalscope[opencompass]
 
 # If you need vllm-ascend for inference, install the following packages (for more versions, see the [vLLM-Ascend official website](https://docs.vllm.ai/projects/ascend/en/latest/installation.html))
-pip install vllm==0.18.0
-pip install vllm-ascend==0.18.0
+pip install vllm==0.23.0
+pip install vllm-ascend==0.23.0 \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi/variant \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 ```
 
 ### NPU Availability Check
@@ -700,9 +705,11 @@ ASCEND_RT_VISIBLE_DEVICES=0 swift deploy --model xxx/checkpoint-xxx-merged --max
 Install from PyPI:
 
 ```shell
-# Refer to the official vLLM-Ascend compatibility matrix; the following versions are verified in this document.
-pip install vllm==0.14.0
-pip install vllm-ascend==0.14.0rc1
+# Refer to the official vLLM-Ascend compatibility matrix; the following versions are recommended here.
+pip install vllm==0.23.0
+pip install vllm-ascend==0.23.0 \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi/variant \
+  --extra-index-url https://mirrors.huaweicloud.com/ascend/repos/pypi
 ```
 
 Original model:
