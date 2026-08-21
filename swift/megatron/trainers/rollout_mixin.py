@@ -35,7 +35,7 @@ from swift.rlhf_trainers.utils import (VLLM_LORA_INT_ID, VLLM_LORA_NAME, VLLM_LO
                                        check_vllm_version_ge, expand_vllm_param_name_aliases, finish_vllm_weight_reload,
                                        parse_prompt_logprobs, patch_vllm_load_adapter,
                                        patch_vllm_moe_model_weight_loader, profiling_context, profiling_decorator,
-                                       set_expandable_segments, vllm_supports_lora_load_inplace)
+                                       set_expandable_segments, sleep_vllm_engine, vllm_supports_lora_load_inplace)
 from swift.rlhf_trainers.vllm_client import VLLMInferClient
 from swift.rollout import MultiTurnScheduler, invoke_async_hook, multi_turns, run_multi_turn
 from swift.utils import (JsonlWriter, get_current_device, get_logger, is_last_rank, is_vllm_available, remove_response,
@@ -722,40 +722,41 @@ class MegatronRolloutMixin(BaseRolloutTrainerMixin):
 
         context = self.offload_context if self.enable_offload else nullcontext
         with context():
-            if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
-                    and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
-                aggressive_empty_cache()
-                set_expandable_segments(False)
-                self.engine.engine.wake_up(tags=['kv_cache'])
+            rollout_failed = False
+            try:
+                if (self.vllm_mode == 'colocate' and self.engine.inner_model_executor.is_sleeping
+                        and 'tags' in inspect.signature(self.engine.engine.wake_up).parameters):
+                    aggressive_empty_cache()
+                    set_expandable_segments(False)
+                    self.engine.engine.wake_up(tags=['kv_cache'])
 
-            multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
-            colocate_multi_turn = (
-                multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
+                multi_turn_scheduler = getattr(self, 'multi_turn_scheduler', None)
+                colocate_multi_turn = (
+                    multi_turn_scheduler is not None and not getattr(self, 'enable_server_multi_turn', False))
 
-            if colocate_multi_turn:
-                requests = self.samples2requests(samples)
-                invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
-                request_config = self._get_request_config()
-                outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
-                outputs = run_multi_turn(
-                    requests=requests,
-                    first_turn_outputs=outputs,
-                    scheduler=multi_turn_scheduler,
-                    rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
-                    request_config=request_config,
-                    max_turns=self.args.max_turns,
-                    gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
-                )
-            else:
-                # Single-turn rollout (or server multi-turn handled by the engine).
-                outputs: List[RolloutOutput] = self._rollout(samples)
-
-            # Sleep to release memory
-            if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
-                self.engine.engine.reset_prefix_cache()
-                self.engine.engine.sleep(level=self.args.sleep_level)
-                aggressive_empty_cache()
-                set_expandable_segments(True)
+                if colocate_multi_turn:
+                    requests = self.samples2requests(samples)
+                    invoke_async_hook(multi_turn_scheduler.on_trajectory_start(requests))
+                    request_config = self._get_request_config()
+                    outputs: List[RolloutOutput] = self._rollout_requests(requests, request_config)
+                    outputs = run_multi_turn(
+                        requests=requests,
+                        first_turn_outputs=outputs,
+                        scheduler=multi_turn_scheduler,
+                        rollout_fn=lambda reqs, cfg: self._rollout_requests(reqs, cfg),
+                        request_config=request_config,
+                        max_turns=self.args.max_turns,
+                        gather_fn=lambda x: gather_object(x, group=self._get_rollout_group()),
+                    )
+                else:
+                    # Single-turn rollout (or server multi-turn handled by the engine).
+                    outputs: List[RolloutOutput] = self._rollout(samples)
+            except BaseException:
+                rollout_failed = True
+                raise
+            finally:
+                if self.vllm_mode == 'colocate' and self.args.sleep_level > 0:
+                    sleep_vllm_engine(self.engine.engine, self.args.sleep_level, suppress_errors=rollout_failed)
 
             samples = self._postprocess_rollout_outputs(samples, outputs)
 
