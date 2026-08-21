@@ -699,7 +699,6 @@ class SwiftMixin:
         if not success:
             logger.info(f'Skip saving the checkpoint of step {self.state.global_step} '
                         'because the latest checkpoint is not finished.')
-            shutil.rmtree(output_dir, ignore_errors=True)
 
         if self.args.push_to_hub:
             self._push_from_checkpoint(output_dir)
