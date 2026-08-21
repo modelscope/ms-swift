@@ -18,8 +18,7 @@ def _bootstrap_vllm_ascend_custom_opp_env() -> None:
     if spec is None or spec.origin is None:
         return
 
-    vendor_path = os.path.join(
-        os.path.dirname(spec.origin), '_cann_ops_custom', 'vendors', 'custom_transformer')
+    vendor_path = os.path.join(os.path.dirname(spec.origin), '_cann_ops_custom', 'vendors', 'custom_transformer')
     if not os.path.isdir(vendor_path):
         return
 

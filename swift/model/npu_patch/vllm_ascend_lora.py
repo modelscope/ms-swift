@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-
 import torch
 
 from swift.utils.logger import get_logger
