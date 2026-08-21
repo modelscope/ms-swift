@@ -1014,6 +1014,7 @@ class BaseMegatronTrainer(ABC):
             pin_memory=args.dataloader_pin_memory,
             persistent_workers=args.dataloader_persistent_workers if args.dataloader_num_workers > 0 else False,
             prefetch_factor=args.dataloader_prefetch_factor if args.dataloader_num_workers > 0 else None,
+            multiprocessing_context=args.dataloader_multiprocessing_context,
             collate_fn=self.data_collator,
         )
         return dataloader
