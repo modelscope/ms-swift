@@ -3,7 +3,8 @@ import asyncio
 import datetime as dt
 import fnmatch
 import glob
-import importlib
+import hashlib
+import importlib.util
 import json
 import json_repair
 import numpy as np
@@ -403,10 +404,23 @@ def patch_getattr(obj_cls, item_name: str):
 
 def import_external_file(file_path: str):
     file_path = os.path.abspath(os.path.expanduser(file_path))
-    py_dir, py_file = os.path.split(file_path)
+    py_dir = os.path.dirname(file_path)
     assert os.path.isdir(py_dir), f'py_dir: {py_dir}'
     sys.path.insert(0, py_dir)
-    return importlib.import_module(py_file.split('.', 1)[0])
+    module_name = f'_swift_external_{hashlib.sha256(file_path.encode()).hexdigest()}'
+    if module_name in sys.modules:
+        return sys.modules[module_name]
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f'Cannot import external file: {file_path}')
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception:
+        sys.modules.pop(module_name, None)
+        raise
+    return module
 
 
 def json_parse_to_dict(value: Union[str, Dict, None], strict: bool = True) -> Union[str, Dict]:
