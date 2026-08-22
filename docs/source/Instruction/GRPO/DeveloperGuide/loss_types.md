@@ -122,6 +122,21 @@ FIPO 的 influence weight 默认不参与梯度计算，并使用与 DAPO 相同
 
 **归一化维度:** 全局 token 维度（所有进程的 completion token 总数）
 
+## M2PO
+
+`--loss_type m2po --m2_threshold 0.04 --beta 0`
+
+[M2PO](https://arxiv.org/abs/2510.01161) 使用行为策略与当前策略之间对数概率比的批次级二阶矩，替代 PPO
+的固定裁剪区间。算法只约束 PPO 实际触发裁剪的两个区域：`(A > 0, ratio > 1)` 和
+`(A < 0, ratio < 1)`。它按二阶矩从大到小屏蔽异常 token，直到剩余 trust-region token 的平均二阶矩
+不超过 `m2_threshold`。
+
+存在 rollout log-prob 时，ratio 使用 `rollout_per_token_logps` 作为行为策略；否则回退到
+`old_per_token_logps`。分布式训练会在数据并行组内统一选择阈值。按照论文定义，被屏蔽 token 的策略损失
+置零，但分母仍使用屏蔽前的全部有效 completion token。论文默认配置为 `m2_threshold=0.04`、`beta=0`。
+
+**归一化维度：** M2PO 屏蔽前的全局有效 token 维度。
+
 ## SAPO
 
 `--loss_type sapo`

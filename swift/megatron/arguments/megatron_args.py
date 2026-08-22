@@ -93,6 +93,9 @@ class RLHFMegatronArgumentsMixin:
     fipo_clip_high_only: bool = True
     fipo_safety_threshold: Optional[float] = 4.0
 
+    # M2PO https://arxiv.org/abs/2510.01161
+    m2_threshold: float = 0.04
+
     epsilon: float = 0.2
     epsilon_high: Optional[float] = None
     delta: Optional[float] = None
@@ -214,10 +217,11 @@ class RLHFMegatronArgumentsMixin:
             return
         default_loss_type = {'kto': 'kto', 'dpo': 'sigmoid', 'grpo': 'grpo'}
         default_beta = {'gkd': 0.5, 'grpo': 0.04}
-        if self.beta is None:
-            self.beta = default_beta.get(self.rlhf_type, 0.1)
         if self.loss_type is None:
             self.loss_type = default_loss_type.get(self.rlhf_type)
+        if self.beta is None:
+            self.beta = 0.0 if self.rlhf_type == 'grpo' and self.loss_type == 'm2po' else default_beta.get(
+                self.rlhf_type, 0.1)
         if self.rlhf_type == 'kto':
             self._init_kto()
         if self.rlhf_type == 'grpo':
@@ -404,6 +408,22 @@ class RLHFMegatronArgumentsMixin:
                 assert self.micro_batch_size % self.num_generations == 0, \
                     (f'"REAL loss requires that the training micro_batch_size ({self.micro_batch_size}) '
                      f'is a multiple of num_generations ({self.num_generations}). Please adjust your batch parameters.')
+
+            if self.loss_type == 'm2po':
+                if self.m2_threshold < 0:
+                    raise ValueError(f'm2_threshold must be non-negative, got {self.m2_threshold}.')
+                if self.importance_sampling_level != 'token':
+                    raise ValueError('loss_type=m2po requires importance_sampling_level=token.')
+                if self.rollout_importance_sampling_mode is not None:
+                    raise ValueError('loss_type=m2po already uses the behavior-policy ratio and cannot be combined '
+                                     'with rollout_importance_sampling_mode.')
+                if self.off_policy_sequence_mask_delta is not None:
+                    raise ValueError('loss_type=m2po cannot be combined with off_policy_sequence_mask_delta.')
+                if self.delta is not None:
+                    raise ValueError('loss_type=m2po replaces PPO clipping and cannot be combined with delta.')
+                if self.beta != 0:
+                    logger.warning(
+                        f'M2PO uses beta=0 in the reference experiments, but beta={self.beta} was requested.')
 
         _check_not_supported()
         if self.dataset_shuffle is not None:

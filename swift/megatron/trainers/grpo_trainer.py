@@ -16,6 +16,7 @@ from swift.rl_core.advantage import (compute_advantages, compute_reward_metrics,
                                      expand_advantage_to_per_token, get_local_rollout_values)
 from swift.rl_core.data import GRPOBatch, GRPOSample
 from swift.rl_core.grpo_algorithm import score_completions
+from swift.rl_core.m2po import compute_m2po_log_ratio, compute_m2po_token_loss
 from swift.rl_core.resample import resample_encode_failed_inputs
 from swift.rlhf_trainers.gkd_helpers import (assemble_teacher_completion_logprobs, build_opsd_samples,
                                              build_teacher_requests, encode_teacher_view,
@@ -99,6 +100,9 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         self.fipo_clip_range = args.fipo_clip_range
         self.fipo_clip_high_only = args.fipo_clip_high_only
         self.fipo_safety_threshold = args.fipo_safety_threshold
+
+        # M2PO, https://arxiv.org/abs/2510.01161
+        self.m2_threshold = args.m2_threshold
 
         # DAPO, https://arxiv.org/abs/2503.14476
         self.dynamic_sample = args.dynamic_sample
@@ -333,7 +337,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         if any(m['grpo_batch'].teacher_per_token_logps is not None for m in mini_batch_data):
             self._log_teacher_kl_metric(mini_batch_data)
 
-        if self.loss_type in ['cispo', 'dapo', 'fipo']:
+        if self.loss_type in ['cispo', 'dapo', 'fipo', 'm2po']:
             # Calculate num_items_in_batch
             # Count completion tokens from all mini_batch_data (this includes gathered data from rollout_group)
             # Use completion_mask.sum() for both padding_free and non-padding_free modes
@@ -971,13 +975,15 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
         should_compute_rollout_metrics = (not self.disable_rollout_importance_sampling
                                           and (self.rollout_importance_sampling_mode is not None
                                                or self.log_rollout_offpolicy_metrics))
-        if should_compute_rollout_metrics:
-            dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        all_have_rollout = rollout_per_token_logps is not None
+        dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        if should_compute_rollout_metrics or self.loss_type == 'm2po':
             has_flag = torch.tensor([1 if rollout_per_token_logps is not None else 0],
                                     dtype=torch.int32,
                                     device=per_token_logps.device)
             torch.distributed.all_reduce(has_flag, op=torch.distributed.ReduceOp.MIN, group=dp_group)
-            should_compute_rollout_metrics = has_flag.item() > 0
+            all_have_rollout = has_flag.item() > 0
+            should_compute_rollout_metrics = should_compute_rollout_metrics and all_have_rollout
         if should_compute_rollout_metrics:
             # Compute off-policy diagnostic metrics
             rollout_correction_metrics = self._compute_rollout_offpolicy_metrics(old_per_token_logps,
@@ -1015,10 +1021,16 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             per_token_kl = None
 
         # Compute log ratio for importance sampling
-        log_ratio = per_token_logps - old_per_token_logps
+        if self.loss_type == 'm2po':
+            behavior_rollout_logps = rollout_per_token_logps if all_have_rollout else None
+            log_ratio = compute_m2po_log_ratio(per_token_logps, old_per_token_logps, behavior_rollout_logps)
+        else:
+            log_ratio = per_token_logps - old_per_token_logps
 
         # Compute importance weights based on level
-        if self.importance_sampling_level == 'token':
+        if self.loss_type == 'm2po':
+            log_importance_weights = log_ratio
+        elif self.importance_sampling_level == 'token':
             log_importance_weights = log_ratio
         elif self.importance_sampling_level in ['sequence', 'sequence_token']:
             # Sequence-level: compute mean log ratio per sequence
@@ -1034,7 +1046,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 f"Unknown importance sampling level: {self.importance_sampling_level}. Possible values are 'token' "
                 ",'sequence' and 'sequence_token'.")
 
-        coef_1 = torch.exp(log_importance_weights)
+        coef_1 = torch.ones_like(log_importance_weights) \
+            if self.loss_type == 'm2po' else torch.exp(log_importance_weights)
 
         # advantages is per-token [B, T] (expanded at batch construction so the OPD-RL signed teacher
         # log-ratio is added per token). Edge loss types that need a per-sequence advantage (real / fipo /
@@ -1045,6 +1058,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                              'off_policy_sequence_mask.')
 
         fipo_metrics = None
+        m2po_metrics = None
         if self.loss_type == 'cispo':
             clamped_ratios = torch.clamp(coef_1, max=self.epsilon_high).detach()
             per_token_loss = -clamped_ratios * advantages * per_token_logps
@@ -1054,6 +1068,14 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             is_positive = advantages > 0
             soft_gate = torch.where(is_positive, gate_pos, gate_neg)
             per_token_loss = -soft_gate * advantages
+        elif self.loss_type == 'm2po':
+            per_token_loss, _, m2po_metrics = compute_m2po_token_loss(
+                log_ratio=log_ratio,
+                completion_mask=completion_mask,
+                advantages=advantages,
+                m2_threshold=self.m2_threshold,
+                process_group=dp_group,
+            )
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
             if self.loss_type == 'fipo':
                 fipo_weight, fipo_metrics = self._compute_fipo_influence(log_ratio, coef_1, advantages, completion_mask)
@@ -1135,8 +1157,8 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             loss = (per_token_loss * completion_mask).sum() / completion_mask.sum().clamp(min=1.0)
         elif self.loss_type == 'dr_grpo':
             loss = (per_token_loss * completion_mask).sum() / (micro_batch_size * self.max_completion_length)
-        elif self.loss_type in ['cispo', 'dapo', 'fipo']:
-            # CISPO, DAPO, and FIPO: Normalize by total completion tokens across all processes
+        elif self.loss_type in ['cispo', 'dapo', 'fipo', 'm2po']:
+            # Token-level objectives: normalize by all valid completion tokens across processes.
             num_items_in_batch = grpo_batch.num_items_in_batch
             dp_size = mpu.get_data_parallel_world_size()
             normalizer = num_items_in_batch / dp_size
@@ -1216,6 +1238,10 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             avg_metric['fipo/safety_keep_ratio'] = ((fipo_metrics['safety_mask'].float() * completion_mask).sum()
                                                     / completion_token_count).clone().detach()
 
+        if m2po_metrics is not None:
+            for key in ['m2_before', 'm2_after', 'masked_fraction', 'trust_region_fraction']:
+                avg_metric[f'm2po/{key}'] = m2po_metrics[key].clone().detach()
+
         if self.loss_type == 'cispo':
             # CISPO: Only track upper bound clipping
             # coef_1 is [batch_size, max_seq_len] or [batch_size, 1] depending on importance_sampling_level
@@ -1223,7 +1249,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             cispo_clip_ratio = (is_cispo_clipped.float() * completion_mask).sum() / completion_token_count
             # Store local clip ratio, _all_reduce_metric will handle averaging across ranks
             self._metrics[mode]['cispo_clip_ratio'].append(cispo_clip_ratio)
-        elif self.loss_type in ['sapo', 'real']:
+        elif self.loss_type in ['sapo', 'real', 'm2po']:
             # SAPO / REAL: No hard clipping, skip clipping metrics
             pass
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
@@ -1635,6 +1661,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
             'offpolicy_sequence_mask': 'enable' if self.args.off_policy_sequence_mask_delta is not None else 'disable',
             'rollout_importance_sampling':
             'enable' if self.args.rollout_importance_sampling_mode is not None else 'disable',
-            'loss_type': str(self.args.loss_type)
+            'loss_type': str(self.args.loss_type),
+            'm2_threshold': str(self.args.m2_threshold),
         }
         return config

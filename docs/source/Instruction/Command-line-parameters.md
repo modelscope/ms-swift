@@ -633,7 +633,8 @@ reward模型参数将在PPO、GRPO中使用；teacher模型参数在GKD与GRPO�
 - reward_model_plugin: 奖励模型逻辑，默认为orm逻辑, 详细见[自定义奖励模型](./GRPO/DeveloperGuide/reward_model.md#自定义奖励模型)。
 - dataset_shuffle: 是否对dataset进行随机操作，默认为True。
 - truncation_strategy: 用于处理输入长度超过 max_length 的样本，支持 delete 和 left 两种策略，分别表示删除该样本和从左侧裁剪。默认值为 left。若使用 delete 策略，被删除的超长样本或编码失败的样本将在原数据集中通过重采样进行替换。
-- loss_type: loss 归一化的类型，可选项为['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real', 'fipo'], 默认为'grpo', 具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
+- loss_type: 策略损失类型，可选项为['grpo', 'bnpo', 'dr_grpo', 'dapo', 'cispo', 'sapo', 'real', 'fipo', 'm2po']，默认为'grpo'，具体参考[文档](./GRPO/DeveloperGuide/loss_types.md)
+- m2_threshold: M2PO 的批次级二阶矩阈值，默认为0.04。
 - fipo_decay_rate: FIPO Future-KL 折扣半衰参数，实际折扣为`2 ** (-1 / fipo_decay_rate)`，默认值为32.0。
 - fipo_clip_range: FIPO influence weight 裁剪范围，默认值为0.2；设置为None或0时不裁剪。
 - fipo_clip_high_only: 是否只将FIPO influence weight裁剪到`[1.0, 1.0 + fipo_clip_range]`，默认值为True。
