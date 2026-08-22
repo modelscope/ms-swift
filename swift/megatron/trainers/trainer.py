@@ -62,7 +62,7 @@ class MegatronTrainer(BaseMegatronTrainer):
             losses = losses * loss_scale
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
-        # Reduce loss for logging; the DP all-reduce is deferred to log time
+        # Keep local loss stats for logging; defer the DP all-reduce to log time
         # (once per logging event) to avoid a global sync point per microbatch.
         reporting_loss = loss.detach().clone()
 
@@ -113,7 +113,8 @@ class MegatronTrainer(BaseMegatronTrainer):
 
     def _log_callback(self, logs, n_steps):
         # loss_func defers the logging-loss DP all-reduce from per-microbatch
-        # to here (once per logging event); numerically identical by linearity.
+        # to here (once per logging event); mathematically equivalent by
+        # linearity, modulo floating-point reduction order.
         # All last-stage ranks must enter the collective unconditionally:
         # a rank whose whole logging window had zero valid tokens (e.g. a fully
         # masked CP shard) contributes zeros instead of skipping the call, which
