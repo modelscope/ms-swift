@@ -9,7 +9,7 @@ from torch.distributed.nn import all_reduce
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from typing import List, Optional
 
-from swift.utils import get_logger
+from swift.utils import get_current_device, get_logger
 from .base import BaseMegatronTrainer
 
 logger = get_logger()
@@ -62,9 +62,9 @@ class MegatronTrainer(BaseMegatronTrainer):
             losses = losses * loss_scale
         loss = torch.cat([torch.sum(losses * loss_mask).view(1), loss_mask.sum().view(1)])
 
-        # Reduce loss for logging.
+        # Reduce loss for logging; the DP all-reduce is deferred to log time
+        # (once per logging event) to avoid a global sync point per microbatch.
         reporting_loss = loss.detach().clone()
-        torch.distributed.all_reduce(reporting_loss, group=mpu.get_data_parallel_group(with_context_parallel=True))
 
         lm_loss = loss[0]
         lm_loss = lm_loss.clone()
@@ -110,6 +110,24 @@ class MegatronTrainer(BaseMegatronTrainer):
             new_metrics[key] = metrics[key]
         new_metrics = self._all_reduce_metric(new_metrics, torch.distributed.ReduceOp.SUM, group=dp_cp_group)
         return new_metrics
+
+    def _log_callback(self, logs, n_steps):
+        # loss_func defers the logging-loss DP all-reduce from per-microbatch
+        # to here (once per logging event); numerically identical by linearity.
+        # All last-stage ranks must enter the collective unconditionally:
+        # a rank whose whole logging window had zero valid tokens (e.g. a fully
+        # masked CP shard) contributes zeros instead of skipping the call, which
+        # would otherwise deadlock the group.
+        if self.args.task_type == 'causal_lm' and mpu.is_pipeline_last_stage(ignore_virtual=True):
+            v = logs.get('loss')
+            if v is None:
+                v = torch.zeros(2, dtype=torch.float32, device=get_current_device())
+            dist.all_reduce(v, op=dist.ReduceOp.SUM, group=mpu.get_data_parallel_group(with_context_parallel=True))
+            if v[1].item() > 0:
+                logs['loss'] = v
+            else:
+                logs.pop('loss', None)
+        super()._log_callback(logs, n_steps)
 
     def forward_step(self, data_iterator, model):
         vp_stage = model.module.module.vp_stage
