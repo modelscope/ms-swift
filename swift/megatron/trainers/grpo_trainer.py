@@ -977,6 +977,11 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                                                or self.log_rollout_offpolicy_metrics))
         all_have_rollout = rollout_per_token_logps is not None
         dp_group = mpu.get_data_parallel_group(with_context_parallel=True)
+        # ``per_token_logps`` has already been reconstructed across context-parallel ranks above.
+        # M2PO must therefore select across pure data-parallel ranks; including context-parallel
+        # replicas would count every token ``context_parallel_size`` times and can give replicas
+        # different masks at the selection boundary.
+        m2po_group = mpu.get_data_parallel_group(with_context_parallel=False) if self.loss_type == 'm2po' else None
         if should_compute_rollout_metrics or self.loss_type == 'm2po':
             has_flag = torch.tensor([1 if rollout_per_token_logps is not None else 0],
                                     dtype=torch.int32,
@@ -1074,7 +1079,7 @@ class MegatronGRPOTrainer(MegatronRolloutMixin, MegatronRLHFTrainer):
                 completion_mask=completion_mask,
                 advantages=advantages,
                 m2_threshold=self.m2_threshold,
-                process_group=dp_group,
+                process_group=m2po_group,
             )
         elif self.loss_type in ['grpo', 'bnpo', 'dr_grpo', 'dapo', 'fipo']:
             if self.loss_type == 'fipo':

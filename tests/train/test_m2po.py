@@ -150,3 +150,57 @@ def test_m2po_uses_one_threshold_across_distributed_ranks():
     for _, _, metrics in results:
         assert metrics['m2_after'] == pytest.approx((0.05**2 + 0.2**2 + 0.21**2) / 3)
         assert metrics['masked_fraction'] == pytest.approx(0.25)
+
+
+def _distributed_cp_replica_worker(rank, world_size, init_method, result_queue):
+    dist.init_process_group('gloo', rank=rank, world_size=world_size, init_method=init_method)
+    try:
+        # Context-parallel ranks reconstruct the same full sequence before the loss.
+        local_ratios = torch.tensor([[0.1, 0.3]])
+        completion_mask = torch.ones_like(local_ratios, dtype=torch.bool)
+        advantages = torch.ones_like(local_ratios)
+
+        replicated_mask, _ = compute_m2po_mask(
+            local_ratios,
+            completion_mask,
+            advantages,
+            m2_threshold=0.04,
+        )
+
+        # Simulate pure-DP groups for dp_size=1, cp_size=world_size. All ranks must
+        # create the groups in the same order even though each rank uses only its own.
+        pure_dp_groups = [dist.new_group(ranks=[group_rank]) for group_rank in range(world_size)]
+        pure_dp_mask, _ = compute_m2po_mask(
+            local_ratios,
+            completion_mask,
+            advantages,
+            m2_threshold=0.04,
+            process_group=pure_dp_groups[rank],
+        )
+        result_queue.put((rank, replicated_mask.tolist(), pure_dp_mask.tolist()))
+    finally:
+        dist.destroy_process_group()
+
+
+def test_m2po_excludes_context_parallel_replicas_from_threshold_selection():
+    world_size = 2
+    spawn_context = mp.get_context('spawn')
+    result_queue = spawn_context.SimpleQueue()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        init_method = (Path(tmp_dir) / 'm2po_cp_replica_init').as_uri()
+        mp.spawn(
+            _distributed_cp_replica_worker,
+            args=(world_size, init_method, result_queue),
+            nprocs=world_size,
+            join=True,
+        )
+
+    results = sorted([result_queue.get() for _ in range(world_size)])
+    replicated_masks = [replicated_mask for _, replicated_mask, _ in results]
+    pure_dp_masks = [pure_dp_mask for _, _, pure_dp_mask in results]
+
+    # Counting both CP replicas keeps three of four duplicated values, so only one
+    # replica masks the 0.3 token. Pure-DP selection gives both replicas the mask
+    # that Algorithm 1 produces for the single logical sequence.
+    assert sorted(replicated_masks) == sorted([[[True, True]], [[True, False]]])
+    assert pure_dp_masks == [[[True, False]], [[True, False]]]
