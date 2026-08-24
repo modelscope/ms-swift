@@ -1,7 +1,6 @@
 import unittest
-from unittest.mock import patch
-
 from datasets import Dataset as HfDataset
+from unittest.mock import patch
 
 from swift.dataset import DatasetMeta, DatasetSyntax, load_dataset
 from swift.dataset.loader import DatasetLoader
@@ -18,15 +17,14 @@ class TestDatasetSourceSelection(unittest.TestCase):
 
         def fake_load_repo_dataset(self, dataset_id, subset, *, use_hf=None, revision=None):
             observed.append((dataset_id, use_hf))
-            return HfDataset.from_dict({
-                'messages': [[{
+            return HfDataset.from_dict(
+                {'messages': [[{
                     'role': 'user',
                     'content': 'hello',
                 }, {
                     'role': 'assistant',
                     'content': 'world',
-                }]]
-            })
+                }]]})
 
         with patch.object(DatasetSyntax, 'get_dataset_meta', return_value=DatasetMeta()), \
                 patch.object(DatasetLoader, '_load_repo_dataset', new=fake_load_repo_dataset):
