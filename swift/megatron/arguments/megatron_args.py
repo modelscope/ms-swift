@@ -517,6 +517,7 @@ class MegatronArguments(RLHFMegatronArgumentsMixin, MegatronTunerMixin):
     dataloader_pin_memory: bool = True
     dataloader_persistent_workers: bool = False
     dataloader_prefetch_factor: int = 2
+    dataloader_multiprocessing_context: Optional[str] = None
     data_sharding: bool = False
     group_by_length: bool = False
     te_rng_tracker: bool = False

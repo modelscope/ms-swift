@@ -1311,6 +1311,9 @@ class DataLoaderMixin:
                 'persistent_workers': args.dataloader_persistent_workers,
                 'prefetch_factor': args.dataloader_prefetch_factor
             }
+            mp_context = getattr(args, 'dataloader_multiprocessing_context', None)
+            if mp_context is not None and args.dataloader_num_workers > 0:
+                dataloader_params['multiprocessing_context'] = mp_context
             batch_sampler_params = {
                 'drop_last':
                 args.dataloader_drop_last,

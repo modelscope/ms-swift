@@ -13,6 +13,61 @@ from swift.utils import get_logger, is_dist, is_master, split_list
 logger = get_logger()
 
 
+def _resolve_mp_context(multiprocessing_context: Optional[str] = None):
+    """Decide the multiprocessing context used by packing workers.
+
+    When ``multiprocessing_context`` is unset, keep the historical ``fork`` behavior in the common case,
+    and only switch to ``spawn`` when fork is actually unsafe (CUDA or torch.distributed already
+    initialized), which otherwise dead-locks the forked worker.
+    """
+    if multiprocessing_context is not None:
+        return mp.get_context(multiprocessing_context)
+    try:
+        import torch
+        cuda_initialized = torch.cuda.is_initialized()
+    except Exception:
+        cuda_initialized = False
+    if cuda_initialized or (dist.is_available() and dist.is_initialized()):
+        return mp.get_context('spawn')
+    # keep the historical default (fork on Linux); use the default context object.
+    return mp.get_context()
+
+
+def _is_fork_context(ctx) -> bool:
+    return getattr(ctx, '_name', None) == 'fork'
+
+
+def _get_fork_context():
+    """Return the fork context, or the platform default if fork is unavailable (e.g. Windows)."""
+    try:
+        return mp.get_context('fork')
+    except ValueError:
+        return mp.get_context()
+
+
+def _spawn_workers(ctx, *, target, jobs):
+    """Start packing workers and return ``(context, workers)``.
+
+    ``jobs`` is a list of ``args`` tuples (one per worker). All workers share the same context and
+    the caller's queues must be created from that same context. If a non-fork context fails to start
+    the first worker (e.g. an un-picklable template under ``spawn``), the returned context is ``None``
+    to signal the caller to recreate its queues with fork and retry.
+    """
+    workers = []
+    for idx, args in enumerate(jobs):
+        try:
+            worker = ctx.Process(target=target, daemon=True, args=args)
+            worker.start()
+        except Exception as e:
+            if idx > 0 or _is_fork_context(ctx):
+                raise
+            logger.warning(f'Failed to start packing worker with multiprocessing context '
+                           f'{getattr(ctx, "_name", ctx)!r} ({e}); falling back to fork.')
+            return None, workers
+        workers.append(worker)
+    return ctx, workers
+
+
 def calculate_matched_group(sequences, packing_length: int, is_finished: bool = True, strategy: str = 'binpack'):
     if len(sequences) == 0:
         return [], []
@@ -61,6 +116,7 @@ class PackingDataset(Dataset):
         packing_length: Optional[int] = None,
         packing_num_proc: int = 1,
         packing_strategy: str = 'binpack',
+        multiprocessing_context: Optional[str] = None,
         **kwargs,
     ):
         template.packing = True
@@ -71,22 +127,27 @@ class PackingDataset(Dataset):
         self.strict = strict
         self.load_from_cache_file = load_from_cache_file
         self.packing_strategy = packing_strategy
+        self.multiprocessing_context = multiprocessing_context
         self.packing_length = packing_length or self.template.max_length
         self.packing_num_proc = min(packing_num_proc, math.ceil(len(dataset) / self.PACKING_BATCH_SIZE))
-        self._out_queue = mp.Queue()
         if is_master():
             lengths = self.dataset['lengths']
-            offset = 0
             chunked_lengths = split_list(lengths, self.packing_num_proc)
-            for i in range(self.packing_num_proc):
-                worker = mp.Process(
-                    target=self.create_packed_idx, args=(
-                        i,
-                        offset,
-                        chunked_lengths[i],
-                    ), daemon=True)
-                worker.start()
-                offset += len(chunked_lengths[i])
+            offsets = []
+            offset = 0
+            for chunk in chunked_lengths:
+                offsets.append(offset)
+                offset += len(chunk)
+            jobs = [(i, offsets[i], chunked_lengths[i]) for i in range(self.packing_num_proc)]
+
+            ctx = _resolve_mp_context(self.multiprocessing_context)
+            self._out_queue = ctx.Queue()
+            new_ctx, _ = _spawn_workers(ctx, target=self.create_packed_idx, jobs=jobs)
+            if new_ctx is None:
+                # non-fork context could not start workers: rebuild queue with fork and retry.
+                ctx = _get_fork_context()
+                self._out_queue = ctx.Queue()
+                _spawn_workers(ctx, target=self.create_packed_idx, jobs=jobs)
             self.packed_idx = [[] for _ in range(self.packing_num_proc)]
             self.packed_length = [[] for _ in range(self.packing_num_proc)]
             desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}): '
@@ -147,6 +208,7 @@ class IterablePackingDataset(IterableDataset):
         strict: bool = False,
         cyclic: bool = False,
         packing_strategy: str = 'binpack',
+        multiprocessing_context: Optional[str] = None,
         **kwargs,
     ):
         template.packing = True
@@ -155,18 +217,25 @@ class IterablePackingDataset(IterableDataset):
         self.dataset = dataset
         self.num_proc = num_proc
         self.strict = strict
+        self.multiprocessing_context = multiprocessing_context
         self.packing_length = packing_length or self.template.max_length
 
         self.packing_interval = packing_interval
-        self._in_queue = mp.Queue()
-        self._out_queue = mp.Queue()
-        self.workers = []
         self.cyclic = cyclic
         self.packing_strategy = packing_strategy
-        for _ in range(self.num_proc):
-            worker = mp.Process(target=self._processor, daemon=True)
-            worker.start()
-            self.workers.append(worker)
+        self.workers = []
+
+        ctx = _resolve_mp_context(self.multiprocessing_context)
+        self._in_queue = ctx.Queue()
+        self._out_queue = ctx.Queue()
+        new_ctx, workers = _spawn_workers(ctx, target=self._processor, jobs=[()] * self.num_proc)
+        if new_ctx is None:
+            # non-fork context could not start workers: rebuild queues with fork and retry.
+            ctx = _get_fork_context()
+            self._in_queue = ctx.Queue()
+            self._out_queue = ctx.Queue()
+            _, workers = _spawn_workers(ctx, target=self._processor, jobs=[()] * self.num_proc)
+        self.workers = workers
 
     def _processor(self):
         while True:
