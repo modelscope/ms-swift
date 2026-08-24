@@ -734,6 +734,8 @@ The table below introduces the models integrated with ms-swift:
 ### Multimodal large models
 | Model ID | Model Type | Default Template | Default Agent Template | Requires | Support Megatron | Tags | HF Model ID |
 | -------- | -----------| ---------------- | ---------------------- | -------- | ---------------- | ---- | ----------- |
+|[openmoss/MOSS-VL-Instruct-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Instruct-0708)|moss_vl|moss_vl|hermes|transformers>=4.57.1,<5, torchcodec, joblib|&#x2718;|vision, video|[OpenMOSS-Team/MOSS-VL-Instruct-0708](https://huggingface.co/OpenMOSS-Team/MOSS-VL-Instruct-0708)|
+|[openmoss/MOSS-VL-Base-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Base-0708)|moss_vl|moss_vl|hermes|transformers>=4.57.1,<5, torchcodec, joblib|&#x2718;|vision, video|[OpenMOSS-Team/MOSS-VL-Base-0708](https://huggingface.co/OpenMOSS-Team/MOSS-VL-Base-0708)|
 |[Qwen/Qwen-VL-Chat](https://modelscope.cn/models/Qwen/Qwen-VL-Chat)|qwen_vl|qwen_vl||-|&#x2718;|vision|[Qwen/Qwen-VL-Chat](https://huggingface.co/Qwen/Qwen-VL-Chat)|
 |[Qwen/Qwen-VL](https://modelscope.cn/models/Qwen/Qwen-VL)|qwen_vl|qwen_vl||-|&#x2718;|vision|[Qwen/Qwen-VL](https://huggingface.co/Qwen/Qwen-VL)|
 |[Qwen/Qwen-VL-Chat-Int4](https://modelscope.cn/models/Qwen/Qwen-VL-Chat-Int4)|qwen_vl|qwen_vl||-|&#x2718;|vision|[Qwen/Qwen-VL-Chat-Int4](https://huggingface.co/Qwen/Qwen-VL-Chat-Int4)|

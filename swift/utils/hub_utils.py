@@ -1,4 +1,5 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
+import hashlib
 import importlib.util
 import os
 import requests
@@ -237,6 +238,8 @@ def patch_kernels() -> bool:
 def download_file(url: str) -> str:
     url = url.rstrip('/')
     file_name = url.rsplit('/', 1)[-1]
+    file_stem, file_suffix = os.path.splitext(file_name)
+    file_name = f'{file_stem}-{hashlib.sha256(url.encode("utf-8")).hexdigest()}{file_suffix}'
     cache_dir = os.path.join(get_cache_dir(), 'files')
     os.makedirs(cache_dir, exist_ok=True)
     file_path = os.path.join(cache_dir, file_name)
