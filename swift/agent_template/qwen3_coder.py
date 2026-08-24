@@ -141,8 +141,8 @@ class Qwen3CoderAgentTemplate(HermesAgentTemplate):
                 for args_name, args_value in tool_call['arguments'].items():
                     result_parts.append(f'<parameter={args_name}>\n')
                     # Handle different types of parameter values
-                    if isinstance(args_value, (dict, list)):
-                        # For dictionaries or lists, use json formatting
+                    if isinstance(args_value, (dict, list, bool)) or args_value is None:
+                        # JSON containers and literals must preserve JSON spelling.
                         args_value = json.dumps(args_value, ensure_ascii=False)
                     else:
                         # For other types, convert to strings
