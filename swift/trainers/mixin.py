@@ -64,24 +64,6 @@ logger = get_logger()
 transformers_5 = version.parse(transformers.__version__) >= version.parse('5.0.0')
 
 
-def _validate_dlrover_flash_checkpoint_api(checkpointer_cls, checkpoint_engine_cls):
-    required_parameters = [
-        (checkpointer_cls.save_checkpoint_to_storage, 'blocking'),
-        (checkpoint_engine_cls.wait_latest_checkpoint, 'max_steps'),
-    ]
-    missing_parameters = []
-    for method, parameter_name in required_parameters:
-        parameters = inspect.signature(method).parameters
-        accepts_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values())
-        if parameter_name not in parameters and not accepts_kwargs:
-            missing_parameters.append(parameter_name)
-    if missing_parameters:
-        missing = ', '.join(missing_parameters)
-        raise ValueError('The installed DLRover Flash Checkpoint API is incompatible with ms-swift. '
-                         f'Missing method parameters: {missing}. Install the latest DLRover source with '
-                         '`pip install git+https://github.com/intelligent-machine-learning/dlrover.git`.')
-
-
 class SwiftMixin:
     FLASH_CKPT_WAIT_TIMEOUT = 1800
 

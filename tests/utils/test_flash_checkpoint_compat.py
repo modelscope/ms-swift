@@ -1,7 +1,7 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 import unittest
 
-from swift.trainers.mixin import _validate_dlrover_flash_checkpoint_api
+from swift.trainers.utils import _validate_dlrover_flash_checkpoint_api
 
 
 class DLRover061Engine:
