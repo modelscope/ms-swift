@@ -20,9 +20,9 @@ inside :meth:`normalize_provider_messages`. ``anthropic.py`` exposes a thin pin 
 that is known to be Anthropic and wants to skip auto-detection.
 """
 from __future__ import annotations
+from typing import Any, Collection, Dict, List, Optional, Tuple
 
 import json
-from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from .base import FormatConverter, Messages, register_format
 

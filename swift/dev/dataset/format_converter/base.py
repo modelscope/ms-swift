@@ -24,7 +24,6 @@ How this differs from legacy's ``preprocessor/core.py``, which did the same job:
   the same class.
 """
 from __future__ import annotations
-
 import ast
 from typing import Any, Collection, Dict, List, Optional, Sequence, Type
 
@@ -127,10 +126,15 @@ class FormatConverter:
     # what legacy's message check did.
     STANDARD_ROLES = ('system', 'user', 'assistant', 'tool_call', 'tool_response', 'tool')
 
+    # Media columns are a property of the row, not of the dialogue shape, so every format answers to
+    # the singular spelling: a dataset with one image per row names the column `image` as often as
+    # `images`. Kept apart from :attr:`aliases` so a subclass declaring its own table cannot drop them.
+    MEDIA_ALIASES = {'image': 'images', 'audio': 'audios', 'video': 'videos'}
+
     def __init__(self, *, aliases: Optional[Dict[str, str]] = None, **kwargs):
         # Caller-supplied aliases are applied on top of the class's own, and win on conflict: the
         # caller knows their dataset, the class only knows the common cases.
-        self.aliases = {**type(self).aliases, **(aliases or {})}
+        self.aliases = {**self.MEDIA_ALIASES, **type(self).aliases, **(aliases or {})}
         self.kwargs = kwargs
 
     @classmethod

@@ -34,7 +34,6 @@ strings): that is one dataset's quirk and belongs in a dataset-specific preproce
 format layer.
 """
 from __future__ import annotations
-
 from typing import Any, Dict, List, Optional
 
 from .base import Messages, register_format
@@ -81,11 +80,7 @@ class AnthropicConverter(OpenAIConverter):
 
             metadata = {key: message[key] for key in ('loss', 'loss_scale') if key in message}
             pending: List[str] = []
-
-            def flush() -> None:
-                if pending:
-                    new_messages.append({'role': message['role'], 'content': ''.join(pending), **metadata})
-                    pending.clear()
+            flush = AnthropicConverter._flush_text
 
             for block in content:
                 block_type = block.get('type')
@@ -95,7 +90,7 @@ class AnthropicConverter(OpenAIConverter):
                     pending.append('<image>')
                     media['images'].append(AnthropicConverter._image_source(block))
                 elif block_type == 'tool_use':
-                    flush()
+                    flush(new_messages, pending, message['role'], metadata)
                     new_messages.append({
                         'role': 'tool_call',
                         'content': {
@@ -105,7 +100,7 @@ class AnthropicConverter(OpenAIConverter):
                         **metadata,
                     })
                 elif block_type == 'tool_result':
-                    flush()
+                    flush(new_messages, pending, message['role'], metadata)
                     new_messages.append({
                         'role': 'tool_response',
                         'content': AnthropicConverter._block_content(block.get('content', ''), media),
@@ -113,8 +108,19 @@ class AnthropicConverter(OpenAIConverter):
                     })
                 else:
                     raise ValueError(f'Unsupported Anthropic content block type: {block_type}')
-            flush()
+            flush(new_messages, pending, message['role'], metadata)
         return new_messages
+
+    @staticmethod
+    def _flush_text(new_messages: Messages, pending: List[str], role: str, metadata: Dict[str, Any]) -> None:
+        """Emit the accumulated text as one message and clear the buffer; a no-op when empty.
+
+        Every argument is explicit rather than captured from the enclosing loop: a closure over a
+        loop variable is the kind of thing that works until someone defers the call.
+        """
+        if pending:
+            new_messages.append({'role': role, 'content': ''.join(pending), **metadata})
+            pending.clear()
 
     @staticmethod
     def _image_source(block: Dict[str, Any]) -> str:

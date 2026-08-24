@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import os
 import platform
 import re
@@ -14,10 +15,14 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Type, U
 
 import numpy as np
 
+from swift.utils import get_logger
+
 __all__ = [
     'DATASET_MAPPING', 'DATASET_TYPE', 'DatasetInfo', 'DatasetLoader', 'SubsetMeta', 'get_dataset_loader',
-    'load_dataset', 'match_dataset_type', 'register_dataset'
+    'load_dataset', 'match_dataset_type', 'register_dataset', 'register_dataset_info'
 ]
+
+logger = get_logger()
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
 
@@ -46,6 +51,10 @@ class SubsetMeta:
             hub's name is not the one worth typing.
         split: Splits to load for this subset. ``None`` inherits the loader's.
         preprocessor: Row preprocessor for this subset. ``None`` inherits the loader's.
+        columns: Column renames for this subset. ``None`` inherits the loader's. Per-subset because
+            sibling subsets of one dataset are often dumps of different sources that spell the same
+            field differently (legacy's ``medical_zh`` names it ``instruction`` in zh and ``input``
+            in en).
         is_weak_subset: Exclude this subset when the user asks for ``all``. For subsets that are
             noisy, tiny, or a near-duplicate of another -- they should be reachable by name but not
             silently mixed into a bulk request.
@@ -55,6 +64,7 @@ class SubsetMeta:
     name: Optional[str] = None
     split: Optional[List[str]] = None
     preprocessor: Optional[Any] = None
+    columns: Optional[Dict[str, str]] = None
     is_weak_subset: bool = False
 
     def __post_init__(self) -> None:
@@ -73,6 +83,7 @@ class SubsetMeta:
             name=self.name,
             split=list(self.split if self.split is not None else loader_cls.split),
             preprocessor=self.preprocessor if self.preprocessor is not None else loader_cls.preprocessor,
+            columns=self.columns if self.columns is not None else loader_cls.columns,
             is_weak_subset=self.is_weak_subset,
         )
 
@@ -132,6 +143,55 @@ def register_dataset(loader_cls: Type['DatasetLoader'] = None, *, exist_ok: bool
         return cls
 
     return _register if loader_cls is None else _register(loader_cls)
+
+
+def register_dataset_info(dataset_info: Union[str, List[Dict[str, Any]], None] = None,
+                          *,
+                          exist_ok: bool = False) -> List[Type['DatasetLoader']]:
+    """Register datasets declared as data rather than as code, synthesising a loader class for each.
+
+    Most datasets differ from each other only in *what* they are -- ids, subsets, splits, which raw
+    column means ``query`` -- and not in *how* they are read. Those need no Python at all, so they
+    live in ``dataset_info.json`` and arrive here. This is also the entry point for a user's
+    ``--custom_dataset_info`` file, which is the same shape.
+
+    Each entry becomes a real :class:`DatasetLoader` subclass, so a JSON-declared dataset and a
+    hand-written one are indistinguishable downstream -- there is no second code path that only
+    understands dicts, which is where legacy's ``_preprocess_d_info`` shape-shifting lived.
+
+    Recognised keys, all optional except that one of the two ids must be present:
+    ``ms_dataset_id`` / ``hf_dataset_id`` / ``dataset_path`` / ``dataset_type`` / ``subsets`` /
+    ``split`` / ``columns`` / ``tags`` / ``help`` / ``huge_dataset``. A ``subsets`` entry is either a
+    plain name or an object with the same ``subset`` / ``split`` / ``columns`` keys.
+
+    Args:
+        dataset_info: A path to a JSON file, a JSON string, an already-parsed list, or ``None`` for
+            the built-in ``dataset_info.json`` next to this module.
+        exist_ok: Allow re-registering a ``dataset_type`` that is already taken.
+
+    Returns:
+        The synthesised loader classes, in declaration order.
+    """
+    base_dir = None
+    if dataset_info is None:
+        dataset_info = os.path.join(os.path.dirname(__file__), 'dataset_info.json')
+    if isinstance(dataset_info, str):
+        path = os.path.abspath(os.path.expanduser(dataset_info))
+        if os.path.isfile(path):
+            # Relative `dataset_path` entries are resolved against the file that declared them, so a
+            # custom dataset_info file can sit next to the data it points at and stay portable.
+            base_dir = os.path.dirname(path)
+            with open(path, 'r', encoding='utf-8') as f:
+                dataset_info = json.load(f)
+        else:
+            dataset_info = json.loads(dataset_info)
+
+    registered: List[Type['DatasetLoader']] = []
+    for entry in dataset_info:
+        registered.append(DatasetLoader.from_dict(entry, base_dir=base_dir, exist_ok=exist_ok))
+    if registered:
+        logger.info(f'Successfully registered {len(registered)} datasets from dataset_info.')
+    return registered
 
 
 def get_dataset_loader(dataset_type: Optional[str]) -> Type['DatasetLoader']:
@@ -214,6 +274,10 @@ class DatasetLoader:
     # `None` selects auto-detection, which is the right default -- it reads the standard field-name
     # layouts, and only a dataset with genuinely odd field names needs to name a preprocessor.
     preprocessor: Optional[Any] = None
+    # Column renames this dataset needs: raw name -> standard name. Declared here rather than baked
+    # into a Preprocessor subclass so a dataset whose only quirk is its field names needs no code at
+    # all -- which is what lets the whole `dataset_info.json` batch be pure data.
+    columns: Dict[str, str] = {}
     ms_revision: Optional[str] = None
     hf_revision: Optional[str] = None
     tags: Sequence[str] = ()
@@ -231,6 +295,56 @@ class DatasetLoader:
     @property
     def dataset_info(self) -> DatasetInfo:
         return self._dataset_info
+
+    @classmethod
+    def from_dict(cls,
+                  entry: Dict[str, Any],
+                  *,
+                  base_dir: Optional[str] = None,
+                  exist_ok: bool = False) -> Type['DatasetLoader']:
+        """Build and register a loader subclass from one ``dataset_info`` entry.
+
+        Called per entry by :func:`register_dataset_info`. Subclassing ``cls`` rather than
+        :class:`DatasetLoader` means a family can expose its own JSON-declarable variant by calling
+        this on itself.
+        """
+        entry = dict(entry)
+        ms_id = entry.pop('ms_dataset_id', None)
+        hf_id = entry.pop('hf_dataset_id', None)
+        dataset_path = entry.pop('dataset_path', None)
+        if dataset_path is not None:
+            if base_dir is not None and not os.path.isabs(dataset_path):
+                dataset_path = os.path.join(base_dir, dataset_path)
+            dataset_path = os.path.abspath(os.path.expanduser(dataset_path))
+        assert ms_id or hf_id or dataset_path, f'A dataset_info entry needs an id or a path: {entry}'
+
+        # The trailing component of the id is the name worth typing, and is what legacy's basename
+        # fallback already resolved to -- so it is the natural registry key. An entry may pin one
+        # explicitly when two hubs host same-named datasets.
+        dataset_type = entry.pop('dataset_type', None) or cls.dataset_name(ms_id or hf_id or dataset_path)
+
+        attrs: Dict[str, Any] = {'dataset_type': dataset_type}
+        if ms_id or hf_id:
+            attrs['datasets'] = [(ms_id, hf_id)]
+        if dataset_path:
+            attrs['dataset_paths'] = [dataset_path]
+        if 'subsets' in entry:
+            attrs['subsets'] = [
+                SubsetMeta(**subset) if isinstance(subset, dict) else SubsetMeta(subset=subset)
+                for subset in entry.pop('subsets')
+            ]
+        for key in ('split', 'columns', 'tags', 'help', 'huge_dataset', 'ms_revision', 'hf_revision'):
+            if key in entry:
+                attrs[key] = entry.pop(key)
+        assert not entry, f'Unrecognised dataset_info keys for `{dataset_type}`: {sorted(entry)}'
+
+        # A class name is cosmetic (it shows up in logs and tracebacks) but must still be a valid
+        # identifier, and a few dataset names start with a digit.
+        class_name = re.sub(r'\W', '_', dataset_type)
+        if not class_name[:1].isalpha():
+            class_name = f'Dataset_{class_name}'
+        loader_cls = type(class_name, (cls, ), attrs)
+        return register_dataset(loader_cls, exist_ok=exist_ok)
 
     # -- declaration accessors -------------------------------------------------------------------
 
@@ -276,23 +390,30 @@ class DatasetLoader:
 
     # -- load hooks ------------------------------------------------------------------------------
 
-    def build_preprocessor(self, subset: SubsetMeta) -> Optional[Any]:
+    def build_preprocessor(self, subset: SubsetMeta) -> Any:
         """Instantiate the row preprocessor for ``subset``.
 
         Resolves a class or a ``'module:ClassName'`` string to an instance and passes an instance
-        through untouched. A family whose preprocessor needs constructor arguments (a label list, a
-        column remap) overrides this instead of trying to encode those arguments in a declaration --
-        the arguments are code, so they belong in code.
+        through untouched. A family whose preprocessor needs constructor arguments beyond ``columns``
+        overrides this instead of trying to encode those arguments in a declaration -- the arguments
+        are code, so they belong in code.
+
+        Column renames from the declaration and from the caller are merged, with the caller winning:
+        the declaration is what the framework believes about this dataset, ``--columns`` is what the
+        user knows about the copy in front of them.
         """
+        columns = {**(subset.columns or {}), **(self._kwargs.get('columns') or {})}
         preprocessor = subset.preprocessor
         if preprocessor is None:
-            # No declaration: fall back to the auto-detecting preprocessor, threading through the
-            # caller's manual `columns` remap so an odd-named dataset can still be recognised.
-            from .preprocessor import Preprocessor
-            return Preprocessor(columns=self._kwargs.get('columns'))
-        if isinstance(preprocessor, str):
+            # No declaration: the auto-detecting base preprocessor reads the standard layouts.
+            from ..preprocessor import Preprocessor
+            preprocessor = Preprocessor
+        elif isinstance(preprocessor, str):
             preprocessor = self.import_cls(preprocessor)
-        return preprocessor() if isinstance(preprocessor, type) else preprocessor
+        if isinstance(preprocessor, type):
+            return preprocessor(columns=columns)
+        # An instance was declared: it already carries its own configuration, so it is used as-is.
+        return preprocessor
 
     def build_dataset(self, subset: SubsetMeta, split: str, **kwargs) -> DATASET_TYPE:
         """Fetch one (subset, split) as rows, before any preprocessing.

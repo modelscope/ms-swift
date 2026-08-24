@@ -40,6 +40,8 @@ class ResponseConverter(FormatConverter):
         'question': 'query',
         'problem': 'query',
         'answer': 'response',
+        'answer_key': 'response',
+        'answers': 'response',
         'output': 'response',
         'targets': 'response',
         'target': 'response',
@@ -70,14 +72,14 @@ class ResponseConverter(FormatConverter):
             return None
         row['messages'] = messages
 
-        # Flat preference data: the rejected answer shares the same prompt as the chosen one, so it
-        # is the same dialogue with its final response swapped. Legacy left this flat form to a
-        # separate check downstream and only converted the `rejected_messages` list form; here the
-        # two forms leave this layer identically shaped.
+        # Flat preference data: the rejected answer is kept flat, as a `rejected_response` string,
+        # and is deliberately *not* expanded into `rejected_messages` here. The template owns that
+        # expansion, and it does more than reshape -- it rejects a `user` role in the rejected turn
+        # and asserts the rejected answer differs from the chosen one. Expanding early would satisfy
+        # its "already expanded" branch and silently skip both checks.
         rejected = self.pick_response(row.pop('rejected_response', None))
         if rejected is not None:
-            rejected_turns = [*history, [query, rejected]]
-            row['rejected_messages'] = self.history_to_messages(rejected_turns, system)
+            row['rejected_response'] = rejected
         return row
 
     def pick_response(self, response: Any) -> Any:

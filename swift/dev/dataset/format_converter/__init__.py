@@ -3,10 +3,9 @@
 
 Importing this package registers every built-in format, so :func:`get_converter` can find them.
 """
-from .base import (FORMAT_MAPPING, FormatConverter, Message, Messages, get_converter, list_formats,
-                   register_format)
 from .alpaca import AlpacaConverter
 from .anthropic import AnthropicConverter
+from .base import FORMAT_MAPPING, FormatConverter, Message, Messages, get_converter, list_formats, register_format
 from .openai import OpenAIConverter
 from .response import ResponseConverter
 

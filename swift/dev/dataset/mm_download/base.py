@@ -19,7 +19,6 @@ directory and is promoted to its final name with a single atomic ``os.rename`` o
 succeeds, so an interrupted download leaves no folder to be mistaken for a complete one.
 """
 from __future__ import annotations
-
 import os
 import shutil
 from typing import Dict, List, Optional, Type, Union

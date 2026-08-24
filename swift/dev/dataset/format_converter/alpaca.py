@@ -8,7 +8,6 @@ overrides the joining step, exactly as legacy's ``AlpacaPreprocessor`` subclasse
 ``ResponsePreprocessor``.
 """
 from __future__ import annotations
-
 from typing import Any, Collection, Dict, Optional
 
 from .base import register_format
