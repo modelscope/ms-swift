@@ -77,6 +77,7 @@ You can contact us and communicate with us by adding our group:
 
 
 ## 🎉 News
+- 🎁 2026.08.21: Support inference and training for the OpenMOSS multimodal model [MOSS-VL-Instruct-0708](https://modelscope.cn/models/openmoss/MOSS-VL-Instruct-0708), with LoRA and full-parameter fine-tuning, covering single/multi-image, single/multi-video and mixed-media scenarios.
 - 🎁 2026.08.11: Support inference and training for the multimodal model [Muse-Glimmer-30B](https://modelscope.cn/models/meta-models/Muse-Glimmer-30B), with Megatron-SWIFT support as well.
 - 🎁 2026.07.22: Support inference for the moonshotai multimodal model [Kimi-K3](https://modelscope.cn/models/moonshotai/Kimi-K3), including the XTML chat template, thinking channel (`reasoning_effort`) and tool calling (`--agent_template kimi_k3`).
 - 🎁 2026.06.10: Megatron-Ray now supports GRPO and GKD training. See [docs](./docs/source_en/Instruction/Ray.md) and [examples](examples/ray).
