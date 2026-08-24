@@ -422,8 +422,11 @@ def compute_per_token_logps_fn(model, args, data_iterator, temperature=1.0, no_g
     global_topk_idx = data.pop('routed_experts', None)
     if enable_routing_replay and RouterReplayHelper.is_replay_forward_action(model.config):
         assert global_topk_idx is not None, 'When router_replay_mode = R3, routed_experts must be in data'
-        routing_topk_idx = get_local_topk_idx_for_current_rank(global_topk_idx, model.config,
-                                                               data.get('packed_seq_params'))
+        routing_topk_idx = get_local_topk_idx_for_current_rank(
+            global_topk_idx,
+            model.config,
+            data.get('packed_seq_params'),
+            cp_partition_mode=getattr(args, 'cp_partition_mode', 'zigzag'))
         set_router_replay_data(routing_topk_idx, model.config)
 
     data_for_forward = {k: v for k, v in data.items() if k != 'labels'}
