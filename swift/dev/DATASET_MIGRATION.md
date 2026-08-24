@@ -2,6 +2,8 @@
 
 > 记录数据集从 legacy 迁到 dev 的进度、结论与依据。与 `MODEL_MIGRATION.md` 同体例，但有一处结构差异：模型侧只有「一个 loader 层」，数据集侧是**四层基础设施 + 数据集声明**，所以本文件先记录各层状态，再记录数据集批次——一个数据集能不能迁，往往取决于它依赖的层有没有到位。
 
+> **本文只记「已经搬了什么」。接下来怎么改形状，见 [`DATASET_REDESIGN.md`](./DATASET_REDESIGN.md)**——那份含完整的猫腻清单（带代码位置）、目标类层次设计、`cache_encoded`（文本落盘 + 媒体运行时）、下游硬约束清单与分阶段计划。两者分工：**先有本文的逐字 parity，才有资格谈那份的重排。**
+
 ## 判定规则
 - **迁移（migrated）**：在 dev 侧新建 `DatasetLoader` 子类并 `@register_dataset`，且与 legacy 做过逐用例 parity 比对。
 - **待迁（pending）**：无真障碍，只是还没轮到。数据集与模型不同——绝大多数数据集是**纯声明**（无自定义逻辑），迁移成本近乎为零，所以 pending 才是常态，不是问题。
@@ -312,60 +314,84 @@ swift 不留的理由只有两条站得住：① `template_mode` / `task_type` �
 
 ---
 
+## 批次 7：收口（34）—— 数据集条目清零
+
+把剩下的 34 个一次迁完，**覆盖率 163 → 197，与 legacy 完全相等（差集为空）**。分三组落地：
+
+| 组 | 数量 | 数据集 | 需要新建的能力 |
+|---|---|---|---|
+| 文本 / 分类 / 嵌入 | 8 | AdvertiseGen、clue(cmnli)、jd、stsb(4 子集)、MTEB ×2、self-cognition | `ClsGenerationPreprocessor`（标签集写进 prompt）、`model_name`/`model_author` 接线 |
+| 图像 / 音频 | 21 | A-OKVQA、OK-VQA、lnqa、Midefics、OCR-VQA、ScienceQA、LaTeX_OCR、captcha、clevr、voc2007、geometry3k、llava-mix-vsft、TextCaps(3 子集)、coco、ShareGPT4V(2)、LLaVA-Instruct-150K、LLaVA-Pretrain、GQA、refcoco、refcocog、GRIT、Qwen3-TTS | `GroundingPreprocessor`（提示表 + 两种任务向） |
+| 视频 / 特殊 | 5 | VideoChatGPT、MovieChat-1K、LLaVA-Video-178K(8 子集)、M3IT(49 子集)、Multimodal-Mind2Web | `FilesDownloader`（`file_type='files'`）、`prepare_dataset` 做数据集级折叠 |
+
+### 之前登记为「阻塞」的 7 项，全部不需要新层
+
+上一版把 self-cognition / jd / clue / AdvertiseGen / stsb / MTEB ×2 记作「层缺失」。实测后只有两项真的要动基础设施，其余五项是**已有机制的普通用法**：
+
+| 原判定 | 实际 |
+|---|---|
+| 需要 embedding / reranker 多塔层 | 不需要。`Preprocessor.MESSAGE_COLUMNS` 早已含 `positive_messages`/`negative_messages`，Arrow 层直接就能存；preprocessor 自己造行即可 |
+| 需要 prompt 模板层 | 不需要。就是子类里一个 `prompt.format(...)` |
+| 需要 cls→生成式改写层 | 需要一个类，但不是「一层」：`ClsGenerationPreprocessor` 声明 `labels` / `task` / `sentence_keys` 三个类属性 |
+| 需要 `set_name_author` 注入 seam | 需要，但改的是 loader 而非 preprocessor 层：`SelfCognitionLoader.build_preprocessor()` override 一次。legacy 反过来做——在**共享**加载路径里遍历所有数据集的 preprocess_func 去 isinstance 判断（`loader.py:212`） |
+
+### 顺带修掉的 legacy 缺陷（6 处）
+
+| 数据集 | legacy 行为 | dev |
+|---|---|---|
+| lmms-lab/GQA | `if os.path.join(...)`——拼出的路径是非空串，恒真，**图片不存在的行照样留下** | 改 `os.path.exists` |
+| MovieChat-1K-test | ~150 个 mp4 逐个用 `file_type='file'` 下到**同一个别名目录**；目录一存在就跳过 → 只有第一个文件真的落地，其余行全被当缺媒体丢掉 | 新增 `file_type='files'`，一次资源、原子提升 |
+| AI-ModelScope/LLaVA-Pretrain | `return {'images': path}`——整行只剩图片，**caption（messages）被丢掉** | 保留整行 |
+| swift/ScienceQA | 从零造行，`images` 没接回去 → 标 multi-modal 却产出纯文本行 | 接回 `images` |
+| swift/VideoChatGPT | `os.listdir` 写在 `preprocess` 里，**每行列一次目录** | 提到 `prepare_dataset` 一次 |
+| swift/OCR-VQA、grounding 提示 | 用全局 `np.random` 抽题/抽提示，同一份数据两次运行结果不同 | 用 seeded `self.random_state` |
+
+### 两处刻意不与 legacy 逐字相同
+
+1. **`AI-ModelScope/captcha-images` 不再多留一个 `solution` 列。** legacy 的 `__#solution` 保护对**任何**含 `solution` 列的数据集都生效，而这个数据集里 `solution` 只是答案列名，复制出来是同一个字符串两遍。dev 只在真需要的地方显式写回（`clevr_cogen_a_train`，标了 grpo）。
+2. **`AI-ModelScope/coco` 的 `objects` 不再带 `category`。** 索引在 preprocessor 里已被翻成 `ref`，用完即弃。legacy 是靠 `_patch_arrow_writer` 钉死 `objects` 的 struct 顺手丢掉的，不是有意为之。
+
+### 本批次的验证
+
+`swift/dev/tests/test_dataset_parity.py`（新建，**37/37 通过**，与 `test_swift_dataset.py` 合计 52/52）。口径：同一份合成行分别喂 legacy preprocessor 和 dev preprocessor，比对 `None` 值剔除后的整行。
+
+> 对账时发现一处**口径陷阱**：legacy 的内建别名表（`question`→`query` 等）只在 `enable_auto_mapping=True` 时生效（`core.py:341`），而这个标志由 legacy 的 loader 传入。不传就只有显式声明的 rename 起作用——最初 6 个失败用例里有 4 个是这个原因，不是代码差异。dev 没有这个开关：alias 是 converter 自己的知识，恒定生效。
+
+随机类不适用逐字比对的，改为断言式：grounding 提示表与 legacy `_grounding_prompts` **逐字相等**（防措辞漂移）+ 抽出的对必属于表；OCR-VQA 断言 question/answer 配对正确。Mind2Web 的折叠断言「2 episode × 2 action → 2 行而非 4 行」，且只有起始 action 被告知任务目标。
+
+---
+
 # 三、全量对账（ground truth，按注册表差集自动统计）
 
 > 数据来源：`swift.dataset.register.DATASET_MAPPING`（legacy，导入 llm+mllm 后）vs `swift.dev.dataset.DATASET_MAPPING`（dev）。以 ModelScope id 为对账主键。
 
-## 指标 1：已迁移
+## 指标 1：已迁移——**差集为空**
 
-- **dev 已注册 dataset_type：163**（= 52 Python 类 + 111 JSON 条目），对应 **distinct ms id = 158**（差的 5 个是纯 hf 条目）。dev 专有名 = 0，与模型侧不同——数据集没有「按模板拆分」的需要。
-- legacy 注册条目 197（键为 `(ms_id, hf_id, path)` 三元组），去重后 **distinct ms id = 189**。
-- 覆盖：**158 / 189（83.6%）**。反查已实测：所有 id 在 ms/hf 两个 hub 上双向解析，无一错配。
+| 指标 | legacy | dev |
+|---|---|---|
+| 注册条目 | 197（键为 `(ms_id, hf_id, subset)` 元组） | **197** 个 `dataset_type`（= 86 Python 类 + 111 JSON 条目）|
+| distinct ms id | 189 | **189** |
+| 纯 hf 条目 | 8 | **8** |
+| 覆盖率 | — | **189 / 189 = 100%**，`leg_ms - dev_ms == ∅`、`leg_hf_only - dev_hf == ∅` |
 
-## 指标 2：未迁移 31 的归属（逐类，无悬空项）
+dev 专有名 = 0，与模型侧不同——数据集没有「按模板拆分」的需要。反查已实测：所有 id 在 ms/hf 两个 hub 上双向解析，无一错配。
 
-> 实测分布：**mllm.py 24 + llm.py 7**。`llm.py` 的待迁项已清零，剩下的 7 个全是阻塞项；也就是说现在的未迁量里，**24 个是 MM 批次待做（7 个卡层）、7 个是文本侧卡层**。
+> 对账脚本的一个坑（曾算错过一次）：**两边的字典键格式不同**。legacy 是 `(ms_id, hf_id, subset)` 元组 → `DatasetMeta`（且元组长度并非恒为 3），dev 是 `dataset_type` 字符串 → loader 类。直接做键集差集得到的 197 vs 163 “缺 34” 是巧合，不是同口径结果。正确做法是把 dev 侧 `cls.iter_ids()` 展开成 id 集合册比。
 
-### A. 声明式条目（106）— **已迁**
+## 指标 2：未迁移 0
 
-已在批次 3 完成。legacy 的 111 条 JSON 全部落地（distinct ms id = 106，另 5 条纯 hf），字段忠实度已逐条实测：ids / `columns` / `split` / `subsets` / `tags` / `huge_dataset` / `help` 全部与源 JSON 一致。
+批次 7 后无未迁项，也无阻塞项。下表保留各源头的最终归属，供反查：
 
-> 对账口径提醒：本文件以 ms id 为主键，所以那 5 条纯 hf 数据集**不在 189 / 43 这两个数字里**，但它们已迁。同理，legacy 总共有 8 条纯 hf 条目，剩下 3 条在 Python 源码里，随 C 批次迁。
+| 源头 | 数量 | 落地位置 |
+|---|---|---|
+| `dataset_info.json`（声明式） | 111 | `loader/dataset_info.json`（批次 3）|
+| legacy `dataset/llm.py` | 47 | `loader/llm.py`（批次 1/2/4/7）|
+| legacy `dataset/mllm.py` | 39 | `loader/mllm.py`（批次 5/7）|
+| 合计 | 197 | — |
 
-### B. `llm.py` 剩余（7）— 全部阻塞，无待迁
+字段忠实度已逐条实测：ids / `columns` / `split` / `subsets` / `tags` / `huge_dataset` / `help`。
 
-| legacy ms id | legacy preprocessor | 结论 | 依据 |
-|---|---|---|---|
-| swift/self-cognition | AutoPreprocessor | **blocked** | 需 `set_name_author` 注入层（`--model_name`/`--model_author` 在加载期改写行内容），dev 无对应 seam |
-| DAMO_NLP/jd | ClsGenerationPreprocessor + ClsPreprocessor | **blocked** | 需 cls→生成式改写层 |
-| modelscope/clue | ClsGenerationPreprocessor | **blocked** | 同上 |
-| lvjianjin/AdvertiseGen | TextGenerationPreprocessor | **blocked** | 需 prompt 模板层（`{{QUERY}}` 套模板） |
-| sentence-transformers/stsb | StsbPreprocessor（4 subset 各不同） | **blocked** | embedding 多塔（`positive_messages`/`negative_messages` + label） |
-| MTEB/scidocs-reranking | MTEBRerankPreprocessor | **blocked** | reranker 多塔 |
-| MTEB/stackoverflowdupquestions-reranking | MTEBRerankPreprocessor | **blocked** | 同上 |
-
-### C. `mllm.py`（24）— 待迁，层已就绪
-
-`mm_download/` 与 `prepare_dataset()` / `pin_features()` 都已到位，前置条件全部满足。批次 5 已迁走 12 个，剩 24 个。其中已知需要额外一层的：
-
-| 待迁项 | 需要什么 |
-|---|---|
-| swift/Multimodal-Mind2Web | **数据集级聚合**：legacy 的 `preprocess_mind2web` 不是行变换，而是把连续多行合并成一条多轮 episode（按 `target_action_index == '0'` 切分），行数会变。dev 的 `Preprocessor` 是逐行 map，需要一个数据集级 hook |
-| swift/TextCaps（emb / rerank 两个 subset） | embedding / reranker 多塔——与 B 表里 stsb、MTEB 卡的是同一层（`positive_messages`/`negative_messages`）。`default` subset 不受影响 |
-| swift/refcoco、swift/refcocog、swift/Grit | grounding 提示层（`GroundingMixin`：`<ref-object>`/`<bbox>` 提示对 + bbox 归一化与坐标校验） |
-
-其余的都是常规行变换，形态与批次 5 已迁的同类。
-
-### D. 阻塞项汇总（7）
-
-| 缺的层 | 阻塞的数据集 |
-|---|---|
-| cls → 生成式改写 | DAMO_NLP/jd、modelscope/clue |
-| prompt 模板 | lvjianjin/AdvertiseGen |
-| embedding / reranker 多塔 | sentence-transformers/stsb、MTEB ×2 |
-| self-cognition 注入 | swift/self-cognition |
-
-> 注：这 7 个里没有一个是「数据集本身难迁」——都是**层缺失**。把对应层建好，它们各自只是几行声明。
+> 一条口径提醒：本文以 ms id 为主键，所以 8 条纯 hf 数据集不在 189 这个数字里，已单独核对（8/8）。
 
 ## 指标 3：验证口径
 
@@ -399,7 +425,7 @@ swift 不留的理由只有两条站得住：① `template_mode` / `task_type` �
 
 # 四、机制完整性审计
 
-> 批次 5 完成后做的系统对账，批次 6 后已按落地情况更新。问的是：不看数据集条目覆盖率（83.6%），只看**「从 hub 拉数据 → 训练能跑」整条管线的功能模块**，dev 到底缺了什么。
+> 批次 5 完成后做的系统对账，批次 6/7 后已按落地情况更新。问的是：不看数据集条目覆盖率（现为 100%），只看**「从 hub 拉数据 → 训练能跑」整条管线的功能模块**，dev 到底缺了什么。
 
 ## 已迁完的机制
 
@@ -498,6 +524,6 @@ dev 完成的是：**「从 hub 拉数据 → 标准 messages 行 → input_ids 
 |---|---|---|
 | registry miss | `get_model_loader` **raise** | `get_dataset_loader` **返回基类**（任意 hub id / 本地文件都合法） |
 | dev 专有名 | 69 个（按 template / task 拆分） | 0 个（数据集无拆分需要） |
-| 未迁主因 | 真障碍（版本死 / 外部仓 / 重 patch） | 层缺失（文本 7 + MM 7）+ MM 批次待做（17） |
+| 未迁余量 | 真障碍（版本死 / 外部仓 / 重 patch）仍在 | **0**（批次 7 清零）。回头看，曾登记的 7 项「阻塞」里只有 2 项真要动基础设施 |
 | 「迁移」的主体 | 每个模型一个 loader 类 | 四层基础设施；数据集本身多为填声明 |
-| 声明形式 | 一律 Python 类 | Python 类（有逻辑，52）+ JSON（纯声明，111） |
+| 声明形式 | 一律 Python 类 | Python 类（有逻辑，86）+ JSON（纯声明，111）|

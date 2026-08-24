@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from swift.template.utils import split_str_parts_by
 
@@ -933,6 +933,337 @@ class XlamFunctionCallingLoader(DatasetLoader):
         SubsetMeta('dataset', name='grpo', preprocessor=XlamFunctionCallingGRPOPreprocessor),
     ]
     tags = ['agent', 'grpo', '🔥']
+
+
+# ============================================================================================
+# 4. Rows that are not a dialogue at all -- a label, a score, or a set of candidate answers.
+#
+# What these have in common is that the standard row they produce is *not* the usual
+# ``messages``-and-nothing-else: a classification row carries an integer ``label`` and no assistant
+# turn, an embedding row carries ``positive_messages`` / ``negative_messages`` beside ``messages``.
+# Every one of those columns is in :attr:`Preprocessor.MESSAGE_COLUMNS`, so they survive Arrow as
+# they are; nothing about the shape needs special handling below this file.
+#
+# Each also comes in several views of the same rows -- generation, classification, regression -- which
+# is why they are registered as sibling subsets with different preprocessors rather than as separate
+# datasets: the choice is a task decision, not a data one.
+# ============================================================================================
+
+
+class ClsGenerationPreprocessor(Preprocessor):
+    """A classification dump posed as generation: the label set is stated in the prompt, its name is
+    the answer.
+
+    The alternative view -- keep the integer and let a classification head read it -- is
+    :class:`JdClsPreprocessor` below. Both are offered for the datasets that have them, because which
+    one is right depends on the ``task_type`` of the run and not on the dataset.
+
+    Legacy passed ``labels`` / ``task`` / ``is_pair_seq`` to a constructor and stored a pre-formatted
+    prompt on the instance. Here they are class attributes and the prompt is built per row: the number
+    of sentence columns is what ``is_pair_seq`` really encoded, so naming them says it directly.
+    """
+
+    labels: Sequence[str] = ()
+    task: str = ''
+    sentence_keys: Sequence[str] = ('sentence', )
+
+    def build_query(self, row: Dict[str, Any]) -> str:
+        if len(self.sentence_keys) > 1:
+            sentences = '\n'.join(f'Sentence{i}: {row[key]}' for i, key in enumerate(self.sentence_keys, start=1))
+        else:
+            sentences = f'Sentence: {row[self.sentence_keys[0]]}'
+        return f"Task: {self.task}\n{sentences}\nCategory: {', '.join(self.labels)}\nOutput:"
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        label = row.get('label')
+        if label is None:
+            # The test split ships unlabelled; without the answer the row teaches nothing.
+            return None
+        return super().preprocess({'query': self.build_query(row), 'response': self.labels[int(label)]})
+
+
+class AdvertiseGenPreprocessor(Preprocessor):
+    """Keywords in, ad copy out. The task is only legible once it is spelled out in the prompt.
+
+    ``content`` has to be renamed explicitly: :class:`ResponseConverter` reads it as an alias of
+    ``response``, which is the opposite of what it holds here. Caller renames win over a format's own
+    aliases, which is what makes that fixable by declaration.
+    """
+
+    columns = {'content': 'query', 'summary': 'response'}
+    prompt = """Task: Generating advertisements based on keywords.
+Keywords: {keywords}
+Advertisements:"""
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        row = self.standardise(row)
+        row['query'] = self.prompt.format(keywords=row['query'])
+        return super().preprocess(row)
+
+
+@register_dataset
+class AdvertiseGenLoader(DatasetLoader):
+    dataset_type = 'advertise-gen-zh'
+    datasets = [('lvjianjin/AdvertiseGen', 'shibing624/AdvertiseGen')]
+    split = ['train', 'validation']
+    preprocessor = AdvertiseGenPreprocessor
+    tags = ['text-generation', '🔥']
+
+
+class CmnliPreprocessor(ClsGenerationPreprocessor):
+    labels = ('neutral', 'entailment', 'contradiction')
+    task = 'Natural Language Inference'
+    sentence_keys = ('sentence1', 'sentence2')
+
+
+@register_dataset
+class ClueLoader(DatasetLoader):
+    dataset_type = 'cmnli'
+    datasets = [('modelscope/clue', 'clue')]
+    subsets = ['cmnli']
+    split = ['train', 'validation']
+    preprocessor = CmnliPreprocessor
+    tags = ['text-generation', 'classification']
+
+
+class JdSentimentPreprocessor(ClsGenerationPreprocessor):
+    labels = ('negative', 'positive')
+    task = 'Sentiment Classification'
+
+
+class JdClsPreprocessor(Preprocessor):
+    """The same reviews as a classification task: the label stays an ``int``, and there is no answer
+    turn at all."""
+
+    columns = {'sentence': 'query'}
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        converted = super().preprocess(row)
+        if converted is None:
+            return None
+        converted['label'] = int(converted['label'])
+        return converted
+
+
+@register_dataset
+class JdSentimentLoader(DatasetLoader):
+    dataset_type = 'jd-sentiment-zh'
+    datasets = [('DAMO_NLP/jd', None)]
+    subsets = [
+        SubsetMeta('default', preprocessor=JdSentimentPreprocessor),
+        SubsetMeta('default', name='cls', preprocessor=JdClsPreprocessor),
+    ]
+    split = ['train', 'validation']
+    tags = ['text-generation', 'classification', '🔥']
+
+
+class StsbPreprocessor(Preprocessor):
+    """A sentence pair and how alike they are, as an embedding example.
+
+    The second sentence becomes a ``positive_messages`` entry rather than an answer: an embedding loss
+    compares the two encodings, so the pair is the example and the score is its target.
+    """
+
+    # Keep every pair, however unalike, since the score is the label. A subclass raises the bar for
+    # the InfoNCE view, where a "positive" that is only loosely related is a mislabelled positive.
+    sim_threshold: Optional[float] = None
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        score = float(row['score'])
+        if self.sim_threshold is not None and score < self.sim_threshold:
+            return None
+        return {
+            'messages': [{
+                'role': 'user',
+                'content': row['sentence1']
+            }],
+            'positive_messages': [[{
+                'role': 'user',
+                'content': row['sentence2']
+            }]],
+            'label': score,
+        }
+
+
+class StsbInfoncePreprocessor(StsbPreprocessor):
+    sim_threshold = 0.75
+
+
+class StsbGeneratePreprocessor(Preprocessor):
+    """The same pairs as generation: the score is the text to produce, to one decimal place."""
+
+    prompt = """Task: Based on the given two sentences, provide a similarity score between 0.0 and 1.0.
+Sentence 1: {text1}
+Sentence 2: {text2}
+Similarity score: """
+
+    def build_query(self, row: Dict[str, Any]) -> str:
+        return self.prompt.format(text1=row['sentence1'], text2=row['sentence2'])
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return super().preprocess({'query': self.build_query(row), 'response': f"{row['score']:.1f}"})
+
+
+class StsbRegressionPreprocessor(StsbGeneratePreprocessor):
+    """The same prompt, but the score stays a float for a regression head instead of being written out."""
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return Preprocessor.preprocess(self, {'query': self.build_query(row), 'label': row['score']})
+
+
+@register_dataset
+class StsbLoader(DatasetLoader):
+    dataset_type = 'stsb'
+    datasets = ['sentence-transformers/stsb']
+    subsets = [
+        SubsetMeta('default', preprocessor=StsbPreprocessor),
+        SubsetMeta('default', name='positive', preprocessor=StsbInfoncePreprocessor),
+        SubsetMeta('default', name='generate', preprocessor=StsbGeneratePreprocessor),
+        SubsetMeta('default', name='reg', preprocessor=StsbRegressionPreprocessor),
+    ]
+    tags = ['similarity', '🔥']
+
+
+class MTEBRerankPreprocessor(Preprocessor):
+    """A query with its relevant and irrelevant documents: a reranker's example.
+
+    Both document columns may hold one string or a list of them, and both become lists of one-turn
+    dialogues -- the ``assistant`` role because a document is what the query is answered *with*.
+    """
+
+    @staticmethod
+    def as_messages(documents: Any) -> List[List[Dict[str, str]]]:
+        if not isinstance(documents, list):
+            documents = [documents]
+        return [[{'role': 'assistant', 'content': document}] for document in documents]
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        return {
+            'messages': [{
+                'role': 'user',
+                'content': row['query']
+            }],
+            'positive_messages': self.as_messages(row['positive']),
+            'negative_messages': self.as_messages(row['negative']),
+        }
+
+
+@register_dataset
+class ScidocsRerankingLoader(DatasetLoader):
+    dataset_type = 'scidocs-reranking'
+    datasets = [('MTEB/scidocs-reranking', 'mteb/scidocs-reranking')]
+    split = ['validation', 'test']
+    preprocessor = MTEBRerankPreprocessor
+    tags = ['rerank', '🔥']
+
+
+@register_dataset
+class StackoverflowRerankingLoader(DatasetLoader):
+    dataset_type = 'stackoverflowdupquestions-reranking'
+    datasets = [('MTEB/stackoverflowdupquestions-reranking', 'mteb/stackoverflowdupquestions-reranking')]
+    split = ['train', 'test']
+    preprocessor = MTEBRerankPreprocessor
+    tags = ['rerank', '🔥']
+
+
+class SelfCognitionPreprocessor(Preprocessor):
+    """Rows that teach a model who it is, with the identity left as a placeholder to fill in.
+
+    The dataset ships ``{{NAME}}`` and ``{{AUTHOR}}`` in both the question and the answer, so the
+    substituted values come from the *run* (``--model_name`` / ``--model_author``) rather than from the
+    data. That makes this the one preprocessor here that cannot be configured by declaration alone:
+    :meth:`SelfCognitionLoader.build_preprocessor` passes them in.
+
+    A row's ``tag`` says which language it is written in, which is what picks between the Chinese and
+    English form of a name. An unset name is left as-is rather than blanked: the placeholder surviving
+    into the training text is at least visible, whereas an empty string is not.
+    """
+
+    # Appended / prepended to shape the answer for a specific thinking convention; see the subsets.
+    query_suffix: str = ''
+    response_prefix: str = ''
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.name: Optional[Tuple[str, str]] = None
+        self.author: Optional[Tuple[str, str]] = None
+
+    def set_name_author(self, name: Any, author: Any) -> None:
+        self.name = self.as_language_pair(name)
+        self.author = self.as_language_pair(author)
+
+    @staticmethod
+    def as_language_pair(value: Any) -> Optional[Tuple[str, str]]:
+        """Normalise what the command line gave into a ``(zh, en)`` pair, or ``None`` for unset.
+
+        One value means the same name is right in both languages -- true of most model names, which
+        are not translated -- so it is duplicated rather than left half-empty.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = [value]
+        if not value or value[0] is None:
+            return None
+        if len(value) == 1 or value[1] is None:
+            return (value[0], value[0])
+        return (value[0], value[1])
+
+    def preprocess(self, row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        row = self.standardise(row)
+        for key in ('name', 'author'):
+            pair = getattr(self, key)
+            if pair is None:
+                continue
+            value = pair[0] if row['tag'] == 'zh' else pair[1]
+            placeholder = '{{' + key.upper() + '}}'
+            row['query'] = row['query'].replace(placeholder, value)
+            row['response'] = row['response'].replace(placeholder, value)
+        row['query'] = row['query'] + self.query_suffix
+        row['response'] = self.response_prefix + row['response']
+        return super().preprocess(row)
+
+
+class Qwen3SelfCognitionPreprocessor(SelfCognitionPreprocessor):
+    """For a model whose thinking is switched by a token in the question: ask it not to think, and
+    supply the empty thinking block its answers are expected to open with."""
+
+    query_suffix = ' /no_think'
+    response_prefix = '<think>\n\n</think>\n\n'
+
+
+class EmptyThinkSelfCognitionPreprocessor(SelfCognitionPreprocessor):
+    """The same empty thinking block, for a model that needs no switch in the question."""
+
+    response_prefix = '<think>\n\n</think>\n\n'
+
+
+@register_dataset
+class SelfCognitionLoader(DatasetLoader):
+    dataset_type = 'self-cognition'
+    datasets = [('swift/self-cognition', 'modelscope/self-cognition')]
+    # Declared at family level as well as per subset, so every subset resolves to *some* subclass of
+    # `SelfCognitionPreprocessor`: `build_preprocessor` below calls a setter only this class has.
+    preprocessor = SelfCognitionPreprocessor
+    subsets = [
+        SubsetMeta('default'),
+        SubsetMeta('default', name='qwen3', preprocessor=Qwen3SelfCognitionPreprocessor),
+        SubsetMeta('default', name='empty_think', preprocessor=EmptyThinkSelfCognitionPreprocessor),
+    ]
+    tags = ['chat', 'self-cognition', '🔥']
+
+    def build_preprocessor(self, subset: SubsetMeta) -> Any:
+        """Hand the run's model identity to the preprocessor -- the one thing this dataset cannot
+        declare.
+
+        Legacy reached the other way: its loader walked every ``preprocess_func`` of every dataset
+        looking for instances of this class and called a setter on them, so a dataset-specific need
+        was implemented in the shared load path. Overriding this hook keeps it in the one family that
+        has it.
+        """
+        preprocessor = super().build_preprocessor(subset)
+        preprocessor.set_name_author(self._kwargs.get('model_name'), self._kwargs.get('model_author'))
+        return preprocessor
 
 
 

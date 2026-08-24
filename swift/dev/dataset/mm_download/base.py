@@ -70,7 +70,8 @@ class MediaDownloader:
                 ``media_type_or_url`` is a single string (the id/url is then reused as the name);
                 required for a sharded list, since a list has no single name to fall back to.
             file_type: ``'compressed'`` (download and unpack an archive), ``'file'`` (download one
-                file verbatim), or ``'sharded'`` (download and merge several archives).
+                file verbatim), ``'files'`` (download several loose files into one folder), or
+                ``'sharded'`` (download and merge several archives).
 
         Returns:
             Absolute path of the directory containing the resource.
@@ -204,3 +205,23 @@ class ShardedDownloader(MediaDownloader):
         for url in source:
             extracted = manager.download_and_extract(url)
             self.move_directory_contents(str(extracted), dest_dir)
+
+
+class FilesDownloader(MediaDownloader):
+    """Download several plain files, unpacking none, into one resource folder.
+
+    For a dataset that publishes its media as loose files rather than an archive. This has to be one
+    resource rather than a ``'file'`` fetch per name: a fetched resource is a *folder*, and its
+    existence is what marks the fetch complete -- so asking for the second file under the same folder
+    name would be answered from the fast path, having downloaded only the first. Legacy did exactly
+    that with MovieChat-1K's ~150 videos and kept only the first one.
+    """
+
+    file_type = 'files'
+
+    def fetch(self, source: List[str], dest_dir: str) -> None:
+        from datasets.download.download_manager import DownloadManager
+        manager = DownloadManager(download_config=self.download_config())
+        for url in source:
+            downloaded = manager.download(url)
+            shutil.move(str(downloaded), os.path.join(dest_dir, url.split('/')[-1]))

@@ -573,6 +573,8 @@ def load_dataset(
     columns: Optional[Dict[str, str]] = None,
     streaming: bool = False,
     subsets: Optional[Sequence[str]] = None,
+    model_name: Optional[Union[str, Sequence[str]]] = None,
+    model_author: Optional[Union[str, Sequence[str]]] = None,
 ) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
     """Load and preprocess one or more datasets into standard ``(train, val)`` splits.
 
@@ -607,7 +609,9 @@ def load_dataset(
             strict=strict,
             download_mode=download_mode,
             columns=columns,
-            streaming=streaming)
+            streaming=streaming,
+            model_name=model_name,
+            model_author=model_author)
         train, val = loader.post_process(
             loader.load(), split_dataset_ratio=split_dataset_ratio, seed=seed)
         if train is not None:

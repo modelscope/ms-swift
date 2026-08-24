@@ -154,20 +154,38 @@ class FormatConverter:
     # -- helpers ---------------------------------------------------------------------------------
 
     def apply_aliases(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        """A copy of ``row`` with aliased keys renamed to their standard names.
+        """A copy of ``row`` with aliased keys renamed to their standard names."""
+        renames = self.resolve_aliases(row.keys())
+        return {renames.get(key, key): value for key, value in row.items()}
 
-        A standard name already present is never overwritten: if a row has both ``response`` and
-        ``output``, ``response`` is the one meant. Legacy's ``_to_std_key`` looped over the alias list
-        assigning as it went, so the *last* alias in the list won and the outcome depended on the
-        order of a literal.
+    def resolve_aliases(self, keys: Collection[str]) -> Dict[str, str]:
+        """Of these column names, which get renamed to which standard name: ``alias -> standard``.
+
+        Two rules, both about a name losing a contest it is in:
+
+        - A standard name the row spells out itself wins over every alias of it. Given ``response`` and
+          ``output``, ``response`` is the one meant.
+        - When only aliases compete, the one declared first in :attr:`aliases` wins, so a dataset
+          carrying both ``answer`` and ``text`` resolves the same way every time.
+
+        A loser keeps its own name and is absent from the result: it is an ordinary column of this
+        dataset (a ``text`` holding source text next to a real ``response``), and something downstream
+        may want it. Both rules read only ``keys``, never what has been decided so far, so the outcome
+        does not depend on the order the raw row happens to list its columns in. Legacy had neither
+        property: ``_to_std_key`` assigned as it looped, so the *last* alias in a literal won, and
+        ``safe_rename_columns`` resolved a contest by silently dropping *both* renames.
         """
-        new_row = {}
-        for key, value in row.items():
-            new_key = self.aliases.get(key, key)
-            if new_key in new_row and key != new_key:
+        keys = set(keys)
+        ranks = {alias: rank for rank, alias in enumerate(self.aliases)}
+        winners: Dict[str, str] = {}
+        for key in keys:
+            standard = self.aliases.get(key, key)
+            if standard == key or standard in keys:
                 continue
-            new_row[new_key] = value
-        return new_row
+            incumbent = winners.get(standard)
+            if incumbent is None or ranks[key] < ranks[incumbent]:
+                winners[standard] = key
+        return {key: standard for standard, key in winners.items()}
 
     @staticmethod
     def parse_literal(value: Any) -> Any:

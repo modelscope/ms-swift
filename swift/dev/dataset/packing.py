@@ -21,10 +21,11 @@ from itertools import chain
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import torch.distributed as dist
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import IterableDataset
 from tqdm import tqdm
 
 from swift.utils import get_logger, is_dist, is_master, split_list
+from .swift_dataset import SwiftDataset
 
 __all__ = ['IterablePackingDataset', 'PackingDataset']
 
@@ -34,7 +35,7 @@ logger = get_logger()
 Weighted = Tuple[Any, int]
 
 
-class PackingDataset(Dataset):
+class PackingDataset(SwiftDataset):
     """A map-style dataset whose items are *groups* of samples that together fill ``packing_length``.
 
     Planning happens once in the constructor, which is what a map-style dataset buys: all lengths are
@@ -44,6 +45,13 @@ class PackingDataset(Dataset):
     The plan is computed on the master rank and broadcast, not recomputed per rank: bin packing is
     deterministic in principle but its cost is real, and every rank must agree on the grouping or the
     ranks would disagree on the number of steps.
+
+    Inherits :class:`SwiftDataset` rather than wrapping a dataset, and the lengths it plans from are
+    :attr:`~SwiftDataset.lengths` -- its own. Wrapping is what made this awkward before: the lengths
+    lived in a column of a dataset two layers down, so the layer in between had to pass string
+    subscripts through to reach it, a hole that existed for this one read. Encoding a member of a group
+    is likewise inherited, so there is no longer a lazily-encoding wrapper underneath whose only job was
+    to encode what this class asks for.
     """
 
     # Rows per bin-packing call. Packing a whole dataset in one call would hold every length in one
@@ -67,11 +75,13 @@ class PackingDataset(Dataset):
         # samples from attending to each other.
         template.packing = True
         template.padding_free = True  # TODO: remove
-        self.template = template
-        self.dataset = dataset
-        self.num_proc = num_proc
-        self.strict = strict
-        self.load_from_cache_file = load_from_cache_file
+        super().__init__(
+            dataset,
+            template,
+            num_proc=num_proc,
+            load_from_cache_file=load_from_cache_file,
+            strict=strict,
+            **kwargs)
         self.packing_strategy = packing_strategy
         self.packing_length = packing_length or self.template.max_length
         # More workers than batches would leave workers with nothing to do, and `split_list` would
@@ -80,7 +90,9 @@ class PackingDataset(Dataset):
         self._out_queue = mp.Queue()
 
         if is_master():
-            self.packed_idx, self.packed_length = self.plan_packing(self.dataset['lengths'])
+            # Asking for `lengths` is what triggers the measuring pass -- packing is the caller that
+            # needs it, so packing is where it gets paid for.
+            self.packed_idx, self.packed_length = self.plan_packing(self.lengths)
         else:
             self.packed_idx, self.packed_length = None, None
         if dist.is_initialized() and is_dist():
@@ -123,8 +135,11 @@ class PackingDataset(Dataset):
     def create_packed_idx(self, rank: int, offset: int, lengths: List[Any]) -> None:
         """Pack one worker's slice, putting each batch's groups on the queue as they are formed."""
         # A list length belongs to a row the template splits into several sequences; the whole row
-        # still travels together, so its lengths sum.
-        data = [(i + offset, sum(length) if isinstance(length, list) else length) for i, length in enumerate(lengths)]
+        # still travels together, so its lengths sum. A row that reads 0 could not be encoded at all,
+        # and planning around it would reserve room for a sample the pack will never contain.
+        data = [(i + offset, sum(length) if isinstance(length, list) else length)
+                for i, length in enumerate(lengths)
+                if (sum(length) if isinstance(length, list) else length)]
         i = 0
         input_data: List[Weighted] = []
         while True:
@@ -191,7 +206,16 @@ class PackingDataset(Dataset):
         return grouped, leftover
 
     def __getitem__(self, index: int) -> List[Dict[str, Any]]:
-        return [self.dataset[i] for i in self.packed_idx[index]]
+        """Return the encoded rows of one group, encoding each through the inherited access path.
+
+        ``super().__getitem__`` is what encodes a member -- including substituting a row that fails --
+        so a group is assembled from the same access path a non-packing dataset serves, rather than from
+        a separate lazily-encoding wrapper placed underneath this one.
+
+        Concatenation is still the collator's, because the template does it (``base.py:1874``) and the
+        template is not in scope here.
+        """
+        return [super(PackingDataset, self).__getitem__(i) for i in self.packed_idx[index]]
 
     def __len__(self) -> int:
         return len(self.packed_idx)
