@@ -174,7 +174,7 @@ class Seq2SeqTrainer(SwiftMixin, DataLoaderMixin, HfSeq2SeqTrainer):
 
                 if loss_scale is not None:
                     loss_scale = torch.roll(loss_scale, shifts=-1, dims=-1).view(-1)
-                    outputs.loss = outputs.loss * loss_scale
+                    outputs.loss = outputs.loss.view(-1) * loss_scale
 
                 if self.args.enable_channel_loss:
                     metrics = self.custom_metrics[mode]
