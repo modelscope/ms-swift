@@ -726,6 +726,7 @@ class SwiftRolloutDeploy(SwiftPipeline):
     args: args_class
 
     def _register_rl_rollout_app(self):
+        self.app.get('/health')(self.health)
         self.app.get('/health/')(self.health)
         self.app.get('/get_world_size/')(self.get_world_size)
         self.app.get('/get_model_state_keys/')(self.get_model_state_keys)
