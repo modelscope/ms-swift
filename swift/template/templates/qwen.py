@@ -1009,9 +1009,7 @@ class Qwen2_5OmniTemplate(Qwen2_5VLTemplate):
         fps = inputs.mm_processor_kwargs.get('fps')
         if inputs.videos and fps and 'video_second_per_grid' in media_inputs:
             video_processor = getattr(processor, 'video_processor', None) or processor.image_processor
-            media_inputs['video_second_per_grid'] = [
-                video_processor.temporal_patch_size / tmp for tmp in fps
-            ]
+            media_inputs['video_second_per_grid'] = [video_processor.temporal_patch_size / tmp for tmp in fps]
         input_ids = encoded['input_ids']
         labels = encoded['labels']
         loss_scale = encoded.get('loss_scale', None)
