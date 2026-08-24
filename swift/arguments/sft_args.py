@@ -319,6 +319,11 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         fsdp_version = self.fsdp_config.get('fsdp_version', 2)
         os.environ['FSDP_VERSION'] = str(fsdp_version)
 
+        # `get_default_device_map()` and transformers' `is_fsdp_enabled()` both key off this env variable.
+        # Without it, each rank gets device_map='cuda:{rank}'/'npu:{rank}' and loads the full weights
+        # (OOM on large models), and `cpu_ram_efficient_loading` silently has no effect.
+        os.environ['ACCELERATE_USE_FSDP'] = 'true'
+
         # Set environment variable to optimize NCCL memory usage
         if 'TORCH_NCCL_AVOID_RECORD_STREAMS' not in os.environ:
             os.environ['TORCH_NCCL_AVOID_RECORD_STREAMS'] = '1'
