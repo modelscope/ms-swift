@@ -179,6 +179,10 @@ register_model(
                 Model('deepseek-ai/DeepSeek-V4-Pro', 'deepseek-ai/DeepSeek-V4-Pro'),
                 Model('deepseek-ai/DeepSeek-V4-Pro-Base', 'deepseek-ai/DeepSeek-V4-Pro-Base'),
             ]),
+            ModelGroup([
+                Model('deepseek-ai/DeepSeek-V4-Flash-0731', 'deepseek-ai/DeepSeek-V4-Flash-0731'),
+            ],
+                       template=TemplateType.deepseek_v4_flash),
         ],
         template=TemplateType.deepseek_v4,
         architectures=['DeepseekV4ForCausalLM'],

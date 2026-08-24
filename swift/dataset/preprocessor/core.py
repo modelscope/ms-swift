@@ -16,6 +16,7 @@ from packaging import version
 from typing import Any, Callable, Dict, List, Literal, Optional, Union
 
 from swift.template import history_to_messages
+from swift.template.template_inputs import normalize_openai_tool_calls
 from swift.utils import get_logger, is_dist, is_master, safe_ddp_context
 
 DATASET_TYPE = Union[HfDataset, HfIterableDataset]
@@ -511,43 +512,9 @@ class MessagesPreprocessor(RowPreprocessor):
                 message['role'] = 'tool_response'
 
     @staticmethod
-    def _parse_arguments(arguments: Any) -> Any:
-        if not isinstance(arguments, str):
-            return arguments
-        try:
-            return json.loads(arguments)
-        except json.JSONDecodeError:
-            return arguments
-
-    @classmethod
-    def openai_to_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def openai_to_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert OpenAI tool-call messages to the SWIFT canonical roles."""
-        new_messages = []
-        for message in messages:
-            if message.get('role') != 'assistant' or not message.get('tool_calls'):
-                new_messages.append(message)
-                continue
-
-            content = message.get('content')
-            if content:
-                new_messages.append({
-                    key: value
-                    for key, value in message.items() if key in {'role', 'content', 'loss', 'loss_scale'}
-                })
-            for tool_call in message['tool_calls']:
-                function = tool_call.get('function', tool_call)
-                tool_message = {
-                    'role': 'tool_call',
-                    'content': {
-                        'name': function['name'],
-                        'arguments': cls._parse_arguments(function.get('arguments', {})),
-                    },
-                }
-                for key in ['loss', 'loss_scale']:
-                    if key in message:
-                        tool_message[key] = message[key]
-                new_messages.append(tool_message)
-        return new_messages
+        return normalize_openai_tool_calls(messages)
 
     @staticmethod
     def _anthropic_image_source(block: Dict[str, Any]) -> str:

@@ -83,10 +83,13 @@ def _get_version(work_dir: str) -> int:
 
 
 def format_time(seconds):
-    days = int(seconds // (24 * 3600))
-    hours = int((seconds % (24 * 3600)) // 3600)
-    minutes = int((seconds % 3600) // 60)
-    seconds = round(seconds % 60)
+    # Round the total first, then decompose, so a rounded-up second carries into
+    # the minute (and cascades) instead of printing an impossible '60s'.
+    total = round(seconds)
+    days = total // (24 * 3600)
+    hours = (total % (24 * 3600)) // 3600
+    minutes = (total % 3600) // 60
+    seconds = total % 60
 
     if days > 0:
         time_str = f'{days}d {hours}h {minutes}m {seconds}s'
@@ -489,8 +492,12 @@ def shutdown_event_loop_in_daemon(thread: threading.Thread = None, loop: asyncio
     """
     if loop is None or thread is None:
         return
+    if loop.is_closed():
+        return
     loop.call_soon_threadsafe(loop.stop)
     thread.join(timeout=5)
+    if not thread.is_alive():
+        loop.close()
 
 
 def remove_response(messages) -> Optional[str]:

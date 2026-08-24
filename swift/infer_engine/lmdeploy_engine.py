@@ -23,7 +23,8 @@ from swift.utils import get_logger, get_seed, safe_snapshot_download
 from .infer_engine import InferEngine
 from .patch import patch_auto_config, patch_auto_tokenizer
 from .protocol import (ChatCompletionResponse, ChatCompletionResponseChoice, ChatCompletionResponseStreamChoice,
-                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig)
+                       ChatCompletionStreamResponse, ChatMessage, DeltaMessage, InferRequest, RequestConfig,
+                       random_uuid)
 from .utils import InferStreamer
 
 try:
@@ -194,6 +195,7 @@ class LmdeployEngine(InferEngine):
         generation_config: LmdeployGenerationConfig,
         request_config: RequestConfig,
     ) -> AsyncIterator[ChatCompletionStreamResponse]:
+        request_id = f'chatcmpl-{random_uuid()}'
         session_id = time.time_ns()
         kwargs = {'stream_output': True, 'gen_config': generation_config, 'sequence_start': True, 'sequence_end': True}
         if version.parse(lmdeploy.__version__) >= version.parse('0.6.5'):
@@ -236,7 +238,8 @@ class LmdeployEngine(InferEngine):
                         finish_reason=finish_reason,
                         logprobs=logprobs)
                 ]
-                yield ChatCompletionStreamResponse(model=self.model_name, choices=choices, usage=usage_info)
+                yield ChatCompletionStreamResponse(
+                    model=self.model_name, choices=choices, usage=usage_info, id=request_id)
 
     async def _infer_full_async(
         self,

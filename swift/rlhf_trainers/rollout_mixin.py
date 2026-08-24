@@ -697,10 +697,12 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 if not self._is_fsdp2:
                     self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
-                cur_lora_params = {
-                    name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
-                    for name, param in cur_lora_params.items()
-                }
+                for name, param in cur_lora_params.items():
+                    if hasattr(param, 'full_tensor'):
+                        if param.is_cpu:
+                            param = param.to(get_current_device())
+                        param = param.full_tensor()
+                    cur_lora_params[name] = param.detach()
                 lora_params.update(cur_lora_params)
                 if not self._is_fsdp2:
                     with patch_lora_unmerge(self.model):
@@ -1417,7 +1419,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             torch.cuda.empty_cache()
             return
 
-        # Default: iterate over parameters
+        # Default: iterate over parameters AND buffers.
         for param in model.parameters():
             # After DeepSpeed distributed loading: param.data is empty and weights cannot be off-loaded.
             # The real weights are stored in ds_tensor.
@@ -1425,6 +1427,9 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 param.ds_tensor.data = param.ds_tensor.data.to('cpu', non_blocking=True)
             else:
                 param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+        for buf in model.buffers():
+            if buf is not None and buf.device.type != 'cpu':
+                buf.data = buf.data.to(torch.device('cpu'), non_blocking=True)
         torch.cuda.empty_cache()
 
     @torch.no_grad()
@@ -1436,13 +1441,16 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             model.to(device)
             return
 
-        # Default: iterate over parameters
+        # Default: iterate over parameters AND buffers
         for param in model.parameters():
             # Reverse logic of off-loading: move weights back to target device
             if is_deepspeed_enabled() and hasattr(param, 'ds_tensor'):
                 param.ds_tensor.data = param.ds_tensor.data.to(device, non_blocking=True)
             else:
                 param.data = param.data.to(device, non_blocking=True)
+        for buf in model.buffers():
+            if buf is not None and buf.device.type == 'cpu':
+                buf.data = buf.data.to(device, non_blocking=True)
 
     @torch.no_grad()
     def offload_optimizer(self):

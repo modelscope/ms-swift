@@ -135,10 +135,13 @@ class MegatronBridgeBackend:
                      peft_format=False,
                      max_shard_size='5GB',
                      args=None,
-                     processor=None) -> None:
+                     processor=None,
+                     save_missing_weights=False) -> None:
         if peft_format:
             raise NotImplementedError('LoRA saving via megatron-bridge backend is not yet supported. '
                                       'Please use bridge_backend="mcore-bridge" for LoRA training.')
+        if save_missing_weights:
+            logger.warning('save_missing_weights is not supported by megatron-bridge backend, ignoring.')
 
         # 1. Save weights via megatron-bridge (safetensors format)
         self._bridge.save_hf_weights(models, path=output_dir)

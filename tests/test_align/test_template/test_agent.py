@@ -577,31 +577,40 @@ def test_deepseek_v4():
     data = {
         'tools':
         tools,
-        'messages': [{
-            'role': 'system',
-            'content': 'You are a helpful assistant.'
-        }, {
-            'role': 'user',
-            'content': "What's the weather in Beijing?"
-        }, {
-            'role':
-            'assistant',
-            'content':
-            '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>\n\n'
-        }, {
-            'role':
-            'tool_call',
-            'content':
-            '{"name": "get_weather", "arguments": "{\\"location\\": \\"Beijing\\", \\"unit\\": \\"celsius\\"}"}'
-        }, {
-            'role': 'tool_response',
-            'content': '{"temperature": 22, "condition": "sunny", "humidity": 45}'
-        }, {
-            'role':
-            'assistant',
-            'content': ('<think>Got the weather data. Let me format a nice response.</think>'
-                        'The weather in Beijing is currently sunny with a temperature of 22°C and 45% humidity.')
-        }]
+        'messages': [
+            {
+                'role': 'system',
+                'content': 'You are a helpful assistant.'
+            },
+            {
+                'role': 'user',
+                'content': "What's the weather in Beijing?"
+            },
+            {
+                'role':
+                'assistant',
+                # The `\n\n` before the tool_calls block is added by the template
+                # (`DeepSeekV4AgentTemplate._add_tool_call_prefix`), not by the data.
+                'content':
+                '<think>The user wants to know the weather in Beijing. I should use the get_weather tool.</think>'
+            },
+            {
+                'role':
+                'tool_call',
+                'content':
+                '{"name": "get_weather", "arguments": "{\\"location\\": \\"Beijing\\", \\"unit\\": \\"celsius\\"}"}'
+            },
+            {
+                'role': 'tool_response',
+                'content': '{"temperature": 22, "condition": "sunny", "humidity": 45}'
+            },
+            {
+                'role':
+                'assistant',
+                'content': ('<think>Got the weather data. Let me format a nice response.</think>'
+                            'The weather in Beijing is currently sunny with a temperature of 22°C and 45% humidity.')
+            }
+        ]
     }
 
     template.template_backend = 'swift'
@@ -722,6 +731,153 @@ def test_seed_oss():
     assert template.safe_decode(encoded2['input_ids']) == expected_input_ids
 
 
+def test_standalone_tool():
+    # https://github.com/modelscope/ms-swift/issues/9843
+    # A 'tool' message without a preceding assistant tool_call, plus an assistant
+    # message that only carries `tool_calls` (no 'content' key).
+    engine = TransformersEngine('Qwen/Qwen3-8B', load_model=False)
+    template = engine.template
+    template.add_non_thinking_prefix = False
+
+    aqi_tools = [{
+        'type': 'function',
+        'function': {
+            'name': 'realtime_aqi',
+            'description': '天气预报。获取实时空气质量。',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'city': {
+                        'type': 'string',
+                        'description': '城市名'
+                    }
+                },
+                'required': ['city']
+            }
+        }
+    }]
+    data = {
+        'tools':
+        aqi_tools,
+        'messages': [
+            {
+                'role': 'user',
+                'content': '上海今天的天气情况'
+            },
+            # A standalone observation: no assistant tool_call precedes it.
+            {
+                'role': 'tool',
+                'content': '这是一个环境信息'
+            },
+            # OpenAI-style tool_calls without the 'content' key.
+            {
+                'role': 'assistant',
+                'tool_calls': [{
+                    'type': 'function',
+                    'function': {
+                        'name': 'realtime_aqi',
+                        'arguments': {
+                            'city': '上海'
+                        }
+                    }
+                }]
+            },
+            {
+                'role': 'tool',
+                'name': 'realtime_aqi',
+                'content': '{"city": "上海", "aqi": "72", "unit": "fahrenheit"}'
+            },
+            {
+                'role': 'assistant',
+                'content': '上海AQI为72，轻度污染。'
+            },
+        ]
+    }
+
+    template.template_backend = 'swift'
+    template.set_mode('train')
+    encoded = template.encode(data)
+    print(f'input_ids: {template.safe_decode(encoded["input_ids"])}')
+    print(f'labels: {template.safe_decode(encoded["labels"])}')
+
+    template.template_backend = 'jinja'
+    encoded2 = template.encode(data)
+
+    def _normalize(text):
+        # Pre-existing swift/jinja differences unrelated to tool messages: the swift
+        # backend keeps the blank lines of an empty system, and the jinja template
+        # always injects an empty thinking block.
+        return text.replace('<|im_start|>system\n\n\n', '<|im_start|>system\n',
+                            1).replace('<think>\n\n</think>\n\n', '')
+
+    # A regular tool call round already matches between both backends; use it to prove
+    # `_normalize` does not paper over a real mismatch.
+    baseline = {'tools': aqi_tools, 'messages': data['messages'][:1] + data['messages'][2:]}
+    template.template_backend = 'swift'
+    baseline_swift = template.encode(baseline)
+    template.template_backend = 'jinja'
+    baseline_jinja = template.encode(baseline)
+    assert _normalize(template.safe_decode(baseline_swift['input_ids'])) == _normalize(
+        template.safe_decode(baseline_jinja['input_ids']))
+
+    # The standalone tool message must be rendered exactly like the model's own
+    # chat template renders it.
+    assert _normalize(template.safe_decode(encoded['input_ids'])) == _normalize(
+        template.safe_decode(encoded2['input_ids']))
+
+    # A standalone tool message must follow a user message.
+    template.template_backend = 'swift'
+    for messages in [
+        [{
+            'role': 'tool',
+            'content': 'env'
+        }, {
+            'role': 'assistant',
+            'content': 'ok'
+        }],
+        [{
+            'role': 'system',
+            'content': 'You are a helpful assistant.'
+        }, {
+            'role': 'tool',
+            'content': 'env'
+        }, {
+            'role': 'assistant',
+            'content': 'ok'
+        }],
+    ]:
+        try:
+            template.encode({'messages': messages})
+            raise AssertionError(f'Expected ValueError. messages: {messages}')
+        except ValueError:
+            pass
+
+    # An `assistant` + `tool` pair is a normal tool call round, not a standalone one.
+    pair_data = {
+        'tools':
+        aqi_tools,
+        'messages': [{
+            'role': 'user',
+            'content': 'q'
+        }, {
+            'role': 'assistant',
+            'content': '<tool_call>\n{"name": "realtime_aqi", "arguments": {"city": "上海"}}\n</tool_call>'
+        }, {
+            'role': 'tool',
+            'content': 'r'
+        }, {
+            'role': 'assistant',
+            'content': 'a'
+        }]
+    }
+    template.template_backend = 'swift'
+    pair_swift = template.encode(pair_data)
+    template.template_backend = 'jinja'
+    pair_jinja = template.encode(pair_data)
+    assert _normalize(template.safe_decode(pair_swift['input_ids'])) == _normalize(
+        template.safe_decode(pair_jinja['input_ids']))
+
+
 if __name__ == '__main__':
     from swift import InferRequest, RequestConfig, TransformersEngine, agent_template_map, load_dataset
 
@@ -743,6 +899,7 @@ if __name__ == '__main__':
     # test_qwen3_coder()
     # test_qwen3_5()
     # test_deepseek_v3_1()
-    test_deepseek_v4()
+    # test_deepseek_v4()
     # test_seed_oss()
     # test_youtu()
+    test_standalone_tool()

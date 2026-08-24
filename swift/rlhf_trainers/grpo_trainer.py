@@ -547,7 +547,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
         for s in batch:
             s.encoded = encode_teacher_view(s, template)
         teacher_model_inputs, teacher_grpo_batch = collate_to_grpo_micro_batch(
-            batch, template, device=self.model.device, use_logits_to_keep=True)
+            batch, template, device=self.accelerator.device, use_logits_to_keep=True)
         teacher_model_inputs.pop('labels', None)
         # Restore the student encoding so downstream code (advantages/loss) keeps the student frame.
         for s in batch:
@@ -756,7 +756,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                     encoded_inputs.pop('_extra_kwargs', None)  # pop add_eos
                     s.encoded = encoded_inputs
                 model_inputs, grpo_batch = collate_to_grpo_micro_batch(
-                    batch, template, device=self.model.device, use_logits_to_keep=True)
+                    batch, template, device=self.accelerator.device, use_logits_to_keep=True)
                 # OPSD: the local teacher forwards its own (teacher_prompt + same response)
                 # encoding, so collate a separate teacher micro-batch (different length).
                 has_opsd_batch = build_opsd_samples(batch)
@@ -1558,6 +1558,9 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                                      input_ids: torch.Tensor,
                                      compute_entropy: bool = False) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Get per token logps via local forward pass, returns rmpad format [1, total_nnz] for padding_free mode"""
+        if 'use_cache' in self.model_kwarg_keys:
+            model_inputs['use_cache'] = False
+
         if 'logits_to_keep' in self.model_kwarg_keys:
             model_inputs['logits_to_keep'] = logits_to_keep + 1
 
@@ -2051,7 +2054,7 @@ class GRPOTrainer(RolloutTrainerMixin, SwiftMixin, HFGRPOTrainer):
                 for ed in encoded_data:
                     ed.pop('_extra_kwargs', None)
                 chunk_model_inputs.update(
-                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.model.device))
+                    to_device(template.data_collator(encoded_data, padding_to=current_length), self.accelerator.device))
                 chunk_model_inputs.pop('labels', None)
 
         return chunk_model_inputs, chunk_grpo_batch
