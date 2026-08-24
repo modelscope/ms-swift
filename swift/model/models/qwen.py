@@ -5,9 +5,11 @@ import inspect
 import os
 import torch
 import torch.nn.functional as F
+from contextlib import contextmanager
 from importlib import import_module
 from packaging import version
 from PIL import Image
+from threading import RLock
 from transformers import (AutoConfig, AutoModel, AutoTokenizer, BitsAndBytesConfig, PretrainedConfig, PreTrainedModel,
                           PreTrainedTokenizerBase)
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
@@ -1390,6 +1392,29 @@ def _run_qwen3_5_gated_delta_net_sequence_parallel_forward(
     return mod.out_proj(core_attn_out)
 
 
+_QWEN3_5_KEEP_IN_FP32_MODULES = ('linear_attn.A_log', 'linear_attn.norm.weight')
+_QWEN3_5_KEEP_IN_FP32_MODULES_LOCK = RLock()
+
+
+@contextmanager
+def _patch_qwen3_5_keep_in_fp32_modules(model_cls: Type[PreTrainedModel]):
+    attr_name = '_keep_in_fp32_modules_strict'
+    with _QWEN3_5_KEEP_IN_FP32_MODULES_LOCK:
+        had_local_attr = attr_name in model_cls.__dict__
+        original_value = model_cls.__dict__.get(attr_name)
+        keep_in_fp32_modules = list(getattr(model_cls, attr_name, None) or [])
+        setattr(
+            model_cls, attr_name,
+            keep_in_fp32_modules + [name for name in _QWEN3_5_KEEP_IN_FP32_MODULES if name not in keep_in_fp32_modules])
+        try:
+            yield
+        finally:
+            if had_local_attr:
+                setattr(model_cls, attr_name, original_value)
+            else:
+                delattr(model_cls, attr_name)
+
+
 def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
     gated_delta_net_specs = []
     class_specs = (
@@ -1464,10 +1489,11 @@ def _patch_qwen3_5_linear_attention_sequence_parallel() -> None:
 class Qwen3_5MoeLoader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3_5MoeForConditionalGeneration
+        from transformers import Qwen3_5MoeForConditionalGeneration, Qwen3_5MoePreTrainedModel
         self.auto_model_cls = self.auto_model_cls or Qwen3_5MoeForConditionalGeneration
         _patch_qwen3_5_linear_attention_sequence_parallel()
-        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5MoePreTrainedModel):
+            return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
 
 
 register_model(
@@ -1505,10 +1531,11 @@ register_model(
 class Qwen3_5Loader(Qwen3VLLoader):
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
-        from transformers import Qwen3_5ForConditionalGeneration
+        from transformers import Qwen3_5ForConditionalGeneration, Qwen3_5PreTrainedModel
         self.auto_model_cls = self.auto_model_cls or Qwen3_5ForConditionalGeneration
         _patch_qwen3_5_linear_attention_sequence_parallel()
-        return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel):
+            return Qwen2VLLoader.get_model(self, model_dir, config, processor, model_kwargs)
 
 
 register_model(
@@ -1602,11 +1629,13 @@ class Qwen3_5EmbLoader(Qwen3_5Loader):
         super()._check_qwen_vl_utils()
 
     def get_model(self, model_dir: str, config, processor, model_kwargs) -> PreTrainedModel:
+        from transformers import Qwen3_5PreTrainedModel
         self.auto_model_cls = self.auto_model_cls or AutoModel
 
         _patch_qwen3_5_linear_attention_sequence_parallel()
 
-        model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
+        with _patch_qwen3_5_keep_in_fp32_modules(Qwen3_5PreTrainedModel):
+            model = ModelLoader.get_model(self, model_dir, config, processor, model_kwargs)
 
         inner = getattr(model, 'model', None) or model
         visual = getattr(inner, 'visual', None)
