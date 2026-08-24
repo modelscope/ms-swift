@@ -20,8 +20,7 @@ def build_rng_state(rng_state, data_parallel_random_init: bool = False, rng_key:
     if rng_key.startswith('global_rank_'):
         return {rng_key: [rng_state]}
 
-    if (data_parallel_random_init and torch.distributed.is_initialized()
-            and mpu.get_data_parallel_world_size() > 1):
+    if (data_parallel_random_init and torch.distributed.is_initialized() and mpu.get_data_parallel_world_size() > 1):
         rng_state_list = [None for _ in range(mpu.get_data_parallel_world_size())]
         torch.distributed.all_gather_object(
             rng_state_list,
@@ -83,10 +82,7 @@ def _prepare_state_dict(args, state_dict, model, preserve_raw_state: bool = Fals
 
     raw_state_dict = {}
     if preserve_raw_state:
-        raw_state_dict.update({
-            key: value.copy()
-            for key, value in state_dict.items() if key.startswith('model')
-        })
+        raw_state_dict.update({key: value.copy() for key, value in state_dict.items() if key.startswith('model')})
         if 'optimizer' in state_dict:
             raw_state_dict['optimizer'] = state_dict['optimizer'].copy()
 

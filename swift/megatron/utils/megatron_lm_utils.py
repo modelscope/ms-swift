@@ -116,8 +116,7 @@ def _get_rng_state(fsdp_dtensor: bool = False,
             rng_key=fsdp_rng_key,
         )
 
-    if (data_parallel_random_init and torch.distributed.is_initialized()
-            and mpu.get_data_parallel_world_size() > 1):
+    if (data_parallel_random_init and torch.distributed.is_initialized() and mpu.get_data_parallel_world_size() > 1):
         rng_state_list = [None for _ in range(mpu.get_data_parallel_world_size())]
         torch.distributed.all_gather_object(
             rng_state_list,
@@ -280,10 +279,11 @@ def save_mcore_checkpoint(
     fsdp_dtensor = bool(models) and getattr(args, 'use_megatron_fsdp', False)
     if fsdp_dtensor and args.async_save:
         raise ValueError('Megatron-FSDP fsdp_dtensor checkpoint does not support async_save in Megatron-Core 0.16.')
-    rng_state = (_get_rng_state(
-        fsdp_dtensor=fsdp_dtensor,
-        data_parallel_random_init=args.data_parallel_random_init,
-    ) if models else None)
+    rng_state = (
+        _get_rng_state(
+            fsdp_dtensor=fsdp_dtensor,
+            data_parallel_random_init=args.data_parallel_random_init,
+        ) if models else None)
     checkpoint_dir = os.path.join(output_dir, f'iter_{iteration:07d}')
     sharded_sd_metadata = get_sharded_sd_metadata(args)
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -449,9 +449,8 @@ def load_mcore_checkpoint(args,
         state_dict = fsdp_checkpoint.load_common_state_dict(checkpoint_dir)
         checkpoint_uses_fsdp = getattr(state_dict['args'], 'use_megatron_fsdp', False)
         if not checkpoint_uses_fsdp:
-            raise ValueError(
-                f'Checkpoint `{checkpoint_dir}` uses PyTorch DCP storage but was not saved as a '
-                'Megatron-FSDP fsdp_dtensor checkpoint.')
+            raise ValueError(f'Checkpoint `{checkpoint_dir}` uses PyTorch DCP storage but was not saved as a '
+                             'Megatron-FSDP fsdp_dtensor checkpoint.')
     else:
         state_dict = dist_checkpointing.load_common_state_dict(checkpoint_dir)
 

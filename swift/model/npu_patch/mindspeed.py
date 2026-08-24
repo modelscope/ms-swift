@@ -26,7 +26,6 @@ def _wrap_mindspeed_fsdp_gradient_reduce(original_gradient_reduce):
     @wraps(original_gradient_reduce)
     def gradient_reduce_with_none_scaling(self, bucket_group, *args, **kwargs):
         restored_buffers = []
-        restored_configs = {}
         seen_buffers = set()
         for bucket_id in bucket_group:
             grad_buffer = self.get_fsdp_buffer(bucket_id)
@@ -34,24 +33,23 @@ def _wrap_mindspeed_fsdp_gradient_reduce(original_gradient_reduce):
             if buffer_id in seen_buffers or grad_buffer.gradient_scaling_factor is not None:
                 continue
             seen_buffers.add(buffer_id)
-            restored_buffers.append(grad_buffer)
+            original_ddp_config = grad_buffer.ddp_config
+            restored_buffers.append((grad_buffer, original_ddp_config))
             grad_buffer.gradient_scaling_factor = 1.0
 
             # `None` means SUM without any pre-scaling. Keep that semantic even if
-            # average-in-collective was enabled on the shared DDP config.
-            ddp_config = grad_buffer.ddp_config
-            config_id = id(ddp_config)
-            if config_id not in restored_configs and ddp_config.average_in_collective:
-                restored_configs[config_id] = ddp_config
-                ddp_config.average_in_collective = False
+            # average-in-collective is enabled, without changing the shared config
+            # subsequently used by the outer-HSDP reduction.
+            if original_ddp_config.average_in_collective:
+                grad_buffer.ddp_config = copy.copy(original_ddp_config)
+                grad_buffer.ddp_config.average_in_collective = False
 
         try:
             return original_gradient_reduce(self, bucket_group, *args, **kwargs)
         finally:
-            for grad_buffer in restored_buffers:
+            for grad_buffer, original_ddp_config in restored_buffers:
                 grad_buffer.gradient_scaling_factor = None
-            for ddp_config in restored_configs.values():
-                ddp_config.average_in_collective = True
+                grad_buffer.ddp_config = original_ddp_config
 
     gradient_reduce_with_none_scaling._swift_handles_none_gradient_scaling = True
     return gradient_reduce_with_none_scaling
@@ -87,6 +85,35 @@ def patch_mindspeed_megatron_fsdp_gradient_scaling(megatron_args: dict[str, Any]
     logger.info('Patched MindSpeed Megatron-FSDP gradient reduction to handle scaling_factor=None.')
 
 
+def _get_mindspeed_fsdp_model_parameter(model, param_name):
+    model_param_name = param_name[len('module.'):] if param_name.startswith('module.') else param_name
+    num_experts = getattr(getattr(model, 'config', None), 'num_moe_experts', None)
+    if num_experts:
+        from megatron.core.transformer.fsdp_dtensor_checkpoint import expert_param_local_key
+        model_param_name = expert_param_local_key(model_param_name, num_experts)
+    return model.get_parameter(model_param_name)
+
+
+def _build_empty_optimizer_state(state_template, template_param, dist_param, param_name):
+    missing_state = {}
+    for state_key, template_value in state_template.items():
+        if not isinstance(template_value, torch.Tensor):
+            missing_state[state_key] = copy.deepcopy(template_value)
+            continue
+
+        if template_value.ndim == 0 or state_key == 'step':
+            missing_state[state_key] = template_value.detach().clone()
+            continue
+
+        if tuple(template_value.shape) != tuple(template_param.shape):
+            raise RuntimeError(
+                f'Cannot infer the empty Megatron-FSDP optimizer state `{state_key}` for `{param_name}`: '
+                f'template state shape {tuple(template_value.shape)} does not match its parameter shape '
+                f'{tuple(template_param.shape)}.')
+        missing_state[state_key] = torch.zeros_like(dist_param, dtype=template_value.dtype)
+    return missing_state
+
+
 def complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model) -> None:
     """Add optimizer shards omitted by MindSpeed so all DP ranks use the same state keys."""
     optimizer_state_dict = state_dict.get('optimizer')
@@ -98,14 +125,25 @@ def complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model) -> None:
         return
     if set(param_to_group_meta).issubset(optimizer_state):
         optimizer_state_dict['state'] = {
-            **{key: optimizer_state[key] for key in param_to_group_meta},
-            **{key: value for key, value in optimizer_state.items() if key not in param_to_group_meta},
+            **{
+                key: optimizer_state[key]
+                for key in param_to_group_meta
+            },
+            **{
+                key: value
+                for key, value in optimizer_state.items() if key not in param_to_group_meta
+            },
         }
         return
     if not optimizer_state:
         raise RuntimeError('Cannot infer Megatron-FSDP optimizer state fields from an empty local state dict.')
 
-    state_template = next(iter(optimizer_state.values()))
+    template_param_name = next(
+        (name for name in param_to_group_meta if name in optimizer_state and optimizer_state[name]), None)
+    if template_param_name is None:
+        raise RuntimeError('Cannot match a Megatron-FSDP optimizer state template to a model parameter.')
+    state_template = optimizer_state[template_param_name]
+    template_param = _get_mindspeed_fsdp_model_parameter(model, template_param_name)
     completed_state = {}
     added_count = 0
     for param_name in param_to_group_meta:
@@ -113,19 +151,13 @@ def complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model) -> None:
             completed_state[param_name] = optimizer_state[param_name]
             continue
 
-        model_param_name = param_name[len('module.'):] if param_name.startswith('module.') else param_name
-        num_experts = getattr(getattr(model, 'config', None), 'num_moe_experts', None)
-        if num_experts:
-            from megatron.core.transformer.fsdp_dtensor_checkpoint import expert_param_local_key
-            model_param_name = expert_param_local_key(model_param_name, num_experts)
-        dist_param = model.get_parameter(model_param_name)
-        missing_state = {}
-        for state_key, template_value in state_template.items():
-            if isinstance(template_value, torch.Tensor) and state_key in {'exp_avg', 'exp_avg_sq', 'master_param'}:
-                missing_state[state_key] = torch.zeros_like(dist_param, dtype=template_value.dtype)
-            else:
-                missing_state[state_key] = copy.deepcopy(template_value)
-        completed_state[param_name] = missing_state
+        dist_param = _get_mindspeed_fsdp_model_parameter(model, param_name)
+        completed_state[param_name] = _build_empty_optimizer_state(
+            state_template,
+            template_param,
+            dist_param,
+            param_name,
+        )
         added_count += 1
 
     completed_state.update({key: value for key, value in optimizer_state.items() if key not in completed_state})
@@ -135,7 +167,8 @@ def complete_mindspeed_fsdp_dtensor_optimizer_state(state_dict, model) -> None:
 
 def load_mindspeed_fsdp_dtensor_optimizer_state_dict(distributed_optimizers, state_dict) -> bool:
     """Restore an FSDP DTensor optimizer state without MindSpeed's legacy checkpoint loader."""
-    is_fsdp_dtensor_state = isinstance(state_dict, dict) and 'state' in state_dict and 'param_to_group_meta' in state_dict
+    is_fsdp_dtensor_state = isinstance(state_dict,
+                                       dict) and 'state' in state_dict and 'param_to_group_meta' in state_dict
     if not is_fsdp_dtensor_state:
         return False
     if len(distributed_optimizers) != 1:
