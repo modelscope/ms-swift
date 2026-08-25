@@ -16,9 +16,9 @@ logger = get_logger()
 def _resolve_mp_context(multiprocessing_context: Optional[str] = None):
     """Decide the multiprocessing context used by packing workers.
 
-    When ``multiprocessing_context`` is unset, keep the historical ``fork`` behavior in the common case,
-    and only switch to ``spawn`` when fork is actually unsafe (CUDA or torch.distributed already
-    initialized), which otherwise dead-locks the forked worker.
+    When ``multiprocessing_context`` is unset, keep the platform default (``fork`` on Python <=3.13,
+    ``forkserver`` on 3.14+), and only switch to ``spawn`` when fork is actually unsafe (CUDA or
+    torch.distributed already initialized), which otherwise dead-locks the forked worker.
     """
     if multiprocessing_context is not None:
         return mp.get_context(multiprocessing_context)
@@ -29,43 +29,25 @@ def _resolve_mp_context(multiprocessing_context: Optional[str] = None):
         cuda_initialized = False
     if cuda_initialized or (dist.is_available() and dist.is_initialized()):
         return mp.get_context('spawn')
-    # keep the historical default (fork on Linux); use the default context object.
+    # keep the platform default (fork on Python <=3.13, forkserver on 3.14+); use the default context object.
     return mp.get_context()
 
 
-def _is_fork_context(ctx) -> bool:
-    return getattr(ctx, '_name', None) == 'fork'
-
-
-def _get_fork_context():
-    """Return the fork context, or the platform default if fork is unavailable (e.g. Windows)."""
-    try:
-        return mp.get_context('fork')
-    except ValueError:
-        return mp.get_context()
-
-
 def _spawn_workers(ctx, *, target, jobs):
-    """Start packing workers and return ``(context, workers)``.
+    """Start packing workers and return them.
 
-    ``jobs`` is a list of ``args`` tuples (one per worker). All workers share the same context and
-    the caller's queues must be created from that same context. If a non-fork context fails to start
-    the first worker (e.g. an un-picklable template under ``spawn``), the returned context is ``None``
-    to signal the caller to recreate its queues with fork and retry.
+    ``jobs`` is a list of ``args`` tuples (one per worker); all workers share ``ctx`` and the caller's
+    queues must be created from that same context. A failure to start a worker (e.g. an un-picklable
+    arg under ``spawn``) propagates: we deliberately do NOT fall back to fork, because a forked child
+    that inherited an active torch threadpool / CUDA state can dead-lock silently -- a loud error is
+    strictly better than a hang.
     """
     workers = []
-    for idx, args in enumerate(jobs):
-        try:
-            worker = ctx.Process(target=target, daemon=True, args=args)
-            worker.start()
-        except Exception as e:
-            if idx > 0 or _is_fork_context(ctx):
-                raise
-            logger.warning(f'Failed to start packing worker with multiprocessing context '
-                           f'{getattr(ctx, "_name", ctx)!r} ({e}); falling back to fork.')
-            return None, workers
+    for args in jobs:
+        worker = ctx.Process(target=target, daemon=True, args=args)
+        worker.start()
         workers.append(worker)
-    return ctx, workers
+    return workers
 
 
 def calculate_matched_group(sequences, packing_length: int, is_finished: bool = True, strategy: str = 'binpack'):
@@ -138,16 +120,14 @@ class PackingDataset(Dataset):
             for chunk in chunked_lengths:
                 offsets.append(offset)
                 offset += len(chunk)
-            jobs = [(i, offsets[i], chunked_lengths[i]) for i in range(self.packing_num_proc)]
+            jobs = [(i, offsets[i], chunked_lengths[i], self.packing_length, self.packing_strategy)
+                    for i in range(self.packing_num_proc)]
 
             ctx = _resolve_mp_context(self.multiprocessing_context)
             self._out_queue = ctx.Queue()
-            new_ctx, _ = _spawn_workers(ctx, target=self.create_packed_idx, jobs=jobs)
-            if new_ctx is None:
-                # non-fork context could not start workers: rebuild queue with fork and retry.
-                ctx = _get_fork_context()
-                self._out_queue = ctx.Queue()
-                _spawn_workers(ctx, target=self.create_packed_idx, jobs=jobs)
+            # Pass the out-queue/params as explicit args (not via `self`) so a non-fork context does not
+            # need to pickle the whole dataset held by `self`.
+            _spawn_workers(ctx, target=self.create_packed_idx, jobs=self._worker_jobs(jobs))
             self.packed_idx = [[] for _ in range(self.packing_num_proc)]
             self.packed_length = [[] for _ in range(self.packing_num_proc)]
             desc = 'Packing: ' if self.packing_num_proc == 1 else f'Packing (num_proc={self.packing_num_proc}): '
@@ -170,21 +150,28 @@ class PackingDataset(Dataset):
             dist.broadcast_object_list(obj_list)
             self.packed_idx, self.packed_length = obj_list[0]
 
-    def create_packed_idx(self, rank, offset, lengths):
+    def _worker_jobs(self, jobs):
+        # Bind the shared out-queue into each per-worker arg tuple at spawn time (queue may be rebuilt on
+        # the fork fallback), keeping it out of `self` so non-fork contexts don't pickle the dataset.
+        return [(rank, offset, lengths, self._out_queue, packing_length, packing_strategy)
+                for rank, offset, lengths, packing_length, packing_strategy in jobs]
+
+    @staticmethod
+    def create_packed_idx(rank, offset, lengths, out_queue, packing_length, packing_strategy):
         data = [(i + offset, sum(length) if isinstance(length, list) else length) for i, length in enumerate(lengths)]
         i = 0
         input_data = []
         while True:
-            new_data = data[i:i + self.PACKING_BATCH_SIZE]
+            new_data = data[i:i + PackingDataset.PACKING_BATCH_SIZE]
             input_data += new_data
             if not input_data:
                 break
-            i += self.PACKING_BATCH_SIZE
+            i += PackingDataset.PACKING_BATCH_SIZE
             is_finished = i >= len(data)
             sequences, input_data = calculate_matched_group(
-                input_data, self.packing_length, is_finished=is_finished, strategy=self.packing_strategy)
-            self._out_queue.put((rank, sequences, len(new_data)))
-        self._out_queue.put((rank, [], -1))
+                input_data, packing_length, is_finished=is_finished, strategy=packing_strategy)
+            out_queue.put((rank, sequences, len(new_data)))
+        out_queue.put((rank, [], -1))
 
     def __getitem__(self, index):
         sequence = self.packed_idx[index]
@@ -228,25 +215,24 @@ class IterablePackingDataset(IterableDataset):
         ctx = _resolve_mp_context(self.multiprocessing_context)
         self._in_queue = ctx.Queue()
         self._out_queue = ctx.Queue()
-        new_ctx, workers = _spawn_workers(ctx, target=self._processor, jobs=[()] * self.num_proc)
-        if new_ctx is None:
-            # non-fork context could not start workers: rebuild queues with fork and retry.
-            ctx = _get_fork_context()
-            self._in_queue = ctx.Queue()
-            self._out_queue = ctx.Queue()
-            _, workers = _spawn_workers(ctx, target=self._processor, jobs=[()] * self.num_proc)
-        self.workers = workers
+        # Pass the queues/template as explicit args (not via `self`) so a non-fork context only needs to
+        # pickle the (model-stripped, see Template.__getstate__) template, not the whole dataset.
+        self.workers = _spawn_workers(ctx, target=self._processor, jobs=self._worker_jobs())
 
-    def _processor(self):
+    def _worker_jobs(self):
+        return [(self._in_queue, self._out_queue, self.template, self.strict)] * self.num_proc
+
+    @staticmethod
+    def _processor(in_queue, out_queue, template, strict):
         while True:
-            i, data = self._in_queue.get()
+            i, data = in_queue.get()
             encoded_data = {}
             try:
-                encoded_data = self.template.encode(data, return_length=True)
+                encoded_data = template.encode(data, return_length=True)
             except Exception as e:
-                if self.strict and not isinstance(e, MaxLengthError):
+                if strict and not isinstance(e, MaxLengthError):
                     raise
-            self._out_queue.put((i, encoded_data))
+            out_queue.put((i, encoded_data))
 
     def _put_data_in_queue(self, iterator) -> int:
         for i in range(self.packing_interval):

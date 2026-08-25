@@ -269,6 +269,19 @@ class Template(ProcessorMixin):
                 self.dummy_model = get_model_processor(self.model_info.model_dir, return_dummy_model=True)[0]
         return self.dummy_model
 
+    def __getstate__(self):
+        # The template is pickled whenever it crosses a process boundary under a non-fork multiprocessing
+        # context: spawn/forkserver DataLoader workers (e.g. Python 3.14's default) or streaming packing
+        # workers. `self.model` -- attached during training for `use_model` templates -- is a live,
+        # possibly-CUDA module that is huge to serialize and unusable in another process. Drop it (and the
+        # lazily-built meta dummy) so only the lightweight processor/config travels; the worker rebuilds a
+        # meta dummy on demand via `_get_model`. Model-dependent work (`_post_encode`) runs in the main
+        # process with the real model passed in explicitly, so it is unaffected.
+        state = self.__dict__.copy()
+        state['model'] = None
+        state['dummy_model'] = None
+        return state
+
     @staticmethod
     def _load_image(image, load_images: bool):
         if load_images:

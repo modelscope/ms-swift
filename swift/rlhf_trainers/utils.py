@@ -1548,6 +1548,9 @@ def get_chord_sft_dataloader(trainer,
         'pin_memory': trainer.args.dataloader_pin_memory,
         'persistent_workers': trainer.args.dataloader_persistent_workers,
     }
+    mp_context = getattr(trainer.args, 'dataloader_multiprocessing_context', None)
+    if mp_context is not None and trainer.args.dataloader_num_workers > 0:
+        dataloader_params['multiprocessing_context'] = mp_context
 
     if not isinstance(dataset, torch.utils.data.IterableDataset):
         if sampler_fn is not None:

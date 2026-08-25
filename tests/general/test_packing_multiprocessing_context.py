@@ -1,25 +1,28 @@
 """Fast, hermetic tests for the packing multiprocessing-context behavior.
 
 These tests intentionally avoid downloading any model. They exercise the multiprocessing-context
-resolution / fork-fallback logic that backs the ``dataloader_multiprocessing_context`` feature,
-plus the two packing datasets end-to-end with lightweight, picklable fakes.
+resolution that backs the ``dataloader_multiprocessing_context`` feature, the ``Template.__getstate__``
+model-stripping that keeps the pickled template lightweight, and the two packing datasets end-to-end
+with lightweight, picklable fakes.
 
 Why this is worth testing carefully:
-- The default must stay ``fork`` unless fork is actually unsafe (CUDA / torch.distributed already
-  initialized), otherwise existing runs silently change behavior.
+- The default (None) must equal the platform default (fork on Python <=3.13, forkserver on 3.14+),
+  and only switch to ``spawn`` when fork is actually unsafe (CUDA / torch.distributed initialized).
 - Queues and worker processes must come from the *same* context, otherwise they deadlock.
-- A non-fork context that cannot start a worker (e.g. an un-picklable template under ``spawn``) must
-  transparently fall back to ``fork`` instead of crashing.
+- A non-fork context that cannot start a worker (e.g. an un-picklable arg under ``spawn``) must raise
+  loudly -- we deliberately do NOT fall back to fork, which could dead-lock a child that inherited an
+  active torch threadpool / CUDA state.
 
 The fakes below are defined at module scope on purpose: ``spawn``/``forkserver`` pickle the worker
 target, so any object reachable from it (template, dataset) must be importable/picklable.
 """
 import multiprocessing as mp
+import types
 import unittest
 from unittest import mock
 
-from swift.dataset.packing import (IterablePackingDataset, PackingDataset, _get_fork_context, _is_fork_context,
-                                   _resolve_mp_context, _spawn_workers)
+from swift.dataset.packing import IterablePackingDataset, PackingDataset, _resolve_mp_context, _spawn_workers
+from swift.template.base import Template
 
 FORK_AVAILABLE = 'fork' in mp.get_all_start_methods()
 SPAWN_AVAILABLE = 'spawn' in mp.get_all_start_methods()
@@ -40,7 +43,7 @@ class FakeTemplate:
 
 
 class UnpicklableTemplate(FakeTemplate):
-    """A template that cannot be pickled, to force the spawn->fork fallback path."""
+    """A template that cannot be pickled, to exercise the loud-failure (no fork fallback) path."""
 
     def __init__(self):
         # a lambda attribute makes the whole object un-picklable under spawn/forkserver
@@ -85,13 +88,13 @@ def _noop_worker(*args):
 
 class TestResolveMpContext(unittest.TestCase):
 
-    def test_default_keeps_fork_when_nothing_initialized(self):
-        """Default (None) must preserve historical fork behavior when CUDA/dist are not initialized."""
+    def test_default_keeps_platform_default_when_nothing_initialized(self):
+        """Default (None) must preserve the platform default when CUDA/dist are not initialized."""
         with mock.patch('torch.cuda.is_initialized', return_value=False), \
              mock.patch('torch.distributed.is_available', return_value=True), \
              mock.patch('torch.distributed.is_initialized', return_value=False):
             ctx = _resolve_mp_context(None)
-        # On Linux this is fork; whatever it is, it must equal the platform default (i.e. unchanged).
+        # fork on Python <=3.13, forkserver on 3.14+; either way it must equal the platform default.
         self.assertEqual(ctx._name, mp.get_context()._name)
 
     @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
@@ -109,7 +112,7 @@ class TestResolveMpContext(unittest.TestCase):
         self.assertEqual(ctx._name, 'spawn')
 
     def test_cuda_probe_exception_is_swallowed(self):
-        """If torch.cuda.is_initialized() raises, we must not crash and must keep fork."""
+        """If torch.cuda.is_initialized() raises, we must not crash and must keep the platform default."""
         with mock.patch('torch.cuda.is_initialized', side_effect=RuntimeError('no cuda')), \
              mock.patch('torch.distributed.is_available', return_value=False):
             ctx = _resolve_mp_context(None)
@@ -128,32 +131,20 @@ class TestResolveMpContext(unittest.TestCase):
         self.assertEqual(_resolve_mp_context('fork')._name, 'fork')
 
 
-class TestContextHelpers(unittest.TestCase):
+class TestTemplateGetstate(unittest.TestCase):
+    """``Template.__getstate__`` must drop the (live, possibly-CUDA) model so pickling a template that
+    crosses a process boundary stays lightweight; everything else must survive."""
 
-    @unittest.skipUnless(FORK_AVAILABLE, 'fork not available')
-    def test_get_fork_context_returns_fork(self):
-        self.assertEqual(_get_fork_context()._name, 'fork')
-
-    def test_get_fork_context_falls_back_when_fork_unavailable(self):
-        """On platforms without fork, we must degrade to the default context, not raise."""
-        real_get_context = mp.get_context
-
-        def fake_get_context(method=None):
-            if method == 'fork':
-                raise ValueError('fork not available')
-            return real_get_context(method)
-
-        with mock.patch('swift.dataset.packing.mp.get_context', side_effect=fake_get_context):
-            ctx = _get_fork_context()
-        self.assertIsNotNone(ctx)
-
-    @unittest.skipUnless(FORK_AVAILABLE, 'fork not available')
-    def test_is_fork_context(self):
-        self.assertTrue(_is_fork_context(mp.get_context('fork')))
-
-    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
-    def test_is_not_fork_context_for_spawn(self):
-        self.assertFalse(_is_fork_context(mp.get_context('spawn')))
+    def test_model_and_dummy_are_dropped_other_attrs_kept(self):
+        # Call the unbound method on a stand-in carrying a __dict__ -- hermetic, no heavy construction.
+        stub = types.SimpleNamespace(model=object(), dummy_model=object(), tokenizer='tok', max_length=8)
+        state = Template.__getstate__(stub)
+        self.assertIsNone(state['model'])
+        self.assertIsNone(state['dummy_model'])
+        self.assertEqual(state['tokenizer'], 'tok')
+        self.assertEqual(state['max_length'], 8)
+        # must not mutate the original object
+        self.assertIsNotNone(stub.model)
 
 
 class TestSpawnWorkers(unittest.TestCase):
@@ -161,35 +152,17 @@ class TestSpawnWorkers(unittest.TestCase):
     @unittest.skipUnless(FORK_AVAILABLE, 'fork not available')
     def test_spawn_workers_starts_all(self):
         ctx = mp.get_context('fork')
-        returned_ctx, workers = _spawn_workers(ctx, target=_noop_worker, jobs=[(), (), ()])
-        self.assertIs(returned_ctx, ctx)
+        workers = _spawn_workers(ctx, target=_noop_worker, jobs=[(), (), ()])
         self.assertEqual(len(workers), 3)
         for w in workers:
             w.join(timeout=10)
 
-    def test_spawn_workers_signals_fallback_on_first_worker_failure(self):
-        """A non-fork context that fails to start the first worker returns (None, [])."""
+    def test_spawn_workers_reraises_on_start_failure(self):
+        """No fork fallback: a worker that cannot start (e.g. un-picklable arg under spawn) must raise
+        loudly rather than silently degrade to fork, which could dead-lock."""
         fake_ctx = mock.Mock()
         fake_ctx._name = 'spawn'
         fake_ctx.Process.side_effect = RuntimeError('cannot pickle')
-        returned_ctx, workers = _spawn_workers(fake_ctx, target=_noop_worker, jobs=[(), ()])
-        self.assertIsNone(returned_ctx)
-        self.assertEqual(workers, [])
-
-    def test_spawn_workers_reraises_for_fork_failure(self):
-        """If even fork cannot start a worker, there is nothing to fall back to -> re-raise."""
-        fake_ctx = mock.Mock()
-        fake_ctx._name = 'fork'
-        fake_ctx.Process.side_effect = RuntimeError('boom')
-        with self.assertRaises(RuntimeError):
-            _spawn_workers(fake_ctx, target=_noop_worker, jobs=[()])
-
-    def test_spawn_workers_reraises_when_failure_not_on_first_worker(self):
-        """Failure after the first worker started is unexpected and must propagate."""
-        fake_ctx = mock.Mock()
-        fake_ctx._name = 'spawn'
-        started = mock.Mock()
-        fake_ctx.Process.side_effect = [started, RuntimeError('later failure')]
         with self.assertRaises(RuntimeError):
             _spawn_workers(fake_ctx, target=_noop_worker, jobs=[(), ()])
 
@@ -231,7 +204,7 @@ class TestPackingDatasetContexts(unittest.TestCase):
         """A single spawn run: proves non-fork wiring works *and* yields identical results to fork.
 
         This is the only slow (spawn) PackingDataset case on purpose; the rest of the spawn behavior
-        is covered by the fast helper/mocked tests to keep the suite quick.
+        is covered by the fast mocked tests to keep the suite quick.
         """
         fork_pd = _run_packing_dataset(None, self.rows)
         spawn_pd = _run_packing_dataset('spawn', self.rows)
@@ -281,13 +254,12 @@ class TestIterablePackingDatasetContexts(unittest.TestCase):
     def test_multi_proc(self):
         self._assert_valid(_run_iter_packing(None, self.rows, num_proc=2))
 
-    @unittest.skipUnless(FORK_AVAILABLE and SPAWN_AVAILABLE, 'need both fork and spawn')
-    def test_unpicklable_template_falls_back_to_fork(self):
-        """Forcing spawn with an un-picklable template must transparently fall back to fork."""
-        ipd = _run_iter_packing('spawn', self.rows, template=UnpicklableTemplate())
-        # all workers must end up on the fork context after fallback
-        self.assertEqual(len(ipd.workers), 1)
-        self._assert_valid(ipd)
+    @unittest.skipUnless(SPAWN_AVAILABLE, 'spawn not available')
+    def test_unpicklable_template_raises_under_spawn(self):
+        """With the fork fallback removed, forcing spawn with an un-picklable template must raise
+        loudly instead of silently degrading to fork."""
+        with self.assertRaises(Exception):
+            _run_iter_packing('spawn', self.rows, template=UnpicklableTemplate())
 
 
 class TestDataloaderContextInjection(unittest.TestCase):
