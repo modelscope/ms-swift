@@ -996,6 +996,23 @@ def _patch_deepstack_process(model):
     model._deepstack_process = MethodType(_deepstack_process, model)
 
 
+def _patch_qwen3_vl_vision_kwargs(visual):
+    # The multimodal data collator injects LLM packing kwargs (cu_seq_lens_q/k, max_length_q/k) at the top
+    # level for flash-attn varlen. transformers threads these **kwargs blindly into the vision tower, whose
+    # flash-attn branch already passes cu_seq_lens_q explicitly, raising
+    # "flash_attention_forward() got multiple values for keyword argument 'cu_seq_lens_q'". The vision tower
+    # derives its own cu_seqlens from grid_thw, so drop these text-only keys before they reach it (the
+    # deepspeed path calls `visual` without them, so this only matters for the origin_forward path).
+    origin_forward = visual.forward
+
+    def forward(*args, **kwargs):
+        for key in ('cu_seq_lens_q', 'cu_seq_lens_k', 'max_length_q', 'max_length_k'):
+            kwargs.pop(key, None)
+        return origin_forward(*args, **kwargs)
+
+    visual.forward = forward
+
+
 def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     if hasattr(model, 'origin_forward'):
         return
@@ -1086,6 +1103,7 @@ def _compat_qwen3_vl_mixed_data(model, processor, is_moe: bool = False):
     model.origin_forward = model.forward
     model.forward = MethodType(forward, model)
     _patch_deepstack_process(model.language_model)
+    _patch_qwen3_vl_vision_kwargs(model.visual)
 
 
 class Qwen3VLLoader(Qwen2VLLoader):
