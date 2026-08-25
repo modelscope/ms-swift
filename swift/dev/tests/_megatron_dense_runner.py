@@ -142,7 +142,7 @@ def _run_dev_cli(model, datasets, out_dir, steps):
     from "the probe samples at a different moment than legacy does".
     """
     from swift.dev.cli.megatron import megatron_sft_main as dev_megatron_sft_main
-    from swift.dev.recipes.sft import SFTLoop
+    from swift.dev.recipe.train_loop import SFTLoop
 
     trace = os.environ.get('DENSE_RUNNER_TRACE_SCHED') == '1'
     lrs, sched_states = [], []

@@ -177,11 +177,11 @@ class TestBuildDatasetEncode:
     """
 
     def _configs(self, *, packing=False, streaming=False):
-        from swift.dev.configs import DatasetConfig, DistributedConfig, TrainConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
         dc = DatasetConfig(dataset=['d'], packing=packing, streaming=streaming)
         return dc, TrainConfig(), DistributedConfig()
 
-    @patch('swift.dev.dataloader.build_dataloader')
+    @patch('swift.dev.legacy_dataloader.build_dataloader')
     @patch('swift.dev.builders.dataset._encode')
     @patch('swift.dataset.load_dataset')
     def test_encode_false_skips_encoding(self, mock_load, mock_encode, mock_build_dl):
@@ -197,7 +197,7 @@ class TestBuildDatasetEncode:
         assert mock_build_dl.call_args[0][0] is raw
         assert train_loader == 'LOADER' and val_loader is None
 
-    @patch('swift.dev.dataloader.build_dataloader')
+    @patch('swift.dev.legacy_dataloader.build_dataloader')
     @patch('swift.dev.builders.dataset._encode')
     @patch('swift.dataset.load_dataset')
     def test_encode_true_encodes(self, mock_load, mock_encode, mock_build_dl):
@@ -212,7 +212,7 @@ class TestBuildDatasetEncode:
         mock_encode.assert_called_once()
         assert mock_build_dl.call_args[0][0] == 'ENCODED'
 
-    @patch('swift.dev.dataloader.build_dataloader')
+    @patch('swift.dev.legacy_dataloader.build_dataloader')
     @patch('swift.dataset.load_dataset')
     def test_encode_false_with_map_packing_raises(self, mock_load, mock_build_dl):
         from swift.dev.builders.dataset import build_dataset
@@ -223,7 +223,7 @@ class TestBuildDatasetEncode:
             build_dataset(dc, template, tc, dist, encode=False)
 
     @patch('swift.dev.builders.dataset._pack', return_value='PACKED')
-    @patch('swift.dev.dataloader.build_dataloader')
+    @patch('swift.dev.legacy_dataloader.build_dataloader')
     @patch('swift.dataset.load_dataset')
     def test_encode_false_with_streaming_packing_ok(self, mock_load, mock_build_dl, mock_pack):
         from swift.dev.builders.dataset import build_dataset
@@ -243,10 +243,10 @@ class TestBuildDatasetLoadOnce:
     """build_dataset must load the raw data once and pass the full legacy kwargs / shuffle semantics."""
 
     def _configs(self, **dc_kw):
-        from swift.dev.configs import DatasetConfig, DistributedConfig, TrainConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
         return DatasetConfig(**dc_kw), TrainConfig(), DistributedConfig()
 
-    @patch('swift.dev.dataloader.build_dataloader', return_value='L')
+    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dataset.load_dataset')
     def test_split_val_loads_once(self, mock_load, _enc, _dl):
@@ -258,7 +258,7 @@ class TestBuildDatasetLoadOnce:
         assert mock_load.call_count == 1
         assert train_loader == 'L' and val_loader == 'L'
 
-    @patch('swift.dev.dataloader.build_dataloader', return_value='L')
+    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dataset.load_dataset')
     def test_separate_val_dataset_loads_twice(self, mock_load, _enc, _dl):
@@ -276,7 +276,7 @@ class TestBuildDatasetLoadOnce:
         assert mock_load.call_args_list[1].kwargs['shuffle'] is False
         assert mock_load.call_args_list[1].kwargs['split_dataset_ratio'] == 1.0
 
-    @patch('swift.dev.dataloader.build_dataloader', return_value='L')
+    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dataset.load_dataset')
     def test_full_kwargs_forwarded(self, mock_load, _enc, _dl):
@@ -295,13 +295,13 @@ class TestBuildDatasetLoadOnce:
         assert kw['columns'] == {'a': 'b'}
         assert kw['use_hf'] is True
 
-    @patch('swift.dev.dataloader.build_dataloader', return_value='L')
+    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dataset.load_dataset')
     def test_load_time_vs_dataloader_shuffle(self, mock_load, _enc, mock_dl):
         """dataset_shuffle drives the load-time shuffle; train_dataloader_shuffle drives the sampler."""
         from swift.dev.builders.dataset import build_dataset
-        from swift.dev.configs import DatasetConfig, DistributedConfig, TrainConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
         mock_load.return_value = (make_mock_dataset(10), None)
         dc = DatasetConfig(dataset=['d'], dataset_shuffle=True)
         tc = TrainConfig()
@@ -324,7 +324,7 @@ class TestDpShardFromMpu:
     """
 
     def _dc(self, **kw):
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         return DistributedConfig(**kw)
 
     def test_megatron_local_true(self):
@@ -366,7 +366,7 @@ class TestDropLast:
     """
 
     def _dc(self, **kw):
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         return DistributedConfig(**kw)
 
     def test_megatron_train_drops_remainder(self):
@@ -403,7 +403,7 @@ class TestDropLast:
         # Unchanged on the transformers path: legacy defers to dataloader_drop_last (default False).
         assert _drop_last(self._dc(backend='hf', mode='local'), is_val=True) is False
 
-    @patch('swift.dev.dataloader.build_dataloader', return_value='L')
+    @patch('swift.dev.legacy_dataloader.build_dataloader', return_value='L')
     @patch('swift.dev.builders.dataset._encode', return_value='E')
     @patch('swift.dataset.load_dataset')
     def test_build_dataset_forwards_drop_last_per_backend(self, mock_load, _enc, mock_dl):
@@ -413,7 +413,7 @@ class TestDropLast:
         reached the loader on every path because no caller ever supplied drop_last.
         """
         from swift.dev.builders.dataset import build_dataset
-        from swift.dev.configs import DatasetConfig, DistributedConfig, TrainConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig, TrainConfig
         for backend, expected in (('megatron', True), ('hf', False)):
             mock_load.return_value = (make_mock_dataset(10), None)
             # nproc_per_node is mandatory on the Megatron path (build_device_mesh fails fast without
@@ -432,15 +432,15 @@ class TestBuildDataloader:
 
     def test_sequence_parallel_not_implemented(self):
         """SP dataloader is intentionally disabled this phase -> fail fast, not a silent wrong path."""
-        from swift.dev.dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.factory import build_dataloader
         with pytest.raises(NotImplementedError, match='SP dataloader is not implemented'):
             build_dataloader(SimpleMapDataset(8), lambda x: x, batch_size=4, sequence_parallel_size=2)
 
-    @patch('swift.dev.dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.dataloader.factory.DataLoaderShard')
-    @patch('swift.dev.dataloader.factory.BatchSamplerShard')
+    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
+    @patch('swift.dev.legacy_dataloader.factory.DataLoaderShard')
+    @patch('swift.dev.legacy_dataloader.factory.BatchSamplerShard')
     def test_map_style_dataset(self, MockBatchSampler, MockDataLoaderShard, mock_dist):
-        from swift.dev.dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.factory import build_dataloader
         mock_loader = MagicMock(spec=DataLoader)
         MockDataLoaderShard.return_value = mock_loader
         dataset = SimpleMapDataset(50)
@@ -449,10 +449,10 @@ class TestBuildDataloader:
         MockDataLoaderShard.assert_called_once()
         assert result == mock_loader
 
-    @patch('swift.dev.dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.dataloader.factory.DataLoaderDispatcher')
+    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
+    @patch('swift.dev.legacy_dataloader.factory.DataLoaderDispatcher')
     def test_iterable_dataset(self, MockDispatcher, mock_dist):
-        from swift.dev.dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.factory import build_dataloader
         mock_loader = MagicMock()
         MockDispatcher.return_value = mock_loader
         dataset = SimpleIterableDataset(20)
@@ -460,12 +460,12 @@ class TestBuildDataloader:
         MockDispatcher.assert_called_once()
         assert result == mock_loader
 
-    @patch('swift.dev.dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.dataloader.factory.DataLoaderShard')
-    @patch('swift.dev.dataloader.factory.BatchSamplerShard')
+    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
+    @patch('swift.dev.legacy_dataloader.factory.DataLoaderShard')
+    @patch('swift.dev.legacy_dataloader.factory.BatchSamplerShard')
     def test_resumable_wrapper(self, MockBatchSampler, MockDataLoaderShard, mock_dist):
-        from swift.dev.dataloader.factory import build_dataloader
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         mock_loader = MagicMock(spec=DataLoader)
         mock_loader.batch_size = 4
         MockDataLoaderShard.return_value = mock_loader
@@ -475,12 +475,12 @@ class TestBuildDataloader:
         assert isinstance(result, ResumableDataLoaderWrapper)
         assert result.consumed_samples == 100
 
-    @patch('swift.dev.dataloader.factory._is_dist_initialized', return_value=False)
-    @patch('swift.dev.dataloader.factory.DataLoaderShard')
-    @patch('swift.dev.dataloader.factory.BatchSamplerShard')
+    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
+    @patch('swift.dev.legacy_dataloader.factory.DataLoaderShard')
+    @patch('swift.dev.legacy_dataloader.factory.BatchSamplerShard')
     def test_non_resumable_default(self, MockBatchSampler, MockDataLoaderShard, mock_dist):
-        from swift.dev.dataloader.factory import build_dataloader
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         mock_loader = MagicMock(spec=DataLoader)
         MockDataLoaderShard.return_value = mock_loader
         dataset = SimpleMapDataset(50)
@@ -505,7 +505,7 @@ class TestBuildDataloader:
         size, batch_size, dp_size = 40, 4, 2
 
         def _indices_for_rank(dp_rank):
-            from swift.dev.dataloader.factory import _MegatronDPBatchSampler
+            from swift.dev.legacy_dataloader.factory import _MegatronDPBatchSampler
             s = _MegatronDPBatchSampler(
                 total_samples=size,
                 batch_size=batch_size,
@@ -544,7 +544,7 @@ class TestGroupByLength:
         with pytest.raises(ValueError, match='requires a `lengths` column'):
             _extract_lengths(no_len)
 
-    @patch('swift.dev.dataloader.factory._is_dist_initialized', return_value=False)
+    @patch('swift.dev.legacy_dataloader.factory._is_dist_initialized', return_value=False)
     def test_build_dataloader_group_by_length_batches_similar_lengths(self, mock_dist):
         """End-to-end (real BatchSamplerShard, no GPU): with group_by_length + lengths, batches
         must contain similar-length samples. transformers get_length_grouped_indices groups within
@@ -554,7 +554,7 @@ class TestGroupByLength:
         bite (tiny datasets fall into a single mega-batch and barely group)."""
         import random as _random
 
-        from swift.dev.dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.factory import build_dataloader
         _random.seed(0)
         lengths = [_random.randint(10, 1000) for _ in range(200)]
 
@@ -579,7 +579,7 @@ class TestGroupByLength:
 
     def test_build_dataloader_group_by_length_requires_lengths(self):
         """BatchSamplerShard guard: group_by_length=True without lengths -> ValueError."""
-        from swift.dev.dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.factory import build_dataloader
         with pytest.raises(ValueError, match='lengths must be provided'):
             build_dataloader(
                 SimpleMapDataset(8), lambda x: x, batch_size=4, shuffle=True, group_by_length=True, lengths=None)
@@ -594,7 +594,7 @@ class TestDataSharding:
 
     def _sampler(self, total, batch_size, dp_rank, dp_world, data_sharding, **kw):
         """_MegatronDPBatchSampler with the DP coordinate passed in (no GPU / no megatron init)."""
-        from swift.dev.dataloader.factory import _MegatronDPBatchSampler
+        from swift.dev.legacy_dataloader.factory import _MegatronDPBatchSampler
 
         return _MegatronDPBatchSampler(
             total_samples=total,
@@ -651,7 +651,7 @@ class TestDataSharding:
 
     def test_build_dataloader_rejects_data_sharding_without_megatron(self):
         """data_sharding is meaningless without loader-side DP sharding -> fail, never ignore."""
-        from swift.dev.dataloader.factory import build_dataloader
+        from swift.dev.legacy_dataloader.factory import build_dataloader
         with pytest.raises(ValueError, match='requires the Megatron backend'):
             build_dataloader(
                 SimpleMapDataset(8),
@@ -671,7 +671,7 @@ class TestResumableDataLoaderWrapper:
         return DataLoader(SimpleMapDataset(size), batch_size=batch_size)
 
     def test_get_state(self):
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(), consumed_samples=0)
         state = wrapper.get_state()
         # state carries the resume triple (consumed_samples/consumed_batches/epoch)
@@ -680,7 +680,7 @@ class TestResumableDataLoaderWrapper:
         assert state['consumed_batches'] == 0
 
     def test_skip_consumed_samples(self):
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(), consumed_samples=0)
         wrapper.skip_consumed_samples(100)
         assert wrapper.consumed_samples == 100
@@ -688,13 +688,13 @@ class TestResumableDataLoaderWrapper:
         assert wrapper.consumed_samples == 0
 
     def test_consumed_samples_increments(self):
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(20, 4), consumed_samples=0)
         list(wrapper)
         assert wrapper.consumed_samples == 20
 
     def test_initial_consumed_samples_skips(self):
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(20, 4), consumed_samples=8)
         assert wrapper.consumed_samples == 8
         batches = list(wrapper)
@@ -702,19 +702,19 @@ class TestResumableDataLoaderWrapper:
         assert wrapper.consumed_samples == 20
 
     def test_set_epoch(self):
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         wrapper = ResumableDataLoaderWrapper(self._make_simple_dataloader(), consumed_samples=0)
         wrapper.set_epoch(5)
         assert wrapper.get_state()['epoch'] == 5
 
     def test_len(self):
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         loader = self._make_simple_dataloader(20, 4)
         wrapper = ResumableDataLoaderWrapper(loader, consumed_samples=0)
         assert len(wrapper) == len(loader)
 
     def test_dataset_property(self):
-        from swift.dev.dataloader.resumable import ResumableDataLoaderWrapper
+        from swift.dev.legacy_dataloader.resumable import ResumableDataLoaderWrapper
         loader = self._make_simple_dataloader(20, 4)
         wrapper = ResumableDataLoaderWrapper(loader, consumed_samples=0)
         assert wrapper.dataset is loader.dataset
@@ -785,7 +785,7 @@ class TestEpochReshuffle:
         from megatron.core.parallel_state import RankGenerator
 
         from swift.dev.builders import build_device_mesh
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
 
         dc = DistributedConfig(
             backend='megatron',
@@ -819,9 +819,9 @@ class TestResumeGuards:
         Iterable datasets can't reproduce the shuffle order for a cross-epoch skip, so run_sft
         raises rather than silently mis-skipping.
         """
-        from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+        from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                        TrainConfig)
-        from swift.dev.recipes import run_sft
+        from swift.dev.recipe import run_sft
         with pytest.raises(NotImplementedError, match='streaming/iterable'):
             run_sft(
                 ModelConfig(model='dummy'),
@@ -844,7 +844,7 @@ class TestValidateConfigs:
     """
 
     def _configs(self, **overrides):
-        from swift.dev.configs import DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig
         kw = {
             'model_config': ModelConfig(model='dummy'),
             'template_config': TemplateConfig(template='qwen2_5'),
@@ -856,7 +856,7 @@ class TestValidateConfigs:
         return kw
 
     def _validate(self, **overrides):
-        from swift.dev.configs import validate_configs
+        from swift.dev.config import validate_configs
         validate_configs(**self._configs(**overrides))
 
     def test_defaults_pass(self):
@@ -869,7 +869,7 @@ class TestValidateConfigs:
         """padding_free already removes all padding, so length grouping buys nothing and raises
         peak activation memory. Legacy Megatron rejected this; we enforce it on BOTH backends
         because padding_free is the same Template._data_collator path on each."""
-        from swift.dev.configs import DatasetConfig, TemplateConfig
+        from swift.dev.config import DatasetConfig, TemplateConfig
         with pytest.raises(ValueError, match='incompatible with padding_free'):
             self._validate(
                 dataset_config=DatasetConfig(dataset=['d'], group_by_length=True, lazy_tokenize=False),
@@ -877,7 +877,7 @@ class TestValidateConfigs:
 
     def test_group_by_length_rejects_padding_free_on_megatron_too(self):
         """Same rule on the Megatron backend (where padding_free defaults to True)."""
-        from swift.dev.configs import DatasetConfig, DistributedConfig, TemplateConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig, TemplateConfig
         with pytest.raises(ValueError, match='incompatible with padding_free'):
             self._validate(
                 dataset_config=DatasetConfig(dataset=['d'], group_by_length=True, lazy_tokenize=False),
@@ -886,20 +886,20 @@ class TestValidateConfigs:
 
     def test_group_by_length_rejects_packing(self):
         """packing bin-packs to ~packing_length (a stronger form of length organisation)."""
-        from swift.dev.configs import DatasetConfig
+        from swift.dev.config import DatasetConfig
         with pytest.raises(ValueError, match='incompatible with packing'):
             self._validate(
                 dataset_config=DatasetConfig(dataset=['d'], group_by_length=True, packing=True, lazy_tokenize=False))
 
     def test_group_by_length_rejects_streaming(self):
         """Previously silently dropped in build_dataset; streaming has no `lengths` column."""
-        from swift.dev.configs import DatasetConfig
+        from swift.dev.config import DatasetConfig
         with pytest.raises(ValueError, match='requires a map-style dataset'):
             self._validate(dataset_config=DatasetConfig(dataset=['d'], group_by_length=True, streaming=True))
 
     def test_group_by_length_rejects_lazy_tokenize(self):
         """`lengths` is only written by the EAGER encode; report the cause, not a missing column."""
-        from swift.dev.configs import DatasetConfig
+        from swift.dev.config import DatasetConfig
         with pytest.raises(ValueError, match='requires lazy_tokenize=False'):
             self._validate(dataset_config=DatasetConfig(dataset=['d'], group_by_length=True, lazy_tokenize=True))
 
@@ -907,7 +907,7 @@ class TestValidateConfigs:
 
     def test_data_sharding_requires_shuffle(self):
         """data_sharding only changes the SCOPE of the reshuffle -> useless without shuffling."""
-        from swift.dev.configs import DatasetConfig, DistributedConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig
         with pytest.raises(ValueError, match='requires train_dataloader_shuffle=True'):
             self._validate(
                 dataset_config=DatasetConfig(dataset=['d'], data_sharding=True, train_dataloader_shuffle=False),
@@ -916,7 +916,7 @@ class TestValidateConfigs:
     def test_data_sharding_with_group_by_length_is_not_fatal(self):
         """Legacy downgrades this pair with a warning (batch_sampler.py:86-90). Existing Megatron
         scripts setting both must keep launching -- build_dataset performs the downgrade."""
-        from swift.dev.configs import DatasetConfig, DistributedConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig
         self._validate(
             dataset_config=DatasetConfig(dataset=['d'], data_sharding=True, group_by_length=True, lazy_tokenize=False),
             distributed_config=DistributedConfig(backend='megatron'))
@@ -925,20 +925,20 @@ class TestValidateConfigs:
 
     def test_megatron_only_knob_on_hf_backend_raises(self):
         """data_sharding is Megatron-only; on the transformers backend it would be ignored."""
-        from swift.dev.configs import DatasetConfig
+        from swift.dev.config import DatasetConfig
         with pytest.raises(ValueError, match='only implemented by the megatron backend'):
             self._validate(dataset_config=DatasetConfig(dataset=['d'], data_sharding=True))
 
     def test_hf_only_knob_on_megatron_backend_raises(self):
         """deepspeed is a transformers-path concept; Megatron has its own distributed optimizer."""
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(distributed_config=DistributedConfig(backend='megatron', deepspeed='zero2'))
 
     def test_hf_only_tuner_knob_on_megatron_backend_raises(self):
         """use_galore lives on TunerConfig (it drives the optimizer branch), so the backend check
         must read it from there -- a stale 'train_config' holder would AttributeError instead."""
-        from swift.dev.configs import DistributedConfig, TunerConfig
+        from swift.dev.config import DistributedConfig, TunerConfig
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(
                 distributed_config=DistributedConfig(backend='megatron'), tuner_config=TunerConfig(use_galore=True))
@@ -946,25 +946,25 @@ class TestValidateConfigs:
     def test_tuner_only_knobs_skipped_when_tuner_config_is_none(self):
         """tuner_config=None is full-param training: its knobs cannot be set, so the check must
         skip rather than blow up on a None holder."""
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         self._validate(distributed_config=DistributedConfig(backend='megatron'), tuner_config=None)
 
     def test_normalized_falsy_off_value_is_not_an_opt_in(self):
         """SftArguments._init_fsdp rewrites an unset fsdp to `[]` while the Config default is None.
         A strict `!=` comparison would flag EVERY Megatron CLI run as having enabled FSDP, so the
         off-state test must treat all falsy values as 'not requested'."""
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         self._validate(distributed_config=DistributedConfig(backend='megatron', fsdp=[]))
 
     def test_real_opt_in_still_caught_for_falsy_defaulted_knob(self):
         """The falsy tolerance above must not swallow a genuine value."""
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(distributed_config=DistributedConfig(backend='megatron', fsdp='fsdp2'))
 
     def test_lisa_knob_is_backend_checked_from_tuner_config(self):
         """LISA moved to TunerConfig with it; the backend check must follow the field."""
-        from swift.dev.configs import DistributedConfig, TunerConfig
+        from swift.dev.config import DistributedConfig, TunerConfig
         with pytest.raises(ValueError, match='only implemented by the transformers backend'):
             self._validate(
                 distributed_config=DistributedConfig(backend='megatron'),
@@ -974,13 +974,13 @@ class TestValidateConfigs:
         """TP/PP/CP/EP > 1 needs Megatron; the transformers path cannot provide that layout.
         Default 1 == disabled, so the sizes are checked by the same _MEGATRON_ONLY table as the
         other single-backend knobs (no separate loop)."""
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         with pytest.raises(ValueError, match='only implemented by the megatron backend'):
             self._validate(distributed_config=DistributedConfig(backend='hf', tensor_model_parallel_size=2))
 
     def test_parallel_size_1_on_hf_backend_passes(self):
         """The off-value (1) must not be mistaken for an opt-in."""
-        from swift.dev.configs import DistributedConfig
+        from swift.dev.config import DistributedConfig
         self._validate(
             distributed_config=DistributedConfig(
                 backend='hf',
@@ -991,7 +991,7 @@ class TestValidateConfigs:
 
     def test_megatron_backend_accepts_its_own_knobs(self):
         """The positive case: Megatron-only knobs validate on the Megatron backend."""
-        from swift.dev.configs import DatasetConfig, DistributedConfig
+        from swift.dev.config import DatasetConfig, DistributedConfig
         self._validate(
             dataset_config=DatasetConfig(dataset=['d'], data_sharding=True),
             distributed_config=DistributedConfig(
@@ -1012,14 +1012,14 @@ class TestValidateConfigs:
         """
         import dataclasses
 
-        from swift.dev.configs import validate as validate_module
+        from swift.dev.config import validate as validate_module
         holders = {
             'dataset_config': 'DatasetConfig',
             'train_config': 'TrainConfig',
             'distributed_config': 'DistributedConfig',
             'tuner_config': 'TunerConfig',
         }
-        import swift.dev.configs as configs_module
+        import swift.dev.config as configs_module
         tables = {
             '_HF_ONLY': validate_module._HF_ONLY,
             '_MEGATRON_ONLY': getattr(validate_module, '_MEGATRON_ONLY', ())
@@ -1055,8 +1055,8 @@ class TestValidateConfigs:
         behaviour here means a newly added row can no longer break the default Megatron path
         unnoticed -- and the message points at the sweep that a new row requires.
         """
-        from swift.dev.configs import DistributedConfig, TrainConfig, TunerConfig
-        from swift.dev.configs import validate as validate_module
+        from swift.dev.config import DistributedConfig, TrainConfig, TunerConfig
+        from swift.dev.config import validate as validate_module
         for holder, field_name, off_value in validate_module._HF_ONLY:
             if holder == 'train_config':
                 overrides = {'train_config': TrainConfig(**{field_name: off_value})}

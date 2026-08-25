@@ -14,15 +14,21 @@ things differ, and all three follow from embeddings being per-SEQUENCE rather th
    backends, whereas SFT skips it under Megatron (which computes CE internally).
 """
 from __future__ import annotations
-
 import logging
 import math
 import os
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +57,7 @@ def run_embedding(
     ``TrainConfig.mrl_dims``; both are read here rather than passed separately so the same Config
     that drives legacy drives this recipe.
     """
-    from swift.dev.recipes.run_sft import _initialize_twinkle
+    from swift.dev.recipe.run_sft import _initialize_twinkle
 
     _initialize_twinkle(distributed_config)
     return _run_embedding_body(
@@ -79,14 +85,14 @@ def _run_embedding_body(
     _save_final: bool = True,
 ) -> List[dict]:
     """The backend-agnostic embedding orchestration body (see run_embedding for the contract)."""
+    from swift.dev.adapter import apply_tuner
     from swift.dev.builders import build_dataset, build_model, build_template
-    from swift.dev.configs import validate_configs
+    from swift.dev.config import validate_configs
     from swift.dev.loss import configure_embedding_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.processor import InputProcessor
-    from swift.dev.recipes.run_sft import _write_ckpt_args_json
-    from swift.dev.recipes.train_loop import SFTLoop, num_optimizer_steps
-    from swift.dev.tuner import apply_tuner
+    from swift.dev.recipe.run_sft import _write_ckpt_args_json
+    from swift.dev.recipe.train_loop import SFTLoop, num_optimizer_steps
     from swift.model import get_model_processor
 
     validate_configs(model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,

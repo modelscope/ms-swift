@@ -40,7 +40,7 @@ def _recording_megatron_model():
 
 def _configure(**cfg_kwargs):
     """Run configure_optimizer against a recording Megatron model; return the recorded calls."""
-    from swift.dev.configs import TrainConfig
+    from swift.dev.config import TrainConfig
     from swift.dev.optimizer import configure_optimizer
 
     cfg = TrainConfig(**cfg_kwargs)
@@ -119,8 +119,14 @@ def test_megatron_ramped_weight_decay_uses_both_ends():
 
 def _validate(**cfg_kwargs):
     """Run validate_configs on a minimal Megatron config, overriding TrainConfig fields."""
-    from swift.dev.configs import (DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig,
-                                   validate_configs)
+    from swift.dev.config import (
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        validate_configs,
+    )
 
     validate_configs(
         ModelConfig(model='m'), TemplateConfig(), DatasetConfig(), TrainConfig(**cfg_kwargs),
@@ -147,8 +153,14 @@ def test_grad_clipping_threshold_is_one_knob_on_both_backends():
     contract worth preserving: the clipping threshold means the same thing in both, so setting it
     under either name must take effect rather than raise.
     """
-    from swift.dev.configs import (DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig,
-                                   validate_configs)
+    from swift.dev.config import (
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        validate_configs,
+    )
     from swift.dev.optimizer import resolve_max_grad_norm
 
     # Neither name is backend-restricted any more.
@@ -178,9 +190,15 @@ def test_megatron_recompute_flag_mismatch_warns_but_contradiction_fails(monkeypa
     Records are collected off the module logger rather than via caplog: swift's logging setup turns
     propagation off, so nothing reaches pytest's root handler once any test has imported it.
     """
-    from swift.dev.configs import DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig
-    from swift.dev.configs import validate as validate_mod
-    from swift.dev.configs import validate_configs
+    from swift.dev.config import (
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        validate_configs,
+    )
+    from swift.dev.config import validate as validate_mod
 
     warnings: list = []
     monkeypatch.setattr(validate_mod.logger, 'warning', lambda msg, *a: warnings.append(msg))
@@ -225,7 +243,7 @@ def test_learning_rate_default_lives_on_the_config():
     learning_rate=1e-4. Keeping the tuner-aware rule would have meant resolving a TrainConfig field
     from TunerConfig, i.e. a config whose reported value is not the value used.
     """
-    from swift.dev.configs import TrainConfig
+    from swift.dev.config import TrainConfig
 
     assert TrainConfig().learning_rate == 1e-5
     _, sched_kwargs = _configure()['scheduler']
@@ -238,8 +256,14 @@ def test_megatron_optimizer_fields_are_refused_on_the_hf_backend():
     start_weight_decay is checked at 0.0 on purpose -- ramping up from no decay is the ordinary use,
     and a falsy value must still count as "the user set this" (see _is_off).
     """
-    from swift.dev.configs import (DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig,
-                                   validate_configs)
+    from swift.dev.config import (
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        validate_configs,
+    )
 
     for field, value in (('weight_decay_incr_style', 'linear'), ('start_weight_decay', 0.0), ('end_weight_decay', 0.1)):
         with pytest.raises(ValueError, match=field):
@@ -265,9 +289,9 @@ def test_hf_backed_schedules_reproduce_hf_lr_curve(swift_name, specific):
     plausible-looking run.
     """
     import torch
-    from transformers import get_scheduler
 
     from swift.dev.naming import resolve_scheduler
+    from transformers import get_scheduler
 
     def curve(build):
         param = torch.nn.Parameter(torch.zeros(2))
@@ -347,7 +371,7 @@ def _recording_hf_model():
 
 def _hf_warmup_steps(warmup_ratio, num_training_steps):
     """The warmup step count dev actually hands to the HF scheduler."""
-    from swift.dev.configs import TrainConfig
+    from swift.dev.config import TrainConfig
     from swift.dev.optimizer import configure_optimizer
 
     model = _recording_hf_model()
@@ -387,6 +411,7 @@ def test_hf_warmup_steps_match_transformers_exactly(warmup_ratio, num_training_s
     spot is what this parametrisation closes; 2.5 is included deliberately.
     """
     import warnings
+
     from transformers import TrainingArguments
 
     with warnings.catch_warnings():
@@ -454,11 +479,12 @@ def test_hf_lr_curve_matches_transformers_with_nonzero_warmup(sched_type, warmup
     used warmup_ratio=0.0 (the Megatron runner hardcodes it, and the HF alignment test is
     forward-only and never reaches a scheduler), so the entire warmup ramp was untested on this path.
     """
-    import torch
     import warnings
-    from transformers import TrainingArguments, get_scheduler
+
+    import torch
 
     from swift.dev.naming import resolve_scheduler
+    from transformers import TrainingArguments, get_scheduler
 
     # resolve_scheduler returns a CLASS for dev's own adapters but a twinkle NAME for cosine/linear
     # (twinkle resolves those against its own module). Resolve the name the same way twinkle does, so

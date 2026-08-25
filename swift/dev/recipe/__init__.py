@@ -4,8 +4,11 @@ from .cached_dataset import export_cached_dataset
 from .convert import run_convert
 from .merge_lora import run_merge_lora
 from .quantize import run_quantize
+from .run_deploy import build_app, run_deploy, run_deploy_process
 from .run_embedding import run_embedding
+from .run_infer import infer_cli, run_infer
 from .run_reranker import run_reranker
+from .run_sampling import run_sampling
 from .run_seq_cls import run_seq_cls
 from .run_sft import run_sft
 from .train_loop import SFTLoop, num_optimizer_steps
@@ -21,4 +24,10 @@ __all__ = [
     'run_quantize',
     'run_convert',
     'run_merge_lora',
+    'run_infer',
+    'infer_cli',
+    'run_deploy',
+    'run_deploy_process',
+    'build_app',
+    'run_sampling',
 ]

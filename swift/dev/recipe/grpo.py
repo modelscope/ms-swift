@@ -28,7 +28,7 @@ from swift.dev.reward import compute_rewards_per_func, get_reward_funcs
 from swift.utils import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.configs import RLHFConfig
+    from swift.dev.config import RLHFConfig
     from swift.dev.model import TrainableModel
 
 logger = get_logger()

@@ -28,9 +28,9 @@ def _run_dev(data_path, out_dir, steps, lr):
     """dev-Megatron via run_sft(mode='local'), no checkpoint (_save_final=False)."""
     from modelscope import snapshot_download
 
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig)
-    from swift.dev.recipes import run_sft
+    from swift.dev.recipe import run_sft
 
     model_path = snapshot_download(MODEL)
     history = run_sft(

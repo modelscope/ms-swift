@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 from swift.dev.cli.megatron import (ABSENT, DERIVED, RENAMES, SUPERSEDED, _decay_style_to_swift,
                                     _derive_gradient_accumulation_steps, audit_coverage, megatron_args_to_configs)
-from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                TrainConfig, TunerConfig)
 
 _CONFIGS = (ModelConfig, TemplateConfig, DatasetConfig, TrainConfig, DistributedConfig, CheckpointConfig, TunerConfig)
@@ -203,7 +203,7 @@ class TestWeightDecayRampIsNotForwardedWhenDerived:
     def test_constant_style_passes_validate_configs(self):
         """End-to-end: the mapped Configs must survive the cross-config validator, which is where
         the original failure surfaced (it runs first thing in run_sft)."""
-        from swift.dev.configs import validate_configs
+        from swift.dev.config import validate_configs
 
         configs = megatron_args_to_configs(
             _args(
@@ -416,7 +416,7 @@ def test_warmup_priority_is_inverted_on_the_transformers_backend():
     transformers' TrainingArguments.get_warmup_steps takes warmup_steps when it is >= 1, so the
     ABSOLUTE count wins there -- unifying the rule would silently change one backend's warmup.
     """
-    from swift.dev.configs import TrainConfig
+    from swift.dev.config import TrainConfig
     from swift.dev.optimizer import warmup_budget
 
     cfg = TrainConfig(warmup_steps=100, warmup_ratio=0.1)

@@ -15,7 +15,7 @@ from swift.dev.naming import (parse_optim_args, parse_scheduler_kwargs, resolve_
 from swift.utils import get_logger
 
 if TYPE_CHECKING:
-    from swift.dev.configs import TrainConfig
+    from swift.dev.config import TrainConfig
     from swift.dev.model import TrainableModel
 
 logger = get_logger()

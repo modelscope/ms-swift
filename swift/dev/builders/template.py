@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import TemplateConfig
+    from swift.dev.config import TemplateConfig
 
 
 def build_template(template_config: TemplateConfig, processor: Any, *, task_type: Optional[str] = None) -> Any:

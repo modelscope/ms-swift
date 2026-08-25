@@ -191,7 +191,7 @@ def test_packing_derives_padding_free():
     The derivation matters for the dev-native CLI and for code constructing Configs directly, where
     no god-class __post_init__ back-fills the coupled field.
     """
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, validate_configs)
 
     dataset_config = DatasetConfig(dataset=['d'], packing=True)
@@ -203,7 +203,7 @@ def test_packing_derives_padding_free():
 
 
 def _validate(dataset_config, template_config=None):
-    from swift.dev.configs import (CheckpointConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig,
+    from swift.dev.config import (CheckpointConfig, DistributedConfig, ModelConfig, TemplateConfig, TrainConfig,
                                    validate_configs)
     validate_configs(
         ModelConfig(model='m'), template_config or TemplateConfig(), dataset_config, TrainConfig(), DistributedConfig(),
@@ -255,7 +255,7 @@ class _StubTemplate:
 def test_encode_mode_resolution(is_multimodal, kwargs, expected):
     """_encode_mode resolves lazy_tokenize=None (auto) like legacy _init_lazy_tokenize."""
     from swift.dev.builders.dataset import _encode_mode
-    from swift.dev.configs import DatasetConfig
+    from swift.dev.config import DatasetConfig
 
     dataset_config = DatasetConfig(dataset=['d'], **kwargs)
     assert _encode_mode(dataset_config, _StubTemplate(is_multimodal)) == expected
@@ -263,14 +263,14 @@ def test_encode_mode_resolution(is_multimodal, kwargs, expected):
 
 def test_group_by_length_accepted_with_default_lazy_tokenize():
     """group_by_length with lazy_tokenize unset (auto) must pass: auto resolves to eager."""
-    from swift.dev.configs import DatasetConfig
+    from swift.dev.config import DatasetConfig
 
     _validate(DatasetConfig(dataset=['d'], group_by_length=True))
 
 
 def test_group_by_length_with_explicit_lazy_tokenize_raises():
     """An EXPLICIT lazy_tokenize=True with group_by_length is a real conflict -> fail fast."""
-    from swift.dev.configs import DatasetConfig
+    from swift.dev.config import DatasetConfig
 
     dataset_config = DatasetConfig(dataset=['d'], group_by_length=True, lazy_tokenize=True)
     with pytest.raises(ValueError, match='lazy_tokenize'):
@@ -279,7 +279,7 @@ def test_group_by_length_with_explicit_lazy_tokenize_raises():
 
 def test_explicit_lazy_tokenize_with_packing_raises():
     """packing needs the eager-only `lengths` column, so an explicit lazy opt-in must fail."""
-    from swift.dev.configs import DatasetConfig, TemplateConfig
+    from swift.dev.config import DatasetConfig, TemplateConfig
 
     dataset_config = DatasetConfig(dataset=['d'], packing=True, lazy_tokenize=True)
     with pytest.raises(ValueError, match='lazy_tokenize'):
@@ -288,7 +288,7 @@ def test_explicit_lazy_tokenize_with_packing_raises():
 
 def test_explicit_lazy_tokenize_with_streaming_raises():
     """legacy rejects streaming + explicit lazy_tokenize (base_args.py:136-140)."""
-    from swift.dev.configs import DatasetConfig
+    from swift.dev.config import DatasetConfig
 
     dataset_config = DatasetConfig(dataset=['d'], streaming=True, lazy_tokenize=True)
     with pytest.raises(ValueError, match='lazy_tokenize'):

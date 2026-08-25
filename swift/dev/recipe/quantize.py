@@ -24,7 +24,7 @@ import os
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import DatasetConfig, ModelConfig, QuantizeConfig, TemplateConfig
+    from swift.dev.config import DatasetConfig, ModelConfig, QuantizeConfig, TemplateConfig
 
 logger = logging.getLogger(__name__)
 

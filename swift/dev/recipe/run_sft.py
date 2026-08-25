@@ -10,15 +10,21 @@ configure_loss/optimizer -> SFTLoop.fit. The config -> object construction glue 
 translation it delegates to is a separate, lower layer).
 """
 from __future__ import annotations
-
 import logging
 import math
 import os
 from typing import TYPE_CHECKING, Any, List, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +87,8 @@ def _initialize_twinkle(distributed_config: DistributedConfig) -> None:
     and why there is no teardown counterpart.
     """
     import twinkle
-    from twinkle import DeviceGroup
-
     from swift.dev.builders import is_megatron_backend
+    from twinkle import DeviceGroup
 
     if is_megatron_backend(distributed_config) and distributed_config.mode == 'ray':
         # The DeviceGroup named 'model' is what build_model's MegatronModel(remote_group='model')
@@ -113,13 +118,13 @@ def _run_sft_body(
     _save_final: bool = True,
 ) -> List[dict]:
     """The backend-agnostic SFT orchestration body (see run_sft for the step-by-step contract)."""
+    from swift.dev.adapter import apply_tuner
     from swift.dev.builders import build_dataset, build_model, build_template, is_megatron_backend
-    from swift.dev.configs import validate_configs
+    from swift.dev.config import validate_configs
     from swift.dev.loss import configure_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.processor import InputProcessor
-    from swift.dev.recipes.sft import SFTLoop, num_optimizer_steps
-    from swift.dev.tuner import apply_tuner
+    from swift.dev.recipe.train_loop import SFTLoop, num_optimizer_steps
     from swift.model import get_model_processor
 
     # Cross-config validation (the single call site -- CLI, cookbook and tests all funnel through
@@ -296,8 +301,9 @@ def _write_ckpt_args_json(ckpt_dir: str,
     We write that consumed subset (not the full dict): the two force_load keys that SFT can set
     (tuner_type/task_type; bnb_* is quant, not wired) plus the load_keys dev already knows.
     """
-    import json
     import os
+
+    import json
     import torch.distributed as dist
 
     # Only the master rank's checkpoint-final exists (twinkle saves there alone), so writing on any

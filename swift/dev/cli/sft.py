@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 if TYPE_CHECKING:
     from swift.arguments import SftArguments
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
 
 
@@ -30,7 +30,7 @@ def args_to_configs(
     args: 'SftArguments',
 ) -> Tuple['ModelConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig', 'DistributedConfig', 'CheckpointConfig',
            Optional['TunerConfig']]:
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
 
     # This mapping is HF-surface only. MegatronSftArguments is a SEPARATE hierarchy (not an
@@ -82,7 +82,7 @@ def args_to_configs(
 
 def sft_main(args: Optional[List[str]] = None) -> List[dict]:
     from swift import SftArguments
-    from swift.dev.recipes import run_sft
+    from swift.dev.recipe import run_sft
     from swift.utils import parse_args
 
     if isinstance(args, SftArguments):

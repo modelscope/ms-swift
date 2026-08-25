@@ -14,7 +14,7 @@ import pytest
 from types import SimpleNamespace
 
 from swift.dev.cli.sft import args_to_configs
-from swift.dev.configs import CheckpointConfig, DatasetConfig, ModelConfig, TemplateConfig, TrainConfig, TunerConfig
+from swift.dev.config import CheckpointConfig, DatasetConfig, ModelConfig, TemplateConfig, TrainConfig, TunerConfig
 
 
 def _args(**overrides):

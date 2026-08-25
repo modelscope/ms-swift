@@ -17,15 +17,21 @@ The template runs legacy's reranker encode/collate (one label per pair), and dev
 shift is suppressed for these task_types (see ``DevMixin._NO_SHIFT_TASK_TYPES``).
 """
 from __future__ import annotations
-
 import logging
 import math
 import os
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +57,7 @@ def run_reranker(
     contract, which is unchanged here); ``_save_final`` has the same test-oriented meaning. The loss
     is chosen by ``TrainConfig.loss_type`` (default 'pointwise_reranker').
     """
-    from swift.dev.recipes.run_sft import _initialize_twinkle
+    from swift.dev.recipe.run_sft import _initialize_twinkle
 
     _initialize_twinkle(distributed_config)
     return _run_reranker_body(
@@ -79,14 +85,14 @@ def _run_reranker_body(
     _save_final: bool = True,
 ) -> List[dict]:
     """The backend-agnostic reranker orchestration body (see run_reranker for the contract)."""
+    from swift.dev.adapter import apply_tuner
     from swift.dev.builders import build_dataset, build_model, build_template
-    from swift.dev.configs import validate_configs
+    from swift.dev.config import validate_configs
     from swift.dev.loss import configure_reranker_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.processor import InputProcessor
-    from swift.dev.recipes.run_sft import _write_ckpt_args_json
-    from swift.dev.recipes.train_loop import SFTLoop, num_optimizer_steps
-    from swift.dev.tuner import apply_tuner
+    from swift.dev.recipe.run_sft import _write_ckpt_args_json
+    from swift.dev.recipe.train_loop import SFTLoop, num_optimizer_steps
     from swift.model import get_model_processor
 
     validate_configs(model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,

@@ -20,7 +20,7 @@ import dataclasses
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
     from swift.megatron.arguments import MegatronSftArguments
 
@@ -187,7 +187,7 @@ _CONFIG_ORDER = ('ModelConfig', 'TemplateConfig', 'DatasetConfig', 'TrainConfig'
 
 
 def _config_classes() -> Dict[str, type]:
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
     return {
         'ModelConfig': ModelConfig,
@@ -362,7 +362,7 @@ def megatron_args_to_configs(
     """
     import os
 
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
 
     if not hasattr(args, 'train_iters'):
@@ -431,7 +431,7 @@ def megatron_args_to_configs(
 def megatron_sft_main(args: Optional[List[str]] = None) -> List[dict]:
     """dev Megatron SFT entry. Same name as legacy ``swift.megatron.megatron_sft_main`` on purpose
     (drop-in argv compatibility); import one of them under an alias when using both."""
-    from swift.dev.recipes import run_sft
+    from swift.dev.recipe import run_sft
     from swift.megatron.arguments import MegatronSftArguments
     from swift.utils import parse_args
 

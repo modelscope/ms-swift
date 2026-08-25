@@ -25,7 +25,7 @@ import os
 from typing import TYPE_CHECKING, Optional, Tuple
 
 if TYPE_CHECKING:
-    from swift.dev.configs import DatasetConfig, ModelConfig, TemplateConfig
+    from swift.dev.config import DatasetConfig, ModelConfig, TemplateConfig
 
 logger = logging.getLogger(__name__)
 

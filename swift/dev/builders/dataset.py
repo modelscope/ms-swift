@@ -5,7 +5,7 @@ import numpy as np
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import DatasetConfig, DistributedConfig, TemplateConfig, TrainConfig
+    from swift.dev.config import DatasetConfig, DistributedConfig, TemplateConfig, TrainConfig
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ def _build_split_loader(raw: Any,
                         is_val: bool,
                         cached: Optional[list] = None) -> Any:
     """Encode -> merge cached -> optional pack -> dataloader for one split (None+no cache -> None)."""
-    from swift.dev.dataloader import build_dataloader, identity_collate
+    from swift.dev.legacy_dataloader import build_dataloader, identity_collate
 
     if raw is None and not cached:
         return None

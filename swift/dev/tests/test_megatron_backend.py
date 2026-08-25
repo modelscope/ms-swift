@@ -1,4 +1,5 @@
 import os
+
 import pytest
 import torch
 
@@ -28,13 +29,13 @@ def test_megatron_step1_loss_matches_hf_bf16_reference():
     if torch.cuda.device_count() < 2:
         pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
 
-    import twinkle
     # Resolve the short ms id to a local snapshot (env has no HF network access), so both the HF
     # reference and MegatronModel load from the same local dir.
     from modelscope import snapshot_download
-    from twinkle import DeviceGroup, DeviceMesh
 
+    import twinkle
     from swift.dev.model.megatron.model import MegatronModel
+    from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
     ids = list(range(10, 26))
@@ -96,12 +97,12 @@ def test_megatron_bridge_step1_loss_matches_hf_bf16_reference():
     except Exception:
         pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
 
-    import twinkle
     from modelscope import snapshot_download
-    from twinkle import DeviceGroup, DeviceMesh
 
+    import twinkle
     from swift.dev.model.megatron.bridge import MegatronBridgeBackend
     from swift.dev.model.megatron.model import MegatronModel
+    from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
     ids = list(range(10, 26))
@@ -171,12 +172,13 @@ def test_megatron_bridge_save_produces_loadable_hf_checkpoint(tmp_path):
         pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
 
     import os
-    import twinkle
-    from modelscope import snapshot_download
-    from twinkle import DeviceGroup, DeviceMesh
 
+    from modelscope import snapshot_download
+
+    import twinkle
     from swift.dev.model.megatron.bridge import MegatronBridgeBackend
     from swift.dev.model.megatron.model import MegatronModel
+    from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
     ids = list(range(10, 26))
@@ -376,8 +378,8 @@ def test_megatron_bridge_shim_per_adapter_state_dict_is_isolated():
     Also asserts the genuinely-unsupported kwargs still fail-fast (converter / only_master_rank),
     and that a missing adapter name raises rather than silently exporting nothing."""
     import torch.nn as nn
-    from peft import LoraConfig, get_peft_model
 
+    from peft import LoraConfig, get_peft_model
     from swift.dev.model.megatron.bridge.megatron_bridge import _MCoreCompatBridgeShim
 
     class _Tiny(nn.Module):
@@ -433,8 +435,8 @@ def test_megatron_bridge_shim_rejects_sharded_peft_save(monkeypatch):
     A regression here (guard removed) would let a TP/PP run emit a corrupt adapter_model.safetensors.
     """
     import torch.nn as nn
-    from peft import LoraConfig, get_peft_model
 
+    from peft import LoraConfig, get_peft_model
     from swift.dev.model.megatron.bridge.megatron_bridge import _MCoreCompatBridgeShim
 
     class _Tiny(nn.Module):
@@ -551,12 +553,12 @@ def test_megatron_lora_resume_restores_adapter_bit_identical(tmp_path):
     if torch.cuda.device_count() < 2:
         pytest.skip('needs >=2 GPUs (twinkle MegatronModel requires world_size>=2)')
 
-    import twinkle
     from modelscope import snapshot_download
-    from twinkle import DeviceGroup, DeviceMesh
 
+    import twinkle
+    from swift.dev.adapter import apply_tuner
     from swift.dev.model.megatron.model import MegatronModel
-    from swift.dev.tuner import apply_tuner
+    from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
     ids = list(range(10, 26))
@@ -665,13 +667,13 @@ def test_megatron_bridge_lora_save_produces_loadable_peft_adapter(tmp_path):
     except Exception:
         pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
 
-    import twinkle
     from modelscope import snapshot_download
-    from twinkle import DeviceGroup, DeviceMesh
 
+    import twinkle
+    from swift.dev.adapter import apply_tuner
     from swift.dev.model.megatron.bridge import MegatronBridgeBackend
     from swift.dev.model.megatron.model import MegatronModel
-    from swift.dev.tuner import apply_tuner
+    from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
     ids = list(range(10, 26))
@@ -745,13 +747,13 @@ def test_megatron_bridge_lora_resume_restores_adapter_bit_identical(tmp_path):
     except Exception:
         pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
 
-    import twinkle
     from modelscope import snapshot_download
-    from twinkle import DeviceGroup, DeviceMesh
 
+    import twinkle
+    from swift.dev.adapter import apply_tuner
     from swift.dev.model.megatron.bridge import MegatronBridgeBackend
     from swift.dev.model.megatron.model import MegatronModel
-    from swift.dev.tuner import apply_tuner
+    from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
     ids = list(range(10, 26))
@@ -852,13 +854,13 @@ def test_megatron_bridge_lora_non_default_adapter_save_isolated(tmp_path):
     except Exception:
         pytest.skip('megatron.bridge (Megatron-Bridge) not importable in this env')
 
-    import twinkle
     from modelscope import snapshot_download
-    from twinkle import DeviceGroup, DeviceMesh
 
+    import twinkle
+    from swift.dev.adapter import _build_adapter_config
     from swift.dev.model.megatron.bridge import MegatronBridgeBackend
     from swift.dev.model.megatron.model import MegatronModel
-    from swift.dev.tuner import _build_lora_config
+    from twinkle import DeviceGroup, DeviceMesh
     model_path = snapshot_download(MODEL)
 
     ids = list(range(10, 26))
@@ -899,7 +901,7 @@ def test_megatron_bridge_lora_non_default_adapter_save_isolated(tmp_path):
                 backend=MegatronBridgeBackend())
             torch.manual_seed(seed)
             # NON-default adapter name -> twinkle is_peft_format=True -> shim peft_format save branch.
-            m.add_adapter_to_model(adapter_name, _build_lora_config(_TunerCfg()), gradient_accumulation_steps=1)
+            m.add_adapter_to_model(adapter_name, _build_adapter_config(_TunerCfg()), gradient_accumulation_steps=1)
             m.set_optimizer('Adam', lr=1e-2, adapter_name=adapter_name)
             m.forward_backward(inputs=micro, micro_batch_size=1, adapter_name=adapter_name)
             m.clip_grad_and_step(max_grad_norm=1.0, adapter_name=adapter_name)

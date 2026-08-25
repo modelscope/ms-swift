@@ -2,7 +2,7 @@
 
 dev counterpart of legacy ``swift export --merge_lora``
 (swift/pipelines/export/merge_lora.py::merge_lora), for the transformers path. The mcore/Megatron
-equivalent is a different code path and lives in ``swift.dev.recipes.convert`` (ConvertConfig.
+equivalent is a different code path and lives in ``swift.dev.recipe.convert`` (ConvertConfig.
 mcore_adapter), because an mcore LoRA has to be merged while the model is still in Megatron format.
 
 All dev Configs needed here already exist -- TunerConfig.adapters names the adapters,
@@ -16,7 +16,7 @@ import os
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import CheckpointConfig, ModelConfig, TemplateConfig, TunerConfig
+    from swift.dev.config import CheckpointConfig, ModelConfig, TemplateConfig, TunerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def _build_template(template_config: Optional[TemplateConfig], processor, model)
     prepare_model_template. It matters here only because some templates patch the model on attach.
     """
     from swift.dev.builders import build_template
-    from swift.dev.configs import TemplateConfig
+    from swift.dev.config import TemplateConfig
 
     template = build_template(template_config or TemplateConfig(), processor)
     if getattr(template, 'use_model', False):

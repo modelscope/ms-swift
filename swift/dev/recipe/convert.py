@@ -28,7 +28,7 @@ import shutil
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
-    from swift.dev.configs import (CheckpointConfig, ConvertConfig, DistributedConfig, ModelConfig, TemplateConfig)
+    from swift.dev.config import (CheckpointConfig, ConvertConfig, DistributedConfig, ModelConfig, TemplateConfig)
 
 logger = logging.getLogger(__name__)
 
@@ -277,7 +277,7 @@ def _load_hf_model_template(
     those are used instead of synthesizing a fake args object.
     """
     from swift.dev.builders import build_template
-    from swift.dev.configs import TemplateConfig
+    from swift.dev.config import TemplateConfig
     from swift.model import get_model_processor
 
     kwargs: Dict[str, Any] = {}

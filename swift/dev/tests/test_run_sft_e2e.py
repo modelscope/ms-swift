@@ -48,8 +48,8 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
     Mirrors the read side load_args_from_ckpt (base_args.py:246-301): task_type and tuner_type
     are force_load_keys; omitting them leaves infer on its default. Pure function, no model.
     """
-    from swift.dev.configs import ModelConfig, TemplateConfig, TunerConfig
-    from swift.dev.recipes.run_sft import _write_ckpt_args_json
+    from swift.dev.config import ModelConfig, TemplateConfig, TunerConfig
+    from swift.dev.recipe.run_sft import _write_ckpt_args_json
 
     ckpt = str(tmp_path)
     _write_ckpt_args_json(
@@ -73,8 +73,8 @@ def test_write_ckpt_args_json_includes_force_load_keys(tmp_path):
 def test_write_ckpt_args_json_omits_none_full_param(tmp_path):
     """Full-param causal_lm run: task_type/tuner_type stay None -> filtered out (infer's own
     defaults stand), so we don't write misleading keys."""
-    from swift.dev.configs import ModelConfig, TemplateConfig
-    from swift.dev.recipes.run_sft import _write_ckpt_args_json
+    from swift.dev.config import ModelConfig, TemplateConfig
+    from swift.dev.recipe.run_sft import _write_ckpt_args_json
 
     ckpt = str(tmp_path)
     _write_ckpt_args_json(
@@ -105,8 +105,8 @@ def test_initialize_twinkle_sets_a_device_group_on_every_backend():
     """
     import twinkle.infra as infra
 
-    from swift.dev.configs import DistributedConfig
-    from swift.dev.recipes.run_sft import _initialize_twinkle
+    from swift.dev.config import DistributedConfig
+    from swift.dev.recipe.run_sft import _initialize_twinkle
 
     saved = (infra._mode, infra._device_group, infra._device_mesh)
     try:
@@ -192,9 +192,9 @@ def test_run_sft_end_to_end_happy_path(tmp_path):
 
     from modelscope import snapshot_download
 
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig)
-    from swift.dev.recipes import run_sft
+    from swift.dev.recipe import run_sft
 
     model_path = snapshot_download(MODEL)
     data_path = str(tmp_path / 'toy_sft.jsonl')
@@ -249,9 +249,9 @@ def test_run_sft_zero_opt_steps_raises(tmp_path):
     """
     from modelscope import snapshot_download
 
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig)
-    from swift.dev.recipes import run_sft
+    from swift.dev.recipe import run_sft
 
     model_path = snapshot_download(MODEL)
     data_path = str(tmp_path / 'tiny_sft.jsonl')
@@ -405,9 +405,9 @@ def _run_megatron_sft(bridge_backend: str,
     """
     from modelscope import snapshot_download
 
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig)
-    from swift.dev.recipes import run_sft
+    from swift.dev.recipe import run_sft
 
     model_path = snapshot_download(MODEL)
     return run_sft(

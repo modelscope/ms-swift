@@ -29,9 +29,9 @@ def _run(shape, data_path, out_dir):
     from modelscope import snapshot_download
 
     import swift.dev.builders as builders
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
+    from swift.dev.config import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
                                    TrainConfig, TunerConfig)
-    from swift.dev.recipes import run_sft
+    from swift.dev.recipe import run_sft
 
     captured = {}
     orig_build_model = builders.build_model

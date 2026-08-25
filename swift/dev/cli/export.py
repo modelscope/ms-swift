@@ -3,7 +3,7 @@
 dev counterpart of legacy ``swift export`` (swift/pipelines/export/export.py::SwiftExport). Same
 shape as ``swift.dev.cli.sft``: parse the legacy argument surface, translate it into dev's atomic
 Configs, then hand off to a recipe. No export logic lives here -- the work is in
-``swift.dev.recipes`` (run_merge_lora / run_quantize / run_convert / export_cached_dataset).
+``swift.dev.recipe`` (run_merge_lora / run_quantize / run_convert / export_cached_dataset).
 
 Two behaviours of legacy's ``run()`` are load-bearing and reproduced deliberately:
 
@@ -50,7 +50,7 @@ def export_args_to_configs(args: 'ExportArguments') -> dict:
     (quantize wants QuantizeConfig + DatasetConfig, convert wants ConvertConfig + DistributedConfig,
     merge_lora wants TunerConfig), and a 8-tuple at every call site would be unreadable.
     """
-    from swift.dev.configs import (CheckpointConfig, ConvertConfig, DatasetConfig, DistributedConfig, ModelConfig,
+    from swift.dev.config import (CheckpointConfig, ConvertConfig, DatasetConfig, DistributedConfig, ModelConfig,
                                    QuantizeConfig, TemplateConfig, TunerConfig)
 
     model_config = _fill_from_args(ModelConfig(), args)
@@ -87,7 +87,7 @@ def _reject_unwired(args: 'ExportArguments') -> None:
     """
     if getattr(args, 'to_ollama', False):
         raise NotImplementedError('`--to_ollama` is not wired into the dev export pipeline: there is no ollama recipe '
-                                  'in swift.dev.recipes yet. Use legacy `swift export --to_ollama`.')
+                                  'in swift.dev.recipe yet. Use legacy `swift export --to_ollama`.')
     if getattr(args, 'push_to_hub', False):
         raise NotImplementedError('`--push_to_hub` is not wired into the dev export pipeline: pushing is a hub '
                                   'operation with no dev recipe. Use legacy `swift export --push_to_hub`.')
@@ -102,7 +102,7 @@ def export_main(args: Optional[Any] = None) -> Optional[str]:
     Returns None when no export flag was given (legacy's run() likewise falls through silently).
     """
     from swift.arguments import ExportArguments
-    from swift.dev.recipes import export_cached_dataset, run_convert, run_merge_lora, run_quantize
+    from swift.dev.recipe import export_cached_dataset, run_convert, run_merge_lora, run_quantize
     from swift.utils import parse_args
 
     if isinstance(args, ExportArguments):

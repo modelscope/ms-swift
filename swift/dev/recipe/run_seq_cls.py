@@ -15,15 +15,21 @@ The template runs legacy's seq_cls encode/collate (one label per sequence), and 
 label shift is suppressed for this task_type (see ``DevMixin._NO_SHIFT_TASK_TYPES``).
 """
 from __future__ import annotations
-
 import logging
 import math
 import os
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import (CheckpointConfig, DatasetConfig, DistributedConfig, ModelConfig, TemplateConfig,
-                                   TrainConfig, TunerConfig)
+    from swift.dev.config import (
+        CheckpointConfig,
+        DatasetConfig,
+        DistributedConfig,
+        ModelConfig,
+        TemplateConfig,
+        TrainConfig,
+        TunerConfig,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +55,7 @@ def run_seq_cls(
     contract, which is unchanged here); ``_save_final`` has the same test-oriented meaning.
     ``ModelConfig.problem_type`` is REQUIRED -- it selects the training objective and is not inferred.
     """
-    from swift.dev.recipes.run_sft import _initialize_twinkle
+    from swift.dev.recipe.run_sft import _initialize_twinkle
 
     _initialize_twinkle(distributed_config)
     return _run_seq_cls_body(
@@ -77,14 +83,14 @@ def _run_seq_cls_body(
     _save_final: bool = True,
 ) -> List[dict]:
     """The backend-agnostic seq_cls orchestration body (see run_seq_cls for the contract)."""
+    from swift.dev.adapter import apply_tuner
     from swift.dev.builders import build_dataset, build_model, build_template
-    from swift.dev.configs import validate_configs
+    from swift.dev.config import validate_configs
     from swift.dev.loss import configure_seq_cls_loss
     from swift.dev.optimizer import configure_optimizer, resolve_max_grad_norm
     from swift.dev.processor import InputProcessor
-    from swift.dev.recipes.run_sft import _write_ckpt_args_json
-    from swift.dev.recipes.train_loop import SFTLoop, num_optimizer_steps
-    from swift.dev.tuner import apply_tuner
+    from swift.dev.recipe.run_sft import _write_ckpt_args_json
+    from swift.dev.recipe.train_loop import SFTLoop, num_optimizer_steps
     from swift.model import get_model_processor
 
     validate_configs(model_config, template_config, dataset_config, train_config, distributed_config, checkpoint_config,

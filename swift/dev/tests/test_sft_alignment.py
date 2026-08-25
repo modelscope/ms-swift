@@ -11,6 +11,7 @@ Label conventions under test:
   computes no-shift logps. The two must produce the same loss.
 """
 import os
+
 import pytest
 
 MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
@@ -248,10 +249,10 @@ def test_resolve_optim_target_matches_transformers_trainer():
     Compare against the real HF resolver so this cannot drift.
     """
     import torch
-    from transformers import TrainingArguments
     from transformers.trainer import Trainer
 
     from swift.dev.naming import resolve_optim_target
+    from transformers import TrainingArguments
 
     for name in ('adamw_torch', 'adamw_torch_fused', 'adafactor', 'sgd'):
         args = TrainingArguments(
@@ -294,7 +295,7 @@ def test_configure_optimizer_applies_extra_and_optim_args():
     optim_args overriding our defaults (HF merges _parse_optim_args into optimizer_kwargs too)."""
     from unittest.mock import MagicMock
 
-    from swift.dev.configs import TrainConfig
+    from swift.dev.config import TrainConfig
     from swift.dev.optimizer import configure_optimizer
 
     def _kwargs(**cfg_kw):
@@ -319,7 +320,7 @@ def test_configure_optimizer_does_not_pass_params():
     diverge from legacy swift -- so dev must leave it out."""
     from unittest.mock import MagicMock
 
-    from swift.dev.configs import TrainConfig
+    from swift.dev.config import TrainConfig
     from swift.dev.optimizer import configure_optimizer
 
     m = MagicMock()
@@ -395,7 +396,7 @@ def test_num_optimizer_steps_matches_do_grad_sync():
     (e.g. N // ga) can't silently desync the LR scheduler's num_training_steps
     from the steps the loop actually takes.
     """
-    from swift.dev.recipes import num_optimizer_steps
+    from swift.dev.recipe import num_optimizer_steps
 
     for ga in (1, 2, 3, 4):
         for num_micro in range(0, 13):
@@ -412,7 +413,7 @@ def test_small_data_large_ga_yields_zero_steps():
     the model. run_sft fail-fasts on this (contract 5, see test_run_sft_zero_opt_steps_raises
     in test_run_sft_e2e.py); here we freeze the arithmetic that detects it.
     """
-    from swift.dev.recipes import num_optimizer_steps
+    from swift.dev.recipe import num_optimizer_steps
 
     assert num_optimizer_steps(2, 2) == 0  # exactly one GA window -> no update
     assert num_optimizer_steps(1, 2) == 0
@@ -438,13 +439,14 @@ def test_resume_param_trajectory_bit_identical_oddphase(tmp_path):
     from datasets import Dataset as HfDataset
 
     from swift.dev.builders.dataset import _encode
-    from swift.dev.dataloader import build_dataloader, identity_collate
+    from swift.dev.legacy_dataloader import build_dataloader, identity_collate
+
     # Self-contained: drive SFTLoop's contract directly on an in-memory dataset so the
     # test doesn't depend on a registered dataset id.
     from swift.dev.loss import configure_loss
     from swift.dev.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
-    from swift.dev.recipes import num_optimizer_steps
+    from swift.dev.recipe import num_optimizer_steps
     from swift.dev.template import DevMixin
     from swift.model import get_model_processor
     from swift.template import get_template
@@ -568,15 +570,15 @@ def test_lora_resume_param_trajectory_bit_identical_seed_independent(tmp_path):
 
     from datasets import Dataset as HfDataset
 
+    from swift.dev.adapter import apply_tuner
     from swift.dev.builders.dataset import _encode
-    from swift.dev.dataloader import build_dataloader, identity_collate
+    from swift.dev.legacy_dataloader import build_dataloader, identity_collate
     from swift.dev.loss import configure_loss
     from swift.dev.model import TransformersModel
     from swift.dev.optimizer import configure_optimizer
     from swift.dev.processor import InputProcessor
-    from swift.dev.recipes import num_optimizer_steps
+    from swift.dev.recipe import num_optimizer_steps
     from swift.dev.template import DevMixin
-    from swift.dev.tuner import apply_tuner
     from swift.model import get_model_processor
     from swift.template import get_template
 
@@ -663,10 +665,9 @@ def test_grpo_ga_equivalence_equal_seq_strong_signal():
     if not torch.cuda.is_available():
         pytest.skip('CUDA not available')
 
-    from transformers import AutoModelForCausalLM
-
     from swift.dev.data_format import InputFeature, ModelOutput
     from swift.dev.loss import GRPOLoss
+    from transformers import AutoModelForCausalLM
 
     torch.manual_seed(0)
     device = 'cuda'

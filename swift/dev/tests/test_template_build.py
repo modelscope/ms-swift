@@ -17,7 +17,7 @@ MODEL = 'Qwen/Qwen2.5-0.5B-Instruct'
 def test_default_path_shifts_labels_without_replacing_the_legacy_class():
     """End of the real pipeline: legacy's own class stays in the MRO, and labels come out shifted."""
     from swift.dev.builders import build_template
-    from swift.dev.configs import TemplateConfig
+    from swift.dev.config import TemplateConfig
     from swift.dev.template import DevMixin
     from swift.model import get_model_processor
     from swift.template import get_template

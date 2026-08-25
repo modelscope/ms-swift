@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import DistributedConfig, ModelConfig, TrainConfig, TunerConfig
+    from swift.dev.config import DistributedConfig, ModelConfig, TrainConfig, TunerConfig
     from swift.dev.model import TrainableModel
 
 

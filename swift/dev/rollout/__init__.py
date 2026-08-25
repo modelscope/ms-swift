@@ -6,16 +6,22 @@ THIS interface, never directly on the engine.
 Engine base is swift's own `GRPOVllmEngine` (NOT twinkle's vLLMSampler): swift's engine already
 owns the per-model vLLM multimodal placeholder logic, LoRA adapter routing and vLLM version
 patches, and it speaks the swift Template contract -- so no decode/`concat_input_feature` shim is
-needed. This is also the target direction of the twinkle merge (twinkle delegates to swift, not
-the reverse).
+needed.
+
+This is now a LOCAL choice, not the merge direction. `run_infer` / `run_deploy` / `run_sampling`
+are built on twinkle's `Sampler` (vLLMSampler / SGLangSampler), so dev's sampling direction is
+twinkle-first and this module is the deliberate holdout: it stays on GRPOVllmEngine only until the
+placeholder/logprob contracts above are reproduced twinkle-side. Anyone extending the sampling
+surface should add it to the twinkle side, not here.
 
 Backend is vLLM-only, by design, NOT a temporary YAGNI (see design.md 5.2.1): RL rollout needs
 per-token logprobs for old_logps (contract 15), and only vLLM provides them reliably -- swift's
 SGLang engine returns logprobs=None (`# TODO: logprobs`), so it physically cannot do RL rollout.
-Multi-backend sampling (vLLM/SGLang/LMDeploy/Transformers) belongs to `swift infer` / `swift deploy`
-via InferEngine, which does NOT need logprobs. So we deliberately do NOT build a multi-backend
-dispatch shell here -- only generate(prompts, num_samples). The orthogonal rollout dimension that
-DOES vary is placement (colocate / separate-server), not the sampling backend.
+That constraint is about logprobs, not about where sampling lives: `run_infer` / `run_deploy` do
+not need logprobs, which is exactly why they can sit on twinkle's Sampler while this cannot. So we
+deliberately do NOT build a multi-backend dispatch shell here -- only generate(prompts,
+num_samples). The orthogonal rollout dimension that DOES vary is placement (colocate /
+separate-server), not the sampling backend.
 
 Prompt-half decision (read it back from the engine, do NOT re-encode): with
 `RequestConfig.return_details=True` the engine returns `response.prompt_token_ids` -- the exact

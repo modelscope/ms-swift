@@ -29,7 +29,7 @@ pytest.importorskip('megatron.core', reason='needs megatron-core for OptimizerPa
 
 from megatron.core.optimizer_param_scheduler import OptimizerParamScheduler  # noqa: E402
 
-from swift.dev.configs import TrainConfig  # noqa: E402
+from swift.dev.config import TrainConfig  # noqa: E402
 from swift.dev.naming import resolve_megatron_decay_style  # noqa: E402
 from swift.dev.optimizer import megatron_weight_decay_bounds  # noqa: E402
 

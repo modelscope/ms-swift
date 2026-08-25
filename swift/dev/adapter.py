@@ -20,7 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from swift.dev.configs import TunerConfig
+    from swift.dev.config import TunerConfig
     from swift.dev.model import TrainableModel
 
 # tuner_types that are peft-backed and reachable from dev. Anything else fails fast in apply_tuner

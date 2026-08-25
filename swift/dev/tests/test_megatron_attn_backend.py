@@ -201,7 +201,7 @@ def test_build_model_forwards_the_backend_to_megatron():
     from unittest.mock import patch
 
     from swift.dev.builders.model import build_model
-    from swift.dev.configs import DistributedConfig, ModelConfig
+    from swift.dev.config import DistributedConfig, ModelConfig
 
     with patch('swift.dev.model.megatron.model.MegatronModel') as mock_model:
         build_model(
@@ -224,7 +224,7 @@ def test_build_model_forwards_attn_impl_for_the_worker_side_pin():
     from unittest.mock import patch
 
     from swift.dev.builders.model import build_model
-    from swift.dev.configs import DistributedConfig, ModelConfig
+    from swift.dev.config import DistributedConfig, ModelConfig
 
     with patch('swift.dev.model.megatron.model.MegatronModel') as mock_model:
         build_model(
@@ -266,7 +266,7 @@ def test_both_bridge_backends_get_the_same_backend():
     from unittest.mock import patch
 
     from swift.dev.builders.model import build_model
-    from swift.dev.configs import DistributedConfig, ModelConfig
+    from swift.dev.config import DistributedConfig, ModelConfig
 
     seen = {}
     for bridge in ('mcore-bridge', 'megatron-bridge'):

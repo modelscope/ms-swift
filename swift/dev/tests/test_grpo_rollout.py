@@ -12,6 +12,7 @@ GRPO is algorithmically correct — weight-sync is delayed (vLLM keeps initial w
 behavior policy). Tests assert this intermediate-state fact explicitly.
 """
 import os
+
 import pytest
 import torch
 
@@ -48,7 +49,7 @@ def test_vllm_mode_encode_has_no_labels_no_shift():
 
 def test_group_advantages_reuse_twinkle():
     """compute_group_advantages reuses twinkle GRPOAdvantage: group-mean subtracted, std=0 -> 0."""
-    from swift.dev.recipes.grpo import compute_group_advantages
+    from swift.dev.recipe.grpo import compute_group_advantages
     adv = compute_group_advantages([1., 2., 3., 4., 5., 5., 5., 5.], num_generations=4, scale='group')
     assert abs(sum(adv[:4]) / 4) < 1e-6  # group1 mean ~ 0
     assert all(abs(a) < 1e-6 for a in adv[4:])  # group2 constant -> zero advantage
@@ -58,7 +59,7 @@ def test_rollout_sample_shape_and_shift_marker():
     """RolloutSample is the RL-sample layer: `encoded` carries next-token-shifted labels + the
     SHIFTED_KEY marker (contract 14 recorded, not commented); per-turn lists are 2D; and the
     back-compat aliases (input_feature/old_logps/prompt_index) still resolve."""
-    from swift.dev.recipes.grpo import toy_length_reward
+    from swift.dev.recipe.grpo import toy_length_reward
     from swift.dev.rollout import SHIFTED_KEY, RolloutSample
 
     s = RolloutSample(
@@ -193,13 +194,13 @@ def test_grpo_rollout_e2e_updates_params_intermediate_state():
     if not torch.cuda.is_available():
         pytest.skip('CUDA not available')
 
+    from swift.dev.adapter import apply_tuner
     from swift.dev.builders import build_template
-    from swift.dev.configs import TemplateConfig, TunerConfig
+    from swift.dev.config import TemplateConfig, TunerConfig
     from swift.dev.model import TransformersModel
     from swift.dev.processor import InputProcessor
-    from swift.dev.recipes.grpo import GRPOLoop
+    from swift.dev.recipe.grpo import GRPOLoop
     from swift.dev.rollout import RolloutEngine
-    from swift.dev.tuner import apply_tuner
     from swift.model import get_model_processor
 
     _, proc = get_model_processor(MODEL, load_model=False)
@@ -266,7 +267,7 @@ def test_vllm_logprobs_match_train_forward_logps():
         pytest.skip('CUDA not available')
 
     from swift.dev.builders import build_template
-    from swift.dev.configs import TemplateConfig
+    from swift.dev.config import TemplateConfig
     from swift.dev.model import TransformersModel
     from swift.dev.processor import InputProcessor
     from swift.dev.rollout import RolloutEngine
