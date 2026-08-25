@@ -359,6 +359,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             temperature=args.temperature,
             top_p=args.top_p,
             top_k=args.top_k,
+            min_p=args.min_p,
             repetition_penalty=args.repetition_penalty,
             stop=args.stop_words,
             return_details=True,
@@ -379,6 +380,11 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         self.vllm_use_async_engine = False
         self.vllm_version_ge_0_10_2 = check_vllm_version_ge('0.10.2')
         self.disable_rollout_importance_sampling = not self.vllm_version_ge_0_10_2
+        # for multi-turn server, maybe the num of rollout outputs is not equal to the num of rollout inputs
+        self.dynamic_num_samples = False
+        self.base_sync_done = False
+        self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
+        self._cached_vllm_param_names = None
         # split model parameters into batches for synchronized weight transfer / ref sync
         if not args.use_vllm:
             infer_template = copy(self.template)
@@ -391,6 +397,10 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
         if not is_vllm_available():
             raise ImportError('vLLM is not available and `use_vllm` is set to True. '
                               'Please install vLLM with `pip install vllm -U` to use it.')
+
+        if is_torch_npu_available():
+            from swift.model.npu_patch.vllm_ascend import validate_vllm_ascend_lora_training
+            validate_vllm_ascend_lora_training(self.model, args)
 
         if not self.vllm_version_ge_0_10_2 and getattr(self.args, 'rollout_importance_sampling_mode', None) is not None:
             raise ValueError('rollout_importance_sampling_mode is not supported in vLLM version < 0.10.2, '
@@ -430,18 +440,21 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                     for i in range(self.accelerator.num_processes // self.vllm_tensor_parallel_size)
                 ])
             self.enable_offload = args.offload_model or args.offload_optimizer
-            context = self.offload_context if self.enable_offload else nullcontext
+            # At init (prepare_rollout, before accelerator.prepare()) an FSDP2
+            # model is still full-sized on CPU — sharding hasn't happened yet.
+            # Skip the offload context entirely: both the offload and the reload
+            # are pointless here, and reloading the full model onto a single card
+            # would OOM. train()'s accelerator.prepare() will shard and load it.
+            if self.enable_offload and not self._is_fsdp2:
+                rollout_cm = self.offload_context()
+            else:
+                rollout_cm = nullcontext()
 
-            with context(), self._disable_sp_context():
+            with rollout_cm, self._disable_sp_context():
                 self.engine = self._prepare_vllm_engine()
                 self.engine.engine.reset_mm_cache()
                 if args.sleep_level > 0:
                     self.engine.engine.sleep(args.sleep_level)
-
-        self.dynamic_num_samples = False  # grpo multi-turn
-        self.base_sync_done = False
-        self._last_loaded_step = -1  # tag to avoid useless loading during grad accumulation
-        self._cached_vllm_param_names = None
 
     def _prepare_vllm_engine(self):
         """Create and configure vLLM engine for colocate mode"""
@@ -684,10 +697,12 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 if not self._is_fsdp2:
                     self.model.merge_adapter()
                 cur_lora_params = get_peft_model_state_dict(self.model, state_dict)
-                cur_lora_params = {
-                    name: param.full_tensor().detach() if hasattr(param, 'full_tensor') else param.detach()
-                    for name, param in cur_lora_params.items()
-                }
+                for name, param in cur_lora_params.items():
+                    if hasattr(param, 'full_tensor'):
+                        if param.is_cpu:
+                            param = param.to(get_current_device())
+                        param = param.full_tensor()
+                    cur_lora_params[name] = param.detach()
                 lora_params.update(cur_lora_params)
                 if not self._is_fsdp2:
                     with patch_lora_unmerge(self.model):
@@ -969,38 +984,63 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
 
         gather_if_zero3 = get_gather_if_zero3_context(self)
 
-        # Colocate: patch MoE weight_loader once before loading all groups
+        ascend_reload_runner = None
+        if self.vllm_mode == 'colocate' and is_torch_npu_available():
+            from swift.model.npu_patch.vllm_ascend import get_vllm_ascend_reload_runner
+            ascend_reload_runner = get_vllm_ascend_reload_runner(self.engine)
         if self.vllm_mode == 'colocate':
-            from swift.model.npu_patch.vllm_ascend_moe import configure_vllm_ascend_moe_weight_sync
-            configure_vllm_ascend_moe_weight_sync(self.engine.inner_model, self.model, is_fsdp2=self._is_fsdp2)
-            patch_vllm_moe_model_weight_loader(self.engine.inner_model)
+            if ascend_reload_runner is None:
+                # Legacy vLLM-Ascend and GPU keep the existing in-place reload
+                # path. The Ascend fallback loader writes directly into the
+                # processed MoE layout and guards its redundant post-load.
+                patch_vllm_moe_model_weight_loader(self.engine.inner_model)
 
-        for i, parameter_group in enumerate(self.parameter_groups):
-            parameter_group_no_lora = self.parameter_groups_no_lora[i]
+        def iter_state_dicts():
+            for i, parameter_group in enumerate(self.parameter_groups):
+                parameter_group_no_lora = self.parameter_groups_no_lora[i]
 
-            if not self._is_fsdp2:
-                parameters = [
-                    parameter for name, parameter in self.model.named_parameters()
-                    if not parameter_group or name in parameter_group
-                ]
-            else:
-                parameters = []
+                if not self._is_fsdp2:
+                    parameters = [
+                        parameter for name, parameter in self.model.named_parameters()
+                        if not parameter_group or name in parameter_group
+                    ]
+                else:
+                    parameters = []
 
-            with gather_if_zero3(parameters):
-                if should_merge:
-                    with patch_lora_merge(self.model, parameter_group):
-                        self.model.merge_adapter()
-
-                try:
-                    state_dict = self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
-                    self._load_state_dict_to_vllm(state_dict)
-                finally:
+                with gather_if_zero3(parameters):
                     if should_merge:
-                        with patch_lora_unmerge(self.model):
-                            self.model.unmerge_adapter()
+                        with patch_lora_merge(self.model, parameter_group):
+                            self.model.merge_adapter()
+
+                    try:
+                        yield self._collect_state_dict_for_vllm(parameter_group, parameter_group_no_lora)
+                    finally:
+                        if should_merge:
+                            with patch_lora_unmerge(self.model):
+                                self.model.unmerge_adapter()
+
+        state_dicts = iter_state_dicts()
+        if ascend_reload_runner is not None:
+
+            def iter_weights():
+                for state_dict in state_dicts:
+                    yield from state_dict.items()
+
+            weights = iter_weights()
+            try:
+                ascend_reload_runner.reload_weights(weights_iterator=weights, is_checkpoint_format=True)
+            finally:
+                weights.close()
+                state_dicts.close()
+        else:
+            try:
+                for state_dict in state_dicts:
+                    self._load_state_dict_to_vllm(state_dict)
+            finally:
+                state_dicts.close()
 
         # Re-run process_weights_after_loading once after ALL groups loaded
-        if self.vllm_mode == 'colocate':
+        if self.vllm_mode == 'colocate' and ascend_reload_runner is None:
             _model_config = self.engine.engine.model_config
             llm_model = self.engine.inner_model
             finish_vllm_weight_reload(llm_model, model_config=_model_config, target_device=self.accelerator.device)
@@ -1379,7 +1419,7 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             torch.cuda.empty_cache()
             return
 
-        # Default: iterate over parameters
+        # Default: iterate over parameters AND buffers.
         for param in model.parameters():
             # After DeepSpeed distributed loading: param.data is empty and weights cannot be off-loaded.
             # The real weights are stored in ds_tensor.
@@ -1387,6 +1427,9 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
                 param.ds_tensor.data = param.ds_tensor.data.to('cpu', non_blocking=True)
             else:
                 param.data = param.data.to(torch.device('cpu'), non_blocking=True)
+        for buf in model.buffers():
+            if buf is not None and buf.device.type != 'cpu':
+                buf.data = buf.data.to(torch.device('cpu'), non_blocking=True)
         torch.cuda.empty_cache()
 
     @torch.no_grad()
@@ -1398,13 +1441,16 @@ class RolloutTrainerMixin(BaseRolloutTrainerMixin, RLHFTrainerMixin):
             model.to(device)
             return
 
-        # Default: iterate over parameters
+        # Default: iterate over parameters AND buffers
         for param in model.parameters():
             # Reverse logic of off-loading: move weights back to target device
             if is_deepspeed_enabled() and hasattr(param, 'ds_tensor'):
                 param.ds_tensor.data = param.ds_tensor.data.to(device, non_blocking=True)
             else:
                 param.data = param.data.to(device, non_blocking=True)
+        for buf in model.buffers():
+            if buf is not None and buf.device.type == 'cpu':
+                buf.data = buf.data.to(device, non_blocking=True)
 
     @torch.no_grad()
     def offload_optimizer(self):

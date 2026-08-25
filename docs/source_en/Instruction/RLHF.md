@@ -60,7 +60,7 @@ $
 - $m$: Margin term that encourages the model to distinguish between samples of different difficulty levels. The dataset needs to provide a `margin` column for this; by default, it is 0. This term is also introduced in [the paper](https://arxiv.org/pdf/2307.09288).
 
 
-Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/rm.sh).
+Reference the training script [here](https://github.com/modelscope/ms-swift/tree/main/examples/train/rlhf/rm).
 
 ## PPO
 [Paper on arXiv](https://arxiv.org/abs/2203.02155)

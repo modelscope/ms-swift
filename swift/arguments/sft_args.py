@@ -209,7 +209,7 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
         TunerArguments.__post_init__(self)
         self._check_padding_free()
         if self.vit_gradient_checkpointing is None:
-            self.vit_gradient_checkpointing = not self.freeze_vit
+            self.vit_gradient_checkpointing = self.gradient_checkpointing
         if self.optimizer is None:
             if self.lorap_lr_ratio:
                 self.optimizer = 'lorap'
@@ -380,6 +380,9 @@ class SftArguments(SwanlabArguments, TunerArguments, BaseArguments, Seq2SeqTrain
             self.logging_dir = f'{self.output_dir}/runs'
 
         self.logging_dir = to_abspath(self.logging_dir)
+        # transformers>=5.15 dropped `TrainingArguments.logging_dir`; its TensorBoardCallback reads the log
+        # dir from this environment variable instead. Harmless on older versions, which ignore it.
+        os.environ.setdefault('TENSORBOARD_LOGGING_DIR', self.logging_dir)
         os.makedirs(self.output_dir, exist_ok=True)
 
         if self.run_name is None:

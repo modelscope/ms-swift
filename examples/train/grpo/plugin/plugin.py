@@ -1105,9 +1105,6 @@ class ToolCallScheduler(MultiTurnScheduler):
                 else:
                     raise TypeError(f'Unsupported constant type: {type(node.value)}')
 
-            elif isinstance(node, ast.Num):
-                return node.n
-
             elif isinstance(node, ast.BinOp):
                 left = _evaluate_ast_node(node.left)
                 right = _evaluate_ast_node(node.right)

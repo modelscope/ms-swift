@@ -255,7 +255,8 @@ class TransformersEngine(InferEngine):
 
         logits_streamer = None
         if generation_config.output_logits:
-            generate_kwargs['logits_processor'] = LogitsProcessorList([LogitsStreamer()])
+            logits_streamer = LogitsStreamer()
+            generate_kwargs['logits_processor'] = LogitsProcessorList([logits_streamer])
 
         def _model_generate(**kwargs):
             if is_torch_npu_available():
@@ -488,7 +489,7 @@ class TransformersEngine(InferEngine):
             'request_config': request_config,
             'adapter_request': adapter_request,
             'pre_infer_hook': pre_infer_hook
-        }, (queue, asyncio.get_event_loop())))
+        }, (queue, asyncio.get_running_loop())))
         await asyncio.sleep(0)
         if self._task_thread is None:
             self._start_infer_worker()

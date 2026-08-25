@@ -188,7 +188,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
             fi
         fi
         ensure_npu_runtime
-        uv pip install -r requirements/framework.txt -U "transformers<5.0" "peft<0.19" "modelscope==1.37.0"
+        uv pip install -r requirements/framework.txt -U "modelscope"
         ensure_npu_runtime
         uv pip install decord einops -U
         uv pip uninstall autoawq
@@ -199,7 +199,7 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
         uv pip install msgspec -i "$NPU_PIP_INDEX"
         uv pip install zmq -i "$NPU_PIP_INDEX"
         uv pip install .
-        echo "NPU CI skips auto_gptq because it is a CUDA/GPTQ optional dependency."
+        echo "NPU CI skips gptqmodel because it is a CUDA/GPTQ optional dependency."
         uv pip install bitsandbytes deepspeed -U
         if [ -f requirements/npu.txt ]; then
             uv pip install -r requirements/npu.txt
@@ -220,13 +220,16 @@ if [ "$MODELSCOPE_SDK_DEBUG" == "True" ]; then
             fi
         fi
         pip install -r requirements/framework.txt -U -i https://mirrors.aliyun.com/pypi/simple/
+        # The CI image bakes an old wandb whose protobuf codegen does not
+        # survive the protobuf 7.x pulled in above, so `import wandb` dies
+        # with "cannot import name ... from wandb_telemetry_pb2". Refresh it.
+        pip install -U wandb -i https://mirrors.aliyun.com/pypi/simple/
         pip install decord einops -U -i https://mirrors.aliyun.com/pypi/simple/
         pip uninstall autoawq -y
         pip install optimum
         pip install diffusers
-        pip install "transformers<5.0" "peft<0.19"
         pip install .
-        pip install auto_gptq bitsandbytes deepspeed -U -i https://mirrors.aliyun.com/pypi/simple/
+        pip install bitsandbytes deepspeed -i https://mirrors.aliyun.com/pypi/simple/
     fi
 else
     echo "Running case in release image, run case directly!"

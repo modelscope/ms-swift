@@ -108,6 +108,8 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
             no filtering. Defaults to -1.
         top_p (float): If set to a float < 1, only the smallest set of most probable tokens with probabilities that
             add up to top_p or higher are kept for generation. Defaults to 1.0.
+        min_p (float): Minimum token probability, scaled by the probability of the most likely token. Tokens below
+            the resulting threshold are filtered out. 0.0 means no filtering. Defaults to 0.0.
         repetition_penalty (float): The parameter for repetition penalty. 1.0 means no penalty. Defaults to 1.0.
         stop_words (List[str]): A list of strings that will stop the generation when they are generated. Defaults to an
             empty list.
@@ -159,6 +161,7 @@ class RolloutTrainerArgumentsMixin(VllmArguments):
     # generation args
     top_k: int = -1
     top_p: float = 1.0
+    min_p: float = 0.0
     repetition_penalty: float = 1.
     stop_words: List[str] = field(default_factory=list)
 

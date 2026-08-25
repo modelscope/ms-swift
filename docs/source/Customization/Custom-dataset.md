@@ -10,9 +10,9 @@
 
 ms-swift的标准数据集格式可接受的keys包括: 'messages'、'rejected_response'、'label'、'images'、'videos'、'audios'、'tools'和'objects'。其中'messages'是必需的key，'rejected_response'用于DPO等RLHF训练，'label'用于KTO训练和分类模型训练，'images'、'videos'、'audios'用于存储多模态数据的路径或者url，'tools'用于Agent任务，'objects'用于grounding任务。
 
-ms-swift中存在三种核心预处理器：`MessagesPreprocessor`、`AlpacaPreprocessor`、`ResponsePreprocessor`。MessagesPreprocessor用于将类messages和sharegpt格式的数据集转换为标准格式，AlpacaPreprocessor则转换alpaca格式的数据集，ResponsePreprocessor则转换类query/response格式的数据集。`AutoPreprocessor`则自动选择合适的预处理进行处理。
+ms-swift中存在三种核心预处理器：`MessagesPreprocessor`、`AlpacaPreprocessor`、`ResponsePreprocessor`。MessagesPreprocessor用于将类messages和sharegpt格式的数据集转换为标准格式，并自动转换OpenAI的`tool_calls`以及Anthropic的`tool_use`/`tool_result`/`image`内容块；需要显式指定格式时，也可以使用`OpenAIMessagesPreprocessor`和`AnthropicMessagesPreprocessor`。AlpacaPreprocessor则转换alpaca格式的数据集，ResponsePreprocessor则转换类query/response格式的数据集。`AutoPreprocessor`则自动选择合适的预处理进行处理。
 
-以下四种格式在`AutoPreprocessor`处理下都会转换成ms-swift标准格式中的messages字段，即都可以直接使用`--dataset <dataset-path>`接入：
+以下格式在`AutoPreprocessor`处理下都会转换成ms-swift标准格式中的messages字段，即都可以直接使用`--dataset <dataset-path>`接入：
 
 messages格式（标准格式）:
 ```jsonl
@@ -24,6 +24,28 @@ sharegpt格式:
 ```jsonl
 {"system": "<system>", "conversation": [{"human": "<query1>", "assistant": "<response1>"}, {"human": "<query2>", "assistant": "<response2>"}]}
 ```
+
+OpenAI工具调用格式:
+```jsonl
+{"messages": [{"role": "user", "content": "天气如何？"}, {"role": "assistant", "content": null, "tool_calls": [{"type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Beijing\"}"}}]}, {"role": "tool", "content": "晴"}]}
+```
+
+OpenAI Chat Completions多模态工具调用格式:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "比较这两张图片。"}, {"type": "image_url", "image_url": {"url": "data:image/png;base64,{base64_encoded}"}}, {"type": "image_url", "image_url": "https://example.com/input.png"}]}, {"role": "assistant", "content": [{"type": "text", "text": "我来检查。"}], "tool_calls": [{"type": "function", "function": {"name": "inspect_images", "arguments": "{\"detail\":\"high\"}"}}]}]}
+```
+- OpenAI的`image_url`内容块会按原始顺序转换为`<image>`占位符和顶层`images`字段。该示例使用Chat Completions格式；Responses API的`input_text`和`input_image`内容块采用不同的数据结构。
+
+Anthropic工具调用格式:
+```jsonl
+{"messages": [{"role": "assistant", "content": [{"type": "text", "text": "我来查询。"}, {"type": "tool_use", "id": "toolu_01", "name": "get_weather", "input": {"city": "Beijing"}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": "晴"}]}]}
+```
+
+Anthropic多模态工具调用格式:
+```jsonl
+{"messages": [{"role": "user", "content": [{"type": "text", "text": "图片中有什么？"}, {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "{base64_encoded}"}}]}, {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_01", "name": "inspect_image", "input": {}}]}, {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_01", "content": [{"type": "image", "source": {"type": "url", "url": "https://example.com/result.png"}}, {"type": "text", "text": "阳光明媚的海滩。"}]}]}]}
+```
+- Anthropic的base64和URL图片源会按原始顺序转换为`<image>`占位符和顶层`images`字段。
 
 query-response格式:
 ```jsonl

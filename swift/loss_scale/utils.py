@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple
 from swift.template import split_str_parts_by
 
 
-def calculate_loss_scale(query: str,
+def calculate_loss_scale(query: Optional[str],
                          response: str,
                          response_loss_scale_map: Dict[str, list],
                          query_loss_scale_map: Optional[Dict[str, list]] = None) -> Tuple[List[str], List[float]]:
@@ -28,7 +28,7 @@ def calculate_loss_scale(query: str,
         A tuple of agent response parts and their weights.
     """
     # query loss scale map
-    if query_loss_scale_map is not None:
+    if query_loss_scale_map is not None and query is not None:
         for key in query_loss_scale_map.keys():
             if key in query:
                 if isinstance(query_loss_scale_map[key], (float, int)):

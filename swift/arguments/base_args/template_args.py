@@ -64,7 +64,8 @@ class TemplateArguments:
             has no preprocessing overhead, but packing offers faster training speeds and more stable memory usage.
         loss_scale (str): Loss weight configuration for training tokens. Default is `'default'`.
             loss_scale includes 3 basic strategies: 'default', 'last_round', 'all', and other strategies:
-            'ignore_empty_think' and agent-specific ones: 'react', 'hermes', 'qwen', 'agentflan', 'alpha_umi', etc.
+            'ignore_empty_think', 'ignore_think_prefix', and agent-specific ones: 'react', 'hermes', 'qwen',
+            'agentflan', 'alpha_umi', etc.
             For available options, refer to
             [loss_scale module](https://github.com/modelscope/ms-swift/blob/main/swift/loss_scale/mapping.py).
             ms-swift supports mixing basic strategies with other strategies,
@@ -83,7 +84,9 @@ class TemplateArguments:
             means all content after the last "user". (**Default value for RLHF**)
             - 'all': Calculate loss for all tokens. (**Default value for `swift pt`**)
             - 'ignore_empty_think': Ignore loss computation for empty `'<think>\n\n</think>\n\n'`
-            (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
+              (as long as it matches the regex `'<think>\\s*</think>\\s*'`).
+            - 'ignore_think_prefix': Ignore loss computation for `'<think>\n'` at the start of a response
+              (or `'<think>'` when no newline follows). The reasoning content and `'</think>'` remain trainable.
             - 'react', 'hermes', 'qwen': Adjust the loss weight of the `tool_call` part to 2.
         sequence_parallel_size (int): The size of sequence parallelism. Defaults to 1. Currently supported for CPT,
             SFT, DPO, and GRPO.
