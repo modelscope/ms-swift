@@ -60,7 +60,7 @@ class DataArguments:
             sample and continues. Typically used for debugging. Defaults to False.
         remove_unused_columns (bool): Whether to remove columns not used by the model. If `False`, extra columns are
             passed to the trainer's `compute_loss` function, which is useful for custom loss calculations.
-            Defaults to True. Note: The default is `False` for GPRO.
+            Defaults to True. Note: The default is `False` for GRPO.
         disable_auto_column_mapping (bool): By default, column names in the dataset are automatically mapped.
             This parameter disables that behavior (the `columns` parameter remains effective), defaulting to `False`.
         model_name (Optional[List[str]]): For self-cognition tasks, replaces the `{{NAME}}` placeholder in the
