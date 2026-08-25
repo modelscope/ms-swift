@@ -651,9 +651,8 @@ def get_model_processor(
         **kwargs)
     if load_model and _fsdp2_use_meta_loading() and int(os.environ.get('RANK', '0')) != 0:
         from accelerate import init_empty_weights
-        logger.info(
-            'FSDP2 non-rank0: loading the model on the meta device (0 CPU RAM), '
-            'weights will be synced from rank0 by accelerate during prepare.')
+        logger.info('FSDP2 non-rank0: loading the model on the meta device (0 CPU RAM), '
+                    'weights will be synced from rank0 by accelerate during prepare.')
         # Mask ACCELERATE_USE_FSDP during loading: transformers' FSDP non-rank0 branch
         # (modeling_utils._move_missing_keys) would otherwise materialize meta params
         # as CPU zeros (full model in host RAM per rank). device_map was already
