@@ -18,6 +18,7 @@ needed a forced Arrow schema, so it will return, scoped to those columns, when m
 migrated. Text datasets need none of it.
 """
 from __future__ import annotations
+import os
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union
 
@@ -167,10 +168,12 @@ class Preprocessor:
             map_kwargs['batch_size'] = batch_size if batch_size is not None else 1000
             map_kwargs['num_proc'] = num_proc
             map_kwargs['load_from_cache_file'] = load_from_cache_file
+            if not dataset.cache_files:
+                map_kwargs['cache_file_name'] = self.map_cache_path(dataset)
         else:
             map_kwargs['batch_size'] = batch_size if batch_size is not None else 16
 
-        with self.pin_features():
+        with self.pin_features(), self.serialised():
             mapped = dataset.map(
                 self.batched_preprocess,
                 fn_kwargs={'strict': strict},
@@ -248,6 +251,7 @@ class Preprocessor:
                 out = [] if out is None else ([out] if isinstance(out, dict) else out)
                 for standard_row in out:
                     self.check_messages(standard_row)
+                    self.check_objects(standard_row)
                     self.cast_mm_data(standard_row)
                 new_rows += out
             except Exception as e:  # noqa
@@ -268,6 +272,32 @@ class Preprocessor:
         return self.rows_to_batched(new_rows)
 
     # -- helpers ---------------------------------------------------------------------------------
+
+    @staticmethod
+    def serialised(key: str = 'dataset_preprocess'):
+        """Let one rank run the pass and write its cache first, then the rest read it.
+
+        Not ``sticky``: the same key is used once per dataset per run, so each round needs its own
+        ordering rather than being satisfied by a flag an earlier round left set. See
+        :meth:`DatasetLoader.serialised` for why this is not ``safe_ddp_context``.
+        """
+        from twinkle.utils import processing_lock
+        return processing_lock(key)
+
+    @staticmethod
+    def map_cache_path(dataset) -> str:
+        """Where to cache the ``map`` of a dataset that has no cache files of its own.
+
+        A dataset read from the hub keeps its Arrow files on disk, so ``map`` caches its result beside
+        them and a second run reuses it. One built in memory (a ``from_list``, a synthesised split) has
+        nowhere to put that, so its result is written to a temporary file and recomputed on every
+        launch -- expensive for exactly the datasets a user iterates on. Keyed by the fingerprint
+        ``datasets`` already computes, which covers both the rows and the transform.
+        """
+        from modelscope.hub.utils.utils import get_cache_dir
+        directory = os.path.join(get_cache_dir(), 'datasets', 'map_cache')
+        os.makedirs(directory, exist_ok=True)
+        return os.path.join(directory, f'{dataset._fingerprint}.arrow')
 
     @staticmethod
     def resolve_features(dataset):
@@ -327,6 +357,31 @@ class Preprocessor:
                 message.pop(key)
             assert message['role'] in allowed_roles, f'message: {message}'
             assert message['content'] is not None, f'message: {message}'
+
+    @staticmethod
+    def check_objects(row: Dict[str, Any]) -> None:
+        """Validate and normalise the bounding boxes of a grounding row's ``objects``.
+
+        Two ways a box can be wrong that nothing downstream would report. A box of the wrong length:
+        the template walks it as ``zip(bbox[::2], bbox[1::2])``, so a 3-number box yields silently
+        wrong coordinates rather than an error. And a box whose corners arrive swapped (``x1 > x2``),
+        which still looks like a box and normalises into a negative-area region.
+
+        Legacy's ``_check_objects`` did this too, alongside pinning the key order of ``objects`` --
+        which dev has no need for, the column being pinned as ``Json()`` and so tolerating rows whose
+        keys differ in order or in presence.
+        """
+        objects = row.get('objects')
+        if not objects:
+            return
+        for bbox in objects.get('bbox') or []:
+            assert len(bbox) in {2, 4}, f'bbox must hold a point or a box, got len {len(bbox)}: {bbox}'
+            if len(bbox) == 2:
+                continue
+            if bbox[0] > bbox[2]:
+                bbox[0], bbox[2] = bbox[2], bbox[0]
+            if bbox[1] > bbox[3]:
+                bbox[1], bbox[3] = bbox[3], bbox[1]
 
     @staticmethod
     def cast_mm_data(row: Dict[str, Any]) -> None:

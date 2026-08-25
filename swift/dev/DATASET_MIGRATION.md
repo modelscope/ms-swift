@@ -41,17 +41,19 @@ dev 的 `llm.py` 按**声明成本**分三档（另加完全不进 Python 的档
 | 行变换执行 | `preprocessor/` | `RowPreprocessor` | migrated | `Preprocessor` 只管 map 编排 / 校验 / 丢坏行；列改名下沉到 converter 的 aliases。批次 4 补齐：`converter` 惰构属性、`standardise()`（复用 converter 自己的 alias 表让子类能像 legacy 一样读标准列名）、`random_state`（seeded，取代 legacy 的全局 numpy）、`converter_kwargs`、`MessagesRepairPreprocessor`。批次 5 补齐：`prepare_dataset()` 钩子（map 前一次性取媒体归档）、`pin_features()`（scoped 钉 Arrow 列类型，详见批次 5「一处自我纠正」） |
 | 多模态资源下载 | `mm_download/` | `media.py` | migrated | `MediaResource._safe_download` 的三分支 → 三个策略子类 + 注册表工厂。**修非原子下载 bug**：legacy 直接解压进 `final_folder`，中途崩溃留下不全目录，此后永远被当成完整缓存；dev 落 `.tmp` 后原子 `rename` |
 
-## 待建层
+## 待建层 —— 已清零
 
-| 层 | 用途 | 影响的数据集 |
+上一版列的五层，批次 7/8 全部落地：
+
+| 层 | 落地位置 | 批次 |
 |---|---|---|
-| syntax DSL 解析 | `hub::id:sub1/sub2#N` 全语法 | 无（当前支持 `#N` + `subsets` 参数，够用） |
-| cls → 生成式改写 | `ClsGenerationPreprocessor`（把分类标签改写成生成任务的选项文本） | 2 个（jd、clue） |
-| prompt 模板 | `TextGenerationPreprocessor` 的 `{{QUERY}}` 套模板 | 1 个（AdvertiseGen） |
-| 多塔样本构造 | embedding / reranker 的 `positive_messages`/`negative_messages` | 3 个（stsb + MTEB ×2） |
-| self-cognition 注入 | `set_name_author(model_name, model_author)` | 1 个 |
+| syntax DSL 解析 | `loader/base.py:parse_legacy_syntax`（仅向后兼容，非一等语法） | 8 |
+| cls → 生成式改写 | `loader/llm.py:ClsGenerationPreprocessor` | 7 |
+| prompt 模板 | `loader/llm.py:AdvertiseGenPreprocessor` | 7 |
+| 多塔样本构造 | 不需要新层——`MESSAGE_COLUMNS` 早已含 `positive_messages`/`negative_messages` | 7 |
+| self-cognition 注入 | `loader/llm.py:SelfCognitionLoader.build_preprocessor` | 7 |
 
-> 一个修正：上一版把「`ClsPreprocessor`（label→int）」也列为待建层。批次 4 迁 HC3 时实测发现：`label` 只需一个 `int` 穿透，`Preprocessor` 基类已经能做（`hc3_cls` 子集已与 legacy parity），**不需要单独一层**。真正缺的是 `ClsGenerationPreprocessor` 那种把标签重写成选项文本的改写。
+> 一个修正：更早的版本把「`ClsPreprocessor`（label→int）」也列为待建层。批次 4 迁 HC3 时实测发现：`label` 只需一个 `int` 穿透，`Preprocessor` 基类已经能做（`hc3_cls` 子集已与 legacy parity），**不需要单独一层**。真正缺的是 `ClsGenerationPreprocessor` 那种把标签重写成选项文本的改写。
 
 ---
 
@@ -255,7 +257,7 @@ legacy `llm.py` 剩下的全部非阻塞项。自此 **`llm.py` 待迁清零**�
 
 ### 一处已知未对齐（登记，不在本批解决）
 
-legacy 的 `map` 外面还包了 `safe_ddp_context`（rank0 先跑、其余 rank 复用 cache）与显式 `cache_file_name`，dev 都没有。单机不影响正确性，多卡会变成每个 rank 各自编码一遍（浪费，非错误）。
+legacy 的 `map` 外面还包了 `safe_ddp_context`（rank0 先跑、其余 rank 复用 cache）与显式 `cache_file_name`。两者 dev 都已补上（见批次 8），串行化改用 `twinkle.utils.processing_lock`。
 
 ### 两条编码路径的完整链路（与 twinkle 对比）
 
@@ -361,6 +363,103 @@ swift 不留的理由只有两条站得住：① `template_mode` / `task_type` �
 
 ---
 
+## 批次 8：机制收口 —— 条目之外的功能对账
+
+数据集条目在批次 7 已清零，本批次处理的是「机制」：legacy `load_dataset` / `RowPreprocessor` 上那些不属于任何单个数据集、但影响整条管线的能力。
+
+### 落地的（6 项）
+
+| 机制 | dev 位置 | 说明 |
+|---|---|---|
+| 混训编排 5 个参数 | `loader/base.py:load_dataset` | `shuffle` / `interleave_prob` / `stopping_strategy` / `shuffle_buffer_size` / `hub_token`。`interleave_prob` 走 HF 官方 `interleave_datasets`（两种 dataset 类型都支持），`shuffle` 作用于合并后的结果 |
+| 旧 DSL 向后兼容 | `loader/base.py:parse_legacy_syntax` | `hf::org/name:sub1/sub2#500` 拆成 `(dataset, subsets, sample_count, use_hf)`。**不作为 dev 的一等语法**：dev 的正道是传 `subsets=` / `use_hf=` 参数，这个 util 只为让已有脚本继续跑 |
+| streaming 的 train/val 切分 | `loader/base.py:split_streaming` | 此前 dev 对 `IterableDataset` 调 `train_test_split` 会直接崩。现在 `#N` 有界时从头切，无界时只接受 ratio 0/1，其余明确报错 |
+| bbox 校验与归一 | `preprocessor/base.py:check_objects` | 长度必须 2 或 4；角点颠倒（`x1>x2`）自动交换 |
+| 临时缓存目录 | `loader/base.py:use_swift_cache_for_temp_files` | Arrow 临时文件从 `/tmp` 挪到 swift cache。**改了口径**：legacy 是 import 副作用，dev 由 `load_dataset` 显式调用 |
+| map 缓存 | `preprocessor/base.py:map_cache_path` | 无 `cache_files` 的内存数据集（`from_list` 等）按 fingerprint 落盘，避免每次启动重算 |
+
+### 判定为不需要迁的（4 项，均有实测背书）
+
+| 机制 | 实测结论 |
+|---|---|
+| `_cast_pil_image` | 真实 `List(Image(decode=True))` 数据集过两边，输出 feature 与行内类型完全一致，**bytes 逐字节相同（152→152）**——没有发生 PIL 解码-重编码。dev 的 `pin_features` 已达成同一效果。结论绑定 datasets 4.7.0 |
+| `_check_rejected_response` | `template_inputs.py:166-186` 的 `_compat_rejected_response` 已做同样三项：类型必须 str/list、rejected 里禁 `user` 角色、`assert rejected != chosen`。legacy 那份是重复校验 |
+| `__@` iterable 前缀（datasets#6408） | 同一 iterable 数据集：dev 正常产出，**legacy 反而 `IndexError`**。该 workaround 在当前 datasets 上已失效 |
+| `_inject_dataset_routing_tag` | 全仓 grep `['dataset']` 除 legacy 自身只命中 1 处（eval 报告字典，与数据列无关）。channel loss 读的是 `channel` 列。加一个无人消费的常量列只会污染 schema |
+
+`get_dataset_list` 也不做——唯一调用方是 Web UI（`swift/ui/`），已确认废弃重写。
+
+### `_check_objects` 只补了一半
+
+legacy 那个函数干三件事，逐件核实后只有两件需要：
+
+- **钉 `ref/bbox/bbox_type/image_id` 的 key 顺序 → 不需要**。dev 把 `objects` pin 成 `Json()`，实测两半 key 顺序不同、一半多带 `bbox_type`、bbox 一半 int 一半 float，`concatenate_datasets` 仍成功且逐行保真。legacy 需要钉顺序，是因为它只能让 Arrow struct 字段严格对齐
+- `len(bbox) in {2,4}` 校验 → 需要（下游 `normalize_bbox` 用 `zip(bbox[::2], bbox[1::2])`，长度 3 时静默出错）
+- `x1>x2` 交换 → 需要（全仓只有这一处做）
+
+### 顺带修的一处真 bug：`apply_aliases` 会丢列
+
+审计别名机制时发现的，与本批次的机制清单无关但同属 dataset 层。行里同时有 `response` 和 `text`（`text` 是无关的原文留档列）时：
+
+```
+修复前 dev : {'messages': [...]}                      ← text 整列消失
+legacy     : {'text': '原文留档', 'messages': [...]}   ← 保留
+```
+
+原实现在别名撞上已有标准名时 `continue`，把落选列的数据一起扔了，且结果依赖 dict 迭代顺序。改为：**标准名在场则别名保留原名；仅别名之间竞争时按 `aliases` 声明顺序取先**，两条规则都只读输入的键集合，与行的列顺序无关，且不丢数据。
+
+### 本批次的验证
+
+`test_dataset_parity.py` + `test_swift_dataset.py` **52/52 通过**（改动未引入回归）。新机制用本地 jsonl 离线实测：concat 110 行、`interleave` first_exhausted 17 行 / all_exhausted 193 行、`shuffle` 同 seed 可复现、`#20 + ratio 0.25` → 15/5、streaming `#40 + ratio 0.25` → 30/10、streaming + shuffle buffer 正常；bbox `[30,40,10,20]` → `[10,20,30,40]`，长度 3 在 strict 下报错、非 strict 丢行。
+
+> `test_dataset_api.py` 有 45 个失败，全部是 `ModuleNotFoundError: No module named 'swift.dev.configs'`（正确名是 `config`）——该文件的过期引用，与本批次无关，未处理。
+
+### 补审：`BaseDatasetLoader.load` 那一层（首轮机制审计漏掉的）
+
+前面几轮只对了 `load_dataset` 的参数和 `RowPreprocessor` 的行变换，漏了 legacy `loader.py:_load_repo_dataset` / `_load_dataset_path` 这一层。补审后落地：
+
+| 差异 | legacy | dev 落地 |
+|---|---|---|
+| **hub 抽象层** | `get_hub(use_hf).load_dataset` → ModelScope 走 `MsDataset.load`（含 `try_login`、revision `main`↔`master` 归一、`trust_remote_code=True`、日志降噪） | `loader/base.py:load_from_hub` 复用 `swift.hub`（与 dev/model 用 `safe_snapshot_download` 同一口径），含 `_hf_ds` 解包与 streaming 转换 |
+| `#N` 取样口径 | 默认 `shuffle=False` → 取**前 N 行** | `sample_dataset` 加 `shuffle` 参数，默认顺序取前 N |
+| `ms_revision` / `hf_revision` | 按 hub 选用 | 此前是**死声明**（`DatasetInfo(...)` 不传 revision，`info.revision` 恒 None，2 个数据集受影响）。已按 hub 接上 |
+| 本地目录 | `isdir` 分支 + 把 `dataset_infos.json` 改名 | `build_dataset` 目录分支 + `hide_dataset_infos` |
+| csv `na_filter=False` | 传 | 传（否则空字段变 NaN，浮点 NaN 会流到 template） |
+
+> **这一层的实测**：hub 路由用假 hub 打桩验证——`use_hf=False` 命中 MS 分支并带上 `revision`/`token`，`use_hf=True` 命中 HF 分支；LLaVA-Instruct-150K 的 `ms_revision` 现在能取到（`d5db3806...`），HF 侧为 `None`。本地侧：目录 100 行、csv 空字段为 `''` 而非 NaN、`#5` 默认得 `[a0..a4]`（顺序）、`shuffle=True` 得 `[a44,a70,...]`（随机）。
+
+按判定**不做**的三项：多 subset 无 `default` 时 legacy 报错要求指定、dev 静默加载全部（保留 dev 的宽松行为）；本地文件 `cache_dir` 不指向 swift cache；不存在的绝对路径的报错措辞。
+
+仍未迁：**下载重试 `retry=3`**。
+
+### 批次 8 补：多卡串行化改用 `twinkle.utils.processing_lock`
+
+legacy 在 dataset 里用 `safe_ddp_context` 共 6 处（`media.py:52`、`loader.py:56/86/95`、`preprocessor/core.py:334/352`、`dataset_meta.py:114/166`）。dev 全部接上，但用的不是 `swift.utils.safe_ddp_context` 而是 `twinkle.utils.processing_lock`：
+
+| | `safe_ddp_context` | `processing_lock` |
+|---|---|---|
+| 排序机制 | `dist.barrier()` | 自带 TCPStore（global master → node masters → 其余），无 store 时退化 FileLock |
+| 长耗时 | 数据集预处理落到 **NCCL collective watchdog 超时**之下 | 不经 NCCL，不受 watchdog 约束 |
+| writer 崩溃 | 等待方死等 | flag 置 `0`，等待方收到 `LockPeerError` |
+| 非对称进入 | barrier 数量不匹配 → 挂死 | `sticky=True` 时安全 |
+
+选它还因为依赖方向已成立：`swift/dev` 非测试代码已 import twinkle 37 处（`processor/base.py:4` 是顶层 import），且 twinkle 自己的 dataset 层就是这么用的（`twinkle/dataset/base.py:154/169/201`）。
+
+接入的 4 处：
+
+| 位置 | key | sticky | 理由 |
+|---|---|---|---|
+| `loader/base.py:build_dataset` | `{dataset}/{subset}/{split}` | 是 | 内容寻址、幂等，晚到的 rank 直接读缓存 |
+| `preprocessor/base.py:__call__`（map） | `dataset_preprocess` | 否 | 同一 key 每轮重复使用，需要各轮独立排序 |
+| `loader/base.py` 的 `shuffle` / `train_test_split` | `dataset_shuffle` / `dataset_split` | 否 | 两者都会写 indices 缓存文件 |
+| `mm_download/base.py:run` | `lock_key` | 是 | **顺带修一个隐患**：`run` 的早退快路径在锁外，各 rank 非对称进入，原先的 barrier 语义会挂死 |
+
+> **实测**：两进程并发同一 key，非 sticky 下 body 都执行且执行区间不重叠（overlap = −0.02s）；只有一个进程进入 sticky 锁时，另一个不挂死。52/52 回归通过。
+
+> ⚠️ **环境提示**：本机 `import twinkle` 解析到的是 `/mnt/workspace/yzhao/tastelikefeet/twinkle`（169 行，只有 FileLock，`processing_lock` 无 `sticky` 参数），不是仓库内的 `twinkle/src`（303 行，含 TCPStore 排序与 `sticky`）。代码按仓库内这份写，验证时用 `PYTHONPATH=twinkle/src:.`。装的那份需要更新，否则 `TypeError: processing_lock() got an unexpected keyword argument 'sticky'`。这里**没有加兼容降级**——把 `sticky` 静默降级会让媒体下载那处重新具备挂死条件，宁可报错。
+
+---
+
 # 三、全量对账（ground truth，按注册表差集自动统计）
 
 > 数据来源：`swift.dataset.register.DATASET_MAPPING`（legacy，导入 llm+mllm 后）vs `swift.dev.dataset.DATASET_MAPPING`（dev）。以 ModelScope id 为对账主键。
@@ -425,7 +524,7 @@ dev 专有名 = 0，与模型侧不同——数据集没有「按模板拆分」
 
 # 四、机制完整性审计
 
-> 批次 5 完成后做的系统对账，批次 6/7 后已按落地情况更新。问的是：不看数据集条目覆盖率（现为 100%），只看**「从 hub 拉数据 → 训练能跑」整条管线的功能模块**，dev 到底缺了什么。
+> 批次 5 完成后做的系统对账，批次 6/7/8 后已按落地情况更新。问的是：不看数据集条目覆盖率（现为 100%），只看**「从 hub 拉数据 → 训练能跑」整条管线的功能模块**，dev 到底缺了什么。
 
 ## 已迁完的机制
 
@@ -447,72 +546,82 @@ dev 专有名 = 0，与模型侧不同——数据集没有「按模板拆分」
 | `columns` 别名 | `FormatConverter.aliases` + `MEDIA_ALIASES` | 两级声明 |
 | `PackingDataset` / `IterablePackingDataset` | `packing.py` | 批次 6 加的，parity 15/15 |
 | `LazyLLMDataset` | `lazy_dataset.py` | 同 |
-| `EncodePreprocessor` / `AddLengthPreprocessor` | `encode_preprocessor.py` / `add_length_preprocessor.py` | 同 |
+| `EncodePreprocessor` / `AddLengthPreprocessor` | `preprocessor/encode.py` / `preprocessor/measure.py` | 后者更名为 `MeasurePreprocessor` |
 | `MaxLengthError` 静默丢弃 | `preprocessor/base.py:batched_preprocess` | 批次 6 对齐，parity 4/4 |
+| `shuffle` / `shuffle_buffer_size` | `loader/base.py:shuffle_dataset` | 批次 8；materialised 全局打乱 / stream 走 buffer |
+| `interleave_prob` / `stopping_strategy` | `loader/base.py:load_dataset` | 批次 8；调 HF `interleave_datasets` |
+| `hub_token` | `loader/base.py:load_dataset` → `load()` | 批次 8；仅在有值时下传，不覆盖已缓存凭据 |
+| `DatasetSyntax` 完整 DSL | `loader/base.py:parse_legacy_syntax` | 批次 8；仅作向后兼容 util，非一等语法 |
+| streaming 的 train/val 切分 | `loader/base.py:split_streaming` | 批次 8；此前对 `IterableDataset` 会崩 |
+| `_check_objects` 的 bbox 校验 | `preprocessor/base.py:check_objects` | 批次 8；key 顺序那半不需要（见批次 8） |
+| `get_temporary_cache_files_directory` | `loader/base.py:use_swift_cache_for_temp_files` | 批次 8；改为显式调用而非 import 副作用 |
+| `cache_file_name`（map 缓存） | `preprocessor/base.py:map_cache_path` | 批次 8；仅对无 `cache_files` 的内存数据集 |
+| hub 抽象层（`get_hub` 分派） | `loader/base.py:load_from_hub` | 批次 8；复用 `swift.hub`，ModelScope 走 `MsDataset` |
+| `ms_revision` / `hf_revision` | `loader/base.py:load_dataset` → `DatasetInfo.revision` | 批次 8；此前是死声明 |
+| 本地目录加载 + `dataset_infos.json` 改名 | `build_dataset` / `hide_dataset_infos` | 批次 8 |
+| csv `na_filter=False` | `build_dataset` | 批次 8 |
+| `#N` 顺序取样（`shuffle=False`） | `loader/base.py:sample_dataset` | 批次 8；默认取前 N，与 legacy 默认一致 |
 
-## 确认不需要迁的（dead code / 被设计替代）
+## 确认不需要迁的（dead code / 被设计替代 / 已有等价物）
 
 | legacy 机制 | 理由 |
 |---|---|
 | `indexed_dataset.py`（132 行） | 零引用，confirmed dead code |
-| `__@` streaming 前缀 | dev 的 `remove_columns=self._feature_columns` 用**输入列**，不与 standard_keys 碰撞 |
+| `__@` streaming 前缀 | dev 的 `remove_columns=self._feature_columns` 用**输入列**，不与 standard_keys 碰撞。批次 8 实测：dev iterable 正常，legacy 反而 `IndexError` |
 | `__#solution` rename hack | dev 不做 map 前全表 rename，solution 列作为透传列直接保留 |
 | `origin_columns`（高优先级列重复保护） | dev 的 aliases 合并策略（caller wins）天然做到 |
 | `remove_useless_columns`（丢掉非标准列） | dev 有意保留非标准列（对齐 legacy 实测行为：`label`/`junk` 等列不丢） |
 | `safe_rename_columns`（case-insensitive, 去重） | dev 的 aliases 在 converter 层做，无需独立机制 |
-| `disable_auto_column_mapping` | dev 的 auto-mapping 由格式探测替代，没有「一边 auto 一边想关」的局面 |
+| `disable_auto_column_mapping` | dev 的别名可按列 opt-out（`columns={'text':'text'}`）或整格式钉死（`format_name=`），不需要一刀切开关。legacy 需要它，是因为别名表和用户 `columns` 混在同一 dict，冲突时静默放弃双方 |
+| `_cast_pil_image` | 批次 8 实测：两边输出 bytes 逐字节相同，`pin_features` 已达成同一效果（绑定 datasets 4.7.0） |
+| `_check_rejected_response` | `template_inputs.py:166-186` 已做同样三项校验，legacy 那份是重复 |
+| `_inject_dataset_routing_tag` | 全仓零消费者；channel loss 读的是 `channel` 列 |
+| `get_dataset_list` | 唯一调用方 Web UI 已废弃重写 |
+| `download_ms_dataset`（`dataset_meta.py:66`） | 零消费者，dead code |
+| 多 subset 无 `default` 时报错 | legacy 要求用户显式指定，dev 默认加载全部非 weak subset。有意保留 dev 的宽松口径 |
+| 本地文件 `cache_dir` 指向 swift cache | 用 datasets 默认位置即可 |
 
 ## 尚未迁的机制
 
-按离训练的距离分组。
+按离训练的距离分组。批次 6/7/8 之后，这份清单只剩一项。
 
 ### A. 训练硬前提（数据 → DataLoader 的必经路径）—— **已迁（批次 6）**
 
-五个组件（`PackingDataset` / `IterablePackingDataset` / `LazyLLMDataset` / `EncodePreprocessor` / `AddLengthPreprocessor`）已全部落地，与 legacy 逐项 parity 15/15；顺带对齐了 `MaxLengthError` 的静默丢弃语义（4/4）。详见上方「批次 6」。仅 `safe_ddp_context` + `cache_file_name`（多卡 cache 复用，属浪费而非错误）未迁。
+五个组件（`PackingDataset` / `IterablePackingDataset` / `LazyLLMDataset` / `EncodePreprocessor` / `AddLengthPreprocessor`）已全部落地，与 legacy 逐项 parity 15/15；顺带对齐了 `MaxLengthError` 的静默丢弃语义（4/4）。详见上方「批次 6」。
 
-### B. 多数据集混训编排
+### B. 多数据集混训编排 —— **已迁（批次 8）**
 
-| 缺失机制 | legacy 位置 | 什么 |
-|---|---|---|
-| `shuffle` | `load_dataset` 参数 | concat 后打乱 |
-| `shuffle_buffer_size` | 同 | streaming 模式下的 buffer 大小 |
-| `stopping_strategy` | 同 | `first_exhausted` / `all_exhausted` |
-| `interleave_prob` | 同 | 各数据集的采样权重 |
-| `hub_token` | 同 | 私有 hub 鉴权 |
+`shuffle` / `shuffle_buffer_size` / `stopping_strategy` / `interleave_prob` / `hub_token` 五个参数已在 `load_dataset` 上，`interleave_prob` 走 HF 官方 `interleave_datasets`。详见上方「批次 8」。
 
-> dev 的 `load_dataset` 只有最简的 `concatenate_datasets`；混训编排没有独立实现。
+### C. 三个阻塞层 —— **已迁（批次 7）**
 
-### C. 三个阻塞层（7 个数据集卡在这里）
+`GroundingMixin` / `ClsGenerationPreprocessor` / `TextGenerationPreprocessor` / self-cognition 注入全部落地，曾卡住的 7 个数据集已随批次 7 清零。回头看，这 7 项「阻塞」里只有 2 项真需要动基础设施（self-cognition 的 loader seam、MovieChat 的多文件下载模式）。
 
-| 缺失机制 | legacy 位置 | 阻塞的数据集 |
-|---|---|---|
-| **GroundingMixin** | `extra.py:8` | refcoco、refcocog、Grit |
-| **ClsGenerationPreprocessor** | `extra.py:72` | jd、clue |
-| **TextGenerationPreprocessor** | `extra.py:55` | AdvertiseGen |
-| **self-cognition 注入** | `load_dataset` + `loader.py` | swift/self-cognition |
+### D. 保护机制 —— **已迁 / 已判定不需要（批次 8）**
 
-### D. 保护机制
+| 机制 | 结论 |
+|---|---|
+| `_check_objects` | bbox 校验已迁；key 顺序那半被 `Json()` 取代 |
+| `_cast_pil_image` | 实测无差异，不迁 |
+| `_check_rejected_response` | template 已做，不迁 |
+| `cache_file_name` | 已迁（`map_cache_path`） |
+| **`safe_ddp_context`** | 已迁，但换了实现：4 处接 `twinkle.utils.processing_lock`（不走 NCCL barrier，见批次 8 补节） |
 
-| 缺失机制 | legacy 位置 | 作用 |
-|---|---|---|
-| `_cast_pil_image` | `core.py` | `Image(decode=True)` 降为 `Image(decode=False)`，阻止 map 内 PIL decode——大图数据集不做会 OOM |
-| `_check_objects` | `core.py:146` | 归一化 bbox（确保 x1<x2, y1<y2）+ 检查长度 2 or 4 |
-| `_check_rejected_response` | `core.py` | 断言 rejected ≠ None 且 ≠ chosen（否则 DPO loss 全 0） |
-| `safe_ddp_context` + `cache_file_name` | `core.py:352` | 多卡下 rank0 先跑 map、其余 rank 复用 cache；不做则每个 rank 各自编码一遍（浪费，非错误） |
+### E. 环境与 CLI —— **已迁 / 已废弃（批次 8）**
 
-### E. 环境与 CLI
-
-| 缺失机制 | legacy 位置 | 作用 |
-|---|---|---|
-| `get_temporary_cache_files_directory` monkey patch | `__init__.py` + `utils.py:136` | 把 HF datasets 临时 cache 重定向到 swift cache，避免 /tmp 爆 |
-| `DatasetSyntax` 完整 DSL | `dataset_syntax.py`（127 行） | 命令行 `hub::id:sub1/sub2#N` 语法 |
-| `get_dataset_list` | `register.py` | `swift list-dataset` / UI |
+| 机制 | 结论 |
+|---|---|
+| `get_temporary_cache_files_directory` | 已迁，改为显式调用 |
+| `DatasetSyntax` 完整 DSL | 已迁为向后兼容 util（`parse_legacy_syntax`） |
+| `get_dataset_list` | 不做，Web UI 废弃重写 |
 
 ## 结论
 
-dev 完成的是：**「从 hub 拉数据 → 标准 messages 行 → input_ids → DataLoader」这条完整管线**。名称解析、格式探测、列别名、行变换、多模态下载、Arrow 类型钉住、template 编码、packing、延迟加载——全部到位。
+dev 完成的是：**「从 hub 拉数据 → 标准 messages 行 → input_ids → DataLoader」整条管线，加上混训编排与保护机制**。名称解析、格式探测、列别名、行变换、多模态下载、Arrow 类型钉住、template 编码、packing、延迟加载、shuffle/interleave、bbox 校验、缓存目录——全部到位。
 
-未完成的剩下四类：**混训编排**（shuffle / interleave_prob / stopping_strategy）、**三个阻塞层**（grounding / cls→生成 / prompt 模板 / self-cognition）、**三个保护机制**（`_cast_pil_image` / `_check_objects` / `_check_rejected_response`，另加多卡 cache 复用）、**环境 CLI**。
+机制层只剩**下载重试 `retry=3`**（抗网络抖动，不是正确性问题）。多卡串行化已全部接上，用的是 `twinkle.utils.processing_lock` 而非 `safe_ddp_context`。
+
+**真正剩下的不是「缺机制」，而是「未接线」**：`swift/dev/builders/dataset.py`、`recipe/cached_dataset.py`、`recipe/quantize.py` 仍 `from swift.dataset import load_dataset`，dev/dataset 目前只有测试在调用。接线本身卡在 template（`EncodePreprocessor` 需要 template，即阶段 2 下半的阻塞）。
 
 ---
 

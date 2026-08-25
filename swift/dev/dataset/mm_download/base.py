@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Type, Union
 
 from modelscope.hub.utils.utils import get_cache_dir
 
-from swift.utils import get_logger, safe_ddp_context
+from swift.utils import get_logger
 
 logger = get_logger()
 
@@ -90,7 +90,7 @@ class MediaDownloader:
         if os.path.exists(final_folder):
             return final_folder
 
-        with safe_ddp_context(hash_id=lock_key):
+        with self.serialised(lock_key):
             # Re-check under the lock: another rank/process may have finished it while we waited.
             if os.path.exists(final_folder):
                 return final_folder
@@ -107,6 +107,19 @@ class MediaDownloader:
             # half-written `final_folder` that the fast path would trust.
             os.rename(tmp_folder, final_folder)
         return final_folder
+
+    @staticmethod
+    def serialised(key: str):
+        """Let one rank download while the rest wait, then find the folder already there.
+
+        ``sticky``, and that matters here beyond avoiding a redundant wait: the fast path above returns
+        before this is ever entered, so ranks reach it asymmetrically. A round-based barrier -- which is
+        what ``safe_ddp_context`` did here -- deadlocks on that, one rank waiting on peers that already
+        went home. A sticky flag names the downloaded folder instead, so a rank that skipped the work
+        owes nothing to anyone.
+        """
+        from twinkle.utils import processing_lock
+        return processing_lock(key, sticky=True)
 
     def resolve(self, media_type_or_url: Union[str, List[str]],
                 local_alias: Optional[str]) -> tuple:

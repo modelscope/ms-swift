@@ -286,6 +286,10 @@ class DatasetLoader:
     # Too large to materialise: consumers should default to streaming rather than a full local copy.
     huge_dataset: bool = False
 
+    # Temporary directories handed to `datasets`, one per prefix, kept alive for the process. See
+    # :meth:`use_swift_cache_for_temp_files`.
+    _temp_dirs: Dict[str, Any] = {}
+
     def __init__(self, dataset_info: DatasetInfo, **kwargs):
         # `dataset_info` describes one concrete load request, so it arrives per instance rather than
         # being a per-family constant.
@@ -418,17 +422,91 @@ class DatasetLoader:
     def build_dataset(self, subset: SubsetMeta, split: str, **kwargs) -> DATASET_TYPE:
         """Fetch one (subset, split) as rows, before any preprocessing.
 
-        Dispatches on :attr:`DatasetInfo.source`: a local file is loaded by its extension, everything
-        else goes to the hub. A family that has to reach past this -- a manual file download, an
-        archive to unpack -- overrides this hook.
+        Dispatches on :attr:`DatasetInfo.source`: a local file is read by its extension, a local
+        directory and any hub id go through the hub. A family that has to reach past this -- a manual
+        file download, an archive to unpack -- overrides this hook, and should keep the lock.
+
+        The fetch is serialised across ranks: one downloads and writes the cache while the others wait,
+        then read it. ``sticky`` because the key names the *result* -- this (dataset, subset, split) --
+        and fetching is idempotent, so a rank arriving after the work is done proceeds rather than
+        waiting for a fresh round.
         """
         info = self._dataset_info
-        if info.source == 'path':
-            extension = os.path.splitext(info.dataset)[1].lstrip('.') or 'json'
-            extension = {'jsonl': 'json', 'txt': 'text'}.get(extension, extension)
-            return hf_load_dataset(extension, data_files=info.dataset, split=split, **kwargs)
-        dataset_id = self.resolve_id(use_hf=info.source == 'hf') or info.dataset
-        return hf_load_dataset(dataset_id, subset.subset, split=split, revision=info.revision, **kwargs)
+        with self.serialised(f'{info.dataset}/{subset.subset}/{split}', sticky=True):
+            if info.source == 'path' and not os.path.isdir(info.dataset):
+                extension = os.path.splitext(info.dataset)[1].lstrip('.') or 'json'
+                extension = {'jsonl': 'json', 'txt': 'text'}.get(extension, extension)
+                if extension == 'csv':
+                    # Without this, pandas reads an empty cell as NaN, and a float NaN reaches the
+                    # template where a string was meant. An empty field means an empty string.
+                    kwargs['na_filter'] = False
+                return hf_load_dataset(extension, data_files=info.dataset, split=split, **kwargs)
+            if info.source == 'path':
+                # A downloaded snapshot directory. `datasets` reads a folder as a dataset by itself, so
+                # this goes through the HF loader whichever hub the copy came from.
+                self.hide_dataset_infos(info.dataset)
+                return self.load_from_hub(info.dataset, subset.subset, split, use_hf=True, **kwargs)
+            use_hf = info.source == 'hf'
+            dataset_id = self.resolve_id(use_hf=use_hf) or info.dataset
+            return self.load_from_hub(
+                dataset_id, subset.subset, split, use_hf=use_hf, revision=info.revision, **kwargs)
+
+    @staticmethod
+    def serialised(key: str, sticky: bool = False):
+        """Let one rank do the work on ``key`` first, then the rest -- every rank still runs the body.
+
+        Wraps ``twinkle.utils.processing_lock``, which orders ranks through its own coordination store
+        (global master, then node masters, then everyone else) and falls back to a file lock when there
+        is no store. Deliberately not ``swift.utils.safe_ddp_context``: that orders ranks with
+        ``dist.barrier()``, which puts a dataset pass -- minutes to hours on a large corpus -- under the
+        collective watchdog timeout, and leaves the waiters hanging if the writing rank dies.
+
+        Args:
+            key: Names the resource being written.
+            sticky: The key names a *result* rather than a round, so a late rank proceeds instead of
+                waiting for a fresh flag. For idempotent, content-addressed work such as a download;
+                leave it off for work that repeats under the same key, such as preprocessing.
+        """
+        from twinkle.utils import processing_lock
+        return processing_lock(key, sticky=sticky)
+
+    @staticmethod
+    def load_from_hub(dataset_id: str, subset: str, split: str, *, use_hf: bool, **kwargs) -> DATASET_TYPE:
+        """Load from whichever hub ``use_hf`` selects, through swift's hub layer.
+
+        Not a bare ``datasets.load_dataset``: that reaches HuggingFace only, while a ModelScope id has
+        to go through ``MsDataset`` -- which is also where login, the differing revision names
+        (``master`` on ModelScope, ``main`` on HuggingFace) and ``trust_remote_code`` are handled.
+        ``swift.hub`` already owns those differences, so this only unwraps the result.
+        """
+        from swift.hub import get_hub
+        hub = get_hub(use_hf)
+        # Both hubs accept the union of these and ignore what they have no use for (`token` on the HF
+        # side, `num_proc` on the ModelScope side), so one call site serves both.
+        dataset = hub.load_dataset(dataset_id, subset, split, **kwargs)
+        # `MsDataset` returns a wrapper around the real thing; a streaming request answered with a
+        # materialised dataset is converted rather than silently changing kind under the caller.
+        if hasattr(dataset, '_hf_ds'):
+            dataset = dataset._hf_ds
+            if kwargs.get('streaming') and isinstance(dataset, HfDataset):
+                dataset = dataset.to_iterable_dataset()
+        return dataset
+
+    @staticmethod
+    def hide_dataset_infos(directory: str) -> None:
+        """Move a snapshot's ``dataset_infos.json`` aside so ``datasets`` does not read it.
+
+        A dataset downloaded from ModelScope carries this extra file; ``datasets`` treats it as
+        authoritative metadata for the folder and can then disagree with the actual data files.
+        """
+        path = os.path.join(directory, 'dataset_infos.json')
+        if not os.path.isfile(path):
+            return
+        try:
+            os.rename(path, f'{path}_bak')
+        except OSError:
+            # Another process renamed it first, which is the outcome wanted either way.
+            pass
 
     # -- orchestration ---------------------------------------------------------------------------
 
@@ -441,6 +519,9 @@ class DatasetLoader:
         """
         info = self._dataset_info
         kwargs = self._kwargs
+        # A token is only sent when there is one: passing `token=None` explicitly would override the
+        # credentials the hub client has already cached for the user.
+        hub_kwargs = {'token': kwargs['hub_token']} if kwargs.get('hub_token') else {}
         parts: List[DATASET_TYPE] = []
         for subset in self.resolve_subsets(info.subsets):
             preprocessor = self.build_preprocessor(subset)
@@ -450,7 +531,8 @@ class DatasetLoader:
                     split,
                     num_proc=kwargs.get('num_proc', 1),
                     streaming=kwargs.get('streaming', False),
-                    download_mode=kwargs.get('download_mode', 'reuse_dataset_if_exists'))
+                    download_mode=kwargs.get('download_mode', 'reuse_dataset_if_exists'),
+                    **hub_kwargs)
                 processed = preprocessor(
                     raw,
                     num_proc=kwargs.get('num_proc', 1),
@@ -463,21 +545,32 @@ class DatasetLoader:
                      dataset: Optional[DATASET_TYPE],
                      *,
                      split_dataset_ratio: float = 0.,
+                     shuffle: bool = False,
                      seed: Optional[int] = 42) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
         """Apply the ``#N`` row budget, then carve off a validation split. Returns ``(train, val)``.
 
         Sampling comes before the split so the ratio applies to the sampled size, matching legacy and
         matching the intent of ``dataset#1000`` -- take 1000 rows, *then* hold out a fraction.
+
+        ``shuffle`` decides both which rows a ``#N`` budget keeps and whether the validation rows are
+        drawn from across the dataset or taken as the contiguous tail. Off by default: ``dataset#500``
+        then means the first 500 rows, which is reproducible and matches legacy's default.
         """
         if dataset is None:
             return None, None
-        info = self._dataset_info
-        if info.sample_count is not None:
-            dataset = self.sample_dataset(dataset, info.sample_count, seed)
-        if split_dataset_ratio > 0:
-            split = dataset.train_test_split(test_size=split_dataset_ratio, seed=seed)
-            return split['train'], split['test']
-        return dataset, None
+        sample_count = self._dataset_info.sample_count
+        if isinstance(dataset, HfIterableDataset):
+            return self.split_streaming(dataset, sample_count, split_dataset_ratio)
+        if sample_count is not None:
+            dataset = self.sample_dataset(dataset, sample_count, shuffle, seed)
+        if split_dataset_ratio <= 0:
+            return dataset, None
+        if split_dataset_ratio >= 1:
+            return None, dataset
+        # Writes an indices cache of its own, so it is ordered like every other write.
+        with self.serialised('dataset_split'):
+            split = dataset.train_test_split(test_size=split_dataset_ratio, shuffle=shuffle, seed=seed)
+        return split['train'], split['test']
 
     # -- helpers ---------------------------------------------------------------------------------
 
@@ -530,20 +623,31 @@ class DatasetLoader:
         return interleave_datasets(datasets, **kwargs)
 
     @staticmethod
-    def sample_dataset(dataset: DATASET_TYPE, sample_count: int, seed: Optional[int] = None) -> DATASET_TYPE:
+    def sample_dataset(dataset: DATASET_TYPE,
+                       sample_count: int,
+                       shuffle: bool = False,
+                       seed: Optional[int] = None) -> DATASET_TYPE:
         """Take ``sample_count`` rows, oversampling with whole repeats when it exceeds the length.
 
         A request larger than the dataset is not an error: the surplus is made of full copies plus a
-        random remainder, so ``dataset#Ntimeslength`` repeats every row evenly.
+        remainder, so ``dataset#Ntimeslength`` repeats every row evenly.
+
+        ``shuffle`` governs only which rows the remainder is: off, it is the first rows of the dataset,
+        so ``dataset#500`` means "the first 500" and is reproducible without a seed; on, it is a random
+        draw. The whole-copy part is never shuffled either way -- it holds every row regardless, and
+        the training sampler will shuffle epochs anyway.
         """
         length = len(dataset)
         if sample_count is None or length == 0:
             return dataset
-        random_state = np.random.RandomState(seed)
         indices = np.tile(np.arange(length), sample_count // length)
         remainder = sample_count % length
         if remainder > 0:
-            indices = np.concatenate([indices, random_state.permutation(length)[:remainder]])
+            if shuffle:
+                drawn = np.random.RandomState(seed).permutation(length)[:remainder]
+            else:
+                drawn = np.arange(remainder)
+            indices = np.concatenate([indices, drawn])
         return dataset.select(indices)
 
     @staticmethod
@@ -553,6 +657,111 @@ class DatasetLoader:
         if sep and count.isdigit():
             return name, int(count)
         return dataset, None
+
+    @staticmethod
+    def parse_legacy_syntax(entry: str) -> Tuple[str, List[str], Optional[int], Optional[bool]]:
+        """Pull legacy's one-string dataset DSL apart into the plain fields dev takes.
+
+        Legacy packed four things into a single command-line token: ``hf::org/name:sub1/sub2#500`` is
+        hub ``hf``, id ``org/name``, subsets ``sub1`` and ``sub2``, and a 500-row budget. Dev's own
+        interface takes those as ordinary arguments -- ``subsets=['sub1', 'sub2']``, ``use_hf=True`` --
+        which is the form worth writing; this exists so the strings already in scripts and docs keep
+        working, and nothing else in dev needs to know the syntax.
+
+        Returns ``(dataset, subsets, sample_count, use_hf)``, where ``use_hf`` is ``None`` when the
+        string pins no hub and ``subsets`` is empty when it names none.
+
+        An existing path is returned untouched: a Windows drive letter and an ordinary filename can
+        both contain the characters this splits on, so a path is never parsed. The check is repeated
+        after the row budget comes off, since a path may be what is left.
+        """
+        if os.path.exists(entry):
+            return entry, [], None, None
+
+        use_hf: Optional[bool] = None
+        hub, sep, rest = entry.partition('::')
+        if sep:
+            use_hf = {'hf': True, 'ms': False}.get(hub.lower())
+            if use_hf is not None:
+                entry = rest
+
+        entry, sample_count = DatasetLoader.split_sample_count(entry)
+        if os.path.exists(entry):
+            return entry, [], sample_count, use_hf
+
+        entry, sep, subsets = entry.partition(':')
+        return entry, subsets.split('/') if sep and subsets else [], sample_count, use_hf
+
+    @staticmethod
+    def shuffle_dataset(dataset: DATASET_TYPE, seed: Optional[int] = None, buffer_size: int = 1000) -> DATASET_TYPE:
+        """Shuffle either kind of dataset: a materialised one globally, a stream through a buffer.
+
+        A stream cannot be permuted, only reordered within a window, so ``buffer_size`` is the whole
+        extent of the shuffle there and does nothing for a materialised dataset.
+        """
+        if isinstance(dataset, HfIterableDataset):
+            return dataset.shuffle(seed=seed, buffer_size=buffer_size)
+        # A permutation of a materialised dataset is written as an indices cache file.
+        with DatasetLoader.serialised('dataset_shuffle'):
+            return dataset.shuffle(seed=seed)
+
+    @staticmethod
+    def split_streaming(dataset: DATASET_TYPE, sample_count: Optional[int],
+                        split_dataset_ratio: float) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
+        """``(train, val)`` for a stream, where a split can only be taken off the front.
+
+        A stream has no length, so a *fraction* of it only means something once a row budget bounds it:
+        given ``#N``, the first ``N * ratio`` rows become the validation set and the remainder the
+        training set. Without a budget only the degenerate ratios have an answer -- 0, no validation
+        set, and 1, the whole stream is one.
+        """
+        if sample_count is None:
+            if split_dataset_ratio <= 0:
+                return dataset, None
+            if split_dataset_ratio >= 1:
+                return None, dataset
+            raise ValueError('A streaming dataset can only be split into train/val when a `#N` row '
+                             'budget bounds it, e.g. `my-dataset#10000`.')
+        dataset = dataset.take(sample_count)
+        val_count = int(sample_count * split_dataset_ratio)
+        if val_count == 0:
+            return dataset, None
+        return dataset.skip(val_count), dataset.take(val_count)
+
+    @classmethod
+    def use_swift_cache_for_temp_files(cls) -> None:
+        """Point ``datasets``' temporary Arrow files at swift's cache directory.
+
+        A dataset held in memory -- a fresh ``map`` result, a synthesised split -- writes its Arrow
+        file to a temporary directory, which defaults to ``/tmp``: routinely a small tmpfs in a
+        container, where a real dataset fills it and the run dies far from the cause.
+
+        Legacy did the same, but as a side effect of importing its package, so merely importing the
+        dataset code changed ``datasets``' global behaviour for the process. Here the caller that is
+        about to create those files asks for it.
+        """
+        import tempfile
+
+        import datasets.arrow_dataset
+        import datasets.config
+        import datasets.fingerprint
+        from modelscope.hub.utils.utils import get_cache_dir
+
+        def temporary_cache_files_directory(prefix: Optional[str] = None) -> str:
+            prefix = prefix or datasets.config.TEMP_CACHE_DIR_PREFIX
+            if prefix not in cls._temp_dirs:
+                root = os.path.join(get_cache_dir(), 'tmp')
+                os.makedirs(root, exist_ok=True)
+                # Held in a class-level pool rather than used as a context manager: callers treat the
+                # path as valid for the rest of the process, so the directory has to outlive this call
+                # and is cleaned up when the interpreter drops the object at exit.
+                cls._temp_dirs[prefix] = tempfile.TemporaryDirectory(
+                    prefix=prefix, dir=root, ignore_cleanup_errors=True)
+                logger.info(f'Created dataset tmp_dir: {cls._temp_dirs[prefix].name}')
+            return cls._temp_dirs[prefix].name
+
+        datasets.fingerprint.get_temporary_cache_files_directory = temporary_cache_files_directory
+        datasets.arrow_dataset.get_temporary_cache_files_directory = temporary_cache_files_directory
 
     @staticmethod
     def detect_source(dataset: str, use_hf: bool) -> str:
@@ -567,41 +776,62 @@ def load_dataset(
     seed: Optional[int] = 42,
     num_proc: int = 1,
     load_from_cache_file: bool = True,
+    shuffle: bool = False,
+    streaming: bool = False,
+    interleave_prob: Optional[List[float]] = None,
+    stopping_strategy: str = 'first_exhausted',
+    shuffle_buffer_size: int = 1000,
     use_hf: Optional[bool] = None,
+    hub_token: Optional[str] = None,
     strict: bool = False,
     download_mode: str = 'reuse_dataset_if_exists',
     columns: Optional[Dict[str, str]] = None,
-    streaming: bool = False,
     subsets: Optional[Sequence[str]] = None,
     model_name: Optional[Union[str, Sequence[str]]] = None,
     model_author: Optional[Union[str, Sequence[str]]] = None,
 ) -> Tuple[Optional[DATASET_TYPE], Optional[DATASET_TYPE]]:
     """Load and preprocess one or more datasets into standard ``(train, val)`` splits.
 
-    Each entry may carry a trailing ``#N`` row budget (``'AI-ModelScope/alpaca-gpt4-data-zh#500'``).
     A name is matched against the registry to pick a :class:`DatasetLoader`; an unmatched name is a
-    normal case (a bare hub id or a local file) and loads through the base loader. Every dataset's
-    train part -- and every val part, when ``split_dataset_ratio > 0`` -- is concatenated.
+    normal case (a bare hub id or a local file) and loads through the base loader.
 
-    This is the dev-layer counterpart of legacy's ``load_dataset``. What legacy parsed with a full
-    ``DatasetSyntax`` DSL (``hub::id:sub1/sub2#N``) is, for now, a plain name plus a ``#N`` suffix and
-    a ``subsets`` argument; the richer syntax is a later, separate module.
+    How the parts are then put together: by default every dataset's train part is concatenated (and
+    likewise every val part), so the result is all of the data. Passing ``interleave_prob`` instead
+    samples between them with those probabilities, which is what mixing corpora of very different
+    sizes needs -- ``stopping_strategy`` then decides whether the mixture ends with the smallest
+    dataset or keeps drawing until every one is spent. ``shuffle`` applies last, to the combined
+    result, and in streaming mode is a ``shuffle_buffer_size`` window rather than a permutation.
+
+    ``subsets``, ``use_hf`` and a ``#N`` row budget are ordinary arguments here. Legacy instead
+    encoded them in each dataset string (``hf::org/name:sub#500``); such strings still work, being
+    unpacked by :meth:`DatasetLoader.parse_legacy_syntax`, and what a string carries wins over the
+    argument for that one dataset.
     """
     if isinstance(datasets, str):
         datasets = [datasets]
+    DatasetLoader.use_swift_cache_for_temp_files()
+    if streaming:
+        # `num_proc` distributes a `map` over shards of a materialised table; a stream is consumed by
+        # one process and `datasets` rejects the pair.
+        num_proc = None
 
     train_parts: List[DATASET_TYPE] = []
     val_parts: List[DATASET_TYPE] = []
     for entry in datasets:
-        dataset, sample_count = DatasetLoader.split_sample_count(entry)
-        dataset_type = match_dataset_type(dataset, use_hf=use_hf)
+        dataset, entry_subsets, sample_count, entry_use_hf = DatasetLoader.parse_legacy_syntax(entry)
+        if entry_use_hf is None:
+            entry_use_hf = use_hf
+        dataset_type = match_dataset_type(dataset, use_hf=bool(entry_use_hf))
         loader_cls = get_dataset_loader(dataset_type)
         info = DatasetInfo(
             dataset=dataset,
             dataset_type=dataset_type,
-            source=DatasetLoader.detect_source(dataset, use_hf),
-            subsets=list(subsets or []),
-            sample_count=sample_count)
+            source=DatasetLoader.detect_source(dataset, entry_use_hf),
+            subsets=entry_subsets or list(subsets or []),
+            sample_count=sample_count,
+            # The two hubs number their revisions separately, so a family declares one for each and
+            # the chosen hub decides which is meant.
+            revision=loader_cls.hf_revision if entry_use_hf else loader_cls.ms_revision)
         loader = loader_cls(
             info,
             num_proc=num_proc,
@@ -610,12 +840,31 @@ def load_dataset(
             download_mode=download_mode,
             columns=columns,
             streaming=streaming,
+            hub_token=hub_token,
             model_name=model_name,
             model_author=model_author)
         train, val = loader.post_process(
-            loader.load(), split_dataset_ratio=split_dataset_ratio, seed=seed)
+            loader.load(), split_dataset_ratio=split_dataset_ratio, shuffle=shuffle, seed=seed)
         if train is not None:
             train_parts.append(train)
         if val is not None:
             val_parts.append(val)
-    return DatasetLoader.concat_datasets(train_parts), DatasetLoader.concat_datasets(val_parts)
+
+    if interleave_prob is None:
+        train_dataset = DatasetLoader.concat_datasets(train_parts)
+        val_dataset = DatasetLoader.concat_datasets(val_parts)
+    else:
+        interleave_kwargs = {
+            'probabilities': interleave_prob,
+            'seed': seed,
+            'stopping_strategy': stopping_strategy,
+        }
+        train_dataset = DatasetLoader.interleave_datasets(train_parts, **interleave_kwargs)
+        val_dataset = DatasetLoader.interleave_datasets(val_parts, **interleave_kwargs)
+
+    if shuffle:
+        if train_dataset is not None:
+            train_dataset = DatasetLoader.shuffle_dataset(train_dataset, seed, shuffle_buffer_size)
+        if val_dataset is not None:
+            val_dataset = DatasetLoader.shuffle_dataset(val_dataset, seed, shuffle_buffer_size)
+    return train_dataset, val_dataset
