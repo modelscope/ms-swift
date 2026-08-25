@@ -35,10 +35,11 @@ def apply_all_patches() -> None:
     if _APPLIED:
         return
 
-    from . import env, fsdp
+    from . import env, fsdp, optimizer
 
     env.apply_patch()
     fsdp.apply_patch()
+    optimizer.apply_patch()
     # The model patch switch is checked only on the first import; monkey patches are not reversible.
     if _is_model_patch_enabled_from_argv():
         from . import model
