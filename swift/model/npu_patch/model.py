@@ -251,17 +251,17 @@ def enable_npu_fused_linear_ce(model: torch.nn.Module):
         target_model = target_model.base_model
         if hasattr(target_model, 'model'):
             target_model = target_model.model
-    logger.info(f"Target model for Fused CE patch resolved to: {target_model.__class__.__name__}")
+    logger.info(f'Target model for Fused CE patch resolved to: {target_model.__class__.__name__}')
 
     if target_model.__class__.__name__ in supported_classes:
         import types
 
         from . import fused_linear_ce
         target_model.forward = types.MethodType(fused_linear_ce.npu_fused_lm_forward, target_model)
-        logger.info(f"NPU Fused LM-Head CE dynamically enabled for {target_model.__class__.__name__} instance.")
+        logger.info(f'NPU Fused LM-Head CE dynamically enabled for {target_model.__class__.__name__} instance.')
         return True
     else:
-        logger.warning(f"Fused LM-Head CE does not support architecture: {target_model.__class__.__name__}")
+        logger.warning(f'Fused LM-Head CE does not support architecture: {target_model.__class__.__name__}')
         return False
 
 
